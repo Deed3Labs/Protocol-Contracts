@@ -1,0 +1,45 @@
+{
+  "name": "DeedNFT: ERC-721",
+  "version": "1.0.0",
+  "description": "DeedNFT Contracts with Validator integration for decentralized asset registration and verification",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx hardhat test",
+    "compile": "npx hardhat compile",
+    "deploy": "npx hardhat run scripts/deploy.js --network <network-name>",
+    "coverage": "npx hardhat coverage"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Deed3Labs/DeedNFT-Contracts.git"
+  },
+  "keywords": [
+    "Solidity",
+    "ERC721",
+    "NFT",
+    "Validator",
+    "Smart Contracts"
+  ],
+  "author": "Deed3Labs, LLC. <dev@deed3.io>",
+  "contributors": [
+    "Isaiah @kyngkai909 Litt <isaiahlitt@deed3.io>",
+    "Corantin @gossman Noll <corantin@deed3.io>",
+    "Kevin @kafann Mansour <kev@deed3.io>"
+  ],
+  "license": "AGPL-3.0",
+  "dependencies": {
+    "@openzeppelin/contracts-upgradeable": "^4.9.0", 
+    "@openzeppelin/contracts": "^4.9.0"
+  },
+  "devDependencies": {
+    "hardhat": "^2.12.6",
+    "solhint": "^3.3.6",
+    "solidity-coverage": "^0.7.21",
+    "hardhat-gas-reporter": "^1.0.9",
+    "chai": "^4.3.7",
+    "mocha": "^9.2.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
