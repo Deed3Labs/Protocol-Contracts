@@ -1,4 +1,4 @@
-# DeedNFT Contracts - The Deed Protocol
+# The Deed Protocol - Smart Contracts
 
 This repository contains the smart contracts for **The Deed Protocol**, which facilitates decentralized Real World Asset transactions via Smart Contracts. These contracts represent real world assets as ERC721 tokens, ensuring seamless integration with external validation services and enabling future enhancements.
 
