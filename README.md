@@ -16,7 +16,7 @@ Key components of the protocol include:
 
 ### 1. DeedNFT
 
-[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/DeedNFT.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/core/DeedNFT.sol)
 
 The `DeedNFT` contract is the core ERC721 token representing real world assets. It includes several important features:
 
@@ -27,7 +27,7 @@ The `DeedNFT` contract is the core ERC721 token representing real world assets. 
 
 ### 2. Validator
 
-[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/Validator.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/core/Validator.sol)
 
 The `Validator` contract is responsible for verifying deed data and generating the appropriate metadata URI. This contract works in tandem with the `ValidatorRegistry` to ensure that only authorized validators can validate deeds.
 
@@ -38,7 +38,7 @@ The `Validator` contract is responsible for verifying deed data and generating t
 
 ### 3. ValidatorRegistry
 
-[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/ValidatorRegistry.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/core/ValidatorRegistry.sol)
 
 The `ValidatorRegistry` contract manages a list of authorized validators, ensuring that only trusted and approved validators can interact with the `DeedNFT` contract.
 
@@ -48,7 +48,7 @@ The `ValidatorRegistry` contract manages a list of authorized validators, ensuri
 
 ### 4. FundManager
 
-[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/FundManager.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/core/FundManager.sol)
 
 The `FundManager` contract is dedicated to managing funds associated with property transactions and transfers within the protocol:
 
@@ -60,11 +60,11 @@ The `FundManager` contract is dedicated to managing funds associated with proper
 ### 5. Interface Contracts
 
 - **IValidator**  
-  [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/IValidator.sol)  
+  [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/core/IValidator.sol)  
   Defines the interface for validator functionality, outlining the functions that any validator contract must implement to interact with the protocol.
 
 - **IValidatorRegistry**  
-  [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/IValidatorRegistry.sol)  
+  [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/src/core/IValidatorRegistry.sol)  
   Specifies the interface for the validator registry, ensuring that implementations provide necessary registry management functions.
 
 ### 6. **Proxy Contracts**
