@@ -52,7 +52,7 @@ interface IValidatorRegistry {
     function getValidatorsForAssetType(uint256 assetTypeId) external view returns (address[] memory);
 
     /**
-     * @dev Checks if a validator is active and registered
+     * @dev Checks if a validator is active
      * @param validator Address of the validator to check
      * @return Boolean indicating validator status
      */
