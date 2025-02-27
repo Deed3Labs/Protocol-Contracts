@@ -134,6 +134,12 @@ contract Validator is
      */
     event DefaultOperatingAgreementUpdated(string uri);
 
+    /**
+     * @dev Emitted when the DeedNFT contract is updated
+     * @param newDeedNFT The new DeedNFT contract address
+     */
+    event DeedNFTUpdated(address indexed newDeedNFT);
+
     // ============ Upgrade Gap ============
 
     /// @dev Storage gap for future upgrades
@@ -146,27 +152,30 @@ contract Validator is
         _disableInitializers();
     }
 
-    // ============ Initializer ============
-
     /**
-     * @dev Initializes the Validator contract
-     * @param _deedNFT Address of the DeedNFT contract
+     * @dev Initializes the contract with default settings
+     * @param _baseUri Base URI for token metadata
+     * @param _defaultOperatingAgreementUri Default operating agreement URI
+     * @param _deedNFT Address of the DeedNFT contract (can be zero address during initialization)
      */
-    function initialize(address _deedNFT) public initializer {
+    function initialize(
+        string memory _baseUri,
+        string memory _defaultOperatingAgreementUri,
+        address _deedNFT
+    ) public initializer {
         __AccessControl_init();
         __Ownable_init();
         __UUPSUpgradeable_init();
-        
-        // Allow zero address during initialization
-        primaryDeedNFT = _deedNFT;
-        if(_deedNFT != address(0)) {
-            compatibleDeedNFTs[_deedNFT] = true;
-        }
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(VALIDATOR_ROLE, msg.sender);
         _grantRole(METADATA_ROLE, msg.sender);
-        _transferOwnership(msg.sender);
+
+        baseUri = _baseUri;
+        defaultOperatingAgreementUri = _defaultOperatingAgreementUri;
+        
+        // Initialize DeedNFT (can be zero address)
+        _setDeedNFT(_deedNFT);
     }
 
     /**
@@ -315,14 +324,37 @@ contract Validator is
         return true;
     }
 
-    function setPrimaryDeedNFT(address _deedNFT) external onlyOwner {
-        require(_deedNFT != address(0), "Validator: Invalid DeedNFT address");
-        primaryDeedNFT = _deedNFT;
-        compatibleDeedNFTs[_deedNFT] = true;
+    /**
+     * @dev Sets the DeedNFT contract address
+     * @param _deedNFT New DeedNFT contract address
+     */
+    function setDeedNFT(address _deedNFT) external onlyOwner {
+        _setDeedNFT(_deedNFT);
+    }
+
+    /**
+     * @dev Internal function to set the DeedNFT contract address
+     * @param _deedNFT New DeedNFT contract address
+     */
+    function _setDeedNFT(address _deedNFT) internal {
+        // Only enforce non-zero address check after initialization
+        if (address(deedNFT) != address(0)) {
+            require(_deedNFT != address(0), "Validator: Invalid DeedNFT address");
+        }
+        deedNFT = IDeedNFT(_deedNFT);
+        
+        // Update compatible DeedNFTs mapping
+        if (_deedNFT != address(0)) {
+            compatibleDeedNFTs[_deedNFT] = true;
+            primaryDeedNFT = _deedNFT;
+        }
+        
+        emit DeedNFTUpdated(_deedNFT);
     }
 
     function addCompatibleDeedNFT(address _deedNFT) external onlyOwner {
         require(_deedNFT != address(0), "Validator: Invalid DeedNFT address");
+        require(_deedNFT != primaryDeedNFT, "Validator: Already primary DeedNFT");
         compatibleDeedNFTs[_deedNFT] = true;
     }
 
