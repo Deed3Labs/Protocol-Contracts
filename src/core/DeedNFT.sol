@@ -298,54 +298,19 @@ contract DeedNFT is
             "DeedNFT: Definition is required"
         );
 
-        // Determine if the FundManager has the VALIDATOR_ROLE
-        bool isValidator = hasRole(VALIDATOR_ROLE, msg.sender);
-        bool isValidated;
-        address assignedValidator;
-
-        if (isValidator) {
-            assignedValidator = msg.sender;
-            isValidated = true;
-
-            // Ensure validator is registered and supports IValidator interface
-            require(
-                IValidatorRegistry(validatorRegistry).isValidatorRegistered(
-                    assignedValidator
-                ),
-                "DeedNFT: Validator is not registered"
-            );
-            require(
-                IERC165Upgradeable(assignedValidator).supportsInterface(
-                    type(IValidator).interfaceId
-                ),
-                "DeedNFT: Validator does not support IValidator interface"
-            );
-
-            // Check if operating agreement is valid
-            string memory agreementName = IValidator(assignedValidator)
-                .operatingAgreementName(operatingAgreement);
-            require(
-                bytes(agreementName).length > 0,
-                "DeedNFT: Invalid operating agreement"
-            );
-        } else {
-            assignedValidator = address(0);
-            isValidated = false;
-        }
-
         uint256 deedId = nextDeedId++;
         _mint(owner, deedId);
         _setTokenURI(deedId, ipfsDetailsHash);
 
         DeedInfo storage deedInfo = deedInfoMap[deedId];
         deedInfo.assetType = assetType;
-        deedInfo.isValidated = isValidated;
+        deedInfo.isValidated = false;  // Always start as unvalidated
         deedInfo.operatingAgreement = operatingAgreement;
         deedInfo.definition = definition;
         deedInfo.configuration = configuration;
-        deedInfo.validator = assignedValidator;
+        deedInfo.validator = address(0);  // No validator initially assigned
 
-        emit DeedNFTMinted(deedId, deedInfo, msg.sender, assignedValidator);
+        emit DeedNFTMinted(deedId, deedInfo, msg.sender, address(0));
         return deedId;
     }
 

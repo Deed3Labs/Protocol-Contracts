@@ -8,6 +8,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 // Interfaces
 
@@ -458,25 +459,31 @@ contract FundManager is
      * @return deedId The ID of the minted deed.
      */
     function _processMint(DeedMintData memory deedData) internal returns (uint256 deedId) {
-        bool isValidator = deedNFT != address(0) && IDeedNFTAccessControl(deedNFT).hasRole(
-            keccak256("VALIDATOR_ROLE"),
-            msg.sender
-        );
+        require(isWhitelisted[deedData.token], "FundManager: Token not whitelisted");
+        require(deedData.validatorContract != address(0), "FundManager: Invalid ValidatorContract address");
 
-        uint256 serviceFee = isValidator ? serviceFeeValidator[deedData.token] : serviceFeeRegular[deedData.token];
+        // Get the service fee
+        uint256 serviceFee = serviceFeeRegular[deedData.token];
         require(serviceFee > 0, "FundManager: Service fee not set for token");
 
-        uint256 commissionPercentage = isValidator ? commissionPercentageValidator : commissionPercentageRegular;
-
+        // Transfer service fee from user to FundManager
         IERC20Upgradeable(deedData.token).safeTransferFrom(msg.sender, address(this), serviceFee);
-        serviceFeesBalance[deedData.token] += serviceFee;
-
-        address validatorOwner = IValidatorRegistry(validatorRegistry).getValidatorOwner(deedData.validatorContract);
+        
+        // Get validator owner directly from Validator contract
+        address validatorOwner = OwnableUpgradeable(deedData.validatorContract).owner();
         require(validatorOwner != address(0), "FundManager: Validator owner not found");
 
-        uint256 commission = (serviceFee * commissionPercentage) / 10000;
+        // Calculate commission (percentage of service fee)
+        uint256 commission = (serviceFee * commissionPercentageRegular) / 10000;
+        
+        // Add commission to validator owner's balance
         commissionBalances[validatorOwner][deedData.token] += commission;
+        
+        // Add remaining fee to service fees balance
+        uint256 remainingFee = serviceFee - commission;
+        serviceFeesBalance[deedData.token] += remainingFee;
 
+        // Mint the deed
         deedId = IDeedNFT(deedNFT).mintAsset(
             msg.sender,
             deedData.assetType,
@@ -486,7 +493,7 @@ contract FundManager is
             deedData.configuration
         );
 
-        emit FundsDeposited(msg.sender, deedData.token, serviceFee, serviceFee, commission, validatorOwner);
+        emit FundsDeposited(msg.sender, deedData.token, serviceFee, remainingFee, commission, validatorOwner);
     }
 
     /**

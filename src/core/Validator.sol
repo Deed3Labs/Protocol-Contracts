@@ -318,8 +318,32 @@ contract Validator is
         onlyRole(VALIDATOR_ROLE) 
         returns (bool) 
     {
-        // Implementation would depend on your validation logic
-        // This is a placeholder implementation
+        require(address(deedNFT) != address(0), "Validator: DeedNFT not set");
+        require(compatibleDeedNFTs[address(deedNFT)], "Validator: DeedNFT not compatible");
+        
+        // Get deed info from DeedNFT
+        (
+            IDeedNFT.AssetType assetType,
+            bool isValidated,
+            string memory operatingAgreement,
+            ,  // definition
+            ,  // configuration
+            address currentValidator
+        ) = deedNFT.getDeedInfo(deedId);
+        
+        // Verify asset type is supported
+        require(supportedAssetTypes[uint256(assetType)], "Validator: Asset type not supported");
+        
+        // Verify operating agreement is valid
+        require(bytes(operatingAgreements[operatingAgreement]).length > 0, "Validator: Invalid operating agreement");
+        
+        // Verify deed isn't already validated
+        require(!isValidated, "Validator: Deed already validated");
+        require(currentValidator == address(0), "Validator: Validator already assigned");
+        
+        // Call DeedNFT's validation function
+        IDeedNFT(deedNFT).validateMintedAsset(deedId);
+        
         emit DeedValidated(deedId, true);
         return true;
     }
