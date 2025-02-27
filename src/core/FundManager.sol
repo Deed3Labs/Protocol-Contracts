@@ -402,7 +402,10 @@ contract FundManager is
      * @param _deedNFT New DeedNFT contract address.
      */
     function _setDeedNFT(address _deedNFT) internal {
-        require(_deedNFT != address(0), "FundManager: Invalid DeedNFT address");
+        // Only enforce non-zero address check after initialization
+        if (address(deedNFT) != address(0)) {
+            require(_deedNFT != address(0), "FundManager: Invalid DeedNFT address");
+        }
         deedNFT = _deedNFT;
         emit DeedNFTUpdated(_deedNFT);
     }

@@ -86,6 +86,12 @@ contract Validator is
     /// @dev Key: deed ID, Value: metadata URI
     mapping(uint256 => string) public deedMetadata;
 
+    // Mapping to track compatible DeedNFT contracts
+    mapping(address => bool) public compatibleDeedNFTs;
+    
+    // Main DeedNFT address
+    address public primaryDeedNFT;
+
     // ============ Events ============
 
     /**
@@ -150,9 +156,12 @@ contract Validator is
         __AccessControl_init();
         __Ownable_init();
         __UUPSUpgradeable_init();
-
-        require(_deedNFT != address(0), "Invalid DeedNFT address");
-        deedNFT = IDeedNFT(_deedNFT);
+        
+        // Allow zero address during initialization
+        primaryDeedNFT = _deedNFT;
+        if(_deedNFT != address(0)) {
+            compatibleDeedNFTs[_deedNFT] = true;
+        }
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(VALIDATOR_ROLE, msg.sender);
@@ -304,5 +313,25 @@ contract Validator is
         // This is a placeholder implementation
         emit DeedValidated(deedId, true);
         return true;
+    }
+
+    function setPrimaryDeedNFT(address _deedNFT) external onlyOwner {
+        require(_deedNFT != address(0), "Validator: Invalid DeedNFT address");
+        primaryDeedNFT = _deedNFT;
+        compatibleDeedNFTs[_deedNFT] = true;
+    }
+
+    function addCompatibleDeedNFT(address _deedNFT) external onlyOwner {
+        require(_deedNFT != address(0), "Validator: Invalid DeedNFT address");
+        compatibleDeedNFTs[_deedNFT] = true;
+    }
+
+    function removeCompatibleDeedNFT(address _deedNFT) external onlyOwner {
+        require(_deedNFT != primaryDeedNFT, "Validator: Cannot remove primary DeedNFT");
+        compatibleDeedNFTs[_deedNFT] = false;
+    }
+
+    function isCompatibleDeedNFT(address _deedNFT) public view returns (bool) {
+        return compatibleDeedNFTs[_deedNFT];
     }
 }
