@@ -7,6 +7,9 @@ import "hardhat-deploy";
 import "solidity-coverage";
 import "@openzeppelin/hardhat-upgrades";
 import "@nomicfoundation/hardhat-verify";
+import "@nomicfoundation/hardhat-chai-matchers";
+import "@typechain/hardhat";
+import "hardhat-gas-reporter";
 
 // If not set, it uses ours Alchemy's default API key.
 // You can get your own at https://dashboard.alchemyapi.io
@@ -118,6 +121,20 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: { sepolia: `${etherscanApiKey}`, polygon: `${polygonscanApiKey}`, arbitrumOne: `${arbiscanApiKey}` },
+  },
+  mocha: {
+    timeout: 100000
+  },
+  gasReporter: {
+    enabled: process.env.REPORT_GAS !== undefined,
+    currency: "USD",
+    outputFile: "gas-report.txt",
+    noColors: true,
+    // coinmarketcap: process.env.COINMARKETCAP_API_KEY,
+  },
+  typechain: {
+    outDir: "typechain",
+    target: "ethers-v5",
   },
 };
 

@@ -4,10 +4,14 @@
   "description": "DeedNFT Contracts with Validator integration for decentralized asset registration and verification",
   "main": "index.js",
   "scripts": {
-    "test": "npx hardhat test",
+    "test": "hardhat test",
+    "test:coverage": "hardhat coverage",
+    "test:gas": "REPORT_GAS=true hardhat test",
+    "test:core": "hardhat test test/core/*.test.ts",
+    "test:extensions": "hardhat test test/extensions/*.test.ts",
+    "test:integration": "hardhat test test/integration/*.test.ts",
     "compile": "npx hardhat compile",
-    "deploy": "npx hardhat run scripts/deploy.js --network <network-name>",
-    "coverage": "npx hardhat coverage"
+    "deploy": "npx hardhat run scripts/deploy.js --network <network-name>"
   },
   "repository": {
     "type": "git",
@@ -37,7 +41,15 @@
     "solidity-coverage": "^0.7.21",
     "hardhat-gas-reporter": "^1.0.9",
     "chai": "^4.3.7",
-    "mocha": "^9.2.2"
+    "mocha": "^9.2.2",
+    "typescript": "^4.9.5",
+    "ts-node": "^10.9.1",
+    "@types/chai": "^4.3.4",
+    "@types/mocha": "^10.0.1",
+    "@nomiclabs/hardhat-ethers": "^2.2.2",
+    "@typechain/ethers-v5": "^10.2.0",
+    "@typechain/hardhat": "^6.1.5",
+    "typechain": "^8.1.1"
   },
   "engines": {
     "node": ">=14.0.0"

@@ -57,4 +57,11 @@ interface IValidatorRegistry {
      * @return Boolean indicating validator status
      */
     function isValidatorActive(address validator) external view returns (bool);
+
+    /**
+     * @dev Checks if a validator is registered
+     * @param validator Address of the validator to check
+     * @return Boolean indicating if the validator is registered
+     */
+    function isValidatorRegistered(address validator) external view returns (bool);
 }
