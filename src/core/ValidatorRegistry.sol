@@ -217,7 +217,6 @@ contract ValidatorRegistry is
     function getValidatorName(address validator)
         external
         view
-        override
         returns (string memory)
     {
         return validators[validator].name;
@@ -231,7 +230,6 @@ contract ValidatorRegistry is
     function isValidatorRegistered(address validator)
         external
         view
-        override
         returns (bool)
     {
         return bytes(validators[validator].name).length > 0;
