@@ -366,4 +366,17 @@ contract Validator is
     function isCompatibleDeedNFT(address _deedNFT) public view returns (bool) {
         return compatibleDeedNFTs[_deedNFT];
     }
+
+    /**
+     * @dev Sets support status for an asset type
+     * @param assetTypeId ID of the asset type
+     * @param isSupported Whether the asset type should be supported
+     */
+    function setAssetTypeSupport(uint256 assetTypeId, bool isSupported) 
+        external 
+        onlyOwner 
+    {
+        supportedAssetTypes[assetTypeId] = isSupported;
+        emit AssetTypeSupportUpdated(assetTypeId, isSupported);
+    }
 }
