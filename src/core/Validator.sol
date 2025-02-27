@@ -46,6 +46,7 @@ interface IDeedNFT {
 contract Validator is
     Initializable,
     AccessControlUpgradeable,
+    OwnableUpgradeable,
     UUPSUpgradeable,
     IValidator
 {
@@ -62,6 +63,12 @@ contract Validator is
     bytes32 public constant METADATA_ROLE = keccak256("METADATA_ROLE");
 
     // ============ State Variables ============
+
+    /// @notice Base URI for token metadata
+    string public baseUri;
+
+    /// @notice Default operating agreement URI
+    string public defaultOperatingAgreementUri;
 
     /// @notice Reference to the DeedNFT contract
     /// @dev Used for deed information retrieval and validation
@@ -109,10 +116,22 @@ contract Validator is
      */
     event DeedValidated(uint256 indexed deedId, bool success);
 
+    /**
+     * @dev Emitted when the base URI is updated
+     * @param newBaseUri The new base URI
+     */
+    event BaseUriUpdated(string newBaseUri);
+
+    /**
+     * @dev Emitted when the default operating agreement is updated
+     * @param uri The new default operating agreement URI
+     */
+    event DefaultOperatingAgreementUpdated(string uri);
+
     // ============ Upgrade Gap ============
 
     /// @dev Storage gap for future upgrades
-    uint256[50] private __gap;
+    uint256[48] private __gap;
 
     // ============ Constructor ============
 
@@ -129,6 +148,7 @@ contract Validator is
      */
     function initialize(address _deedNFT) public initializer {
         __AccessControl_init();
+        __Ownable_init();
         __UUPSUpgradeable_init();
 
         require(_deedNFT != address(0), "Invalid DeedNFT address");
@@ -137,6 +157,7 @@ contract Validator is
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(VALIDATOR_ROLE, msg.sender);
         _grantRole(METADATA_ROLE, msg.sender);
+        _transferOwnership(msg.sender);
     }
 
     /**
@@ -252,5 +273,36 @@ contract Validator is
     {
         require(bytes(baseUri).length > 0, "Validator: Base URI is not set");
         return string(abi.encodePacked(baseUri, tokenId.toString()));
+    }
+
+    /**
+     * @dev Checks if the validator supports a specific asset type
+     * @param assetTypeId ID of the asset type to check
+     * @return Boolean indicating support status
+     */
+    function supportsAssetType(uint256 assetTypeId) 
+        external 
+        view 
+        override 
+        returns (bool) 
+    {
+        return supportedAssetTypes[assetTypeId];
+    }
+
+    /**
+     * @dev Validates a specific deed
+     * @param deedId ID of the deed to validate
+     * @return Boolean indicating validation success
+     */
+    function validateDeed(uint256 deedId) 
+        external 
+        override 
+        onlyRole(VALIDATOR_ROLE) 
+        returns (bool) 
+    {
+        // Implementation would depend on your validation logic
+        // This is a placeholder implementation
+        emit DeedValidated(deedId, true);
+        return true;
     }
 }

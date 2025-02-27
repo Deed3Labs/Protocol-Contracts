@@ -40,6 +40,7 @@ interface IValidator {
 contract ValidatorRegistry is
     Initializable,
     AccessControlUpgradeable,
+    OwnableUpgradeable,
     UUPSUpgradeable
 {
     // ============ Role Definitions ============
@@ -126,10 +127,12 @@ contract ValidatorRegistry is
      */
     function initialize() public initializer {
         __AccessControl_init();
+        __Ownable_init();
         __UUPSUpgradeable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(REGISTRY_ADMIN_ROLE, msg.sender);
+        _transferOwnership(msg.sender);
     }
 
     /**
