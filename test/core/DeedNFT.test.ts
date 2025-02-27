@@ -254,4 +254,76 @@ describe("DeedNFT Contract", function() {
       );
     });
   });
+  
+  describe("Pausability", function() {
+    it("should allow admin to pause and unpause contract", async function() {
+      // Pause the contract
+      await deedNFT.connect(deployer).pause();
+      expect(await deedNFT.paused()).to.be.true;
+      
+      // Try to mint while paused
+      await deedNFT.connect(deployer).setFundManager(deployer.address);
+      await expect(
+        deedNFT.mintAsset(
+          user1.address,
+          0,
+          "ipfs://paused",
+          "ipfs://agreements/default.json",
+          "paused-def",
+          "paused-config"
+        )
+      ).to.be.revertedWith("Pausable: paused");
+      
+      // Unpause
+      await deedNFT.connect(deployer).unpause();
+      expect(await deedNFT.paused()).to.be.false;
+      
+      // Should be able to mint now
+      const tx = await deedNFT.mintAsset(
+        user1.address,
+        0,
+        "ipfs://unpaused",
+        "ipfs://agreements/default.json",
+        "unpaused-def",
+        "unpaused-config"
+      );
+      
+      const receipt = await tx.wait();
+      const mintEvent = receipt.events?.find(e => e.event === "DeedNFTMinted");
+      expect(mintEvent).to.not.be.undefined;
+      
+      // Reset FundManager
+      await deedNFT.connect(deployer).setFundManager(contracts.fundManager.address);
+    });
+  });
+  
+  describe("Token URI", function() {
+    it("should return the correct token URI from validator", async function() {
+      // Set deployer as FundManager temporarily for minting
+      await deedNFT.connect(deployer).setFundManager(deployer.address);
+      
+      // Mint a new deed
+      const tx = await deedNFT.mintAsset(
+        user1.address,
+        0, // AssetType.Land
+        "ipfs://uri-test",
+        "ipfs://agreements/default.json",
+        "uri-def",
+        "uri-config"
+      );
+      
+      const receipt = await tx.wait();
+      const mintEvent = receipt.events?.find(e => e.event === "DeedNFTMinted");
+      const deedId = mintEvent?.args?.deedId;
+      
+      // Reset FundManager address
+      await deedNFT.connect(deployer).setFundManager(contracts.fundManager.address);
+      
+      // Get token URI
+      const tokenURI = await deedNFT.tokenURI(deedId);
+      
+      // The validator's baseURI is "ipfs://metadata/" and it appends the token ID
+      expect(tokenURI).to.equal(`ipfs://metadata/${deedId}`);
+    });
+  });
 }); 
