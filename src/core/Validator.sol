@@ -18,6 +18,7 @@ import "./IValidator.sol";
  */
 interface IDeedNFT {
     enum AssetType { Land, Vehicle, Estate, CommercialEquipment }
+    function validateDeed(uint256 deedId) external;
     function getDeedInfo(uint256 deedId) external view returns (
         AssetType assetType,
         bool isValidated,
@@ -342,7 +343,7 @@ contract Validator is
         require(currentValidator == address(0), "Validator: Validator already assigned");
         
         // Call DeedNFT's validation function
-        IDeedNFT(deedNFT).validateMintedAsset(deedId);
+        IDeedNFT(deedNFT).validateDeed(deedId);
         
         emit DeedValidated(deedId, true);
         return true;

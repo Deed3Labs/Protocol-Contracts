@@ -353,11 +353,11 @@ contract DeedNFT is
     // Validation functions
 
     /**
-     * @dev Validates a minted deed and assigns a validator.
+     * @dev Validates a deed and assigns a validator.
      *      Only callable by addresses with VALIDATOR_ROLE.
      * @param deedId ID of the deed to validate.
      */
-    function validateMintedAsset(uint256 deedId)
+    function validateDeed(uint256 deedId)
         external
         onlyRole(VALIDATOR_ROLE)
         whenNotPaused
@@ -367,11 +367,13 @@ contract DeedNFT is
         require(!deedInfo.isValidated, "DeedNFT: Deed is already validated");
         require(deedInfo.validator == address(0), "DeedNFT: Validator already assigned");
 
-        // Ensure validator is registered and supports IValidator interface
+        // Ensure validator is registered
         require(
             IValidatorRegistry(validatorRegistry).isValidatorRegistered(msg.sender),
             "DeedNFT: Validator is not registered"
         );
+
+        // Verify validator supports interface
         require(
             IERC165Upgradeable(msg.sender).supportsInterface(
                 type(IValidator).interfaceId
@@ -391,25 +393,6 @@ contract DeedNFT is
         deedInfo.validator = msg.sender;
 
         emit DeedNFTValidatedChanged(deedId, true);
-    }
-
-    /**
-     * @dev Validates or invalidates a deed.
-     *      Only callable by addresses with VALIDATOR_ROLE.
-     * @param deedId ID of the deed.
-     * @param isValid Validation status to set.
-     */
-    function validateAsset(uint256 deedId, bool isValid)
-        external
-        onlyRole(VALIDATOR_ROLE)
-        whenNotPaused
-    {
-        require(
-            ownerOf(deedId) != msg.sender,
-            "DeedNFT: Validator cannot validate own asset"
-        );
-        deedInfoMap[deedId].isValidated = isValid;
-        emit DeedNFTValidatedChanged(deedId, isValid);
     }
 
     // Metadata functions

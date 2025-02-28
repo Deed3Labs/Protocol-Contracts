@@ -82,19 +82,12 @@ contract FundManager is
     /// @dev Key: token address, Value: whitelist status
     mapping(address => bool) public isWhitelisted;
 
-    /// @notice Service fees for regular users per token
+    /// @notice Service fee per token
     /// @dev Key: token address, Value: fee amount in token's smallest unit
-    mapping(address => uint256) public serviceFeeRegular;
+    mapping(address => uint256) public serviceFee;
 
-    /// @notice Service fees for validators per token
-    /// @dev Key: token address, Value: fee amount in token's smallest unit
-    mapping(address => uint256) public serviceFeeValidator;
-
-    /// @notice Commission percentage for regular users in basis points (e.g., 500 = 5%)
-    uint256 public commissionPercentageRegular;
-
-    /// @notice Commission percentage for validators in basis points (e.g., 300 = 3%)
-    uint256 public commissionPercentageValidator;
+    /// @notice Commission percentage in basis points (e.g., 500 = 5%)
+    uint256 public commissionPercentage;
 
     /// @notice Address to receive service fees
     address public feeReceiver;
@@ -148,27 +141,7 @@ contract FundManager is
      * @dev Emitted when the commission percentage for regular users is updated.
      * @param newCommissionPercentage The new commission percentage in basis points.
      */
-    event CommissionPercentageRegularUpdated(uint256 newCommissionPercentage);
-
-    /**
-     * @dev Emitted when the commission percentage for validators is updated.
-     * @param newCommissionPercentage The new commission percentage in basis points.
-     */
-    event CommissionPercentageValidatorUpdated(uint256 newCommissionPercentage);
-
-    /**
-     * @dev Emitted when the service fee for a regular user is updated.
-     * @param token The address of the token.
-     * @param newServiceFee The new service fee amount in the token's smallest unit.
-     */
-    event ServiceFeeRegularUpdated(address indexed token, uint256 newServiceFee);
-
-    /**
-     * @dev Emitted when the service fee for a validator is updated.
-     * @param token The address of the token.
-     * @param newServiceFee The new service fee amount in the token's smallest unit.
-     */
-    event ServiceFeeValidatorUpdated(address indexed token, uint256 newServiceFee);
+    event CommissionPercentageUpdated(uint256 newCommissionPercentage);
 
     /**
      * @dev Emitted when the fee receiver address is updated.
@@ -227,15 +200,13 @@ contract FundManager is
 
     /**
      * @dev Initializes the FundManager contract.
-     * @param _commissionPercentageRegular Initial commission percentage for regular users in basis points.
-     * @param _commissionPercentageValidator Initial commission percentage for validators in basis points.
+     * @param _commissionPercentage Initial commission percentage for regular users in basis points.
      * @param _feeReceiver Address to receive service fees.
      * @param _validatorRegistry Address of the ValidatorRegistry contract.
      * @param _deedNFT Address of the DeedNFT contract.
      */
     function initialize(
-        uint256 _commissionPercentageRegular,
-        uint256 _commissionPercentageValidator,
+        uint256 _commissionPercentage,
         address _feeReceiver,
         address _validatorRegistry,
         address _deedNFT
@@ -248,8 +219,7 @@ contract FundManager is
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 
         // Initialize commission percentages
-        _setCommissionPercentageRegular(_commissionPercentageRegular);
-        _setCommissionPercentageValidator(_commissionPercentageValidator);
+        _setCommissionPercentage(_commissionPercentage);
 
         // Initialize fee receiver
         _setFeeReceiver(_feeReceiver);
@@ -277,38 +247,12 @@ contract FundManager is
 
     /**
      * @dev Sets the commission percentage for regular users.
-     * @param _commissionPercentageRegular New commission percentage in basis points (e.g., 500 = 5%).
+     * @param _percentage New commission percentage in basis points (e.g., 500 = 5%).
      */
-    function setCommissionPercentageRegular(uint256 _commissionPercentageRegular) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _setCommissionPercentageRegular(_commissionPercentageRegular);
-    }
-
-    /**
-     * @dev Internal function to set the commission percentage for regular users.
-     * @param _commissionPercentageRegular New commission percentage in basis points.
-     */
-    function _setCommissionPercentageRegular(uint256 _commissionPercentageRegular) internal {
-        require(_commissionPercentageRegular <= 10000, "FundManager: Commission too high");
-        commissionPercentageRegular = _commissionPercentageRegular;
-        emit CommissionPercentageRegularUpdated(_commissionPercentageRegular);
-    }
-
-    /**
-     * @dev Sets the commission percentage for validators.
-     * @param _commissionPercentageValidator New commission percentage in basis points (e.g., 300 = 3%).
-     */
-    function setCommissionPercentageValidator(uint256 _commissionPercentageValidator) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _setCommissionPercentageValidator(_commissionPercentageValidator);
-    }
-
-    /**
-     * @dev Internal function to set the commission percentage for validators.
-     * @param _commissionPercentageValidator New commission percentage in basis points.
-     */
-    function _setCommissionPercentageValidator(uint256 _commissionPercentageValidator) internal {
-        require(_commissionPercentageValidator <= 10000, "FundManager: Commission too high");
-        commissionPercentageValidator = _commissionPercentageValidator;
-        emit CommissionPercentageValidatorUpdated(_commissionPercentageValidator);
+    function setCommissionPercentage(uint256 _percentage) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_percentage <= 10000, "FundManager: Commission too high");
+        commissionPercentage = _percentage;
+        emit CommissionPercentageUpdated(_percentage);
     }
 
     /**
@@ -337,21 +281,10 @@ contract FundManager is
      * @param token Address of the token.
      * @param _serviceFee Service fee amount in the token's smallest unit (e.g., USDC has 6 decimals).
      */
-    function setServiceFeeRegular(address token, uint256 _serviceFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setServiceFee(address token, uint256 _serviceFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(isWhitelisted[token], "FundManager: Token not whitelisted");
-        serviceFeeRegular[token] = _serviceFee;
-        emit ServiceFeeRegularUpdated(token, _serviceFee);
-    }
-
-    /**
-     * @dev Sets the service fee for validators for a specific token.
-     * @param token Address of the token.
-     * @param _serviceFee Service fee amount in the token's smallest unit (e.g., USDC has 6 decimals).
-     */
-    function setServiceFeeValidator(address token, uint256 _serviceFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(isWhitelisted[token], "FundManager: Token not whitelisted");
-        serviceFeeValidator[token] = _serviceFee;
-        emit ServiceFeeValidatorUpdated(token, _serviceFee);
+        serviceFee[token] = _serviceFee;
+        emit ServiceFeeUpdated(token, _serviceFee);
     }
 
     /**
@@ -463,24 +396,22 @@ contract FundManager is
         require(deedData.validatorContract != address(0), "FundManager: Invalid ValidatorContract address");
 
         // Get the service fee
-        uint256 serviceFee = serviceFeeRegular[deedData.token];
-        require(serviceFee > 0, "FundManager: Service fee not set for token");
+        uint256 fee = serviceFee[deedData.token];
+        require(fee > 0, "FundManager: Service fee not set for token");
 
         // Transfer service fee from user to FundManager
-        IERC20Upgradeable(deedData.token).safeTransferFrom(msg.sender, address(this), serviceFee);
+        IERC20Upgradeable(deedData.token).safeTransferFrom(msg.sender, address(this), fee);
         
-        // Get validator owner directly from Validator contract
-        address validatorOwner = OwnableUpgradeable(deedData.validatorContract).owner();
+        // Get validator owner from ValidatorRegistry
+        address validatorOwner = IValidatorRegistry(validatorRegistry).getValidatorOwner(deedData.validatorContract);
         require(validatorOwner != address(0), "FundManager: Validator owner not found");
 
-        // Calculate commission (percentage of service fee)
-        uint256 commission = (serviceFee * commissionPercentageRegular) / 10000;
-        
-        // Add commission to validator owner's balance
+        // Calculate commission
+        uint256 commission = (fee * commissionPercentage) / 10000;
         commissionBalances[validatorOwner][deedData.token] += commission;
         
         // Add remaining fee to service fees balance
-        uint256 remainingFee = serviceFee - commission;
+        uint256 remainingFee = fee - commission;
         serviceFeesBalance[deedData.token] += remainingFee;
 
         // Mint the deed
@@ -493,7 +424,7 @@ contract FundManager is
             deedData.configuration
         );
 
-        emit FundsDeposited(msg.sender, deedData.token, serviceFee, remainingFee, commission, validatorOwner);
+        emit FundsDeposited(msg.sender, deedData.token, fee, remainingFee, commission, validatorOwner);
     }
 
     /**
@@ -519,37 +450,24 @@ contract FundManager is
         require(isWhitelisted[deed.token], "FundManager: Token not whitelisted");
         require(deed.validatorContract != address(0), "FundManager: Invalid ValidatorContract address");
 
-        // Determine if the user has the VALIDATOR_ROLE in DeedNFT
-        bool isValidator = false;
-        if (deedNFT != address(0)) {
-            isValidator = IDeedNFTAccessControl(deedNFT).hasRole(
-                keccak256("VALIDATOR_ROLE"),
-                msg.sender
-            );
-        }
-
-        // Get the appropriate service fee
-        uint256 serviceFee = isValidator ? serviceFeeValidator[deed.token] : serviceFeeRegular[deed.token];
-        require(serviceFee > 0, "FundManager: Service fee not set for token");
-
-        // Get the commission percentage based on user type
-        uint256 commissionPercentage = isValidator ? commissionPercentageValidator : commissionPercentageRegular;
+        // Get the service fee
+        uint256 fee = serviceFee[deed.token];
+        require(fee > 0, "FundManager: Service fee not set for token");
 
         // Transfer service fee from user to FundManager
-        IERC20Upgradeable(deed.token).safeTransferFrom(msg.sender, address(this), serviceFee);
-
-        // Accumulate service fees
-        serviceFeesBalance[deed.token] += serviceFee;
-
-        // Retrieve the owner of the ValidatorContract from ValidatorRegistry
+        IERC20Upgradeable(deed.token).safeTransferFrom(msg.sender, address(this), fee);
+        
+        // Get validator owner from ValidatorRegistry
         address validatorOwner = IValidatorRegistry(validatorRegistry).getValidatorOwner(deed.validatorContract);
         require(validatorOwner != address(0), "FundManager: Validator owner not found");
 
-        // Calculate commission based on service fee
-        uint256 commission = (serviceFee * commissionPercentage) / 10000;
-
-        // Accumulate commission for the ValidatorContract owner
+        // Calculate commission
+        uint256 commission = (fee * commissionPercentage) / 10000;
         commissionBalances[validatorOwner][deed.token] += commission;
+        
+        // Add remaining fee to service fees balance
+        uint256 remainingFee = fee - commission;
+        serviceFeesBalance[deed.token] += remainingFee;
 
         // Interact with DeedNFT to mint the deed
         deedId = IDeedNFT(deedNFT).mintAsset(
@@ -561,9 +479,7 @@ contract FundManager is
             deed.configuration
         );
 
-        // Emit event
-        emit FundsDeposited(msg.sender, deed.token, serviceFee, serviceFee, commission, validatorOwner);
-
+        emit FundsDeposited(msg.sender, deed.token, fee, remainingFee, commission, validatorOwner);
         return deedId;
     }
 
@@ -632,7 +548,7 @@ contract FundManager is
      * @return fee The service fee amount for the token and user type.
      */
     function getServiceFee(address token, bool isValidator) external view returns (uint256) {
-        return isValidator ? serviceFeeValidator[token] : serviceFeeRegular[token];
+        return isValidator ? serviceFee[token] : serviceFee[token];
     }
 
     /**
@@ -641,6 +557,6 @@ contract FundManager is
      * @return percentage The commission percentage in basis points.
      */
     function getCommissionPercentage(bool isValidator) external view returns (uint256) {
-        return isValidator ? commissionPercentageValidator : commissionPercentageRegular;
+        return isValidator ? commissionPercentage : commissionPercentage;
     }
 }
