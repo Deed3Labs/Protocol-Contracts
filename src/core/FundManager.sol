@@ -128,13 +128,11 @@ contract FundManager is
     /**
      * @dev Emitted when service fees are updated
      * @param token Address of the affected token
-     * @param regularFee New fee for regular users
-     * @param validatorFee New fee for validators
+     * @param fee New fee for users
      */
-    event ServiceFeesUpdated(
+    event ServiceFeeUpdated(
         address indexed token,
-        uint256 regularFee,
-        uint256 validatorFee
+        uint256 fee
     );
 
     /**
@@ -558,5 +556,15 @@ contract FundManager is
      */
     function getCommissionPercentage(bool isValidator) external view returns (uint256) {
         return isValidator ? commissionPercentage : commissionPercentage;
+    }
+
+    /**
+     * @dev Internal function to set the commission percentage.
+     * @param _percentage New commission percentage in basis points.
+     */
+    function _setCommissionPercentage(uint256 _percentage) internal {
+        require(_percentage <= 10000, "FundManager: Commission too high");
+        commissionPercentage = _percentage;
+        emit CommissionPercentageUpdated(_percentage);
     }
 }
