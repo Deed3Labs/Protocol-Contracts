@@ -397,6 +397,13 @@ contract FundManager is
         uint256 fee = serviceFee[deedData.token];
         require(fee > 0, "FundManager: Service fee not set for token");
 
+        // Check token balance and allowance before transfer
+        uint256 userBalance = IERC20Upgradeable(deedData.token).balanceOf(msg.sender);
+        require(userBalance >= fee, "FundManager: Insufficient token balance");
+        
+        uint256 allowance = IERC20Upgradeable(deedData.token).allowance(msg.sender, address(this));
+        require(allowance >= fee, "FundManager: Insufficient token allowance");
+
         // Transfer service fee from user to FundManager
         IERC20Upgradeable(deedData.token).safeTransferFrom(msg.sender, address(this), fee);
         
@@ -412,17 +419,25 @@ contract FundManager is
         uint256 remainingFee = fee - commission;
         serviceFeesBalance[deedData.token] += remainingFee;
 
+        // Check DeedNFT contract is set
+        require(address(deedNFT) != address(0), "FundManager: DeedNFT not set");
+
         // Mint the deed
-        deedId = IDeedNFT(deedNFT).mintAsset(
+        try IDeedNFT(deedNFT).mintAsset(
             msg.sender,
             deedData.assetType,
             deedData.ipfsDetailsHash,
             deedData.operatingAgreement,
             deedData.definition,
             deedData.configuration
-        );
+        ) returns (uint256 id) {
+            deedId = id;
+        } catch Error(string memory reason) {
+            revert(string(abi.encodePacked("FundManager: DeedNFT mint failed - ", reason)));
+        }
 
         emit FundsDeposited(msg.sender, deedData.token, fee, remainingFee, commission, validatorOwner);
+        return deedId;
     }
 
     /**
