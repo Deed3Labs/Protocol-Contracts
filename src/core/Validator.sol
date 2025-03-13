@@ -63,6 +63,9 @@ contract Validator is
     /// @dev Has authority to update operating agreements and URIs
     bytes32 public constant METADATA_ROLE = keccak256("METADATA_ROLE");
 
+    /// @notice Role for updating validation criteria
+    bytes32 public constant CRITERIA_MANAGER_ROLE = keccak256("CRITERIA_MANAGER_ROLE");
+
     // ============ State Variables ============
 
     /// @notice Base URI for token metadata
@@ -140,6 +143,13 @@ contract Validator is
      * @param newDeedNFT The new DeedNFT contract address
      */
     event DeedNFTUpdated(address indexed newDeedNFT);
+
+    /**
+     * @dev Emitted when validation criteria is updated for an asset type
+     * @param assetTypeId ID of the asset type
+     * @param criteria New validation criteria
+     */
+    event ValidationCriteriaUpdated(uint256 indexed assetTypeId, string criteria);
 
     // ============ Upgrade Gap ============
 
@@ -403,5 +413,17 @@ contract Validator is
     {
         supportedAssetTypes[assetTypeId] = isSupported;
         emit AssetTypeSupportUpdated(assetTypeId, isSupported);
+    }
+
+    /**
+     * @dev Updates validation criteria for an asset type
+     */
+    function updateValidationCriteria(
+        uint256 assetTypeId,
+        string memory criteria
+    ) external onlyRole(CRITERIA_MANAGER_ROLE) {
+        require(bytes(criteria).length > 0, "Validator: Empty criteria");
+        validationCriteria[assetTypeId] = criteria;
+        emit ValidationCriteriaUpdated(assetTypeId, criteria);
     }
 }

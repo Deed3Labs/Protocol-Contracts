@@ -253,10 +253,13 @@ contract DeedNFT is
     /**
      * @dev Sets the FundManager contract address.
      *      Only callable by accounts with DEFAULT_ADMIN_ROLE.
-     * @param _fundManager Address of the FundManager contract.
      */
     function setFundManager(address _fundManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(_fundManager != address(0), "DeedNFT: Invalid FundManager address");
+        // If fundManager is already set, don't allow setting to zero address
+        if (fundManager != address(0)) {
+            require(_fundManager != address(0), "DeedNFT: Invalid FundManager address");
+        }
+        require(_fundManager.isContract(), "DeedNFT: FundManager must be a contract");
         fundManager = _fundManager;
         emit FundManagerUpdated(_fundManager);
     }

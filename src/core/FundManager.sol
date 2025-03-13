@@ -19,6 +19,13 @@ interface IValidatorRegistry {
      * @return owner Address of the owner.
      */
     function getValidatorOwner(address validatorContract) external view returns (address owner);
+
+    /**
+     * @dev Checks if a validator is registered.
+     * @param validatorContract Address of the validator contract.
+     * @return Boolean indicating if the validator is registered.
+     */
+    function isValidatorRegistered(address validatorContract) external view returns (bool);
 }
 
 interface IDeedNFTAccessControl {
@@ -75,6 +82,9 @@ contract FundManager is
     /// @notice Role for fee management operations
     /// @dev Has authority to update service fees and whitelist tokens
     bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER_ROLE");
+
+    /// @notice Role for managing validator operations
+    bytes32 public constant VALIDATOR_MANAGER_ROLE = keccak256("VALIDATOR_MANAGER_ROLE");
 
     // ============ State Variables ============
 
@@ -307,7 +317,11 @@ contract FundManager is
      * @dev Sets the ValidatorRegistry contract address.
      * @param _validatorRegistry New ValidatorRegistry contract address.
      */
-    function setValidatorRegistry(address _validatorRegistry) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setValidatorRegistry(address _validatorRegistry) 
+        external 
+        onlyRole(DEFAULT_ADMIN_ROLE) 
+    {
+        require(_validatorRegistry.isContract(), "FundManager: Must be contract address");
         _setValidatorRegistry(_validatorRegistry);
     }
 
@@ -325,7 +339,11 @@ contract FundManager is
      * @dev Sets the DeedNFT contract address.
      * @param _deedNFT New DeedNFT contract address.
      */
-    function setDeedNFT(address _deedNFT) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setDeedNFT(address _deedNFT) 
+        external 
+        onlyRole(DEFAULT_ADMIN_ROLE) 
+    {
+        require(_deedNFT.isContract(), "FundManager: Must be contract address");
         _setDeedNFT(_deedNFT);
     }
 
@@ -392,6 +410,10 @@ contract FundManager is
     function _processMint(DeedMintData memory deedData) internal returns (uint256 deedId) {
         require(isWhitelisted[deedData.token], "FundManager: Token not whitelisted");
         require(deedData.validatorContract != address(0), "FundManager: Invalid ValidatorContract address");
+        require(
+            IValidatorRegistry(validatorRegistry).isValidatorRegistered(deedData.validatorContract),
+            "FundManager: Validator not registered"
+        );
 
         // Get the service fee
         uint256 fee = serviceFee[deedData.token];
