@@ -343,7 +343,7 @@ contract FundManager is
         external 
         onlyRole(DEFAULT_ADMIN_ROLE) 
     {
-        require(_deedNFT.isContract(), "FundManager: Must be contract address");
+        require(AddressUpgradeable.isContract(_deedNFT), "FundManager: Must be contract address");
         _setDeedNFT(_deedNFT);
     }
 
