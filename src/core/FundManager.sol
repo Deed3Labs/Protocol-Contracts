@@ -321,7 +321,7 @@ contract FundManager is
         external 
         onlyRole(DEFAULT_ADMIN_ROLE) 
     {
-        require(_validatorRegistry.isContract(), "FundManager: Must be contract address");
+        require(AddressUpgradeable.isContract(_validatorRegistry), "FundManager: Must be contract address");
         _setValidatorRegistry(_validatorRegistry);
     }
 

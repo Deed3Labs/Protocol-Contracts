@@ -90,6 +90,10 @@ contract Validator is
     /// @dev Key: deed ID, Value: metadata URI
     mapping(uint256 => string) public deedMetadata;
 
+    /// @notice Mapping of asset types to their validation criteria
+    /// @dev Key: asset type ID, Value: validation criteria string
+    mapping(uint256 => string) public validationCriteria;
+
     // Mapping to track compatible DeedNFT contracts
     mapping(address => bool) public compatibleDeedNFTs;
     
