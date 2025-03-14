@@ -16,6 +16,20 @@ import "./IValidator.sol";
 import "./IValidatorRegistry.sol";
 
 /**
+ * @title IERC7572 Metadata Renderer Interface
+ * @dev Interface for the ERC-7572 standard for NFT metadata rendering
+ */
+interface IERC7572 {
+    /**
+     * @dev Returns the URI for a token's metadata
+     * @param tokenContract Address of the token contract
+     * @param tokenId ID of the token
+     * @return Token URI
+     */
+    function tokenURI(address tokenContract, uint256 tokenId) external view returns (string memory);
+}
+
+/**
  * @title DeedNFT
  * @dev An ERC-721 token representing deeds with complex metadata and validator integration.
  *      Implements ERC-7496 for dynamic traits and ERC-7572 for metadata rendering.
