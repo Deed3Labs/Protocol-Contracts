@@ -6,6 +6,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
 
 // Interface
 import "./IValidator.sol";
@@ -42,7 +43,8 @@ contract Validator is
     AccessControlUpgradeable,
     OwnableUpgradeable,
     UUPSUpgradeable,
-    IValidator
+    IValidator,
+    IERC165Upgradeable
 {
     using StringsUpgradeable for uint256;
 
@@ -421,5 +423,20 @@ contract Validator is
         require(bytes(criteria).length > 0, "Validator: Empty criteria");
         validationCriteria[assetTypeId] = criteria;
         emit ValidationCriteriaUpdated(assetTypeId, criteria);
+    }
+
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     * Adds support for the IValidator interface.
+     */
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(AccessControlUpgradeable, IERC165Upgradeable)
+        returns (bool)
+    {
+        return
+            interfaceId == type(IValidator).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 }
