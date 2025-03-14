@@ -43,8 +43,7 @@ contract Validator is
     AccessControlUpgradeable,
     OwnableUpgradeable,
     UUPSUpgradeable,
-    IValidator,
-    IERC165Upgradeable
+    IValidator
 {
     using StringsUpgradeable for uint256;
 

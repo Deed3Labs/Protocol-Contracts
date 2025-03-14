@@ -274,4 +274,19 @@ contract ValidatorRegistry is
         validators[validator].isActive = isActive;
         emit ValidatorStatusUpdated(validator, isActive);
     }
+
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     * Adds support for the IValidatorRegistry interface.
+     */
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(AccessControlUpgradeable)
+        returns (bool)
+    {
+        return
+            interfaceId == type(IValidatorRegistry).interfaceId ||
+            super.supportsInterface(interfaceId);
+    }
 }
