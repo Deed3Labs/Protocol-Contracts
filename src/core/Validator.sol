@@ -164,12 +164,10 @@ contract Validator is
      * @dev Initializes the contract with default settings
      * @param _baseUri Base URI for token metadata
      * @param _defaultOperatingAgreementUri Default operating agreement URI
-     * @param _deedNFT Address of the DeedNFT contract (can be zero address during initialization)
      */
     function initialize(
         string memory _baseUri,
-        string memory _defaultOperatingAgreementUri,
-        address _deedNFT // Optional, can be address(0)
+        string memory _defaultOperatingAgreementUri
     ) public initializer {
         __AccessControl_init();
         __Ownable_init();
@@ -183,11 +181,6 @@ contract Validator is
         _grantRole(VALIDATOR_ROLE, msg.sender);
         _grantRole(METADATA_ROLE, msg.sender);
         _grantRole(CRITERIA_MANAGER_ROLE, msg.sender);
-        
-        // Only set DeedNFT if non-zero address is provided
-        if (_deedNFT != address(0)) {
-            _setDeedNFT(_deedNFT);
-        }
     }
 
     /**

@@ -32,7 +32,20 @@ interface IERC7572 {
 /**
  * @title DeedNFT
  * @dev An ERC-721 token representing deeds with complex metadata and validator integration.
+ *      Enables creation and management of digital deed assets with validation support.
  *      Implements ERC-7496 for dynamic traits and ERC-7572 for metadata rendering.
+ *      
+ * Security:
+ * - Role-based access control for validators and admins
+ * - Pausable functionality for emergency stops
+ * - Validated asset management
+ * 
+ * Integration:
+ * - Works with ValidatorRegistry for validator management
+ * - Supports FundManager for financial operations
+ * - Implements UUPSUpgradeable for upgradability
+ * - Supports ERC-7496 for standardized trait access
+ * - Supports ERC-7572 for flexible metadata rendering
  */
 contract DeedNFT is
     Initializable,
@@ -64,13 +77,22 @@ contract DeedNFT is
     address public metadataRenderer;
 
     // ============ ERC-7496 Trait Storage ============
-    // Mapping from trait key to trait name
-    mapping(bytes32 => string) private _traitNames;
-    
-    // Mapping from token ID to trait key to trait value
+    /**
+     * @dev Mapping from token ID to trait key to trait value
+     * @notice Implements ERC-7496 trait storage
+     */
     mapping(uint256 => mapping(bytes32 => bytes)) private _tokenTraits;
     
-    // Array of all trait keys
+    /**
+     * @dev Mapping from trait key to trait name
+     * @notice Used for ERC-7496 trait metadata
+     */
+    mapping(bytes32 => string) private _traitNames;
+    
+    /**
+     * @dev Array of all possible trait keys
+     * @notice Used for ERC-7496 trait enumeration
+     */
     bytes32[] private _allTraitKeys;
 
     // ============ Events ============
@@ -83,9 +105,9 @@ contract DeedNFT is
     event DeedNFTBurned(uint256 indexed deedId);
     event DeedNFTValidatedChanged(uint256 indexed deedId, bool isValid);
     event DeedNFTMetadataUpdated(uint256 indexed deedId);
-    event MetadataRendererUpdated(address indexed newRenderer);
+    event MetadataRendererUpdated(address indexed renderer);
     event ContractURIUpdated(string newURI);
-    event TraitUpdated(bytes32 indexed traitKey, uint256 tokenId, bytes traitValue);
+    event TraitUpdated(bytes32 indexed traitKey, uint256 indexed tokenId, bytes traitValue);
     event TraitMetadataURIUpdated();
 
     // Storage gap for future upgrades
@@ -511,8 +533,10 @@ contract DeedNFT is
      * @param tokenId ID of the token
      * @param traitKey Key of the trait
      * @param traitValue Value of the trait
+     * @notice Updates a trait and emits a TraitUpdated event
      */
     function _setTraitValue(uint256 tokenId, bytes32 traitKey, bytes memory traitValue) internal {
+        require(_exists(tokenId), "DeedNFT: Token does not exist");
         _tokenTraits[tokenId][traitKey] = traitValue;
         emit TraitUpdated(traitKey, tokenId, traitValue);
     }
@@ -522,6 +546,7 @@ contract DeedNFT is
      * @param tokenId ID of the token
      * @param traitKey Key of the trait
      * @return Value of the trait
+     * @notice Part of the ERC-7496 standard for dynamic traits
      */
     function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory) {
         require(_exists(tokenId), "DeedNFT: Token does not exist");
@@ -529,10 +554,34 @@ contract DeedNFT is
     }
     
     /**
-     * @dev Gets all trait keys
-     * @return Array of trait keys
+     * @dev Gets multiple trait values for a token
+     * @param tokenId ID of the token
+     * @param traitKeys Array of trait keys
+     * @return Array of trait values
+     * @notice Part of the ERC-7496 standard for dynamic traits
      */
-    function getTraitKeys() external view returns (bytes32[] memory) {
+    function getTraitValues(uint256 tokenId, bytes32[] calldata traitKeys) external view returns (bytes[] memory) {
+        require(_exists(tokenId), "DeedNFT: Token does not exist");
+        bytes[] memory values = new bytes[](traitKeys.length);
+        
+        for (uint256 i = 0; i < traitKeys.length; i++) {
+            values[i] = _tokenTraits[tokenId][traitKeys[i]];
+        }
+        
+        return values;
+    }
+    
+    /**
+     * @dev Gets all trait keys for a token
+     * @param tokenId ID of the token
+     * @return Array of trait keys
+     * @notice Part of the ERC-7496 standard for dynamic traits
+     */
+    function getTraitKeys(uint256 tokenId) external view returns (bytes32[] memory) {
+        require(_exists(tokenId), "DeedNFT: Token does not exist");
+        
+        // Return all possible trait keys
+        // In a more optimized implementation, we would only return keys with values
         return _allTraitKeys;
     }
     
@@ -540,14 +589,17 @@ contract DeedNFT is
      * @dev Gets the name of a trait
      * @param traitKey Key of the trait
      * @return Name of the trait
+     * @notice Part of the ERC-7496 standard for dynamic traits
      */
     function getTraitName(bytes32 traitKey) external view returns (string memory) {
         return _traitNames[traitKey];
     }
     
     /**
-     * @dev Gets the trait metadata URI
-     * @return URI for trait metadata
+     * @dev Gets the metadata URI for traits
+     * @return Base64-encoded JSON schema of all traits
+     * @notice Part of the ERC-7496 standard for dynamic traits
+     * @notice The returned JSON schema defines the structure and validation rules for each trait
      */
     function getTraitMetadataURI() external pure returns (string memory) {
         return "data:application/json;charset=utf-8;base64,ewogICJ0cmFpdHMiOiB7CiAgICAiYXNzZXRUeXBlIjogewogICAgICAiZGlzcGxheU5hbWUiOiAiQXNzZXQgVHlwZSIsCiAgICAgICJkYXRhVHlwZSI6IHsKICAgICAgICAidHlwZSI6ICJlbnVtIiwKICAgICAgICAidmFsdWVzIjogWyJMYW5kIiwgIlZlaGljbGUiLCAiRXN0YXRlIiwgIkNvbW1lcmNpYWxFcXVpcG1lbnQiXQogICAgICB9CiAgICB9LAogICAgImlzVmFsaWRhdGVkIjogewogICAgICAiZGlzcGxheU5hbWUiOiAiVmFsaWRhdGlvbiBTdGF0dXMiLAogICAgICAiZGF0YVR5cGUiOiB7CiAgICAgICAgInR5cGUiOiAiYm9vbGVhbiIKICAgICAgfQogICAgfSwKICAgICJvcGVyYXRpbmdBZ3JlZW1lbnQiOiB7CiAgICAgICJkaXNwbGF5TmFtZSI6ICJPcGVyYXRpbmcgQWdyZWVtZW50IiwKICAgICAgImRhdGFUeXBlIjogewogICAgICAgICJ0eXBlIjogInN0cmluZyIsCiAgICAgICAgIm1pbkxlbmd0aCI6IDEKICAgICAgfQogICAgfSwKICAgICJkZWZpbml0aW9uIjogewogICAgICAiZGlzcGxheU5hbWUiOiAiRGVmaW5pdGlvbiIsCiAgICAgICJkYXRhVHlwZSI6IHsKICAgICAgICAidHlwZSI6ICJzdHJpbmciLAogICAgICAgICJtaW5MZW5ndGgiOiAxCiAgICAgIH0KICAgIH0sCiAgICAiY29uZmlndXJhdGlvbiI6IHsKICAgICAgImRpc3BsYXlOYW1lIjogIkNvbmZpZ3VyYXRpb24iLAogICAgICAiZGF0YVR5cGUiOiB7CiAgICAgICAgInR5cGUiOiAic3RyaW5nIiwKICAgICAgICAibWluTGVuZ3RoIjogMQogICAgICB9CiAgICB9LAogICAgInZhbGlkYXRvciI6IHsKICAgICAgImRpc3BsYXlOYW1lIjogIlZhbGlkYXRvciIsCiAgICAgICJkYXRhVHlwZSI6IHsKICAgICAgICAidHlwZSI6ICJhZGRyZXNzIgogICAgICB9CiAgICB9CiAgfQp9";
@@ -556,16 +608,18 @@ contract DeedNFT is
     // ERC-7572 Implementation
     
     /**
-     * @dev Gets the contract URI
-     * @return URI for contract metadata
+     * @dev Implements ERC-7572: Contract-level metadata
+     * @return URI for the contract metadata
+     * @notice This function allows marketplaces and wallets to display collection information
      */
     function contractURI() external view returns (string memory) {
         return _contractURI;
     }
     
     /**
-     * @dev Sets the contract URI
-     * @param newURI New URI for contract metadata
+     * @dev Sets the contract URI for collection metadata (ERC-7572)
+     * @param newURI New contract URI
+     * @notice Only callable by admin
      */
     function setContractURI(string memory newURI) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _contractURI = newURI;
@@ -573,11 +627,15 @@ contract DeedNFT is
     }
     
     /**
-     * @dev Override tokenURI to use metadata renderer if available
+     * @dev Overrides the tokenURI function to use the metadata renderer if available
      * @param tokenId ID of the token
-     * @return URI for token metadata
+     * @return URI for the token metadata
+     * @notice Implements ERC-7572 by delegating to the metadata renderer if set
      */
     function tokenURI(uint256 tokenId) public view override(ERC721URIStorageUpgradeable) returns (string memory) {
+        require(_exists(tokenId), "DeedNFT: URI query for nonexistent token");
+        
+        // If metadata renderer is set, try to use it
         if (metadataRenderer != address(0)) {
             try IERC7572(metadataRenderer).tokenURI(address(this), tokenId) returns (string memory uri) {
                 return uri;
@@ -591,6 +649,9 @@ contract DeedNFT is
     
     /**
      * @dev See {IERC165-supportsInterface}.
+     * @param interfaceId Interface identifier
+     * @return True if the interface is supported
+     * @notice Adds support for ERC-7496 (Dynamic Traits) interface
      */
     function supportsInterface(bytes4 interfaceId) 
         public 
