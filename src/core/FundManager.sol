@@ -427,11 +427,7 @@ contract FundManager is
         require(allowance >= fee, "FundManager: Insufficient token allowance");
 
         // Transfer service fee from user to FundManager
-        try IERC20Upgradeable(deedData.token).safeTransferFrom(msg.sender, address(this), fee) {
-            // Transfer successful
-        } catch Error(string memory reason) {
-            revert(string(abi.encodePacked("FundManager: Token transfer failed - ", reason)));
-        }
+        IERC20Upgradeable(deedData.token).safeTransferFrom(msg.sender, address(this), fee);
         
         // Get validator owner from ValidatorRegistry
         address validatorOwner;
@@ -454,18 +450,14 @@ contract FundManager is
         require(address(deedNFT) != address(0), "FundManager: DeedNFT not set");
 
         // Mint the deed
-        try IDeedNFT(deedNFT).mintAsset(
+        deedId = IDeedNFT(deedNFT).mintAsset(
             msg.sender,
             deedData.assetType,
             deedData.ipfsDetailsHash,
             deedData.operatingAgreement,
             deedData.definition,
             deedData.configuration
-        ) returns (uint256 id) {
-            deedId = id;
-        } catch Error(string memory reason) {
-            revert(string(abi.encodePacked("FundManager: DeedNFT mint failed - ", reason)));
-        }
+        );
 
         emit FundsDeposited(msg.sender, deedData.token, fee, remainingFee, commission, validatorOwner);
         return deedId;
