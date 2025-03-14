@@ -314,18 +314,18 @@ contract DeedNFT is
      * @param owner Address of the deed owner.
      * @param assetType Type of the asset.
      * @param ipfsDetailsHash IPFS hash of the deed details.
-     * @param operatingAgreement Operating agreement associated with the deed.
      * @param definition Definition of the deed.
      * @param configuration Configuration data for the deed.
+     * @param validatorAddress Address of the validator to use (or address(0) for default)
      * @return The ID of the minted deed.
      */
     function mintAsset(
         address owner,
         AssetType assetType,
         string memory ipfsDetailsHash,
-        string memory operatingAgreement,
         string memory definition,
-        string memory configuration
+        string memory configuration,
+        address validatorAddress
     ) external whenNotPaused onlyRole(MINTER_ROLE) returns (uint256) {
         require(owner != address(0), "DeedNFT: Invalid owner address");
         require(
@@ -333,12 +333,45 @@ contract DeedNFT is
             "DeedNFT: IPFS details hash is required"
         );
         require(
-            bytes(operatingAgreement).length > 0,
-            "DeedNFT: Operating agreement is required"
-        );
-        require(
             bytes(definition).length > 0,
             "DeedNFT: Definition is required"
+        );
+
+        // Determine which validator to use
+        address selectedValidator = validatorAddress;
+        if (selectedValidator == address(0)) {
+            selectedValidator = defaultValidator;
+        }
+        
+        // Ensure validator is registered
+        require(
+            selectedValidator != address(0),
+            "DeedNFT: No validator available"
+        );
+        require(
+            IValidatorRegistry(validatorRegistry).isValidatorRegistered(selectedValidator),
+            "DeedNFT: Validator is not registered"
+        );
+        
+        // Verify validator supports interface
+        require(
+            IERC165Upgradeable(selectedValidator).supportsInterface(
+                type(IValidator).interfaceId
+            ),
+            "DeedNFT: Validator does not support IValidator interface"
+        );
+        
+        // Verify validator supports this asset type
+        require(
+            IValidator(selectedValidator).supportsAssetType(uint256(assetType)),
+            "DeedNFT: Validator does not support this asset type"
+        );
+        
+        // Get default operating agreement from validator
+        string memory operatingAgreement = IValidator(selectedValidator).defaultOperatingAgreement();
+        require(
+            bytes(operatingAgreement).length > 0,
+            "DeedNFT: Validator has no default operating agreement"
         );
 
         uint256 deedId = nextDeedId++;
@@ -351,9 +384,9 @@ contract DeedNFT is
         _setTraitValue(deedId, keccak256("operatingAgreement"), abi.encode(operatingAgreement));
         _setTraitValue(deedId, keccak256("definition"), abi.encode(definition));
         _setTraitValue(deedId, keccak256("configuration"), abi.encode(configuration));
-        _setTraitValue(deedId, keccak256("validator"), abi.encode(address(0)));
+        _setTraitValue(deedId, keccak256("validator"), abi.encode(address(0))); // Will be set during validation
 
-        emit DeedNFTMinted(deedId, assetType, msg.sender, address(0));
+        emit DeedNFTMinted(deedId, assetType, msg.sender, selectedValidator);
         return deedId;
     }
 
