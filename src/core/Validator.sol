@@ -432,7 +432,7 @@ contract Validator is
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(AccessControlUpgradeable, IERC165Upgradeable)
+        override(AccessControlUpgradeable)
         returns (bool)
     {
         return
