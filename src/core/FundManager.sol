@@ -427,11 +427,20 @@ contract FundManager is
         require(allowance >= fee, "FundManager: Insufficient token allowance");
 
         // Transfer service fee from user to FundManager
-        IERC20Upgradeable(deedData.token).safeTransferFrom(msg.sender, address(this), fee);
+        try IERC20Upgradeable(deedData.token).safeTransferFrom(msg.sender, address(this), fee) {
+            // Transfer successful
+        } catch Error(string memory reason) {
+            revert(string(abi.encodePacked("FundManager: Token transfer failed - ", reason)));
+        }
         
         // Get validator owner from ValidatorRegistry
-        address validatorOwner = IValidatorRegistry(validatorRegistry).getValidatorOwner(deedData.validatorContract);
-        require(validatorOwner != address(0), "FundManager: Validator owner not found");
+        address validatorOwner;
+        try IValidatorRegistry(validatorRegistry).getValidatorOwner(deedData.validatorContract) returns (address owner) {
+            validatorOwner = owner;
+            require(validatorOwner != address(0), "FundManager: Validator owner not found");
+        } catch Error(string memory reason) {
+            revert(string(abi.encodePacked("FundManager: ValidatorRegistry error - ", reason)));
+        }
 
         // Calculate commission
         uint256 commission = (fee * commissionPercentage) / 10000;

@@ -13,20 +13,13 @@ import "./IValidator.sol";
 /**
  * @title IDeedNFT Interface
  * @dev Interface for interacting with the DeedNFT contract.
- *      Required for deed validation and metadata access.
- *      Ensures compatibility with the core DeedNFT contract.
  */
 interface IDeedNFT {
     enum AssetType { Land, Vehicle, Estate, CommercialEquipment }
     function validateDeed(uint256 deedId) external;
-    function getDeedInfo(uint256 deedId) external view returns (
-        AssetType assetType,
-        bool isValidated,
-        string memory operatingAgreement,
-        string memory definition,
-        string memory configuration,
-        address validator
-    );
+    
+    // New trait-based methods
+    function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory);
 }
 
 /**
@@ -176,21 +169,25 @@ contract Validator is
     function initialize(
         string memory _baseUri,
         string memory _defaultOperatingAgreementUri,
-        address _deedNFT
+        address _deedNFT // Optional, can be address(0)
     ) public initializer {
         __AccessControl_init();
         __Ownable_init();
         __UUPSUpgradeable_init();
-
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(VALIDATOR_ROLE, msg.sender);
-        _grantRole(METADATA_ROLE, msg.sender);
-
+        
         baseUri = _baseUri;
         defaultOperatingAgreementUri = _defaultOperatingAgreementUri;
         
-        // Initialize DeedNFT (can be zero address)
-        _setDeedNFT(_deedNFT);
+        // Grant roles to deployer
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(VALIDATOR_ROLE, msg.sender);
+        _grantRole(METADATA_ROLE, msg.sender);
+        _grantRole(CRITERIA_MANAGER_ROLE, msg.sender);
+        
+        // Only set DeedNFT if non-zero address is provided
+        if (_deedNFT != address(0)) {
+            _setDeedNFT(_deedNFT);
+        }
     }
 
     /**
@@ -336,18 +333,20 @@ contract Validator is
         require(address(deedNFT) != address(0), "Validator: DeedNFT not set");
         require(compatibleDeedNFTs[address(deedNFT)], "Validator: DeedNFT not compatible");
         
-        // Get deed info from DeedNFT
-        (
-            IDeedNFT.AssetType assetType,
-            bool isValidated,
-            string memory operatingAgreement,
-            ,  // definition
-            ,  // configuration
-            address currentValidator
-        ) = deedNFT.getDeedInfo(deedId);
+        // Get trait values from DeedNFT
+        bytes memory assetTypeBytes = IDeedNFT(deedNFT).getTraitValue(deedId, keccak256("assetType"));
+        bytes memory isValidatedBytes = IDeedNFT(deedNFT).getTraitValue(deedId, keccak256("isValidated"));
+        bytes memory operatingAgreementBytes = IDeedNFT(deedNFT).getTraitValue(deedId, keccak256("operatingAgreement"));
+        bytes memory validatorBytes = IDeedNFT(deedNFT).getTraitValue(deedId, keccak256("validator"));
+        
+        // Decode trait values
+        uint256 assetTypeValue = assetTypeBytes.length > 0 ? abi.decode(assetTypeBytes, (uint256)) : 0;
+        bool isValidated = isValidatedBytes.length > 0 ? abi.decode(isValidatedBytes, (bool)) : false;
+        string memory operatingAgreement = abi.decode(operatingAgreementBytes, (string));
+        address currentValidator = validatorBytes.length > 0 ? abi.decode(validatorBytes, (address)) : address(0);
         
         // Verify asset type is supported
-        require(supportedAssetTypes[uint256(assetType)], "Validator: Asset type not supported");
+        require(supportedAssetTypes[assetTypeValue], "Validator: Asset type not supported");
         
         // Verify operating agreement is valid
         require(bytes(operatingAgreements[operatingAgreement]).length > 0, "Validator: Invalid operating agreement");
