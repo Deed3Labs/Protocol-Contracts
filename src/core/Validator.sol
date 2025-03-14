@@ -177,6 +177,9 @@ contract Validator is
         baseUri = _baseUri;
         defaultOperatingAgreementUri = _defaultOperatingAgreementUri;
         
+        // Register the default operating agreement with a name
+        operatingAgreements[_defaultOperatingAgreementUri] = "Default Operating Agreement";
+        
         // Grant roles to deployer
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(VALIDATOR_ROLE, msg.sender);
@@ -437,5 +440,18 @@ contract Validator is
         return
             interfaceId == type(IValidator).interfaceId ||
             super.supportsInterface(interfaceId);
+    }
+
+    /**
+     * @dev Checks if an operating agreement is registered
+     * @param _uri The URI to check
+     * @return Boolean indicating if the operating agreement is registered
+     */
+    function isOperatingAgreementRegistered(string memory _uri) 
+        public 
+        view 
+        returns (bool) 
+    {
+        return bytes(operatingAgreements[_uri]).length > 0;
     }
 }

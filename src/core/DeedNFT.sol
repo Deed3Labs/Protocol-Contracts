@@ -696,4 +696,26 @@ contract DeedNFT is
             interfaceId == 0xaf332f3e || // ERC-7496 (Dynamic Traits)
             super.supportsInterface(interfaceId);
     }
+
+    /**
+     * @dev Returns the validation status of a deed
+     * @param deedId ID of the deed
+     * @return isValidated Whether the deed is validated
+     * @return validator Address of the validator that validated the deed (address(0) if not validated)
+     */
+    function getValidationStatus(uint256 deedId) 
+        external 
+        view 
+        returns (bool isValidated, address validator) 
+    {
+        require(_exists(deedId), "DeedNFT: Deed does not exist");
+        
+        bytes memory isValidatedBytes = _tokenTraits[deedId][keccak256("isValidated")];
+        bytes memory validatorBytes = _tokenTraits[deedId][keccak256("validator")];
+        
+        isValidated = isValidatedBytes.length > 0 ? abi.decode(isValidatedBytes, (bool)) : false;
+        validator = validatorBytes.length > 0 ? abi.decode(validatorBytes, (address)) : address(0);
+        
+        return (isValidated, validator);
+    }
 }
