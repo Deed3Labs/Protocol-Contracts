@@ -225,6 +225,23 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
      * @return Token URI with metadata
      */
     function tokenURI(address tokenContract, uint256 tokenId) external view returns (string memory) {
+        // Use a helper function to build the JSON to reduce stack variables
+        string memory json = _buildTokenJSON(tokenContract, tokenId);
+        
+        // Return base64 encoded JSON
+        return string(abi.encodePacked(
+            "data:application/json;base64,",
+            Base64Upgradeable.encode(bytes(json))
+        ));
+    }
+
+    /**
+     * @dev Helper function to build token JSON metadata
+     * @param tokenContract Address of the token contract
+     * @param tokenId ID of the token
+     * @return JSON string with token metadata
+     */
+    function _buildTokenJSON(address tokenContract, uint256 tokenId) internal view returns (string memory) {
         IDeedNFT deedNFT = IDeedNFT(tokenContract);
         
         // Check if token exists by trying to get its owner
@@ -235,87 +252,97 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
             revert("Token does not exist");
         }
         
-        // Get trait values
+        // Get and decode trait values
+        (
+            uint8 assetType,
+            bool isValidated,
+            string memory definition,
+            string memory configuration,
+            address validator
+        ) = _getDecodedTraits(deedNFT, tokenId);
+        
+        // Get property details
+        PropertyDetails memory details = tokenPropertyDetails[tokenId];
+        
+        // Build the basic JSON parts
+        string memory mainImage = _getMainImage(tokenId, assetType, isValidated);
+        string memory assetTypeName = _getAssetTypeName(assetType);
+        string memory propertyName = _buildPropertyName(details, tokenId);
+        
+        // Start building the JSON
+        string memory jsonStart = _buildJsonStart(propertyName, definition, mainImage, tokenId);
+        
+        // Build the remaining JSON parts
+        string memory jsonOptionalFields = _buildOptionalFields(details);
+        string memory jsonGallery = _buildGalleryJson(tokenId);
+        string memory jsonFeatures = _buildFeaturesSection(tokenId);
+        string memory jsonAttributes = _buildAttributesJson(assetTypeName, isValidated, configuration, details, owner, validator);
+        string memory jsonProperties = _buildPropertiesJson(configuration, details, tokenId);
+        
+        // Combine all parts
+        return string(abi.encodePacked(
+            jsonStart,
+            jsonOptionalFields,
+            jsonGallery,
+            jsonFeatures,
+            jsonAttributes,
+            jsonProperties,
+            "}}"
+        ));
+    }
+
+    /**
+     * @dev Gets and decodes trait values from the DeedNFT contract
+     */
+    function _getDecodedTraits(IDeedNFT deedNFT, uint256 tokenId) internal view returns (
+        uint8 assetType,
+        bool isValidated,
+        string memory definition,
+        string memory configuration,
+        address validator
+    ) {
         bytes memory assetTypeBytes = deedNFT.getTraitValue(tokenId, keccak256("assetType"));
         bytes memory isValidatedBytes = deedNFT.getTraitValue(tokenId, keccak256("isValidated"));
         bytes memory definitionBytes = deedNFT.getTraitValue(tokenId, keccak256("definition"));
         bytes memory configurationBytes = deedNFT.getTraitValue(tokenId, keccak256("configuration"));
         bytes memory validatorBytes = deedNFT.getTraitValue(tokenId, keccak256("validator"));
         
-        // Decode trait values
-        uint8 assetType = uint8(abi.decode(assetTypeBytes, (uint256)));
-        bool isValidated = abi.decode(isValidatedBytes, (bool));
-        string memory definition = abi.decode(definitionBytes, (string));
-        string memory configuration = abi.decode(configurationBytes, (string));
-        address validator = abi.decode(validatorBytes, (address));
+        assetType = uint8(abi.decode(assetTypeBytes, (uint256)));
+        isValidated = abi.decode(isValidatedBytes, (bool));
+        definition = abi.decode(definitionBytes, (string));
+        configuration = abi.decode(configurationBytes, (string));
+        validator = abi.decode(validatorBytes, (address));
         
-        // Determine main image - prioritize token-specific gallery images
-        string memory mainImage;
-        
-        // First check if token has custom gallery images
+        return (assetType, isValidated, definition, configuration, validator);
+    }
+
+    /**
+     * @dev Gets the main image for the token
+     */
+    function _getMainImage(uint256 tokenId, uint8 assetType, bool isValidated) internal view returns (string memory) {
         if (tokenGalleryImages[tokenId].length > 0) {
-            mainImage = tokenGalleryImages[tokenId][0];
-        } 
-        // If not, use default images based on validation status
-        else {
-            mainImage = isValidated 
-                ? assetTypeImageURIs[assetType] 
-                : invalidatedImageURI;
+            return tokenGalleryImages[tokenId][0];
+        } else {
+            return isValidated ? assetTypeImageURIs[assetType] : invalidatedImageURI;
         }
-        
-        // Build gallery JSON array
-        string memory galleryJson = "[";
-        for (uint i = 0; i < tokenGalleryImages[tokenId].length; i++) {
-            if (i > 0) galleryJson = string(abi.encodePacked(galleryJson, ","));
-            galleryJson = string(abi.encodePacked(galleryJson, '"', tokenGalleryImages[tokenId][i], '"'));
-        }
-        galleryJson = string(abi.encodePacked(galleryJson, "]"));
-        
-        // Get asset type name
-        string memory assetTypeName;
-        if (assetType == 0) assetTypeName = "Land";
-        else if (assetType == 1) assetTypeName = "Vehicle";
-        else if (assetType == 2) assetTypeName = "Estate";
-        else if (assetType == 3) assetTypeName = "Commercial Equipment";
-        
-        // Get property details
-        PropertyDetails memory details = tokenPropertyDetails[tokenId];
-        
-        // Get owner as beneficiary
-        address beneficiary = deedNFT.ownerOf(tokenId);
-        
-        // Build attributes array with all property details
-        string memory attributes = string(abi.encodePacked(
-            '[{"trait_type":"Asset Type","value":"', assetTypeName, '"},',
-            '{"trait_type":"Validation Status","value":"', isValidated ? "Validated" : "Unvalidated", '"},',
-            '{"trait_type":"Operating Agreement","value":"', configuration, '"},',
-            
-            // Add property details as attributes
-            '{"trait_type":"Country","value":"', details.country, '"},',
-            '{"trait_type":"State","value":"', details.state, '"},',
-            '{"trait_type":"County","value":"', details.county, '"},',
-            '{"trait_type":"City","value":"', details.city, '"},',
-            '{"trait_type":"Street Number","value":"', details.streetNumber, '"},',
-            '{"trait_type":"Street Name","value":"', details.streetName, '"},',
-            '{"trait_type":"Parcel Number","value":"', details.parcelNumber, '"},',
-            '{"trait_type":"Holding Entity","value":"', details.holdingEntity, '"},',
-            '{"trait_type":"Latitude","value":"', details.latitude, '"},',
-            '{"trait_type":"Longitude","value":"', details.longitude, '"},',
-            '{"trait_type":"Acres","value":"', details.acres, '"},',
-            '{"trait_type":"Parcel Use","value":"', details.parcelUse, '"},',
-            '{"trait_type":"Zoning","value":"', details.zoning, '"},',
-            '{"trait_type":"Zoning Code","value":"', details.zoningCode, '"},',
-            '{"trait_type":"Confidence Score","value":"', details.confidenceScore, '"},',
-            '{"trait_type":"Beneficiary","value":"', beneficiary.toHexString(), '"}',
-            
-            validator != address(0) ? string(abi.encodePacked(',{"trait_type":"Validator","value":"', validator.toHexString(), '"}')) : "",
-            ']'
-        ));
-        
-        // Build the JSON metadata
-        string memory propertyName;
+    }
+
+    /**
+     * @dev Gets the asset type name
+     */
+    function _getAssetTypeName(uint8 assetType) internal pure returns (string memory) {
+        if (assetType == 0) return "Land";
+        else if (assetType == 1) return "Vehicle";
+        else if (assetType == 2) return "Estate";
+        else return "Commercial Equipment";
+    }
+
+    /**
+     * @dev Builds the property name
+     */
+    function _buildPropertyName(PropertyDetails memory details, uint256 tokenId) internal view returns (string memory) {
         if (bytes(details.streetNumber).length > 0 && bytes(details.streetName).length > 0) {
-            propertyName = string(abi.encodePacked(
+            return string(abi.encodePacked(
                 details.streetNumber, ' ', 
                 details.streetName, ', ', 
                 details.city, ', ', 
@@ -323,63 +350,149 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
                 ' #', tokenId.toString()
             ));
         } else {
-            // Fallback to default naming
-            propertyName = string(abi.encodePacked("Deed #", tokenId.toString()));
+            return string(abi.encodePacked("Deed #", tokenId.toString()));
         }
+    }
 
-        // Start building the JSON
-        string memory jsonStart = string(abi.encodePacked(
+    /**
+     * @dev Builds the start of the JSON
+     */
+    function _buildJsonStart(string memory propertyName, string memory definition, string memory mainImage, uint256 tokenId) internal view returns (string memory) {
+        return string(abi.encodePacked(
             '{',
             '"name":"', propertyName, '",',
             '"description":"', definition, '",',
             '"image":"', mainImage, '",',
             '"external_url":"', baseURI, tokenId.toString(), '",'
         ));
+    }
+
+    /**
+     * @dev Builds optional fields section
+     */
+    function _buildOptionalFields(PropertyDetails memory details) internal pure returns (string memory) {
+        string memory result = "";
         
-        // Add optional fields
-        string memory jsonOptionalFields = "";
-        
-        // Add background_color if present
         if (bytes(details.background_color).length > 0) {
-            jsonOptionalFields = string(abi.encodePacked(
-                jsonOptionalFields,
+            result = string(abi.encodePacked(
+                result,
                 '"background_color":"', details.background_color, '",'
             ));
         }
         
-        // Add animation_url if present
         if (bytes(details.animation_url).length > 0) {
-            jsonOptionalFields = string(abi.encodePacked(
-                jsonOptionalFields,
+            result = string(abi.encodePacked(
+                result,
                 '"animation_url":"', details.animation_url, '",'
             ));
         }
         
-        // Add gallery
-        string memory jsonGallery = string(abi.encodePacked(
-            '"gallery":', galleryJson, ','
+        return result;
+    }
+
+    /**
+     * @dev Builds gallery JSON section
+     */
+    function _buildGalleryJson(uint256 tokenId) internal view returns (string memory) {
+        string memory galleryJson = "[";
+        for (uint i = 0; i < tokenGalleryImages[tokenId].length; i++) {
+            if (i > 0) galleryJson = string(abi.encodePacked(galleryJson, ","));
+            galleryJson = string(abi.encodePacked(galleryJson, '"', tokenGalleryImages[tokenId][i], '"'));
+        }
+        galleryJson = string(abi.encodePacked(galleryJson, "]"));
+        
+        return string(abi.encodePacked('"gallery":', galleryJson, ','));
+    }
+
+    /**
+     * @dev Builds features section
+     */
+    function _buildFeaturesSection(uint256 tokenId) internal view returns (string memory) {
+        return string(abi.encodePacked('"features":', _buildFeaturesJson(tokenId), ','));
+    }
+
+    /**
+     * @dev Builds attributes JSON
+     */
+    function _buildAttributesJson(
+        string memory assetTypeName, 
+        bool isValidated, 
+        string memory configuration, 
+        PropertyDetails memory details, 
+        address beneficiary,
+        address validator
+    ) internal view returns (string memory) {
+        string memory attributes = string(abi.encodePacked(
+            '[{"trait_type":"Asset Type","value":"', assetTypeName, '"},',
+            '{"trait_type":"Validation Status","value":"', isValidated ? "Validated" : "Unvalidated", '"},',
+            '{"trait_type":"Operating Agreement","value":"', configuration, '"},'
         ));
         
-        // Add features
-        string memory jsonFeatures = string(abi.encodePacked(
-            '"features":', _buildFeaturesJson(tokenId), ','
+        // Add property details as attributes
+        attributes = string(abi.encodePacked(
+            attributes,
+            '{"trait_type":"Country","value":"', details.country, '"},',
+            '{"trait_type":"State","value":"', details.state, '"},',
+            '{"trait_type":"County","value":"', details.county, '"},',
+            '{"trait_type":"City","value":"', details.city, '"},'
         ));
         
-        // Add attributes
-        string memory jsonAttributes = string(abi.encodePacked(
-            '"attributes":', attributes, ','
+        attributes = string(abi.encodePacked(
+            attributes,
+            '{"trait_type":"Street Number","value":"', details.streetNumber, '"},',
+            '{"trait_type":"Street Name","value":"', details.streetName, '"},',
+            '{"trait_type":"Parcel Number","value":"', details.parcelNumber, '"},',
+            '{"trait_type":"Holding Entity","value":"', details.holdingEntity, '"},'
         ));
         
+        attributes = string(abi.encodePacked(
+            attributes,
+            '{"trait_type":"Latitude","value":"', details.latitude, '"},',
+            '{"trait_type":"Longitude","value":"', details.longitude, '"},',
+            '{"trait_type":"Acres","value":"', details.acres, '"},',
+            '{"trait_type":"Parcel Use","value":"', details.parcelUse, '"},'
+        ));
+        
+        attributes = string(abi.encodePacked(
+            attributes,
+            '{"trait_type":"Zoning","value":"', details.zoning, '"},',
+            '{"trait_type":"Zoning Code","value":"', details.zoningCode, '"},',
+            '{"trait_type":"Confidence Score","value":"', details.confidenceScore, '"},',
+            '{"trait_type":"Beneficiary","value":"', beneficiary.toHexString(), '"}'
+        ));
+        
+        // Add validator if present
+        if (validator != address(0)) {
+            attributes = string(abi.encodePacked(
+                attributes,
+                ',{"trait_type":"Validator","value":"', validator.toHexString(), '"}'
+            ));
+        }
+        
+        // Close the attributes array
+        attributes = string(abi.encodePacked(attributes, ']'));
+        
+        return string(abi.encodePacked('"attributes":', attributes, ','));
+    }
+
+    /**
+     * @dev Builds properties JSON section
+     */
+    function _buildPropertiesJson(
+        string memory configuration, 
+        PropertyDetails memory details, 
+        uint256 tokenId
+    ) internal view returns (string memory) {
         // Start properties object
-        string memory jsonPropertiesStart = string(abi.encodePacked(
+        string memory propertiesJson = string(abi.encodePacked(
             '"properties":{',
             '"configuration":"', configuration, '",'
         ));
         
         // Add legal information if present
-        string memory jsonLegal = "";
         if (bytes(details.deed_type).length > 0) {
-            jsonLegal = string(abi.encodePacked(
+            propertiesJson = string(abi.encodePacked(
+                propertiesJson,
                 '"legal":{',
                 '"deed_type":"', details.deed_type, '",',
                 '"recording_date":"', details.recording_date, '",',
@@ -390,7 +503,8 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
         }
         
         // Add utilities
-        string memory jsonUtilities = string(abi.encodePacked(
+        propertiesJson = string(abi.encodePacked(
+            propertiesJson,
             '"utilities":{',
             '"water":', details.has_water ? "true" : "false", ',',
             '"electricity":', details.has_electricity ? "true" : "false", ',',
@@ -401,48 +515,28 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
         ));
         
         // Add documents
-        string memory jsonDocuments = _buildDocumentsJson(tokenId);
+        propertiesJson = string(abi.encodePacked(
+            propertiesJson,
+            _buildDocumentsJson(tokenId)
+        ));
         
         // Add map overlay if present
-        string memory jsonMapOverlay = "";
         if (bytes(details.map_overlay).length > 0) {
-            jsonMapOverlay = string(abi.encodePacked(
+            propertiesJson = string(abi.encodePacked(
+                propertiesJson,
                 '"map_overlay":"', details.map_overlay, '",'
             ));
         }
         
         // Add custom metadata if present
-        string memory jsonCustom = "";
         if (bytes(tokenCustomMetadata[tokenId]).length > 0) {
-            jsonCustom = string(abi.encodePacked(
+            propertiesJson = string(abi.encodePacked(
+                propertiesJson,
                 '"custom":', tokenCustomMetadata[tokenId]
             ));
         }
         
-        // Close properties object and main JSON
-        string memory jsonEnd = "}}";
-        
-        // Combine all parts
-        string memory json = string(abi.encodePacked(
-            jsonStart,
-            jsonOptionalFields,
-            jsonGallery,
-            jsonFeatures,
-            jsonAttributes,
-            jsonPropertiesStart,
-            jsonLegal,
-            jsonUtilities,
-            jsonDocuments,
-            jsonMapOverlay,
-            jsonCustom,
-            jsonEnd
-        ));
-        
-        // Return base64 encoded JSON
-        return string(abi.encodePacked(
-            "data:application/json;base64,",
-            Base64Upgradeable.encode(bytes(json))
-        ));
+        return propertiesJson;
     }
 
     function _buildFeaturesJson(uint256 tokenId) internal view returns (string memory) {
