@@ -335,8 +335,8 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
             '"external_url":"', baseURI, tokenId.toString(), '",',
             
             // Add new fields
-            details.background_color.length > 0 ? string(abi.encodePacked('"background_color":"', details.background_color, '",')) : "",
-            details.animation_url.length > 0 ? string(abi.encodePacked('"animation_url":"', details.animation_url, '",')) : "",
+            bytes(details.background_color).length > 0 ? string(abi.encodePacked('"background_color":"', details.background_color, '",')) : "",
+            bytes(details.animation_url).length > 0 ? string(abi.encodePacked('"animation_url":"', details.animation_url, '",')) : "",
             
             '"gallery":', galleryJson, ',',
             
@@ -348,7 +348,7 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
             '"configuration":"', configuration, '",',
             
             // Add legal information
-            details.deed_type.length > 0 ? string(abi.encodePacked(
+            bytes(details.deed_type).length > 0 ? string(abi.encodePacked(
                 '"legal":{',
                 '"deed_type":"', details.deed_type, '",',
                 '"recording_date":"', details.recording_date, '",',
@@ -372,7 +372,7 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
             _buildDocumentsJson(tokenId),
             
             // Add map overlay
-            details.map_overlay.length > 0 ? string(abi.encodePacked('"map_overlay":"', details.map_overlay, '",')) : "",
+            bytes(details.map_overlay).length > 0 ? string(abi.encodePacked('"map_overlay":"', details.map_overlay, '",')) : "",
             
             tokenCustomMetadata[tokenId].length > 0 ? string(abi.encodePacked('"custom":', tokenCustomMetadata[tokenId])) : "",
             '}}'));
