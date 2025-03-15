@@ -75,6 +75,9 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
     mapping(uint256 => string[]) public tokenFeatures;
     mapping(uint256 => mapping(string => string)) public tokenDocuments;
 
+    // Add this to your state variables
+    mapping(uint256 => string[]) public tokenDocumentTypes;
+
     // Events
     event InvalidatedImageUpdated(string newURI);
     event AssetTypeImageUpdated(uint8 assetType, string newURI);
@@ -196,6 +199,21 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
      * @dev Sets a document for a token
      */
     function setTokenDocument(uint256 tokenId, string memory docType, string memory uri) external onlyOwner {
+        // Check if this document type already exists for this token
+        bool exists = false;
+        for (uint i = 0; i < tokenDocumentTypes[tokenId].length; i++) {
+            if (keccak256(bytes(tokenDocumentTypes[tokenId][i])) == keccak256(bytes(docType))) {
+                exists = true;
+                break;
+            }
+        }
+        
+        // If it doesn't exist, add it to the array
+        if (!exists) {
+            tokenDocumentTypes[tokenId].push(docType);
+        }
+        
+        // Set the document URI
         tokenDocuments[tokenId][docType] = uri;
         emit TokenDocumentUpdated(tokenId, docType);
     }
@@ -377,11 +395,23 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
     }
 
     function _buildDocumentsJson(uint256 tokenId) internal view returns (string memory) {
-        string memory documentsJson = "{";
-        for (string memory docType in tokenDocuments[tokenId]) {
-            documentsJson = string(abi.encodePacked(documentsJson, '"', docType, '":"', tokenDocuments[tokenId][docType], '",'));
+        string memory documentsJson = '"documents":{';
+        
+        for (uint i = 0; i < tokenDocumentTypes[tokenId].length; i++) {
+            string memory docType = tokenDocumentTypes[tokenId][i];
+            
+            // Add comma if not the first item
+            if (i > 0) {
+                documentsJson = string(abi.encodePacked(documentsJson, ','));
+            }
+            
+            documentsJson = string(abi.encodePacked(
+                documentsJson, 
+                '"', docType, '":"', tokenDocuments[tokenId][docType], '"'
+            ));
         }
-        documentsJson = string(abi.encodePacked(documentsJson, "}"));
+        
+        documentsJson = string(abi.encodePacked(documentsJson, '},'));
         return documentsJson;
     }
 } 

@@ -436,13 +436,13 @@ contract Validator is
         
         // Perform validation based on asset type
         if (assetType == uint256(IDeedNFT.AssetType.Land)) {
-            return _validateLandDeed(deedId, definition, criteria);
+            return _validateLandDeed(definition, criteria);
         } else if (assetType == uint256(IDeedNFT.AssetType.Vehicle)) {
-            return _validateVehicleDeed(deedId, definition, criteria);
+            return _validateVehicleDeed(definition, criteria);
         } else if (assetType == uint256(IDeedNFT.AssetType.Estate)) {
-            return _validateEstateDeed(deedId, definition, criteria);
+            return _validateEstateDeed(definition, criteria);
         } else if (assetType == uint256(IDeedNFT.AssetType.CommercialEquipment)) {
-            return _validateCommercialEquipmentDeed(deedId, definition, criteria);
+            return _validateCommercialEquipmentDeed(definition, criteria);
         } else {
             revert("Validator: Unsupported asset type");
         }
@@ -450,123 +450,176 @@ contract Validator is
 
     /**
      * @dev Validates a land deed against criteria
-     * @param deedId ID of the deed
-     * @param definition JSON definition of the deed
-     * @param criteria Validation criteria
+     * @param definition JSON string containing the deed definition
+     * @param criteria JSON string containing validation criteria
      * @return Whether the deed passes validation
      */
-    function _validateLandDeed(uint256 deedId, string memory definition, string memory criteria) 
+    function _validateLandDeed(
+        string memory definition, 
+        string memory criteria
+    ) 
         internal 
-        view 
+        pure 
         returns (bool) 
     {
-        // Parse criteria to determine required fields
-        bool requiresCountry = _criteriaRequiresField(criteria, "requiresCountry");
-        bool requiresState = _criteriaRequiresField(criteria, "requiresState");
-        bool requiresCounty = _criteriaRequiresField(criteria, "requiresCounty");
-        bool requiresCity = _criteriaRequiresField(criteria, "requiresCity");
-        bool requiresParcelNumber = _criteriaRequiresField(criteria, "requiresParcelNumber");
-        bool requiresZoning = _criteriaRequiresField(criteria, "requiresZoning");
-        bool requiresLegalDescription = _criteriaRequiresField(criteria, "requiresLegalDescription");
-        bool requiresAcres = _criteriaRequiresField(criteria, "requiresAcres");
+        // Check if country is required and exists
+        if (_criteriaRequiresField(criteria, "requiresCountry") && 
+            !_definitionContainsField(definition, "country")) {
+            return false;
+        }
         
-        // Check if required fields exist in definition
-        if (requiresCountry && !_definitionHasField(definition, "country")) return false;
-        if (requiresState && !_definitionHasField(definition, "state")) return false;
-        if (requiresCounty && !_definitionHasField(definition, "county")) return false;
-        if (requiresCity && !_definitionHasField(definition, "city")) return false;
-        if (requiresParcelNumber && !_definitionHasField(definition, "parcelNumber")) return false;
-        if (requiresZoning && !_definitionHasField(definition, "zoning")) return false;
-        if (requiresLegalDescription && !_definitionHasField(definition, "legalDescription")) return false;
-        if (requiresAcres && !_definitionHasField(definition, "acres")) return false;
+        // Check if state is required and exists
+        if (_criteriaRequiresField(criteria, "requiresState") && 
+            !_definitionContainsField(definition, "state")) {
+            return false;
+        }
         
-        // Additional validation logic can be added here
-        // For example, checking if parcel number matches a specific format
+        // Check if county is required and exists
+        if (_criteriaRequiresField(criteria, "requiresCounty") && 
+            !_definitionContainsField(definition, "county")) {
+            return false;
+        }
+        
+        // Check if city is required and exists
+        if (_criteriaRequiresField(criteria, "requiresCity") && 
+            !_definitionContainsField(definition, "city")) {
+            return false;
+        }
+        
+        // Check if street name is required and exists
+        if (_criteriaRequiresField(criteria, "requiresStreetName") && 
+            !_definitionContainsField(definition, "streetName")) {
+            return false;
+        }
+        
+        // Check if street number is required and exists
+        if (_criteriaRequiresField(criteria, "requiresStreetNumber") && 
+            !_definitionContainsField(definition, "streetNumber")) {
+            return false;
+        }
+        
+        // Check if parcel number is required and exists
+        if (_criteriaRequiresField(criteria, "requiresParcelNumber") && 
+            !_definitionContainsField(definition, "parcelNumber")) {
+            return false;
+        }
         
         return true;
     }
 
     /**
      * @dev Validates a vehicle deed against criteria
-     * @param deedId ID of the deed
-     * @param definition JSON definition of the deed
-     * @param criteria Validation criteria
+     * @param definition JSON string containing the deed definition
+     * @param criteria JSON string containing validation criteria
      * @return Whether the deed passes validation
      */
-    function _validateVehicleDeed(uint256 deedId, string memory definition, string memory criteria) 
+    function _validateVehicleDeed(
+        string memory definition, 
+        string memory criteria
+    ) 
         internal 
-        view 
+        pure 
         returns (bool) 
     {
-        // Parse criteria to determine required fields
-        bool requiresVIN = _criteriaRequiresField(criteria, "requiresVIN");
-        bool requiresMake = _criteriaRequiresField(criteria, "requiresMake");
-        bool requiresModel = _criteriaRequiresField(criteria, "requiresModel");
-        bool requiresYear = _criteriaRequiresField(criteria, "requiresYear");
+        // Check if VIN is required and exists
+        if (_criteriaRequiresField(criteria, "requiresVIN") && 
+            !_definitionContainsField(definition, "vin")) {
+            return false;
+        }
         
-        // Check if required fields exist in definition
-        if (requiresVIN && !_definitionHasField(definition, "vin")) return false;
-        if (requiresMake && !_definitionHasField(definition, "make")) return false;
-        if (requiresModel && !_definitionHasField(definition, "model")) return false;
-        if (requiresYear && !_definitionHasField(definition, "year")) return false;
+        // Check if make is required and exists
+        if (_criteriaRequiresField(criteria, "requiresMake") && 
+            !_definitionContainsField(definition, "make")) {
+            return false;
+        }
+        
+        // Check if model is required and exists
+        if (_criteriaRequiresField(criteria, "requiresModel") && 
+            !_definitionContainsField(definition, "model")) {
+            return false;
+        }
         
         return true;
     }
 
     /**
      * @dev Validates an estate deed against criteria
-     * @param deedId ID of the deed
-     * @param definition JSON definition of the deed
-     * @param criteria Validation criteria
+     * @param definition JSON string containing the deed definition
+     * @param criteria JSON string containing validation criteria
      * @return Whether the deed passes validation
      */
-    function _validateEstateDeed(uint256 deedId, string memory definition, string memory criteria) 
+    function _validateEstateDeed(
+        string memory definition, 
+        string memory criteria
+    ) 
         internal 
-        view 
+        pure 
         returns (bool) 
     {
-        // Parse criteria to determine required fields
-        bool requiresCountry = _criteriaRequiresField(criteria, "requiresCountry");
-        bool requiresState = _criteriaRequiresField(criteria, "requiresState");
-        bool requiresCity = _criteriaRequiresField(criteria, "requiresCity");
-        bool requiresStreetName = _criteriaRequiresField(criteria, "requiresStreetName");
-        bool requiresStreetNumber = _criteriaRequiresField(criteria, "requiresStreetNumber");
-        bool requiresSquareFootage = _criteriaRequiresField(criteria, "requiresSquareFootage");
+        // Check if address is required and exists
+        if (_criteriaRequiresField(criteria, "requiresAddress") && 
+            !_definitionContainsField(definition, "address")) {
+            return false;
+        }
         
-        // Check if required fields exist in definition
-        if (requiresCountry && !_definitionHasField(definition, "country")) return false;
-        if (requiresState && !_definitionHasField(definition, "state")) return false;
-        if (requiresCity && !_definitionHasField(definition, "city")) return false;
-        if (requiresStreetName && !_definitionHasField(definition, "streetName")) return false;
-        if (requiresStreetNumber && !_definitionHasField(definition, "streetNumber")) return false;
-        if (requiresSquareFootage && !_definitionHasField(definition, "squareFootage")) return false;
+        // Check if square footage is required and exists
+        if (_criteriaRequiresField(criteria, "requiresSquareFootage") && 
+            !_definitionContainsField(definition, "squareFootage")) {
+            return false;
+        }
+        
+        // Check if bedrooms is required and exists
+        if (_criteriaRequiresField(criteria, "requiresBedrooms") && 
+            !_definitionContainsField(definition, "bedrooms")) {
+            return false;
+        }
+        
+        // Check if bathrooms is required and exists
+        if (_criteriaRequiresField(criteria, "requiresBathrooms") && 
+            !_definitionContainsField(definition, "bathrooms")) {
+            return false;
+        }
         
         return true;
     }
 
     /**
      * @dev Validates a commercial equipment deed against criteria
-     * @param deedId ID of the deed
-     * @param definition JSON definition of the deed
-     * @param criteria Validation criteria
+     * @param definition JSON string containing the deed definition
+     * @param criteria JSON string containing validation criteria
      * @return Whether the deed passes validation
      */
-    function _validateCommercialEquipmentDeed(uint256 deedId, string memory definition, string memory criteria) 
+    function _validateCommercialEquipmentDeed(
+        string memory definition, 
+        string memory criteria
+    ) 
         internal 
-        view 
+        pure 
         returns (bool) 
     {
-        // Parse criteria to determine required fields
-        bool requiresSerialNumber = _criteriaRequiresField(criteria, "requiresSerialNumber");
-        bool requiresManufacturer = _criteriaRequiresField(criteria, "requiresManufacturer");
-        bool requiresModel = _criteriaRequiresField(criteria, "requiresModel");
-        bool requiresYear = _criteriaRequiresField(criteria, "requiresYear");
+        // Check if serial number is required and exists
+        if (_criteriaRequiresField(criteria, "requiresSerialNumber") && 
+            !_definitionContainsField(definition, "serialNumber")) {
+            return false;
+        }
         
-        // Check if required fields exist in definition
-        if (requiresSerialNumber && !_definitionHasField(definition, "serialNumber")) return false;
-        if (requiresManufacturer && !_definitionHasField(definition, "manufacturer")) return false;
-        if (requiresModel && !_definitionHasField(definition, "model")) return false;
-        if (requiresYear && !_definitionHasField(definition, "year")) return false;
+        // Check if manufacturer is required and exists
+        if (_criteriaRequiresField(criteria, "requiresManufacturer") && 
+            !_definitionContainsField(definition, "manufacturer")) {
+            return false;
+        }
+        
+        // Check if model is required and exists
+        if (_criteriaRequiresField(criteria, "requiresModel") && 
+            !_definitionContainsField(definition, "model")) {
+            return false;
+        }
+        
+        // Check if year is required and exists
+        if (_criteriaRequiresField(criteria, "requiresYear") && 
+            !_definitionContainsField(definition, "year")) {
+            return false;
+        }
         
         return true;
     }
@@ -599,7 +652,7 @@ contract Validator is
      * @param fieldName Name of the field to check
      * @return Whether the field exists with a non-empty value
      */
-    function _definitionHasField(string memory definition, string memory fieldName) 
+    function _definitionContainsField(string memory definition, string memory fieldName) 
         internal 
         pure 
         returns (bool) 
