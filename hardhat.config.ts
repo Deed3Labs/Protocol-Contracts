@@ -27,13 +27,13 @@ const config: HardhatUserConfig = {
     settings: {
       optimizer: {
         enabled: true,
-        // https://docs.soliditylang.org/en/latest/using-the-compiler.html#optimizer-options
-        runs: 200,
+        runs: 200
       },
-      outputSelection: {
-        "*": {
-          "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "metadata"],
-        },
+      viaIR: true
+    },
+    outputSelection: {
+      "*": {
+        "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "metadata"],
       },
     },
   },
