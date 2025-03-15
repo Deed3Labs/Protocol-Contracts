@@ -14,20 +14,7 @@ import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 // External validator and registry interfaces
 import "./IValidator.sol";
 import "./IValidatorRegistry.sol";
-
-/**
- * @title IERC7572 Metadata Renderer Interface
- * @dev Interface for the ERC-7572 standard for NFT metadata rendering
- */
-interface IERC7572 {
-    /**
-     * @dev Returns the URI for a token's metadata
-     * @param tokenContract Address of the token contract
-     * @param tokenId ID of the token
-     * @return Token URI
-     */
-    function tokenURI(address tokenContract, uint256 tokenId) external view returns (string memory);
-}
+import "./IERC7572.sol";
 
 /**
  * @title DeedNFT
@@ -432,59 +419,59 @@ contract DeedNFT is
     // Validation functions
 
     /**
-     * @dev Validates a deed and assigns a validator.
-     *      Only callable by addresses with VALIDATOR_ROLE.
-     * @param deedId ID of the deed to validate.
+     * @dev Validates or invalidates a deed
+     * @param deedId ID of the deed to update
+     * @param isValid Whether the deed is valid
+     * @param validatorAddress Address of the validator (or address(0) if invalidating)
+     * @notice Only callable by registered validators
      */
-    function validateDeed(uint256 deedId)
-        external
-        onlyRole(VALIDATOR_ROLE)
-        whenNotPaused
-    {
+    function validateDeed(
+        uint256 deedId,
+        bool isValid,
+        address validatorAddress
+    ) external onlyRole(VALIDATOR_ROLE) whenNotPaused {
         require(_exists(deedId), "DeedNFT: Deed does not exist");
         
-        // Get current validation status
-        bytes memory isValidatedBytes = _tokenTraits[deedId][keccak256("isValidated")];
-        bool isValidated = isValidatedBytes.length > 0 ? abi.decode(isValidatedBytes, (bool)) : false;
+        // If marking as valid, ensure validator address is provided and valid
+        if (isValid) {
+            require(validatorAddress != address(0), "DeedNFT: Validator address required");
+            
+            // Ensure validator is registered
+            require(
+                IValidatorRegistry(validatorRegistry).isValidatorRegistered(validatorAddress),
+                "DeedNFT: Validator is not registered"
+            );
+            
+            // Verify validator supports interface
+            require(
+                IERC165Upgradeable(validatorAddress).supportsInterface(
+                    type(IValidator).interfaceId
+                ),
+                "DeedNFT: Validator does not support IValidator interface"
+            );
+            
+            // Get operating agreement
+            bytes memory operatingAgreementBytes = _tokenTraits[deedId][keccak256("operatingAgreement")];
+            string memory operatingAgreement = abi.decode(operatingAgreementBytes, (string));
+
+            // Check if operating agreement is valid
+            string memory agreementName = IValidator(validatorAddress)
+                .operatingAgreementName(operatingAgreement);
+            require(
+                bytes(agreementName).length > 0,
+                "DeedNFT: Invalid operating agreement"
+            );
+            
+            // Update traits
+            _setTraitValue(deedId, keccak256("isValidated"), abi.encode(true));
+            _setTraitValue(deedId, keccak256("validator"), abi.encode(validatorAddress));
+        } else {
+            // If invalidating, reset validation status
+            _setTraitValue(deedId, keccak256("isValidated"), abi.encode(false));
+            _setTraitValue(deedId, keccak256("validator"), abi.encode(address(0)));
+        }
         
-        // Get current validator
-        bytes memory validatorBytes = _tokenTraits[deedId][keccak256("validator")];
-        address validator = validatorBytes.length > 0 ? abi.decode(validatorBytes, (address)) : address(0);
-        
-        require(!isValidated, "DeedNFT: Deed is already validated");
-        require(validator == address(0), "DeedNFT: Validator already assigned");
-
-        // Ensure validator is registered
-        require(
-            IValidatorRegistry(validatorRegistry).isValidatorRegistered(msg.sender),
-            "DeedNFT: Validator is not registered"
-        );
-
-        // Verify validator supports interface
-        require(
-            IERC165Upgradeable(msg.sender).supportsInterface(
-                type(IValidator).interfaceId
-            ),
-            "DeedNFT: Validator does not support IValidator interface"
-        );
-
-        // Get operating agreement
-        bytes memory operatingAgreementBytes = _tokenTraits[deedId][keccak256("operatingAgreement")];
-        string memory operatingAgreement = abi.decode(operatingAgreementBytes, (string));
-
-        // Check if operating agreement is valid
-        string memory agreementName = IValidator(msg.sender)
-            .operatingAgreementName(operatingAgreement);
-        require(
-            bytes(agreementName).length > 0,
-            "DeedNFT: Invalid operating agreement"
-        );
-
-        // Update traits
-        _setTraitValue(deedId, keccak256("isValidated"), abi.encode(true));
-        _setTraitValue(deedId, keccak256("validator"), abi.encode(msg.sender));
-
-        emit DeedNFTValidatedChanged(deedId, true);
+        emit DeedNFTValidatedChanged(deedId, isValid);
     }
 
     // Metadata functions
@@ -668,15 +655,17 @@ contract DeedNFT is
     function tokenURI(uint256 tokenId) public view override(ERC721URIStorageUpgradeable) returns (string memory) {
         require(_exists(tokenId), "DeedNFT: URI query for nonexistent token");
         
-        // If metadata renderer is set, try to use it
+        // If we have a metadata renderer, use it
         if (metadataRenderer != address(0)) {
-            try IERC7572(metadataRenderer).tokenURI(address(this), tokenId) returns (string memory uri) {
-                return uri;
+            try IERC7572(metadataRenderer).tokenURI(address(this), tokenId) returns (string memory renderedURI) {
+                return renderedURI;
             } catch {
-                // Fall back to standard implementation if renderer fails
+                // Fall back to standard URI if renderer fails
                 return super.tokenURI(tokenId);
             }
         }
+        
+        // Otherwise use the standard URI
         return super.tokenURI(tokenId);
     }
     

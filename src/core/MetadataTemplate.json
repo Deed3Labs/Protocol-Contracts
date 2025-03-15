@@ -1,0 +1,125 @@
+{
+  "name": "[STREET_NUMBER] [STREET_NAME], [CITY], [STATE] #[TOKEN_ID]",
+  "description": "[DETAILED_DESCRIPTION_OF_PROPERTY]",
+  "image": "ipfs://[MAIN_IMAGE_CID]",
+  "external_url": "https://[YOUR_WEBSITE]/deed/[TOKEN_ID]",
+  "background_color": "FFFFFF",
+  "animation_url": "ipfs://[OPTIONAL_3D_MODEL_OR_VIDEO_CID]",
+  
+  "gallery": [
+    "ipfs://[IMAGE1_CID]",
+    "ipfs://[IMAGE2_CID]",
+    "ipfs://[IMAGE3_CID]",
+    "ipfs://[IMAGE4_CID]"
+  ],
+  
+  "attributes": [
+    {
+      "trait_type": "Asset Type",
+      "value": "Land"
+    },
+    {
+      "trait_type": "Validation Status",
+      "value": "Unvalidated"
+    },
+    {
+      "trait_type": "Operating Agreement",
+      "value": "Standard Land Agreement v1.0"
+    },
+    {
+      "trait_type": "Country",
+      "value": "United States"
+    },
+    {
+      "trait_type": "State",
+      "value": "Texas"
+    },
+    {
+      "trait_type": "County",
+      "value": "Travis"
+    },
+    {
+      "trait_type": "City",
+      "value": "Austin"
+    },
+    {
+      "trait_type": "Street Number",
+      "value": "123"
+    },
+    {
+      "trait_type": "Street Name",
+      "value": "Main Street"
+    },
+    {
+      "trait_type": "Parcel Number",
+      "value": "12345-67890-AB"
+    },
+    {
+      "trait_type": "Holding Entity",
+      "value": "Example LLC"
+    },
+    {
+      "trait_type": "Latitude",
+      "value": "30.2672"
+    },
+    {
+      "trait_type": "Longitude",
+      "value": "-97.7431"
+    },
+    {
+      "trait_type": "Acres",
+      "value": "5.2"
+    },
+    {
+      "trait_type": "Parcel Use",
+      "value": "Residential"
+    },
+    {
+      "trait_type": "Zoning",
+      "value": "Single Family Residential"
+    },
+    {
+      "trait_type": "Zoning Code",
+      "value": "SF-2"
+    },
+    {
+      "trait_type": "Confidence Score",
+      "value": "95%"
+    },
+    {
+      "trait_type": "Beneficiary",
+      "value": "0x1234567890123456789012345678901234567890"
+    }
+  ],
+  
+  "properties": {
+    "configuration": "Zoning: R-1; Utilities: Water, Electric; Survey: 2023-01-15",
+    "definition": "5-acre residential parcel in Austin, TX; Lot #12345",
+    "legal": {
+      "deed_type": "Warranty Deed",
+      "recording_date": "2023-01-15",
+      "recording_number": "2023-012345",
+      "legal_description": "Lot 12, Block 3, Example Subdivision, according to the map or plat thereof recorded in Volume 100, Page 45, of the Map Records of Travis County, Texas"
+    },
+    "utilities": {
+      "water": true,
+      "electricity": true,
+      "natural_gas": false,
+      "sewer": false,
+      "internet": false
+    },
+    "features": [
+      "Creek",
+      "Oak Trees",
+      "Hill Country Views",
+      "Road Access"
+    ],
+    "documents": {
+      "survey": "ipfs://[SURVEY_PDF_CID]",
+      "title_report": "ipfs://[TITLE_REPORT_PDF_CID]",
+      "deed": "ipfs://[DEED_PDF_CID]"
+    },
+    "map_overlay": "ipfs://[MAP_OVERLAY_IMAGE_CID]",
+    "additional_info": "Property has been surveyed for residential construction and has approved septic design."
+  }
+}

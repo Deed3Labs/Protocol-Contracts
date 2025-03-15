@@ -17,7 +17,7 @@ import "./IValidator.sol";
  */
 interface IDeedNFT {
     enum AssetType { Land, Vehicle, Estate, CommercialEquipment }
-    function validateDeed(uint256 deedId) external;
+    function validateDeed(uint256 deedId, bool isValid, address validatorAddress) external;
     
     // New trait-based methods
     function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory);
@@ -37,6 +37,7 @@ interface IDeedNFT {
  * - Works with DeedNFT for asset validation
  * - Implements IValidator interface
  * - Supports UUPSUpgradeable for upgradability
+ * - Aligns validation criteria with MetadataRenderer property structure
  */
 contract Validator is
     Initializable,
@@ -85,7 +86,8 @@ contract Validator is
     mapping(uint256 => string) public deedMetadata;
 
     /// @notice Mapping of asset types to their validation criteria
-    /// @dev Key: asset type ID, Value: validation criteria string
+    /// @dev Key: asset type ID, Value: validation criteria JSON string
+    /// @notice Criteria should align with MetadataRenderer property structure
     mapping(uint256 => string) public validationCriteria;
 
     // Mapping to track compatible DeedNFT contracts
@@ -93,6 +95,33 @@ contract Validator is
     
     // Main DeedNFT address
     address public primaryDeedNFT;
+
+    // ============ Validation Criteria Structure ============
+    
+    /**
+     * @dev Struct defining required property details for validation
+     * @notice This mirrors the PropertyDetails struct in MetadataRenderer
+     * @notice Used for documentation purposes only - not stored on-chain
+     */
+    struct ValidationRequirements {
+        bool requiresCountry;
+        bool requiresState;
+        bool requiresCounty;
+        bool requiresCity;
+        bool requiresStreetName;
+        bool requiresStreetNumber;
+        bool requiresParcelNumber;
+        bool requiresHoldingEntity;
+        bool requiresLatitude;
+        bool requiresLongitude;
+        bool requiresAcres;
+        bool requiresParcelUse;
+        bool requiresZoning;
+        bool requiresZoningCode;
+        bool requiresLegalDescription;
+        bool requiresRecordingInfo;
+        bool requiresUtilities;
+    }
 
     // ============ Events ============
 
@@ -149,6 +178,13 @@ contract Validator is
      */
     event ValidationCriteriaUpdated(uint256 indexed assetTypeId, string criteria);
 
+    /**
+     * @dev Emitted when a validation error occurs
+     * @param deedId ID of the deed
+     * @param reason Error message
+     */
+    event ValidationError(uint256 indexed deedId, string reason);
+
     // ============ Upgrade Gap ============
 
     /// @dev Storage gap for future upgrades
@@ -185,6 +221,10 @@ contract Validator is
         _grantRole(VALIDATOR_ROLE, msg.sender);
         _grantRole(METADATA_ROLE, msg.sender);
         _grantRole(CRITERIA_MANAGER_ROLE, msg.sender);
+        
+        // Initialize default validation criteria for Land assets
+        string memory defaultLandCriteria = '{"requiresCountry":true,"requiresState":true,"requiresCounty":true,"requiresParcelNumber":true,"requiresLegalDescription":true}';
+        validationCriteria[uint256(IDeedNFT.AssetType.Land)] = defaultLandCriteria;
     }
 
     /**
@@ -317,46 +357,328 @@ contract Validator is
     }
 
     /**
-     * @dev Validates a specific deed
+     * @dev Validates a deed against criteria and updates its status
      * @param deedId ID of the deed to validate
-     * @return Boolean indicating validation success
+     * @return success Whether the validation was successful
+     * @notice This is the main validation function that should be called by validators
      */
     function validateDeed(uint256 deedId) 
         external 
-        override 
         onlyRole(VALIDATOR_ROLE) 
+        returns (bool success) 
+    {
+        // First perform validation checks
+        bool validationResult = _validateDeedAgainstCriteria(deedId);
+        
+        if (validationResult) {
+            // If validation passes, update the status in DeedNFT
+            try IDeedNFT(deedNFT).validateDeed(deedId, true, address(this)) {
+                emit DeedValidated(deedId, true);
+                return true;
+            } catch Error(string memory reason) {
+                // Handle specific revert reasons
+                emit ValidationError(deedId, reason);
+                return false;
+            } catch (bytes memory) {
+                // Handle other errors
+                emit ValidationError(deedId, "Unknown error during validation");
+                return false;
+            }
+        } else {
+            // If validation fails, we can optionally mark it as invalid
+            try IDeedNFT(deedNFT).validateDeed(deedId, false, address(0)) {
+                emit DeedValidated(deedId, false);
+            } catch {
+                // If updating status fails, just emit the event
+                emit DeedValidated(deedId, false);
+            }
+            return false;
+        }
+    }
+
+    /**
+     * @dev Internal function that performs the actual validation logic
+     * @param deedId ID of the deed to validate
+     * @return Whether the deed passes all validation checks
+     */
+    function _validateDeedAgainstCriteria(uint256 deedId) 
+        internal 
+        view 
         returns (bool) 
     {
         require(address(deedNFT) != address(0), "Validator: DeedNFT not set");
-        require(compatibleDeedNFTs[address(deedNFT)], "Validator: DeedNFT not compatible");
+        require(compatibleDeedNFTs[address(deedNFT)], "Validator: Incompatible DeedNFT");
         
-        // Get trait values from DeedNFT
-        bytes memory assetTypeBytes = IDeedNFT(deedNFT).getTraitValue(deedId, keccak256("assetType"));
-        bytes memory isValidatedBytes = IDeedNFT(deedNFT).getTraitValue(deedId, keccak256("isValidated"));
-        bytes memory operatingAgreementBytes = IDeedNFT(deedNFT).getTraitValue(deedId, keccak256("operatingAgreement"));
-        bytes memory validatorBytes = IDeedNFT(deedNFT).getTraitValue(deedId, keccak256("validator"));
+        // Get asset type
+        bytes memory assetTypeBytes = deedNFT.getTraitValue(deedId, keccak256("assetType"));
+        require(assetTypeBytes.length > 0, "Validator: Asset type not set");
+        uint256 assetType = abi.decode(assetTypeBytes, (uint256));
         
-        // Decode trait values
-        uint256 assetTypeValue = assetTypeBytes.length > 0 ? abi.decode(assetTypeBytes, (uint256)) : 0;
-        bool isValidated = isValidatedBytes.length > 0 ? abi.decode(isValidatedBytes, (bool)) : false;
+        // Check if this asset type is supported
+        require(supportedAssetTypes[assetType], "Validator: Asset type not supported");
+        
+        // Get validation criteria for this asset type
+        string memory criteria = validationCriteria[assetType];
+        require(bytes(criteria).length > 0, "Validator: No validation criteria for asset type");
+        
+        // Get deed definition (contains all property details)
+        bytes memory definitionBytes = deedNFT.getTraitValue(deedId, keccak256("definition"));
+        require(definitionBytes.length > 0, "Validator: Definition not set");
+        string memory definition = abi.decode(definitionBytes, (string));
+        
+        // Get operating agreement
+        bytes memory operatingAgreementBytes = deedNFT.getTraitValue(deedId, keccak256("operatingAgreement"));
+        require(operatingAgreementBytes.length > 0, "Validator: Operating agreement not set");
         string memory operatingAgreement = abi.decode(operatingAgreementBytes, (string));
-        address currentValidator = validatorBytes.length > 0 ? abi.decode(validatorBytes, (address)) : address(0);
         
-        // Verify asset type is supported
-        require(supportedAssetTypes[assetTypeValue], "Validator: Asset type not supported");
+        // Verify operating agreement is registered
+        require(isOperatingAgreementRegistered(operatingAgreement), "Validator: Invalid operating agreement");
         
-        // Verify operating agreement is valid
-        require(bytes(operatingAgreements[operatingAgreement]).length > 0, "Validator: Invalid operating agreement");
+        // Perform validation based on asset type
+        if (assetType == uint256(IDeedNFT.AssetType.Land)) {
+            return _validateLandDeed(deedId, definition, criteria);
+        } else if (assetType == uint256(IDeedNFT.AssetType.Vehicle)) {
+            return _validateVehicleDeed(deedId, definition, criteria);
+        } else if (assetType == uint256(IDeedNFT.AssetType.Estate)) {
+            return _validateEstateDeed(deedId, definition, criteria);
+        } else if (assetType == uint256(IDeedNFT.AssetType.CommercialEquipment)) {
+            return _validateCommercialEquipmentDeed(deedId, definition, criteria);
+        } else {
+            revert("Validator: Unsupported asset type");
+        }
+    }
+
+    /**
+     * @dev Validates a land deed against criteria
+     * @param deedId ID of the deed
+     * @param definition JSON definition of the deed
+     * @param criteria Validation criteria
+     * @return Whether the deed passes validation
+     */
+    function _validateLandDeed(uint256 deedId, string memory definition, string memory criteria) 
+        internal 
+        view 
+        returns (bool) 
+    {
+        // Parse criteria to determine required fields
+        bool requiresCountry = _criteriaRequiresField(criteria, "requiresCountry");
+        bool requiresState = _criteriaRequiresField(criteria, "requiresState");
+        bool requiresCounty = _criteriaRequiresField(criteria, "requiresCounty");
+        bool requiresCity = _criteriaRequiresField(criteria, "requiresCity");
+        bool requiresParcelNumber = _criteriaRequiresField(criteria, "requiresParcelNumber");
+        bool requiresZoning = _criteriaRequiresField(criteria, "requiresZoning");
+        bool requiresLegalDescription = _criteriaRequiresField(criteria, "requiresLegalDescription");
+        bool requiresAcres = _criteriaRequiresField(criteria, "requiresAcres");
         
-        // Verify deed isn't already validated
-        require(!isValidated, "Validator: Deed already validated");
-        require(currentValidator == address(0), "Validator: Validator already assigned");
+        // Check if required fields exist in definition
+        if (requiresCountry && !_definitionHasField(definition, "country")) return false;
+        if (requiresState && !_definitionHasField(definition, "state")) return false;
+        if (requiresCounty && !_definitionHasField(definition, "county")) return false;
+        if (requiresCity && !_definitionHasField(definition, "city")) return false;
+        if (requiresParcelNumber && !_definitionHasField(definition, "parcelNumber")) return false;
+        if (requiresZoning && !_definitionHasField(definition, "zoning")) return false;
+        if (requiresLegalDescription && !_definitionHasField(definition, "legalDescription")) return false;
+        if (requiresAcres && !_definitionHasField(definition, "acres")) return false;
         
-        // Call DeedNFT's validation function
-        IDeedNFT(deedNFT).validateDeed(deedId);
+        // Additional validation logic can be added here
+        // For example, checking if parcel number matches a specific format
         
-        emit DeedValidated(deedId, true);
         return true;
+    }
+
+    /**
+     * @dev Validates a vehicle deed against criteria
+     * @param deedId ID of the deed
+     * @param definition JSON definition of the deed
+     * @param criteria Validation criteria
+     * @return Whether the deed passes validation
+     */
+    function _validateVehicleDeed(uint256 deedId, string memory definition, string memory criteria) 
+        internal 
+        view 
+        returns (bool) 
+    {
+        // Parse criteria to determine required fields
+        bool requiresVIN = _criteriaRequiresField(criteria, "requiresVIN");
+        bool requiresMake = _criteriaRequiresField(criteria, "requiresMake");
+        bool requiresModel = _criteriaRequiresField(criteria, "requiresModel");
+        bool requiresYear = _criteriaRequiresField(criteria, "requiresYear");
+        
+        // Check if required fields exist in definition
+        if (requiresVIN && !_definitionHasField(definition, "vin")) return false;
+        if (requiresMake && !_definitionHasField(definition, "make")) return false;
+        if (requiresModel && !_definitionHasField(definition, "model")) return false;
+        if (requiresYear && !_definitionHasField(definition, "year")) return false;
+        
+        return true;
+    }
+
+    /**
+     * @dev Validates an estate deed against criteria
+     * @param deedId ID of the deed
+     * @param definition JSON definition of the deed
+     * @param criteria Validation criteria
+     * @return Whether the deed passes validation
+     */
+    function _validateEstateDeed(uint256 deedId, string memory definition, string memory criteria) 
+        internal 
+        view 
+        returns (bool) 
+    {
+        // Parse criteria to determine required fields
+        bool requiresCountry = _criteriaRequiresField(criteria, "requiresCountry");
+        bool requiresState = _criteriaRequiresField(criteria, "requiresState");
+        bool requiresCity = _criteriaRequiresField(criteria, "requiresCity");
+        bool requiresStreetName = _criteriaRequiresField(criteria, "requiresStreetName");
+        bool requiresStreetNumber = _criteriaRequiresField(criteria, "requiresStreetNumber");
+        bool requiresSquareFootage = _criteriaRequiresField(criteria, "requiresSquareFootage");
+        
+        // Check if required fields exist in definition
+        if (requiresCountry && !_definitionHasField(definition, "country")) return false;
+        if (requiresState && !_definitionHasField(definition, "state")) return false;
+        if (requiresCity && !_definitionHasField(definition, "city")) return false;
+        if (requiresStreetName && !_definitionHasField(definition, "streetName")) return false;
+        if (requiresStreetNumber && !_definitionHasField(definition, "streetNumber")) return false;
+        if (requiresSquareFootage && !_definitionHasField(definition, "squareFootage")) return false;
+        
+        return true;
+    }
+
+    /**
+     * @dev Validates a commercial equipment deed against criteria
+     * @param deedId ID of the deed
+     * @param definition JSON definition of the deed
+     * @param criteria Validation criteria
+     * @return Whether the deed passes validation
+     */
+    function _validateCommercialEquipmentDeed(uint256 deedId, string memory definition, string memory criteria) 
+        internal 
+        view 
+        returns (bool) 
+    {
+        // Parse criteria to determine required fields
+        bool requiresSerialNumber = _criteriaRequiresField(criteria, "requiresSerialNumber");
+        bool requiresManufacturer = _criteriaRequiresField(criteria, "requiresManufacturer");
+        bool requiresModel = _criteriaRequiresField(criteria, "requiresModel");
+        bool requiresYear = _criteriaRequiresField(criteria, "requiresYear");
+        
+        // Check if required fields exist in definition
+        if (requiresSerialNumber && !_definitionHasField(definition, "serialNumber")) return false;
+        if (requiresManufacturer && !_definitionHasField(definition, "manufacturer")) return false;
+        if (requiresModel && !_definitionHasField(definition, "model")) return false;
+        if (requiresYear && !_definitionHasField(definition, "year")) return false;
+        
+        return true;
+    }
+
+    /**
+     * @dev Checks if a field is required according to criteria
+     * @param criteria JSON string of criteria
+     * @param fieldName Name of the field to check
+     * @return Whether the field is required
+     */
+    function _criteriaRequiresField(string memory criteria, string memory fieldName) 
+        internal 
+        pure 
+        returns (bool) 
+    {
+        // Create the JSON key pattern to search for
+        string memory pattern = string(abi.encodePacked('"', fieldName, '":true'));
+        
+        // Convert to bytes for efficient comparison
+        bytes memory criteriaBytes = bytes(criteria);
+        bytes memory patternBytes = bytes(pattern);
+        
+        // Search for the pattern in the criteria string
+        return _containsSubstring(criteriaBytes, patternBytes);
+    }
+
+    /**
+     * @dev Checks if a field exists in the definition with a non-empty value
+     * @param definition JSON string of deed definition
+     * @param fieldName Name of the field to check
+     * @return Whether the field exists with a non-empty value
+     */
+    function _definitionHasField(string memory definition, string memory fieldName) 
+        internal 
+        pure 
+        returns (bool) 
+    {
+        // Create the JSON key pattern to search for
+        string memory pattern = string(abi.encodePacked('"', fieldName, '":"'));
+        
+        // Convert to bytes for efficient comparison
+        bytes memory definitionBytes = bytes(definition);
+        bytes memory patternBytes = bytes(pattern);
+        
+        // First check if the pattern exists
+        if (!_containsSubstring(definitionBytes, patternBytes)) {
+            return false;
+        }
+        
+        // Find the position after the pattern
+        uint256 pos = _findSubstringPosition(definitionBytes, patternBytes);
+        if (pos == type(uint256).max) {
+            return false;
+        }
+        
+        // Check if there's a non-empty value
+        pos += patternBytes.length;
+        
+        // Skip to the closing quote, checking for empty value
+        for (uint256 i = pos; i < definitionBytes.length; i++) {
+            if (definitionBytes[i] == '"') {
+                // If we immediately find a quote, the value is empty
+                return i > pos;
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * @dev Checks if a byte array contains a substring
+     * @param haystack The string to search in
+     * @param needle The substring to search for
+     * @return Whether the substring exists in the string
+     */
+    function _containsSubstring(bytes memory haystack, bytes memory needle) 
+        internal 
+        pure 
+        returns (bool) 
+    {
+        return _findSubstringPosition(haystack, needle) != type(uint256).max;
+    }
+
+    /**
+     * @dev Finds the position of a substring in a string
+     * @param haystack The string to search in
+     * @param needle The substring to search for
+     * @return The position of the substring, or type(uint256).max if not found
+     */
+    function _findSubstringPosition(bytes memory haystack, bytes memory needle) 
+        internal 
+        pure 
+        returns (uint256) 
+    {
+        if (haystack.length < needle.length) {
+            return type(uint256).max;
+        }
+        
+        for (uint256 i = 0; i <= haystack.length - needle.length; i++) {
+            bool found = true;
+            for (uint256 j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) {
+                    found = false;
+                    break;
+                }
+            }
+            if (found) {
+                return i;
+            }
+        }
+        
+        return type(uint256).max;
     }
 
     /**
@@ -417,6 +739,10 @@ contract Validator is
 
     /**
      * @dev Updates validation criteria for an asset type
+     * @param assetTypeId ID of the asset type
+     * @param criteria JSON string containing validation requirements
+     * @notice Criteria should align with MetadataRenderer property structure
+     * @notice Example: {"requiresCountry":true,"requiresState":true,"requiresParcelNumber":true}
      */
     function updateValidationCriteria(
         uint256 assetTypeId,
@@ -453,5 +779,31 @@ contract Validator is
         returns (bool) 
     {
         return bytes(operatingAgreements[_uri]).length > 0;
+    }
+
+    /**
+     * @dev Gets the validation requirements for an asset type
+     * @param assetTypeId ID of the asset type
+     * @return The validation criteria as a JSON string
+     */
+    function getValidationRequirements(uint256 assetTypeId) 
+        external 
+        view 
+        returns (string memory) 
+    {
+        return validationCriteria[assetTypeId];
+    }
+
+    /**
+     * @dev Checks if a deed would pass validation without updating its status
+     * @param deedId ID of the deed
+     * @return Whether the deed would pass validation
+     */
+    function checkValidation(uint256 deedId) 
+        external 
+        view 
+        returns (bool) 
+    {
+        return _validateDeedAgainstCriteria(deedId);
     }
 }
