@@ -361,9 +361,9 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
             string(abi.encodePacked(
                 '"utilities":{',
                 '"water":', details.has_water ? "true" : "false", ',',
-                '"electricity":', details.has_electricity ? "true" : "false", ',
-                '"natural_gas":', details.has_natural_gas ? "true" : "false", ',
-                '"sewer":', details.has_sewer ? "true" : "false", ',
+                '"electricity":', details.has_electricity ? "true" : "false", ',',
+                '"natural_gas":', details.has_natural_gas ? "true" : "false", ',',
+                '"sewer":', details.has_sewer ? "true" : "false", ',',
                 '"internet":', details.has_internet ? "true" : "false",
                 '},'
             )),
