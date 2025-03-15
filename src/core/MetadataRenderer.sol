@@ -306,9 +306,9 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
             '{"trait_type":"Zoning","value":"', details.zoning, '"},',
             '{"trait_type":"Zoning Code","value":"', details.zoningCode, '"},',
             '{"trait_type":"Confidence Score","value":"', details.confidenceScore, '"},',
-            '{"trait_type":"Beneficiary","value":"', beneficiary.toHexString(), '"},',
+            '{"trait_type":"Beneficiary","value":"', beneficiary.toHexString(), '"}',
             
-            validator != address(0) ? string(abi.encodePacked('{"trait_type":"Validator","value":"', validator.toHexString(), '"}')) : "",
+            validator != address(0) ? string(abi.encodePacked(',{"trait_type":"Validator","value":"', validator.toHexString(), '"}')) : "",
             ']'
         ));
         
@@ -327,55 +327,116 @@ contract DeedMetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradea
             propertyName = string(abi.encodePacked("Deed #", tokenId.toString()));
         }
 
-        string memory json = string(abi.encodePacked(
+        // Start building the JSON
+        string memory jsonStart = string(abi.encodePacked(
             '{',
             '"name":"', propertyName, '",',
             '"description":"', definition, '",',
             '"image":"', mainImage, '",',
-            '"external_url":"', baseURI, tokenId.toString(), '",',
-            
-            // Add new fields
-            bytes(details.background_color).length > 0 ? string(abi.encodePacked('"background_color":"', details.background_color, '",')) : "",
-            bytes(details.animation_url).length > 0 ? string(abi.encodePacked('"animation_url":"', details.animation_url, '",')) : "",
-            
-            '"gallery":', galleryJson, ',',
-            
-            // Add features array
-            '"features":', _buildFeaturesJson(tokenId), ',',
-            
-            '"attributes":', attributes, ',',
+            '"external_url":"', baseURI, tokenId.toString(), '",'
+        ));
+        
+        // Add optional fields
+        string memory jsonOptionalFields = "";
+        
+        // Add background_color if present
+        if (bytes(details.background_color).length > 0) {
+            jsonOptionalFields = string(abi.encodePacked(
+                jsonOptionalFields,
+                '"background_color":"', details.background_color, '",'
+            ));
+        }
+        
+        // Add animation_url if present
+        if (bytes(details.animation_url).length > 0) {
+            jsonOptionalFields = string(abi.encodePacked(
+                jsonOptionalFields,
+                '"animation_url":"', details.animation_url, '",'
+            ));
+        }
+        
+        // Add gallery
+        string memory jsonGallery = string(abi.encodePacked(
+            '"gallery":', galleryJson, ','
+        ));
+        
+        // Add features
+        string memory jsonFeatures = string(abi.encodePacked(
+            '"features":', _buildFeaturesJson(tokenId), ','
+        ));
+        
+        // Add attributes
+        string memory jsonAttributes = string(abi.encodePacked(
+            '"attributes":', attributes, ','
+        ));
+        
+        // Start properties object
+        string memory jsonPropertiesStart = string(abi.encodePacked(
             '"properties":{',
-            '"configuration":"', configuration, '",',
-            
-            // Add legal information
-            bytes(details.deed_type).length > 0 ? string(abi.encodePacked(
+            '"configuration":"', configuration, '",'
+        ));
+        
+        // Add legal information if present
+        string memory jsonLegal = "";
+        if (bytes(details.deed_type).length > 0) {
+            jsonLegal = string(abi.encodePacked(
                 '"legal":{',
                 '"deed_type":"', details.deed_type, '",',
                 '"recording_date":"', details.recording_date, '",',
                 '"recording_number":"', details.recording_number, '",',
                 '"legal_description":"', details.legal_description, '"',
                 '},'
-            )) : "",
-            
-            // Add utilities
-            string(abi.encodePacked(
-                '"utilities":{',
-                '"water":', details.has_water ? "true" : "false", ',',
-                '"electricity":', details.has_electricity ? "true" : "false", ',',
-                '"natural_gas":', details.has_natural_gas ? "true" : "false", ',',
-                '"sewer":', details.has_sewer ? "true" : "false", ',',
-                '"internet":', details.has_internet ? "true" : "false",
-                '},'
-            )),
-            
-            // Add documents
-            _buildDocumentsJson(tokenId),
-            
-            // Add map overlay
-            bytes(details.map_overlay).length > 0 ? string(abi.encodePacked('"map_overlay":"', details.map_overlay, '",')) : "",
-            
-            tokenCustomMetadata[tokenId].length > 0 ? string(abi.encodePacked('"custom":', tokenCustomMetadata[tokenId])) : "",
-            '}}'));
+            ));
+        }
+        
+        // Add utilities
+        string memory jsonUtilities = string(abi.encodePacked(
+            '"utilities":{',
+            '"water":', details.has_water ? "true" : "false", ',',
+            '"electricity":', details.has_electricity ? "true" : "false", ',',
+            '"natural_gas":', details.has_natural_gas ? "true" : "false", ',',
+            '"sewer":', details.has_sewer ? "true" : "false", ',',
+            '"internet":', details.has_internet ? "true" : "false",
+            '},'
+        ));
+        
+        // Add documents
+        string memory jsonDocuments = _buildDocumentsJson(tokenId);
+        
+        // Add map overlay if present
+        string memory jsonMapOverlay = "";
+        if (bytes(details.map_overlay).length > 0) {
+            jsonMapOverlay = string(abi.encodePacked(
+                '"map_overlay":"', details.map_overlay, '",'
+            ));
+        }
+        
+        // Add custom metadata if present
+        string memory jsonCustom = "";
+        if (bytes(tokenCustomMetadata[tokenId]).length > 0) {
+            jsonCustom = string(abi.encodePacked(
+                '"custom":', tokenCustomMetadata[tokenId]
+            ));
+        }
+        
+        // Close properties object and main JSON
+        string memory jsonEnd = "}}";
+        
+        // Combine all parts
+        string memory json = string(abi.encodePacked(
+            jsonStart,
+            jsonOptionalFields,
+            jsonGallery,
+            jsonFeatures,
+            jsonAttributes,
+            jsonPropertiesStart,
+            jsonLegal,
+            jsonUtilities,
+            jsonDocuments,
+            jsonMapOverlay,
+            jsonCustom,
+            jsonEnd
+        ));
         
         // Return base64 encoded JSON
         return string(abi.encodePacked(
