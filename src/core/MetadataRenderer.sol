@@ -147,7 +147,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable 
         string serialNumber;
         string year;
         string category;
-        string type;
+        string equipmentType;
         
         // Physical details
         string dimensions;
