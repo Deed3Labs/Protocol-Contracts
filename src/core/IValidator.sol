@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.29;
 
 /**
  * @title IValidator
@@ -45,9 +45,10 @@ interface IValidator {
     function supportsAssetType(uint256 assetTypeId) external view returns (bool);
 
     /**
-     * @dev Validates a specific token
-     * @param tokenId ID of the token to validate
-     * @return Boolean indicating validation success
+     * @dev Validates a deed
+     * @param tokenId ID of the deed
+     * @param definition JSON string containing the deed definition
+     * @return Whether the validation was successful
      */
-    function validateDeed(uint256 tokenId) external returns (bool);
+    function validateDeed(uint256 tokenId, string memory definition) external returns (bool);
 }

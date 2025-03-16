@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.29;
 
 /**
  * @title StringUtils
@@ -23,26 +23,19 @@ library StringUtils {
     /**
      * @dev Checks if a string contains a substring
      */
-    function contains(string memory source, string memory search) internal pure returns (bool) {
+    function contains(string memory source, string memory target) internal pure returns (bool) {
         bytes memory sourceBytes = bytes(source);
-        bytes memory searchBytes = bytes(search);
+        bytes memory targetBytes = bytes(target);
         
-        if (searchBytes.length > sourceBytes.length) {
+        if (targetBytes.length > sourceBytes.length) {
             return false;
         }
         
-        // Empty search string is always found
-        if (searchBytes.length == 0) {
-            return true;
-        }
-        
-        // Find the first character of search in source
-        for (uint i = 0; i <= sourceBytes.length - searchBytes.length; i++) {
+        for (uint i = 0; i <= sourceBytes.length - targetBytes.length; i++) {
             bool found = true;
             
-            // Check if the next characters match the search
-            for (uint j = 0; j < searchBytes.length; j++) {
-                if (sourceBytes[i + j] != searchBytes[j]) {
+            for (uint j = 0; j < targetBytes.length; j++) {
+                if (sourceBytes[i + j] != targetBytes[j]) {
                     found = false;
                     break;
                 }
