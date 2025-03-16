@@ -12,31 +12,7 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 // Interfaces
 import "./interfaces/IValidatorRegistry.sol";
-
-interface IDeedNFTAccessControl {
-    /**
-     * @dev Returns `true` if `account` has been granted `role`.
-     */
-    function hasRole(bytes32 role, address account) external view returns (bool);
-}
-
-/**
- * @title IDeedNFT Interface
- * @dev Interface for interacting with the DeedNFT contract.
- *      Required for asset minting and type verification.
- *      Ensures compatibility with the core DeedNFT contract.
- */
-interface IDeedNFT {
-    enum AssetType { Land, Vehicle, Estate, CommercialEquipment }
-    function mintAsset(
-        address owner,
-        AssetType assetType,
-        string memory ipfsDetailsHash,
-        string memory operatingAgreement,
-        string memory definition,
-        string memory configuration
-    ) external returns (uint256);
-}
+import "./interfaces/IDeedNFT.sol";
 
 /**
  * @title FundManager

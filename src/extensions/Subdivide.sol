@@ -6,26 +6,7 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
-
-/**
- * @title IDeedNFT Interface
- * @dev Interface for interacting with the DeedNFT contract.
- *      Required for subdivision validation and ownership checks.
- *      Ensures compatibility with the core DeedNFT contract.
- */
-interface IDeedNFT {
-    enum AssetType { Land, Vehicle, Estate, CommercialEquipment }
-    function ownerOf(uint256 tokenId) external view returns (address);
-    function canSubdivide(uint256 tokenId) external view returns (bool);
-    function getDeedInfo(uint256 tokenId) external view returns (
-        AssetType assetType,
-        bool isValidated,
-        string memory operatingAgreement,
-        string memory definition,
-        string memory configuration,
-        address validator
-    );
-}
+import "../core/interfaces/IDeedNFT.sol";
 
 /**
  * @title Subdivide

@@ -7,21 +7,9 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-// Interface
+// Interfaces
 import "./interfaces/IValidatorRegistry.sol";
-
-/**
- * @title IValidator Interface
- * @dev Interface for validator contracts that handle deed validation.
- *      Required for validator registration and management.
- *      Ensures consistent validator behavior across the system.
- */
-interface IValidator {
-    function supportsAssetType(uint256 assetTypeId) external view returns (bool);
-    function validateDeed(uint256 tokenId) external returns (bool);
-    function operatingAgreementName(string memory uri) external view returns (string memory);
-    function tokenURI(uint256 tokenId) external view returns (string memory);
-}
+import "./interfaces/IValidator.sol";
 
 /**
  * @title ValidatorRegistry

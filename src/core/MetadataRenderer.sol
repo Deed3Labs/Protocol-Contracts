@@ -9,16 +9,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "../libraries/StringUtils.sol";
 import "../libraries/JSONUtils.sol";
 import "./interfaces/IERC7572.sol";
-
-/**
- * @dev Interface for DeedNFT contract
- */
-interface IDeedNFT {
-    function ownerOf(uint256 tokenId) external view returns (address);
-    function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory);
-    function getValidationStatus(uint256 tokenId) external view returns (bool isValidated, address validator);
-    enum AssetType { Land, Vehicle, Estate, CommercialEquipment }
-}
+import "./interfaces/IDeedNFT.sol";
 
 /**
  * @title MetadataRenderer
