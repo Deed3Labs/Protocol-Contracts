@@ -17,9 +17,9 @@ import "./IValidatorRegistry.sol";
  */
 interface IValidator {
     function supportsAssetType(uint256 assetTypeId) external view returns (bool);
-    function validateDeed(uint256 deedId) external returns (bool);
+    function validateDeed(uint256 tokenId) external returns (bool);
     function operatingAgreementName(string memory uri) external view returns (string memory);
-    function tokenURI(uint256 deedId) external view returns (string memory);
+    function tokenURI(uint256 tokenId) external view returns (string memory);
 }
 
 /**

@@ -57,7 +57,7 @@ contract DeedNFT is
     }
 
     // ============ State Variables ============
-    uint256 public nextDeedId;
+    uint256 public nexttokenId;
     address private defaultValidator;
     address private validatorRegistry;
     string private _contractURI;
@@ -84,14 +84,14 @@ contract DeedNFT is
 
     // ============ Events ============
     event DeedNFTMinted(
-        uint256 indexed deedId,
+        uint256 indexed tokenId,
         AssetType assetType,
         address indexed minter,
         address validator
     );
-    event DeedNFTBurned(uint256 indexed deedId);
-    event DeedNFTValidatedChanged(uint256 indexed deedId, bool isValid);
-    event DeedNFTMetadataUpdated(uint256 indexed deedId);
+    event DeedNFTBurned(uint256 indexed tokenId);
+    event DeedNFTValidatedChanged(uint256 indexed tokenId, bool isValid);
+    event DeedNFTMetadataUpdated(uint256 indexed tokenId);
     event MetadataRendererUpdated(address indexed renderer);
     event ContractURIUpdated(string newURI);
     event TraitUpdated(bytes32 indexed traitKey, uint256 indexed tokenId, bytes traitValue);
@@ -126,7 +126,7 @@ contract DeedNFT is
 
         defaultValidator = _defaultValidator;
         validatorRegistry = _validatorRegistry;
-        nextDeedId = 1;
+        nexttokenId = 1;
         
         // Initialize trait keys and names
         _initializeTraits();
@@ -182,17 +182,17 @@ contract DeedNFT is
     /**
      * @dev Modifier to check if the deed exists
      */
-    modifier deedExists(uint256 deedId) {
-        require(_exists(deedId), "DeedNFT: Deed does not exist");
+    modifier deedExists(uint256 tokenId) {
+        require(_exists(tokenId), "DeedNFT: Deed does not exist");
         _;
     }
 
     /**
      * @dev Modifier to check if the caller is the deed owner
      */
-    modifier onlyDeedOwner(uint256 deedId) {
+    modifier onlyDeedOwner(uint256 tokenId) {
         require(
-            ownerOf(deedId) == msg.sender,
+            ownerOf(tokenId) == msg.sender,
             "DeedNFT: Caller is not deed owner"
         );
         _;
@@ -201,9 +201,9 @@ contract DeedNFT is
     /**
      * @dev Modifier to check if the caller is a validator or the deed owner
      */
-    modifier onlyValidatorOrOwner(uint256 deedId) {
+    modifier onlyValidatorOrOwner(uint256 tokenId) {
         require(
-            hasRole(VALIDATOR_ROLE, msg.sender) || ownerOf(deedId) == msg.sender,
+            hasRole(VALIDATOR_ROLE, msg.sender) || ownerOf(tokenId) == msg.sender,
             "DeedNFT: Caller is not validator or owner"
         );
         _;
@@ -361,58 +361,58 @@ contract DeedNFT is
             "DeedNFT: Validator has no default operating agreement"
         );
 
-        uint256 deedId = nextDeedId++;
-        _mint(owner, deedId);
-        _setTokenURI(deedId, ipfsDetailsHash);
+        uint256 tokenId = nexttokenId++;
+        _mint(owner, tokenId);
+        _setTokenURI(tokenId, ipfsDetailsHash);
 
         // Set traits using ERC-7496
-        _setTraitValue(deedId, keccak256("assetType"), abi.encode(assetType));
-        _setTraitValue(deedId, keccak256("isValidated"), abi.encode(false));
-        _setTraitValue(deedId, keccak256("operatingAgreement"), abi.encode(operatingAgreement));
-        _setTraitValue(deedId, keccak256("definition"), abi.encode(definition));
-        _setTraitValue(deedId, keccak256("configuration"), abi.encode(configuration));
-        _setTraitValue(deedId, keccak256("validator"), abi.encode(address(0))); // Will be set during validation
+        _setTraitValue(tokenId, keccak256("assetType"), abi.encode(assetType));
+        _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(false));
+        _setTraitValue(tokenId, keccak256("operatingAgreement"), abi.encode(operatingAgreement));
+        _setTraitValue(tokenId, keccak256("definition"), abi.encode(definition));
+        _setTraitValue(tokenId, keccak256("configuration"), abi.encode(configuration));
+        _setTraitValue(tokenId, keccak256("validator"), abi.encode(address(0))); // Will be set during validation
 
-        emit DeedNFTMinted(deedId, assetType, msg.sender, selectedValidator);
-        return deedId;
+        emit DeedNFTMinted(tokenId, assetType, msg.sender, selectedValidator);
+        return tokenId;
     }
 
     // Burning functions
 
     /**
      * @dev Burns a deed owned by the caller.
-     * @param deedId ID of the deed to burn.
+     * @param tokenId ID of the deed to burn.
      */
-    function burnAsset(uint256 deedId)
+    function burnAsset(uint256 tokenId)
         public
-        onlyDeedOwner(deedId)
+        onlyDeedOwner(tokenId)
         whenNotPaused
     {
-        _burn(deedId);
+        _burn(tokenId);
         
         // Clear all traits
         for (uint i = 0; i < _allTraitKeys.length; i++) {
-            delete _tokenTraits[deedId][_allTraitKeys[i]];
+            delete _tokenTraits[tokenId][_allTraitKeys[i]];
         }
         
-        emit DeedNFTBurned(deedId);
+        emit DeedNFTBurned(tokenId);
     }
 
     /**
      * @dev Batch burns multiple deeds owned by the caller.
-     * @param deedIds Array of deed IDs to burn.
+     * @param tokenIds Array of deed IDs to burn.
      */
-    function burnBatchAssets(uint256[] memory deedIds)
+    function burnBatchAssets(uint256[] memory tokenIds)
         external
         whenNotPaused
     {
-        for (uint256 i = 0; i < deedIds.length; i++) {
-            uint256 deedId = deedIds[i];
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 tokenId = tokenIds[i];
             require(
-                ownerOf(deedId) == msg.sender,
+                ownerOf(tokenId) == msg.sender,
                 "DeedNFT: Caller is not the owner of all deeds"
             );
-            burnAsset(deedId);
+            burnAsset(tokenId);
         }
     }
 
@@ -478,19 +478,19 @@ contract DeedNFT is
      * @dev Updates the metadata of a deed.
      *      Only callable by the owner or a validator.
      *      If called by a non-validator, sets isValidated to false.
-     * @param deedId ID of the deed.
+     * @param tokenId ID of the deed.
      * @param ipfsDetailsHash New IPFS details hash.
      * @param operatingAgreement New operating agreement.
      * @param definition New definition.
      * @param configuration New configuration.
      */
     function updateMetadata(
-        uint256 deedId,
+        uint256 tokenId,
         string memory ipfsDetailsHash,
         string memory operatingAgreement,
         string memory definition,
         string memory configuration
-    ) external onlyValidatorOrOwner(deedId) whenNotPaused {
+    ) external onlyValidatorOrOwner(tokenId) whenNotPaused {
         require(
             bytes(ipfsDetailsHash).length > 0,
             "DeedNFT: IPFS details hash is required"
@@ -505,7 +505,7 @@ contract DeedNFT is
         );
 
         // Check if operating agreement is valid
-        bytes memory validatorBytes = _tokenTraits[deedId][keccak256("validator")];
+        bytes memory validatorBytes = _tokenTraits[tokenId][keccak256("validator")];
         address validatorAddress = validatorBytes.length > 0 
             ? abi.decode(validatorBytes, (address)) 
             : defaultValidator;
@@ -528,20 +528,20 @@ contract DeedNFT is
             "DeedNFT: Invalid operating agreement"
         );
 
-        _setTokenURI(deedId, ipfsDetailsHash);
+        _setTokenURI(tokenId, ipfsDetailsHash);
 
         // Update traits
-        _setTraitValue(deedId, keccak256("operatingAgreement"), abi.encode(operatingAgreement));
-        _setTraitValue(deedId, keccak256("definition"), abi.encode(definition));
-        _setTraitValue(deedId, keccak256("configuration"), abi.encode(configuration));
+        _setTraitValue(tokenId, keccak256("operatingAgreement"), abi.encode(operatingAgreement));
+        _setTraitValue(tokenId, keccak256("definition"), abi.encode(definition));
+        _setTraitValue(tokenId, keccak256("configuration"), abi.encode(configuration));
         
         // If not called by validator, reset validation status
         if (!hasRole(VALIDATOR_ROLE, msg.sender)) {
-            _setTraitValue(deedId, keccak256("isValidated"), abi.encode(false));
-            _setTraitValue(deedId, keccak256("validator"), abi.encode(address(0)));
+            _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(false));
+            _setTraitValue(tokenId, keccak256("validator"), abi.encode(address(0)));
         }
 
-        emit DeedNFTMetadataUpdated(deedId);
+        emit DeedNFTMetadataUpdated(tokenId);
     }
     
     // ERC-7496 Implementation

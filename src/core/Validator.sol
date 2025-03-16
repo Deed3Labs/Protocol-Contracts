@@ -18,7 +18,7 @@ import "./IValidator.sol";
  */
 interface IDeedNFT {
     enum AssetType { Land, Vehicle, Estate, CommercialEquipment }
-    function validateDeed(uint256 deedId, bool isValid, address validatorAddress) external;
+    function validateDeed(uint256 tokenId, bool isValid, address validatorAddress) external;
     
     // New trait-based methods
     function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory);
@@ -127,17 +127,17 @@ contract Validator is
 
     /**
      * @dev Emitted when a deed's metadata is updated
-     * @param deedId ID of the affected deed
+     * @param tokenId ID of the affected deed
      * @param metadataUri New metadata URI
      */
-    event DeedMetadataUpdated(uint256 indexed deedId, string metadataUri);
+    event DeedMetadataUpdated(uint256 indexed tokenId, string metadataUri);
 
     /**
      * @dev Emitted when a deed is validated
-     * @param deedId ID of the validated deed
+     * @param tokenId ID of the validated deed
      * @param success Validation result
      */
-    event DeedValidated(uint256 indexed deedId, bool success);
+    event DeedValidated(uint256 indexed tokenId, bool success);
 
     /**
      * @dev Emitted when the base URI is updated
@@ -166,10 +166,10 @@ contract Validator is
 
     /**
      * @dev Emitted when a validation error occurs
-     * @param deedId ID of the deed
+     * @param tokenId ID of the deed
      * @param reason Error message
      */
-    event ValidationError(uint256 indexed deedId, string reason);
+    event ValidationError(uint256 indexed tokenId, string reason);
 
     // ============ Upgrade Gap ============
 
