@@ -8,7 +8,7 @@ import "@openzeppelin/contracts-upgradeable/utils/Base64Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "../libraries/StringUtils.sol";
 import "../libraries/JSONUtils.sol";
-import "./IERC7572.sol";
+import "./interfaces/IERC7572.sol";
 
 /**
  * @dev Interface for DeedNFT contract
