@@ -12,9 +12,9 @@ import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 
 // External validator and registry interfaces
-import "./IValidator.sol";
-import "./IValidatorRegistry.sol";
-import "./IERC7572.sol";
+import "./interfaces/IValidator.sol";
+import "./interfaces/IValidatorRegistry.sol";
+import "./interfaces/IERC7572.sol";
 
 /**
  * @title DeedNFT

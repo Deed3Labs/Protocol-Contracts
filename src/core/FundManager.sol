@@ -11,22 +11,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 // Interfaces
-
-interface IValidatorRegistry {
-    /**
-     * @dev Returns the owner of the given Validator Contract.
-     * @param validatorContract Address of the Validator Contract.
-     * @return owner Address of the owner.
-     */
-    function getValidatorOwner(address validatorContract) external view returns (address owner);
-
-    /**
-     * @dev Checks if a validator is registered.
-     * @param validatorContract Address of the validator contract.
-     * @return Boolean indicating if the validator is registered.
-     */
-    function isValidatorRegistered(address validatorContract) external view returns (bool);
-}
+import "./interfaces/IValidatorRegistry.sol";
 
 interface IDeedNFTAccessControl {
     /**

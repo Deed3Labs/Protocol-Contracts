@@ -14,7 +14,7 @@ import "../libraries/StringUtils.sol";
 import "../libraries/JSONUtils.sol";
 
 // Interface
-import "./IValidator.sol";
+import "./interfaces/IValidator.sol";
 
 /**
  * @title IDeedNFT Interface

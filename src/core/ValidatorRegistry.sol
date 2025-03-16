@@ -8,7 +8,7 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 // Interface
-import "./IValidatorRegistry.sol";
+import "./interfaces/IValidatorRegistry.sol";
 
 /**
  * @title IValidator Interface
