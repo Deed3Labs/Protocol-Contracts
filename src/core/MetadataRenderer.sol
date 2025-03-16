@@ -737,6 +737,21 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
             properties = string(abi.encodePacked(properties, ',"configuration":', configuration));
         }
         
+        // Add features if available
+        string[] memory features = tokenFeatures[tokenId];
+        if (features.length > 0) {
+            properties = string(abi.encodePacked(properties, ',"features":['));
+            
+            for (uint i = 0; i < features.length; i++) {
+                if (i > 0) {
+                    properties = string(abi.encodePacked(properties, ','));
+                }
+                properties = string(abi.encodePacked(properties, '"', features[i], '"'));
+            }
+            
+            properties = string(abi.encodePacked(properties, ']'));
+        }
+        
         // Add custom metadata if available
         string memory customMetadata = tokenCustomMetadata[tokenId];
         if (bytes(customMetadata).length > 0) {

@@ -648,13 +648,22 @@ contract Validator is
      * @return Boolean indicating if validation was successful
      */
     function _validateDefinition(uint256 _tokenId, string memory _definition, string memory _criteria) internal returns (bool) {
-        // Parse the criteria JSON
-        string[] memory criteriaFields = _getJsonFields(_criteria);
+        // Get asset type from token
+        bytes memory assetTypeBytes = IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("assetType"));
+        if (assetTypeBytes.length == 0) {
+            emit ValidationError(_tokenId, "Missing asset type");
+            return false;
+        }
+        
+        uint256 assetTypeValue = abi.decode(assetTypeBytes, (uint256));
+        
+        // Get field requirements for this asset type
+        FieldRequirement[] storage requirements = assetTypeRequirements[assetTypeValue];
         
         // Check each required field
-        for (uint i = 0; i < criteriaFields.length; i++) {
-            string memory criteriaField = criteriaFields[i];
-            string memory definitionField = criteriaField;
+        for (uint i = 0; i < requirements.length; i++) {
+            string memory criteriaField = requirements[i].criteriaField;
+            string memory definitionField = requirements[i].definitionField;
             
             // Check if the field is required in the criteria
             if (_containsField(_criteria, criteriaField, "true")) {
