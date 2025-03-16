@@ -408,27 +408,54 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
      * @dev Generates metadata for property assets (Land and Estate)
      */
     function _generatePropertyMetadata(address tokenContract, uint256 tokenId) internal view returns (string memory) {
-        // Get token data
-        (
-            string memory name,
-            string memory description,
-            string memory image,
-            string memory assetTypeName,
-            bool isValidated,
-            string memory configuration,
-            address owner,
-            address validator
-        ) = getTokenBasicData(tokenContract, tokenId);
+        PropertyDetails storage details = tokenPropertyDetails[tokenId];
         
-        // Build JSON in chunks to avoid stack too deep
-        string memory json = buildJsonHeader(name, description, image, tokenId);
-        json = appendJsonBody(json, tokenId, assetTypeName, configuration, isValidated, validator, owner);
+        // Get validation status
+        (bool isValidated, address validator) = IDeedNFT(tokenContract).getValidationStatus(tokenId);
         
-        // Return base64 encoded JSON
-        return string(abi.encodePacked(
-            "data:application/json;base64,",
-            Base64Upgradeable.encode(bytes(json))
+        // Get definition and configuration
+        bytes memory definitionBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("definition"));
+        bytes memory configurationBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("configuration"));
+        
+        string memory definition = definitionBytes.length > 0 ? abi.decode(definitionBytes, (string)) : "";
+        string memory configuration = configurationBytes.length > 0 ? abi.decode(configurationBytes, (string)) : "";
+        
+        // Generate name
+        string memory name = string(abi.encodePacked(
+            details.streetNumber, " ", details.streetName, ", ", 
+            details.city, ", ", details.state, " #", tokenId.toString()
         ));
+        
+        // Generate attributes
+        string memory attributes = _generatePropertyAttributes(tokenId, details, isValidated);
+        
+        // Generate properties
+        string memory properties = _generatePropertyProperties(tokenId, details, definition, configuration);
+        
+        // Get gallery images
+        string memory gallery = _generateGallery(tokenId);
+        
+        // Get image URI - use invalidated image if not validated
+        string memory imageURI = isValidated ? 
+            (tokenGalleryImages[tokenId].length > 0 ? tokenGalleryImages[tokenId][0] : assetTypeImageURIs[uint8(IDeedNFT.AssetType.Land)]) : 
+            invalidatedImageURI;
+        
+        // Generate JSON
+        string memory json = string(abi.encodePacked(
+            '{',
+            '"name":"', name, '",',
+            '"description":"', definition, '",',
+            '"image":"', imageURI, '",',
+            '"external_url":"', baseURI, tokenId.toString(), '",',
+            bytes(details.base.background_color).length > 0 ? string(abi.encodePacked('"background_color":"', details.base.background_color, '",')) : "",
+            bytes(details.base.animation_url).length > 0 ? string(abi.encodePacked('"animation_url":"', details.base.animation_url, '",')) : "",
+            gallery,
+            '"attributes":[', attributes, '],',
+            '"properties":', properties,
+            '}'
+        ));
+        
+        return string(abi.encodePacked("data:application/json;base64,", Base64Upgradeable.encode(bytes(json))));
     }
     
     /**
@@ -777,7 +804,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
             '{"trait_type":"Parcel Use","value":"', details.parcelUse, '"},',
             '{"trait_type":"Zoning","value":"', details.zoning, '"},',
             '{"trait_type":"Zoning Code","value":"', details.zoningCode, '"},',
-            '{"trait_type":"Confidence Score","value":"', details.confidenceScore, '"}'
+            '{"trait_type":"Confidence Score","value":"', details.base.confidenceScore, '"}'
         ));
     }
     
@@ -875,7 +902,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
      */
     function _generatePropertyAttributes(uint256 tokenId, PropertyDetails memory details, bool isValidated) internal view returns (string memory) {
         string memory attributes = string(abi.encodePacked(
-            '{"trait_type":"Validation Status","value":"', isValidated ? 'Validated' : 'Unvalidated', '"}'
+            '{"trait_type":"Asset Type","value":"Land"}',
+            ',{"trait_type":"Validation Status","value":"', isValidated ? 'Validated' : 'Unvalidated', '"}'
         ));
         
         // Add location attributes
@@ -889,10 +917,65 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
                 ',{"trait_type":"State","value":"', details.state, '"}'));
         }
         
-        // Add other property attributes...
-        // (Include all property fields)
+        if (bytes(details.county).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"County","value":"', details.county, '"}'));
+        }
         
-        // Add value attributes
+        if (bytes(details.city).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"City","value":"', details.city, '"}'));
+        }
+        
+        if (bytes(details.streetNumber).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Street Number","value":"', details.streetNumber, '"}'));
+        }
+        
+        if (bytes(details.streetName).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Street Name","value":"', details.streetName, '"}'));
+        }
+        
+        if (bytes(details.parcelNumber).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Parcel Number","value":"', details.parcelNumber, '"}'));
+        }
+        
+        // Add legal details
+        if (bytes(details.deed_type).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Deed Type","value":"', details.deed_type, '"}'));
+        }
+        
+        if (bytes(details.recording_date).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Recording Date","value":"', details.recording_date, '"}'));
+        }
+        
+        if (bytes(details.holdingEntity).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Holding Entity","value":"', details.holdingEntity, '"}'));
+        }
+        
+        // Add geographic details
+        if (bytes(details.acres).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Acres","value":"', details.acres, '"}'));
+        }
+        
+        // Add zoning details
+        if (bytes(details.parcelUse).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Parcel Use","value":"', details.parcelUse, '"}'));
+        }
+        
+        if (bytes(details.zoning).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Zoning","value":"', details.zoning, '"}'));
+        }
+        
+        // Add value details
         if (bytes(details.taxValueSource).length > 0) {
             attributes = string(abi.encodePacked(attributes, 
                 ',{"trait_type":"Tax Value Source","value":"', details.taxValueSource, '"}'));
@@ -928,6 +1011,15 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
                 ',{"trait_type":"Build Year","value":"', details.buildYear, '"}'));
         }
         
+        // Add utilities
+        attributes = string(abi.encodePacked(attributes, 
+            ',{"trait_type":"Has Water","value":"', details.has_water ? 'Yes' : 'No', '"}',
+            ',{"trait_type":"Has Electricity","value":"', details.has_electricity ? 'Yes' : 'No', '"}',
+            ',{"trait_type":"Has Natural Gas","value":"', details.has_natural_gas ? 'Yes' : 'No', '"}',
+            ',{"trait_type":"Has Sewer","value":"', details.has_sewer ? 'Yes' : 'No', '"}',
+            ',{"trait_type":"Has Internet","value":"', details.has_internet ? 'Yes' : 'No', '"}'
+        ));
+        
         // Add features as attributes
         string[] memory features = tokenFeatures[tokenId];
         for (uint i = 0; i < features.length; i++) {
@@ -947,7 +1039,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
             ',{"trait_type":"Validation Status","value":"', isValidated ? 'Validated' : 'Unvalidated', '"}'
         ));
         
-        // Add vehicle identification attributes
+        // Add vehicle attributes
         if (bytes(details.make).length > 0) {
             attributes = string(abi.encodePacked(attributes, 
                 ',{"trait_type":"Make","value":"', details.make, '"}'));
@@ -968,8 +1060,69 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
                 ',{"trait_type":"VIN","value":"', details.vin, '"}'));
         }
         
-        // Add other vehicle attributes...
-        // (Include all vehicle fields)
+        // Add physical details
+        if (bytes(details.color).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Color","value":"', details.color, '"}'));
+        }
+        
+        if (bytes(details.bodyType).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Body Type","value":"', details.bodyType, '"}'));
+        }
+        
+        if (bytes(details.fuelType).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Fuel Type","value":"', details.fuelType, '"}'));
+        }
+        
+        if (bytes(details.mileage).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Mileage","value":"', details.mileage, '"}'));
+        }
+        
+        // Add ownership details
+        if (bytes(details.titleState).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Title State","value":"', details.titleState, '"}'));
+        }
+        
+        if (bytes(details.titleStatus).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Title Status","value":"', details.titleStatus, '"}'));
+        }
+        
+        if (bytes(details.holdingEntity).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Holding Entity","value":"', details.holdingEntity, '"}'));
+        }
+        
+        // Add value details
+        if (bytes(details.appraisalSource).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Appraisal Source","value":"', details.appraisalSource, '"}'));
+        }
+        
+        if (bytes(details.appraisedValueUSD).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Appraised Value (USD)","value":"', details.appraisedValueUSD, '"}'));
+        }
+        
+        if (bytes(details.estimatedValueSource).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Estimated Value Source","value":"', details.estimatedValueSource, '"}'));
+        }
+        
+        if (bytes(details.estimatedMarketValueUSD).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Estimated Market Value (USD)","value":"', details.estimatedMarketValueUSD, '"}'));
+        }
+        
+        // Add condition
+        if (bytes(details.condition).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Condition","value":"', details.condition, '"}'));
+        }
         
         // Add features as attributes
         string[] memory features = tokenFeatures[tokenId];
@@ -990,7 +1143,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
             ',{"trait_type":"Validation Status","value":"', isValidated ? 'Validated' : 'Unvalidated', '"}'
         ));
         
-        // Add equipment identification attributes
+        // Add equipment attributes
         if (bytes(details.manufacturer).length > 0) {
             attributes = string(abi.encodePacked(attributes, 
                 ',{"trait_type":"Manufacturer","value":"', details.manufacturer, '"}'));
@@ -1021,9 +1174,6 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
                 ',{"trait_type":"Equipment Type","value":"', details.equipmentType, '"}'));
         }
         
-        // Add other equipment attributes...
-        // (Include all equipment fields)
-        
         // Add features as attributes
         string[] memory features = tokenFeatures[tokenId];
         for (uint i = 0; i < features.length; i++) {
@@ -1037,11 +1187,22 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     /**
      * @dev Generates properties for property metadata
      */
-    function _generatePropertyProperties(uint256 tokenId, PropertyDetails memory details, string memory configuration) internal view returns (string memory) {
-        // Generate properties JSON object
+    function _generatePropertyProperties(uint256 tokenId, PropertyDetails memory details, string memory definition, string memory configuration) internal view returns (string memory) {
         string memory properties = string(abi.encodePacked(
             '{',
-            '"configuration":"', configuration, '",',
+            '"asset_type":"Land",',
+            '"validation":{',
+            '"status":"', details.base.confidenceScore, '"',
+            '},',
+            '"location":{',
+            '"country":"', details.country, '",',
+            '"state":"', details.state, '",',
+            '"county":"', details.county, '",',
+            '"city":"', details.city, '",',
+            '"street_number":"', details.streetNumber, '",',
+            '"street_name":"', details.streetName, '",',
+            '"parcel_number":"', details.parcelNumber, '"',
+            '}',
             '"legal":{',
             '"deed_type":"', details.deed_type, '",',
             '"recording_date":"', details.recording_date, '",',
@@ -1112,11 +1273,13 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
      * @dev Generates properties for vehicle metadata
      */
     function _generateVehicleProperties(uint256 tokenId, VehicleDetails memory details, string memory configuration) internal view returns (string memory) {
-        // Generate properties JSON object
         string memory properties = string(abi.encodePacked(
             '{',
-            '"configuration":"', configuration, '",',
-            '"vehicle_details":{',
+            '"asset_type":"Vehicle",',
+            '"validation":{',
+            '"status":"', details.base.confidenceScore, '"',
+            '},',
+            '"identification":{',
             '"make":"', details.make, '",',
             '"model":"', details.model, '",',
             '"year":"', details.year, '",',
@@ -1193,17 +1356,19 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
      * @dev Generates properties for equipment metadata
      */
     function _generateEquipmentProperties(uint256 tokenId, EquipmentDetails memory details, string memory configuration) internal view returns (string memory) {
-        // Generate properties JSON object
         string memory properties = string(abi.encodePacked(
             '{',
-            '"configuration":"', configuration, '",',
-            '"equipment_details":{',
+            '"asset_type":"Commercial Equipment",',
+            '"validation":{',
+            '"status":"', details.base.confidenceScore, '"',
+            '},',
+            '"identification":{',
             '"manufacturer":"', details.manufacturer, '",',
             '"model":"', details.model, '",',
             '"serial_number":"', details.serialNumber, '",',
             '"year":"', details.year, '",',
             '"category":"', details.category, '",',
-            '"type":"', details.equipmentType, '"',
+            '"equipment_type":"', details.equipmentType, '"',
             '},',
             '"physical_details":{',
             '"dimensions":"', details.dimensions, '",',
