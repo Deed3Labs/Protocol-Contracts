@@ -62,6 +62,14 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable 
         string zoning;
         string zoningCode;
         
+        // Value details
+        string taxValueSource;
+        string taxAssessedValueUSD;
+        string estimatedValueSource;
+        string estimatedMarketValueUSD;
+        string localAppraisalSource;
+        string localAppraisedValueUSD;
+        
         // Utilities
         bool has_water;
         bool has_electricity;
@@ -431,6 +439,37 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable 
         attributes = string(abi.encodePacked(
             attributes, ',{"trait_type":"Beneficiary","value":"', owner.toHexString(), '"}'
         ));
+        
+        // Add value attributes
+        if (bytes(details.taxValueSource).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Tax Value Source","value":"', details.taxValueSource, '"}'));
+        }
+        
+        if (bytes(details.taxAssessedValueUSD).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Tax Assessed Value (USD)","value":"', details.taxAssessedValueUSD, '"}'));
+        }
+        
+        if (bytes(details.estimatedValueSource).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Estimated Value Source","value":"', details.estimatedValueSource, '"}'));
+        }
+        
+        if (bytes(details.estimatedMarketValueUSD).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Estimated Market Value (USD)","value":"', details.estimatedMarketValueUSD, '"}'));
+        }
+        
+        if (bytes(details.localAppraisalSource).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Local Appraisal Source","value":"', details.localAppraisalSource, '"}'));
+        }
+        
+        if (bytes(details.localAppraisedValueUSD).length > 0) {
+            attributes = string(abi.encodePacked(attributes, 
+                ',{"trait_type":"Local Appraised Value (USD)","value":"', details.localAppraisedValueUSD, '"}'));
+        }
         
         // Close attributes array
         return string(abi.encodePacked('[', attributes, ']'));

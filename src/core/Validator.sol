@@ -209,7 +209,7 @@ contract Validator is
         _grantRole(CRITERIA_MANAGER_ROLE, msg.sender);
         
         // Initialize default validation criteria for Land assets
-        string memory defaultLandCriteria = '{"requiresCountry":true,"requiresState":true,"requiresCounty":true,"requiresParcelNumber":true,"requiresLegalDescription":true}';
+        string memory defaultLandCriteria = '{"requiresCountry":true,"requiresState":true,"requiresCounty":true,"requiresParcelNumber":true,"requiresLegalDescription":true,"requiresTaxValueSource":true,"requiresTaxAssessedValueUSD":true}';
         validationCriteria[uint256(IDeedNFT.AssetType.Land)] = defaultLandCriteria;
         
         // Initialize field requirements for each asset type
@@ -238,6 +238,14 @@ contract Validator is
         landReqs.push(FieldRequirement("requiresZoning", "zoning"));
         landReqs.push(FieldRequirement("requiresZoningCode", "zoningCode"));
         landReqs.push(FieldRequirement("requiresLegalDescription", "legal_description"));
+        
+        // Add new value field requirements
+        landReqs.push(FieldRequirement("requiresTaxValueSource", "taxValueSource"));
+        landReqs.push(FieldRequirement("requiresTaxAssessedValueUSD", "taxAssessedValueUSD"));
+        landReqs.push(FieldRequirement("requiresEstimatedValueSource", "estimatedValueSource"));
+        landReqs.push(FieldRequirement("requiresEstimatedMarketValueUSD", "estimatedMarketValueUSD"));
+        landReqs.push(FieldRequirement("requiresLocalAppraisalSource", "localAppraisalSource"));
+        landReqs.push(FieldRequirement("requiresLocalAppraisedValueUSD", "localAppraisedValueUSD"));
         
         // Vehicle asset requirements
         FieldRequirement[] storage vehicleReqs = assetTypeRequirements[uint256(IDeedNFT.AssetType.Vehicle)];

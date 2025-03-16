@@ -83,6 +83,30 @@
       "value": "SF-2"
     },
     {
+      "trait_type": "Tax Value Source",
+      "value": "Travis County Tax Office"
+    },
+    {
+      "trait_type": "Tax Assessed Value (USD)",
+      "value": "450,000"
+    },
+    {
+      "trait_type": "Estimated Value Source",
+      "value": "Zillow"
+    },
+    {
+      "trait_type": "Estimated Market Value (USD)",
+      "value": "520,000"
+    },
+    {
+      "trait_type": "Local Appraisal Source",
+      "value": "Johnson Appraisals LLC"
+    },
+    {
+      "trait_type": "Local Appraised Value (USD)",
+      "value": "510,000"
+    },
+    {
       "trait_type": "Confidence Score",
       "value": "95%"
     },
@@ -100,6 +124,14 @@
       "recording_date": "2023-01-15",
       "recording_number": "2023-012345",
       "legal_description": "Lot 12, Block 3, Example Subdivision, according to the map or plat thereof recorded in Volume 100, Page 45, of the Map Records of Travis County, Texas"
+    },
+    "value": {
+      "tax_value_source": "Travis County Tax Office",
+      "tax_assessed_value_usd": "450000",
+      "estimated_value_source": "Zillow",
+      "estimated_market_value_usd": "520000",
+      "local_appraisal_source": "Johnson Appraisals LLC",
+      "local_appraised_value_usd": "510000"
     },
     "utilities": {
       "water": true,
