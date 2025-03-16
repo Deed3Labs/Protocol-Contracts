@@ -21,6 +21,42 @@ library StringUtils {
     }
     
     /**
+     * @dev Checks if a string contains a substring
+     */
+    function contains(string memory source, string memory search) internal pure returns (bool) {
+        bytes memory sourceBytes = bytes(source);
+        bytes memory searchBytes = bytes(search);
+        
+        if (searchBytes.length > sourceBytes.length) {
+            return false;
+        }
+        
+        // Empty search string is always found
+        if (searchBytes.length == 0) {
+            return true;
+        }
+        
+        // Find the first character of search in source
+        for (uint i = 0; i <= sourceBytes.length - searchBytes.length; i++) {
+            bool found = true;
+            
+            // Check if the next characters match the search
+            for (uint j = 0; j < searchBytes.length; j++) {
+                if (sourceBytes[i + j] != searchBytes[j]) {
+                    found = false;
+                    break;
+                }
+            }
+            
+            if (found) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
      * @dev Adds a string attribute to JSON if not empty
      */
     function addStringAttribute(string memory json, string memory name, string memory value) internal pure returns (string memory) {

@@ -171,10 +171,17 @@ contract Validator is
 
     /**
      * @dev Emitted when a validation error occurs
-     * @param tokenId ID of the deed
-     * @param reason Error message
+     * @param tokenId ID of the token
+     * @param reason Reason for the error
      */
     event ValidationError(uint256 indexed tokenId, string reason);
+
+    /**
+     * @dev Emitted when a validation succeeds
+     * @param tokenId ID of the token
+     * @param message Success message
+     */
+    event ValidationSuccess(uint256 indexed tokenId, string message);
 
     /**
      * @dev Emitted when a compatible DeedNFT is added or removed
@@ -455,12 +462,7 @@ contract Validator is
      * @dev Returns the default operating agreement URI.
      * @return The default operating agreement URI.
      */
-    function defaultOperatingAgreement()
-        external
-        view
-        override
-        returns (string memory)
-    {
+    function defaultOperatingAgreement() external view override returns (string memory) {
         return defaultOperatingAgreementUri;
     }
 
@@ -646,8 +648,7 @@ contract Validator is
      * @return Boolean indicating if validation was successful
      */
     function _validateDefinition(uint256 _tokenId, string memory _definition, string memory _criteria) internal returns (bool) {
-        // Parse the definition and criteria JSON
-        string[] memory definitionFields = _getJsonFields(_definition);
+        // Parse the criteria JSON
         string[] memory criteriaFields = _getJsonFields(_criteria);
         
         // Check each required field
@@ -658,7 +659,7 @@ contract Validator is
             // Check if the field is required in the criteria
             if (_containsField(_criteria, criteriaField, "true")) {
                 // Check if the field exists in the definition
-                if (!_containsField(_definition, definitionField, null)) {
+                if (!_containsField(_definition, definitionField, "")) {
                     emit ValidationError(_tokenId, string(abi.encodePacked("Required field missing: ", definitionField)));
                     return false;
                 }
@@ -883,30 +884,86 @@ contract Validator is
     function _getJsonFields(string memory _json) internal pure returns (string[] memory) {
         // This is a simplified implementation. In a production environment,
         // you would use a proper JSON parsing library to extract fields.
-        // For simplicity, we'll split the string by commas and spaces.
         
-        string[] memory fields = new string[](0);
-        string memory currentField = "";
+        // First, count the number of fields to allocate the array
+        uint256 fieldCount = 0;
         bool inString = false;
+        bool inField = false;
         
         for (uint i = 0; i < bytes(_json).length; i++) {
             bytes1 char = bytes(_json)[i];
-            if (char == '"' || char == '\'') {
+            
+            if (char == '"') {
                 inString = !inString;
-            } else if (char == ',' || char == ' ') {
-                if (bytes(currentField).length > 0) {
-                    fields.push(currentField);
-                    currentField = "";
+                if (!inString && inField) {
+                    fieldCount++;
+                    inField = false;
+                } else if (inString && !inField) {
+                    inField = true;
                 }
-            } else {
-                currentField = string(abi.encodePacked(currentField, char));
             }
         }
         
-        if (bytes(currentField).length > 0) {
-            fields.push(currentField);
+        // Now create the array and populate it
+        string[] memory fields = new string[](fieldCount);
+        fieldCount = 0;
+        inString = false;
+        inField = false;
+        uint256 startPos = 0;
+        
+        for (uint i = 0; i < bytes(_json).length; i++) {
+            bytes1 char = bytes(_json)[i];
+            
+            if (char == '"') {
+                if (!inString) {
+                    startPos = i + 1;
+                    inString = true;
+                    inField = true;
+                } else if (inField) {
+                    // Extract the field name
+                    bytes memory fieldBytes = new bytes(i - startPos);
+                    for (uint j = 0; j < i - startPos; j++) {
+                        fieldBytes[j] = bytes(_json)[startPos + j];
+                    }
+                    fields[fieldCount] = string(fieldBytes);
+                    fieldCount++;
+                    inString = false;
+                    inField = false;
+                }
+            }
         }
         
         return fields;
+    }
+
+    /**
+     * @dev Returns the name of an operating agreement.
+     * @param uri_ The URI of the operating agreement.
+     * @return The name of the operating agreement.
+     */
+    function operatingAgreementName(string memory uri_) external view override returns (string memory) {
+        return operatingAgreements[uri_];
+    }
+
+    /**
+     * @dev Checks if an asset type is supported.
+     * @param assetTypeId The ID of the asset type.
+     * @return Whether the asset type is supported.
+     */
+    function supportsAssetType(uint256 assetTypeId) external view override returns (bool) {
+        return supportedAssetTypes[assetTypeId];
+    }
+
+    /**
+     * @dev Returns the metadata URI for a token.
+     * @param tokenId The ID of the token.
+     * @return The metadata URI.
+     */
+    function tokenURI(uint256 tokenId) external view override returns (string memory) {
+        string memory metadataUri = deedMetadata[tokenId];
+        if (bytes(metadataUri).length > 0) {
+            return metadataUri;
+        }
+        return string(abi.encodePacked(baseUri, tokenId.toString()));
     }
 }

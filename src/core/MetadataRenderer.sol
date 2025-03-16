@@ -727,13 +727,23 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
                 '}'));
         }
         
-        // Add features
-        string[] memory features = tokenFeatures[tokenId];
-        if (features.length > 0) {
-            properties = JSONUtils.addStringArray(properties, "features", features);
+        // Add definition if provided
+        if (bytes(definition).length > 0) {
+            properties = string(abi.encodePacked(properties, ',"definition":', definition));
         }
         
-        // Add documents
+        // Add configuration if provided
+        if (bytes(configuration).length > 0) {
+            properties = string(abi.encodePacked(properties, ',"configuration":', configuration));
+        }
+        
+        // Add custom metadata if available
+        string memory customMetadata = tokenCustomMetadata[tokenId];
+        if (bytes(customMetadata).length > 0) {
+            properties = string(abi.encodePacked(properties, ',"custom":', customMetadata));
+        }
+        
+        // Add documents if available
         string[] memory docTypes = tokenDocumentTypes[tokenId];
         if (docTypes.length > 0) {
             properties = string(abi.encodePacked(properties, ',"documents":{'));
@@ -744,18 +754,14 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
                 }
                 string memory docType = docTypes[i];
                 string memory docURI = tokenDocuments[tokenId][docType];
-                properties = string(abi.encodePacked(properties, '"', docType, '":"', docURI, '"'));
+                properties = string(abi.encodePacked(properties, 
+                    '"', docType, '":"', docURI, '"'));
             }
             
             properties = string(abi.encodePacked(properties, '}'));
         }
         
-        // Add custom metadata if available
-        if (bytes(tokenCustomMetadata[tokenId]).length > 0) {
-            properties = string(abi.encodePacked(properties, ',"custom":', tokenCustomMetadata[tokenId]));
-        }
-        
-        // Close properties object
+        // Close the properties object
         properties = string(abi.encodePacked(properties, '}'));
         
         return properties;
@@ -795,6 +801,73 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     }
     
     /**
+     * @dev Generates JSON metadata for a token
+     * @param tokenId ID of the token
+     * @param name Name of the token
+     * @param description Description of the token
+     * @param imageURI URI of the token image
+     * @param backgroundColor Background color for the token
+     * @param animationUrl Animation URL for the token
+     * @param gallery Gallery of images for the token
+     * @param attributes Attributes for the token
+     * @param properties Properties for the token
+     * @return Base64-encoded JSON metadata
+     */
+    function _generateJSON(
+        uint256 tokenId,
+        string memory name,
+        string memory description,
+        string memory imageURI,
+        string memory backgroundColor,
+        string memory animationUrl,
+        string memory gallery,
+        string memory attributes,
+        string memory properties
+    ) internal pure returns (string memory) {
+        // Start building the JSON
+        string memory json = string(abi.encodePacked(
+            '{',
+            '"name":"', name, '",',
+            '"description":"', description, '",',
+            '"image":"', imageURI, '",',
+            '"token_id":"', tokenId.toString(), '"'
+        ));
+        
+        // Add optional fields if provided
+        if (bytes(backgroundColor).length > 0) {
+            json = string(abi.encodePacked(json, ',"background_color":"', backgroundColor, '"'));
+        }
+        
+        if (bytes(animationUrl).length > 0) {
+            json = string(abi.encodePacked(json, ',"animation_url":"', animationUrl, '"'));
+        }
+        
+        // Add gallery if available
+        if (bytes(gallery).length > 0) {
+            json = string(abi.encodePacked(json, ',', gallery));
+        }
+        
+        // Add attributes if available
+        if (bytes(attributes).length > 0) {
+            json = string(abi.encodePacked(json, ',"attributes":[', attributes, ']'));
+        }
+        
+        // Add properties if available
+        if (bytes(properties).length > 0) {
+            json = string(abi.encodePacked(json, ',"properties":', properties));
+        }
+        
+        // Close the JSON object
+        json = string(abi.encodePacked(json, '}'));
+        
+        // Return Base64 encoded JSON
+        return string(abi.encodePacked(
+            "data:application/json;base64,",
+            Base64Upgradeable.encode(bytes(json))
+        ));
+    }
+    
+    /**
      * @dev Generates token URI for a specific token
      * @param tokenContract Address of the token contract
      * @param tokenId ID of the token
@@ -811,7 +884,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
         uint8 assetType = uint8(assetTypeValue);
         
         // Get validation status
-        (bool isValidated, address validator) = IDeedNFT(tokenContract).getValidationStatus(tokenId);
+        (bool isValidated, /* address validator */) = IDeedNFT(tokenContract).getValidationStatus(tokenId);
         
         // Get definition and configuration
         bytes memory definitionBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("definition"));
