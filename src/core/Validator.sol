@@ -199,18 +199,23 @@ contract Validator is
         baseUri = _baseUri;
         defaultOperatingAgreementUri = _defaultOperatingAgreementUri;
         
-        // Register the default operating agreement with a name
-        operatingAgreements[_defaultOperatingAgreementUri] = "Default Operating Agreement";
-        
-        // Grant roles to deployer
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(VALIDATOR_ROLE, msg.sender);
         _grantRole(METADATA_ROLE, msg.sender);
         _grantRole(CRITERIA_MANAGER_ROLE, msg.sender);
         
-        // Initialize default validation criteria for Land assets
-        string memory defaultLandCriteria = '{"requiresCountry":true,"requiresState":true,"requiresCounty":true,"requiresParcelNumber":true,"requiresLegalDescription":true,"requiresTaxValueSource":true,"requiresTaxAssessedValueUSD":true}';
+        // Initialize default validation criteria for each asset type
+        string memory defaultLandCriteria = '{"requiresCountry":true,"requiresState":true,"requiresCounty":true,"requiresParcelNumber":true,"requiresLegalDescription":true,"requiresTaxValueSource":true,"requiresTaxAssessedValueUSD":true,"requiresBuildYear":true}';
         validationCriteria[uint256(IDeedNFT.AssetType.Land)] = defaultLandCriteria;
+        
+        string memory defaultEstateCriteria = '{"requiresCountry":true,"requiresState":true,"requiresCounty":true,"requiresParcelNumber":true,"requiresLegalDescription":true,"requiresTaxValueSource":true,"requiresTaxAssessedValueUSD":true,"requiresBuildYear":true}';
+        validationCriteria[uint256(IDeedNFT.AssetType.Estate)] = defaultEstateCriteria;
+        
+        string memory defaultVehicleCriteria = '{"requiresMake":true,"requiresModel":true,"requiresYear":true,"requiresVin":true,"requiresTitleNumber":true,"requiresTitleState":true,"requiresAppraisedValueUSD":true}';
+        validationCriteria[uint256(IDeedNFT.AssetType.Vehicle)] = defaultVehicleCriteria;
+        
+        string memory defaultEquipmentCriteria = '{"requiresManufacturer":true,"requiresModel":true,"requiresYear":true,"requiresSerialNumber":true,"requiresCategory":true,"requiresType":true,"requiresAppraisedValueUSD":true}';
+        validationCriteria[uint256(IDeedNFT.AssetType.CommercialEquipment)] = defaultEquipmentCriteria;
         
         // Initialize field requirements for each asset type
         _initializeFieldRequirements();
@@ -238,8 +243,9 @@ contract Validator is
         landReqs.push(FieldRequirement("requiresZoning", "zoning"));
         landReqs.push(FieldRequirement("requiresZoningCode", "zoningCode"));
         landReqs.push(FieldRequirement("requiresLegalDescription", "legal_description"));
+        landReqs.push(FieldRequirement("requiresBuildYear", "buildYear"));
         
-        // Add new value field requirements
+        // Add value field requirements
         landReqs.push(FieldRequirement("requiresTaxValueSource", "taxValueSource"));
         landReqs.push(FieldRequirement("requiresTaxAssessedValueUSD", "taxAssessedValueUSD"));
         landReqs.push(FieldRequirement("requiresEstimatedValueSource", "estimatedValueSource"));
@@ -247,30 +253,60 @@ contract Validator is
         landReqs.push(FieldRequirement("requiresLocalAppraisalSource", "localAppraisalSource"));
         landReqs.push(FieldRequirement("requiresLocalAppraisedValueUSD", "localAppraisedValueUSD"));
         
+        // Estate asset requirements (similar to Land but may have different requirements)
+        FieldRequirement[] storage estateReqs = assetTypeRequirements[uint256(IDeedNFT.AssetType.Estate)];
+        // Copy land requirements for estate
+        for (uint i = 0; i < landReqs.length; i++) {
+            estateReqs.push(landReqs[i]);
+        }
+        
         // Vehicle asset requirements
         FieldRequirement[] storage vehicleReqs = assetTypeRequirements[uint256(IDeedNFT.AssetType.Vehicle)];
-        vehicleReqs.push(FieldRequirement("requiresVIN", "vin"));
         vehicleReqs.push(FieldRequirement("requiresMake", "make"));
         vehicleReqs.push(FieldRequirement("requiresModel", "model"));
         vehicleReqs.push(FieldRequirement("requiresYear", "year"));
-        vehicleReqs.push(FieldRequirement("requiresColor", "color"));
+        vehicleReqs.push(FieldRequirement("requiresVin", "vin"));
         vehicleReqs.push(FieldRequirement("requiresLicensePlate", "licensePlate"));
-        
-        // Estate asset requirements
-        FieldRequirement[] storage estateReqs = assetTypeRequirements[uint256(IDeedNFT.AssetType.Estate)];
-        estateReqs.push(FieldRequirement("requiresAddress", "address"));
-        estateReqs.push(FieldRequirement("requiresSquareFootage", "squareFootage"));
-        estateReqs.push(FieldRequirement("requiresBedrooms", "bedrooms"));
-        estateReqs.push(FieldRequirement("requiresBathrooms", "bathrooms"));
-        estateReqs.push(FieldRequirement("requiresYearBuilt", "yearBuilt"));
+        vehicleReqs.push(FieldRequirement("requiresRegistrationState", "registrationState"));
+        vehicleReqs.push(FieldRequirement("requiresColor", "color"));
+        vehicleReqs.push(FieldRequirement("requiresBodyType", "bodyType"));
+        vehicleReqs.push(FieldRequirement("requiresFuelType", "fuelType"));
+        vehicleReqs.push(FieldRequirement("requiresTransmissionType", "transmissionType"));
+        vehicleReqs.push(FieldRequirement("requiresMileage", "mileage"));
+        vehicleReqs.push(FieldRequirement("requiresTitleNumber", "titleNumber"));
+        vehicleReqs.push(FieldRequirement("requiresTitleState", "titleState"));
+        vehicleReqs.push(FieldRequirement("requiresTitleStatus", "titleStatus"));
+        vehicleReqs.push(FieldRequirement("requiresHoldingEntity", "holdingEntity"));
+        vehicleReqs.push(FieldRequirement("requiresAppraisalSource", "appraisalSource"));
+        vehicleReqs.push(FieldRequirement("requiresAppraisedValueUSD", "appraisedValueUSD"));
+        vehicleReqs.push(FieldRequirement("requiresEstimatedValueSource", "estimatedValueSource"));
+        vehicleReqs.push(FieldRequirement("requiresEstimatedMarketValueUSD", "estimatedMarketValueUSD"));
+        vehicleReqs.push(FieldRequirement("requiresCondition", "condition"));
         
         // Commercial Equipment asset requirements
         FieldRequirement[] storage equipmentReqs = assetTypeRequirements[uint256(IDeedNFT.AssetType.CommercialEquipment)];
-        equipmentReqs.push(FieldRequirement("requiresSerialNumber", "serialNumber"));
         equipmentReqs.push(FieldRequirement("requiresManufacturer", "manufacturer"));
         equipmentReqs.push(FieldRequirement("requiresModel", "model"));
+        equipmentReqs.push(FieldRequirement("requiresSerialNumber", "serialNumber"));
         equipmentReqs.push(FieldRequirement("requiresYear", "year"));
+        equipmentReqs.push(FieldRequirement("requiresCategory", "category"));
+        equipmentReqs.push(FieldRequirement("requiresType", "type"));
+        equipmentReqs.push(FieldRequirement("requiresDimensions", "dimensions"));
+        equipmentReqs.push(FieldRequirement("requiresWeight", "weight"));
+        equipmentReqs.push(FieldRequirement("requiresPowerSource", "powerSource"));
+        equipmentReqs.push(FieldRequirement("requiresOperatingHours", "operatingHours"));
+        equipmentReqs.push(FieldRequirement("requiresPurchaseDate", "purchaseDate"));
+        equipmentReqs.push(FieldRequirement("requiresWarrantyExpiration", "warrantyExpiration"));
+        equipmentReqs.push(FieldRequirement("requiresHoldingEntity", "holdingEntity"));
+        equipmentReqs.push(FieldRequirement("requiresLocation", "location"));
+        equipmentReqs.push(FieldRequirement("requiresAppraisalSource", "appraisalSource"));
+        equipmentReqs.push(FieldRequirement("requiresAppraisedValueUSD", "appraisedValueUSD"));
+        equipmentReqs.push(FieldRequirement("requiresEstimatedValueSource", "estimatedValueSource"));
+        equipmentReqs.push(FieldRequirement("requiresEstimatedMarketValueUSD", "estimatedMarketValueUSD"));
+        equipmentReqs.push(FieldRequirement("requiresDepreciationSchedule", "depreciationSchedule"));
         equipmentReqs.push(FieldRequirement("requiresCondition", "condition"));
+        equipmentReqs.push(FieldRequirement("requiresLastServiceDate", "lastServiceDate"));
+        equipmentReqs.push(FieldRequirement("requiresMaintenanceSchedule", "maintenanceSchedule"));
     }
 
     /**

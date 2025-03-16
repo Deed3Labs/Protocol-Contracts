@@ -34,8 +34,21 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable 
     // Image for invalidated assets
     string public invalidatedImageURI;
     
-    // Property details for each token
+    // Base details shared across all asset types
+    struct BaseDetails {
+        // Validation
+        string confidenceScore;
+        
+        // Display details
+        string background_color;
+        string animation_url;
+    }
+
+    // Property details for Land and Estate assets
     struct PropertyDetails {
+        // Base details
+        BaseDetails base;
+        
         // Location details
         string country;
         string state;
@@ -70,6 +83,9 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable 
         string localAppraisalSource;
         string localAppraisedValueUSD;
         
+        // Build details
+        string buildYear;
+        
         // Utilities
         bool has_water;
         bool has_electricity;
@@ -77,17 +93,91 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable 
         bool has_sewer;
         bool has_internet;
         
-        // Display details
-        string background_color;
-        string animation_url;
+        // Map overlay
         string map_overlay;
-        
-        // Validation
-        string confidenceScore;
     }
-    
-    // Token property details
+
+    // Vehicle details
+    struct VehicleDetails {
+        // Base details
+        BaseDetails base;
+        
+        // Vehicle identification
+        string make;
+        string model;
+        string year;
+        string vin;
+        string licensePlate;
+        string registrationState;
+        
+        // Physical details
+        string color;
+        string bodyType;
+        string fuelType;
+        string transmissionType;
+        string mileage;
+        string engineSize;
+        
+        // Ownership details
+        string titleNumber;
+        string titleState;
+        string titleStatus;
+        string registrationExpiration;
+        string holdingEntity;
+        
+        // Value details
+        string appraisalSource;
+        string appraisedValueUSD;
+        string estimatedValueSource;
+        string estimatedMarketValueUSD;
+        
+        // Condition
+        string condition;
+        string lastServiceDate;
+    }
+
+    // Commercial Equipment details
+    struct EquipmentDetails {
+        // Base details
+        BaseDetails base;
+        
+        // Equipment identification
+        string manufacturer;
+        string model;
+        string serialNumber;
+        string year;
+        string category;
+        string type;
+        
+        // Physical details
+        string dimensions;
+        string weight;
+        string powerSource;
+        string operatingHours;
+        
+        // Ownership details
+        string purchaseDate;
+        string warrantyExpiration;
+        string holdingEntity;
+        string location;
+        
+        // Value details
+        string appraisalSource;
+        string appraisedValueUSD;
+        string estimatedValueSource;
+        string estimatedMarketValueUSD;
+        string depreciationSchedule;
+        
+        // Condition
+        string condition;
+        string lastServiceDate;
+        string maintenanceSchedule;
+    }
+
+    // Storage for different asset types
     mapping(uint256 => PropertyDetails) public tokenPropertyDetails;
+    mapping(uint256 => VehicleDetails) public tokenVehicleDetails;
+    mapping(uint256 => EquipmentDetails) public tokenEquipmentDetails;
     
     // Token gallery images
     mapping(uint256 => string[]) public tokenGalleryImages;
@@ -183,10 +273,71 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable 
      * @dev Sets property details for a token
      */
     function setPropertyDetails(
-        uint256 tokenId, 
-        PropertyDetails calldata details
+        uint256 tokenId,
+        string memory country,
+        string memory state,
+        string memory county,
+        string memory city,
+        string memory streetNumber,
+        string memory streetName,
+        string memory parcelNumber,
+        string memory deed_type,
+        string memory recording_date,
+        string memory recording_number,
+        string memory legal_description,
+        string memory holdingEntity,
+        string memory latitude,
+        string memory longitude,
+        string memory acres,
+        string memory parcelUse,
+        string memory zoning,
+        string memory zoningCode,
+        string memory taxValueSource,
+        string memory taxAssessedValueUSD,
+        string memory estimatedValueSource,
+        string memory estimatedMarketValueUSD,
+        string memory localAppraisalSource,
+        string memory localAppraisedValueUSD,
+        string memory buildYear,
+        bool has_water,
+        bool has_electricity,
+        bool has_natural_gas,
+        bool has_sewer,
+        bool has_internet,
+        string memory map_overlay
     ) external onlyOwner {
-        tokenPropertyDetails[tokenId] = details;
+        PropertyDetails storage details = tokenPropertyDetails[tokenId];
+        details.country = country;
+        details.state = state;
+        details.county = county;
+        details.city = city;
+        details.streetNumber = streetNumber;
+        details.streetName = streetName;
+        details.parcelNumber = parcelNumber;
+        details.deed_type = deed_type;
+        details.recording_date = recording_date;
+        details.recording_number = recording_number;
+        details.legal_description = legal_description;
+        details.holdingEntity = holdingEntity;
+        details.latitude = latitude;
+        details.longitude = longitude;
+        details.acres = acres;
+        details.parcelUse = parcelUse;
+        details.zoning = zoning;
+        details.zoningCode = zoningCode;
+        details.taxValueSource = taxValueSource;
+        details.taxAssessedValueUSD = taxAssessedValueUSD;
+        details.estimatedValueSource = estimatedValueSource;
+        details.estimatedMarketValueUSD = estimatedMarketValueUSD;
+        details.localAppraisalSource = localAppraisalSource;
+        details.localAppraisedValueUSD = localAppraisedValueUSD;
+        details.buildYear = buildYear;
+        details.has_water = has_water;
+        details.has_electricity = has_electricity;
+        details.has_natural_gas = has_natural_gas;
+        details.has_sewer = has_sewer;
+        details.has_internet = has_internet;
+        details.map_overlay = map_overlay;
         emit PropertyDetailsUpdated(tokenId);
     }
     
@@ -225,12 +376,33 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable 
     }
     
     /**
-     * @dev Implements ERC-7572 tokenURI function
+     * @dev Generates token URI based on asset type and token data
      * @param tokenContract Address of the token contract
      * @param tokenId ID of the token
-     * @return Token URI with metadata
+     * @return URI for the token metadata
      */
-    function tokenURI(address tokenContract, uint256 tokenId) external view returns (string memory) {
+    function tokenURI(address tokenContract, uint256 tokenId) external view override returns (string memory) {
+        // Get asset type from token
+        bytes memory assetTypeBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("assetType"));
+        require(assetTypeBytes.length > 0, "MetadataRenderer: Asset type not set");
+        IDeedNFT.AssetType assetType = IDeedNFT.AssetType(abi.decode(assetTypeBytes, (uint256)));
+        
+        // Generate metadata based on asset type
+        if (assetType == IDeedNFT.AssetType.Land || assetType == IDeedNFT.AssetType.Estate) {
+            return _generatePropertyMetadata(tokenContract, tokenId, assetType);
+        } else if (assetType == IDeedNFT.AssetType.Vehicle) {
+            return _generateVehicleMetadata(tokenContract, tokenId);
+        } else if (assetType == IDeedNFT.AssetType.CommercialEquipment) {
+            return _generateEquipmentMetadata(tokenContract, tokenId);
+        } else {
+            revert("MetadataRenderer: Unsupported asset type");
+        }
+    }
+    
+    /**
+     * @dev Generates metadata for property assets (Land and Estate)
+     */
+    function _generatePropertyMetadata(address tokenContract, uint256 tokenId, IDeedNFT.AssetType assetType) internal view returns (string memory) {
         // Get token data
         (
             string memory name,
@@ -252,6 +424,96 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable 
             "data:application/json;base64,",
             Base64Upgradeable.encode(bytes(json))
         ));
+    }
+    
+    /**
+     * @dev Generates metadata for vehicle assets
+     */
+    function _generateVehicleMetadata(address tokenContract, uint256 tokenId) internal view returns (string memory) {
+        // Similar to property metadata but with vehicle-specific fields
+        VehicleDetails memory details = tokenVehicleDetails[tokenId];
+        
+        // Get validation status
+        (bool isValidated, address validator) = IDeedNFT(tokenContract).getValidationStatus(tokenId);
+        
+        // Get definition and configuration
+        bytes memory definitionBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("definition"));
+        bytes memory configurationBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("configuration"));
+        
+        string memory definition = definitionBytes.length > 0 ? abi.decode(definitionBytes, (string)) : "";
+        string memory configuration = configurationBytes.length > 0 ? abi.decode(configurationBytes, (string)) : "";
+        
+        // Generate name
+        string memory name = string(abi.encodePacked(
+            details.year, " ", details.make, " ", details.model, " #", tokenId.toString()
+        ));
+        
+        // Generate attributes
+        string memory attributes = _generateVehicleAttributes(tokenId, details, isValidated);
+        
+        // Generate properties
+        string memory properties = _generateVehicleProperties(tokenId, details, configuration);
+        
+        // Generate final JSON
+        string memory json = string(abi.encodePacked(
+            '{',
+            '"name":"', name, '",',
+            '"description":"', definition, '",',
+            '"image":"', isValidated ? _getAssetTypeImage(uint8(IDeedNFT.AssetType.Vehicle)) : invalidatedImageURI, '",',
+            '"external_url":"', baseURI, 'deed/', tokenId.toString(), '",',
+            '"background_color":"', details.base.background_color, '",',
+            details.base.animation_url.length > 0 ? string(abi.encodePacked('"animation_url":"', details.base.animation_url, '",')) : "",
+            '"attributes":[', attributes, '],',
+            '"properties":', properties,
+            '}'
+        ));
+        
+        return string(abi.encodePacked("data:application/json;base64,", Base64Upgradeable.encode(bytes(json))));
+    }
+    
+    /**
+     * @dev Generates metadata for commercial equipment assets
+     */
+    function _generateEquipmentMetadata(address tokenContract, uint256 tokenId) internal view returns (string memory) {
+        // Similar to vehicle metadata but with equipment-specific fields
+        EquipmentDetails memory details = tokenEquipmentDetails[tokenId];
+        
+        // Get validation status
+        (bool isValidated, address validator) = IDeedNFT(tokenContract).getValidationStatus(tokenId);
+        
+        // Get definition and configuration
+        bytes memory definitionBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("definition"));
+        bytes memory configurationBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("configuration"));
+        
+        string memory definition = definitionBytes.length > 0 ? abi.decode(definitionBytes, (string)) : "";
+        string memory configuration = configurationBytes.length > 0 ? abi.decode(configurationBytes, (string)) : "";
+        
+        // Generate name
+        string memory name = string(abi.encodePacked(
+            details.year, " ", details.manufacturer, " ", details.model, " #", tokenId.toString()
+        ));
+        
+        // Generate attributes
+        string memory attributes = _generateEquipmentAttributes(tokenId, details, isValidated);
+        
+        // Generate properties
+        string memory properties = _generateEquipmentProperties(tokenId, details, configuration);
+        
+        // Generate final JSON
+        string memory json = string(abi.encodePacked(
+            '{',
+            '"name":"', name, '",',
+            '"description":"', definition, '",',
+            '"image":"', isValidated ? _getAssetTypeImage(uint8(IDeedNFT.AssetType.CommercialEquipment)) : invalidatedImageURI, '",',
+            '"external_url":"', baseURI, 'deed/', tokenId.toString(), '",',
+            '"background_color":"', details.base.background_color, '",',
+            details.base.animation_url.length > 0 ? string(abi.encodePacked('"animation_url":"', details.base.animation_url, '",')) : "",
+            '"attributes":[', attributes, '],',
+            '"properties":', properties,
+            '}'
+        ));
+        
+        return string(abi.encodePacked("data:application/json;base64,", Base64Upgradeable.encode(bytes(json))));
     }
     
     /**
