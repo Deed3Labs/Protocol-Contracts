@@ -6,6 +6,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/Base64Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "./IERC7572.sol";
 
 /**
  * @dev Interface for DeedNFT contract
@@ -13,6 +14,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 interface IDeedNFT {
     function ownerOf(uint256 tokenId) external view returns (address);
     function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory);
+    function getValidationStatus(uint256 tokenId) external view returns (bool isValidated, address validator);
     enum AssetType { Land, Vehicle, Estate, CommercialEquipment }
 }
 
@@ -20,7 +22,7 @@ interface IDeedNFT {
  * @title MetadataRenderer
  * @dev Renders metadata for NFTs with property details
  */
-contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable, IERC7572 {
     using StringsUpgradeable for uint256;
     using StringsUpgradeable for address;
     using Base64Upgradeable for bytes;
