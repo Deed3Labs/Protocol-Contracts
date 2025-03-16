@@ -45,9 +45,9 @@ interface IValidator {
     function supportsAssetType(uint256 assetTypeId) external view returns (bool);
 
     /**
-     * @dev Validates a specific deed
-     * @param deedId ID of the deed to validate
+     * @dev Validates a specific token
+     * @param tokenId ID of the token to validate
      * @return Boolean indicating validation success
      */
-    function validateDeed(uint256 deedId) external returns (bool);
+    function validateDeed(uint256 tokenId) external returns (bool);
 }

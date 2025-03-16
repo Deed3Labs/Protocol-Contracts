@@ -371,7 +371,7 @@ contract FundManager is
      * @param validatorContract Address of the ValidatorContract associated with the mint.
      * @param token Address of the token being used for payment.
      * @param ipfsTokenURI Token URI for the minted NFT.
-     * @return deedId The ID of the minted deed.
+     * @return tokenId The ID of the minted deed.
      */
     function mintDeedNFT(
         IDeedNFT.AssetType assetType,
@@ -382,7 +382,7 @@ contract FundManager is
         address validatorContract,
         address token,
         string memory ipfsTokenURI
-    ) external nonReentrant returns (uint256 deedId) {
+    ) external nonReentrant returns (uint256 tokenId) {
         require(isWhitelisted[token], "FundManager: Token not whitelisted");
         require(validatorContract != address(0), "FundManager: Invalid ValidatorContract address");
 
@@ -405,9 +405,9 @@ contract FundManager is
     /**
      * @dev Internal function to process the minting of a single deed.
      * @param deedData DeedMintData struct containing data for the deed to mint.
-     * @return deedId The ID of the minted deed.
+     * @return tokenId The ID of the minted deed.
      */
-    function _processMint(DeedMintData memory deedData) internal returns (uint256 deedId) {
+    function _processMint(DeedMintData memory deedData) internal returns (uint256 tokenId) {
         require(isWhitelisted[deedData.token], "FundManager: Token not whitelisted");
         require(deedData.validatorContract != address(0), "FundManager: Invalid ValidatorContract address");
         require(
@@ -450,7 +450,7 @@ contract FundManager is
         require(address(deedNFT) != address(0), "FundManager: DeedNFT not set");
 
         // Mint the deed
-        deedId = IDeedNFT(deedNFT).mintAsset(
+        tokenId = IDeedNFT(deedNFT).mintAsset(
             msg.sender,
             deedData.assetType,
             deedData.ipfsDetailsHash,
@@ -460,29 +460,29 @@ contract FundManager is
         );
 
         emit FundsDeposited(msg.sender, deedData.token, fee, remainingFee, commission, validatorOwner);
-        return deedId;
+        return tokenId;
     }
 
     /**
      * @dev Batch mints multiple DeedNFTs.
      * @param deeds Array of DeedMintData structs containing data for each deed to mint.
-     * @return deedIds Array of minted deed IDs.
+     * @return tokenIds Array of minted deed IDs.
      */
-    function mintBatchDeedNFT(DeedMintData[] memory deeds) external nonReentrant returns (uint256[] memory deedIds) {
+    function mintBatchDeedNFT(DeedMintData[] memory deeds) external nonReentrant returns (uint256[] memory tokenIds) {
         uint256 len = deeds.length;
-        deedIds = new uint256[](len);
+        tokenIds = new uint256[](len);
 
         for (uint256 i = 0; i < len; i++) {
-            deedIds[i] = _mintDeed(deeds[i]);
+            tokenIds[i] = _mintDeed(deeds[i]);
         }
     }
 
     /**
      * @dev Internal function to mint a single deed. Reduces stack usage by handling each mint in isolation.
      * @param deed DeedMintData struct containing data for the deed to mint.
-     * @return deedId The ID of the minted deed.
+     * @return tokenId The ID of the minted deed.
      */
-    function _mintDeed(DeedMintData memory deed) internal returns (uint256 deedId) {
+    function _mintDeed(DeedMintData memory deed) internal returns (uint256 tokenId) {
         require(isWhitelisted[deed.token], "FundManager: Token not whitelisted");
         require(deed.validatorContract != address(0), "FundManager: Invalid ValidatorContract address");
 
@@ -506,7 +506,7 @@ contract FundManager is
         serviceFeesBalance[deed.token] += remainingFee;
 
         // Interact with DeedNFT to mint the deed
-        deedId = IDeedNFT(deedNFT).mintAsset(
+        tokenId = IDeedNFT(deedNFT).mintAsset(
             msg.sender,
             deed.assetType,
             deed.ipfsDetailsHash,
@@ -516,7 +516,7 @@ contract FundManager is
         );
 
         emit FundsDeposited(msg.sender, deed.token, fee, remainingFee, commission, validatorOwner);
-        return deedId;
+        return tokenId;
     }
 
     /**

@@ -419,18 +419,16 @@ contract DeedNFT is
     // Validation functions
 
     /**
-     * @dev Validates or invalidates a deed
-     * @param deedId ID of the deed to update
-     * @param isValid Whether the deed is valid
-     * @param validatorAddress Address of the validator (or address(0) if invalidating)
-     * @notice Only callable by registered validators
+     * @dev Updates the validation status of a token
+     * @param tokenId ID of the token to validate
+     * @param isValid Whether the token is valid
+     * @param validatorAddress Address of the validator
      */
-    function validateDeed(
-        uint256 deedId,
-        bool isValid,
-        address validatorAddress
-    ) external onlyRole(VALIDATOR_ROLE) whenNotPaused {
-        require(_exists(deedId), "DeedNFT: Deed does not exist");
+    function validateDeed(uint256 tokenId, bool isValid, address validatorAddress) 
+        external 
+        onlyRole(VALIDATOR_ROLE) 
+    {
+        require(_exists(tokenId), "DeedNFT: Deed does not exist");
         
         // If marking as valid, ensure validator address is provided and valid
         if (isValid) {
@@ -451,7 +449,7 @@ contract DeedNFT is
             );
             
             // Get operating agreement
-            bytes memory operatingAgreementBytes = _tokenTraits[deedId][keccak256("operatingAgreement")];
+            bytes memory operatingAgreementBytes = _tokenTraits[tokenId][keccak256("operatingAgreement")];
             string memory operatingAgreement = abi.decode(operatingAgreementBytes, (string));
 
             // Check if operating agreement is valid
@@ -463,15 +461,15 @@ contract DeedNFT is
             );
             
             // Update traits
-            _setTraitValue(deedId, keccak256("isValidated"), abi.encode(true));
-            _setTraitValue(deedId, keccak256("validator"), abi.encode(validatorAddress));
+            _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(true));
+            _setTraitValue(tokenId, keccak256("validator"), abi.encode(validatorAddress));
         } else {
             // If invalidating, reset validation status
-            _setTraitValue(deedId, keccak256("isValidated"), abi.encode(false));
-            _setTraitValue(deedId, keccak256("validator"), abi.encode(address(0)));
+            _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(false));
+            _setTraitValue(tokenId, keccak256("validator"), abi.encode(address(0)));
         }
         
-        emit DeedNFTValidatedChanged(deedId, isValid);
+        emit TokenValidated(tokenId, isValid, validatorAddress);
     }
 
     // Metadata functions
@@ -687,20 +685,20 @@ contract DeedNFT is
     }
 
     /**
-     * @dev Returns the validation status of a deed
-     * @param deedId ID of the deed
-     * @return isValidated Whether the deed is validated
-     * @return validator Address of the validator that validated the deed (address(0) if not validated)
+     * @dev Returns the validation status of a token
+     * @param tokenId ID of the token
+     * @return isValidated Whether the token is validated
+     * @return validator Address of the validator that validated the token
      */
-    function getValidationStatus(uint256 deedId) 
+    function getValidationStatus(uint256 tokenId) 
         external 
         view 
         returns (bool isValidated, address validator) 
     {
-        require(_exists(deedId), "DeedNFT: Deed does not exist");
+        require(_exists(tokenId), "DeedNFT: Deed does not exist");
         
-        bytes memory isValidatedBytes = _tokenTraits[deedId][keccak256("isValidated")];
-        bytes memory validatorBytes = _tokenTraits[deedId][keccak256("validator")];
+        bytes memory isValidatedBytes = _tokenTraits[tokenId][keccak256("isValidated")];
+        bytes memory validatorBytes = _tokenTraits[tokenId][keccak256("validator")];
         
         isValidated = isValidatedBytes.length > 0 ? abi.decode(isValidatedBytes, (bool)) : false;
         validator = validatorBytes.length > 0 ? abi.decode(validatorBytes, (address)) : address(0);
