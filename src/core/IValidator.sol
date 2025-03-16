@@ -47,8 +47,7 @@ interface IValidator {
     /**
      * @dev Validates a deed
      * @param tokenId ID of the deed
-     * @param definition JSON string containing the deed definition
      * @return Whether the validation was successful
      */
-    function validateDeed(uint256 tokenId, string memory definition) external returns (bool);
+    function validateDeed(uint256 tokenId) external returns (bool);
 }
