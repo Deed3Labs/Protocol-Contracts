@@ -96,6 +96,7 @@ contract DeedNFT is
     event ContractURIUpdated(string newURI);
     event TraitUpdated(bytes32 indexed traitKey, uint256 indexed tokenId, bytes traitValue);
     event TraitMetadataURIUpdated();
+    event TokenValidated(uint256 indexed tokenId, bool isValid, address validator);
 
     // Storage gap for future upgrades
     uint256[45] private __gap;
