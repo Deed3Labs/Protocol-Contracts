@@ -29,12 +29,12 @@ const config: HardhatUserConfig = {
         enabled: true,
         runs: 200
       },
-      viaIR: true
-    },
-    outputSelection: {
-      "*": {
-        "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "metadata"],
-      },
+      viaIR: true,
+      outputSelection: {
+        "*": {
+          "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "metadata"],
+        },
+      }
     },
   },
   sourcify: {
