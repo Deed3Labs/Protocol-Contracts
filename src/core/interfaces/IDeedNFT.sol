@@ -46,6 +46,13 @@ interface IDeedNFT {
      */
     event ContractURIUpdated(string newURI);
 
+    /**
+     * @dev Emitted when the transfer validator is updated
+     * @param oldValidator The previous validator address
+     * @param newValidator The new validator address
+     */
+    event TransferValidatorUpdated(address oldValidator, address newValidator);
+
     // ============ View Functions ============
     
     /**
@@ -229,4 +236,23 @@ interface IDeedNFT {
      * @return Whether royalties are enforced
      */
     function isRoyaltyEnforced() external view returns (bool);
+
+    /**
+     * @dev Gets the transfer validator address
+     * @return validator The address of the transfer validator
+     */
+    function getTransferValidator() external view returns (address validator);
+
+    /**
+     * @dev Sets the transfer validator address
+     * @param validator The address of the transfer validator
+     */
+    function setTransferValidator(address validator) external;
+
+    /**
+     * @dev Returns the function selector for the transfer validator's validation function
+     * @return functionSignature The function signature
+     * @return isViewFunction Whether the function is a view function
+     */
+    function getTransferValidationFunction() external pure returns (bytes4 functionSignature, bool isViewFunction);
 } 

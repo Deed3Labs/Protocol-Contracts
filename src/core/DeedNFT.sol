@@ -18,7 +18,8 @@ import "./interfaces/IValidatorRegistry.sol";
 import "./interfaces/IERC7572.sol";
 
 // Import ICreatorToken interface for reference
-import "@limitbreak/creator-token-contracts/contracts/interfaces/ICreatorToken.sol";
+import "@limitbreak/creator-token-standards/src/interfaces/ICreatorToken.sol";
+import "@limitbreak/creator-token-standards/src/erc721c/ERC721C.sol";
 
 /**
  * @title DeedNFT
@@ -61,6 +62,7 @@ contract DeedNFT is
     // Mapping to track approved marketplaces
     mapping(address => bool) private _approvedMarketplaces;
     bool private _enforceRoyalties;
+    address private _transferValidator;
 
     // ============ ERC-7496 Trait Storage ============
     /**
@@ -98,6 +100,7 @@ contract DeedNFT is
     event TokenValidated(uint256 indexed tokenId, bool isValid, address validator);
     event MarketplaceApproved(address indexed marketplace, bool approved);
     event RoyaltyEnforcementChanged(bool enforced);
+    event TransferValidatorUpdated(address oldValidator, address newValidator);
 
     // Storage gap for future upgrades
     uint256[45] private __gap;
@@ -829,6 +832,34 @@ contract DeedNFT is
      */
     function _burn(uint256 tokenId) internal virtual override(ERC721Upgradeable, ERC721URIStorageUpgradeable) {
         super._burn(tokenId);
+    }
+
+    /**
+     * @dev Gets the transfer validator address
+     * @return validator The address of the transfer validator
+     */
+    function getTransferValidator() external view returns (address validator) {
+        return _transferValidator;
+    }
+
+    /**
+     * @dev Sets the transfer validator address
+     * @param validator The address of the transfer validator
+     */
+    function setTransferValidator(address validator) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        address oldValidator = _transferValidator;
+        _transferValidator = validator;
+        emit TransferValidatorUpdated(oldValidator, validator);
+    }
+
+    /**
+     * @dev Returns the function selector for the transfer validator's validation function
+     * @return functionSignature The function signature
+     * @return isViewFunction Whether the function is a view function
+     */
+    function getTransferValidationFunction() external pure returns (bytes4 functionSignature, bool isViewFunction) {
+        functionSignature = bytes4(keccak256("validateTransfer(address,address,address,uint256)"));
+        isViewFunction = true;
     }
 }
 
