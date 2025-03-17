@@ -16,16 +16,23 @@ import "./interfaces/IValidator.sol";
 import "./interfaces/IValidatorRegistry.sol";
 import "./interfaces/IERC7572.sol";
 
+// Import ERC721-C
+import "@limitbreak/creator-token-contracts/contracts/erc721c/ERC721CStorage.sol";
+import "@limitbreak/creator-token-contracts/contracts/erc721c/IERC721C.sol";
+import "@openzeppelin/contracts-upgradeable/interfaces/IERC2981Upgradeable.sol";
+
 /**
  * @title DeedNFT
  * @dev An ERC-721 token representing deeds with complex metadata and validator integration.
  *      Enables creation and management of digital deed assets with validation support.
  *      Implements ERC-7496 for dynamic traits and ERC-7572 for metadata rendering.
+ *      Implements ERC721-C for on-chain royalty enforcement.
  *      
  * Security:
  * - Role-based access control for validators and admins
  * - Pausable functionality for emergency stops
  * - Validated asset management
+ * - On-chain royalty enforcement via ERC721-C
  * 
  * Integration:
  * - Works with ValidatorRegistry for validator management
@@ -36,10 +43,11 @@ import "./interfaces/IERC7572.sol";
  */
 contract DeedNFT is
     Initializable,
-    ERC721URIStorageUpgradeable,
+    ERC721CStorage,
     AccessControlUpgradeable,
     PausableUpgradeable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    IERC2981Upgradeable
 {
     using StringsUpgradeable for uint256;
     using AddressUpgradeable for address;
@@ -116,7 +124,6 @@ contract DeedNFT is
         address _validatorRegistry
     ) public initializer {
         __ERC721_init("DeedNFT", "DEED");
-        __ERC721URIStorage_init();
         __AccessControl_init();
         __Pausable_init();
         __UUPSUpgradeable_init();
@@ -131,6 +138,9 @@ contract DeedNFT is
         
         // Initialize trait keys and names
         _initializeTraits();
+        
+        // Set to default security policy for ERC721-C
+        setToDefaultSecurityPolicy();
     }
     
     /**
@@ -672,15 +682,16 @@ contract DeedNFT is
      * @dev See {IERC165-supportsInterface}.
      * @param interfaceId Interface identifier
      * @return True if the interface is supported
-     * @notice Adds support for ERC-7496 (Dynamic Traits) interface
+     * @notice Adds support for ERC-7496 (Dynamic Traits) interface and IERC2981 (Royalties)
      */
-    function supportsInterface(bytes4 interfaceId) 
-        public 
-        view 
-        override(ERC721URIStorageUpgradeable, AccessControlUpgradeable) 
-        returns (bool) 
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC721CStorage, AccessControlUpgradeable)
+        returns (bool)
     {
-        return
+        return 
+            interfaceId == type(IERC2981Upgradeable).interfaceId ||
             interfaceId == 0xaf332f3e || // ERC-7496 (Dynamic Traits)
             super.supportsInterface(interfaceId);
     }
@@ -705,5 +716,40 @@ contract DeedNFT is
         validator = validatorBytes.length > 0 ? abi.decode(validatorBytes, (address)) : address(0);
         
         return (isValidated, validator);
+    }
+
+    /**
+     * @dev Returns the royalty information for a token
+     * @param tokenId ID of the token
+     * @param salePrice Sale price of the token
+     * @return receiver Address that should receive royalties
+     * @return royaltyAmount Amount of royalties to be paid
+     */
+    function royaltyInfo(uint256 tokenId, uint256 salePrice) 
+        external 
+        view 
+        override 
+        returns (address receiver, uint256 royaltyAmount) 
+    {
+        require(_exists(tokenId), "DeedNFT: Royalty query for nonexistent token");
+        
+        // Get the validator for this token
+        bytes memory validatorBytes = _tokenTraits[tokenId][keccak256("validator")];
+        address validatorAddress = validatorBytes.length > 0 
+            ? abi.decode(validatorBytes, (address)) 
+            : defaultValidator;
+        
+        if (validatorAddress == address(0)) {
+            return (address(0), 0);
+        }
+        
+        // Get royalty information from the validator
+        uint96 feePercentage = IValidator(validatorAddress).getRoyaltyFeePercentage(tokenId);
+        address royaltyReceiver = IValidator(validatorAddress).getRoyaltyReceiver();
+        
+        // Calculate royalty amount
+        royaltyAmount = (salePrice * feePercentage) / 10000;
+        
+        return (royaltyReceiver, royaltyAmount);
     }
 }

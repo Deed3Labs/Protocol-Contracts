@@ -249,4 +249,29 @@ interface IValidator is IAccessControlUpgradeable {
      * @return The token URI
      */
     function tokenURI(uint256 tokenId) external view returns (string memory);
+
+    /**
+     * @dev Gets the royalty fee percentage for a token
+     * @param tokenId ID of the token
+     * @return The royalty fee percentage in basis points (100 = 1%)
+     */
+    function getRoyaltyFeePercentage(uint256 tokenId) external view returns (uint96);
+
+    /**
+     * @dev Sets the royalty fee percentage
+     * @param percentage The royalty fee percentage in basis points (100 = 1%)
+     */
+    function setRoyaltyFeePercentage(uint96 percentage) external;
+
+    /**
+     * @dev Gets the royalty receiver address
+     * @return The address that receives royalties
+     */
+    function getRoyaltyReceiver() external view returns (address);
+
+    /**
+     * @dev Sets the royalty receiver address
+     * @param receiver The address that will receive royalties
+     */
+    function setRoyaltyReceiver(address receiver) external;
 }

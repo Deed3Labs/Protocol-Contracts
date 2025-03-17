@@ -117,6 +117,20 @@ interface IDeedNFT {
      */
     function contractURI() external view returns (string memory);
     
+    /**
+     * @dev Returns the royalty information for a token
+     * @param tokenId ID of the token
+     * @param salePrice Sale price of the token
+     * @return receiver Address that should receive royalties
+     * @return royaltyAmount Amount of royalties to be paid
+     */
+    function royaltyInfo(uint256 tokenId, uint256 salePrice) external view returns (address receiver, uint256 royaltyAmount);
+    
+    /**
+     * @dev Sets the security policy for ERC721C
+     */
+    function setToDefaultSecurityPolicy() external;
+    
     // ============ Transfer Functions ============
     
     /**

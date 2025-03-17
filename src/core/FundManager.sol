@@ -22,6 +22,7 @@ import "./interfaces/IFundManager.sol";
  * @title FundManager
  * @dev Contract for managing financial operations related to DeedNFTs.
  *      Handles commission collection and distribution from validator fees.
+ *      Works with DeedNFT that implements ERC721C for on-chain royalty enforcement.
  */
 contract FundManager is
     Initializable,

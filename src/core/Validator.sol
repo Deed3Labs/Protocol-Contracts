@@ -127,6 +127,14 @@ contract Validator is
     /// @dev Storage gap for future upgrades
     uint256[48] private __gap;
 
+    // ============ Royalty Variables ============
+
+    /// @notice Default royalty fee percentage in basis points (100 = 1%)
+    uint96 public royaltyFeePercentage;
+
+    /// @notice Address that receives royalties
+    address public royaltyReceiver;
+
     // ============ Constructor ============
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -161,6 +169,9 @@ contract Validator is
         
         // Initialize field requirements for each asset type
         _initializeFieldRequirements();
+
+        royaltyFeePercentage = 500; // Default 5%
+        royaltyReceiver = msg.sender; // Default to contract deployer
     }
 
     /**
@@ -1048,5 +1059,40 @@ contract Validator is
         // For example, checking if the operating agreement is appropriate for the asset type
         
         return true;
+    }
+
+    /**
+     * @dev Gets the royalty fee percentage for a token
+     * @param tokenId ID of the token (unused in base implementation)
+     * @return The royalty fee percentage in basis points (100 = 1%)
+     */
+    function getRoyaltyFeePercentage(uint256 /* tokenId */) external view override returns (uint96) {
+        return royaltyFeePercentage;
+    }
+
+    /**
+     * @dev Sets the royalty fee percentage
+     * @param percentage The royalty fee percentage in basis points (100 = 1%)
+     */
+    function setRoyaltyFeePercentage(uint96 percentage) external override onlyRole(FEE_MANAGER_ROLE) {
+        require(percentage <= 10000, "Validator: Royalty percentage exceeds 100%");
+        royaltyFeePercentage = percentage;
+    }
+
+    /**
+     * @dev Gets the royalty receiver address
+     * @return The address that receives royalties
+     */
+    function getRoyaltyReceiver() external view override returns (address) {
+        return royaltyReceiver;
+    }
+
+    /**
+     * @dev Sets the royalty receiver address
+     * @param receiver The address that will receive royalties
+     */
+    function setRoyaltyReceiver(address receiver) external override onlyRole(FEE_MANAGER_ROLE) {
+        require(receiver != address(0), "Validator: Invalid royalty receiver address");
+        royaltyReceiver = receiver;
     }
 }
