@@ -1039,16 +1039,12 @@ contract Validator is
 
     /**
      * @dev Validates a deed NFT's operating agreement
-     * @param tokenId ID of the token to validate (unused)
      * @param operatingAgreement URI of the operating agreement
      * @return Whether the operating agreement is valid
      */
     function validateOperatingAgreement(
-        uint256 tokenId,
         string memory operatingAgreement
     ) external view override returns (bool) {
-        // Unused parameter: tokenId
-        
         // Check if the operating agreement is registered
         if (bytes(operatingAgreements[operatingAgreement]).length == 0 && 
             !StringUtils.contains(operatingAgreement, defaultOperatingAgreementUri)) {
@@ -1063,10 +1059,9 @@ contract Validator is
 
     /**
      * @dev Gets the royalty fee percentage for a token
-     * @param tokenId ID of the token (unused in base implementation)
      * @return The royalty fee percentage in basis points (100 = 1%)
      */
-    function getRoyaltyFeePercentage(uint256 /* tokenId */) external view override returns (uint96) {
+    function getRoyaltyFeePercentage(uint256) external view override returns (uint96) {
         return royaltyFeePercentage;
     }
 

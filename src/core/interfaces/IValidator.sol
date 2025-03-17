@@ -109,12 +109,10 @@ interface IValidator is IAccessControlUpgradeable {
 
     /**
      * @dev Validates a deed NFT's operating agreement
-     * @param tokenId ID of the token to validate
      * @param operatingAgreement URI of the operating agreement
      * @return Whether the operating agreement is valid
      */
     function validateOperatingAgreement(
-        uint256 tokenId,
         string memory operatingAgreement
     ) external view returns (bool);
 

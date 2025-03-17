@@ -2,48 +2,34 @@
 pragma solidity ^0.8.29;
 
 // OpenZeppelin Upgradeable Contracts
+import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/interfaces/IERC2981Upgradeable.sol";
 
 // External validator and registry interfaces
 import "./interfaces/IValidator.sol";
 import "./interfaces/IValidatorRegistry.sol";
 import "./interfaces/IERC7572.sol";
 
-// Import ERC721-C
-import "@limitbreak/creator-token-contracts/contracts/erc721c/ERC721CStorage.sol";
-import "@limitbreak/creator-token-contracts/contracts/erc721c/IERC721C.sol";
-import "@openzeppelin/contracts-upgradeable/interfaces/IERC2981Upgradeable.sol";
+// Import ICreatorToken interface for reference
+import "@limitbreak/creator-token-contracts/contracts/interfaces/ICreatorToken.sol";
 
 /**
  * @title DeedNFT
  * @dev An ERC-721 token representing deeds with complex metadata and validator integration.
- *      Enables creation and management of digital deed assets with validation support.
  *      Implements ERC-7496 for dynamic traits and ERC-7572 for metadata rendering.
- *      Implements ERC721-C for on-chain royalty enforcement.
- *      
- * Security:
- * - Role-based access control for validators and admins
- * - Pausable functionality for emergency stops
- * - Validated asset management
- * - On-chain royalty enforcement via ERC721-C
- * 
- * Integration:
- * - Works with ValidatorRegistry for validator management
- * - Supports FundManager for financial operations
- * - Implements UUPSUpgradeable for upgradability
- * - Supports ERC-7496 for standardized trait access
- * - Supports ERC-7572 for flexible metadata rendering
+ *      Implements royalty enforcement inspired by ERC721-C.
  */
 contract DeedNFT is
     Initializable,
-    ERC721CStorage,
+    ERC721Upgradeable,
+    ERC721URIStorageUpgradeable,
     AccessControlUpgradeable,
     PausableUpgradeable,
     UUPSUpgradeable,
@@ -70,6 +56,11 @@ contract DeedNFT is
     address private validatorRegistry;
     string private _contractURI;
     address public metadataRenderer;
+
+    // ============ ERC721-C Security Policy ============
+    // Mapping to track approved marketplaces
+    mapping(address => bool) private _approvedMarketplaces;
+    bool private _enforceRoyalties;
 
     // ============ ERC-7496 Trait Storage ============
     /**
@@ -105,6 +96,8 @@ contract DeedNFT is
     event TraitUpdated(bytes32 indexed traitKey, uint256 indexed tokenId, bytes traitValue);
     event TraitMetadataURIUpdated();
     event TokenValidated(uint256 indexed tokenId, bool isValid, address validator);
+    event MarketplaceApproved(address indexed marketplace, bool approved);
+    event RoyaltyEnforcementChanged(bool enforced);
 
     // Storage gap for future upgrades
     uint256[45] private __gap;
@@ -124,6 +117,7 @@ contract DeedNFT is
         address _validatorRegistry
     ) public initializer {
         __ERC721_init("DeedNFT", "DEED");
+        __ERC721URIStorage_init();
         __AccessControl_init();
         __Pausable_init();
         __UUPSUpgradeable_init();
@@ -139,7 +133,7 @@ contract DeedNFT is
         // Initialize trait keys and names
         _initializeTraits();
         
-        // Set to default security policy for ERC721-C
+        // Set default security policy
         setToDefaultSecurityPolicy();
     }
     
@@ -656,42 +650,50 @@ contract DeedNFT is
     }
     
     /**
-     * @dev Overrides the tokenURI function to use the metadata renderer if available
-     * @param tokenId ID of the token
-     * @return URI for the token metadata
-     * @notice Implements ERC-7572 by delegating to the metadata renderer if set
+     * @dev Sets a specific token URI for a given token ID.
+     * @param tokenId uint256 ID of the token to set its URI
+     * @param _tokenURI string URI to assign
      */
-    function tokenURI(uint256 tokenId) public view override(ERC721URIStorageUpgradeable) returns (string memory) {
-        require(_exists(tokenId), "DeedNFT: URI query for nonexistent token");
-        
+    function _setTokenURI(uint256 tokenId, string memory _tokenURI) internal virtual override {
+        require(_exists(tokenId), "ERC721URIStorage: URI set of nonexistent token");
+        super._setTokenURI(tokenId, _tokenURI);
+    }
+
+    /**
+     * @dev See {IERC721Metadata-tokenURI}.
+     */
+    function tokenURI(uint256 tokenId) 
+        public 
+        view 
+        override(ERC721Upgradeable, ERC721URIStorageUpgradeable) 
+        returns (string memory) 
+    {
         // If we have a metadata renderer, use it
         if (metadataRenderer != address(0)) {
             try IERC7572(metadataRenderer).tokenURI(address(this), tokenId) returns (string memory renderedURI) {
                 return renderedURI;
             } catch {
                 // Fall back to standard URI if renderer fails
-                return super.tokenURI(tokenId);
             }
         }
         
-        // Otherwise use the standard URI
-        return super.tokenURI(tokenId);
+        return ERC721URIStorageUpgradeable.tokenURI(tokenId);
     }
-    
+
     /**
      * @dev See {IERC165-supportsInterface}.
      * @param interfaceId Interface identifier
      * @return True if the interface is supported
-     * @notice Adds support for ERC-7496 (Dynamic Traits) interface and IERC2981 (Royalties)
      */
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(ERC721CStorage, AccessControlUpgradeable)
+        override(ERC721Upgradeable, ERC721URIStorageUpgradeable, AccessControlUpgradeable, IERC165Upgradeable)
         returns (bool)
     {
         return 
             interfaceId == type(IERC2981Upgradeable).interfaceId ||
+            interfaceId == type(ICreatorToken).interfaceId ||
             interfaceId == 0xaf332f3e || // ERC-7496 (Dynamic Traits)
             super.supportsInterface(interfaceId);
     }
@@ -752,4 +754,81 @@ contract DeedNFT is
         
         return (royaltyReceiver, royaltyAmount);
     }
+
+    /**
+     * @dev Sets the contract to the default security policy for royalty enforcement
+     */
+    function setToDefaultSecurityPolicy() public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _enforceRoyalties = true;
+        emit RoyaltyEnforcementChanged(true);
+    }
+
+    /**
+     * @dev Approves a marketplace for trading
+     * @param marketplace Address of the marketplace
+     * @param approved Whether the marketplace is approved
+     */
+    function setApprovedMarketplace(address marketplace, bool approved) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _approvedMarketplaces[marketplace] = approved;
+        emit MarketplaceApproved(marketplace, approved);
+    }
+
+    /**
+     * @dev Checks if a marketplace is approved
+     * @param marketplace Address of the marketplace
+     * @return Whether the marketplace is approved
+     */
+    function isApprovedMarketplace(address marketplace) public view returns (bool) {
+        return _approvedMarketplaces[marketplace];
+    }
+
+    /**
+     * @dev Sets whether royalties are enforced
+     * @param enforced Whether royalties are enforced
+     */
+    function setRoyaltyEnforcement(bool enforced) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _enforceRoyalties = enforced;
+        emit RoyaltyEnforcementChanged(enforced);
+    }
+
+    /**
+     * @dev Checks if royalties are enforced
+     * @return Whether royalties are enforced
+     */
+    function isRoyaltyEnforced() public view returns (bool) {
+        return _enforceRoyalties;
+    }
+
+    /**
+     * @dev Override for approval to enforce royalties
+     * @param to Address to approve
+     * @param tokenId ID of the token to approve
+     */
+    function approve(address to, uint256 tokenId) public override(ERC721Upgradeable, IERC721Upgradeable) {
+        if (_enforceRoyalties && !isApprovedMarketplace(to)) {
+            revert("DeedNFT: Marketplace not approved for royalty enforcement");
+        }
+        super.approve(to, tokenId);
+    }
+
+    /**
+     * @dev Override for setApprovalForAll to enforce royalties
+     * @param operator Address to approve
+     * @param approved Whether the operator is approved
+     */
+    function setApprovalForAll(address operator, bool approved) public override(ERC721Upgradeable, IERC721Upgradeable) {
+        if (_enforceRoyalties && approved && !isApprovedMarketplace(operator)) {
+            revert("DeedNFT: Marketplace not approved for royalty enforcement");
+        }
+        super.setApprovalForAll(operator, approved);
+    }
+
+    /**
+     * @dev Burns a token
+     * @param tokenId ID of the token to burn
+     */
+    function _burn(uint256 tokenId) internal virtual override(ERC721Upgradeable, ERC721URIStorageUpgradeable) {
+        super._burn(tokenId);
+    }
 }
+

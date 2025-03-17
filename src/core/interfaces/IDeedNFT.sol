@@ -203,4 +203,30 @@ interface IDeedNFT {
      * @return Boolean indicating if the account has the role
      */
     function hasRole(bytes32 role, address account) external view returns (bool);
+
+    /**
+     * @dev Approves a marketplace for trading
+     * @param marketplace Address of the marketplace
+     * @param approved Whether the marketplace is approved
+     */
+    function setApprovedMarketplace(address marketplace, bool approved) external;
+
+    /**
+     * @dev Checks if a marketplace is approved
+     * @param marketplace Address of the marketplace
+     * @return Whether the marketplace is approved
+     */
+    function isApprovedMarketplace(address marketplace) external view returns (bool);
+
+    /**
+     * @dev Sets whether royalties are enforced
+     * @param enforced Whether royalties are enforced
+     */
+    function setRoyaltyEnforcement(bool enforced) external;
+
+    /**
+     * @dev Checks if royalties are enforced
+     * @return Whether royalties are enforced
+     */
+    function isRoyaltyEnforced() external view returns (bool);
 } 
