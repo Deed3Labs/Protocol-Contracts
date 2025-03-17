@@ -10,6 +10,7 @@ import "@nomicfoundation/hardhat-verify";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@typechain/hardhat";
 import "hardhat-gas-reporter";
+import "@nomicfoundation/hardhat-ethers";
 
 // If not set, it uses ours Alchemy's default API key.
 // You can get your own at https://dashboard.alchemyapi.io
@@ -134,7 +135,7 @@ const config: HardhatUserConfig = {
   },
   typechain: {
     outDir: "typechain",
-    target: "ethers-v5",
+    target: "ethers-v6",
   },
 };
 

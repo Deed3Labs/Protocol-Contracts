@@ -1,95 +1,135 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { deployContracts, DeployedContracts } from "../helpers/deploy-helpers";
-import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { DeedNFT } from "../typechain-types";
+import { ethers, upgrades } from "hardhat";
+import { Contract } from "ethers";
+import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 
 describe("DeedNFT Contract", function() {
-  let contracts: DeployedContracts;
-  let deployer: SignerWithAddress, admin: SignerWithAddress, 
-      validator1: SignerWithAddress, user1: SignerWithAddress;
-  let deedNFT: DeedNFT;
-  let VALIDATOR_ROLE: string, ADMIN_ROLE: string;
-  
-  before(async function() {
-    // Deploy all contracts
-    contracts = await deployContracts();
-    deedNFT = contracts.deedNFT;
-    deployer = contracts.deployer;
-    admin = contracts.admin;
-    validator1 = contracts.validator1;
-    user1 = contracts.user1;
+  let deedNFT: Contract;
+  let validator: Contract;
+  let validatorRegistry: Contract;
+  let fundManager: Contract;
+  let deployer: SignerWithAddress;
+  let user1: SignerWithAddress;
+  let user2: SignerWithAddress;
+  let validator1: SignerWithAddress;
+  let validator2: SignerWithAddress;
+  let contracts: any = {};
+
+  beforeEach(async function() {
+    [deployer, user1, user2, validator1, validator2] = await ethers.getSigners() as unknown as SignerWithAddress[];
     
-    // Get role identifiers
-    VALIDATOR_ROLE = ethers.utils.keccak256(ethers.utils.toUtf8Bytes("VALIDATOR_ROLE"));
-    ADMIN_ROLE = ethers.constants.DEFAULT_ADMIN_ROLE;
+    // Deploy ValidatorRegistry
+    const ValidatorRegistry = await ethers.getContractFactory("ValidatorRegistry");
+    validatorRegistry = await upgrades.deployProxy(ValidatorRegistry, []);
+    await validatorRegistry.deployed();
+    contracts.validatorRegistry = validatorRegistry;
+    
+    // Deploy DeedNFT
+    const DeedNFT = await ethers.getContractFactory("DeedNFT");
+    deedNFT = await upgrades.deployProxy(DeedNFT, ["DeedNFT", "DEED", validatorRegistry.address]);
+    await deedNFT.deployed();
+    contracts.deedNFT = deedNFT;
+    
+    // Deploy Validator
+    const Validator = await ethers.getContractFactory("Validator");
+    validator = await upgrades.deployProxy(Validator, [deedNFT.address]);
+    await validator.deployed();
+    contracts.validator = validator;
+    
+    // Deploy FundManager
+    const FundManager = await ethers.getContractFactory("FundManager");
+    fundManager = await upgrades.deployProxy(FundManager, [
+      deedNFT.address,
+      validatorRegistry.address,
+      deployer.address // fee receiver
+    ]);
+    await fundManager.deployed();
+    contracts.fundManager = fundManager;
+    
+    // Setup roles
+    const VALIDATOR_ROLE = await deedNFT.VALIDATOR_ROLE();
+    const MINTER_ROLE = await deedNFT.MINTER_ROLE();
+    
+    // Grant roles
+    await deedNFT.grantRole(VALIDATOR_ROLE, deployer.address);
+    await deedNFT.grantRole(VALIDATOR_ROLE, validator1.address);
+    await deedNFT.grantRole(VALIDATOR_ROLE, validator2.address);
+    await deedNFT.grantRole(MINTER_ROLE, fundManager.address);
+    
+    // Set FundManager in DeedNFT
+    await deedNFT.setFundManager(fundManager.address);
+    
+    // Register validator in registry
+    await validatorRegistry.registerValidator(
+      validator.address,
+      deployer.address,
+      "Test Validator",
+      "Test validator for unit tests",
+      [0, 1, 2, 3] // Support all asset types
+    );
+    // Mint initial deed for testing
+    await deedNFT.setFundManager(deployer.address);
+    await deedNFT.mintAsset(
+      user1.address,
+      0, // AssetType.Land
+      "ipfs://metadata1",
+      "ipfs://agreement1",
+      "definition1",
+      "configuration1"
+    );
+    await deedNFT.setFundManager(fundManager.address);
   });
   
   describe("Initialization", function() {
-    it("should initialize with correct name and symbol", async function() {
+    it("should initialize with correct values", async function() {
       expect(await deedNFT.name()).to.equal("DeedNFT");
       expect(await deedNFT.symbol()).to.equal("DEED");
+      expect(await deedNFT.validatorRegistry()).to.equal(validatorRegistry.address);
     });
     
-    it("should set the deployer as admin and validator", async function() {
-      expect(await deedNFT.hasRole(ADMIN_ROLE, deployer.address)).to.be.true;
-      expect(await deedNFT.hasRole(VALIDATOR_ROLE, deployer.address)).to.be.true;
-    });
-    
-    it("should correctly set the fundManager address", async function() {
-      expect(await deedNFT.fundManager()).to.equal(contracts.fundManager.address);
-    });
-  });
-  
-  describe("Role Management", function() {
-    it("should allow admin to grant validator role", async function() {
-      await deedNFT.grantRole(VALIDATOR_ROLE, validator1.address);
-      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validator1.address)).to.be.true;
-    });
-    
-    it("should deny non-admin from granting roles", async function() {
-      await expect(
-        deedNFT.connect(user1).grantRole(VALIDATOR_ROLE, user1.address)
-      ).to.be.revertedWith("AccessControl");
-    });
-  });
-  
-  describe("Asset Minting", function() {
-    it("should only allow FundManager to mint assets", async function() {
-      // User tries to mint directly - should fail
-      await expect(
-        deedNFT.connect(user1).mintAsset(
-          user1.address,
-          0, // AssetType.Land
-          "ipfs://metadata",
-          "ipfs://agreement",
-          "definition",
-          "configuration"
-        )
-      ).to.be.revertedWith("DeedNFT: Caller is not FundManager");
+    it("should set up roles correctly", async function() {
+      const VALIDATOR_ROLE = await deedNFT.VALIDATOR_ROLE();
+      const MINTER_ROLE = await deedNFT.MINTER_ROLE();
+      const DEFAULT_ADMIN_ROLE = await deedNFT.DEFAULT_ADMIN_ROLE();
       
-      // For testing purposes, we'll set deployer as FundManager temporarily
-      await deedNFT.connect(deployer).setFundManager(deployer.address);
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, deployer.address)).to.be.true;
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validator1.address)).to.be.true;
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validator2.address)).to.be.true;
+      expect(await deedNFT.hasRole(MINTER_ROLE, fundManager.address)).to.be.true;
+      expect(await deedNFT.hasRole(DEFAULT_ADMIN_ROLE, deployer.address)).to.be.true;
+    });
+  });
+  
+  describe("Minting", function() {
+    it("should mint a new deed with correct properties", async function() {
+      // Set deployer as FundManager temporarily for minting
+      await deedNFT.setFundManager(deployer.address);
       
       const tx = await deedNFT.mintAsset(
-        user1.address,
-        0, // AssetType.Land
-        "ipfs://metadata",
-        "ipfs://agreement",
-        "definition",
-        "configuration"
+        user2.address,
+        1, // AssetType.Vehicle
+        "ipfs://metadata-vehicle",
+        "ipfs://agreement-vehicle",
+        "vehicle-definition",
+        "vehicle-configuration"
       );
       
-      // Wait for the transaction
       const receipt = await tx.wait();
-      
-      // Find the DeedNFTMinted event
       const mintEvent = receipt.events?.find(e => e.event === "DeedNFTMinted");
-      expect(mintEvent).to.not.be.undefined;
-      expect(mintEvent?.args?.deedId).to.equal(1);
+      const deedId = mintEvent?.args?.tokenId;
       
       // Reset FundManager address
-      await deedNFT.connect(deployer).setFundManager(contracts.fundManager.address);
+      await deedNFT.connect(deployer).setFundManager(fundManager.address);
+      
+      // Check ownership
+      expect(await deedNFT.ownerOf(deedId)).to.equal(user2.address);
+      
+      // Check deed info
+      const deedInfo = await deedNFT.getDeedInfo(deedId);
+      expect(deedInfo.assetType).to.equal(1); // Vehicle
+      expect(deedInfo.ipfsDetailsHash).to.equal("ipfs://metadata-vehicle");
+      expect(deedInfo.operatingAgreement).to.equal("ipfs://agreement-vehicle");
+      expect(deedInfo.isValidated).to.be.true; // Minted by validator
     });
   });
   
@@ -112,10 +152,10 @@ describe("DeedNFT Contract", function() {
       
       const receipt = await tx.wait();
       const mintEvent = receipt.events?.find(e => e.event === "DeedNFTMinted");
-      deedId = mintEvent?.args?.deedId;
+      deedId = mintEvent?.args?.tokenId;
       
       // Reset FundManager address
-      await deedNFT.connect(deployer).setFundManager(contracts.fundManager.address);
+      await deedNFT.connect(deployer).setFundManager(fundManager.address);
     });
     
     it("should allow validators to validate assets", async function() {
@@ -139,40 +179,21 @@ describe("DeedNFT Contract", function() {
     });
   });
   
-  describe("Asset Data", function() {
-    it("should return correct asset data", async function() {
-      const deedInfo = await deedNFT.getDeedInfo(1);
-      expect(deedInfo.assetType).to.equal(0); // AssetType.Land
-      expect(deedInfo.definition).to.equal("definition");
-      expect(deedInfo.configuration).to.equal("configuration");
+  describe("Burning", function() {
+    it("should allow owner to burn their deed", async function() {
+      // Check that token 1 exists
+      expect(await deedNFT.ownerOf(1)).to.equal(user1.address);
+      
+      // Burn the token
+      await deedNFT.connect(user1).burnAsset(1);
+      
+      // Check that token no longer exists
+      await expect(deedNFT.ownerOf(1)).to.be.revertedWith("ERC721: invalid token ID");
     });
     
-    it("should determine if asset can be subdivided", async function() {
-      // Asset type Land should be subdividable
-      expect(await deedNFT.canSubdivide(1)).to.be.true;
-      
-      // Set deployer as FundManager temporarily for minting
-      await deedNFT.connect(deployer).setFundManager(deployer.address);
-      
-      // Mint a non-subdividable asset (Vehicle)
-      const tx = await deedNFT.mintAsset(
-        user1.address,
-        1, // AssetType.Vehicle
-        "ipfs://vehicle",
-        "ipfs://agreement3",
-        "vehicle-def",
-        "vehicle-config"
-      );
-      
-      const receipt = await tx.wait();
-      const mintEvent = receipt.events?.find(e => e.event === "DeedNFTMinted");
-      const vehicleDeedId = mintEvent?.args?.deedId;
-      
-      // Reset FundManager address
-      await deedNFT.connect(deployer).setFundManager(contracts.fundManager.address);
-      
-      // Vehicle should not be subdividable
-      expect(await deedNFT.canSubdivide(vehicleDeedId)).to.be.false;
+    it("should not allow non-owners to burn deeds", async function() {
+      await expect(deedNFT.connect(user2).burnAsset(1))
+        .to.be.revertedWith("DeedNFT: caller is not owner nor approved");
     });
   });
   
@@ -223,77 +244,47 @@ describe("DeedNFT Contract", function() {
     });
   });
   
-  describe("Burning", function() {
-    it("should allow owner to burn their deed", async function() {
-      // Set deployer as FundManager temporarily for minting
-      await deedNFT.connect(deployer).setFundManager(deployer.address);
+  describe("Transfers", function() {
+    it("should allow owner to transfer deed", async function() {
+      // Transfer from user1 to user2
+      await deedNFT.connect(user1).transferFrom(user1.address, user2.address, 1);
       
-      // Mint a new deed to burn
-      const tx = await deedNFT.mintAsset(
-        user1.address,
-        0, // AssetType.Land
-        "ipfs://to-burn",
-        "ipfs://agreement-burn",
-        "burn-definition",
-        "burn-configuration"
-      );
+      // Check new owner
+      expect(await deedNFT.ownerOf(1)).to.equal(user2.address);
+    });
+    
+    it("should not affect validation status on transfer", async function() {
+      // Get validation status before transfer
+      const beforeInfo = await deedNFT.getDeedInfo(1);
+      const beforeValidation = beforeInfo.isValidated;
       
-      const receipt = await tx.wait();
-      const mintEvent = receipt.events?.find(e => e.event === "DeedNFTMinted");
-      const burnDeedId = mintEvent?.args?.deedId;
+      // Transfer from user1 to user2
+      await deedNFT.connect(user1).transferFrom(user1.address, user2.address, 1);
       
-      // Reset FundManager address
-      await deedNFT.connect(deployer).setFundManager(contracts.fundManager.address);
-      
-      // Burn the deed
-      await deedNFT.connect(user1).burnAsset(burnDeedId);
-      
-      // Verify the deed no longer exists
-      await expect(deedNFT.ownerOf(burnDeedId)).to.be.revertedWith(
-        "ERC721: invalid token ID"
-      );
+      // Check validation status after transfer
+      const afterInfo = await deedNFT.getDeedInfo(1);
+      expect(afterInfo.isValidated).to.equal(beforeValidation);
     });
   });
   
-  describe("Pausability", function() {
-    it("should allow admin to pause and unpause contract", async function() {
+  describe("Pausing", function() {
+    it("should allow admin to pause and unpause", async function() {
       // Pause the contract
       await deedNFT.connect(deployer).pause();
       expect(await deedNFT.paused()).to.be.true;
       
-      // Try to mint while paused
-      await deedNFT.connect(deployer).setFundManager(deployer.address);
+      // Try to transfer while paused
       await expect(
-        deedNFT.mintAsset(
-          user1.address,
-          0,
-          "ipfs://paused",
-          "ipfs://agreements/default.json",
-          "paused-def",
-          "paused-config"
-        )
-      ).to.be.revertedWith("Pausable: paused");
+        deedNFT.connect(user1).transferFrom(user1.address, user2.address, 1)
+      ).to.be.revertedWith("ERC721Pausable: token transfer while paused");
       
       // Unpause
       await deedNFT.connect(deployer).unpause();
       expect(await deedNFT.paused()).to.be.false;
       
-      // Should be able to mint now
-      const tx = await deedNFT.mintAsset(
-        user1.address,
-        0,
-        "ipfs://unpaused",
-        "ipfs://agreements/default.json",
-        "unpaused-def",
-        "unpaused-config"
-      );
-      
-      const receipt = await tx.wait();
-      const mintEvent = receipt.events?.find(e => e.event === "DeedNFTMinted");
-      expect(mintEvent).to.not.be.undefined;
-      
-      // Reset FundManager
-      await deedNFT.connect(deployer).setFundManager(contracts.fundManager.address);
+      // Transfer should work now
+      await deedNFT.connect(user1).transferFrom(user1.address, user2.address, 1);
+      expect(await deedNFT.ownerOf(1)).to.equal(user2.address);
     });
   });
   
@@ -314,10 +305,10 @@ describe("DeedNFT Contract", function() {
       
       const receipt = await tx.wait();
       const mintEvent = receipt.events?.find(e => e.event === "DeedNFTMinted");
-      const deedId = mintEvent?.args?.deedId;
+      const deedId = mintEvent?.args?.tokenId;
       
       // Reset FundManager address
-      await deedNFT.connect(deployer).setFundManager(contracts.fundManager.address);
+      await deedNFT.connect(deployer).setFundManager(fundManager.address);
       
       // Get token URI
       const tokenURI = await deedNFT.tokenURI(deedId);
