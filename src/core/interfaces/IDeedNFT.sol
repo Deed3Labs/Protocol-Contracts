@@ -156,25 +156,6 @@ interface IDeedNFT {
         address validatorAddress
     ) external returns (uint256);
     
-    /**
-     * @dev Mints a new deed asset with operating agreement
-     * @param owner Address that will own the new deed
-     * @param assetType Type of asset being minted
-     * @param ipfsDetailsHash IPFS hash containing detailed metadata
-     * @param operatingAgreement Operating agreement URI
-     * @param definition Definition of the deed
-     * @param configuration Configuration of the deed
-     * @return The ID of the minted deed
-     */
-    function mintAsset(
-        address owner,
-        AssetType assetType,
-        string memory ipfsDetailsHash,
-        string memory operatingAgreement,
-        string memory definition,
-        string memory configuration
-    ) external returns (uint256);
-    
     // ============ Burning Functions ============
     
     /**

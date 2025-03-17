@@ -16,7 +16,6 @@ interface IFundManager {
     struct DeedMintData {
         IDeedNFT.AssetType assetType;
         string ipfsDetailsHash;
-        string operatingAgreement;
         string definition;
         string configuration;
         address validatorContract;
