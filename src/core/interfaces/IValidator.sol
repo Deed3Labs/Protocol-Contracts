@@ -5,128 +5,248 @@ import "@openzeppelin/contracts-upgradeable/access/IAccessControlUpgradeable.sol
 
 /**
  * @title IValidator
- * @dev Interface for Validator contracts used with DeedNFT.
- *      Defines required functionality for deed validation and metadata management.
+ * @dev Interface for the Validator contract.
+ *      Defines required functionality for asset validation, criteria management,
+ *      and fee handling.
  *      
  * Integration:
  * - Used by DeedNFT for asset validation
- * - Implemented by Validator contracts
- * - Supports metadata and operating agreement management
+ * - Used by FundManager for service fee retrieval
+ * - Supports operating agreement management
  */
 interface IValidator is IAccessControlUpgradeable {
     // ============ Events ============
-    
+
     /**
-     * @dev Emitted when a token is whitelisted or removed
-     * @param token Address of the token
-     * @param status New whitelist status
+     * @dev Emitted when a deed is validated
+     * @param tokenId ID of the validated token
+     * @param isValid Whether the token is valid
      */
-    event TokenWhitelistUpdated(address indexed token, bool status);
-    
+    event DeedValidated(uint256 indexed tokenId, bool isValid);
+
     /**
-     * @dev Emitted when service fee is updated
+     * @dev Emitted when a validation error occurs
+     * @param tokenId ID of the token with validation error
+     * @param errorMessage Description of the error
+     */
+    event ValidationError(uint256 indexed tokenId, string errorMessage);
+
+    /**
+     * @dev Emitted when a field requirement is added
+     * @param assetTypeId ID of the asset type
+     * @param criteriaField Name of the criteria field
+     * @param definitionField Name of the definition field
+     */
+    event FieldRequirementAdded(uint256 indexed assetTypeId, string criteriaField, string definitionField);
+
+    /**
+     * @dev Emitted when field requirements are cleared
+     * @param assetTypeId ID of the asset type
+     */
+    event FieldRequirementsCleared(uint256 indexed assetTypeId);
+
+    /**
+     * @dev Emitted when validation criteria is updated
+     * @param assetTypeId ID of the asset type
+     * @param criteria New validation criteria
+     */
+    event ValidationCriteriaUpdated(uint256 indexed assetTypeId, string criteria);
+
+    /**
+     * @dev Emitted when the default operating agreement is updated
+     * @param uri New operating agreement URI
+     */
+    event DefaultOperatingAgreementUpdated(string uri);
+
+    /**
+     * @dev Emitted when an operating agreement is registered
+     * @param uri Operating agreement URI
+     * @param name Operating agreement name
+     */
+    event OperatingAgreementRegistered(string uri, string name);
+
+    /**
+     * @dev Emitted when a service fee is updated
      * @param token Address of the token
      * @param fee New fee amount
      */
     event ServiceFeeUpdated(address indexed token, uint256 fee);
-    
-    /**
-     * @dev Emitted when the FundManager address is updated
-     * @param fundManager New FundManager address
-     */
-    event FundManagerUpdated(address indexed fundManager);
-    
-    /**
-     * @dev Emitted when service fees are withdrawn
-     * @param recipient Address receiving the fees
-     * @param token Token being withdrawn
-     * @param amount Amount withdrawn
-     */
-    event ServiceFeesWithdrawn(address indexed recipient, address indexed token, uint256 amount);
-    
-    // ============ View Functions ============
 
     /**
-     * @dev Returns the token URI for a given token ID
-     * @param tokenId ID of the token to query
-     * @return URI string containing token metadata
+     * @dev Emitted when a token is whitelisted or removed from whitelist
+     * @param token Address of the token
+     * @param status New whitelist status
      */
-    function tokenURI(uint256 tokenId) external view returns (string memory);
+    event TokenWhitelistStatusUpdated(address indexed token, bool status);
 
     /**
-     * @dev Returns the default operating agreement URI
-     * @return URI string for the default operating agreement
+     * @dev Emitted when the DeedNFT contract is updated
+     * @param newDeedNFT The new DeedNFT contract address
      */
-    function defaultOperatingAgreement() external view returns (string memory);
+    event DeedNFTUpdated(address indexed newDeedNFT);
 
     /**
-     * @dev Returns the human-readable name for an operating agreement
-     * @param uri_ URI of the operating agreement to query
-     * @return Name string associated with the operating agreement
+     * @dev Emitted when the primary DeedNFT is updated
+     * @param deedNFTAddress Address of the new primary DeedNFT contract
      */
-    function operatingAgreementName(string memory uri_)
-        external
-        view
-        returns (string memory);
+    event PrimaryDeedNFTUpdated(address indexed deedNFTAddress);
 
     /**
-     * @dev Checks if the validator supports a specific asset type
-     * @param assetTypeId ID of the asset type to check
-     * @return Boolean indicating support status
+     * @dev Emitted when a compatible DeedNFT is added or removed
+     * @param deedNFTAddress Address of the DeedNFT contract
+     * @param isCompatible Whether the contract is compatible
      */
-    function supportsAssetType(uint256 assetTypeId) external view returns (bool);
+    event CompatibleDeedNFTUpdated(address indexed deedNFTAddress, bool isCompatible);
+
+    // ============ Validation Functions ============
 
     /**
-     * @dev Validates a deed
-     * @param tokenId ID of the deed
+     * @dev Validates a deed NFT
+     * @param tokenId ID of the token to validate
      * @return Whether the validation was successful
      */
     function validateDeed(uint256 tokenId) external returns (bool);
 
     /**
-     * @dev Checks if a token is whitelisted by the validator.
-     * @param token Address of the token.
-     * @return Boolean indicating if the token is whitelisted.
+     * @dev Validates a deed NFT's operating agreement
+     * @param tokenId ID of the token to validate
+     * @param operatingAgreement URI of the operating agreement
+     * @return Whether the operating agreement is valid
      */
-    function isTokenWhitelisted(address token) external view returns (bool);
+    function validateOperatingAgreement(
+        uint256 tokenId,
+        string memory operatingAgreement
+    ) external view returns (bool);
 
     /**
-     * @dev Retrieves the service fee for a specific token.
-     * @param token Address of the token.
-     * @return fee The service fee amount for the token.
+     * @dev Checks if an asset type is supported by the validator
+     * @param assetTypeId ID of the asset type
+     * @return Whether the asset type is supported
+     */
+    function supportsAssetType(uint256 assetTypeId) external view returns (bool);
+
+    // ============ Operating Agreement Functions ============
+
+    /**
+     * @dev Returns the default operating agreement URI
+     * @return The default operating agreement URI
+     */
+    function defaultOperatingAgreement() external view returns (string memory);
+
+    /**
+     * @dev Returns the name of an operating agreement
+     * @param uri URI of the operating agreement
+     * @return Name of the operating agreement
+     */
+    function operatingAgreementName(string memory uri) external view returns (string memory);
+
+    /**
+     * @dev Registers an operating agreement
+     * @param uri URI of the operating agreement
+     * @param name Name of the operating agreement
+     */
+    function registerOperatingAgreement(string memory uri, string memory name) external;
+
+    // ============ Service Fee Functions ============
+
+    /**
+     * @dev Gets the service fee for a token
+     * @param token Address of the token
+     * @return The service fee amount
      */
     function getServiceFee(address token) external view returns (uint256);
 
-    // ============ Functions ============
-    
     /**
      * @dev Sets the service fee for a token
      * @param token Address of the token
-     * @param _serviceFee New service fee amount
+     * @param fee Service fee amount
      */
-    function setServiceFee(address token, uint256 _serviceFee) external;
-    
+    function setServiceFee(address token, uint256 fee) external;
+
     /**
      * @dev Adds a token to the whitelist
-     * @param token Address of the token
+     * @param token Address of the token to whitelist
      */
     function addWhitelistedToken(address token) external;
-    
+
     /**
      * @dev Removes a token from the whitelist
-     * @param token Address of the token
+     * @param token Address of the token to remove
      */
     function removeWhitelistedToken(address token) external;
-    
+
     /**
-     * @dev Sets the FundManager address
-     * @param _fundManager New FundManager address
-     */
-    function setFundManager(address _fundManager) external;
-    
-    /**
-     * @dev Withdraws accumulated service fees
+     * @dev Checks if a token is whitelisted
      * @param token Address of the token
+     * @return Boolean indicating if the token is whitelisted
      */
-    function withdrawServiceFees(address token) external;
+    function isTokenWhitelisted(address token) external view returns (bool);
+
+    // ============ Criteria Management Functions ============
+
+    /**
+     * @dev Gets the validation criteria for an asset type
+     * @param assetTypeId ID of the asset type
+     * @return Validation criteria as a JSON string
+     */
+    function getValidationCriteria(uint256 assetTypeId) external view returns (string memory);
+
+    /**
+     * @dev Sets the validation criteria for an asset type
+     * @param assetTypeId ID of the asset type
+     * @param criteria Validation criteria as a JSON string
+     */
+    function setValidationCriteria(uint256 assetTypeId, string memory criteria) external;
+
+    /**
+     * @dev Clears field requirements for an asset type
+     * @param assetTypeId ID of the asset type
+     */
+    function clearFieldRequirements(uint256 assetTypeId) external;
+
+    /**
+     * @dev Adds field requirements for an asset type
+     * @param assetTypeId ID of the asset type
+     * @param criteriaFields Array of criteria field names
+     * @param definitionFields Array of definition field names
+     */
+    function addFieldRequirementsBatch(
+        uint256 assetTypeId,
+        string[] memory criteriaFields,
+        string[] memory definitionFields
+    ) external;
+
+    // ============ DeedNFT Compatibility Functions ============
+
+    /**
+     * @dev Sets the primary DeedNFT contract address
+     * @param deedNFT Address of the DeedNFT contract
+     */
+    function setPrimaryDeedNFT(address deedNFT) external;
+
+    /**
+     * @dev Adds a compatible DeedNFT contract
+     * @param deedNFT Address of the DeedNFT contract
+     */
+    function addCompatibleDeedNFT(address deedNFT) external;
+
+    /**
+     * @dev Removes a compatible DeedNFT contract
+     * @param deedNFT Address of the DeedNFT contract
+     */
+    function removeCompatibleDeedNFT(address deedNFT) external;
+
+    /**
+     * @dev Checks if a DeedNFT contract is compatible
+     * @param deedNFT Address of the DeedNFT contract
+     * @return Boolean indicating if the DeedNFT is compatible
+     */
+    function isCompatibleDeedNFT(address deedNFT) external view returns (bool);
+
+    /**
+     * @dev Returns the token URI for a given token ID
+     * @param tokenId ID of the token
+     * @return The token URI
+     */
+    function tokenURI(uint256 tokenId) external view returns (string memory);
 }

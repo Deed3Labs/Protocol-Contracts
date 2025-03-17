@@ -47,8 +47,6 @@ contract FundManager is
     
     // Mapping to track validator balances per token
     mapping(address => mapping(address => uint256)) private validatorBalances;
-
-    // Events are defined in the IFundManager interface
     
     /**
      * @dev Initializes the contract.
@@ -135,48 +133,57 @@ contract FundManager is
     
     /**
      * @dev Mints a new deed NFT.
-     * @param assetType Type of asset being minted.
-     * @param ipfsDetailsHash IPFS hash containing detailed metadata.
-     * @param operatingAgreement Operating agreement associated with the deed (ignored, obtained from validator).
+     * @param owner Address of the owner.
+     * @param assetType Type of asset.
+     * @param ipfsDetailsHash IPFS hash of details.
      * @param definition Definition of the deed.
      * @param configuration Configuration of the deed.
-     * @param validatorContract Address of the validator to use.
-     * @param token Address of the token used for payment.
-     * @param ipfsTokenURI IPFS URI for the token metadata (ignored, handled by DeedNFT).
-     * @return tokenId The ID of the minted deed.
+     * @param validatorAddress Address of the validator.
+     * @param token Address of the token.
+     * @return The ID of the minted deed.
      */
     function mintDeedNFT(
+        address owner,
         IDeedNFT.AssetType assetType,
         string memory ipfsDetailsHash,
-        string memory operatingAgreement,
         string memory definition,
         string memory configuration,
-        address validatorContract,
-        address token,
-        string memory ipfsTokenURI
-    ) external returns (uint256 tokenId) {
-        require(hasRole(MINTER_ROLE, msg.sender), "FundManager: Caller is not a minter");
-        require(validatorContract != address(0), "FundManager: Invalid validator address");
+        address validatorAddress,
+        address token
+    ) external nonReentrant returns (uint256) {
+        // Validate inputs
+        require(owner != address(0), "FundManager: Invalid owner address");
+        require(validatorAddress != address(0), "FundManager: Invalid validator address");
+        require(token != address(0), "FundManager: Invalid token address");
+        
+        // Check if validator is registered
+        require(
+            IValidatorRegistry(validatorRegistry).isValidatorRegistered(validatorAddress),
+            "FundManager: Validator not registered"
+        );
+        
+        // Check if token is whitelisted by validator
+        require(
+            IValidator(validatorAddress).isTokenWhitelisted(token),
+            "FundManager: Token not whitelisted by validator"
+        );
         
         // Get service fee from validator
-        uint256 serviceFee = IValidator(validatorContract).getServiceFee(token);
-        require(serviceFee > 0, "FundManager: Service fee not set for token");
+        uint256 serviceFee = IValidator(validatorAddress).getServiceFee(token);
+        require(serviceFee > 0, "FundManager: Service fee not set");
         
         // Process payment
-        _processPayment(msg.sender, validatorContract, token, serviceFee);
+        _processPayment(msg.sender, validatorAddress, token, serviceFee);
         
-        // Process mint - note that we're ignoring the operatingAgreement parameter
-        // since DeedNFT.mintAsset doesn't take it (it gets it from the validator)
-        tokenId = IDeedNFT(deedNFTContract).mintAsset(
-            msg.sender,
+        // Process mint
+        uint256 tokenId = _processMint(
+            owner,
             assetType,
             ipfsDetailsHash,
             definition,
             configuration,
-            validatorContract
+            validatorAddress
         );
-        
-        emit DeedMinted(tokenId, msg.sender, validatorContract);
         
         return tokenId;
     }
@@ -184,17 +191,32 @@ contract FundManager is
     /**
      * @dev Mints multiple deed NFTs in a batch.
      * @param deeds Array of deed minting data.
-     * @return tokenIds Array of minted token IDs.
+     * @return tokenIds Array of minted deed IDs.
      */
-    function mintBatchDeedNFT(DeedMintData[] memory deeds) external returns (uint256[] memory tokenIds) {
-        require(hasRole(MINTER_ROLE, msg.sender), "FundManager: Caller is not a minter");
-        require(deeds.length > 0, "FundManager: Empty deeds array");
+    function mintBatchDeedNFT(DeedMintData[] memory deeds) external nonReentrant returns (uint256[] memory tokenIds) {
+        uint256 length = deeds.length;
+        require(length > 0, "FundManager: Empty deeds array");
         
-        tokenIds = new uint256[](deeds.length);
+        tokenIds = new uint256[](length);
         
-        for (uint256 i = 0; i < deeds.length; i++) {
+        for (uint256 i = 0; i < length; i++) {
             DeedMintData memory deed = deeds[i];
+            
+            // Validate inputs
             require(deed.validatorContract != address(0), "FundManager: Invalid validator address");
+            require(deed.token != address(0), "FundManager: Invalid token address");
+            
+            // Check if validator is registered
+            require(
+                IValidatorRegistry(validatorRegistry).isValidatorRegistered(deed.validatorContract),
+                "FundManager: Validator not registered"
+            );
+            
+            // Check if token is whitelisted by validator
+            require(
+                IValidator(deed.validatorContract).isTokenWhitelisted(deed.token),
+                "FundManager: Token not whitelisted by validator"
+            );
             
             // Get service fee from validator
             uint256 serviceFee = IValidator(deed.validatorContract).getServiceFee(deed.token);
@@ -204,7 +226,7 @@ contract FundManager is
             _processPayment(msg.sender, deed.validatorContract, deed.token, serviceFee);
             
             // Process mint
-            tokenIds[i] = IDeedNFT(deedNFTContract).mintAsset(
+            tokenIds[i] = _processMint(
                 msg.sender,
                 deed.assetType,
                 deed.ipfsDetailsHash,
@@ -227,32 +249,14 @@ contract FundManager is
      * @param token Address of the token to withdraw.
      */
     function withdrawValidatorFees(address validatorContract, address token) external nonReentrant {
-        require(validatorContract != address(0), "FundManager: Invalid validator address");
-        require(token != address(0), "FundManager: Invalid token address");
-
         // Check if caller is authorized to withdraw fees
-        bool isAuthorized = false;
+        require(
+            IValidator(validatorContract).hasRole(keccak256("ADMIN_ROLE"), msg.sender) ||
+            hasRole(FEE_MANAGER_ROLE, msg.sender),
+            "FundManager: Not authorized to withdraw fees"
+        );
         
-        // Check if caller has FEE_MANAGER_ROLE in this contract
-        if (hasRole(FEE_MANAGER_ROLE, msg.sender)) {
-            isAuthorized = true;
-        } else {
-            // Check if caller is the validator contract itself
-            if (msg.sender == validatorContract) {
-                isAuthorized = true;
-            } else {
-                // Check if caller has FEE_MANAGER_ROLE in the validator contract
-                try IValidator(validatorContract).hasRole(keccak256("FEE_MANAGER_ROLE"), msg.sender) returns (bool result) {
-                    isAuthorized = result;
-                } catch {
-                    // If the call fails, the caller is not authorized
-                    isAuthorized = false;
-                }
-            }
-        }
-        
-        require(isAuthorized, "FundManager: Not authorized to withdraw fees");
-        
+        // Get balance
         uint256 amount = validatorBalances[validatorContract][token];
         require(amount > 0, "FundManager: No fees to withdraw");
         
@@ -276,33 +280,6 @@ contract FundManager is
     }
     
     // ============ Getter Functions ============
-    
-    /**
-     * @dev Gets the service fees balance for a token.
-     * @param token Address of the token.
-     * @return Always returns 0 as this implementation doesn't store service fees.
-     */
-    function getServiceFeesBalance(address token) external pure returns (uint256) {
-        return 0; // Not used in this implementation
-    }
-    
-    /**
-     * @dev Checks if a token is whitelisted.
-     * @param token Address of the token.
-     * @return Always returns false as this implementation doesn't use whitelisting.
-     */
-    function isTokenWhitelisted(address token) external pure returns (bool) {
-        return false; // Not used in this implementation
-    }
-    
-    /**
-     * @dev Gets the service fee for a token.
-     * @param token Address of the token.
-     * @return Always returns 0 as this implementation doesn't store service fees.
-     */
-    function getServiceFee(address token) external pure returns (uint256) {
-        return 0; // Not used in this implementation
-    }
     
     /**
      * @dev Gets the commission percentage.
@@ -335,50 +312,6 @@ contract FundManager is
      */
     function formatFee(uint256 amount) external pure returns (string memory) {
         return amount.toString();
-    }
-    
-    /**
-     * @dev Parses a fee string.
-     * @param feeStr Fee string to parse.
-     * @return Always returns 0.
-     */
-    function parseFee(string memory feeStr) external pure returns (uint256) {
-        return 0;
-    }
-
-    // ============ Stub Functions (Not Used) ============
-    
-    /**
-     * @dev Adds a token to the whitelist (not implemented).
-     * @param token Address of the token.
-     */
-    function addWhitelistedToken(address token) external pure {
-        revert("FundManager: Not implemented - use validator whitelist");
-    }
-    
-    /**
-     * @dev Removes a token from the whitelist (not implemented).
-     * @param token Address of the token.
-     */
-    function removeWhitelistedToken(address token) external pure {
-        revert("FundManager: Not implemented - use validator whitelist");
-    }
-    
-    /**
-     * @dev Sets the service fee for a token (not implemented).
-     * @param token Address of the token.
-     * @param _serviceFee Service fee amount.
-     */
-    function setServiceFee(address token, uint256 _serviceFee) external pure {
-        revert("FundManager: Not implemented - use validator fees");
-    }
-    
-    /**
-     * @dev Withdraws service fees (not implemented).
-     * @param token Address of the token.
-     */
-    function withdrawServiceFees(address token) external pure {
-        revert("FundManager: Not implemented - fees go directly to fee receiver");
     }
 
     // ============ Internal Functions ============

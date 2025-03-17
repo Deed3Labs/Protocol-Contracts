@@ -122,133 +122,6 @@ contract Validator is
     /// @dev Maps asset type ID -> array of field requirement structs
     mapping(uint256 => FieldRequirement[]) private assetTypeRequirements;
 
-    // ============ Events ============
-
-    /**
-     * @dev Emitted when an asset type's support status is updated
-     * @param assetTypeId ID of the asset type
-     * @param isSupported New support status
-     */
-    event AssetTypeSupportUpdated(uint256 indexed assetTypeId, bool isSupported);
-
-    /**
-     * @dev Emitted when an operating agreement is registered
-     * @param uri URI of the agreement
-     * @param name Human-readable name of the agreement
-     */
-    event OperatingAgreementRegistered(string uri, string name);
-
-    /**
-     * @dev Emitted when a deed's metadata is updated
-     * @param tokenId ID of the affected deed
-     * @param metadataUri New metadata URI
-     */
-    event DeedMetadataUpdated(uint256 indexed tokenId, string metadataUri);
-
-    /**
-     * @dev Emitted when a deed is validated
-     * @param tokenId ID of the validated deed
-     * @param success Validation result
-     */
-    event DeedValidated(uint256 indexed tokenId, bool success);
-
-    /**
-     * @dev Emitted when the base URI is updated
-     * @param newBaseUri The new base URI
-     */
-    event BaseUriUpdated(string newBaseUri);
-
-    /**
-     * @dev Emitted when the default operating agreement is updated
-     * @param uri The new default operating agreement URI
-     */
-    event DefaultOperatingAgreementUpdated(string uri);
-
-    /**
-     * @dev Emitted when the DeedNFT contract is updated
-     * @param newDeedNFT The new DeedNFT contract address
-     */
-    event DeedNFTUpdated(address indexed newDeedNFT);
-
-    /**
-     * @dev Emitted when validation criteria is updated for an asset type
-     * @param assetTypeId ID of the asset type
-     * @param criteria New validation criteria
-     */
-    event ValidationCriteriaUpdated(uint256 indexed assetTypeId, string criteria);
-
-    /**
-     * @dev Emitted when a validation error occurs
-     * @param tokenId ID of the token
-     * @param reason Reason for the error
-     */
-    event ValidationError(uint256 indexed tokenId, string reason);
-
-    /**
-     * @dev Emitted when a validation succeeds
-     * @param tokenId ID of the token
-     * @param message Success message
-     */
-    event ValidationSuccess(uint256 indexed tokenId, string message);
-
-    /**
-     * @dev Emitted when a compatible DeedNFT is added or removed
-     * @param deedNFTAddress Address of the DeedNFT contract
-     * @param isCompatible Whether the contract is compatible
-     */
-    event CompatibleDeedNFTUpdated(address indexed deedNFTAddress, bool isCompatible);
-
-    /**
-     * @dev Emitted when the primary DeedNFT is updated
-     * @param deedNFTAddress Address of the new primary DeedNFT contract
-     */
-    event PrimaryDeedNFTUpdated(address indexed deedNFTAddress);
-
-    /**
-     * @dev Emitted when a field requirement is added
-     * @param assetTypeId ID of the asset type
-     * @param criteriaField Name of the criteria field
-     * @param definitionField Name of the definition field
-     */
-    event FieldRequirementAdded(uint256 indexed assetTypeId, string criteriaField, string definitionField);
-
-    /**
-     * @dev Emitted when field requirements are cleared
-     * @param assetTypeId ID of the asset type
-     */
-    event FieldRequirementsCleared(uint256 indexed assetTypeId);
-
-    /**
-     * @dev Emitted when a token is whitelisted or removed
-     * @param token Address of the affected token
-     * @param status New whitelist status
-     */
-    event TokenWhitelistUpdated(address indexed token, bool status);
-
-    /**
-     * @dev Emitted when service fees are updated
-     * @param token Address of the affected token
-     * @param fee New fee for users
-     */
-    event ServiceFeeUpdated(
-        address indexed token,
-        uint256 fee
-    );
-
-    /**
-     * @dev Emitted when service fees are withdrawn
-     * @param receiver The address receiving the service fees
-     * @param token The address of the token withdrawn
-     * @param amount The amount withdrawn
-     */
-    event ServiceFeesWithdrawn(address indexed receiver, address indexed token, uint256 amount);
-
-    /**
-     * @dev Emitted when the FundManager address is updated
-     * @param newFundManager The new FundManager address
-     */
-    event FundManagerUpdated(address indexed newFundManager);
-
     // ============ Upgrade Gap ============
 
     /// @dev Storage gap for future upgrades
@@ -477,7 +350,6 @@ contract Validator is
     function setBaseUri(string memory _newBaseUri) public onlyOwner {
         require(bytes(_newBaseUri).length > 0, "Validator: Base URI cannot be empty");
         baseUri = _newBaseUri;
-        emit BaseUriUpdated(_newBaseUri);
     }
 
     /**
@@ -495,7 +367,6 @@ contract Validator is
     function setDefaultOperatingAgreement(string memory _uri) public onlyOwner {
         require(bytes(_uri).length > 0, "Validator: URI cannot be empty");
         defaultOperatingAgreementUri = _uri;
-        emit DefaultOperatingAgreementUpdated(_uri);
     }
 
     /**
@@ -518,7 +389,6 @@ contract Validator is
         require(bytes(_uri).length > 0, "Validator: URI cannot be empty");
         require(bytes(_name).length > 0, "Validator: Name cannot be empty");
         operatingAgreements[_uri] = _name;
-        emit OperatingAgreementRegistered(_uri, _name);
     }
 
     /**
@@ -531,7 +401,6 @@ contract Validator is
     {
         require(bytes(_uri).length > 0, "Validator: URI cannot be empty");
         delete operatingAgreements[_uri];
-        emit OperatingAgreementRegistered(_uri, "");
     }
 
     /**
@@ -591,7 +460,6 @@ contract Validator is
         onlyRole(CRITERIA_MANAGER_ROLE)
     {
         supportedAssetTypes[_assetTypeId] = _isSupported;
-        emit AssetTypeSupportUpdated(_assetTypeId, _isSupported);
     }
 
     /**
@@ -605,7 +473,6 @@ contract Validator is
     {
         require(bytes(_criteria).length > 0, "Validator: Criteria cannot be empty");
         validationCriteria[_assetTypeId] = _criteria;
-        emit ValidationCriteriaUpdated(_assetTypeId, _criteria);
     }
 
     /**
@@ -619,105 +486,210 @@ contract Validator is
     {
         require(bytes(_metadataUri).length > 0, "Validator: URI cannot be empty");
         deedMetadata[_tokenId] = _metadataUri;
-        emit DeedMetadataUpdated(_tokenId, _metadataUri);
     }
 
     /**
-     * @dev Validates a deed based on its asset type and definition against criteria
+     * @dev Validates a deed NFT
      * @param _tokenId ID of the token to validate
-     * @return Boolean indicating if validation was successful
+     * @return Whether the deed is valid
      */
     function validateDeed(uint256 _tokenId) external override returns (bool) {
-        // Get the deed's asset type and definition from DeedNFT
-        bytes memory assetTypeBytes = IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("assetType"));
-        bytes memory definitionBytes = IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("definition"));
+        require(msg.sender != address(0), "Validator: Invalid caller");
+        require(compatibleDeedNFTs[msg.sender], "Validator: Incompatible DeedNFT");
         
-        if (assetTypeBytes.length == 0 || definitionBytes.length == 0) {
-            emit ValidationError(_tokenId, "Missing asset type or definition");
+        // Get the asset definition and type from the DeedNFT
+        string memory _definition;
+        uint256 assetTypeId;
+        
+        try IDeedNFT(msg.sender).getDeedInfo(_tokenId) returns (
+            IDeedNFT.AssetType assetType,
+            bool /* isValidated */,
+            string memory /* operatingAgreement */,
+            string memory definition,
+            string memory /* configuration */,
+            address /* validator */
+        ) {
+            // Extract the definition and asset type from the returned data
+            _definition = definition;
+            assetTypeId = uint256(assetType);
+        } catch Error(string memory /* reason */) {
+            // If getDeedInfo fails, try to get the definition directly from traits
+            try IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("definition")) returns (bytes memory definitionBytes) {
+                if (definitionBytes.length > 0) {
+                    _definition = abi.decode(definitionBytes, (string));
+                } else {
+                    emit ValidationError(_tokenId, "Failed to retrieve asset definition");
+                    return false;
+                }
+                
+                // Get asset type from traits
+                bytes memory assetTypeBytes = IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("assetType"));
+                if (assetTypeBytes.length > 0) {
+                    assetTypeId = uint256(abi.decode(assetTypeBytes, (IDeedNFT.AssetType)));
+                } else {
+                    emit ValidationError(_tokenId, "Failed to retrieve asset type");
+                    return false;
+                }
+            } catch {
+                emit ValidationError(_tokenId, "Failed to retrieve asset data");
+                return false;
+            }
+        } catch {
+            emit ValidationError(_tokenId, "Failed to retrieve asset data");
             return false;
         }
         
-        uint256 assetTypeValue = abi.decode(assetTypeBytes, (uint256));
-        string memory definition = abi.decode(definitionBytes, (string));
+        // Check if the asset type is supported
+        if (!supportedAssetTypes[assetTypeId]) {
+            emit ValidationError(_tokenId, "Asset type not supported");
+            return false;
+        }
         
-        // Get the appropriate criteria based on asset type
-        string memory criteria;
-        if (assetTypeValue == uint256(IDeedNFT.AssetType.Land)) {
-            criteria = validationCriteria[uint256(IDeedNFT.AssetType.Land)];
-        } else if (assetTypeValue == uint256(IDeedNFT.AssetType.Vehicle)) {
-            criteria = validationCriteria[uint256(IDeedNFT.AssetType.Vehicle)];
-        } else if (assetTypeValue == uint256(IDeedNFT.AssetType.CommercialEquipment)) {
-            criteria = validationCriteria[uint256(IDeedNFT.AssetType.CommercialEquipment)];
-        } else {
-            emit ValidationError(_tokenId, "Unsupported asset type");
+        // Get validation criteria for the asset type
+        string memory _criteria = validationCriteria[assetTypeId];
+        if (bytes(_criteria).length == 0) {
+            emit ValidationError(_tokenId, "No validation criteria for asset type");
             return false;
         }
         
         // Validate the definition against the criteria
-        bool isValid = _validateDefinition(_tokenId, definition, criteria);
+        bool isValid = _validateDefinition(_tokenId, _definition, _criteria);
         
-        // Update the validation status in DeedNFT
-        if (isValid) {
-            // Call DeedNFT's validateDeed function to update status
-            try IDeedNFT(msg.sender).validateDeed(_tokenId, true, address(this)) {
-                emit ValidationSuccess(_tokenId, "Validation successful");
-            } catch Error(string memory reason) {
-                emit ValidationError(_tokenId, string(abi.encodePacked("Failed to update validation status: ", reason)));
-                return false;
-            } catch {
-                emit ValidationError(_tokenId, "Failed to update validation status");
-                return false;
-            }
-        } else {
-            // If validation failed, update status to invalid
-            try IDeedNFT(msg.sender).validateDeed(_tokenId, false, address(this)) {
-                // Even though validation failed, we successfully updated the status
-            } catch {
-                // Ignore errors when setting to invalid
-            }
-        }
+        // Emit validation result
+        emit DeedValidated(_tokenId, isValid);
         
         return isValid;
     }
     
     /**
-     * @dev Internal function to validate a definition against criteria
-     * @param _tokenId ID of the token being validated
-     * @param _definition JSON string containing the deed definition
-     * @param _criteria JSON string containing validation criteria
-     * @return Boolean indicating if validation was successful
+     * @dev Validates a definition against criteria
+     * @param _tokenId ID of the token
+     * @param _definition Definition to validate
+     * @param _criteria Criteria to validate against
+     * @return Whether the definition is valid
      */
-    function _validateDefinition(uint256 _tokenId, string memory _definition, string memory _criteria) internal returns (bool) {
-        // Get asset type from token
-        bytes memory assetTypeBytes = IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("assetType"));
-        if (assetTypeBytes.length == 0) {
-            emit ValidationError(_tokenId, "Missing asset type");
+    function _validateDefinition(uint256 _tokenId, string memory _definition, string memory _criteria) internal view returns (bool) {
+        // Get the asset type from the token ID
+        uint256 assetTypeId;
+        
+        try IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("assetType")) returns (bytes memory assetTypeBytes) {
+            if (assetTypeBytes.length > 0) {
+                assetTypeId = uint256(abi.decode(assetTypeBytes, (IDeedNFT.AssetType)));
+            } else {
+                return false;
+            }
+        } catch {
             return false;
         }
         
-        uint256 assetTypeValue = abi.decode(assetTypeBytes, (uint256));
+        // Get the field requirements for this asset type
+        FieldRequirement[] storage requirements = assetTypeRequirements[assetTypeId];
+        if (requirements.length == 0) {
+            // No specific requirements defined, consider it valid
+            return true;
+        }
         
-        // Get field requirements for this asset type
-        FieldRequirement[] storage requirements = assetTypeRequirements[assetTypeValue];
+        // Parse the definition and criteria JSON
+        string[] memory definitionFields = _parseJsonFields(_definition);
+        string[] memory criteriaFields = _parseJsonFields(_criteria);
         
         // Check each required field
-        for (uint i = 0; i < requirements.length; i++) {
+        for (uint256 i = 0; i < requirements.length; i++) {
             string memory criteriaField = requirements[i].criteriaField;
             string memory definitionField = requirements[i].definitionField;
             
-            // Check if the field is required in the criteria
-            if (_containsField(_criteria, criteriaField, "true")) {
-                // Check if the field exists in the definition
-                if (!_containsField(_definition, definitionField, "")) {
-                    emit ValidationError(_tokenId, string(abi.encodePacked("Required field missing: ", definitionField)));
-                    return false;
+            // Check if the criteria field exists and has a value
+            bool criteriaFieldExists = false;
+            string memory criteriaValue = "";
+            
+            for (uint256 j = 0; j < criteriaFields.length; j++) {
+                if (StringUtils.contains(criteriaFields[j], criteriaField)) {
+                    criteriaFieldExists = true;
+                    criteriaValue = criteriaFields[j];
+                    break;
+                }
+            }
+            
+            if (!criteriaFieldExists || bytes(criteriaValue).length == 0) {
+                continue; // Skip if criteria field doesn't exist or is empty
+            }
+            
+            // Check if the definition field exists
+            bool definitionFieldExists = false;
+            
+            for (uint256 j = 0; j < definitionFields.length; j++) {
+                if (StringUtils.contains(definitionFields[j], definitionField)) {
+                    definitionFieldExists = true;
+                    break;
+                }
+            }
+            
+            if (!definitionFieldExists) {
+                return false; // Required field is missing in definition
+            }
+        }
+        
+        return true;
+    }
+
+    /**
+     * @dev Parses a JSON string into an array of fields.
+     * @param _json The JSON string to parse.
+     * @return Array of field names.
+     */
+    function _parseJsonFields(string memory _json) internal pure returns (string[] memory) {
+        // This is a simplified implementation. In a production environment,
+        // you would use a proper JSON parsing library to extract fields.
+        
+        // First, count the number of fields to allocate the array
+        uint256 fieldCount = 0;
+        bool inString = false;
+        bool inField = false;
+        
+        for (uint i = 0; i < bytes(_json).length; i++) {
+            bytes1 char = bytes(_json)[i];
+            
+            if (char == '"') {
+                inString = !inString;
+                if (!inString && inField) {
+                    fieldCount++;
+                    inField = false;
+                } else if (inString && !inField) {
+                    inField = true;
                 }
             }
         }
         
-        // Additional validation logic can be added here
+        // Now create the array and populate it
+        string[] memory fields = new string[](fieldCount);
+        fieldCount = 0;
+        inString = false;
+        inField = false;
+        uint256 startPos = 0;
         
-        return true;
+        for (uint i = 0; i < bytes(_json).length; i++) {
+            bytes1 char = bytes(_json)[i];
+            
+            if (char == '"') {
+                if (!inString) {
+                    startPos = i + 1;
+                    inString = true;
+                    inField = true;
+                } else if (inField) {
+                    // Extract the field name
+                    bytes memory fieldBytes = new bytes(i - startPos);
+                    for (uint j = 0; j < i - startPos; j++) {
+                        fieldBytes[j] = bytes(_json)[startPos + j];
+                    }
+                    fields[fieldCount] = string(fieldBytes);
+                    fieldCount++;
+                    inString = false;
+                    inField = false;
+                }
+            }
+        }
+        
+        return fields;
     }
 
     /**
@@ -754,8 +726,6 @@ contract Validator is
                 criteriaField: _criteriaFields[i],
                 definitionField: _definitionFields[i]
             }));
-            
-            emit FieldRequirementAdded(_assetTypeId, _criteriaFields[i], _definitionFields[i]);
         }
     }
 
@@ -888,7 +858,6 @@ contract Validator is
      */
     function clearFieldRequirements(uint256 _assetTypeId) public onlyRole(CRITERIA_MANAGER_ROLE) {
         delete assetTypeRequirements[_assetTypeId];
-        emit FieldRequirementsCleared(_assetTypeId);
     }
 
     /**
@@ -923,66 +892,6 @@ contract Validator is
         string memory boolValuePattern = string(abi.encodePacked(fieldPattern, ' ', _value));
         
         return StringUtils.contains(_json, valuePattern) || StringUtils.contains(_json, boolValuePattern);
-    }
-
-    /**
-     * @dev Parses a JSON string into an array of fields.
-     * @param _json The JSON string to parse.
-     * @return Array of field names.
-     */
-    function _getJsonFields(string memory _json) internal pure returns (string[] memory) {
-        // This is a simplified implementation. In a production environment,
-        // you would use a proper JSON parsing library to extract fields.
-        
-        // First, count the number of fields to allocate the array
-        uint256 fieldCount = 0;
-        bool inString = false;
-        bool inField = false;
-        
-        for (uint i = 0; i < bytes(_json).length; i++) {
-            bytes1 char = bytes(_json)[i];
-            
-            if (char == '"') {
-                inString = !inString;
-                if (!inString && inField) {
-                    fieldCount++;
-                    inField = false;
-                } else if (inString && !inField) {
-                    inField = true;
-                }
-            }
-        }
-        
-        // Now create the array and populate it
-        string[] memory fields = new string[](fieldCount);
-        fieldCount = 0;
-        inString = false;
-        inField = false;
-        uint256 startPos = 0;
-        
-        for (uint i = 0; i < bytes(_json).length; i++) {
-            bytes1 char = bytes(_json)[i];
-            
-            if (char == '"') {
-                if (!inString) {
-                    startPos = i + 1;
-                    inString = true;
-                    inField = true;
-                } else if (inField) {
-                    // Extract the field name
-                    bytes memory fieldBytes = new bytes(i - startPos);
-                    for (uint j = 0; j < i - startPos; j++) {
-                        fieldBytes[j] = bytes(_json)[startPos + j];
-                    }
-                    fields[fieldCount] = string(fieldBytes);
-                    fieldCount++;
-                    inString = false;
-                    inField = false;
-                }
-            }
-        }
-        
-        return fields;
     }
 
     /**
@@ -1024,7 +933,6 @@ contract Validator is
         require(token != address(0), "Validator: Invalid token address");
         require(!isWhitelisted[token], "Validator: Token already whitelisted");
         isWhitelisted[token] = true;
-        emit TokenWhitelistUpdated(token, true);
     }
 
     /**
@@ -1034,7 +942,6 @@ contract Validator is
     function removeWhitelistedToken(address token) external onlyRole(FEE_MANAGER_ROLE) {
         require(isWhitelisted[token], "Validator: Token not whitelisted");
         isWhitelisted[token] = false;
-        emit TokenWhitelistUpdated(token, false);
     }
 
     /**
@@ -1045,7 +952,6 @@ contract Validator is
     function setServiceFee(address token, uint256 _serviceFee) external onlyRole(FEE_MANAGER_ROLE) {
         require(isWhitelisted[token], "Validator: Token not whitelisted");
         serviceFee[token] = _serviceFee;
-        emit ServiceFeeUpdated(token, _serviceFee);
     }
 
     /**
@@ -1055,7 +961,6 @@ contract Validator is
     function setFundManager(address _fundManager) public onlyOwner {
         require(_fundManager != address(0), "Validator: Invalid FundManager address");
         fundManager = _fundManager;
-        emit FundManagerUpdated(_fundManager);
     }
 
     /**
@@ -1071,8 +976,6 @@ contract Validator is
         
         // Call the FundManager to withdraw fees
         IFundManager(fundManager).withdrawValidatorFees(address(this), token);
-        
-        emit ServiceFeesWithdrawn(msg.sender, token, amount);
     }
 
     /**
@@ -1091,5 +994,59 @@ contract Validator is
      */
     function getServiceFee(address token) external view returns (uint256) {
         return serviceFee[token];
+    }
+
+    /**
+     * @dev Gets the validation criteria for an asset type
+     * @param assetTypeId ID of the asset type
+     * @return Validation criteria as a JSON string
+     */
+    function getValidationCriteria(uint256 assetTypeId) external view override returns (string memory) {
+        return validationCriteria[assetTypeId];
+    }
+
+    /**
+     * @dev Checks if a DeedNFT contract is compatible
+     * @param _deedNFT Address of the DeedNFT contract
+     * @return Boolean indicating if the DeedNFT is compatible
+     */
+    function isCompatibleDeedNFT(address _deedNFT) external view override returns (bool) {
+        return compatibleDeedNFTs[_deedNFT];
+    }
+
+    /**
+     * @dev Registers an operating agreement
+     * @param uri URI of the operating agreement
+     * @param name Name of the operating agreement
+     */
+    function registerOperatingAgreement(string memory uri, string memory name) external override onlyRole(METADATA_ROLE) {
+        require(bytes(uri).length > 0, "Validator: URI cannot be empty");
+        require(bytes(name).length > 0, "Validator: Name cannot be empty");
+        operatingAgreements[uri] = name;
+        emit OperatingAgreementRegistered(uri, name);
+    }
+
+    /**
+     * @dev Validates a deed NFT's operating agreement
+     * @param tokenId ID of the token to validate (unused)
+     * @param operatingAgreement URI of the operating agreement
+     * @return Whether the operating agreement is valid
+     */
+    function validateOperatingAgreement(
+        uint256 tokenId,
+        string memory operatingAgreement
+    ) external view override returns (bool) {
+        // Unused parameter: tokenId
+        
+        // Check if the operating agreement is registered
+        if (bytes(operatingAgreements[operatingAgreement]).length == 0 && 
+            !StringUtils.contains(operatingAgreement, defaultOperatingAgreementUri)) {
+            return false;
+        }
+        
+        // Additional validation logic can be added here
+        // For example, checking if the operating agreement is appropriate for the asset type
+        
+        return true;
     }
 }
