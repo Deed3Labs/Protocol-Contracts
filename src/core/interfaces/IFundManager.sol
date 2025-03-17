@@ -64,38 +64,44 @@ interface IFundManager {
     event DeedNFTUpdated(address indexed newDeedNFT);
 
     /**
-     * @dev Emitted when funds are deposited and a deed is minted
-     * @param user The address of the user depositing funds
-     * @param token The address of the token deposited
-     * @param amount The total amount deposited
-     * @param serviceFee The service fee deducted
-     * @param commission The commission deducted
-     * @param validatorOwner The address of the validator owner receiving the commission
+     * @dev Emitted when a service fee is collected
+     * @param validator Address of the validator
+     * @param token Address of the token
+     * @param amount Total amount collected
+     * @param commission Commission amount taken
      */
-    event FundsDeposited(
-        address indexed user,
+    event ServiceFeeCollected(
+        address indexed validator,
         address indexed token,
         uint256 amount,
-        uint256 serviceFee,
-        uint256 commission,
-        address indexed validatorOwner
+        uint256 commission
     );
 
     /**
-     * @dev Emitted when service fees are withdrawn
-     * @param receiver The address receiving the service fees
-     * @param token The address of the token withdrawn
-     * @param amount The amount withdrawn
+     * @dev Emitted when a deed is minted
+     * @param tokenId ID of the minted deed
+     * @param owner Address of the deed owner
+     * @param validator Address of the validator
      */
-    event ServiceFeesWithdrawn(address indexed receiver, address indexed token, uint256 amount);
-
+    event DeedMinted(
+        uint256 indexed tokenId,
+        address indexed owner,
+        address indexed validator
+    );
+    
     /**
-     * @dev Emitted when commissions are withdrawn
-     * @param receiver The address receiving the commissions
-     * @param token The address of the token withdrawn
-     * @param amount The amount withdrawn
+     * @dev Emitted when validator fees are withdrawn
+     * @param validator Address of the validator
+     * @param token Address of the token
+     * @param amount Amount withdrawn
+     * @param recipient Address receiving the funds
      */
-    event CommissionsWithdrawn(address indexed receiver, address indexed token, uint256 amount);
+    event ValidatorFeesWithdrawn(
+        address indexed validator,
+        address indexed token,
+        uint256 amount,
+        address indexed recipient
+    );
 
     // ============ Administrative Functions ============
 
@@ -214,35 +220,31 @@ interface IFundManager {
     function isTokenWhitelisted(address token) external view returns (bool);
 
     /**
-     * @dev Retrieves the service fee for a specific token and user type
+     * @dev Gets the service fee for a token
      * @param token Address of the token
-     * @param isValidator Boolean indicating if the user is a validator
-     * @return fee The service fee amount for the token and user type
+     * @return The service fee amount
      */
-    function getServiceFee(address token, bool isValidator) external view returns (uint256);
+    function getServiceFee(address token) external view returns (uint256);
 
     /**
-     * @dev Retrieves the commission percentage based on user type
-     * @param isValidator Boolean indicating if the user is a validator
-     * @return percentage The commission percentage in basis points
+     * @dev Gets the commission percentage
+     * @return The commission percentage in basis points
      */
-    function getCommissionPercentage(bool isValidator) external view returns (uint256);
+    function getCommissionPercentage() external view returns (uint256);
 
     /**
-     * @dev Formats a fee amount to be human-readable
-     * @param token Address of the token
-     * @param amount Raw fee amount in token's smallest unit
+     * @dev Formats a fee amount to a string
+     * @param amount Raw fee amount
      * @return The formatted fee string
      */
-    function formatFee(address token, uint256 amount) external view returns (string memory);
+    function formatFee(uint256 amount) external pure returns (string memory);
 
     /**
-     * @dev Parses a human-readable fee string to a raw amount
-     * @param token Address of the token
+     * @dev Parses a fee string to an amount
      * @param feeStr The fee string to parse
-     * @return The raw fee amount in token's smallest unit
+     * @return The parsed fee amount
      */
-    function parseFee(address token, string memory feeStr) external view returns (uint256);
+    function parseFee(string memory feeStr) external pure returns (uint256);
 
     /**
      * @dev Gets the address of the DeedNFT contract
