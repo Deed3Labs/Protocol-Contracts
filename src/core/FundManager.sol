@@ -13,6 +13,8 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 // Interfaces
 import "./interfaces/IValidatorRegistry.sol";
 import "./interfaces/IDeedNFT.sol";
+import "./interfaces/IValidator.sol";
+import "./interfaces/IFundManager.sol";
 
 /**
  * @title FundManager
@@ -33,7 +35,8 @@ contract FundManager is
     Initializable,
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable,
-    UUPSUpgradeable
+    UUPSUpgradeable,
+    IFundManager
 {
     using AddressUpgradeable for address payable;
     using SafeERC20Upgradeable for IERC20Upgradeable;
@@ -376,9 +379,26 @@ contract FundManager is
             "FundManager: Validator not registered"
         );
 
-        // Get the service fee
-        uint256 fee = serviceFee[deedData.token];
-        require(fee > 0, "FundManager: Service fee not set for token");
+        // Get the validator contract
+        address validatorContract = deedData.validatorContract;
+        
+        // Check if the validator has whitelisted this token
+        bool isTokenWhitelisted;
+        try IValidator(validatorContract).isTokenWhitelisted(deedData.token) returns (bool whitelisted) {
+            isTokenWhitelisted = whitelisted;
+            require(isTokenWhitelisted, "FundManager: Token not whitelisted by validator");
+        } catch {
+            revert("FundManager: Failed to check token whitelist status");
+        }
+        
+        // Get the service fee from the validator contract
+        uint256 fee;
+        try IValidator(validatorContract).getServiceFee(deedData.token) returns (uint256 validatorFee) {
+            fee = validatorFee;
+            require(fee > 0, "FundManager: Service fee not set for token by validator");
+        } catch {
+            revert("FundManager: Failed to get service fee from validator");
+        }
 
         // Check token balance and allowance before transfer
         uint256 userBalance = IERC20Upgradeable(deedData.token).balanceOf(msg.sender);
@@ -399,13 +419,13 @@ contract FundManager is
             revert(string(abi.encodePacked("FundManager: ValidatorRegistry error - ", reason)));
         }
 
-        // Calculate commission
+        // Calculate commission for the FundManager (goes to feeReceiver)
         uint256 commission = (fee * commissionPercentage) / 10000;
-        commissionBalances[validatorOwner][deedData.token] += commission;
+        serviceFeesBalance[deedData.token] += commission;
         
-        // Add remaining fee to service fees balance
-        uint256 remainingFee = fee - commission;
-        serviceFeesBalance[deedData.token] += remainingFee;
+        // Add remaining fee to validator-specific balance
+        uint256 validatorFee = fee - commission;
+        commissionBalances[validatorContract][deedData.token] += validatorFee;
 
         // Check DeedNFT contract is set
         require(address(deedNFT) != address(0), "FundManager: DeedNFT not set");
@@ -420,7 +440,7 @@ contract FundManager is
             deedData.configuration
         );
 
-        emit FundsDeposited(msg.sender, deedData.token, fee, remainingFee, commission, validatorOwner);
+        emit FundsDeposited(msg.sender, deedData.token, fee, commission, validatorFee, validatorContract);
         return tokenId;
     }
 
@@ -446,25 +466,51 @@ contract FundManager is
     function _mintDeed(DeedMintData memory deed) internal returns (uint256 tokenId) {
         require(isWhitelisted[deed.token], "FundManager: Token not whitelisted");
         require(deed.validatorContract != address(0), "FundManager: Invalid ValidatorContract address");
+        require(
+            IValidatorRegistry(validatorRegistry).isValidatorRegistered(deed.validatorContract),
+            "FundManager: Validator not registered"
+        );
 
-        // Get the service fee
-        uint256 fee = serviceFee[deed.token];
-        require(fee > 0, "FundManager: Service fee not set for token");
+        // Get the validator contract
+        address validatorContract = deed.validatorContract;
+        
+        // Check if the validator has whitelisted this token
+        bool isTokenWhitelisted;
+        try IValidator(validatorContract).isTokenWhitelisted(deed.token) returns (bool whitelisted) {
+            isTokenWhitelisted = whitelisted;
+            require(isTokenWhitelisted, "FundManager: Token not whitelisted by validator");
+        } catch {
+            revert("FundManager: Failed to check token whitelist status");
+        }
+        
+        // Get the service fee from the validator contract
+        uint256 fee;
+        try IValidator(validatorContract).getServiceFee(deed.token) returns (uint256 validatorFee) {
+            fee = validatorFee;
+            require(fee > 0, "FundManager: Service fee not set for token by validator");
+        } catch {
+            revert("FundManager: Failed to get service fee from validator");
+        }
+
+        // Check token balance and allowance before transfer
+        uint256 userBalance = IERC20Upgradeable(deed.token).balanceOf(msg.sender);
+        require(userBalance >= fee, "FundManager: Insufficient token balance");
+        
+        uint256 allowance = IERC20Upgradeable(deed.token).allowance(msg.sender, address(this));
+        require(allowance >= fee, "FundManager: Insufficient token allowance");
 
         // Transfer service fee from user to FundManager
         IERC20Upgradeable(deed.token).safeTransferFrom(msg.sender, address(this), fee);
         
-        // Get validator owner from ValidatorRegistry
-        address validatorOwner = IValidatorRegistry(validatorRegistry).getValidatorOwner(deed.validatorContract);
-        require(validatorOwner != address(0), "FundManager: Validator owner not found");
-
-        // Calculate commission
+        // Calculate commission for the FundManager
         uint256 commission = (fee * commissionPercentage) / 10000;
-        commissionBalances[validatorOwner][deed.token] += commission;
         
-        // Add remaining fee to service fees balance
-        uint256 remainingFee = fee - commission;
-        serviceFeesBalance[deed.token] += remainingFee;
+        // Add commission to service fees balance (goes to FundManager's feeReceiver)
+        serviceFeesBalance[deed.token] += commission;
+        
+        // Add remaining fee to validator's commission balance
+        uint256 validatorFee = fee - commission;
+        commissionBalances[validatorContract][deed.token] += validatorFee;
 
         // Interact with DeedNFT to mint the deed
         tokenId = IDeedNFT(deedNFT).mintAsset(
@@ -476,7 +522,7 @@ contract FundManager is
             deed.configuration
         );
 
-        emit FundsDeposited(msg.sender, deed.token, fee, remainingFee, commission, validatorOwner);
+        emit FundsDeposited(msg.sender, deed.token, fee, validatorFee, commission, validatorContract);
         return tokenId;
     }
 
@@ -495,17 +541,42 @@ contract FundManager is
     }
 
     /**
-     * @dev Allows ValidatorContract owners to withdraw their accumulated commissions.
+     * @dev Allows validator admins to withdraw their accumulated fees.
+     * @param validatorContract Address of the validator contract.
      * @param token Address of the token to withdraw.
      */
-    function withdrawCommission(address token) external nonReentrant {
-        uint256 amount = commissionBalances[msg.sender][token];
-        require(amount > 0, "FundManager: No commissions to withdraw");
+    function withdrawValidatorFees(address validatorContract, address token) external nonReentrant {
+        // Check if the caller has admin or fee manager role in the validator contract
+        bool hasRole = false;
+        try IValidator(validatorContract).hasRole(keccak256("DEFAULT_ADMIN_ROLE"), msg.sender) returns (bool role) {
+            hasRole = role;
+        } catch {}
+        
+        if (!hasRole) {
+            try IValidator(validatorContract).hasRole(keccak256("FEE_MANAGER_ROLE"), msg.sender) returns (bool role) {
+                hasRole = role;
+            } catch {}
+        }
+        
+        require(hasRole, "FundManager: Caller is not validator admin or fee manager");
+        
+        uint256 amount = commissionBalances[validatorContract][token];
+        require(amount > 0, "FundManager: No validator fees to withdraw");
 
-        commissionBalances[msg.sender][token] = 0;
+        commissionBalances[validatorContract][token] = 0;
         IERC20Upgradeable(token).safeTransfer(msg.sender, amount);
 
         emit CommissionsWithdrawn(msg.sender, token, amount);
+    }
+
+    /**
+     * @dev Retrieves the current commission balance for a specific validator and token.
+     * @param validatorContract Address of the validator contract.
+     * @param token Address of the token.
+     * @return balance The current commission balance for the validator and token.
+     */
+    function getCommissionBalance(address validatorContract, address token) external view returns (uint256) {
+        return commissionBalances[validatorContract][token];
     }
 
     // Getter Functions
@@ -517,16 +588,6 @@ contract FundManager is
      */
     function getServiceFeesBalance(address token) external view returns (uint256) {
         return serviceFeesBalance[token];
-    }
-
-    /**
-     * @dev Retrieves the current commission balance for a specific user and token.
-     * @param user Address of the user.
-     * @param token Address of the token.
-     * @return balance The current commission balance for the user and token.
-     */
-    function getCommissionBalance(address user, address token) external view returns (uint256) {
-        return commissionBalances[user][token];
     }
 
     /**
@@ -565,5 +626,105 @@ contract FundManager is
         require(_percentage <= 10000, "FundManager: Commission too high");
         commissionPercentage = _percentage;
         emit CommissionPercentageUpdated(_percentage);
+    }
+
+    /**
+     * @dev Formats a fee amount to be human-readable.
+     * @param token Address of the token.
+     * @param amount Raw fee amount in token's smallest unit.
+     * @return The formatted fee string.
+     */
+    function formatFee(address token, uint256 amount) public view returns (string memory) {
+        // This is a simplified implementation
+        // In a production environment, you would use token decimals to format properly
+        
+        uint8 decimals;
+        try IERC20MetadataUpgradeable(token).decimals() returns (uint8 dec) {
+            decimals = dec;
+        } catch {
+            return amount.toString(); // Fallback to raw amount if decimals can't be retrieved
+        }
+        
+        if (decimals == 0) {
+            return amount.toString();
+        }
+        
+        // Format with decimal point
+        string memory integerPart = (amount / 10**decimals).toString();
+        uint256 fractionalPart = amount % 10**decimals;
+        
+        if (fractionalPart == 0) {
+            return integerPart;
+        }
+        
+        // Pad fractional part with leading zeros if needed
+        string memory fractionalStr = fractionalPart.toString();
+        uint256 padLength = decimals - bytes(fractionalStr).length;
+        
+        string memory paddedFractional = "";
+        for (uint256 i = 0; i < padLength; i++) {
+            paddedFractional = string(abi.encodePacked(paddedFractional, "0"));
+        }
+        paddedFractional = string(abi.encodePacked(paddedFractional, fractionalStr));
+        
+        return string(abi.encodePacked(integerPart, ".", paddedFractional));
+    }
+
+    /**
+     * @dev Parses a human-readable fee string to a raw amount.
+     * @param token Address of the token.
+     * @param feeStr The fee string to parse.
+     * @return The raw fee amount in token's smallest unit.
+     */
+    function parseFee(address token, string memory feeStr) public view returns (uint256) {
+        // This is a simplified implementation
+        // In a production environment, you would use a more robust string parsing method
+        
+        bytes memory feeBytes = bytes(feeStr);
+        uint256 decimalPos = type(uint256).max;
+        
+        for (uint256 i = 0; i < feeBytes.length; i++) {
+            if (feeBytes[i] == ".") {
+                decimalPos = i;
+                break;
+            }
+        }
+        
+        uint8 decimals;
+        try IERC20MetadataUpgradeable(token).decimals() returns (uint8 dec) {
+            decimals = dec;
+        } catch {
+            decimals = 18; // Default to 18 decimals if can't be retrieved
+        }
+        
+        if (decimalPos == type(uint256).max) {
+            // No decimal point found, treat as integer
+            uint256 integerValue = StringUtils.parseInt(feeStr);
+            return integerValue * 10**decimals;
+        }
+        
+        // Parse integer part
+        string memory integerPart = "";
+        for (uint256 i = 0; i < decimalPos; i++) {
+            integerPart = string(abi.encodePacked(integerPart, feeBytes[i]));
+        }
+        uint256 integerValue = StringUtils.parseInt(integerPart);
+        
+        // Parse fractional part
+        string memory fractionalPart = "";
+        for (uint256 i = decimalPos + 1; i < feeBytes.length; i++) {
+            fractionalPart = string(abi.encodePacked(fractionalPart, feeBytes[i]));
+        }
+        uint256 fractionalValue = StringUtils.parseInt(fractionalPart);
+        
+        // Adjust fractional part based on its length and token decimals
+        uint256 fractionalDecimals = bytes(fractionalPart).length;
+        if (fractionalDecimals > decimals) {
+            fractionalValue = fractionalValue / 10**(fractionalDecimals - decimals);
+        } else if (fractionalDecimals < decimals) {
+            fractionalValue = fractionalValue * 10**(decimals - fractionalDecimals);
+        }
+        
+        return integerValue * 10**decimals + fractionalValue;
     }
 }

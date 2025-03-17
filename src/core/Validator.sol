@@ -16,6 +16,7 @@ import "../libraries/JSONUtils.sol";
 // Interfaces
 import "./interfaces/IValidator.sol";
 import "./interfaces/IDeedNFT.sol";
+import "./interfaces/IFundManager.sol";
 
 /**
  * @title Validator
@@ -56,6 +57,10 @@ contract Validator is
     /// @notice Role for updating validation criteria
     bytes32 public constant CRITERIA_MANAGER_ROLE = keccak256("CRITERIA_MANAGER_ROLE");
 
+    /// @notice Role for fee management operations
+    /// @dev Has authority to update service fees and whitelist tokens
+    bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER_ROLE");
+
     // ============ State Variables ============
 
     /// @notice Base URI for token metadata
@@ -90,6 +95,20 @@ contract Validator is
     
     /// @notice Main DeedNFT address
     address public primaryDeedNFT;
+
+    /// @notice Mapping to track whitelisted tokens
+    /// @dev Key: token address, Value: whitelist status
+    mapping(address => bool) public isWhitelisted;
+
+    /// @notice Service fee per token
+    /// @dev Key: token address, Value: fee amount in token's smallest unit
+    mapping(address => uint256) public serviceFee;
+
+    /// @notice Mapping to store accumulated service fees per token
+    mapping(address => uint256) public serviceFeesBalance;
+
+    /// @notice Address of the FundManager contract
+    address public fundManager;
 
     // ============ Validation Field Definitions ============
     
@@ -199,6 +218,37 @@ contract Validator is
      */
     event FieldRequirementsCleared(uint256 indexed assetTypeId);
 
+    /**
+     * @dev Emitted when a token is whitelisted or removed
+     * @param token Address of the affected token
+     * @param status New whitelist status
+     */
+    event TokenWhitelistUpdated(address indexed token, bool status);
+
+    /**
+     * @dev Emitted when service fees are updated
+     * @param token Address of the affected token
+     * @param fee New fee for users
+     */
+    event ServiceFeeUpdated(
+        address indexed token,
+        uint256 fee
+    );
+
+    /**
+     * @dev Emitted when service fees are withdrawn
+     * @param receiver The address receiving the service fees
+     * @param token The address of the token withdrawn
+     * @param amount The amount withdrawn
+     */
+    event ServiceFeesWithdrawn(address indexed receiver, address indexed token, uint256 amount);
+
+    /**
+     * @dev Emitted when the FundManager address is updated
+     * @param newFundManager The new FundManager address
+     */
+    event FundManagerUpdated(address indexed newFundManager);
+
     // ============ Upgrade Gap ============
 
     /// @dev Storage gap for future upgrades
@@ -231,6 +281,7 @@ contract Validator is
         _grantRole(VALIDATOR_ROLE, msg.sender);
         _grantRole(METADATA_ROLE, msg.sender);
         _grantRole(CRITERIA_MANAGER_ROLE, msg.sender);
+        _grantRole(FEE_MANAGER_ROLE, msg.sender); // Grant FEE_MANAGER_ROLE to deployer
         
         // Initialize default validation criteria for each asset type
         _initializeDefaultCriteria();
@@ -963,5 +1014,82 @@ contract Validator is
             return metadataUri;
         }
         return string(abi.encodePacked(baseUri, tokenId.toString()));
+    }
+
+    /**
+     * @dev Adds a token to the whitelist.
+     * @param token Address of the token to whitelist.
+     */
+    function addWhitelistedToken(address token) external onlyRole(FEE_MANAGER_ROLE) {
+        require(token != address(0), "Validator: Invalid token address");
+        require(!isWhitelisted[token], "Validator: Token already whitelisted");
+        isWhitelisted[token] = true;
+        emit TokenWhitelistUpdated(token, true);
+    }
+
+    /**
+     * @dev Removes a token from the whitelist.
+     * @param token Address of the token to remove.
+     */
+    function removeWhitelistedToken(address token) external onlyRole(FEE_MANAGER_ROLE) {
+        require(isWhitelisted[token], "Validator: Token not whitelisted");
+        isWhitelisted[token] = false;
+        emit TokenWhitelistUpdated(token, false);
+    }
+
+    /**
+     * @dev Sets the service fee for a specific token.
+     * @param token Address of the token.
+     * @param _serviceFee Service fee amount in the token's smallest unit.
+     */
+    function setServiceFee(address token, uint256 _serviceFee) external onlyRole(FEE_MANAGER_ROLE) {
+        require(isWhitelisted[token], "Validator: Token not whitelisted");
+        serviceFee[token] = _serviceFee;
+        emit ServiceFeeUpdated(token, _serviceFee);
+    }
+
+    /**
+     * @dev Sets the FundManager contract address.
+     * @param _fundManager The new FundManager contract address.
+     */
+    function setFundManager(address _fundManager) public onlyOwner {
+        require(_fundManager != address(0), "Validator: Invalid FundManager address");
+        fundManager = _fundManager;
+        emit FundManagerUpdated(_fundManager);
+    }
+
+    /**
+     * @dev Allows validator admins to withdraw accumulated service fees from the FundManager.
+     * @param token Address of the token to withdraw.
+     */
+    function withdrawServiceFees(address token) external onlyRole(FEE_MANAGER_ROLE) {
+        require(fundManager != address(0), "Validator: FundManager not set");
+        
+        // Check if there are fees to withdraw
+        uint256 amount = IFundManager(fundManager).getCommissionBalance(address(this), token);
+        require(amount > 0, "Validator: No service fees to withdraw");
+        
+        // Call the FundManager to withdraw fees
+        IFundManager(fundManager).withdrawValidatorFees(address(this), token);
+        
+        emit ServiceFeesWithdrawn(msg.sender, token, amount);
+    }
+
+    /**
+     * @dev Checks if a token is whitelisted.
+     * @param token Address of the token.
+     * @return Boolean indicating if the token is whitelisted.
+     */
+    function isTokenWhitelisted(address token) external view returns (bool) {
+        return isWhitelisted[token];
+    }
+
+    /**
+     * @dev Retrieves the service fee for a specific token.
+     * @param token Address of the token.
+     * @return fee The service fee amount for the token.
+     */
+    function getServiceFee(address token) external view returns (uint256) {
+        return serviceFee[token];
     }
 }

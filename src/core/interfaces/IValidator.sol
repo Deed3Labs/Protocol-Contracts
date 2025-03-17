@@ -50,4 +50,26 @@ interface IValidator {
      * @return Whether the validation was successful
      */
     function validateDeed(uint256 tokenId) external returns (bool);
+
+    /**
+     * @dev Checks if a token is whitelisted by the validator.
+     * @param token Address of the token.
+     * @return Boolean indicating if the token is whitelisted.
+     */
+    function isTokenWhitelisted(address token) external view returns (bool);
+
+    /**
+     * @dev Retrieves the service fee for a specific token.
+     * @param token Address of the token.
+     * @return fee The service fee amount for the token.
+     */
+    function getServiceFee(address token) external view returns (uint256);
+
+    /**
+     * @dev Checks if an address has a specific role.
+     * @param role The role to check.
+     * @param account The address to check.
+     * @return Boolean indicating if the address has the role.
+     */
+    function hasRole(bytes32 role, address account) external view returns (bool);
 }
