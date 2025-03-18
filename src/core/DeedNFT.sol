@@ -460,11 +460,10 @@ contract DeedNFT is
             bytes memory operatingAgreementBytes = _tokenTraits[tokenId][keccak256("operatingAgreement")];
             string memory operatingAgreement = abi.decode(operatingAgreementBytes, (string));
 
-            // Check if operating agreement is valid
-            string memory agreementName = IValidator(validatorAddress)
-                .operatingAgreementName(operatingAgreement);
+            // Check if operating agreement is valid using validateOperatingAgreement instead of operatingAgreementName
+            bool isAgreementValid = IValidator(validatorAddress).validateOperatingAgreement(operatingAgreement);
             require(
-                bytes(agreementName).length > 0,
+                isAgreementValid,
                 "DeedNFT: Invalid operating agreement"
             );
             
