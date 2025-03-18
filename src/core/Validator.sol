@@ -8,6 +8,7 @@ import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 
 // Libraries
 import "../libraries/StringUtils.sol";
@@ -36,6 +37,7 @@ import "./interfaces/IFundManager.sol";
  */
 contract Validator is
     Initializable,
+    ERC165Upgradeable,
     AccessControlUpgradeable,
     OwnableUpgradeable,
     UUPSUpgradeable,
@@ -154,6 +156,7 @@ contract Validator is
         __AccessControl_init();
         __Ownable_init();
         __UUPSUpgradeable_init();
+        __ERC165_init();
         
         baseUri = _baseUri;
         defaultOperatingAgreementUri = _defaultOperatingAgreementUri;
@@ -1089,5 +1092,20 @@ contract Validator is
     function setRoyaltyReceiver(address receiver) external override onlyRole(FEE_MANAGER_ROLE) {
         require(receiver != address(0), "Validator: Invalid royalty receiver address");
         royaltyReceiver = receiver;
+    }
+
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     * Declares support for IValidator interface
+     */
+    function supportsInterface(bytes4 interfaceId) 
+        public 
+        view 
+        override(AccessControlUpgradeable, ERC165Upgradeable) 
+        returns (bool) 
+    {
+        return
+            interfaceId == type(IValidator).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 }
