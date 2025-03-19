@@ -789,7 +789,7 @@ contract PropertyMetadataRenderer is MetadataRendererBase {
     /**
      * @dev Implementation of supportsInterface
      */
-    function supportsInterface(bytes4 interfaceId) public view virtual override(AccessControlUpgradeable, IERC165Upgradeable) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override(AccessControlUpgradeable) returns (bool) {
         return interfaceId == type(IERC7572).interfaceId || 
                super.supportsInterface(interfaceId);
     }

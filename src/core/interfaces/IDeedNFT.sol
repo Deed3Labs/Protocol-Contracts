@@ -2,6 +2,7 @@
 pragma solidity ^0.8.29;
 
 import "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol";
 
 /**
  * @title IDeedNFT
@@ -9,7 +10,7 @@ import "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeab
  *      Provides a standardized way for other contracts to interact with DeedNFT.
  *      Consolidates functionality needed by FundManager, Fractionalize, and Subdivide contracts.
  */
-interface IDeedNFT is IERC165Upgradeable {
+interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
     // ============ Enums ============
     
     /**
@@ -264,4 +265,18 @@ interface IDeedNFT is IERC165Upgradeable {
      * @return Boolean indicating if the interface is supported
      */
     function supportsInterface(bytes4 interfaceId) external view override returns (bool);
+
+    /**
+     * @dev Gets the asset type of a token
+     * @param tokenId ID of the token to query
+     * @return assetType Type of the asset
+     */
+    function getAssetType(uint256 tokenId) external view returns (uint8);
+
+    /**
+     * @dev Checks if a token is validated
+     * @param tokenId ID of the token to check
+     * @return isValidated Whether the token is validated
+     */
+    function isValidated(uint256 tokenId) external view returns (bool);
 } 
