@@ -2,10 +2,12 @@
 pragma solidity ^0.8.29;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/Base64Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol";
 
 // Libraries
 import "../libraries/StringUtils.sol";
@@ -19,7 +21,7 @@ import "./interfaces/IDeedNFT.sol";
  * @title MetadataRenderer
  * @dev Renders metadata for NFTs with property details
  */
-contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable, IERC7572 {
+contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, IERC7572 {
     using StringsUpgradeable for uint256;
     using StringsUpgradeable for address;
     using Base64Upgradeable for bytes;
@@ -201,19 +203,30 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     event TokenDocumentUpdated(uint256 indexed tokenId, string docType);
     event TokenGalleryUpdated(uint256 indexed tokenId);
     event TokenCustomMetadataUpdated(uint256 indexed tokenId);
+    event CompatibleDeedContractAdded(address indexed contractAddress);
+    event CompatibleDeedContractRemoved(address indexed contractAddress);
     
     IDeedNFT public deedNFT;
     
     // Add this with the other state variables
     bytes32 public constant VALIDATOR_ROLE = keccak256("VALIDATOR_ROLE");
     
+    // Add these state variables
+    mapping(address => bool) public compatibleDeedContracts;
+    address[] public deedContractsList;
+    
     /**
      * @dev Initializes the contract
      */
     function initialize(string memory _baseURI) public initializer {
         __Ownable_init();
+        __AccessControl_init();
         __UUPSUpgradeable_init();
+        
         baseURI = _baseURI;
+        
+        // Set up roles
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         
         // Set default invalidated image
         invalidatedImageURI = "ipfs://QmDefaultInvalidatedImageCID";
@@ -1646,5 +1659,81 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, UUPSUpgradeable,
         delete tokenDocuments[tokenId][docType];
         
         emit TokenDocumentUpdated(tokenId, docType);
+    }
+
+    /**
+     * @dev Sets the DeedNFT contract address
+     * @param _deedNFT Address of the DeedNFT contract
+     */
+    function setDeedNFT(address _deedNFT) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_deedNFT != address(0), "MetadataRenderer: Invalid DeedNFT address");
+        deedNFT = IDeedNFT(_deedNFT);
+        
+        // Also add to compatible contracts if not already added
+        if (!compatibleDeedContracts[_deedNFT]) {
+            addCompatibleDeedContract(_deedNFT);
+        }
+    }
+
+    /**
+     * @dev Adds a compatible DeedNFT contract
+     * @param contractAddress Address of the compatible DeedNFT contract
+     */
+    function addCompatibleDeedContract(address contractAddress) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(contractAddress != address(0), "MetadataRenderer: Invalid contract address");
+        require(!compatibleDeedContracts[contractAddress], "MetadataRenderer: Contract already added");
+        
+        // Verify the contract implements the IDeedNFT interface
+        // This is a basic check - in production you might want more thorough validation
+        try IDeedNFT(contractAddress).supportsInterface(type(IERC721Upgradeable).interfaceId) returns (bool supported) {
+            require(supported, "MetadataRenderer: Contract does not implement IERC721");
+        } catch {
+            revert("MetadataRenderer: Contract does not implement IDeedNFT interface");
+        }
+        
+        compatibleDeedContracts[contractAddress] = true;
+        deedContractsList.push(contractAddress);
+        
+        emit CompatibleDeedContractAdded(contractAddress);
+    }
+
+    /**
+     * @dev Removes a compatible DeedNFT contract
+     * @param contractAddress Address of the compatible DeedNFT contract to remove
+     */
+    function removeCompatibleDeedContract(address contractAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(compatibleDeedContracts[contractAddress], "MetadataRenderer: Contract not in compatible list");
+        
+        // Remove from mapping
+        compatibleDeedContracts[contractAddress] = false;
+        
+        // Remove from array
+        for (uint i = 0; i < deedContractsList.length; i++) {
+            if (deedContractsList[i] == contractAddress) {
+                // Replace with the last element and pop
+                deedContractsList[i] = deedContractsList[deedContractsList.length - 1];
+                deedContractsList.pop();
+                break;
+            }
+        }
+        
+        emit CompatibleDeedContractRemoved(contractAddress);
+    }
+
+    /**
+     * @dev Gets all compatible DeedNFT contracts
+     * @return Array of compatible DeedNFT contract addresses
+     */
+    function getCompatibleDeedContracts() external view returns (address[] memory) {
+        return deedContractsList;
+    }
+
+    /**
+     * @dev Checks if a contract is compatible
+     * @param contractAddress Address of the contract to check
+     * @return Whether the contract is compatible
+     */
+    function isCompatibleDeedContract(address contractAddress) public view returns (bool) {
+        return compatibleDeedContracts[contractAddress];
     }
 }

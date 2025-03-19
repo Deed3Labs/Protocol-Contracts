@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
+import "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
+
 /**
  * @title IDeedNFT
  * @dev Interface for the DeedNFT contract.
  *      Provides a standardized way for other contracts to interact with DeedNFT.
  *      Consolidates functionality needed by FundManager, Fractionalize, and Subdivide contracts.
  */
-interface IDeedNFT {
+interface IDeedNFT is IERC165Upgradeable {
     // ============ Enums ============
     
     /**
@@ -255,4 +257,11 @@ interface IDeedNFT {
      * @return isViewFunction Whether the function is a view function
      */
     function getTransferValidationFunction() external pure returns (bytes4 functionSignature, bool isViewFunction);
+
+    /**
+     * @dev Checks if the contract implements an interface
+     * @param interfaceId Interface identifier (ERC165)
+     * @return Boolean indicating if the interface is supported
+     */
+    function supportsInterface(bytes4 interfaceId) external view override returns (bool);
 } 
