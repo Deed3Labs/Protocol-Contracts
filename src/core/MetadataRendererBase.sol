@@ -44,6 +44,9 @@ abstract contract MetadataRendererBase is Initializable, OwnableUpgradeable, Acc
         string confidenceScore;
         
         // Display details
+        string name;
+        string description;
+        string imageURI;
         string background_color;
         string animation_url;
     }
@@ -220,26 +223,28 @@ abstract contract MetadataRendererBase is Initializable, OwnableUpgradeable, Acc
     }
     
     /**
-     * @dev Generates gallery JSON for a token
+     * @dev Generates gallery array
      */
-    function _generateGallery(uint256 tokenId) internal view returns (string memory) {
+    function _generateGallery(uint256 tokenId) internal view virtual returns (string memory) {
         string[] memory images = tokenGalleryImages[tokenId];
+        
         if (images.length == 0) {
-            return "";
+            return "[]";
         }
         
-        string memory gallery = '"gallery":[';
+        string memory array = "[";
         
         for (uint i = 0; i < images.length; i++) {
             if (i > 0) {
-                gallery = string(abi.encodePacked(gallery, ','));
+                array = string(abi.encodePacked(array, ","));
             }
-            gallery = string(abi.encodePacked(gallery, '"', images[i], '"'));
+            
+            array = string(abi.encodePacked(array, '"', images[i], '"'));
         }
         
-        gallery = string(abi.encodePacked(gallery, ']'));
+        array = string(abi.encodePacked(array, "]"));
         
-        return gallery;
+        return array;
     }
     
     /**
@@ -258,10 +263,10 @@ abstract contract MetadataRendererBase is Initializable, OwnableUpgradeable, Acc
     }
     
     /**
-     * @dev Generates JSON metadata for a token
+     * @dev Generates the complete JSON metadata
      */
     function _generateJSON(
-        uint256 tokenId,
+        uint256 /* tokenId */,  // Comment out the parameter name to silence the warning
         string memory name,
         string memory description,
         string memory imageURI,
@@ -270,17 +275,15 @@ abstract contract MetadataRendererBase is Initializable, OwnableUpgradeable, Acc
         string memory gallery,
         string memory attributes,
         string memory properties
-    ) internal pure returns (string memory) {
-        // Start building the JSON
-        string memory json = string(abi.encodePacked(
-            '{',
-            '"name":"', name, '",',
-            '"description":"', description, '",',
-            '"image":"', imageURI, '",',
-            '"token_id":"', tokenId.toString(), '"'
-        ));
+    ) internal pure virtual returns (string memory) {
+        string memory json = "{";
         
-        // Add optional fields if provided
+        // Add required fields
+        json = string(abi.encodePacked(json, '"name":"', name, '"'));
+        json = string(abi.encodePacked(json, ',"description":"', description, '"'));
+        json = string(abi.encodePacked(json, ',"image":"', imageURI, '"'));
+        
+        // Add optional fields if they exist
         if (bytes(backgroundColor).length > 0) {
             json = string(abi.encodePacked(json, ',"background_color":"', backgroundColor, '"'));
         }
@@ -289,29 +292,31 @@ abstract contract MetadataRendererBase is Initializable, OwnableUpgradeable, Acc
             json = string(abi.encodePacked(json, ',"animation_url":"', animationUrl, '"'));
         }
         
-        // Add gallery if available
-        if (bytes(gallery).length > 0) {
-            json = string(abi.encodePacked(json, ',', gallery));
-        }
+        // Add gallery
+        json = string(abi.encodePacked(json, ',"gallery":', gallery));
         
-        // Add attributes if available
+        // Add attributes
         if (bytes(attributes).length > 0) {
             json = string(abi.encodePacked(json, ',"attributes":[', attributes, ']'));
+        } else {
+            json = string(abi.encodePacked(json, ',"attributes":[]'));
         }
         
-        // Add properties if available
-        if (bytes(properties).length > 0) {
-            json = string(abi.encodePacked(json, ',"properties":', properties));
-        }
+        // Add properties
+        json = string(abi.encodePacked(json, ',"properties":', properties));
         
-        // Close the JSON object
-        json = string(abi.encodePacked(json, '}'));
+        // Close JSON
+        json = string(abi.encodePacked(json, "}"));
         
-        // Return Base64 encoded JSON
-        return string(abi.encodePacked(
-            "data:application/json;base64,",
-            Base64Upgradeable.encode(bytes(json))
-        ));
+        // Encode to base64
+        string memory output = string(
+            abi.encodePacked(
+                "data:application/json;base64,",
+                Base64Upgradeable.encode(bytes(json))
+            )
+        );
+        
+        return output;
     }
 
     /**

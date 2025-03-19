@@ -2,12 +2,14 @@
 pragma solidity ^0.8.29;
 
 import "./MetadataRendererBase.sol";
-import "./EquipmentDetails.sol";
-import "./Base64Upgradeable.sol";
+import "../libraries/JSONUtils.sol";
+import "../libraries/StringUtils.sol";
+
+// Fix the imports
+import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/Strings.sol";
-import "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/Base64Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
 import "./interfaces/IERC7572.sol";
 
@@ -15,26 +17,80 @@ import "./interfaces/IERC7572.sol";
  * @title EquipmentMetadataRenderer
  * @dev Specialized renderer for Commercial Equipment assets
  */
-abstract contract EquipmentMetadataRenderer is MetadataRendererBase, AccessControlUpgradeable, Initializable, IERC7572 {
-    using Strings for uint256;
+abstract contract EquipmentMetadataRenderer is MetadataRendererBase {
+    using StringsUpgradeable for uint256;
+    using JSONUtils for string;
+    using StringUtils for string;
+
+    // Equipment details for Commercial Equipment assets
+    struct EquipmentDetails {
+        // Base details
+        BaseDetails base;
+        
+        // Equipment identification
+        string serialNumber;
+        string manufacturer;
+        string model;
+        string year;
+        string category;
+        string subcategory;
+        string equipmentType;
+        
+        // Technical details
+        string powerSource;
+        string capacity;
+        string dimensions;
+        string weight;
+        
+        // Condition details
+        string condition;
+        string lastMaintenanceDate;
+        string maintenanceHistory;
+        string operatingHours;
+        
+        // Registration details
+        string registrationNumber;
+        string complianceCertifications;
+        string warrantyExpiration;
+        
+        // Value details
+        string purchaseDate;
+        string purchasePrice;
+        string currentValueUSD;
+        string appraisalDate;
+        string appraisalSource;
+        
+        // Insurance details
+        string insuranceProvider;
+        string insurancePolicyNumber;
+        string insuranceExpiration;
+        string coverageDetails;
+        
+        // Location details
+        string currentLocation;
+        string facilityName;
+    }
+    
+    // Mapping to track token equipment details
+    mapping(uint256 => EquipmentDetails) public equipmentDetails;
 
     /**
      * @dev Generates token URI for a specific token
      * @param tokenId ID of the token
      * @return URI for the token metadata
      */
-    function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
+    function tokenURI(uint256 tokenId) public view virtual returns (string memory) {
         // Fetch asset details
         EquipmentDetails storage details = equipmentDetails[tokenId];
         
         // Generate JSON metadata
         string memory json = _generateJSON(
             tokenId,
-            details.name,
-            details.description,
-            details.imageURI,
-            details.backgroundColor,
-            details.animationUrl,
+            details.base.name,
+            details.base.description,
+            details.base.imageURI,
+            details.base.background_color,
+            details.base.animation_url,
             _generateGallery(tokenId),
             _generateAttributes(tokenId),
             _generateProperties(tokenId)
@@ -112,6 +168,10 @@ abstract contract EquipmentMetadataRenderer is MetadataRendererBase, AccessContr
             obj = _addJsonField(obj, "subcategory", details.subcategory);
         }
         
+        if (bytes(details.equipmentType).length > 0) {
+            obj = _addJsonField(obj, "equipmentType", details.equipmentType);
+        }
+        
         obj = string(abi.encodePacked(obj, "}"));
         
         return obj;
@@ -154,20 +214,16 @@ abstract contract EquipmentMetadataRenderer is MetadataRendererBase, AccessContr
             obj = _addJsonField(obj, "condition", details.condition);
         }
         
-        if (bytes(details.hoursUsed).length > 0) {
-            obj = _addJsonField(obj, "hoursUsed", details.hoursUsed);
-        }
-        
-        if (bytes(details.lastServiceDate).length > 0) {
-            obj = _addJsonField(obj, "lastServiceDate", details.lastServiceDate);
+        if (bytes(details.lastMaintenanceDate).length > 0) {
+            obj = _addJsonField(obj, "lastMaintenanceDate", details.lastMaintenanceDate);
         }
         
         if (bytes(details.maintenanceHistory).length > 0) {
             obj = _addJsonField(obj, "maintenanceHistory", details.maintenanceHistory);
         }
         
-        if (bytes(details.ownershipHistory).length > 0) {
-            obj = _addJsonField(obj, "ownershipHistory", details.ownershipHistory);
+        if (bytes(details.operatingHours).length > 0) {
+            obj = _addJsonField(obj, "operatingHours", details.operatingHours);
         }
         
         obj = string(abi.encodePacked(obj, "}"));
@@ -185,12 +241,12 @@ abstract contract EquipmentMetadataRenderer is MetadataRendererBase, AccessContr
             obj = _addJsonField(obj, "registrationNumber", details.registrationNumber);
         }
         
-        if (bytes(details.registrationAuthority).length > 0) {
-            obj = _addJsonField(obj, "registrationAuthority", details.registrationAuthority);
+        if (bytes(details.complianceCertifications).length > 0) {
+            obj = _addJsonField(obj, "complianceCertifications", details.complianceCertifications);
         }
         
-        if (bytes(details.registrationExpiration).length > 0) {
-            obj = _addJsonField(obj, "registrationExpiration", details.registrationExpiration);
+        if (bytes(details.warrantyExpiration).length > 0) {
+            obj = _addJsonField(obj, "warrantyExpiration", details.warrantyExpiration);
         }
         
         obj = string(abi.encodePacked(obj, "}"));
@@ -212,16 +268,16 @@ abstract contract EquipmentMetadataRenderer is MetadataRendererBase, AccessContr
             obj = _addJsonField(obj, "purchasePrice", details.purchasePrice);
         }
         
-        if (bytes(details.currentValueSource).length > 0) {
-            obj = _addJsonField(obj, "currentValueSource", details.currentValueSource);
-        }
-        
         if (bytes(details.currentValueUSD).length > 0) {
             obj = _addJsonField(obj, "currentValueUSD", details.currentValueUSD);
         }
         
-        if (bytes(details.depreciationSchedule).length > 0) {
-            obj = _addJsonField(obj, "depreciationSchedule", details.depreciationSchedule);
+        if (bytes(details.appraisalDate).length > 0) {
+            obj = _addJsonField(obj, "appraisalDate", details.appraisalDate);
+        }
+        
+        if (bytes(details.appraisalSource).length > 0) {
+            obj = _addJsonField(obj, "appraisalSource", details.appraisalSource);
         }
         
         obj = string(abi.encodePacked(obj, "}"));
@@ -323,7 +379,7 @@ abstract contract EquipmentMetadataRenderer is MetadataRendererBase, AccessContr
     /**
      * @dev Generates gallery array
      */
-    function _generateGallery(uint256 tokenId) internal view returns (string memory) {
+    function _generateGallery(uint256 tokenId) internal view override returns (string memory) {
         string[] memory images = tokenGalleryImages[tokenId];
         
         if (images.length == 0) {
@@ -371,7 +427,7 @@ abstract contract EquipmentMetadataRenderer is MetadataRendererBase, AccessContr
      * @dev Generates the complete JSON metadata
      */
     function _generateJSON(
-        uint256 tokenId,
+        uint256 /* tokenId */,  // Comment out the parameter name to silence the warning
         string memory name,
         string memory description,
         string memory imageURI,
@@ -380,7 +436,7 @@ abstract contract EquipmentMetadataRenderer is MetadataRendererBase, AccessContr
         string memory gallery,
         string memory attributes,
         string memory properties
-    ) internal pure returns (string memory) {
+    ) internal pure override returns (string memory) {
         string memory json = "{";
         
         // Add required fields
@@ -423,12 +479,61 @@ abstract contract EquipmentMetadataRenderer is MetadataRendererBase, AccessContr
         
         return output;
     }
-    
+
     /**
-     * @dev Implementation of supportsInterface
+     * @dev Generates attributes for a token
      */
-    function supportsInterface(bytes4 interfaceId) public view virtual override(AccessControlUpgradeable, IERC165Upgradeable) returns (bool) {
-        return interfaceId == type(IERC7572).interfaceId || 
-               super.supportsInterface(interfaceId);
+    function _generateAttributes(uint256 tokenId) internal view returns (string memory) {
+        EquipmentDetails storage details = equipmentDetails[tokenId];
+        bool isValidated = true; // You may want to get this from the token contract
+        
+        string memory attributes = "";
+        
+        // Add equipment type attribute
+        if (bytes(details.equipmentType).length > 0) {
+            attributes = _addAttribute(attributes, "Equipment Type", details.equipmentType);
+        }
+        
+        // Add manufacturer attribute
+        if (bytes(details.manufacturer).length > 0) {
+            attributes = _addAttribute(attributes, "Manufacturer", details.manufacturer);
+        }
+        
+        // Add model attribute
+        if (bytes(details.model).length > 0) {
+            attributes = _addAttribute(attributes, "Model", details.model);
+        }
+        
+        // Add year attribute
+        if (bytes(details.year).length > 0) {
+            attributes = _addAttribute(attributes, "Year", details.year);
+        }
+        
+        // Add condition attribute
+        if (bytes(details.condition).length > 0) {
+            attributes = _addAttribute(attributes, "Condition", details.condition);
+        }
+        
+        // Add validation status
+        attributes = _addAttribute(attributes, "Validated", isValidated ? "Yes" : "No");
+        
+        // Add features as attributes
+        string[] memory features = tokenFeatures[tokenId];
+        for (uint i = 0; i < features.length; i++) {
+            attributes = _addAttribute(attributes, "Feature", features[i]);
+        }
+        
+        return attributes;
+    }
+
+    /**
+     * @dev Helper function to add an attribute
+     */
+    function _addAttribute(string memory attributes, string memory trait_type, string memory value) internal pure returns (string memory) {
+        if (bytes(attributes).length > 0) {
+            return string(abi.encodePacked(attributes, ',{"trait_type":"', trait_type, '","value":"', value, '"}'));
+        } else {
+            return string(abi.encodePacked('{"trait_type":"', trait_type, '","value":"', value, '"}'));
+        }
     }
 }
