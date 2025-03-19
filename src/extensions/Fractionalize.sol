@@ -1,23 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.29;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
-
-/**
- * @title IDeedNFT Interface
- * @dev Interface for interacting with the DeedNFT contract.
- *      Required for asset locking and ownership verification.
- *      Ensures compatibility with the core DeedNFT contract.
- */
-interface IDeedNFT {
-    function ownerOf(uint256 tokenId) external view returns (address);
-    function transferFrom(address from, address to, uint256 tokenId) external;
-    function safeTransferFrom(address from, address to, uint256 tokenId) external;
-}
+import "../core/interfaces/IDeedNFT.sol";
 
 /**
  * @title ISubdivide Interface

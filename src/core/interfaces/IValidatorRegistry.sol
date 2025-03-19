@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.29;
 
 /**
  * @title IValidatorRegistry
@@ -60,8 +60,15 @@ interface IValidatorRegistry {
 
     /**
      * @dev Checks if a validator is registered
-     * @param validator Address of the validator to check
+     * @param validator Address of the validator
      * @return Boolean indicating if the validator is registered
      */
     function isValidatorRegistered(address validator) external view returns (bool);
+
+    /**
+     * @dev Gets the name of a validator
+     * @param validator Address of the validator
+     * @return Name of the validator
+     */
+    function getValidatorName(address validator) external view returns (string memory);
 }

@@ -1,9 +1,9 @@
 import { ethers, upgrades } from "hardhat";
-import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
+import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { 
   DeedNFT, ValidatorRegistry, Validator, FundManager, 
   Fractionalize, Subdivide 
-} from "../typechain-types";
+} from "../typechain";
 
 export interface DeployedContracts {
   deedNFT: DeedNFT;

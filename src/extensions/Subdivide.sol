@@ -1,31 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.29;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
-
-/**
- * @title IDeedNFT Interface
- * @dev Interface for interacting with the DeedNFT contract.
- *      Required for subdivision validation and ownership checks.
- *      Ensures compatibility with the core DeedNFT contract.
- */
-interface IDeedNFT {
-    enum AssetType { Land, Vehicle, Estate, CommercialEquipment }
-    function ownerOf(uint256 tokenId) external view returns (address);
-    function canSubdivide(uint256 tokenId) external view returns (bool);
-    function getDeedInfo(uint256 tokenId) external view returns (
-        AssetType assetType,
-        bool isValidated,
-        string memory operatingAgreement,
-        string memory definition,
-        string memory configuration,
-        address validator
-    );
-}
+import "../core/interfaces/IDeedNFT.sol";
 
 /**
  * @title Subdivide

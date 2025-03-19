@@ -1,26 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.29;
 
 // OpenZeppelin Upgradeable Contracts
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-// Interface
-import "./IValidatorRegistry.sol";
-
-/**
- * @title IValidator Interface
- * @dev Interface for validator contracts that handle deed validation.
- *      Required for validator registration and management.
- *      Ensures consistent validator behavior across the system.
- */
-interface IValidator {
-    function supportsAssetType(uint256 assetTypeId) external view returns (bool);
-    function validateDeed(uint256 deedId) external returns (bool);
-    function operatingAgreementName(string memory uri) external view returns (string memory);
-    function tokenURI(uint256 deedId) external view returns (string memory);
-}
+// Interfaces
+import "./interfaces/IValidatorRegistry.sol";
+import "./interfaces/IValidator.sol";
 
 /**
  * @title ValidatorRegistry
@@ -273,5 +262,20 @@ contract ValidatorRegistry is
 
         validators[validator].isActive = isActive;
         emit ValidatorStatusUpdated(validator, isActive);
+    }
+
+    /**
+     * @dev See {IERC165-supportsInterface}.
+     * Adds support for the IValidatorRegistry interface.
+     */
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(AccessControlUpgradeable)
+        returns (bool)
+    {
+        return
+            interfaceId == type(IValidatorRegistry).interfaceId ||
+            super.supportsInterface(interfaceId);
     }
 }

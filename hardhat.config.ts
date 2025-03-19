@@ -10,6 +10,7 @@ import "@nomicfoundation/hardhat-verify";
 import "@nomicfoundation/hardhat-chai-matchers";
 import "@typechain/hardhat";
 import "hardhat-gas-reporter";
+import "@nomicfoundation/hardhat-ethers";
 
 // If not set, it uses ours Alchemy's default API key.
 // You can get your own at https://dashboard.alchemyapi.io
@@ -27,14 +28,14 @@ const config: HardhatUserConfig = {
     settings: {
       optimizer: {
         enabled: true,
-        // https://docs.soliditylang.org/en/latest/using-the-compiler.html#optimizer-options
-        runs: 200,
+        runs: 200
       },
+      viaIR: true,
       outputSelection: {
         "*": {
           "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "metadata"],
         },
-      },
+      }
     },
   },
   sourcify: {
@@ -134,7 +135,7 @@ const config: HardhatUserConfig = {
   },
   typechain: {
     outDir: "typechain",
-    target: "ethers-v5",
+    target: "ethers-v6",
   },
 };
 

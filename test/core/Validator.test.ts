@@ -2,7 +2,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { deployContracts, DeployedContracts } from "../helpers/deploy-helpers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { Validator } from "../typechain-types";
+import { Validator } from "../../typechain-types";
 
 describe("Validator Contract", function() {
   let contracts: DeployedContracts;
@@ -15,11 +15,7 @@ describe("Validator Contract", function() {
     // Deploy all contracts
     contracts = await deployContracts();
     validator = contracts.validator;
-    deployer = contracts.deployer;
-    admin = contracts.admin;
-    validator1 = contracts.validator1;
-    user1 = contracts.user1;
-    
+    [deployer, admin, validator1, user1] = await ethers.getSigners();
     // Get role identifiers
     VALIDATOR_ROLE = ethers.utils.keccak256(ethers.utils.toUtf8Bytes("VALIDATOR_ROLE"));
     METADATA_ROLE = ethers.utils.keccak256(ethers.utils.toUtf8Bytes("METADATA_ROLE"));
