@@ -12,6 +12,9 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol"
 // Libraries
 import "../libraries/StringUtils.sol";
 import "../libraries/JSONUtils.sol";
+import "../libraries/MetadataGenerationLibrary.sol";
+import "../libraries/MetadataUpdateLibrary.sol";
+import "../libraries/AssetDetailsLibrary.sol";
 
 // Interfaces
 import "./interfaces/IERC7572.sol";
@@ -23,170 +26,487 @@ import "./interfaces/IDeedNFT.sol";
  */
 contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, IERC7572 {
     using StringsUpgradeable for uint256;
-    using StringsUpgradeable for address;
     using Base64Upgradeable for bytes;
     using StringUtils for string;
     using JSONUtils for string;
 
-    // Base URI for external links
-    string public baseURI;
-    
-    // Default images for asset types
-    mapping(uint8 => string) public assetTypeImageURIs;
-    
-    // Image for invalidated assets
-    string public invalidatedImageURI;
-    
-    // Base details shared across all asset types
-    struct BaseDetails {
-        // Validation
-        string confidenceScore;
-        
-        // Display details
-        string background_color;
-        string animation_url;
-    }
+    // ============ Role Definitions ============
+    bytes32 public constant VALIDATOR_ROLE = keccak256("VALIDATOR_ROLE");
 
-    // Property details for Land and Estate assets
-    struct PropertyDetails {
-        // Base details
-        BaseDetails base;
-        
-        // Location details
-        string country;
-        string state;
-        string county;
-        string city;
-        string streetNumber;
-        string streetName;
-        string parcelNumber;
-        
-        // Legal details
-        string deed_type;
-        string recording_date;
-        string recording_number;
-        string legal_description;
-        string holdingEntity;
-        
-        // Geographic details
-        string latitude;
-        string longitude;
-        string acres;
-        
-        // Zoning details
-        string parcelUse;
-        string zoning;
-        string zoningCode;
-        
-        // Value details
-        string taxValueSource;
-        string taxAssessedValueUSD;
-        string estimatedValueSource;
-        string estimatedMarketValueUSD;
-        string localAppraisalSource;
-        string localAppraisedValueUSD;
-        
-        // Build details
-        string buildYear;
-        
-        // Utilities
-        bool has_water;
-        bool has_electricity;
-        bool has_natural_gas;
-        bool has_sewer;
-        bool has_internet;
-        
-        // Map overlay
-        string map_overlay;
-    }
+    // ============ State Variables ============
+    // Mapping to track compatible deed contracts
+    mapping(address => bool) public compatibleDeedContracts;
+    address[] public deedContractsList;
 
-    // Vehicle details
-    struct VehicleDetails {
-        // Base details
-        BaseDetails base;
-        
-        // Vehicle identification
-        string make;
-        string model;
-        string year;
-        string vin;
-        string licensePlate;
-        string registrationState;
-        
-        // Physical details
-        string color;
-        string bodyType;
-        string fuelType;
-        string transmissionType;
-        string mileage;
-        string engineSize;
-        
-        // Ownership details
-        string titleNumber;
-        string titleState;
-        string titleStatus;
-        string registrationExpiration;
-        string holdingEntity;
-        
-        // Value details
-        string appraisalSource;
-        string appraisedValueUSD;
-        string estimatedValueSource;
-        string estimatedMarketValueUSD;
-        
-        // Condition
-        string condition;
-        string lastServiceDate;
-    }
-
-    // Commercial Equipment details
-    struct EquipmentDetails {
-        // Base details
-        BaseDetails base;
-        
-        // Equipment identification
-        string manufacturer;
-        string model;
-        string serialNumber;
-        string year;
-        string category;
-        string equipmentType;
-        
-        // Physical details
-        string dimensions;
-        string weight;
-        string powerSource;
-        string operatingHours;
-        
-        // Ownership details
-        string purchaseDate;
-        string warrantyExpiration;
-        string holdingEntity;
-        string location;
-        
-        // Value details
-        string appraisalSource;
-        string appraisedValueUSD;
-        string estimatedValueSource;
-        string estimatedMarketValueUSD;
-        string depreciationSchedule;
-        
-        // Condition
-        string condition;
-        string lastServiceDate;
-        string maintenanceSchedule;
-    }
-
-    // Storage for different asset types
-    mapping(uint256 => PropertyDetails) public tokenPropertyDetails;
-    mapping(uint256 => VehicleDetails) public tokenVehicleDetails;
-    mapping(uint256 => EquipmentDetails) public tokenEquipmentDetails;
+    // Mapping to track token metadata
+    mapping(uint256 => AssetDetailsLibrary.PropertyDetails) public tokenPropertyDetails;
+    mapping(uint256 => AssetDetailsLibrary.VehicleDetails) public tokenVehicleDetails;
+    mapping(uint256 => AssetDetailsLibrary.EquipmentDetails) public tokenEquipmentDetails;
     
-    // Token gallery images
+    // Mapping to track token features
+    mapping(uint256 => string[]) public tokenFeatures;
+    
+    // Mapping to track token custom metadata
+    mapping(uint256 => string) public tokenCustomMetadata;
+    
+    // Mapping to track token documents
+    mapping(uint256 => string[]) public tokenDocumentTypes;
+    mapping(uint256 => mapping(string => string)) public tokenDocuments;
+    
+    // Mapping to track token gallery images
     mapping(uint256 => string[]) public tokenGalleryImages;
     
-    // Token features
-    mapping(uint256 => string[]) public tokenFeatures;
+    // Mapping to track token validation status
+    mapping(uint256 => bool) public tokenValidated;
+    
+    // Default values
+    string public baseURI;
+    string public invalidatedImageURI;
+    mapping(uint8 => string) public assetTypeImageURIs;
+    
+    // DeedNFT contract
+    IDeedNFT public deedNFT;
+    
+    // ============ Events ============
+    event PropertyDetailsUpdated(uint256 indexed tokenId);
+    event VehicleDetailsUpdated(uint256 indexed tokenId);
+    event EquipmentDetailsUpdated(uint256 indexed tokenId);
+    event TokenFeaturesUpdated(uint256 indexed tokenId);
+    event TokenCustomMetadataUpdated(uint256 indexed tokenId);
+    event TokenDocumentUpdated(uint256 indexed tokenId, string docType);
+    event TokenGalleryUpdated(uint256 indexed tokenId);
+    event TokenValidated(uint256 indexed tokenId, bool validated);
+    event CompatibleDeedContractAdded(address indexed contractAddress);
+    event CompatibleDeedContractRemoved(address indexed contractAddress);
+    
+    // ============ Modifiers ============
+    modifier onlyOwnerOrValidator(uint256 tokenId) {
+        require(
+            hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || 
+            hasRole(VALIDATOR_ROLE, msg.sender) || 
+            deedNFT.ownerOf(tokenId) == msg.sender,
+            "MR: Not authorized"
+        );
+        _;
+    }
+    
+    // ============ Initializer ============
+    function initialize() public initializer {
+        __Ownable_init();
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
+        
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    }
+    
+    // ============ Admin Functions ============
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+    
+    function setBaseURI(string memory _baseURI) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        baseURI = _baseURI;
+    }
+    
+    function setInvalidatedImageURI(string memory _invalidatedImageURI) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        invalidatedImageURI = _invalidatedImageURI;
+    }
+    
+    function setAssetTypeImageURI(uint8 assetType, string memory imageURI) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        assetTypeImageURIs[assetType] = imageURI;
+    }
+    
+    // ============ Token Metadata Functions ============
+    function tokenURI(uint256 tokenId) public view returns (string memory) {
+        require(_exists(tokenId), "MR: No token");
+        
+        // Get token details
+        (uint8 assetType, bool isValidated) = _getTokenDetails(tokenId);
+        
+        // Get image URI
+        string memory imageURI = _getImageURI(tokenId, assetType, isValidated);
+        
+        // Get background color and animation URL
+        string memory backgroundColor = _getBackgroundColor(tokenId, assetType);
+        string memory animationUrl = _getAnimationUrl(tokenId, assetType);
+        
+        // Generate name and description
+        string memory name = MetadataGenerationLibrary.generateName(
+            tokenId, 
+            assetType,
+            tokenPropertyDetails,
+            tokenVehicleDetails,
+            tokenEquipmentDetails
+        );
+        
+        string memory description = _getDescription(tokenId);
+        
+        // Generate gallery
+        string memory gallery = MetadataGenerationLibrary.generateGallery(tokenGalleryImages[tokenId]);
+        
+        // Generate attributes
+        string memory attributes = AssetDetailsLibrary.generateAttributes(
+            tokenId,
+            assetType,
+            tokenPropertyDetails,
+            tokenVehicleDetails,
+            tokenEquipmentDetails,
+            tokenFeatures
+        );
+        
+        // Generate properties
+        string memory properties = AssetDetailsLibrary.generateProperties(
+            tokenId,
+            assetType,
+            _getDefinition(tokenId),
+            _getConfiguration(tokenId),
+            tokenPropertyDetails,
+            tokenVehicleDetails,
+            tokenEquipmentDetails,
+            tokenFeatures,
+            tokenCustomMetadata,
+            tokenDocumentTypes,
+            tokenDocuments
+        );
+        
+        // Generate JSON
+        string memory json = MetadataGenerationLibrary.generateJSON(
+            tokenId,
+            name,
+            description,
+            imageURI,
+            backgroundColor,
+            animationUrl,
+            gallery,
+            attributes,
+            properties
+        );
+        
+        // Encode to Base64
+        return string(
+            abi.encodePacked(
+                "data:application/json;base64,",
+                Base64Upgradeable.encode(bytes(json))
+            )
+        );
+    }
+    
+    // ============ Helper Functions ============
+    function _exists(uint256 tokenId) internal view returns (bool) {
+        address tokenContract = _getTokenContract(tokenId);
+        if (tokenContract == address(0)) {
+            return false;
+        }
+        
+        try IERC721Upgradeable(tokenContract).ownerOf(tokenId) returns (address) {
+            return true;
+        } catch {
+            return false;
+        }
+    }
+    
+    function _getTokenContract(uint256 tokenId) internal view returns (address) {
+        // If deedNFT is set and token exists there, use it
+        if (address(deedNFT) != address(0)) {
+            try deedNFT.ownerOf(tokenId) returns (address) {
+                return address(deedNFT);
+            } catch {
+                // Token doesn't exist in deedNFT, continue checking other contracts
+            }
+        }
+        
+        // Check other compatible contracts
+        for (uint i = 0; i < deedContractsList.length; i++) {
+            address contractAddress = deedContractsList[i];
+            if (contractAddress != address(deedNFT)) {
+                try IERC721Upgradeable(contractAddress).ownerOf(tokenId) returns (address) {
+                    return contractAddress;
+                } catch {
+                    // Token doesn't exist in this contract, continue checking
+                }
+            }
+        }
+        
+        return address(0); // Token not found in any compatible contract
+    }
+    
+    function _getTokenDetails(uint256 tokenId) internal view returns (uint8 assetType, bool isValidated) {
+        address tokenContract = _getTokenContract(tokenId);
+        require(tokenContract != address(0), "MR: Token not found");
+        
+        // Get asset type
+        try IDeedNFT(tokenContract).getAssetType(tokenId) returns (uint8 _assetType) {
+            assetType = _assetType;
+        } catch {
+            assetType = 0; // Default to unknown asset type
+        }
+        
+        // Get validation status
+        isValidated = tokenValidated[tokenId];
+    }
+    
+    function _getAssetType(uint256 tokenId) internal view returns (uint8) {
+        address tokenContract = _getTokenContract(tokenId);
+        require(tokenContract != address(0), "MR: Token not found");
+        
+        try IDeedNFT(tokenContract).getAssetType(tokenId) returns (uint8 assetType) {
+            return assetType;
+        } catch {
+            return 0; // Default to unknown asset type
+        }
+    }
+    
+    function _getImageURI(uint256 tokenId, uint8 assetType, bool isValidated) internal view returns (string memory) {
+        // If token is not validated, return invalidated image
+        if (!isValidated && bytes(invalidatedImageURI).length > 0) {
+            return invalidatedImageURI;
+        }
+        
+        // Check if there's a custom image in the gallery
+        if (tokenGalleryImages[tokenId].length > 0) {
+            return tokenGalleryImages[tokenId][0]; // Use first gallery image as main image
+        }
+        
+        // Use asset type default image
+        if (bytes(assetTypeImageURIs[assetType]).length > 0) {
+            return assetTypeImageURIs[assetType];
+        }
+        
+        // Fallback to empty string
+        return "";
+    }
+    
+    function _getBackgroundColor(uint256 tokenId, uint8 assetType) internal view returns (string memory) {
+        if (assetType == uint8(IDeedNFT.AssetType.Land) || assetType == uint8(IDeedNFT.AssetType.Estate)) {
+            return tokenPropertyDetails[tokenId].base.background_color;
+        } else if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
+            return tokenVehicleDetails[tokenId].base.background_color;
+        } else if (assetType == uint8(IDeedNFT.AssetType.CommercialEquipment)) {
+            return tokenEquipmentDetails[tokenId].base.background_color;
+        }
+        
+        return "";
+    }
+    
+    function _getAnimationUrl(uint256 tokenId, uint8 assetType) internal view returns (string memory) {
+        if (assetType == uint8(IDeedNFT.AssetType.Land) || assetType == uint8(IDeedNFT.AssetType.Estate)) {
+            return tokenPropertyDetails[tokenId].base.animation_url;
+        } else if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
+            return tokenVehicleDetails[tokenId].base.animation_url;
+        } else if (assetType == uint8(IDeedNFT.AssetType.CommercialEquipment)) {
+            return tokenEquipmentDetails[tokenId].base.animation_url;
+        }
+        
+        return "";
+    }
+    
+    function _getDescription(uint256 tokenId) internal view returns (string memory) {
+        // Use custom metadata description if available
+        if (bytes(tokenCustomMetadata[tokenId]).length > 0) {
+            string memory description = JSONUtils.parseJsonField(tokenCustomMetadata[tokenId], "description");
+            if (bytes(description).length > 0) {
+                return description;
+            }
+        }
+        
+        // Default description
+        return string(abi.encodePacked("Asset #", tokenId.toString()));
+    }
+    
+    function _getDefinition(uint256 tokenId) internal view returns (string memory) {
+        if (bytes(tokenCustomMetadata[tokenId]).length > 0) {
+            return JSONUtils.parseJsonField(tokenCustomMetadata[tokenId], "definition");
+        }
+        return "";
+    }
+    
+    function _getConfiguration(uint256 tokenId) internal view returns (string memory) {
+        if (bytes(tokenCustomMetadata[tokenId]).length > 0) {
+            return JSONUtils.parseJsonField(tokenCustomMetadata[tokenId], "configuration");
+        }
+        return "";
+    }
+    
+    // ============ Update Functions ============
+    function updatePropertyDetails(uint256 tokenId, string memory detailsJson) external onlyRole(VALIDATOR_ROLE) {
+        require(_exists(tokenId), "MR: No token");
+        require(_getAssetType(tokenId) == uint8(IDeedNFT.AssetType.Land) || _getAssetType(tokenId) == uint8(IDeedNFT.AssetType.Estate), "MR: Wrong asset type");
+        
+        MetadataUpdateLibrary.updatePropertyDetails(tokenPropertyDetails, tokenId, detailsJson);
+        
+        emit PropertyDetailsUpdated(tokenId);
+    }
+    
+    function updateVehicleDetails(uint256 tokenId, string memory detailsJson) external onlyRole(VALIDATOR_ROLE) {
+        require(_exists(tokenId), "MR: No token");
+        require(_getAssetType(tokenId) == uint8(IDeedNFT.AssetType.Vehicle), "MR: Wrong asset type");
+        
+        MetadataUpdateLibrary.updateVehicleDetails(tokenVehicleDetails, tokenId, detailsJson);
+        
+        emit VehicleDetailsUpdated(tokenId);
+    }
+    
+    function updateEquipmentDetails(uint256 tokenId, string memory detailsJson) external onlyRole(VALIDATOR_ROLE) {
+        require(_exists(tokenId), "MR: No token");
+        require(_getAssetType(tokenId) == uint8(IDeedNFT.AssetType.CommercialEquipment), "MR: Wrong asset type");
+        
+        MetadataUpdateLibrary.updateEquipmentDetails(tokenEquipmentDetails, tokenId, detailsJson);
+        
+        emit EquipmentDetailsUpdated(tokenId);
+    }
+    
+    function setTokenFeatures(uint256 tokenId, string[] memory features) external onlyOwnerOrValidator(tokenId) {
+        require(_exists(tokenId), "MR: No token");
+        
+        delete tokenFeatures[tokenId];
+        
+        for (uint i = 0; i < features.length; i++) {
+            tokenFeatures[tokenId].push(features[i]);
+        }
+        
+        emit TokenFeaturesUpdated(tokenId);
+    }
+    
+    function setTokenCustomMetadata(uint256 tokenId, string memory customMetadata) external onlyOwnerOrValidator(tokenId) {
+        require(_exists(tokenId), "MR: No token");
+        
+        tokenCustomMetadata[tokenId] = customMetadata;
+        
+        emit TokenCustomMetadataUpdated(tokenId);
+    }
+    
+    function setTokenGalleryImages(uint256 tokenId, string[] memory galleryImages) external onlyOwnerOrValidator(tokenId) {
+        require(_exists(tokenId), "MR: No token");
+        
+        delete tokenGalleryImages[tokenId];
+        
+        for (uint i = 0; i < galleryImages.length; i++) {
+            tokenGalleryImages[tokenId].push(galleryImages[i]);
+        }
+        
+        emit TokenGalleryUpdated(tokenId);
+    }
+    
+    function setTokenValidated(uint256 tokenId, bool validated) external onlyRole(VALIDATOR_ROLE) {
+        require(_exists(tokenId), "MR: No token");
+        
+        tokenValidated[tokenId] = validated;
+        
+        emit TokenValidated(tokenId, validated);
+    }
+    
+    function getTokenDocument(uint256 tokenId, string memory docType) external view returns (string memory) {
+        return tokenDocuments[tokenId][docType];
+    }
+    
+    function getTokenDocumentTypes(uint256 tokenId) external view returns (string[] memory) {
+        return tokenDocumentTypes[tokenId];
+    }
+    
+    function setTokenDocuments(uint256 tokenId, string[] memory docTypes, string[] memory documentURIs) external onlyOwnerOrValidator(tokenId) {
+        require(_exists(tokenId), "MR: No token");
+        require(docTypes.length == documentURIs.length, "MR: Arrays mismatch");
+        
+        for (uint i = 0; i < docTypes.length; i++) {
+            require(bytes(docTypes[i]).length > 0, "MR: Doc type empty");
+            
+            // If this is a new document type, add it to the list
+            bool docTypeExists = false;
+            for (uint j = 0; j < tokenDocumentTypes[tokenId].length; j++) {
+                if (keccak256(bytes(tokenDocumentTypes[tokenId][j])) == keccak256(bytes(docTypes[i]))) {
+                    docTypeExists = true;
+                    break;
+                }
+            }
+            
+            if (!docTypeExists) {
+                tokenDocumentTypes[tokenId].push(docTypes[i]);
+            }
+            
+            // Set the document URI
+            tokenDocuments[tokenId][docTypes[i]] = documentURIs[i];
+            
+            emit TokenDocumentUpdated(tokenId, docTypes[i]);
+        }
+    }
+    
+    function removeTokenDocument(uint256 tokenId, string memory docType) external onlyOwnerOrValidator(tokenId) {
+        require(_exists(tokenId), "MR: No token");
+        
+        // Remove the document type from the list
+        for (uint i = 0; i < tokenDocumentTypes[tokenId].length; i++) {
+            if (keccak256(bytes(tokenDocumentTypes[tokenId][i])) == keccak256(bytes(docType))) {
+                // Replace with the last element and pop
+                tokenDocumentTypes[tokenId][i] = tokenDocumentTypes[tokenId][tokenDocumentTypes[tokenId].length - 1];
+                tokenDocumentTypes[tokenId].pop();
+                break;
+            }
+        }
+        
+        // Delete the document URI
+        delete tokenDocuments[tokenId][docType];
+        
+        emit TokenDocumentUpdated(tokenId, docType);
+    }
+    
+    function setDeedNFT(address _deedNFT) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_deedNFT != address(0), "MR: Invalid address");
+        deedNFT = IDeedNFT(_deedNFT);
+        
+        // Also add to compatible contracts if not already added
+        if (!compatibleDeedContracts[_deedNFT]) {
+            addCompatibleDeedContract(_deedNFT);
+        }
+    }
+    
+    function addCompatibleDeedContract(address contractAddress) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(contractAddress != address(0), "MR: Invalid address");
+        require(!compatibleDeedContracts[contractAddress], "MR: Already added");
+        
+        // Verify the contract implements the IDeedNFT interface
+        try IDeedNFT(contractAddress).supportsInterface(type(IERC721Upgradeable).interfaceId) returns (bool supported) {
+            require(supported, "MR: Not IERC721");
+        } catch {
+            revert("MR: Not IDeedNFT");
+        }
+        
+        compatibleDeedContracts[contractAddress] = true;
+        deedContractsList.push(contractAddress);
+        
+        emit CompatibleDeedContractAdded(contractAddress);
+    }
+    
+    function removeCompatibleDeedContract(address contractAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(compatibleDeedContracts[contractAddress], "MR: Not compatible");
+        
+        // Remove from mapping
+        compatibleDeedContracts[contractAddress] = false;
+        
+        // Remove from array
+        for (uint i = 0; i < deedContractsList.length; i++) {
+            if (deedContractsList[i] == contractAddress) {
+                // Replace with the last element and pop
+                deedContractsList[i] = deedContractsList[deedContractsList.length - 1];
+                deedContractsList.pop();
+                break;
+            }
+        }
+        
+        emit CompatibleDeedContractRemoved(contractAddress);
+    }
+    
+    function getCompatibleDeedContracts() external view returns (address[] memory) {
+        return deedContractsList;
+    }
+    
+    function isCompatibleDeedContract(address contractAddress) public view returns (bool) {
+        return compatibleDeedContracts[contractAddress];
+    }
+    
+    // Implement IERC7572 interface
+    function supportsInterface(bytes4 interfaceId) public view virtual override(AccessControlUpgradeable, IERC165Upgradeable) returns (bool) {
+        return interfaceId == type(IERC7572).interfaceId || 
+               super.supportsInterface(interfaceId);
+    }
+}
     
     // Token documents
     mapping(uint256 => string[]) public tokenDocumentTypes;
@@ -196,9 +516,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     mapping(uint256 => string) public tokenCustomMetadata;
     
     // Events
-    event PropertyDetailsUpdated(uint256 indexed tokenId);
-    event VehicleDetailsUpdated(uint256 indexed tokenId);
-    event EquipmentDetailsUpdated(uint256 indexed tokenId);
+    event AssetDetailsUpdated(uint256 indexed tokenId, uint8 assetType);
     event TokenFeaturesUpdated(uint256 indexed tokenId);
     event TokenDocumentUpdated(uint256 indexed tokenId, string docType);
     event TokenGalleryUpdated(uint256 indexed tokenId);
@@ -206,14 +524,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     event CompatibleDeedContractAdded(address indexed contractAddress);
     event CompatibleDeedContractRemoved(address indexed contractAddress);
     
-    IDeedNFT public deedNFT;
-    
     // Add this with the other state variables
     bytes32 public constant VALIDATOR_ROLE = keccak256("VALIDATOR_ROLE");
-    
-    // Add these state variables
-    mapping(address => bool) public compatibleDeedContracts;
-    address[] public deedContractsList;
     
     /**
      * @dev Initializes the contract
@@ -337,13 +649,13 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         // Parse the JSON details and update the appropriate storage based on asset type
         if (assetType == uint8(IDeedNFT.AssetType.Land) || assetType == uint8(IDeedNFT.AssetType.Estate)) {
             _updatePropertyDetails(tokenId, details);
-            emit PropertyDetailsUpdated(tokenId);
+            emit AssetDetailsUpdated(tokenId, assetType);
         } else if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
             _updateVehicleDetails(tokenId, details);
-            emit VehicleDetailsUpdated(tokenId);
+            emit AssetDetailsUpdated(tokenId, assetType);
         } else if (assetType == uint8(IDeedNFT.AssetType.CommercialEquipment)) {
             _updateEquipmentDetails(tokenId, details);
-            emit EquipmentDetailsUpdated(tokenId);
+            emit AssetDetailsUpdated(tokenId, assetType);
         } else {
             revert("MetadataRenderer: Unsupported asset type");
         }
@@ -355,175 +667,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      * @param detailsJson JSON string containing the details to update
      */
     function _updatePropertyDetails(uint256 tokenId, string memory detailsJson) internal {
-        PropertyDetails storage details = tokenPropertyDetails[tokenId];
-        
-        // Update base fields if provided
-        string memory confidenceScore = JSONUtils.parseJsonField(detailsJson, "confidenceScore");
-        if (bytes(confidenceScore).length > 0) {
-            details.base.confidenceScore = confidenceScore;
-        }
-        
-        string memory backgroundColor = JSONUtils.parseJsonField(detailsJson, "background_color");
-        if (bytes(backgroundColor).length > 0) {
-            details.base.background_color = backgroundColor;
-        }
-        
-        string memory animationUrl = JSONUtils.parseJsonField(detailsJson, "animation_url");
-        if (bytes(animationUrl).length > 0) {
-            details.base.animation_url = animationUrl;
-        }
-        
-        // Update location fields if provided
-        string memory country = JSONUtils.parseJsonField(detailsJson, "country");
-        if (bytes(country).length > 0) {
-            details.country = country;
-        }
-        
-        string memory state = JSONUtils.parseJsonField(detailsJson, "state");
-        if (bytes(state).length > 0) {
-            details.state = state;
-        }
-        
-        string memory county = JSONUtils.parseJsonField(detailsJson, "county");
-        if (bytes(county).length > 0) {
-            details.county = county;
-        }
-        
-        string memory city = JSONUtils.parseJsonField(detailsJson, "city");
-        if (bytes(city).length > 0) {
-            details.city = city;
-        }
-        
-        string memory streetNumber = JSONUtils.parseJsonField(detailsJson, "streetNumber");
-        if (bytes(streetNumber).length > 0) {
-            details.streetNumber = streetNumber;
-        }
-        
-        string memory streetName = JSONUtils.parseJsonField(detailsJson, "streetName");
-        if (bytes(streetName).length > 0) {
-            details.streetName = streetName;
-        }
-        
-        string memory parcelNumber = JSONUtils.parseJsonField(detailsJson, "parcelNumber");
-        if (bytes(parcelNumber).length > 0) {
-            details.parcelNumber = parcelNumber;
-        }
-        
-        // Update legal fields if provided
-        string memory deedType = JSONUtils.parseJsonField(detailsJson, "deed_type");
-        if (bytes(deedType).length > 0) {
-            details.deed_type = deedType;
-        }
-        
-        string memory recordingDate = JSONUtils.parseJsonField(detailsJson, "recording_date");
-        if (bytes(recordingDate).length > 0) {
-            details.recording_date = recordingDate;
-        }
-        
-        string memory recordingNumber = JSONUtils.parseJsonField(detailsJson, "recording_number");
-        if (bytes(recordingNumber).length > 0) {
-            details.recording_number = recordingNumber;
-        }
-        
-        string memory legalDescription = JSONUtils.parseJsonField(detailsJson, "legal_description");
-        if (bytes(legalDescription).length > 0) {
-            details.legal_description = legalDescription;
-        }
-        
-        // Update geographic fields if provided
-        string memory latitude = JSONUtils.parseJsonField(detailsJson, "latitude");
-        if (bytes(latitude).length > 0) {
-            details.latitude = latitude;
-        }
-        
-        string memory longitude = JSONUtils.parseJsonField(detailsJson, "longitude");
-        if (bytes(longitude).length > 0) {
-            details.longitude = longitude;
-        }
-        
-        string memory acres = JSONUtils.parseJsonField(detailsJson, "acres");
-        if (bytes(acres).length > 0) {
-            details.acres = acres;
-        }
-        
-        // Update zoning fields if provided
-        string memory zoning = JSONUtils.parseJsonField(detailsJson, "zoning");
-        if (bytes(zoning).length > 0) {
-            details.zoning = zoning;
-        }
-        
-        string memory zoningCode = JSONUtils.parseJsonField(detailsJson, "zoningCode");
-        if (bytes(zoningCode).length > 0) {
-            details.zoningCode = zoningCode;
-        }
-        
-        // Update value fields if provided
-        string memory taxValueSource = JSONUtils.parseJsonField(detailsJson, "taxValueSource");
-        if (bytes(taxValueSource).length > 0) {
-            details.taxValueSource = taxValueSource;
-        }
-        
-        string memory taxAssessedValueUSD = JSONUtils.parseJsonField(detailsJson, "taxAssessedValueUSD");
-        if (bytes(taxAssessedValueUSD).length > 0) {
-            details.taxAssessedValueUSD = taxAssessedValueUSD;
-        }
-        
-        string memory estimatedValueSource = JSONUtils.parseJsonField(detailsJson, "estimatedValueSource");
-        if (bytes(estimatedValueSource).length > 0) {
-            details.estimatedValueSource = estimatedValueSource;
-        }
-        
-        string memory estimatedMarketValueUSD = JSONUtils.parseJsonField(detailsJson, "estimatedMarketValueUSD");
-        if (bytes(estimatedMarketValueUSD).length > 0) {
-            details.estimatedMarketValueUSD = estimatedMarketValueUSD;
-        }
-        
-        string memory localAppraisalSource = JSONUtils.parseJsonField(detailsJson, "localAppraisalSource");
-        if (bytes(localAppraisalSource).length > 0) {
-            details.localAppraisalSource = localAppraisalSource;
-        }
-        
-        string memory localAppraisedValueUSD = JSONUtils.parseJsonField(detailsJson, "localAppraisedValueUSD");
-        if (bytes(localAppraisedValueUSD).length > 0) {
-            details.localAppraisedValueUSD = localAppraisedValueUSD;
-        }
-        
-        // Update build fields if provided
-        string memory buildYear = JSONUtils.parseJsonField(detailsJson, "buildYear");
-        if (bytes(buildYear).length > 0) {
-            details.buildYear = buildYear;
-        }
-        
-        // Update utility fields if provided
-        string memory hasWater = JSONUtils.parseJsonField(detailsJson, "has_water");
-        if (bytes(hasWater).length > 0) {
-            details.has_water = _stringToBool(hasWater);
-        }
-        
-        string memory hasElectricity = JSONUtils.parseJsonField(detailsJson, "has_electricity");
-        if (bytes(hasElectricity).length > 0) {
-            details.has_electricity = _stringToBool(hasElectricity);
-        }
-        
-        string memory hasNaturalGas = JSONUtils.parseJsonField(detailsJson, "has_natural_gas");
-        if (bytes(hasNaturalGas).length > 0) {
-            details.has_natural_gas = _stringToBool(hasNaturalGas);
-        }
-        
-        string memory hasSewer = JSONUtils.parseJsonField(detailsJson, "has_sewer");
-        if (bytes(hasSewer).length > 0) {
-            details.has_sewer = _stringToBool(hasSewer);
-        }
-        
-        string memory hasInternet = JSONUtils.parseJsonField(detailsJson, "has_internet");
-        if (bytes(hasInternet).length > 0) {
-            details.has_internet = _stringToBool(hasInternet);
-        }
-        
-        string memory mapOverlay = JSONUtils.parseJsonField(detailsJson, "map_overlay");
-        if (bytes(mapOverlay).length > 0) {
-            details.map_overlay = mapOverlay;
-        }
+        MetadataUpdateLibrary.updatePropertyDetails(tokenPropertyDetails, tokenId, detailsJson);
+        emit AssetDetailsUpdated(tokenId, uint8(IDeedNFT.AssetType.Land) || uint8(IDeedNFT.AssetType.Estate));
     }
 
     /**
@@ -532,143 +677,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      * @param detailsJson JSON string containing the details to update
      */
     function _updateVehicleDetails(uint256 tokenId, string memory detailsJson) internal {
-        VehicleDetails storage details = tokenVehicleDetails[tokenId];
-        
-        // Update base fields if provided
-        string memory confidenceScore = JSONUtils.parseJsonField(detailsJson, "confidenceScore");
-        if (bytes(confidenceScore).length > 0) {
-            details.base.confidenceScore = confidenceScore;
-        }
-        
-        string memory backgroundColor = JSONUtils.parseJsonField(detailsJson, "background_color");
-        if (bytes(backgroundColor).length > 0) {
-            details.base.background_color = backgroundColor;
-        }
-        
-        string memory animationUrl = JSONUtils.parseJsonField(detailsJson, "animation_url");
-        if (bytes(animationUrl).length > 0) {
-            details.base.animation_url = animationUrl;
-        }
-        
-        // Update vehicle identification fields if provided
-        string memory make = JSONUtils.parseJsonField(detailsJson, "make");
-        if (bytes(make).length > 0) {
-            details.make = make;
-        }
-        
-        string memory model = JSONUtils.parseJsonField(detailsJson, "model");
-        if (bytes(model).length > 0) {
-            details.model = model;
-        }
-        
-        string memory year = JSONUtils.parseJsonField(detailsJson, "year");
-        if (bytes(year).length > 0) {
-            details.year = year;
-        }
-        
-        string memory vin = JSONUtils.parseJsonField(detailsJson, "vin");
-        if (bytes(vin).length > 0) {
-            details.vin = vin;
-        }
-        
-        string memory licensePlate = JSONUtils.parseJsonField(detailsJson, "licensePlate");
-        if (bytes(licensePlate).length > 0) {
-            details.licensePlate = licensePlate;
-        }
-        
-        string memory registrationState = JSONUtils.parseJsonField(detailsJson, "registrationState");
-        if (bytes(registrationState).length > 0) {
-            details.registrationState = registrationState;
-        }
-        
-        // Update physical details fields if provided
-        string memory color = JSONUtils.parseJsonField(detailsJson, "color");
-        if (bytes(color).length > 0) {
-            details.color = color;
-        }
-        
-        string memory bodyType = JSONUtils.parseJsonField(detailsJson, "bodyType");
-        if (bytes(bodyType).length > 0) {
-            details.bodyType = bodyType;
-        }
-        
-        string memory fuelType = JSONUtils.parseJsonField(detailsJson, "fuelType");
-        if (bytes(fuelType).length > 0) {
-            details.fuelType = fuelType;
-        }
-        
-        string memory transmissionType = JSONUtils.parseJsonField(detailsJson, "transmissionType");
-        if (bytes(transmissionType).length > 0) {
-            details.transmissionType = transmissionType;
-        }
-        
-        string memory mileage = JSONUtils.parseJsonField(detailsJson, "mileage");
-        if (bytes(mileage).length > 0) {
-            details.mileage = mileage;
-        }
-        
-        string memory engineSize = JSONUtils.parseJsonField(detailsJson, "engineSize");
-        if (bytes(engineSize).length > 0) {
-            details.engineSize = engineSize;
-        }
-        
-        // Update ownership details fields if provided
-        string memory titleNumber = JSONUtils.parseJsonField(detailsJson, "titleNumber");
-        if (bytes(titleNumber).length > 0) {
-            details.titleNumber = titleNumber;
-        }
-        
-        string memory titleState = JSONUtils.parseJsonField(detailsJson, "titleState");
-        if (bytes(titleState).length > 0) {
-            details.titleState = titleState;
-        }
-        
-        string memory titleStatus = JSONUtils.parseJsonField(detailsJson, "titleStatus");
-        if (bytes(titleStatus).length > 0) {
-            details.titleStatus = titleStatus;
-        }
-        
-        string memory registrationExpiration = JSONUtils.parseJsonField(detailsJson, "registrationExpiration");
-        if (bytes(registrationExpiration).length > 0) {
-            details.registrationExpiration = registrationExpiration;
-        }
-        
-        string memory holdingEntity = JSONUtils.parseJsonField(detailsJson, "holdingEntity");
-        if (bytes(holdingEntity).length > 0) {
-            details.holdingEntity = holdingEntity;
-        }
-        
-        // Update value details fields if provided
-        string memory appraisalSource = JSONUtils.parseJsonField(detailsJson, "appraisalSource");
-        if (bytes(appraisalSource).length > 0) {
-            details.appraisalSource = appraisalSource;
-        }
-        
-        string memory appraisedValueUSD = JSONUtils.parseJsonField(detailsJson, "appraisedValueUSD");
-        if (bytes(appraisedValueUSD).length > 0) {
-            details.appraisedValueUSD = appraisedValueUSD;
-        }
-        
-        string memory estimatedValueSource = JSONUtils.parseJsonField(detailsJson, "estimatedValueSource");
-        if (bytes(estimatedValueSource).length > 0) {
-            details.estimatedValueSource = estimatedValueSource;
-        }
-        
-        string memory estimatedMarketValueUSD = JSONUtils.parseJsonField(detailsJson, "estimatedMarketValueUSD");
-        if (bytes(estimatedMarketValueUSD).length > 0) {
-            details.estimatedMarketValueUSD = estimatedMarketValueUSD;
-        }
-        
-        // Update condition fields if provided
-        string memory condition = JSONUtils.parseJsonField(detailsJson, "condition");
-        if (bytes(condition).length > 0) {
-            details.condition = condition;
-        }
-        
-        string memory lastServiceDate = JSONUtils.parseJsonField(detailsJson, "lastServiceDate");
-        if (bytes(lastServiceDate).length > 0) {
-            details.lastServiceDate = lastServiceDate;
-        }
+        MetadataUpdateLibrary.updateVehicleDetails(tokenVehicleDetails, tokenId, detailsJson);
+        emit AssetDetailsUpdated(tokenId, uint8(IDeedNFT.AssetType.Vehicle));
     }
 
     /**
@@ -677,133 +687,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      * @param detailsJson JSON string containing the details to update
      */
     function _updateEquipmentDetails(uint256 tokenId, string memory detailsJson) internal {
-        EquipmentDetails storage details = tokenEquipmentDetails[tokenId];
-        
-        // Update base fields if provided
-        string memory confidenceScore = JSONUtils.parseJsonField(detailsJson, "confidenceScore");
-        if (bytes(confidenceScore).length > 0) {
-            details.base.confidenceScore = confidenceScore;
-        }
-        
-        string memory backgroundColor = JSONUtils.parseJsonField(detailsJson, "background_color");
-        if (bytes(backgroundColor).length > 0) {
-            details.base.background_color = backgroundColor;
-        }
-        
-        string memory animationUrl = JSONUtils.parseJsonField(detailsJson, "animation_url");
-        if (bytes(animationUrl).length > 0) {
-            details.base.animation_url = animationUrl;
-        }
-        
-        // Update equipment identification fields if provided
-        string memory manufacturer = JSONUtils.parseJsonField(detailsJson, "manufacturer");
-        if (bytes(manufacturer).length > 0) {
-            details.manufacturer = manufacturer;
-        }
-        
-        string memory model = JSONUtils.parseJsonField(detailsJson, "model");
-        if (bytes(model).length > 0) {
-            details.model = model;
-        }
-        
-        string memory serialNumber = JSONUtils.parseJsonField(detailsJson, "serialNumber");
-        if (bytes(serialNumber).length > 0) {
-            details.serialNumber = serialNumber;
-        }
-        
-        string memory year = JSONUtils.parseJsonField(detailsJson, "year");
-        if (bytes(year).length > 0) {
-            details.year = year;
-        }
-        
-        string memory category = JSONUtils.parseJsonField(detailsJson, "category");
-        if (bytes(category).length > 0) {
-            details.category = category;
-        }
-        
-        string memory equipmentType = JSONUtils.parseJsonField(detailsJson, "equipmentType");
-        if (bytes(equipmentType).length > 0) {
-            details.equipmentType = equipmentType;
-        }
-        
-        // Update physical details if provided
-        string memory dimensions = JSONUtils.parseJsonField(detailsJson, "dimensions");
-        if (bytes(dimensions).length > 0) {
-            details.dimensions = dimensions;
-        }
-        
-        string memory weight = JSONUtils.parseJsonField(detailsJson, "weight");
-        if (bytes(weight).length > 0) {
-            details.weight = weight;
-        }
-        
-        string memory powerSource = JSONUtils.parseJsonField(detailsJson, "powerSource");
-        if (bytes(powerSource).length > 0) {
-            details.powerSource = powerSource;
-        }
-        
-        string memory operatingHours = JSONUtils.parseJsonField(detailsJson, "operatingHours");
-        if (bytes(operatingHours).length > 0) {
-            details.operatingHours = operatingHours;
-        }
-        
-        // Update ownership details if provided
-        string memory purchaseDate = JSONUtils.parseJsonField(detailsJson, "purchaseDate");
-        if (bytes(purchaseDate).length > 0) {
-            details.purchaseDate = purchaseDate;
-        }
-        
-        string memory warrantyExpiration = JSONUtils.parseJsonField(detailsJson, "warrantyExpiration");
-        if (bytes(warrantyExpiration).length > 0) {
-            details.warrantyExpiration = warrantyExpiration;
-        }
-        
-        string memory location = JSONUtils.parseJsonField(detailsJson, "location");
-        if (bytes(location).length > 0) {
-            details.location = location;
-        }
-        
-        // Update value details if provided
-        string memory appraisalSource = JSONUtils.parseJsonField(detailsJson, "appraisalSource");
-        if (bytes(appraisalSource).length > 0) {
-            details.appraisalSource = appraisalSource;
-        }
-        
-        string memory appraisedValueUSD = JSONUtils.parseJsonField(detailsJson, "appraisedValueUSD");
-        if (bytes(appraisedValueUSD).length > 0) {
-            details.appraisedValueUSD = appraisedValueUSD;
-        }
-        
-        string memory estimatedValueSource = JSONUtils.parseJsonField(detailsJson, "estimatedValueSource");
-        if (bytes(estimatedValueSource).length > 0) {
-            details.estimatedValueSource = estimatedValueSource;
-        }
-        
-        string memory estimatedMarketValueUSD = JSONUtils.parseJsonField(detailsJson, "estimatedMarketValueUSD");
-        if (bytes(estimatedMarketValueUSD).length > 0) {
-            details.estimatedMarketValueUSD = estimatedMarketValueUSD;
-        }
-        
-        string memory depreciationSchedule = JSONUtils.parseJsonField(detailsJson, "depreciationSchedule");
-        if (bytes(depreciationSchedule).length > 0) {
-            details.depreciationSchedule = depreciationSchedule;
-        }
-        
-        // Update condition details if provided
-        string memory condition = JSONUtils.parseJsonField(detailsJson, "condition");
-        if (bytes(condition).length > 0) {
-            details.condition = condition;
-        }
-        
-        string memory lastServiceDate = JSONUtils.parseJsonField(detailsJson, "lastServiceDate");
-        if (bytes(lastServiceDate).length > 0) {
-            details.lastServiceDate = lastServiceDate;
-        }
-        
-        string memory maintenanceSchedule = JSONUtils.parseJsonField(detailsJson, "maintenanceSchedule");
-        if (bytes(maintenanceSchedule).length > 0) {
-            details.maintenanceSchedule = maintenanceSchedule;
-        }
+        MetadataUpdateLibrary.updateEquipmentDetails(tokenEquipmentDetails, tokenId, detailsJson);
+        emit AssetDetailsUpdated(tokenId, uint8(IDeedNFT.AssetType.CommercialEquipment));
     }
 
     /**
@@ -894,23 +779,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      * @return Boolean representation of the string
      */
     function _stringToBool(string memory value) internal pure returns (bool) {
-        bytes memory valueBytes = bytes(value);
-        
-        // Check for "true" (case-insensitive)
-        if (valueBytes.length == 4 && 
-            (valueBytes[0] == 't' || valueBytes[0] == 'T') &&
-            (valueBytes[1] == 'r' || valueBytes[1] == 'R') &&
-            (valueBytes[2] == 'u' || valueBytes[2] == 'U') &&
-            (valueBytes[3] == 'e' || valueBytes[3] == 'E')) {
-            return true;
-        }
-        
-        // Check for "1"
-        if (valueBytes.length == 1 && valueBytes[0] == '1') {
-            return true;
-        }
-        
-        return false;
+        return MetadataUpdateLibrary.stringToBool(value);
     }
 
     /**
@@ -941,18 +810,18 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      */
     function _generateName(uint256 tokenId, uint8 assetType) internal view returns (string memory) {
         if (assetType == uint8(IDeedNFT.AssetType.Land) || assetType == uint8(IDeedNFT.AssetType.Estate)) {
-            PropertyDetails storage details = tokenPropertyDetails[tokenId];
+            AssetDetailsLibrary.PropertyDetails storage details = tokenPropertyDetails[tokenId];
             return string(abi.encodePacked(
                 details.streetNumber, " ", details.streetName, ", ", 
                 details.city, ", ", details.state, " #", tokenId.toString()
             ));
         } else if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
-            VehicleDetails storage details = tokenVehicleDetails[tokenId];
+            AssetDetailsLibrary.VehicleDetails storage details = tokenVehicleDetails[tokenId];
             return string(abi.encodePacked(
                 details.year, " ", details.make, " ", details.model, " #", tokenId.toString()
             ));
         } else if (assetType == uint8(IDeedNFT.AssetType.CommercialEquipment)) {
-            EquipmentDetails storage details = tokenEquipmentDetails[tokenId];
+            AssetDetailsLibrary.EquipmentDetails storage details = tokenEquipmentDetails[tokenId];
             return string(abi.encodePacked(
                 details.year, " ", details.manufacturer, " ", details.model, " #", tokenId.toString()
             ));
@@ -965,422 +834,41 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      * @dev Generates gallery JSON for a token
      */
     function _generateGallery(uint256 tokenId) internal view returns (string memory) {
-        string[] memory images = tokenGalleryImages[tokenId];
-        if (images.length == 0) {
-            return "";
-        }
-        
-        string memory gallery = '"gallery":[';
-        
-        for (uint i = 0; i < images.length; i++) {
-            if (i > 0) {
-                gallery = string(abi.encodePacked(gallery, ','));
-            }
-            gallery = string(abi.encodePacked(gallery, '"', images[i], '"'));
-        }
-        
-        gallery = string(abi.encodePacked(gallery, ']'));
-        
-        return gallery;
+        return MetadataGenerationLibrary.generateGallery(tokenGalleryImages[tokenId]);
     }
     
     /**
      * @dev Generates attributes for a token
      */
     function _generateAttributes(uint256 tokenId, uint8 assetType, bool isValidated) internal view returns (string memory) {
-        string memory attributes = "";
-        
-        // Add asset type and validation status
-        string memory assetTypeName = "";
-        if (assetType == uint8(IDeedNFT.AssetType.Land)) {
-            assetTypeName = "Land";
-        } else if (assetType == uint8(IDeedNFT.AssetType.Estate)) {
-            assetTypeName = "Estate";
-        } else if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
-            assetTypeName = "Vehicle";
-        } else if (assetType == uint8(IDeedNFT.AssetType.CommercialEquipment)) {
-            assetTypeName = "Commercial Equipment";
-        }
-        
-        attributes = JSONUtils.createTrait("Asset Type", assetTypeName);
-        attributes = string(abi.encodePacked(attributes, ',', JSONUtils.createTrait("Validation Status", isValidated ? "Validated" : "Unvalidated")));
-        
-        // Add asset-specific attributes
-        if (assetType == uint8(IDeedNFT.AssetType.Land) || assetType == uint8(IDeedNFT.AssetType.Estate)) {
-            PropertyDetails storage details = tokenPropertyDetails[tokenId];
-            
-            // Add location attributes
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Country", details.country);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "State", details.state);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "County", details.county);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "City", details.city);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Parcel Number", details.parcelNumber);
-            
-            // Add legal details
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Deed Type", details.deed_type);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Recording Date", details.recording_date);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Holding Entity", details.holdingEntity);
-            
-            // Add geographic details
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Acres", details.acres);
-            
-            // Add zoning details
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Parcel Use", details.parcelUse);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Zoning", details.zoning);
-            
-            // Add value details
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Tax Value Source", details.taxValueSource);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Tax Assessed Value (USD)", details.taxAssessedValueUSD);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Estimated Value Source", details.estimatedValueSource);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Estimated Market Value (USD)", details.estimatedMarketValueUSD);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Local Appraisal Source", details.localAppraisalSource);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Local Appraised Value (USD)", details.localAppraisedValueUSD);
-            
-            // Add build details
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Build Year", details.buildYear);
-            
-            // Add utilities
-            attributes = string(abi.encodePacked(attributes, 
-                ',', JSONUtils.createTrait("Has Water", details.has_water ? "Yes" : "No"),
-                ',', JSONUtils.createTrait("Has Electricity", details.has_electricity ? "Yes" : "No"),
-                ',', JSONUtils.createTrait("Has Natural Gas", details.has_natural_gas ? "Yes" : "No"),
-                ',', JSONUtils.createTrait("Has Sewer", details.has_sewer ? "Yes" : "No"),
-                ',', JSONUtils.createTrait("Has Internet", details.has_internet ? "Yes" : "No")
-            ));
-        } else if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
-            VehicleDetails storage details = tokenVehicleDetails[tokenId];
-            
-            // Add vehicle identification
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Make", details.make);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Model", details.model);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Year", details.year);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "VIN", details.vin);
-            
-            // Add physical details
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Color", details.color);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Body Type", details.bodyType);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Fuel Type", details.fuelType);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Mileage", details.mileage);
-            
-            // Add ownership details
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Title State", details.titleState);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Title Status", details.titleStatus);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Holding Entity", details.holdingEntity);
-            
-            // Add value details
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Appraisal Source", details.appraisalSource);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Appraised Value (USD)", details.appraisedValueUSD);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Estimated Value Source", details.estimatedValueSource);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Estimated Market Value (USD)", details.estimatedMarketValueUSD);
-            
-            // Add condition
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Condition", details.condition);
-        } else if (assetType == uint8(IDeedNFT.AssetType.CommercialEquipment)) {
-            EquipmentDetails storage details = tokenEquipmentDetails[tokenId];
-            
-            // Add equipment identification
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Manufacturer", details.manufacturer);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Model", details.model);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Serial Number", details.serialNumber);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Year", details.year);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Category", details.category);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Equipment Type", details.equipmentType);
-            
-            // Add physical details
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Dimensions", details.dimensions);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Weight", details.weight);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Power Source", details.powerSource);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Operating Hours", details.operatingHours);
-            
-            // Add ownership details
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Purchase Date", details.purchaseDate);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Warranty Expiration", details.warrantyExpiration);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Holding Entity", details.holdingEntity);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Location", details.location);
-            
-            // Add value details
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Appraisal Source", details.appraisalSource);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Appraised Value (USD)", details.appraisedValueUSD);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Estimated Value Source", details.estimatedValueSource);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Estimated Market Value (USD)", details.estimatedMarketValueUSD);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Depreciation Schedule", details.depreciationSchedule);
-            
-            // Add condition
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Condition", details.condition);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Last Service Date", details.lastServiceDate);
-            attributes = JSONUtils.addTraitIfNotEmpty(attributes, "Maintenance Schedule", details.maintenanceSchedule);
-        }
-        
-        // Add features as attributes
-        string[] memory features = tokenFeatures[tokenId];
-        for (uint i = 0; i < features.length; i++) {
-            attributes = string(abi.encodePacked(attributes, 
-                ',', JSONUtils.createTrait("Feature", features[i])));
-        }
-        
-        return attributes;
+        return AssetDetailsLibrary.generateAttributes(
+            tokenId,
+            assetType,
+            isValidated,
+            tokenPropertyDetails,
+            tokenVehicleDetails,
+            tokenEquipmentDetails,
+            tokenFeatures
+        );
     }
     
     /**
      * @dev Generates properties for a token
      */
     function _generateProperties(uint256 tokenId, uint8 assetType, string memory definition, string memory configuration) internal view returns (string memory) {
-        string memory properties = "{";
-        
-        // Add asset type
-        string memory assetTypeName = "";
-        if (assetType == uint8(IDeedNFT.AssetType.Land)) {
-            assetTypeName = "Land";
-        } else if (assetType == uint8(IDeedNFT.AssetType.Estate)) {
-            assetTypeName = "Estate";
-        } else if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
-            assetTypeName = "Vehicle";
-        } else if (assetType == uint8(IDeedNFT.AssetType.CommercialEquipment)) {
-            assetTypeName = "Commercial Equipment";
-        }
-        
-        properties = string(abi.encodePacked(properties, '"asset_type":"', assetTypeName, '"'));
-        
-        // Add asset-specific properties
-        if (assetType == uint8(IDeedNFT.AssetType.Land) || assetType == uint8(IDeedNFT.AssetType.Estate)) {
-            PropertyDetails storage details = tokenPropertyDetails[tokenId];
-            
-            // Add validation
-            properties = string(abi.encodePacked(properties, 
-                ',"validation":{"status":"', details.base.confidenceScore, '"}'));
-            
-            // Add location details
-            properties = string(abi.encodePacked(properties, 
-                ',"location":{',
-                '"country":"', details.country, '",',
-                '"state":"', details.state, '",',
-                '"county":"', details.county, '",',
-                '"city":"', details.city, '",',
-                '"street_number":"', details.streetNumber, '",',
-                '"street_name":"', details.streetName, '",',
-                '"parcel_number":"', details.parcelNumber, '"',
-                '}'));
-            
-            // Add legal details
-            properties = string(abi.encodePacked(properties, 
-                ',"legal":{',
-                '"deed_type":"', details.deed_type, '",',
-                '"recording_date":"', details.recording_date, '",',
-                '"recording_number":"', details.recording_number, '",',
-                '"legal_description":"', details.legal_description, '",',
-                '"holding_entity":"', details.holdingEntity, '"',
-                '}'));
-            
-            // Add geographic details
-            properties = string(abi.encodePacked(properties, 
-                ',"geographic":{',
-                '"latitude":"', details.latitude, '",',
-                '"longitude":"', details.longitude, '",',
-                '"acres":"', details.acres, '"',
-                '}'));
-            
-            // Add zoning details
-            properties = string(abi.encodePacked(properties, 
-                ',"zoning":{',
-                '"parcel_use":"', details.parcelUse, '",',
-                '"zoning":"', details.zoning, '",',
-                '"zoning_code":"', details.zoningCode, '"',
-                '}'));
-            
-            // Add value details
-            properties = string(abi.encodePacked(properties, 
-                ',"value":{',
-                '"tax_value_source":"', details.taxValueSource, '",',
-                '"tax_assessed_value_usd":"', details.taxAssessedValueUSD, '",',
-                '"estimated_value_source":"', details.estimatedValueSource, '",',
-                '"estimated_market_value_usd":"', details.estimatedMarketValueUSD, '",',
-                '"local_appraisal_source":"', details.localAppraisalSource, '",',
-                '"local_appraised_value_usd":"', details.localAppraisedValueUSD, '"',
-                '}'));
-            
-            // Add build details
-            properties = string(abi.encodePacked(properties, 
-                ',"build":{',
-                '"year":"', details.buildYear, '"',
-                '}'));
-            
-            // Add utilities
-            properties = string(abi.encodePacked(properties, 
-                ',"utilities":{',
-                '"water":', details.has_water ? 'true' : 'false', ',',
-                '"electricity":', details.has_electricity ? 'true' : 'false', ',',
-                '"natural_gas":', details.has_natural_gas ? 'true' : 'false', ',',
-                '"sewer":', details.has_sewer ? 'true' : 'false', ',',
-                '"internet":', details.has_internet ? 'true' : 'false',
-                '}'));
-            
-            // Add map overlay
-            if (bytes(details.map_overlay).length > 0) {
-                properties = string(abi.encodePacked(properties, 
-                    ',"map_overlay":"', details.map_overlay, '"'));
-            }
-        } else if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
-            VehicleDetails storage details = tokenVehicleDetails[tokenId];
-            
-            // Add validation
-            properties = string(abi.encodePacked(properties, 
-                ',"validation":{"status":"', details.base.confidenceScore, '"}'));
-            
-            // Add identification details
-            properties = string(abi.encodePacked(properties, 
-                ',"identification":{',
-                '"make":"', details.make, '",',
-                '"model":"', details.model, '",',
-                '"year":"', details.year, '",',
-                '"vin":"', details.vin, '",',
-                '"license_plate":"', details.licensePlate, '",',
-                '"registration_state":"', details.registrationState, '"',
-                '}'));
-            
-            // Add physical details
-            properties = string(abi.encodePacked(properties, 
-                ',"physical":{',
-                '"color":"', details.color, '",',
-                '"body_type":"', details.bodyType, '",',
-                '"fuel_type":"', details.fuelType, '",',
-                '"transmission_type":"', details.transmissionType, '",',
-                '"mileage":"', details.mileage, '",',
-                '"engine_size":"', details.engineSize, '"',
-                '}'));
-            
-            // Add ownership details
-            properties = string(abi.encodePacked(properties, 
-                ',"ownership":{',
-                '"title_number":"', details.titleNumber, '",',
-                '"title_state":"', details.titleState, '",',
-                '"title_status":"', details.titleStatus, '",',
-                '"registration_expiration":"', details.registrationExpiration, '",',
-                '"holding_entity":"', details.holdingEntity, '"',
-                '}'));
-            
-            // Add value details
-            properties = string(abi.encodePacked(properties, 
-                ',"value":{',
-                '"appraisal_source":"', details.appraisalSource, '",',
-                '"appraised_value_usd":"', details.appraisedValueUSD, '",',
-                '"estimated_value_source":"', details.estimatedValueSource, '",',
-                '"estimated_market_value_usd":"', details.estimatedMarketValueUSD, '"',
-                '}'));
-            
-            // Add condition details
-            properties = string(abi.encodePacked(properties, 
-                ',"condition":{',
-                '"status":"', details.condition, '",',
-                '"last_service_date":"', details.lastServiceDate, '"',
-                '}'));
-        } else if (assetType == uint8(IDeedNFT.AssetType.CommercialEquipment)) {
-            EquipmentDetails storage details = tokenEquipmentDetails[tokenId];
-            
-            // Add validation
-            properties = string(abi.encodePacked(properties, 
-                ',"validation":{"status":"', details.base.confidenceScore, '"}'));
-            
-            // Add identification details
-            properties = string(abi.encodePacked(properties, 
-                ',"identification":{',
-                '"manufacturer":"', details.manufacturer, '",',
-                '"model":"', details.model, '",',
-                '"serial_number":"', details.serialNumber, '",',
-                '"year":"', details.year, '",',
-                '"category":"', details.category, '",',
-                '"equipment_type":"', details.equipmentType, '"',
-                '}'));
-            
-            // Add physical details
-            properties = string(abi.encodePacked(properties, 
-                ',"physical":{',
-                '"dimensions":"', details.dimensions, '",',
-                '"weight":"', details.weight, '",',
-                '"power_source":"', details.powerSource, '",',
-                '"operating_hours":"', details.operatingHours, '"',
-                '}'));
-            
-            // Add ownership details
-            properties = string(abi.encodePacked(properties, 
-                ',"ownership":{',
-                '"purchase_date":"', details.purchaseDate, '",',
-                '"warranty_expiration":"', details.warrantyExpiration, '",',
-                '"holding_entity":"', details.holdingEntity, '",',
-                '"location":"', details.location, '"',
-                '}'));
-            
-            // Add value details
-            properties = string(abi.encodePacked(properties, 
-                ',"value":{',
-                '"appraisal_source":"', details.appraisalSource, '",',
-                '"appraised_value_usd":"', details.appraisedValueUSD, '",',
-                '"estimated_value_source":"', details.estimatedValueSource, '",',
-                '"estimated_market_value_usd":"', details.estimatedMarketValueUSD, '",',
-                '"depreciation_schedule":"', details.depreciationSchedule, '"',
-                '}'));
-            
-            // Add condition details
-            properties = string(abi.encodePacked(properties, 
-                ',"condition":{',
-                '"status":"', details.condition, '",',
-                '"last_service_date":"', details.lastServiceDate, '",',
-                '"maintenance_schedule":"', details.maintenanceSchedule, '"',
-                '}'));
-        }
-        
-        // Add definition if provided
-        if (bytes(definition).length > 0) {
-            properties = string(abi.encodePacked(properties, ',"definition":', definition));
-        }
-        
-        // Add configuration if provided
-        if (bytes(configuration).length > 0) {
-            properties = string(abi.encodePacked(properties, ',"configuration":', configuration));
-        }
-        
-        // Add features if available
-        string[] memory features = tokenFeatures[tokenId];
-        if (features.length > 0) {
-            properties = string(abi.encodePacked(properties, ',"features":['));
-            
-            for (uint i = 0; i < features.length; i++) {
-                if (i > 0) {
-                    properties = string(abi.encodePacked(properties, ','));
-                }
-                properties = string(abi.encodePacked(properties, '"', features[i], '"'));
-            }
-            
-            properties = string(abi.encodePacked(properties, ']'));
-        }
-        
-        // Add custom metadata if available
-        string memory customMetadata = tokenCustomMetadata[tokenId];
-        if (bytes(customMetadata).length > 0) {
-            properties = string(abi.encodePacked(properties, ',"custom":', customMetadata));
-        }
-        
-        // Add documents if available
-        string[] memory docTypes = tokenDocumentTypes[tokenId];
-        if (docTypes.length > 0) {
-            properties = string(abi.encodePacked(properties, ',"documents":{'));
-            
-            for (uint i = 0; i < docTypes.length; i++) {
-                if (i > 0) {
-                    properties = string(abi.encodePacked(properties, ','));
-                }
-                string memory docType = docTypes[i];
-                string memory docURI = tokenDocuments[tokenId][docType];
-                properties = string(abi.encodePacked(properties, 
-                    '"', docType, '":"', docURI, '"'));
-            }
-            
-            properties = string(abi.encodePacked(properties, '}'));
-        }
-        
-        // Close the properties object
-        properties = string(abi.encodePacked(properties, '}'));
-        
-        return properties;
+        return AssetDetailsLibrary.generateProperties(
+            tokenId,
+            assetType,
+            definition,
+            configuration,
+            tokenPropertyDetails,
+            tokenVehicleDetails,
+            tokenEquipmentDetails,
+            tokenFeatures,
+            tokenCustomMetadata,
+            tokenDocumentTypes,
+            tokenDocuments
+        );
     }
     
     /**
@@ -1388,13 +876,13 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      */
     function _getBaseDetails(uint256 tokenId, uint8 assetType) internal view returns (string memory backgroundColor, string memory animationUrl) {
         if (assetType == uint8(IDeedNFT.AssetType.Land) || assetType == uint8(IDeedNFT.AssetType.Estate)) {
-            PropertyDetails storage details = tokenPropertyDetails[tokenId];
+            AssetDetailsLibrary.PropertyDetails storage details = tokenPropertyDetails[tokenId];
             return (details.base.background_color, details.base.animation_url);
         } else if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
-            VehicleDetails storage details = tokenVehicleDetails[tokenId];
+            AssetDetailsLibrary.VehicleDetails storage details = tokenVehicleDetails[tokenId];
             return (details.base.background_color, details.base.animation_url);
         } else if (assetType == uint8(IDeedNFT.AssetType.CommercialEquipment)) {
-            EquipmentDetails storage details = tokenEquipmentDetails[tokenId];
+            AssetDetailsLibrary.EquipmentDetails storage details = tokenEquipmentDetails[tokenId];
             return (details.base.background_color, details.base.animation_url);
         }
         
@@ -1439,44 +927,19 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         string memory gallery,
         string memory attributes,
         string memory properties
-    ) internal pure returns (string memory) {
-        // Start building the JSON
-        string memory json = string(abi.encodePacked(
-            '{',
-            '"name":"', name, '",',
-            '"description":"', description, '",',
-            '"image":"', imageURI, '",',
-            '"token_id":"', tokenId.toString(), '"'
-        ));
+    ) internal view returns (string memory) {
+        string memory json = MetadataGenerationLibrary.generateJSON(
+            tokenId,
+            name,
+            description,
+            imageURI,
+            backgroundColor,
+            animationUrl,
+            gallery,
+            attributes,
+            properties
+        );
         
-        // Add optional fields if provided
-        if (bytes(backgroundColor).length > 0) {
-            json = string(abi.encodePacked(json, ',"background_color":"', backgroundColor, '"'));
-        }
-        
-        if (bytes(animationUrl).length > 0) {
-            json = string(abi.encodePacked(json, ',"animation_url":"', animationUrl, '"'));
-        }
-        
-        // Add gallery if available
-        if (bytes(gallery).length > 0) {
-            json = string(abi.encodePacked(json, ',', gallery));
-        }
-        
-        // Add attributes if available
-        if (bytes(attributes).length > 0) {
-            json = string(abi.encodePacked(json, ',"attributes":[', attributes, ']'));
-        }
-        
-        // Add properties if available
-        if (bytes(properties).length > 0) {
-            json = string(abi.encodePacked(json, ',"properties":', properties));
-        }
-        
-        // Close the JSON object
-        json = string(abi.encodePacked(json, '}'));
-        
-        // Return Base64 encoded JSON
         return string(abi.encodePacked(
             "data:application/json;base64,",
             Base64Upgradeable.encode(bytes(json))
@@ -1611,11 +1074,11 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      * @param documentURIs Array of document URIs
      */
     function setTokenDocuments(uint256 tokenId, string[] memory docTypes, string[] memory documentURIs) external onlyOwnerOrValidator(tokenId) {
-        require(_exists(tokenId), "MetadataRenderer: Token does not exist");
-        require(docTypes.length == documentURIs.length, "MetadataRenderer: Arrays must have same length");
+        require(_exists(tokenId), "MR: No token");
+        require(docTypes.length == documentURIs.length, "MR: Arrays mismatch");
         
         for (uint i = 0; i < docTypes.length; i++) {
-            require(bytes(docTypes[i]).length > 0, "MetadataRenderer: Document type cannot be empty");
+            require(bytes(docTypes[i]).length > 0, "MR: Doc type empty");
             
             // If this is a new document type, add it to the list
             bool docTypeExists = false;
@@ -1636,14 +1099,9 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             emit TokenDocumentUpdated(tokenId, docTypes[i]);
         }
     }
-
-    /**
-     * @dev Removes a document from a token
-     * @param tokenId ID of the token
-     * @param docType Type of document to remove
-     */
+    
     function removeTokenDocument(uint256 tokenId, string memory docType) external onlyOwnerOrValidator(tokenId) {
-        require(_exists(tokenId), "MetadataRenderer: Token does not exist");
+        require(_exists(tokenId), "MR: No token");
         
         // Remove the document type from the list
         for (uint i = 0; i < tokenDocumentTypes[tokenId].length; i++) {
@@ -1660,13 +1118,9 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         
         emit TokenDocumentUpdated(tokenId, docType);
     }
-
-    /**
-     * @dev Sets the DeedNFT contract address
-     * @param _deedNFT Address of the DeedNFT contract
-     */
+    
     function setDeedNFT(address _deedNFT) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(_deedNFT != address(0), "MetadataRenderer: Invalid DeedNFT address");
+        require(_deedNFT != address(0), "MR: Invalid address");
         deedNFT = IDeedNFT(_deedNFT);
         
         // Also add to compatible contracts if not already added
@@ -1674,21 +1128,16 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             addCompatibleDeedContract(_deedNFT);
         }
     }
-
-    /**
-     * @dev Adds a compatible DeedNFT contract
-     * @param contractAddress Address of the compatible DeedNFT contract
-     */
+    
     function addCompatibleDeedContract(address contractAddress) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(contractAddress != address(0), "MetadataRenderer: Invalid contract address");
-        require(!compatibleDeedContracts[contractAddress], "MetadataRenderer: Contract already added");
+        require(contractAddress != address(0), "MR: Invalid address");
+        require(!compatibleDeedContracts[contractAddress], "MR: Already added");
         
         // Verify the contract implements the IDeedNFT interface
-        // This is a basic check - in production you might want more thorough validation
         try IDeedNFT(contractAddress).supportsInterface(type(IERC721Upgradeable).interfaceId) returns (bool supported) {
-            require(supported, "MetadataRenderer: Contract does not implement IERC721");
+            require(supported, "MR: Not IERC721");
         } catch {
-            revert("MetadataRenderer: Contract does not implement IDeedNFT interface");
+            revert("MR: Not IDeedNFT");
         }
         
         compatibleDeedContracts[contractAddress] = true;
@@ -1696,13 +1145,9 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         
         emit CompatibleDeedContractAdded(contractAddress);
     }
-
-    /**
-     * @dev Removes a compatible DeedNFT contract
-     * @param contractAddress Address of the compatible DeedNFT contract to remove
-     */
+    
     function removeCompatibleDeedContract(address contractAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(compatibleDeedContracts[contractAddress], "MetadataRenderer: Contract not in compatible list");
+        require(compatibleDeedContracts[contractAddress], "MR: Not compatible");
         
         // Remove from mapping
         compatibleDeedContracts[contractAddress] = false;
@@ -1719,21 +1164,18 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         
         emit CompatibleDeedContractRemoved(contractAddress);
     }
-
-    /**
-     * @dev Gets all compatible DeedNFT contracts
-     * @return Array of compatible DeedNFT contract addresses
-     */
+    
     function getCompatibleDeedContracts() external view returns (address[] memory) {
         return deedContractsList;
     }
-
-    /**
-     * @dev Checks if a contract is compatible
-     * @param contractAddress Address of the contract to check
-     * @return Whether the contract is compatible
-     */
+    
     function isCompatibleDeedContract(address contractAddress) public view returns (bool) {
         return compatibleDeedContracts[contractAddress];
+    }
+    
+    // Implement IERC7572 interface
+    function supportsInterface(bytes4 interfaceId) public view virtual override(AccessControlUpgradeable, IERC165Upgradeable) returns (bool) {
+        return interfaceId == type(IERC7572).interfaceId || 
+               super.supportsInterface(interfaceId);
     }
 }
