@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "JSONUtils",
+  "sourceName": "src/libraries/JSONUtils.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea2646970667358221220d5459880ff9f2a03b09760124b99d434387164cef2ed8f6428b043ebb11a0b9364736f6c634300081d0033",
+  "deployedBytecode": "0x600080fdfea2646970667358221220d5459880ff9f2a03b09760124b99d434387164cef2ed8f6428b043ebb11a0b9364736f6c634300081d0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

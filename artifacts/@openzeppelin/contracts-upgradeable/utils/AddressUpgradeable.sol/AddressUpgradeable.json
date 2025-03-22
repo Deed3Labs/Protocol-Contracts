@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "AddressUpgradeable",
+  "sourceName": "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea2646970667358221220e5c532f811a6a5a227ba3827a963305e43b8e251968bd4b1286dbe0d0843278a64736f6c634300081d0033",
+  "deployedBytecode": "0x600080fdfea2646970667358221220e5c532f811a6a5a227ba3827a963305e43b8e251968bd4b1286dbe0d0843278a64736f6c634300081d0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

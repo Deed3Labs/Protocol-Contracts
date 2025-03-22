@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "Base64Upgradeable",
+  "sourceName": "@openzeppelin/contracts-upgradeable/utils/Base64Upgradeable.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea26469706673582212201af3c5160c2f7ce889b1005b53568ac9fa5c05191a74e0952aa7eb7f46e4ff1064736f6c634300081d0033",
+  "deployedBytecode": "0x600080fdfea26469706673582212201af3c5160c2f7ce889b1005b53568ac9fa5c05191a74e0952aa7eb7f46e4ff1064736f6c634300081d0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

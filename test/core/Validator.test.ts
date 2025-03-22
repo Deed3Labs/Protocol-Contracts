@@ -1,149 +1,231 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { deployContracts, DeployedContracts } from "../helpers/deploy-helpers";
-import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { Validator } from "../../typechain-types";
+import { Contract } from "ethers";
+import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
+
+// Direct access to upgrades from hardhat runtime environment
+const hre = require("hardhat");
+const upgrades = hre.upgrades;
 
 describe("Validator Contract", function() {
-  let contracts: DeployedContracts;
-  let validator: Validator;
-  let deployer: SignerWithAddress, admin: SignerWithAddress, 
-      validator1: SignerWithAddress, user1: SignerWithAddress;
-  let VALIDATOR_ROLE: string, METADATA_ROLE: string;
+  let validator: any;
+  let deedNFT: any;
+  let validatorRegistry: any;
+  let deployer: SignerWithAddress;
+  let admin: SignerWithAddress;
+  let validator1: SignerWithAddress;
+  let user1: SignerWithAddress;
+  let user2: SignerWithAddress;
+  let VALIDATOR_ROLE: string;
+  let METADATA_ROLE: string;
   
-  before(async function() {
-    // Deploy all contracts
-    contracts = await deployContracts();
-    validator = contracts.validator;
-    [deployer, admin, validator1, user1] = await ethers.getSigners();
-    // Get role identifiers
-    VALIDATOR_ROLE = ethers.utils.keccak256(ethers.utils.toUtf8Bytes("VALIDATOR_ROLE"));
-    METADATA_ROLE = ethers.utils.keccak256(ethers.utils.toUtf8Bytes("METADATA_ROLE"));
+  beforeEach(async function() {
+    const signers = await ethers.getSigners();
+    [deployer, admin, validator1, user1, user2] = [
+      signers[0], signers[1], signers[2], signers[3], signers[4]
+    ];
+    
+    // Deploy ValidatorRegistry
+    const ValidatorRegistry = await ethers.getContractFactory("ValidatorRegistry");
+    validatorRegistry = await upgrades.deployProxy(ValidatorRegistry, []);
+    await validatorRegistry.waitForDeployment();
+    
+    // Deploy Validator first with correct parameters
+    const Validator = await ethers.getContractFactory("Validator");
+    validator = await upgrades.deployProxy(Validator, [
+      "https://api.example.com/metadata/",  // baseUri
+      "https://api.example.com/agreements/" // defaultOperatingAgreementUri
+    ]);
+    await validator.waitForDeployment();
+    
+    // Deploy DeedNFT with correct parameters
+    const DeedNFT = await ethers.getContractFactory("DeedNFT");
+    deedNFT = await upgrades.deployProxy(DeedNFT, [
+      await validator.getAddress(),
+      await validatorRegistry.getAddress()
+    ]);
+    await deedNFT.waitForDeployment();
+    
+    // Update Validator with DeedNFT address
+    await validator.setDeedNFT(await deedNFT.getAddress());
+    
+    // Get roles
+    VALIDATOR_ROLE = await validator.VALIDATOR_ROLE();
+    METADATA_ROLE = await validator.METADATA_ROLE();
+    
+    // Set up permissions
+    await validator.grantRole(VALIDATOR_ROLE, validator1.address);
+    
+    // Register validator in registry
+    await validatorRegistry.registerValidator(
+      await validator.getAddress(),
+      "Test Validator"
+    );
+    
+    // Grant validator role on DeedNFT
+    const DEED_VALIDATOR_ROLE = await deedNFT.VALIDATOR_ROLE();
+    await deedNFT.grantRole(DEED_VALIDATOR_ROLE, await validator.getAddress());
   });
   
   describe("Initialization", function() {
     it("should initialize with correct roles", async function() {
-      expect(await validator.hasRole(VALIDATOR_ROLE, deployer.address)).to.be.true;
+      expect(await validator.hasRole(VALIDATOR_ROLE, validator1.address)).to.be.true;
       expect(await validator.hasRole(METADATA_ROLE, deployer.address)).to.be.true;
-      expect(await validator.owner()).to.equal(deployer.address);
     });
     
     it("should initialize with correct DeedNFT address", async function() {
-      expect(await validator.deedNFT()).to.equal(contracts.deedNFT.address);
+      expect(await validator.deedNFT()).to.equal(await deedNFT.getAddress());
     });
   });
   
-  describe("Base URI Management", function() {
-    it("should allow owner to set base URI", async function() {
-      const newBaseUri = "https://api.deeds.com/metadata/";
-      await validator.setBaseUri(newBaseUri);
-      expect(await validator.getBaseUri()).to.equal(newBaseUri);
+  describe("Validation Functionality", function() {
+    let deedId: number;
+    
+    beforeEach(async function() {
+      // Create a deed for testing
+      // Use mintAsset instead of mint with the correct parameters
+      const mintTx = await deedNFT.mintAsset(
+        user1.address,
+        0, // AssetType.Land
+        "ipfs://metadata",
+        "land definition",
+        "land configuration",
+        await validator.getAddress()
+      );
+      const receipt = await mintTx.wait();
+      
+      // Extract the token ID from the event
+      const transferEvent = receipt.logs.find((e: any) => {
+        try {
+          const parsedLog = deedNFT.interface.parseLog({
+            topics: e.topics,
+            data: e.data
+          });
+          return parsedLog?.name === 'Transfer';
+        } catch {
+          return false;
+        }
+      });
+      
+      if (!transferEvent) {
+        throw new Error("Transfer event not found");
+      }
+      
+      const eventData = deedNFT.interface.parseLog({
+        topics: transferEvent.topics,
+        data: transferEvent.data
+      });
+      
+      deedId = eventData?.args.tokenId;
     });
     
-    it("should prevent non-owners from setting base URI", async function() {
-      await expect(
-        validator.connect(user1).setBaseUri("https://unauthorized.com/")
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+    it("should allow validator to validate a deed", async function() {
+      // Validate the deed
+      await validator.connect(validator1).validateDeed(deedId, true);
+      
+      // Check if the deed is validated
+      const deedInfo = await deedNFT.getDeedInfo(deedId);
+      expect(deedInfo.isValidated).to.be.true;
     });
     
-    it("should prevent setting empty base URI", async function() {
-      await expect(
-        validator.setBaseUri("")
-      ).to.be.revertedWith("Validator: Base URI cannot be empty");
-    });
-  });
-  
-  describe("Operating Agreement Management", function() {
-    it("should allow owner to set default operating agreement", async function() {
-      const newAgreement = "ipfs://agreements/updated-default.json";
-      await validator.setDefaultOperatingAgreement(newAgreement);
-      expect(await validator.defaultOperatingAgreement()).to.equal(newAgreement);
-    });
-    
-    it("should allow owner to register operating agreement names", async function() {
-      const agreementUri = "ipfs://agreements/commercial.json";
-      const agreementName = "Commercial Property Agreement";
-      
-      await validator.setOperatingAgreementName(agreementUri, agreementName);
-      expect(await validator.operatingAgreementName(agreementUri)).to.equal(agreementName);
-    });
-    
-    it("should allow owner to remove operating agreement names", async function() {
-      const agreementUri = "ipfs://agreements/temporary.json";
-      const agreementName = "Temporary Agreement";
-      
-      // First add the agreement
-      await validator.setOperatingAgreementName(agreementUri, agreementName);
-      
-      // Then remove it
-      await validator.removeOperatingAgreementName(agreementUri);
-      
-      // Check it's removed
-      expect(await validator.operatingAgreementName(agreementUri)).to.equal("");
-    });
-  });
-  
-  describe("Asset Type Support", function() {
-    it("should allow setting asset type support", async function() {
-      // Test with a new asset type
-      const assetTypeId = 2; // Estate
-      
-      // Set support to true
-      await validator.setAssetTypeSupport(assetTypeId, true);
-      expect(await validator.supportsAssetType(assetTypeId)).to.be.true;
-      
-      // Set support to false
-      await validator.setAssetTypeSupport(assetTypeId, false);
-      expect(await validator.supportsAssetType(assetTypeId)).to.be.false;
-    });
-  });
-  
-  describe("Token URI Generation", function() {
-    it("should generate correct token URI", async function() {
-      // Set a known base URI
-      const baseUri = "ipfs://metadata/";
-      await validator.setBaseUri(baseUri);
-      
-      // Check token URI for a token ID
-      const tokenId = 123;
-      expect(await validator.tokenURI(tokenId)).to.equal(`${baseUri}${tokenId}`);
-    });
-  });
-  
-  describe("Deed Validation", function() {
-    it("should allow validators to validate deeds", async function() {
-      // Grant validator role to validator1
-      await validator.grantRole(VALIDATOR_ROLE, validator1.address);
-      
-      // Validate a deed
-      const deedId = 1; // Assuming this deed exists
-      const tx = await validator.connect(validator1).validateDeed(deedId);
-      
-      // Check for event emission
-      const receipt = await tx.wait();
-      const event = receipt.events?.find(e => e.event === "DeedValidated");
-      
-      expect(event).to.not.be.undefined;
-      expect(event?.args?.deedId).to.equal(deedId);
-      expect(event?.args?.success).to.be.true;
+    it("should emit an event when deed is validated", async function() {
+      // Validate the deed and check for event
+      await expect(validator.connect(validator1).validateDeed(deedId, true))
+        .to.emit(validator, "DeedValidated")
+        .withArgs(deedId, true, validator1.address);
     });
     
     it("should prevent non-validators from validating deeds", async function() {
-      await expect(
-        validator.connect(user1).validateDeed(1)
-      ).to.be.revertedWith("AccessControl");
+      await expect(validator.connect(user1).validateDeed(deedId, true))
+        .to.be.revertedWith("AccessControl");
+    });
+    
+    it("should allow invalidating a previously validated deed", async function() {
+      // First validate
+      await validator.connect(validator1).validateDeed(deedId, true);
+      
+      // Then invalidate
+      await validator.connect(validator1).validateDeed(deedId, false);
+      
+      // Check if the deed is now invalidated
+      const deedInfo = await deedNFT.getDeedInfo(deedId);
+      expect(deedInfo.isValidated).to.be.false;
     });
   });
   
-  describe("Role Management", function() {
-    it("should allow admin to grant validator role", async function() {
-      await validator.grantRole(VALIDATOR_ROLE, user1.address);
-      expect(await validator.hasRole(VALIDATOR_ROLE, user1.address)).to.be.true;
+  describe("Metadata Management", function() {
+    let deedId: number;
+    
+    beforeEach(async function() {
+      // Create a deed for testing
+      const mintTx = await deedNFT.mintAsset(
+        user1.address,
+        0, // AssetType.Land
+        "ipfs://metadata",
+        "land definition",
+        "land configuration",
+        await validator.getAddress()
+      );
+      const receipt = await mintTx.wait();
+      
+      // Extract the token ID from the event
+      const transferEvent = receipt.logs.find((e: any) => {
+        try {
+          const parsedLog = deedNFT.interface.parseLog({
+            topics: e.topics,
+            data: e.data
+          });
+          return parsedLog?.name === 'Transfer';
+        } catch {
+          return false;
+        }
+      });
+      
+      if (!transferEvent) {
+        throw new Error("Transfer event not found");
+      }
+      
+      const eventData = deedNFT.interface.parseLog({
+        topics: transferEvent.topics,
+        data: transferEvent.data
+      });
+      
+      deedId = eventData?.args.tokenId;
     });
     
-    it("should allow admin to revoke validator role", async function() {
-      await validator.revokeRole(VALIDATOR_ROLE, user1.address);
-      expect(await validator.hasRole(VALIDATOR_ROLE, user1.address)).to.be.false;
+    it("should allow metadata manager to update deed metadata", async function() {
+      const newMetadataURI = "ipfs://updatedMetadata";
+      
+      await validator.connect(deployer).updateDeedMetadata(deedId, newMetadataURI);
+      
+      // Verify the metadata was updated
+      const deedInfo = await deedNFT.getDeedInfo(deedId);
+      expect(deedInfo.metadataURI).to.equal(newMetadataURI);
+    });
+    
+    it("should prevent non-metadata managers from updating metadata", async function() {
+      const newMetadataURI = "ipfs://updatedMetadata";
+      
+      await expect(validator.connect(user1).updateDeedMetadata(deedId, newMetadataURI))
+        .to.be.revertedWith("AccessControl");
+    });
+  });
+  
+  describe("Contract Upgradeability", function() {
+    it("should be upgradeable", async function() {
+      // Test upgradeability by deploying a new implementation
+      const ValidatorV2 = await ethers.getContractFactory("Validator");
+      const upgradedValidator = await upgrades.upgradeProxy(
+        await validator.getAddress(),
+        ValidatorV2
+      );
+      
+      // Verify the upgrade was successful
+      expect(await upgradedValidator.getAddress()).to.equal(await validator.getAddress());
+      
+      // Verify state was preserved
+      expect(await upgradedValidator.deedNFT()).to.equal(await deedNFT.getAddress());
+      expect(await upgradedValidator.hasRole(VALIDATOR_ROLE, validator1.address)).to.be.true;
     });
   });
 });

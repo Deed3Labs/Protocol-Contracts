@@ -1,0 +1,147 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "IValidatorRegistry",
+  "sourceName": "src/core/interfaces/IValidatorRegistry.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "validator",
+          "type": "address"
+        }
+      ],
+      "name": "getValidatorInfo",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bool",
+              "name": "isActive",
+              "type": "bool"
+            },
+            {
+              "internalType": "uint256[]",
+              "name": "supportedAssetTypes",
+              "type": "uint256[]"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "description",
+              "type": "string"
+            }
+          ],
+          "internalType": "struct IValidatorRegistry.ValidatorInfo",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "validator",
+          "type": "address"
+        }
+      ],
+      "name": "getValidatorName",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "validatorContract",
+          "type": "address"
+        }
+      ],
+      "name": "getValidatorOwner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "assetTypeId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getValidatorsForAssetType",
+      "outputs": [
+        {
+          "internalType": "address[]",
+          "name": "",
+          "type": "address[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "validator",
+          "type": "address"
+        }
+      ],
+      "name": "isValidatorActive",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "validator",
+          "type": "address"
+        }
+      ],
+      "name": "isValidatorRegistered",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

@@ -1,0 +1,50 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "AutomaticValidatorTransferApproval",
+  "sourceName": "@limitbreak/creator-token-standards/src/utils/AutomaticValidatorTransferApproval.sol",
+  "abi": [
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "autoApproved",
+          "type": "bool"
+        }
+      ],
+      "name": "AutomaticApprovalOfTransferValidatorSet",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "autoApproveTransfersFromValidator",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bool",
+          "name": "autoApprove",
+          "type": "bool"
+        }
+      ],
+      "name": "setAutomaticApprovalOfTransfersFromValidator",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}
