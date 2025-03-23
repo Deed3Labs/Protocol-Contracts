@@ -34,7 +34,8 @@ contract DeedNFT is
     AccessControlUpgradeable,
     PausableUpgradeable,
     UUPSUpgradeable,
-    IERC2981Upgradeable
+    IERC2981Upgradeable,
+    ICreatorToken
 {
     using StringsUpgradeable for uint256;
     using AddressUpgradeable for address;
@@ -100,7 +101,6 @@ contract DeedNFT is
     event TokenValidated(uint256 indexed tokenId, bool isValid, address validator);
     event MarketplaceApproved(address indexed marketplace, bool approved);
     event RoyaltyEnforcementChanged(bool enforced);
-    event TransferValidatorUpdated(address oldValidator, address newValidator);
 
     // Storage gap for future upgrades
     uint256[45] private __gap;
@@ -697,6 +697,7 @@ contract DeedNFT is
             interfaceId == type(IERC2981Upgradeable).interfaceId ||
             interfaceId == type(ICreatorToken).interfaceId ||
             interfaceId == 0xaf332f3e || // ERC-7496 (Dynamic Traits)
+            interfaceId == 0x0d912442 || // Extra interface ID for ERC-721C compatibility
             super.supportsInterface(interfaceId);
     }
 
@@ -858,7 +859,6 @@ contract DeedNFT is
      */
     function getTransferValidationFunction() external pure returns (bytes4 functionSignature, bool isViewFunction) {
         functionSignature = bytes4(keccak256("validateTransfer(address,address,address,uint256)"));
-        isViewFunction = true;
+        isViewFunction = true; 
     }
 }
-
