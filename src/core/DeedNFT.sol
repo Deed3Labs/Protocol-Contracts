@@ -105,6 +105,11 @@ contract DeedNFT is
     // Storage gap for future upgrades
     uint256[45] private __gap;
 
+    /**
+     * @dev Count of active tokens (more efficient than iterating)
+     */
+    uint256 private _activeTokenCount;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -125,13 +130,14 @@ contract DeedNFT is
         __Pausable_init();
         __UUPSUpgradeable_init();
 
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender); // Grant admin role
-        _grantRole(VALIDATOR_ROLE, msg.sender);     // Grant validator role to deployer
-        _grantRole(MINTER_ROLE, msg.sender);        // Grant minter role to deployer
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(VALIDATOR_ROLE, msg.sender);
+        _grantRole(MINTER_ROLE, msg.sender);
 
         defaultValidator = _defaultValidator;
         validatorRegistry = _validatorRegistry;
         nexttokenId = 1;
+        _activeTokenCount = 0;
         
         // Initialize trait keys and names
         _initializeTraits();
@@ -191,7 +197,7 @@ contract DeedNFT is
      * @dev Modifier to check if the deed exists
      */
     modifier deedExists(uint256 tokenId) {
-        require(_exists(tokenId), "Nonexistent deed");
+        require(_exists(tokenId), "No deed");
         _;
     }
 
@@ -199,10 +205,7 @@ contract DeedNFT is
      * @dev Modifier to check if the caller is the deed owner
      */
     modifier onlyDeedOwner(uint256 tokenId) {
-        require(
-            ownerOf(tokenId) == msg.sender,
-            "Not owner"
-        );
+        require(ownerOf(tokenId) == msg.sender, "Not owner");
         _;
     }
 
@@ -212,7 +215,7 @@ contract DeedNFT is
     modifier onlyValidatorOrOwner(uint256 tokenId) {
         require(
             hasRole(VALIDATOR_ROLE, msg.sender) || ownerOf(tokenId) == msg.sender,
-            "Not validator/owner"
+            "Not authorized"
         );
         _;
     }
@@ -304,23 +307,33 @@ contract DeedNFT is
     }
 
     /**
-     * @dev Mints a new deed to the specified owner.
-     *      Only callable by accounts with MINTER_ROLE.
-     * @param owner Address of the deed owner.
-     * @param assetType Type of the asset.
-     * @param ipfsDetailsHash IPFS hash of the deed details.
-     * @param definition Definition of the deed.
-     * @param configuration Configuration data for the deed.
-     * @param validatorAddress Address of the validator to use (or address(0) for default)
-     * @return The ID of the minted deed.
+     * @dev Generates a unique token ID based on input parameters
      */
-    function mintAsset(
+    function generateUniqueTokenId(
+        address owner,
+        AssetType assetType,
+        string memory definition,
+        uint256 salt
+    ) public pure returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(
+            owner,
+            uint8(assetType),
+            definition,
+            salt
+        ))) % 1000000000; // Keep it to 9 digits for readability
+    }
+
+    /**
+     * @dev Mints a new deed with a deterministic token ID
+     */
+    function mintAssetWithUniqueId(
         address owner,
         AssetType assetType,
         string memory ipfsDetailsHash,
         string memory definition,
         string memory configuration,
-        address validatorAddress
+        address validatorAddress,
+        uint256 salt
     ) external whenNotPaused onlyRole(MINTER_ROLE) returns (uint256) {
         require(owner != address(0), "Invalid owner");
         require(
@@ -369,7 +382,12 @@ contract DeedNFT is
             "No agreement"
         );
 
-        uint256 tokenId = nexttokenId++;
+        uint256 tokenId = generateUniqueTokenId(owner, assetType, definition, salt);
+        
+        // Ensure the token ID doesn't already exist
+        require(!_exists(tokenId), "Token ID already exists");
+        
+        // Instead of using nexttokenId, directly use the generated ID
         _mint(owner, tokenId);
         _setTokenURI(tokenId, ipfsDetailsHash);
 
@@ -379,7 +397,7 @@ contract DeedNFT is
         _setTraitValue(tokenId, keccak256("operatingAgreement"), abi.encode(operatingAgreement));
         _setTraitValue(tokenId, keccak256("definition"), abi.encode(definition));
         _setTraitValue(tokenId, keccak256("configuration"), abi.encode(configuration));
-        _setTraitValue(tokenId, keccak256("validator"), abi.encode(address(0))); // Will be set during validation
+        _setTraitValue(tokenId, keccak256("validator"), abi.encode(address(0)));
 
         emit DeedNFTMinted(tokenId, assetType, msg.sender, selectedValidator);
         return tokenId;
@@ -436,19 +454,16 @@ contract DeedNFT is
         external 
         onlyRole(VALIDATOR_ROLE) 
     {
-        require(_exists(tokenId), "Nonexistent deed");
+        require(_exists(tokenId), "No deed");
         
         // If marking as valid, ensure validator address is provided and valid
         if (isValid) {
-            require(validatorAddress != address(0), "Validator required");
-            
-            // Ensure validator is registered
+            require(validatorAddress != address(0), "No validator");
             require(
                 IValidatorRegistry(validatorRegistry).isValidatorRegistered(validatorAddress),
                 "Not registered"
             );
             
-            // Verify validator supports interface
             require(
                 IERC165Upgradeable(validatorAddress).supportsInterface(
                     type(IValidator).interfaceId
@@ -456,14 +471,9 @@ contract DeedNFT is
                 "Invalid interface"
             );
             
-            // Get operating agreement
-            bytes memory operatingAgreementBytes = _tokenTraits[tokenId][keccak256("operatingAgreement")];
-            string memory operatingAgreement = abi.decode(operatingAgreementBytes, (string));
-
-            // Check if operating agreement is valid
-            bool isAgreementValid = IValidator(validatorAddress).validateOperatingAgreement(operatingAgreement);
+            bytes memory agrBytes = _tokenTraits[tokenId][keccak256("operatingAgreement")];
             require(
-                isAgreementValid,
+                IValidator(validatorAddress).validateOperatingAgreement(abi.decode(agrBytes, (string))),
                 "Invalid agreement"
             );
             
@@ -603,25 +613,22 @@ contract DeedNFT is
      * @notice Part of the ERC-7496 standard for dynamic traits
      */
     function getTraitKeys(uint256 tokenId) external view returns (bytes32[] memory) {
-        require(_exists(tokenId), "Token not found");
+        require(_exists(tokenId), "No token");
         
         // Count traits with values
-        uint256 count = 0;
+        uint256 count;
         for (uint i = 0; i < _allTraitKeys.length; i++) {
-            if (_tokenTraits[tokenId][_allTraitKeys[i]].length > 0) {
-                count++;
-            }
+            if (_tokenTraits[tokenId][_allTraitKeys[i]].length > 0) count++;
         }
         
-        // Create array of exact size needed
         bytes32[] memory traitKeys = new bytes32[](count);
+        if (count == 0) return traitKeys;
         
-        // Fill array with only keys that have values
+        // Fill array
         count = 0;
         for (uint i = 0; i < _allTraitKeys.length; i++) {
             if (_tokenTraits[tokenId][_allTraitKeys[i]].length > 0) {
-                traitKeys[count] = _allTraitKeys[i];
-                count++;
+                traitKeys[count++] = _allTraitKeys[i];
             }
         }
         
@@ -753,26 +760,18 @@ contract DeedNFT is
         override 
         returns (address receiver, uint256 royaltyAmount) 
     {
-        require(_exists(tokenId), "Nonexistent token");
+        require(_exists(tokenId), "No token");
         
-        // Get the validator for this token
         bytes memory validatorBytes = _tokenTraits[tokenId][keccak256("validator")];
-        address validatorAddress = validatorBytes.length > 0 
+        address validator = validatorBytes.length > 0 
             ? abi.decode(validatorBytes, (address)) 
             : defaultValidator;
         
-        if (validatorAddress == address(0)) {
-            return (address(0), 0);
-        }
+        if (validator == address(0)) return (address(0), 0);
         
-        // Get royalty information from the validator
-        uint96 feePercentage = IValidator(validatorAddress).getRoyaltyFeePercentage(tokenId);
-        address royaltyReceiver = IValidator(validatorAddress).getRoyaltyReceiver();
-        
-        // Calculate royalty amount
-        royaltyAmount = (salePrice * feePercentage) / 10000;
-        
-        return (royaltyReceiver, royaltyAmount);
+        uint96 fee = IValidator(validator).getRoyaltyFeePercentage(tokenId);
+        receiver = IValidator(validator).getRoyaltyReceiver();
+        royaltyAmount = (salePrice * fee) / 10000;
     }
 
     /**
@@ -890,23 +889,24 @@ contract DeedNFT is
     ) internal virtual override {
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
         
-        if (batchSize > 0) {
-            // For transfers between users
-            if (from != address(0) && to != address(0) && _enforceRoyalties) {
-                // Validate marketplace is approved
-                address operator = _msgSender();
-                if (operator != from && !isApprovedMarketplace(operator)) {
-                    revert("Not approved");
-                }
-            }
+        if (batchSize == 0) return;
+        
+        // Minting
+        if (from == address(0)) _activeTokenCount++;
+        // Burning
+        else if (to == address(0)) _activeTokenCount--;
+        // Regular transfer with royalty enforcement
+        else if (_enforceRoyalties) {
+            address op = _msgSender();
+            if (op != from && !_approvedMarketplaces[op]) revert("Not approved");
         }
     }
 
     /**
-     * @dev Returns the total supply of tokens
-     * @return The total number of tokens minted
+     * @dev Returns the total supply of tokens (accounts for burned tokens)
+     * @return The total number of active tokens
      */
     function totalSupply() public view returns (uint256) {
-        return nexttokenId - 1;
+        return _activeTokenCount;
     }
 }
