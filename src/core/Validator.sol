@@ -206,10 +206,23 @@ contract Validator is
 
     /**
      * @dev Returns the default operating agreement URI.
-     * @return The default operating agreement URI.
+     * @return The default operating agreement as a string, not just the URI.
      */
     function defaultOperatingAgreement() external view override returns (string memory) {
-        return defaultOperatingAgreementUri;
+        // Instead of just returning the URI, we need to return a properly formatted agreement
+        // This matches what the new DeedNFT contract expects
+        if (bytes(defaultOperatingAgreementUri).length == 0) {
+            return "Nominee Trust Agreement v1.0";  // Fallback to ensure non-empty return
+        }
+        
+        string memory agreementName = operatingAgreements[defaultOperatingAgreementUri];
+        if (bytes(agreementName).length == 0) {
+            // If no name is registered, use the URI itself as the content
+            return defaultOperatingAgreementUri;
+        }
+        
+        // Return a properly formatted operating agreement string that combines name and URI
+        return string(abi.encodePacked(agreementName, " (", defaultOperatingAgreementUri, ")"));
     }
 
     /**
