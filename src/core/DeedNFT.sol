@@ -326,7 +326,7 @@ contract DeedNFT is
     /**
      * @dev Mints a new deed with a deterministic token ID
      */
-    function mintAssetWithUniqueId(
+    function mintAsset(
         address owner,
         AssetType assetType,
         string memory ipfsDetailsHash,
@@ -382,12 +382,19 @@ contract DeedNFT is
             "No agreement"
         );
 
-        uint256 tokenId = generateUniqueTokenId(owner, assetType, definition, salt);
+        uint256 tokenId;
         
-        // Ensure the token ID doesn't already exist
-        require(!_exists(tokenId), "Token ID already exists");
+        // Use unique ID generation if salt is provided, otherwise use sequential ID
+        if (salt > 0) {
+            tokenId = generateUniqueTokenId(owner, assetType, definition, salt);
+            // Ensure the token ID doesn't already exist
+            require(!_exists(tokenId), "Token ID already exists");
+        } else {
+            // Use the sequential ID approach
+            tokenId = nexttokenId;
+            nexttokenId++;
+        }
         
-        // Instead of using nexttokenId, directly use the generated ID
         _mint(owner, tokenId);
         _setTokenURI(tokenId, ipfsDetailsHash);
 

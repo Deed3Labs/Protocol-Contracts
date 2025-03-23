@@ -169,6 +169,7 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @param definition Definition of the deed
      * @param configuration Configuration of the deed
      * @param validatorAddress Address of the validator to use (or address(0) for default)
+     * @param salt Optional value used to generate a unique token ID (use 0 for sequential IDs)
      * @return The ID of the minted deed
      */
     function mintAsset(
@@ -177,7 +178,8 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
         string memory ipfsDetailsHash,
         string memory definition,
         string memory configuration,
-        address validatorAddress
+        address validatorAddress,
+        uint256 salt
     ) external returns (uint256);
     
     // ============ Burning Functions ============

@@ -21,6 +21,7 @@ interface IFundManager {
         string configuration;
         address validatorContract;
         address token;
+        uint256 salt;
     }
 
     // ============ Events ============
@@ -126,6 +127,7 @@ interface IFundManager {
      * @param configuration Configuration data for the deed
      * @param validatorContract Address of the ValidatorContract associated with the mint
      * @param token Address of the token being used for payment
+     * @param salt Optional value used to generate a unique token ID (use 0 for sequential IDs)
      * @return tokenId The ID of the minted deed
      */
     function mintDeedNFT(
@@ -135,7 +137,8 @@ interface IFundManager {
         string memory definition,
         string memory configuration,
         address validatorContract,
-        address token
+        address token,
+        uint256 salt
     ) external returns (uint256 tokenId);
 
     /**

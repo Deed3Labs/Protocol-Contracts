@@ -141,6 +141,7 @@ contract FundManager is
      * @param configuration Configuration of the deed.
      * @param validatorAddress Address of the validator.
      * @param token Address of the token.
+     * @param salt Optional value used to generate a unique token ID
      * @return The ID of the minted deed.
      */
     function mintDeedNFT(
@@ -150,7 +151,8 @@ contract FundManager is
         string memory definition,
         string memory configuration,
         address validatorAddress,
-        address token
+        address token,
+        uint256 salt
     ) external nonReentrant returns (uint256) {
         // Validate inputs
         require(owner != address(0), "FundManager: Invalid owner address");
@@ -176,15 +178,18 @@ contract FundManager is
         // Process payment
         _processPayment(msg.sender, validatorAddress, token, serviceFee);
         
-        // Process mint
-        uint256 tokenId = _processMint(
+        // Process mint with optional salt parameter
+        uint256 tokenId = IDeedNFT(deedNFTContract).mintAsset(
             owner,
             assetType,
             ipfsDetailsHash,
             definition,
             configuration,
-            validatorAddress
+            validatorAddress,
+            salt
         );
+        
+        emit DeedMinted(tokenId, owner, validatorAddress);
         
         return tokenId;
     }
@@ -233,7 +238,8 @@ contract FundManager is
                 deed.ipfsDetailsHash,
                 deed.definition,
                 deed.configuration,
-                deed.validatorContract
+                deed.validatorContract,
+                deed.salt
             );
             
             emit DeedMinted(tokenIds[i], msg.sender, deed.validatorContract);
@@ -356,6 +362,7 @@ contract FundManager is
      * @param definition Definition of the deed.
      * @param configuration Configuration of the deed.
      * @param validatorAddress Address of the validator.
+     * @param salt Optional value used to generate a unique token ID
      * @return The ID of the minted deed.
      */
     function _processMint(
@@ -364,7 +371,8 @@ contract FundManager is
         string memory ipfsDetailsHash,
         string memory definition,
         string memory configuration,
-        address validatorAddress
+        address validatorAddress,
+        uint256 salt
     ) internal returns (uint256) {
         // Mint the deed
         uint256 tokenId = IDeedNFT(deedNFTContract).mintAsset(
@@ -373,7 +381,8 @@ contract FundManager is
             ipfsDetailsHash,
             definition,
             configuration,
-            validatorAddress
+            validatorAddress,
+            salt
         );
         
         emit DeedMinted(tokenId, owner, validatorAddress);
