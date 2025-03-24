@@ -360,8 +360,18 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             ));
         } else if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
             // Implementation of _generateName for Vehicle
+            AssetDetails storage details = tokenDetails[tokenId];
+            return string(abi.encodePacked(
+                details.fields["year"], " ", details.fields["make"], " ", 
+                details.fields["model"], " #", tokenId.toString()
+            ));
         } else if (assetType == uint8(IDeedNFT.AssetType.CommercialEquipment)) {
             // Implementation of _generateName for CommercialEquipment
+            AssetDetails storage details = tokenDetails[tokenId];
+            return string(abi.encodePacked(
+                details.fields["year"], " ", details.fields["manufacturer"], " ", 
+                details.fields["model"], " #", tokenId.toString()
+            ));
         }
         
         return tokenId.toString();
@@ -397,6 +407,16 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         string memory attributes = JSONUtils.createTrait("Asset Type", _assetTypeToString(assetType));
         attributes = string(abi.encodePacked(attributes, ',', 
                     JSONUtils.createTrait("Validation Status", isValidated ? "Validated" : "Unvalidated")));
+        
+        // Add owner address as beneficiary
+        if (address(deedNFT) != address(0)) {
+            try IDeedNFT(deedNFT).ownerOf(tokenId) returns (address owner) {
+                attributes = string(abi.encodePacked(attributes, ',',
+                            JSONUtils.createTrait("Beneficiary", address(owner).toHexString())));
+            } catch {
+                // If token doesn't exist or other error, continue without adding beneficiary
+            }
+        }
         
         // Add a few key attributes based on asset type
         if (assetType == uint8(IDeedNFT.AssetType.Land) || assetType == uint8(IDeedNFT.AssetType.Estate)) {
