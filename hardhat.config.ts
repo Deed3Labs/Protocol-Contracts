@@ -50,7 +50,7 @@ const config: HardhatUserConfig = {
     solcVersion: "0.8.29",
   },
   paths: {
-    sources: "./src",
+    sources: "./contracts",
     tests: "./test",
     cache: "./cache",
     artifacts: "./artifacts"

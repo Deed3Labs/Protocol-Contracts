@@ -12,9 +12,9 @@
     "sourceMap": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./contracts/*"]
     }
   },
-  "include": ["./test", "./scripts", "./typechain-types", "./src"],
+  "include": ["./test", "./scripts", "./typechain-types", "./contracts"],
   "files": ["./hardhat.config.ts"]
 }
