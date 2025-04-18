@@ -1,0 +1,23 @@
+{
+  "name": "deed-nft-webflow",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@reown/appkit": "latest",
+    "@reown/appkit-adapter-wagmi": "latest",
+    "@reown/appkit-siwx": "latest",
+    "@wagmi/core": "^2.16.7",
+    "ethers": "^6.13.5",
+    "viem": "^2.7.9",
+    "wagmi": "^2.5.7"
+  },
+  "devDependencies": {
+    "vite": "^6.0.3"
+  }
+}
