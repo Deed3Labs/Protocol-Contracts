@@ -2,7 +2,6 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 import { HardhatUserConfig } from "hardhat/config";
-import "@eth-optimism/hardhat-ovm";
 import "hardhat-deploy/dist/src/type-extensions";
 import "hardhat-deploy";
 import "solidity-coverage";
@@ -45,9 +44,6 @@ const config: HardhatUserConfig = {
   },
   sourcify: {
     enabled: true,
-  },
-  ovm: {
-    solcVersion: "0.8.29",
   },
   paths: {
     sources: "./contracts",
