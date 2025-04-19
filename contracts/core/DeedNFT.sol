@@ -21,6 +21,12 @@ import "./interfaces/IERC7572.sol";
 import "@limitbreak/creator-token-standards/src/interfaces/ICreatorToken.sol";
 import "@limitbreak/creator-token-standards/src/erc721c/ERC721C.sol";
 
+// Add FundManager interface
+import "./interfaces/IFundManager.sol";
+
+// Add marketplace interface for getting sale price
+import "./interfaces/IMarketplace.sol";
+
 /**
  * @title DeedNFT
  * @dev An ERC-721 token representing deeds with complex metadata and validator integration.
@@ -101,6 +107,10 @@ contract DeedNFT is
     event TokenValidated(uint256 indexed tokenId, bool isValid, address validator);
     event MarketplaceApproved(address indexed marketplace, bool approved);
     event RoyaltyEnforcementChanged(bool enforced);
+    event CommissionCollected(uint256 indexed tokenId, uint256 amount, address token);
+    event FundManagerUpdated(address indexed oldFundManager, address indexed newFundManager);
+    event MarketplaceUpdated(address indexed oldMarketplace, address indexed newMarketplace);
+    event CommissionCollectionFailed(uint256 indexed tokenId, uint256 amount, address token, string reason);
 
     // Storage gap for future upgrades
     uint256[45] private __gap;
@@ -109,6 +119,12 @@ contract DeedNFT is
      * @dev Count of active tokens (more efficient than iterating)
      */
     uint256 private _activeTokenCount;
+
+    // Add FundManager interface
+    IFundManager public fundManager;
+
+    // Add marketplace interface for getting sale price
+    IMarketplace public marketplace;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -778,7 +794,18 @@ contract DeedNFT is
         
         uint96 fee = IValidator(validator).getRoyaltyFeePercentage(tokenId);
         receiver = IValidator(validator).getRoyaltyReceiver();
-        royaltyAmount = (salePrice * fee) / 10000;
+        
+        // Calculate the full royalty amount
+        uint256 fullRoyaltyAmount = (salePrice * fee) / 10000;
+        
+        // If FundManager is set, take commission
+        if (address(fundManager) != address(0)) {
+            uint256 commissionPercentage = fundManager.getCommissionPercentage();
+            uint256 commissionAmount = (fullRoyaltyAmount * commissionPercentage) / 10000;
+            royaltyAmount = fullRoyaltyAmount - commissionAmount;
+        } else {
+            royaltyAmount = fullRoyaltyAmount;
+        }
     }
 
     /**
@@ -791,21 +818,22 @@ contract DeedNFT is
 
     /**
      * @dev Approves a marketplace for trading
-     * @param marketplace Address of the marketplace
+     * @param _marketplace Address of the marketplace
      * @param approved Whether the marketplace is approved
+     * @notice This function controls which marketplaces are allowed to transfer tokens when royalty enforcement is enabled
      */
-    function setApprovedMarketplace(address marketplace, bool approved) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _approvedMarketplaces[marketplace] = approved;
-        emit MarketplaceApproved(marketplace, approved);
+    function setApprovedMarketplace(address _marketplace, bool approved) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _approvedMarketplaces[_marketplace] = approved;
+        emit MarketplaceApproved(_marketplace, approved);
     }
 
     /**
      * @dev Checks if a marketplace is approved
-     * @param marketplace Address of the marketplace
+     * @param _marketplace Address of the marketplace
      * @return Whether the marketplace is approved
      */
-    function isApprovedMarketplace(address marketplace) public view returns (bool) {
-        return _approvedMarketplaces[marketplace];
+    function isApprovedMarketplace(address _marketplace) public view returns (bool) {
+        return _approvedMarketplaces[_marketplace];
     }
 
     /**
@@ -861,7 +889,7 @@ contract DeedNFT is
      * @dev Gets the transfer validator address
      * @return validator The address of the transfer validator
      */
-    function getTransferValidator() external view returns (address validator) {
+    function getTransferValidator() external view returns (address) {
         return _transferValidator;
     }
 
@@ -906,6 +934,58 @@ contract DeedNFT is
         else if (_enforceRoyalties) {
             address op = _msgSender();
             if (op != from && !_approvedMarketplaces[op]) revert("Not approved");
+            
+            // If this is a marketplace transfer and FundManager is set, collect commission
+            if (address(fundManager) != address(0) && _approvedMarketplaces[op]) {
+                _collectCommissionFromSale(tokenId, op);
+            }
+        }
+    }
+
+    /**
+     * @dev Internal function to collect commission from a sale
+     * @param tokenId The ID of the token being sold
+     */
+    function _collectCommissionFromSale(uint256 tokenId, address) internal {
+        // Get the sale price from the marketplace
+        uint256 salePrice = 0;
+        address paymentToken = address(0); // Default to ETH
+        
+        // Try to get sale price from marketplace if available
+        if (address(marketplace) != address(0)) {
+            try marketplace.getSalePrice(tokenId) returns (uint256 price, address token) {
+                salePrice = price;
+                paymentToken = token;
+            } catch {
+                // If marketplace doesn't support the function or it fails, use default values
+            }
+        }
+        
+        // If we couldn't get the sale price, try to get it from the transaction value
+        if (salePrice == 0 && msg.value > 0) {
+            salePrice = msg.value;
+            paymentToken = address(0); // ETH
+        }
+        
+        // Only proceed if we have a valid sale price
+        if (salePrice > 0) {
+            // Calculate royalty and commission
+            (/*address receiver*/, uint256 royaltyAmount) = this.royaltyInfo(tokenId, salePrice);
+            uint256 commissionAmount = salePrice - royaltyAmount;
+            
+            // Only collect commission if there is one
+            if (commissionAmount > 0) {
+                // Transfer commission to FundManager
+                try fundManager.collectCommission(tokenId, commissionAmount, paymentToken) {
+                    emit CommissionCollected(tokenId, commissionAmount, paymentToken);
+                } catch Error(string memory reason) {
+                    // Log the error but don't revert the transaction
+                    emit CommissionCollectionFailed(tokenId, commissionAmount, paymentToken, reason);
+                } catch {
+                    // Log the error but don't revert the transaction
+                    emit CommissionCollectionFailed(tokenId, commissionAmount, paymentToken, "Unknown error");
+                }
+            }
         }
     }
 
@@ -915,5 +995,26 @@ contract DeedNFT is
      */
     function totalSupply() public view returns (uint256) {
         return _activeTokenCount;
+    }
+
+    // Add function to set FundManager address
+    function setFundManager(address _fundManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_fundManager != address(0), "Invalid fund manager address");
+        address oldFundManager = address(fundManager);
+        fundManager = IFundManager(_fundManager);
+        emit FundManagerUpdated(oldFundManager, _fundManager);
+    }
+
+    /**
+     * @dev Sets the marketplace contract that provides sale price information
+     * @param _marketplace Address of the marketplace contract
+     * @notice This function sets the marketplace that the DeedNFT contract will query to get sale price information
+     * @notice This is different from setApprovedMarketplace which controls which marketplaces are allowed to transfer tokens
+     */
+    function setMarketplace(address _marketplace) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_marketplace != address(0), "Invalid marketplace address");
+        address oldMarketplace = address(marketplace);
+        marketplace = IMarketplace(_marketplace);
+        emit MarketplaceUpdated(oldMarketplace, _marketplace);
     }
 }
