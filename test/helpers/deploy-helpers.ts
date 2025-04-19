@@ -13,6 +13,7 @@ export interface DeployedContracts {
   fundManager: any;
   fractionalize: any;
   subdivide: any;
+  metadataRenderer: any;
   deployer: SignerWithAddress;
   admin: SignerWithAddress;
   validator1: SignerWithAddress;
@@ -78,6 +79,16 @@ export async function deployContracts(): Promise<DeployedContracts> {
   // Update fractionalize with subdivide address
   await fractionalize.setSubdivideAddress(await subdivide.getAddress());
   
+  // Deploy MetadataRenderer
+  const MetadataRenderer = await ethers.getContractFactory("MetadataRenderer");
+  const metadataRenderer = await upgrades.deployProxy(MetadataRenderer, [
+    "https://api.deeds.com/metadata/" // Base URI for metadata
+  ]);
+  await metadataRenderer.waitForDeployment();
+  
+  // Set the metadata renderer in DeedNFT
+  await deedNFT.setMetadataRenderer(await metadataRenderer.getAddress());
+  
   // Setup mock data for testing
   // Register validator in ValidatorRegistry
   await validatorRegistry.registerValidator(
@@ -94,6 +105,7 @@ export async function deployContracts(): Promise<DeployedContracts> {
     fundManager,
     fractionalize,
     subdivide,
+    metadataRenderer,
     deployer,
     admin,
     validator1,

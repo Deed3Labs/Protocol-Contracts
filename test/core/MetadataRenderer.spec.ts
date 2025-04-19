@@ -49,7 +49,9 @@ describe("MetadataRenderer Contract", function() {
     
     // Deploy MetadataRenderer
     const MetadataRenderer = await ethers.getContractFactory("MetadataRenderer");
-    metadataRenderer = await upgrades.deployProxy(MetadataRenderer, [await deedNFT.getAddress()]);
+    metadataRenderer = await upgrades.deployProxy(MetadataRenderer, [
+        "https://api.deeds.com/metadata/"
+    ]);
     await metadataRenderer.waitForDeployment();
     
     // Set the metadata renderer in DeedNFT
@@ -105,7 +107,7 @@ describe("MetadataRenderer Contract", function() {
     });
     
     it("should initialize with default base URI", async function() {
-      expect(await metadataRenderer.baseURI()).to.equal("");
+      expect(await metadataRenderer.baseURI()).to.equal("https://api.deeds.com/metadata/");
     });
   });
   
@@ -120,7 +122,7 @@ describe("MetadataRenderer Contract", function() {
       const newBaseURI = "https://api.deeds.com/metadata/";
       await expect(metadataRenderer.setBaseURI(newBaseURI))
         .to.emit(metadataRenderer, "BaseURIUpdated")
-        .withArgs("", newBaseURI);
+        .withArgs("https://api.deeds.com/metadata/", newBaseURI);
     });
     
     it("should not allow non-managers to update base URI", async function() {

@@ -52,7 +52,7 @@ describe("DeedNFT Comprehensive Tests", function() {
     
     // Deploy Validator
     const Validator = await ethers.getContractFactory("Validator");
-    validator = await upgrades.deployProxy(Validator, [ethers.ZeroAddress]);
+    validator = await upgrades.deployProxy(Validator, [await validatorRegistry.getAddress()]);
     await validator.waitForDeployment();
     
     // Deploy DeedNFT
@@ -72,7 +72,7 @@ describe("DeedNFT Comprehensive Tests", function() {
       await deedNFT.getAddress(),
       await validatorRegistry.getAddress(),
       1000, // 10% commission
-      feeReceiver.address
+      await feeReceiver.getAddress()
     ]);
     await fundManager.waitForDeployment();
     
@@ -86,20 +86,23 @@ describe("DeedNFT Comprehensive Tests", function() {
     mockRenderer = await MockRenderer.deploy();
     await mockRenderer.waitForDeployment();
     
+    // Set the mock renderer in DeedNFT
+    await deedNFT.setMetadataRenderer(await mockRenderer.getAddress());
+    
     // Deploy MockMarketplace
     const MockMarketplace = await ethers.getContractFactory("MockMarketplace");
     mockMarketplace = await MockMarketplace.deploy();
     await mockMarketplace.waitForDeployment();
     
     // Setup roles
-    await deedNFT.grantRole(VALIDATOR_ROLE, validator1.address);
-    await deedNFT.grantRole(VALIDATOR_ROLE, validator2.address);
+    await deedNFT.grantRole(VALIDATOR_ROLE, await validator1.getAddress());
+    await deedNFT.grantRole(VALIDATOR_ROLE, await validator2.getAddress());
     await deedNFT.grantRole(MINTER_ROLE, await fundManager.getAddress());
     
     // Register validator in registry
     await validatorRegistry.registerValidator(
       await validator.getAddress(),
-      deployer.address,
+      await deployer.getAddress(),
       "Test Validator",
       "Test validator for unit tests",
       [0, 1, 2, 3] // Support all asset types
@@ -107,11 +110,11 @@ describe("DeedNFT Comprehensive Tests", function() {
     
     // Set up validator
     await validator.setBaseUri("ipfs://metadata/");
-    await validator.setRoyaltyInfo(feeReceiver.address, 500); // 5% royalty
+    await validator.setRoyaltyInfo(await feeReceiver.getAddress(), 500); // 5% royalty
     
     // Mint initial deed for testing
     await deedNFT.mintAsset(
-      user1.address,
+      await user1.getAddress(),
       0, // AssetType.Land
       "ipfs://metadata1",
       "ipfs://agreement1",
@@ -125,14 +128,14 @@ describe("DeedNFT Comprehensive Tests", function() {
     it("should initialize with correct values", async function() {
       expect(await deedNFT.name()).to.equal("DeedNFT");
       expect(await deedNFT.symbol()).to.equal("DEED");
-      expect(await deedNFT.nexttokenId()).to.equal(2); // After minting one token
+      expect(await deedNFT.nexttokenId()).to.equal(2n); // After minting one token
     });
     
     it("should set up roles correctly", async function() {
-      expect(await deedNFT.hasRole(DEFAULT_ADMIN_ROLE, deployer.address)).to.be.true;
-      expect(await deedNFT.hasRole(VALIDATOR_ROLE, deployer.address)).to.be.true;
-      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validator1.address)).to.be.true;
-      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validator2.address)).to.be.true;
+      expect(await deedNFT.hasRole(DEFAULT_ADMIN_ROLE, await deployer.getAddress())).to.be.true;
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, await deployer.getAddress())).to.be.true;
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, await validator1.getAddress())).to.be.true;
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, await validator2.getAddress())).to.be.true;
       expect(await deedNFT.hasRole(MINTER_ROLE, await fundManager.getAddress())).to.be.true;
     });
     
