@@ -1,0 +1,143 @@
+{
+  "description": "[DETAILED_DESCRIPTION_OF_PROPERTY]",
+  "image": "ipfs://[MAIN_IMAGE_CID]",
+  "external_url": "https://app.deed3.io/property/land",
+  "background_color": "FFFFFF",
+  "animation_url": "ipfs://[OPTIONAL_3D_MODEL_OR_VIDEO_CID]",
+  
+  "gallery": [
+    "ipfs://[IMAGE1_CID]",
+    "ipfs://[IMAGE2_CID]",
+    "ipfs://[IMAGE3_CID]",
+    "ipfs://[IMAGE4_CID]"
+  ],
+  
+  "attributes": [
+    {
+      "trait_type": "Asset Type",
+      "value": "Land"
+    },
+    {
+      "trait_type": "Country",
+      "value": "[COUNTRY]"
+    },
+    {
+      "trait_type": "State",
+      "value": "[STATE]"
+    },
+    {
+      "trait_type": "County",
+      "value": "[COUNTY]"
+    },
+    {
+      "trait_type": "City",
+      "value": "[CITY]"
+    },
+    {
+      "trait_type": "Street Number",
+      "value": "[STREET_NUMBER]"
+    },
+    {
+      "trait_type": "Street Name",
+      "value": "[STREET_NAME]"
+    },
+    {
+      "trait_type": "Parcel Number",
+      "value": "[PARCEL_NUMBER]"
+    },
+    {
+      "trait_type": "Holding Entity",
+      "value": "[HOLDING_ENTITY]"
+    },
+    {
+      "trait_type": "Latitude",
+      "value": "[LATITUDE]"
+    },
+    {
+      "trait_type": "Longitude",
+      "value": "[LONGITUDE]"
+    },
+    {
+      "trait_type": "Acres",
+      "value": "[ACRES]"
+    },
+    {
+      "trait_type": "Parcel Use",
+      "value": "[PARCEL_USE]"
+    },
+    {
+      "trait_type": "Zoning",
+      "value": "[ZONING]"
+    },
+    {
+      "trait_type": "Zoning Code",
+      "value": "[ZONING_CODE]"
+    },
+    {
+      "trait_type": "Tax Value Source",
+      "value": "[TAX_VALUE_SOURCE]"
+    },
+    {
+      "trait_type": "Tax Assessed Value (USD)",
+      "value": "[TAX_ASSESSED_VALUE]"
+    },
+    {
+      "trait_type": "Estimated Value Source",
+      "value": "[ESTIMATED_VALUE_SOURCE]"
+    },
+    {
+      "trait_type": "Estimated Market Value (USD)",
+      "value": "[ESTIMATED_MARKET_VALUE]"
+    },
+    {
+      "trait_type": "Local Appraisal Source",
+      "value": "[LOCAL_APPRAISAL_SOURCE]"
+    },
+    {
+      "trait_type": "Local Appraised Value (USD)",
+      "value": "[LOCAL_APPRAISED_VALUE]"
+    },
+    {
+      "trait_type": "Confidence Score",
+      "value": "[CONFIDENCE_SCORE]"
+    }
+  ],
+  
+  "properties": {
+    "legal": {
+      "deed_type": "[DEED_TYPE]",
+      "recording_date": "[RECORDING_DATE]",
+      "recording_number": "[RECORDING_NUMBER]",
+      "legal_description": "[LEGAL_DESCRIPTION]"
+    },
+    "value": {
+      "tax_value_source": "[TAX_VALUE_SOURCE]",
+      "tax_assessed_value_usd": "[TAX_ASSESSED_VALUE_NO_COMMAS]",
+      "estimated_value_source": "[ESTIMATED_VALUE_SOURCE]",
+      "estimated_market_value_usd": "[ESTIMATED_MARKET_VALUE_NO_COMMAS]",
+      "local_appraisal_source": "[LOCAL_APPRAISAL_SOURCE]",
+      "local_appraised_value_usd": "[LOCAL_APPRAISED_VALUE_NO_COMMAS]"
+    },
+    "utilities": {
+      "water": "[HAS_WATER]",
+      "electricity": "[HAS_ELECTRICITY]",
+      "natural_gas": "[HAS_NATURAL_GAS]",
+      "sewer": "[HAS_SEWER]",
+      "internet": "[HAS_INTERNET]"
+    },
+    "features": [
+      "[FEATURE1]",
+      "[FEATURE2]",
+      "[FEATURE3]",
+      "[FEATURE4]"
+    ],
+    "documents": {
+      "survey": "ipfs://[SURVEY_PDF_CID]",
+      "title_report": "ipfs://[TITLE_REPORT_PDF_CID]",
+      "deed": "ipfs://[DEED_PDF_CID]"
+    },
+    "map_overlay": "ipfs://[MAP_OVERLAY_IMAGE_CID]",
+    "build_year": "[BUILD_YEAR]",
+    "additional_info": "[ADDITIONAL_INFO]"
+  }
+}

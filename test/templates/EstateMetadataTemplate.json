@@ -1,0 +1,189 @@
+{
+  "description": "[DETAILED_DESCRIPTION_OF_ESTATE]",
+  "image": "ipfs://[MAIN_IMAGE_CID]",
+  "external_url": "https://app.deed3.io/property/estate",
+  "background_color": "FFFFFF",
+  "animation_url": "ipfs://[OPTIONAL_3D_MODEL_OR_VIDEO_CID]",
+  
+  "gallery": [
+    "ipfs://[IMAGE1_CID]",
+    "ipfs://[IMAGE2_CID]",
+    "ipfs://[IMAGE3_CID]",
+    "ipfs://[IMAGE4_CID]"
+  ],
+  
+  "attributes": [
+    {
+      "trait_type": "Asset Type",
+      "value": "Estate"
+    },
+    {
+      "trait_type": "Country",
+      "value": "[COUNTRY]"
+    },
+    {
+      "trait_type": "State",
+      "value": "[STATE]"
+    },
+    {
+      "trait_type": "County",
+      "value": "[COUNTY]"
+    },
+    {
+      "trait_type": "City",
+      "value": "[CITY]"
+    },
+    {
+      "trait_type": "Street Number",
+      "value": "[STREET_NUMBER]"
+    },
+    {
+      "trait_type": "Street Name",
+      "value": "[STREET_NAME]"
+    },
+    {
+      "trait_type": "Parcel Number",
+      "value": "[PARCEL_NUMBER]"
+    },
+    {
+      "trait_type": "Holding Entity",
+      "value": "[HOLDING_ENTITY]"
+    },
+    {
+      "trait_type": "Property Type",
+      "value": "[PROPERTY_TYPE]"
+    },
+    {
+      "trait_type": "Lot Size",
+      "value": "[LOT_SIZE]"
+    },
+    {
+      "trait_type": "Square Footage",
+      "value": "[SQUARE_FOOTAGE]"
+    },
+    {
+      "trait_type": "Bedrooms",
+      "value": "[BEDROOMS]"
+    },
+    {
+      "trait_type": "Bathrooms",
+      "value": "[BATHROOMS]"
+    },
+    {
+      "trait_type": "Year Built",
+      "value": "[YEAR_BUILT]"
+    },
+    {
+      "trait_type": "Zoning",
+      "value": "[ZONING]"
+    },
+    {
+      "trait_type": "Zoning Code",
+      "value": "[ZONING_CODE]"
+    },
+    {
+      "trait_type": "Tax Value Source",
+      "value": "[TAX_VALUE_SOURCE]"
+    },
+    {
+      "trait_type": "Tax Assessed Value (USD)",
+      "value": "[TAX_ASSESSED_VALUE]"
+    },
+    {
+      "trait_type": "Estimated Value Source",
+      "value": "[ESTIMATED_VALUE_SOURCE]"
+    },
+    {
+      "trait_type": "Estimated Market Value (USD)",
+      "value": "[ESTIMATED_MARKET_VALUE]"
+    },
+    {
+      "trait_type": "Local Appraisal Source",
+      "value": "[LOCAL_APPRAISAL_SOURCE]"
+    },
+    {
+      "trait_type": "Local Appraised Value (USD)",
+      "value": "[LOCAL_APPRAISED_VALUE]"
+    },
+    {
+      "trait_type": "Confidence Score",
+      "value": "[CONFIDENCE_SCORE]"
+    }
+  ],
+  
+  "properties": {
+    "property_details": {
+      "property_type": "[PROPERTY_TYPE]",
+      "lot_size": "[LOT_SIZE]",
+      "square_footage": "[SQUARE_FOOTAGE]",
+      "bedrooms": "[BEDROOMS]",
+      "bathrooms": "[BATHROOMS]",
+      "year_built": "[YEAR_BUILT]",
+      "floors": "[FLOORS]",
+      "construction_type": "[CONSTRUCTION_TYPE]",
+      "roof_type": "[ROOF_TYPE]",
+      "heating_system": "[HEATING_SYSTEM]",
+      "cooling_system": "[COOLING_SYSTEM]",
+      "foundation_type": "[FOUNDATION_TYPE]"
+    },
+    "legal": {
+      "deed_type": "[DEED_TYPE]",
+      "recording_date": "[RECORDING_DATE]",
+      "recording_number": "[RECORDING_NUMBER]",
+      "legal_description": "[LEGAL_DESCRIPTION]"
+    },
+    "value": {
+      "tax_value_source": "[TAX_VALUE_SOURCE]",
+      "tax_assessed_value_usd": "[TAX_ASSESSED_VALUE_NO_COMMAS]",
+      "estimated_value_source": "[ESTIMATED_VALUE_SOURCE]",
+      "estimated_market_value_usd": "[ESTIMATED_MARKET_VALUE_NO_COMMAS]",
+      "local_appraisal_source": "[LOCAL_APPRAISAL_SOURCE]",
+      "local_appraised_value_usd": "[LOCAL_APPRAISED_VALUE_NO_COMMAS]",
+      "rental_income_monthly": "[RENTAL_INCOME_MONTHLY]",
+      "rental_income_annual": "[RENTAL_INCOME_ANNUAL]"
+    },
+    "utilities": {
+      "water": "[HAS_WATER]",
+      "electricity": "[HAS_ELECTRICITY]",
+      "natural_gas": "[HAS_NATURAL_GAS]",
+      "sewer": "[HAS_SEWER]",
+      "internet": "[HAS_INTERNET]",
+      "cable": "[HAS_CABLE]",
+      "trash_service": "[HAS_TRASH_SERVICE]"
+    },
+    "features": [
+      "[FEATURE1]",
+      "[FEATURE2]",
+      "[FEATURE3]",
+      "[FEATURE4]"
+    ],
+    "amenities": {
+      "pool": "[HAS_POOL]",
+      "garage": "[HAS_GARAGE]",
+      "garage_size": "[GARAGE_SIZE]",
+      "fireplace": "[HAS_FIREPLACE]",
+      "deck": "[HAS_DECK]",
+      "basement": "[HAS_BASEMENT]",
+      "fenced_yard": "[HAS_FENCED_YARD]"
+    },
+    "documents": {
+      "survey": "ipfs://[SURVEY_PDF_CID]",
+      "title_report": "ipfs://[TITLE_REPORT_PDF_CID]",
+      "deed": "ipfs://[DEED_PDF_CID]",
+      "insurance_policy": "ipfs://[INSURANCE_POLICY_PDF_CID]",
+      "home_inspection": "ipfs://[HOME_INSPECTION_PDF_CID]",
+      "floor_plan": "ipfs://[FLOOR_PLAN_PDF_CID]"
+    },
+    "map_overlay": "ipfs://[MAP_OVERLAY_IMAGE_CID]",
+    "build_year": "[YEAR_BUILT]",
+    "last_renovation": "[LAST_RENOVATION_YEAR]",
+    "hoa": {
+      "has_hoa": "[HAS_HOA]",
+      "hoa_fee_monthly": "[HOA_FEE_MONTHLY]",
+      "hoa_fee_annual": "[HOA_FEE_ANNUAL]",
+      "hoa_name": "[HOA_NAME]",
+      "hoa_contact": "[HOA_CONTACT]"
+    },
+    "additional_info": "[ADDITIONAL_INFO]"
+  }
+} 

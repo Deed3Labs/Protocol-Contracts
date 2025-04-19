@@ -2,7 +2,7 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 import { HardhatUserConfig } from "hardhat/config";
-import "@eth-optimism/hardhat-ovm";
+import "hardhat-deploy/dist/src/type-extensions";
 import "hardhat-deploy";
 import "solidity-coverage";
 import "@openzeppelin/hardhat-upgrades";
@@ -24,13 +24,17 @@ const arbiscanApiKey = process.env.ARBISCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z68
 const deployerAccount = process.env.DEPLOYER_ACCOUNT!;
 const config: HardhatUserConfig = {
   solidity: {
-    version: "0.8.20",
+    version: "0.8.29",
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200
+        runs: 20
       },
       viaIR: true,
+      // Disable error strings to save gas
+      debug: {
+        revertStrings: "strip"
+      },
       outputSelection: {
         "*": {
           "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "metadata"],
@@ -41,8 +45,11 @@ const config: HardhatUserConfig = {
   sourcify: {
     enabled: true,
   },
-  ovm: {
-    solcVersion: "0.8.20",
+  paths: {
+    sources: "./contracts",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts"
   },
   namedAccounts: {
     deployer: {
@@ -76,17 +83,14 @@ const config: HardhatUserConfig = {
     arbitrum: {
       url: `https://arb-mainnet.g.alchemy.com/v2/${providerApiKey}`,
       accounts: [deployerPrivateKey],
-      saveDeployments: true,
     },
     polygon: {
       url: `https://polygon-mainnet.g.alchemy.com/v2/${providerApiKey}`,
       accounts: [deployerPrivateKey],
-      saveDeployments: true,
     },
     sepolia: {
       url: `https://eth-sepolia.g.alchemy.com/v2/${providerApiKey}`,
       accounts: [deployerPrivateKey],
-      saveDeployments: true,
     },
     chiado: {
       url: "https://rpc.chiadochain.net",
@@ -134,9 +138,9 @@ const config: HardhatUserConfig = {
     // coinmarketcap: process.env.COINMARKETCAP_API_KEY,
   },
   typechain: {
-    outDir: "typechain",
+    outDir: "typechain-types",
     target: "ethers-v6",
   },
-};
+} as HardhatUserConfig;
 
 export default config;

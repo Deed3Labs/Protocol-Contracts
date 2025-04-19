@@ -7,8 +7,14 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "declaration": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./contracts/*"]
+    }
   },
-  "include": ["./test", "./scripts", "./typechain-types"],
+  "include": ["./test", "./scripts", "./typechain-types", "./contracts"],
   "files": ["./hardhat.config.ts"]
 }

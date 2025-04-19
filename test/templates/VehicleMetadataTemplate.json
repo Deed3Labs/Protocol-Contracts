@@ -1,0 +1,190 @@
+{
+  "description": "[DETAILED_DESCRIPTION_OF_VEHICLE]",
+  "image": "ipfs://[MAIN_IMAGE_CID]",
+  "external_url": "https://app.deed3.io/property/vehicle",
+  "background_color": "FFFFFF",
+  "animation_url": "ipfs://[OPTIONAL_3D_MODEL_OR_VIDEO_CID]",
+  
+  "gallery": [
+    "ipfs://[IMAGE1_CID]",
+    "ipfs://[IMAGE2_CID]",
+    "ipfs://[IMAGE3_CID]",
+    "ipfs://[IMAGE4_CID]"
+  ],
+  
+  "attributes": [
+    {
+      "trait_type": "Asset Type",
+      "value": "Vehicle"
+    },
+    {
+      "trait_type": "Make",
+      "value": "[MAKE]"
+    },
+    {
+      "trait_type": "Model",
+      "value": "[MODEL]"
+    },
+    {
+      "trait_type": "Year",
+      "value": "[YEAR]"
+    },
+    {
+      "trait_type": "VIN",
+      "value": "[VIN]"
+    },
+    {
+      "trait_type": "License Plate",
+      "value": "[LICENSE_PLATE]"
+    },
+    {
+      "trait_type": "Registration State",
+      "value": "[REGISTRATION_STATE]"
+    },
+    {
+      "trait_type": "Color",
+      "value": "[COLOR]"
+    },
+    {
+      "trait_type": "Body Type",
+      "value": "[BODY_TYPE]"
+    },
+    {
+      "trait_type": "Fuel Type",
+      "value": "[FUEL_TYPE]"
+    },
+    {
+      "trait_type": "Transmission",
+      "value": "[TRANSMISSION]"
+    },
+    {
+      "trait_type": "Mileage",
+      "value": "[MILEAGE]"
+    },
+    {
+      "trait_type": "Engine Size",
+      "value": "[ENGINE_SIZE]"
+    },
+    {
+      "trait_type": "Title Number",
+      "value": "[TITLE_NUMBER]"
+    },
+    {
+      "trait_type": "Title State",
+      "value": "[TITLE_STATE]"
+    },
+    {
+      "trait_type": "Title Status",
+      "value": "[TITLE_STATUS]"
+    },
+    {
+      "trait_type": "Registration Expiration",
+      "value": "[REGISTRATION_EXPIRATION]"
+    },
+    {
+      "trait_type": "Holding Entity",
+      "value": "[HOLDING_ENTITY]"
+    },
+    {
+      "trait_type": "Appraisal Source",
+      "value": "[APPRAISAL_SOURCE]"
+    },
+    {
+      "trait_type": "Appraised Value (USD)",
+      "value": "[APPRAISED_VALUE]"
+    },
+    {
+      "trait_type": "Estimated Value Source",
+      "value": "[ESTIMATED_VALUE_SOURCE]"
+    },
+    {
+      "trait_type": "Estimated Market Value (USD)",
+      "value": "[ESTIMATED_MARKET_VALUE]"
+    },
+    {
+      "trait_type": "Condition",
+      "value": "[CONDITION]"
+    },
+    {
+      "trait_type": "Last Service Date",
+      "value": "[LAST_SERVICE_DATE]"
+    },
+    {
+      "trait_type": "Confidence Score",
+      "value": "[CONFIDENCE_SCORE]"
+    }
+  ],
+  
+  "properties": {
+    "vehicle_details": {
+      "make": "[MAKE]",
+      "model": "[MODEL]",
+      "year": "[YEAR]",
+      "vin": "[VIN]",
+      "license_plate": "[LICENSE_PLATE]",
+      "registration_state": "[REGISTRATION_STATE]"
+    },
+    "physical_details": {
+      "color": "[COLOR]",
+      "body_type": "[BODY_TYPE]",
+      "fuel_type": "[FUEL_TYPE]",
+      "transmission_type": "[TRANSMISSION]",
+      "mileage": "[MILEAGE_NO_COMMAS]",
+      "engine_size": "[ENGINE_SIZE]",
+      "drive_type": "[DRIVE_TYPE]", 
+      "number_of_doors": "[NUMBER_OF_DOORS]",
+      "number_of_seats": "[NUMBER_OF_SEATS]",
+      "interior_color": "[INTERIOR_COLOR]",
+      "wheels": "[WHEELS]"
+    },
+    "ownership_details": {
+      "title_number": "[TITLE_NUMBER]",
+      "title_state": "[TITLE_STATE]",
+      "title_status": "[TITLE_STATUS]",
+      "registration_expiration": "[REGISTRATION_EXPIRATION]",
+      "holding_entity": "[HOLDING_ENTITY]",
+      "purchase_date": "[PURCHASE_DATE]",
+      "lien_holder": "[LIEN_HOLDER]"
+    },
+    "value": {
+      "appraisal_source": "[APPRAISAL_SOURCE]",
+      "appraised_value_usd": "[APPRAISED_VALUE_NO_COMMAS]",
+      "estimated_value_source": "[ESTIMATED_VALUE_SOURCE]",
+      "estimated_market_value_usd": "[ESTIMATED_MARKET_VALUE_NO_COMMAS]"
+    },
+    "condition": {
+      "status": "[CONDITION]",
+      "last_service_date": "[LAST_SERVICE_DATE]",
+      "service_interval": "[SERVICE_INTERVAL]",
+      "accident_history": "[ACCIDENT_HISTORY]",
+      "odometer_verified": "[ODOMETER_VERIFIED]",
+      "known_issues": "[KNOWN_ISSUES]"
+    },
+    "features": [
+      "[FEATURE1]",
+      "[FEATURE2]",
+      "[FEATURE3]",
+      "[FEATURE4]"
+    ],
+    "documents": {
+      "title": "ipfs://[TITLE_PDF_CID]",
+      "registration": "ipfs://[REGISTRATION_PDF_CID]",
+      "service_records": "ipfs://[SERVICE_RECORDS_PDF_CID]",
+      "owners_manual": "ipfs://[OWNERS_MANUAL_PDF_CID]",
+      "warranty": "ipfs://[WARRANTY_PDF_CID]"
+    },
+    "warranty": {
+      "has_warranty": "[HAS_WARRANTY]",
+      "warranty_type": "[WARRANTY_TYPE]",
+      "warranty_expiration_date": "[WARRANTY_EXPIRATION_DATE]",
+      "warranty_expiration_mileage": "[WARRANTY_EXPIRATION_MILEAGE]"
+    },
+    "insurance": {
+      "insurance_provider": "[INSURANCE_PROVIDER]",
+      "policy_number": "[POLICY_NUMBER]",
+      "expiration_date": "[INSURANCE_EXPIRATION_DATE]",
+      "annual_premium": "[ANNUAL_PREMIUM]"
+    },
+    "additional_info": "[ADDITIONAL_INFO]"
+  }
+} 
