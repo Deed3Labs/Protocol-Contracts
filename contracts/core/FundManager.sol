@@ -389,4 +389,35 @@ contract FundManager is
         
         return tokenId;
     }
+
+    /**
+     * @dev Collects commission from a royalty payment
+     * @param tokenId The ID of the token
+     * @param amount The amount of the royalty payment
+     * @param token The token address (for ERC20 payments)
+     */
+    function collectCommission(uint256 tokenId, uint256 amount, address token) external override nonReentrant {
+        require(msg.sender == deedNFTContract, "FundManager: Only DeedNFT can call this function");
+        require(amount > 0, "FundManager: Amount must be greater than 0");
+        require(token != address(0), "FundManager: Invalid token address");
+
+        // Get the validator for this token using getValidationStatus
+        (bool isValidated, address validator) = IDeedNFT(deedNFTContract).getValidationStatus(tokenId);
+        require(validator != address(0), "FundManager: Invalid validator");
+        require(isValidated, "FundManager: Token not validated");
+
+        // Calculate commission
+        uint256 commissionAmount = (amount * _commissionPercentage) / 10000;
+        uint256 validatorAmount = amount - commissionAmount;
+
+        // Update validator balance
+        validatorBalances[validator][token] += validatorAmount;
+
+        // Transfer commission to fee receiver if any
+        if (commissionAmount > 0) {
+            IERC20Upgradeable(token).safeTransfer(feeReceiver, commissionAmount);
+        }
+
+        emit ServiceFeeCollected(validator, token, amount, commissionAmount);
+    }
 }
