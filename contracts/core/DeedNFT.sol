@@ -16,16 +16,11 @@ import "@openzeppelin/contracts-upgradeable/interfaces/IERC2981Upgradeable.sol";
 import "./interfaces/IValidator.sol";
 import "./interfaces/IValidatorRegistry.sol";
 import "./interfaces/IERC7572.sol";
+import "./interfaces/IFundManager.sol";
 
 // Import ICreatorToken interface for reference
 import "@limitbreak/creator-token-standards/src/interfaces/ICreatorToken.sol";
 import "@limitbreak/creator-token-standards/src/erc721c/ERC721C.sol";
-
-// Add FundManager interface
-import "./interfaces/IFundManager.sol";
-
-// Add marketplace interface for getting sale price
-import "./interfaces/IMarketplace.sol";
 
 /**
  * @title DeedNFT
@@ -107,10 +102,6 @@ contract DeedNFT is
     event TokenValidated(uint256 indexed tokenId, bool isValid, address validator);
     event MarketplaceApproved(address indexed marketplace, bool approved);
     event RoyaltyEnforcementChanged(bool enforced);
-    event CommissionCollected(uint256 indexed tokenId, uint256 amount, address token);
-    event FundManagerUpdated(address indexed oldFundManager, address indexed newFundManager);
-    event MarketplaceUpdated(address indexed oldMarketplace, address indexed newMarketplace);
-    event CommissionCollectionFailed(uint256 indexed tokenId, uint256 amount, address token, string reason);
 
     // Storage gap for future upgrades
     uint256[45] private __gap;
@@ -122,9 +113,6 @@ contract DeedNFT is
 
     // Add FundManager interface
     IFundManager public fundManager;
-
-    // Add marketplace interface for getting sale price
-    IMarketplace public marketplace;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -213,7 +201,7 @@ contract DeedNFT is
      * @dev Modifier to check if the deed exists
      */
     modifier deedExists(uint256 tokenId) {
-        require(_exists(tokenId), "No deed");
+        require(_exists(tokenId), "!deed");
         _;
     }
 
@@ -221,7 +209,7 @@ contract DeedNFT is
      * @dev Modifier to check if the caller is the deed owner
      */
     modifier onlyDeedOwner(uint256 tokenId) {
-        require(ownerOf(tokenId) == msg.sender, "Not owner");
+        require(ownerOf(tokenId) == msg.sender, "!owner");
         _;
     }
 
@@ -268,12 +256,12 @@ contract DeedNFT is
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        require(validator != address(0), "Invalid validator");
+        require(validator != address(0), "!validator");
         require(
             IValidatorRegistry(validatorRegistry).isValidatorRegistered(
                 validator
             ),
-            "Not registered"
+            "!registered"
         );
         defaultValidator = validator;
     }
@@ -286,7 +274,7 @@ contract DeedNFT is
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        require(registry != address(0), "Invalid registry");
+        require(registry != address(0), "!registry");
         validatorRegistry = registry;
     }
     
@@ -298,7 +286,7 @@ contract DeedNFT is
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        require(renderer != address(0), "Invalid renderer");
+        require(renderer != address(0), "!renderer");
         metadataRenderer = renderer;
         emit MetadataRendererUpdated(renderer);
     }
@@ -309,7 +297,7 @@ contract DeedNFT is
      * @param minter Address to grant the MINTER_ROLE to.
      */
     function addMinter(address minter) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(minter != address(0), "Invalid minter");
+        require(minter != address(0), "!minter");
         _grantRole(MINTER_ROLE, minter);
     }
 
@@ -351,14 +339,14 @@ contract DeedNFT is
         address validatorAddress,
         uint256 salt
     ) external whenNotPaused onlyRole(MINTER_ROLE) returns (uint256) {
-        require(owner != address(0), "Invalid owner");
+        require(owner != address(0), "!owner");
         require(
             bytes(ipfsDetailsHash).length > 0,
-            "IPFS hash required"
+            "!ipfs"
         );
         require(
             bytes(definition).length > 0,
-            "Definition required"
+            "!def"
         );
 
         // Determine which validator to use
@@ -370,11 +358,11 @@ contract DeedNFT is
         // Ensure validator is registered
         require(
             selectedValidator != address(0),
-            "No validator"
+            "!validator"
         );
         require(
             IValidatorRegistry(validatorRegistry).isValidatorRegistered(selectedValidator),
-            "Not registered"
+            "!registered"
         );
         
         // Verify validator supports interface
@@ -382,20 +370,20 @@ contract DeedNFT is
             IERC165Upgradeable(selectedValidator).supportsInterface(
                 type(IValidator).interfaceId
             ),
-            "Invalid interface"
+            "!interface"
         );
         
         // Verify validator supports this asset type
         require(
             IValidator(selectedValidator).supportsAssetType(uint256(assetType)),
-            "Unsupported asset"
+            "!asset"
         );
         
         // Get default operating agreement from validator
         string memory operatingAgreement = IValidator(selectedValidator).defaultOperatingAgreement();
         require(
             bytes(operatingAgreement).length > 0,
-            "No agreement"
+            "!agreement"
         );
 
         uint256 tokenId;
@@ -404,7 +392,7 @@ contract DeedNFT is
         if (salt > 0) {
             tokenId = generateUniqueTokenId(owner, assetType, definition, salt);
             // Ensure the token ID doesn't already exist
-            require(!_exists(tokenId), "Token ID already exists");
+            require(!_exists(tokenId), "!unique");
         } else {
             // Use the sequential ID approach
             tokenId = nexttokenId;
@@ -477,27 +465,27 @@ contract DeedNFT is
         external 
         onlyRole(VALIDATOR_ROLE) 
     {
-        require(_exists(tokenId), "No deed");
+        require(_exists(tokenId), "!deed");
         
         // If marking as valid, ensure validator address is provided and valid
         if (isValid) {
-            require(validatorAddress != address(0), "No validator");
+            require(validatorAddress != address(0), "!validator");
             require(
                 IValidatorRegistry(validatorRegistry).isValidatorRegistered(validatorAddress),
-                "Not registered"
+                "!registered"
             );
             
             require(
                 IERC165Upgradeable(validatorAddress).supportsInterface(
                     type(IValidator).interfaceId
                 ),
-                "Invalid interface"
+                "!interface"
             );
             
             bytes memory agrBytes = _tokenTraits[tokenId][keccak256("operatingAgreement")];
             require(
                 IValidator(validatorAddress).validateOperatingAgreement(abi.decode(agrBytes, (string))),
-                "Invalid agreement"
+                "!agreement"
             );
             
             // Update traits
@@ -533,15 +521,15 @@ contract DeedNFT is
     ) external onlyValidatorOrOwner(tokenId) whenNotPaused {
         require(
             bytes(ipfsDetailsHash).length > 0,
-            "IPFS hash required"
+            "!ipfs"
         );
         require(
             bytes(operatingAgreement).length > 0,
-            "Agreement required"
+            "!agreement"
         );
         require(
             bytes(definition).length > 0,
-            "Definition required"
+            "!def"
         );
 
         // Check if operating agreement is valid
@@ -552,20 +540,20 @@ contract DeedNFT is
 
         require(
             validatorAddress != address(0),
-            "No validator"
+            "!validator"
         );
         require(
             IERC165Upgradeable(validatorAddress).supportsInterface(
                 type(IValidator).interfaceId
             ),
-            "Invalid interface"
+            "!interface"
         );
 
         string memory agreementName = IValidator(validatorAddress)
             .operatingAgreementName(operatingAgreement);
         require(
             bytes(agreementName).length > 0,
-            "Invalid agreement"
+            "!agreement"
         );
 
         _setTokenURI(tokenId, ipfsDetailsHash);
@@ -705,7 +693,7 @@ contract DeedNFT is
      * @param _tokenURI string URI to assign
      */
     function _setTokenURI(uint256 tokenId, string memory _tokenURI) internal virtual override {
-        require(_exists(tokenId), "URI for nonexistent token");
+        require(_exists(tokenId), "!token");
         super._setTokenURI(tokenId, _tokenURI);
     }
 
@@ -759,7 +747,7 @@ contract DeedNFT is
         view 
         returns (bool isValidated, address validator) 
     {
-        require(_exists(tokenId), "Nonexistent deed");
+        require(_exists(tokenId), "!deed");
         
         bytes memory isValidatedBytes = _tokenTraits[tokenId][keccak256("isValidated")];
         bytes memory validatorBytes = _tokenTraits[tokenId][keccak256("validator")];
@@ -783,7 +771,7 @@ contract DeedNFT is
         override 
         returns (address receiver, uint256 royaltyAmount) 
     {
-        require(_exists(tokenId), "No token");
+        require(_exists(tokenId), "!token");
         
         bytes memory validatorBytes = _tokenTraits[tokenId][keccak256("validator")];
         address validator = validatorBytes.length > 0 
@@ -801,8 +789,7 @@ contract DeedNFT is
         // If FundManager is set, take commission
         if (address(fundManager) != address(0)) {
             uint256 commissionPercentage = fundManager.getCommissionPercentage();
-            uint256 commissionAmount = (fullRoyaltyAmount * commissionPercentage) / 10000;
-            royaltyAmount = fullRoyaltyAmount - commissionAmount;
+            royaltyAmount = fullRoyaltyAmount - ((fullRoyaltyAmount * commissionPercentage) / 10000);
         } else {
             royaltyAmount = fullRoyaltyAmount;
         }
@@ -818,22 +805,21 @@ contract DeedNFT is
 
     /**
      * @dev Approves a marketplace for trading
-     * @param _marketplace Address of the marketplace
+     * @param marketplace Address of the marketplace
      * @param approved Whether the marketplace is approved
-     * @notice This function controls which marketplaces are allowed to transfer tokens when royalty enforcement is enabled
      */
-    function setApprovedMarketplace(address _marketplace, bool approved) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _approvedMarketplaces[_marketplace] = approved;
-        emit MarketplaceApproved(_marketplace, approved);
+    function setApprovedMarketplace(address marketplace, bool approved) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _approvedMarketplaces[marketplace] = approved;
+        emit MarketplaceApproved(marketplace, approved);
     }
 
     /**
      * @dev Checks if a marketplace is approved
-     * @param _marketplace Address of the marketplace
+     * @param marketplace Address of the marketplace
      * @return Whether the marketplace is approved
      */
-    function isApprovedMarketplace(address _marketplace) public view returns (bool) {
-        return _approvedMarketplaces[_marketplace];
+    function isApprovedMarketplace(address marketplace) public view returns (bool) {
+        return _approvedMarketplaces[marketplace];
     }
 
     /**
@@ -860,7 +846,7 @@ contract DeedNFT is
      */
     function approve(address to, uint256 tokenId) public override(ERC721Upgradeable, IERC721Upgradeable) {
         if (_enforceRoyalties && !isApprovedMarketplace(to)) {
-            revert("Unapproved marketplace");
+            revert("!marketplace");
         }
         super.approve(to, tokenId);
     }
@@ -872,7 +858,7 @@ contract DeedNFT is
      */
     function setApprovalForAll(address operator, bool approved) public override(ERC721Upgradeable, IERC721Upgradeable) {
         if (_enforceRoyalties && approved && !isApprovedMarketplace(operator)) {
-            revert("Unapproved marketplace");
+            revert("!marketplace");
         }
         super.setApprovalForAll(operator, approved);
     }
@@ -889,7 +875,7 @@ contract DeedNFT is
      * @dev Gets the transfer validator address
      * @return validator The address of the transfer validator
      */
-    function getTransferValidator() external view returns (address) {
+    function getTransferValidator() external view returns (address validator) {
         return _transferValidator;
     }
 
@@ -933,59 +919,7 @@ contract DeedNFT is
         // Regular transfer with royalty enforcement
         else if (_enforceRoyalties) {
             address op = _msgSender();
-            if (op != from && !_approvedMarketplaces[op]) revert("Not approved");
-            
-            // If this is a marketplace transfer and FundManager is set, collect commission
-            if (address(fundManager) != address(0) && _approvedMarketplaces[op]) {
-                _collectCommissionFromSale(tokenId, op);
-            }
-        }
-    }
-
-    /**
-     * @dev Internal function to collect commission from a sale
-     * @param tokenId The ID of the token being sold
-     */
-    function _collectCommissionFromSale(uint256 tokenId, address) internal {
-        // Get the sale price from the marketplace
-        uint256 salePrice = 0;
-        address paymentToken = address(0); // Default to ETH
-        
-        // Try to get sale price from marketplace if available
-        if (address(marketplace) != address(0)) {
-            try marketplace.getSalePrice(tokenId) returns (uint256 price, address token) {
-                salePrice = price;
-                paymentToken = token;
-            } catch {
-                // If marketplace doesn't support the function or it fails, use default values
-            }
-        }
-        
-        // If we couldn't get the sale price, try to get it from the transaction value
-        if (salePrice == 0 && msg.value > 0) {
-            salePrice = msg.value;
-            paymentToken = address(0); // ETH
-        }
-        
-        // Only proceed if we have a valid sale price
-        if (salePrice > 0) {
-            // Calculate royalty and commission
-            (/*address receiver*/, uint256 royaltyAmount) = this.royaltyInfo(tokenId, salePrice);
-            uint256 commissionAmount = salePrice - royaltyAmount;
-            
-            // Only collect commission if there is one
-            if (commissionAmount > 0) {
-                // Transfer commission to FundManager
-                try fundManager.collectCommission(tokenId, commissionAmount, paymentToken) {
-                    emit CommissionCollected(tokenId, commissionAmount, paymentToken);
-                } catch Error(string memory reason) {
-                    // Log the error but don't revert the transaction
-                    emit CommissionCollectionFailed(tokenId, commissionAmount, paymentToken, reason);
-                } catch {
-                    // Log the error but don't revert the transaction
-                    emit CommissionCollectionFailed(tokenId, commissionAmount, paymentToken, "Unknown error");
-                }
-            }
+            if (op != from && !_approvedMarketplaces[op]) revert("!approved");
         }
     }
 
@@ -997,24 +931,12 @@ contract DeedNFT is
         return _activeTokenCount;
     }
 
-    // Add function to set FundManager address
-    function setFundManager(address _fundManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(_fundManager != address(0), "Invalid fund manager address");
-        address oldFundManager = address(fundManager);
-        fundManager = IFundManager(_fundManager);
-        emit FundManagerUpdated(oldFundManager, _fundManager);
-    }
-
     /**
-     * @dev Sets the marketplace contract that provides sale price information
-     * @param _marketplace Address of the marketplace contract
-     * @notice This function sets the marketplace that the DeedNFT contract will query to get sale price information
-     * @notice This is different from setApprovedMarketplace which controls which marketplaces are allowed to transfer tokens
+     * @dev Sets the FundManager address
+     * @param _fundManager Address of the FundManager contract
      */
-    function setMarketplace(address _marketplace) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(_marketplace != address(0), "Invalid marketplace address");
-        address oldMarketplace = address(marketplace);
-        marketplace = IMarketplace(_marketplace);
-        emit MarketplaceUpdated(oldMarketplace, _marketplace);
+    function setFundManager(address _fundManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_fundManager != address(0), "!fundManager");
+        fundManager = IFundManager(_fundManager);
     }
 }
