@@ -45,7 +45,7 @@ Each asset type has specific validation criteria and metadata structures to ensu
 
 ### 1. DeedNFT
 
-[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/DeedNFT.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/DeedNFT.sol)
 
 The `DeedNFT` contract is the core ERC721 token representing real world assets. It includes several important features:
 
@@ -77,7 +77,7 @@ The royalty system works in conjunction with the `Validator` and `FundManager` c
 
 ### 2. Validator
 
-[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/Validator.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/Validator.sol)
 
 The `Validator` contract is responsible for verifying deed data and generating the appropriate metadata URI. This contract works in tandem with the `ValidatorRegistry` to ensure that only authorized validators can validate deeds.
 
@@ -88,7 +88,7 @@ The `Validator` contract is responsible for verifying deed data and generating t
 
 ### 3. ValidatorRegistry
 
-[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/ValidatorRegistry.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/ValidatorRegistry.sol)
 
 The `ValidatorRegistry` contract manages a list of authorized validators, ensuring that only trusted and approved validators can interact with the `DeedNFT` contract.
 
@@ -98,7 +98,7 @@ The `ValidatorRegistry` contract manages a list of authorized validators, ensuri
 
 ### 4. FundManager
 
-[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/FundManager.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/FundManager.sol)
 
 The `FundManager` contract is dedicated to managing funds associated with property transactions and transfers within the protocol:
 
@@ -109,7 +109,7 @@ The `FundManager` contract is dedicated to managing funds associated with proper
 
 ### 5. MetadataRenderer
 
-[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/MetadataRenderer.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/MetadataRenderer.sol)
 
 The `MetadataRenderer` contract is responsible for generating and managing token metadata in a standardized format:
 
@@ -124,19 +124,19 @@ The `MetadataRenderer` contract is responsible for generating and managing token
 
 ### 1. IValidator
 
-[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/IValidator.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IValidator.sol)
 
 Defines the interface for validator functionality, outlining the functions that any validator contract must implement to interact with the protocol.
 
 ### 2. IValidatorRegistry
 
-[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/IValidatorRegistry.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IValidatorRegistry.sol)
 
 Specifies the interface for the validator registry, ensuring that implementations provide necessary registry management functions.
 
 ### 3. IMetadataRenderer
 
-[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/IMetadataRenderer.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IMetadataRenderer.sol)
 
 Defines the interface for metadata rendering functionality, implementing ERC-7572 for standardized metadata handling.
 
