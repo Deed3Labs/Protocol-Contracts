@@ -102,7 +102,18 @@ const config: HardhatUserConfig = {
       chainId: 84532,
       verify: {
         etherscan: {
-          apiUrl: "https://api-sepolia.basescan.org",
+          apiUrl: "https://base-sepolia.blockscout.com/api",
+        }
+      }
+    },
+    base: {
+      url: "https://mainnet.base.org",
+      accounts: [deployerPrivateKey],
+      gasPrice: "auto",
+      chainId: 8453,
+      verify: {
+        etherscan: {
+          apiUrl: "https://base.blockscout.com/api",
         }
       }
     },
@@ -143,15 +154,24 @@ const config: HardhatUserConfig = {
       sepolia: `${etherscanApiKey}`, 
       polygon: `${polygonscanApiKey}`, 
       arbitrumOne: `${arbiscanApiKey}`,
-      "base-sepolia": "PLACEHOLDER"
+      "base-sepolia": "PLACEHOLDER",
+      base: "PLACEHOLDER"
     },
     customChains: [
       {
         network: "base-sepolia",
         chainId: 84532,
         urls: {
-          apiURL: "https://api-sepolia.basescan.org/api",
-          browserURL: "https://sepolia.basescan.org"
+          apiURL: "https://base-sepolia.blockscout.com/api",
+          browserURL: "https://base-sepolia.blockscout.com"
+        }
+      },
+      {
+        network: "base",
+        chainId: 8453,
+        urls: {
+          apiURL: "https://base.blockscout.com/api",
+          browserURL: "https://base.blockscout.com"
         }
       }
     ]
