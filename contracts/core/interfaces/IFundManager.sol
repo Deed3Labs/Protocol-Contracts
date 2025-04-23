@@ -199,8 +199,10 @@ interface IFundManager {
     function feeReceiver() external view returns (address);
 
     /**
-     * @dev Gets the commission percentage in basis points
-     * @return The commission percentage
+     * @dev Collects commission from a royalty payment
+     * @param tokenId The ID of the token
+     * @param amount The amount of the royalty payment
+     * @param token The token address (for ERC20 payments)
      */
-    function commissionPercentage() external view returns (uint256);
+    function collectCommission(uint256 tokenId, uint256 amount, address token) external;
 } 

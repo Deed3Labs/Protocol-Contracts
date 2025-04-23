@@ -13,8 +13,9 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./contracts/*"]
-    }
+    },
+    "types": ["node", "mocha", "chai"]
   },
-  "include": ["./test", "./scripts", "./typechain-types", "./contracts"],
+  "include": ["./test", "./scripts", "./typechain-types", "./contracts", "./node_modules/hardhat"],
   "files": ["./hardhat.config.ts"]
 }

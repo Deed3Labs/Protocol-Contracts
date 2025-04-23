@@ -1,6 +1,6 @@
 {
-  "name": "deednft-erc721",
-  "version": "1.0.0",
+  "name": "@deed3labs/protocol-contracts",
+  "version": "0.1.0",
   "description": "DeedNFT Contracts with Validator integration for decentralized asset registration and verification",
   "main": "index.js",
   "scripts": {
@@ -18,7 +18,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Deed3Labs/DeedNFT-Contracts.git"
+    "url": "https://github.com/Deed3Labs/Protocol-Contracts.git"
   },
   "keywords": [
     "Solidity",
@@ -45,7 +45,7 @@
     "@nomicfoundation/hardhat-verify": "^2.0.13",
     "@openzeppelin/hardhat-upgrades": "^3.9.0",
     "@typechain/ethers-v6": "^0.4.3",
-    "@typechain/hardhat": "^6.1.6",
+    "@typechain/hardhat": "^8.0.0",
     "@types/chai": "^4.3.20",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.14.1",
