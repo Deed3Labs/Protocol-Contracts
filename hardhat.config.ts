@@ -22,6 +22,7 @@ const etherscanApiKey = process.env.ETHERSCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z
 const polygonscanApiKey = process.env.POLYGONSCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z68CJXQZSC6AW";
 const arbiscanApiKey = process.env.ARBISCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z68CJXQZSC6AW";
 const deployerAccount = process.env.DEPLOYER_ACCOUNT!;
+
 const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.29",
@@ -59,12 +60,14 @@ const config: HardhatUserConfig = {
       sepolia: deployerAccount,
       polygon: deployerAccount,
       arbitrum: deployerAccount,
+      "base-sepolia": deployerAccount,
     },
     manager: {
       localhost: deployerAccount ?? "0x91B0d67D3F47A30FBEeB159E67209Ad6cb2cE22E",
       sepolia: "0xD30aee396a54560581a3265Fd2194B0edB787525",
       polygon: "0xD0cC723ED8FEE1eaDFf8CB0883A244b16163361B",
       arbitrum: "0x84F1d8D4B10b1C56e032aE09bCA57f393638cd4E",
+      "base-sepolia": deployerAccount,
     },
   },
   networks: {
@@ -91,6 +94,17 @@ const config: HardhatUserConfig = {
     sepolia: {
       url: `https://eth-sepolia.g.alchemy.com/v2/${providerApiKey}`,
       accounts: [deployerPrivateKey],
+    },
+    "base-sepolia": {
+      url: "https://sepolia.base.org",
+      accounts: [deployerPrivateKey],
+      gasPrice: "auto",
+      chainId: 84532,
+      verify: {
+        etherscan: {
+          apiUrl: "https://api-sepolia.basescan.org",
+        }
+      }
     },
     chiado: {
       url: "https://rpc.chiadochain.net",
@@ -125,7 +139,22 @@ const config: HardhatUserConfig = {
     },
   },
   etherscan: {
-    apiKey: { sepolia: `${etherscanApiKey}`, polygon: `${polygonscanApiKey}`, arbitrumOne: `${arbiscanApiKey}` },
+    apiKey: { 
+      sepolia: `${etherscanApiKey}`, 
+      polygon: `${polygonscanApiKey}`, 
+      arbitrumOne: `${arbiscanApiKey}`,
+      "base-sepolia": "PLACEHOLDER"
+    },
+    customChains: [
+      {
+        network: "base-sepolia",
+        chainId: 84532,
+        urls: {
+          apiURL: "https://api-sepolia.basescan.org/api",
+          browserURL: "https://sepolia.basescan.org"
+        }
+      }
+    ]
   },
   mocha: {
     timeout: 100000

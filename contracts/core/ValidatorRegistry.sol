@@ -225,11 +225,10 @@ contract ValidatorRegistry is
     }
 
     /**
-     * @dev Updates the supported asset types for a registered validator.
+     * @dev Gets the supported asset types for a registered validator from the validator contract.
      * @param validator Address of the validator contract.
-     * @param assetTypes Array of asset type IDs to be supported by the validator.
      */
-    function updateValidatorAssetTypes(address validator, uint256[] memory assetTypes)
+    function getValidatorAssetTypes(address validator)
         public
         onlyOwner
     {
@@ -237,9 +236,31 @@ contract ValidatorRegistry is
             bytes(validators[validator].name).length > 0,
             "ValidatorRegistry: Validator not registered"
         );
+
+        // Get the validator contract
+        IValidator validatorContract = IValidator(validator);
+        
+        // Create an array to store supported asset types
+        uint256[] memory supportedTypes = new uint256[](4); // Assuming max 4 asset types
+        uint256 count = 0;
+        
+        // Check each asset type (0-3)
+        for (uint256 i = 0; i < 4; i++) {
+            if (validatorContract.supportsAssetType(i)) {
+                supportedTypes[count] = i;
+                count++;
+            }
+        }
+        
+        // Resize the array to the actual count
+        uint256[] memory assetTypes = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            assetTypes[i] = supportedTypes[i];
+        }
+        
         require(
             assetTypes.length > 0,
-            "ValidatorRegistry: Asset types array cannot be empty"
+            "ValidatorRegistry: No supported asset types found"
         );
 
         validators[validator].supportedAssetTypes = assetTypes;
