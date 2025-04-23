@@ -1,0 +1,56 @@
+[
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "owner",
+                "type": "address"
+            },
+            {
+                "internalType": "uint8",
+                "name": "assetType",
+                "type": "uint8"
+            },
+            {
+                "internalType": "string",
+                "name": "ipfsDetailsHash",
+                "type": "string"
+            },
+            {
+                "internalType": "string",
+                "name": "definition",
+                "type": "string"
+            },
+            {
+                "internalType": "string",
+                "name": "configuration",
+                "type": "string"
+            },
+            {
+                "internalType": "address",
+                "name": "validatorAddress",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "token",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "salt",
+                "type": "uint256"
+            }
+        ],
+        "name": "mintDeedNFT",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+]

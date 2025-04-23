@@ -4,13 +4,42 @@ This repository contains the smart contracts for **The Deed Protocol**, which fa
 
 ## Overview
 
-The Deed Protocol uses legal engineering to merge technology with Real World Assets by tokenizing ownership, valaditation and administration. Each property deed or title is represented as a unique non-fungible token (NFT) on the blockchain, providing decentralized, secure, and transparent records of ownership.
+The Deed Protocol uses legal engineering to merge technology with Real World Assets by tokenizing ownership, validation and administration. Each property deed or title is represented as a unique non-fungible token (NFT) on the blockchain, providing decentralized, secure, and transparent records of ownership.
 
 Key components of the protocol include:
 - **DeedNFT**: The core NFT representing property deeds.
 - **Validator**: A smart contract that verifies the integrity and authenticity of deed data.
 - **ValidatorRegistry**: A registry for managing and tracking validators responsible for validating deeds.
-- **FundManager**: A smart contract for managaging, distributing and maintaing securtiy over transactinon funds.
+- **FundManager**: A smart contract for managing, distributing and maintaining security over transaction funds.
+- **MetadataRenderer**: A contract for standardized metadata handling and asset type management.
+- **Extension Contracts**: Additional functionality for REIT-style fractional ownership and property subdivision.
+
+## Project Structure
+
+```
+contracts/
+├── core/               # Core protocol contracts
+│   ├── DeedNFT.sol    # Main NFT contract
+│   ├── Validator.sol  # Validation logic
+│   ├── ValidatorRegistry.sol
+│   ├── FundManager.sol
+│   ├── MetadataRenderer.sol
+│   ├── interfaces/    # Core contract interfaces
+│   └── templates/     # Contract templates
+├── extensions/        # Extension contracts
+│   ├── Fractionalize.sol
+│   └── Subdivide.sol
+└── libraries/        # Shared libraries
+```
+
+## Asset Types
+The protocol supports various types of real-world assets:
+- **Land**: Real estate properties and land parcels
+- **Vehicle**: Automotive and transportation assets
+- **Estate**: Residential and commercial properties
+- **Commercial Equipment**: Business and industrial equipment
+
+Each asset type has specific validation criteria and metadata structures to ensure accurate representation and compliance.
 
 ## Core Contracts
 
@@ -24,6 +53,27 @@ The `DeedNFT` contract is the core ERC721 token representing real world assets. 
 - **Validation Integration:** Works in conjunction with validator contracts to ensure that deed data is authentic and correct.
 - **Batch Minting:** Supports the minting of multiple deed tokens in a single transaction, reducing gas costs.
 - **Upgradability:** Designed with future enhancements in mind using the UUPS (Universal Upgradeable Proxy Standard) pattern for seamless contract upgrades.
+- **Royalty Enforcement:** Implements ERC721C for on-chain royalty enforcement with marketplace approval system.
+
+### Royalty System
+
+The protocol implements a comprehensive royalty system with the following features:
+
+- **On-Chain Royalties:** Implements ERC2981 for standardized royalty payments
+- **Marketplace Control:** 
+  - Marketplace approval system for regulated trading
+  - Transfer validation for secure asset movement
+  - Wallet limits and transfer restrictions
+- **Royalty Distribution:**
+  - Validator-based royalty percentage (default 5%)
+  - Commission system for platform fees
+  - Automated royalty collection and distribution
+- **Security Features:**
+  - Royalty enforcement controls
+  - Marketplace whitelisting
+  - Transfer validation system
+
+The royalty system works in conjunction with the `Validator` and `FundManager` contracts to ensure proper distribution of fees and royalties.
 
 ### 2. Validator
 
@@ -57,31 +107,154 @@ The `FundManager` contract is dedicated to managing funds associated with proper
 - **Secure Financial Operations:** Integrates with other core contracts (like DeedNFT and Validator) to ensure that all financial operations are carried out securely and transparently.
 - **Efficient Fund Handling:** Designed to facilitate both deposit and withdrawal operations, ensuring smooth financial transactions within the ecosystem.
 
-### 5. Interface Contracts
+### 5. MetadataRenderer
 
-- **IValidator**  
-  [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/IValidator.sol)  
-  Defines the interface for validator functionality, outlining the functions that any validator contract must implement to interact with the protocol.
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/MetadataRenderer.sol)
 
-- **IValidatorRegistry**  
-  [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/IValidatorRegistry.sol)  
-  Specifies the interface for the validator registry, ensuring that implementations provide necessary registry management functions.
+The `MetadataRenderer` contract is responsible for generating and managing token metadata in a standardized format:
 
-### 6. **Proxy Contracts**
-A critical part of the Deed Protocol is its upgradability via a proxy contracts. The proxy enables contract upgrades without changing the contract address, ensuring the continuity of data and assets.
+- **Dynamic Metadata Generation:** Implements ERC-7572 for standardized metadata handling
+- **Asset Type Support:** Handles different asset types with specific metadata structures
+- **Document Management:** Supports storing and retrieving property documents
+- **Gallery Management:** Manages multiple images per token
+- **Feature Tracking:** Maintains lists of features for each token
+- **Custom Metadata:** Allows for custom metadata fields while maintaining standardization
+
+## Interface Contracts
+
+### 1. IValidator
+
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IValidator.sol)
+
+Defines the interface for validator functionality, outlining the functions that any validator contract must implement to interact with the protocol.
+
+### 2. IValidatorRegistry
+
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IValidatorRegistry.sol)
+
+Specifies the interface for the validator registry, ensuring that implementations provide necessary registry management functions.
+
+### 3. IMetadataRenderer
+
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IMetadataRenderer.sol)
+
+Defines the interface for metadata rendering functionality, implementing ERC-7572 for standardized metadata handling.
+
+## Extension Contracts
+
+### 1. Fractionalize
+
+[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/Fractionalize.sol)
+
+The `Fractionalize` contract enables the creation of ERC1155 tokens representing fractional ownership of DeedNFTs, primarily designed for REIT (Real Estate Investment Trust) functionality:
+
+- **REIT Share Creation:** Converts DeedNFT tokens into tradeable ERC1155 shares, enabling REIT-like investment structures
+- **Asset Locking:** Securely locks the original DeedNFT while shares are active
+- **Transfer Restrictions:** Implements wallet limits and transfer restrictions for regulatory compliance
+- **Approval System:** Requires approval for unlocking original assets
+- **Security Features:** Includes pausable functionality and role-based access control
+- **Dividend Distribution:** Supports automated dividend distribution to share holders
+- **Regulatory Compliance:** Built-in features to support REIT regulatory requirements
+
+### 2. Subdivide
+
+[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/Subdivide.sol)
+
+The `Subdivide` contract is designed for creating distinct units, parcels, or timeshares from a single DeedNFT:
+
+- **Unit Creation:** Splits a single DeedNFT into multiple distinct units or parcels
+- **Timeshare Support:** Enables creation of time-based ownership rights
+- **Unit-Specific Metadata:** Maintains separate metadata for each subdivided unit
+- **Independent Transfer:** Allows individual units to be transferred independently
+- **Unit Validation:** Supports separate validation for each subdivided unit
+- **Usage Rights:** Manages specific usage rights and restrictions per unit
+- **Common Area Management:** Handles shared spaces and common area rights
+
+## Proxy Contracts
+
+A critical part of the Deed Protocol is its upgradability via proxy contracts. The proxy enables contract upgrades without changing the contract address, ensuring the continuity of data and assets.
 
 ## Features
 
-- **Modular Contract Design:** Each component of the protocol (NFT, validation, registry, and fund management) is encapsulated in its own contract for clarity and maintainability.
-- **Role-Based Access Control:** Critical functions are protected using role-based permissions, ensuring that only authorized parties (e.g., those with VALIDATOR_ROLE or DEFAULT_ADMIN_ROLE) can perform sensitive actions.
-- **Pausable Operations:** Emergency stop functionality is integrated into the protocol, allowing for a quick response in case of system-critical issues.
-- **Flexible Validator Integration:** Multiple validators can be registered and used, accommodating various property types, validation methods, or regional requirements.
+### Core Protocol Architecture
+- **Modular Design:** Each component (NFT, validation, registry, fund management) is encapsulated in its own contract for clarity and maintainability
+- **Upgradable System:** Built with UUPS proxy pattern for seamless contract upgrades while maintaining data continuity
+- **Emergency Controls:** Integrated pausable functionality for rapid response to system-critical issues
+- **Role-Based Access:** Comprehensive permission system with distinct roles (VALIDATOR_ROLE, DEFAULT_ADMIN_ROLE, etc.)
+
+### Asset Management & Security
+- **On-Chain Royalties:** ERC721C implementation for enforced royalty payments
+- **Trading Controls:** 
+  - Marketplace approval system for regulated trading
+  - Transfer validation system for secure asset movement
+  - Wallet limits and transfer restrictions
+- **Fund Security:**
+  - Reentrancy protection for financial operations
+  - Commission controls and fee management
+  - Secure fund distribution mechanisms
+
+### Metadata & Documentation Standards
+- **Standard Compliance:**
+  - ERC-7572 for standardized metadata handling
+  - ERC-7496 for dynamic trait support
+- **Document Management:**
+  - Operating agreement storage and validation
+  - Property document management
+  - Gallery system for multiple images per token
+- **Asset-Specific Metadata:**
+  - Type-specific metadata structures
+  - Custom metadata field support
+  - Feature tracking per token
+
+### Validation & Verification System
+- **Multi-Validator Architecture:**
+  - Support for multiple validators
+  - Validator capability verification
+  - Interface compliance checks
+- **Validation Features:**
+  - Asset type-specific validation criteria
+  - Operating agreement validation
+  - Confidence scoring system
+- **Regional Compliance:**
+  - Support for various regional requirements
+  - Flexible validation methods
+  - Property type-specific validation
+
+### Asset Division & Fractionalization
+- **REIT Functionality:**
+  - ERC1155-based fractional ownership
+  - Automated dividend distribution
+  - Regulatory compliance features
+- **Property Subdivision:**
+  - Unit-based subdivision support
+  - Timeshare creation capabilities
+  - Common area management
+- **Security Measures:**
+  - Asset locking mechanisms
+  - Approval-based unlocking
+  - Unit-specific validation
+  - Independent transfer capabilities
+
+### Compliance & Regulatory Features
+- **REIT Operations:**
+  - Built-in regulatory compliance
+  - Transfer restrictions
+  - Wallet limits
+- **Documentation:**
+  - Operating agreement management
+  - Legal wrapper support
+  - Asset type-specific compliance
+- **Security Standards:**
+  - Role-based access control
+  - Emergency stop functionality
+  - Secure fund management
 
 ## Installation and Setup
 
 ### Prerequisites
 
 - Node.js v16+
+- TypeScript
 - Hardhat
 - Solidity ^0.8.20
 - A wallet provider such as MetaMask for deployments on live networks
@@ -91,8 +264,8 @@ A critical part of the Deed Protocol is its upgradability via a proxy contracts.
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/Deed3Labs/DeedNFT-Contracts
-   cd DeedNFT-Contracts
+   git clone https://github.com/your-org/Protocol-Contracts
+   cd Protocol-Contracts
    ```
 
 2. **Install dependencies:**
@@ -113,32 +286,46 @@ A critical part of the Deed Protocol is its upgradability via a proxy contracts.
    npx hardhat test
    ```
 
-## Usage
+## Development
 
-### Deploying Contracts
+This project uses TypeScript and Hardhat for development. The main configuration files are:
 
-Deploy the contracts locally or to a testnet using Hardhat. Make sure to configure your network settings in `hardhat.config.js`.
+- `hardhat.config.ts`: Main Hardhat configuration
+- `tsconfig.json`: TypeScript configuration
+- `package.json`: Project dependencies and scripts
 
-```bash
-npx hardhat run scripts/deploy.js --network <network-name>
-```
+### Available Scripts
 
-### Interacting with Deployed Contracts
+- `npx hardhat compile`: Compile the contracts
+- `npx hardhat test`: Run the test suite
+- `npx hardhat run scripts/deploy.ts`: Deploy contracts
+- `npx hardhat run scripts/verify.ts`: Verify contracts on Etherscan
 
-After deployment, you can interact with the contracts using the provided interfaces:
-- **DeedNFT:** For NFT minting, metadata retrieval, and property data management.
-- **IValidator and IValidatorRegistry:** To interface with validation logic and manage validator registrations.
-- **FundManager:** For handling funds related to transactions and fee distribution.
+### Testing
 
-## Testing
-
-Run the test suite to ensure that all contracts operate as expected:
+The project includes a comprehensive test suite covering all core functionality:
 
 ```bash
 npx hardhat test
 ```
 
-Tests cover core functionalities such as minting, validator registration, deed validation, and fund management.
+Tests are located in the `test/` directory and cover:
+- Core contract functionality
+- Extension contracts
+- Integration tests
+- Security tests
+
+## Security Considerations
+The protocol implements several security measures to protect assets and ensure compliance:
+- Role-based access control for all critical operations
+- Pausable functionality for emergency situations
+- Reentrancy protection for financial operations
+- Marketplace approval system for controlled trading
+- Transfer validation and restrictions
+- Secure fund management with commission controls
+- Validator verification and capability checks
+- Operating agreement validation
+- Asset type-specific security measures
 
 ## License
 

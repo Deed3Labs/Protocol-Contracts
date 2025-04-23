@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "dist",
+    "declaration": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./contracts/*"]
+    },
+    "types": ["node", "mocha", "chai"]
+  },
+  "include": ["./test", "./scripts", "./typechain-types", "./contracts", "./node_modules/hardhat"],
+  "files": ["./hardhat.config.ts"]
+}

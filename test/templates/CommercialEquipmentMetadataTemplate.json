@@ -1,0 +1,195 @@
+{
+  "description": "[DETAILED_DESCRIPTION_OF_EQUIPMENT]",
+  "image": "ipfs://[MAIN_IMAGE_CID]",
+  "external_url": "https://app.deed3.io/property/equipment",
+  "background_color": "FFFFFF",
+  "animation_url": "ipfs://[OPTIONAL_3D_MODEL_OR_VIDEO_CID]",
+  
+  "gallery": [
+    "ipfs://[IMAGE1_CID]",
+    "ipfs://[IMAGE2_CID]",
+    "ipfs://[IMAGE3_CID]",
+    "ipfs://[IMAGE4_CID]"
+  ],
+  
+  "attributes": [
+    {
+      "trait_type": "Asset Type",
+      "value": "Commercial Equipment"
+    },
+    {
+      "trait_type": "Manufacturer",
+      "value": "[MANUFACTURER]"
+    },
+    {
+      "trait_type": "Model",
+      "value": "[MODEL]"
+    },
+    {
+      "trait_type": "Year",
+      "value": "[YEAR]"
+    },
+    {
+      "trait_type": "Serial Number",
+      "value": "[SERIAL_NUMBER]"
+    },
+    {
+      "trait_type": "Category",
+      "value": "[CATEGORY]"
+    },
+    {
+      "trait_type": "Type",
+      "value": "[TYPE]"
+    },
+    {
+      "trait_type": "Dimensions",
+      "value": "[DIMENSIONS]"
+    },
+    {
+      "trait_type": "Weight",
+      "value": "[WEIGHT]"
+    },
+    {
+      "trait_type": "Power Source",
+      "value": "[POWER_SOURCE]"
+    },
+    {
+      "trait_type": "Operating Hours",
+      "value": "[OPERATING_HOURS]"
+    },
+    {
+      "trait_type": "Purchase Date",
+      "value": "[PURCHASE_DATE]"
+    },
+    {
+      "trait_type": "Warranty Expiration",
+      "value": "[WARRANTY_EXPIRATION]"
+    },
+    {
+      "trait_type": "Holding Entity",
+      "value": "[HOLDING_ENTITY]"
+    },
+    {
+      "trait_type": "Location",
+      "value": "[LOCATION]"
+    },
+    {
+      "trait_type": "Appraisal Source",
+      "value": "[APPRAISAL_SOURCE]"
+    },
+    {
+      "trait_type": "Appraised Value (USD)",
+      "value": "[APPRAISED_VALUE]"
+    },
+    {
+      "trait_type": "Estimated Value Source",
+      "value": "[ESTIMATED_VALUE_SOURCE]"
+    },
+    {
+      "trait_type": "Estimated Market Value (USD)",
+      "value": "[ESTIMATED_MARKET_VALUE]"
+    },
+    {
+      "trait_type": "Depreciation Schedule",
+      "value": "[DEPRECIATION_SCHEDULE]"
+    },
+    {
+      "trait_type": "Condition",
+      "value": "[CONDITION]"
+    },
+    {
+      "trait_type": "Last Service Date",
+      "value": "[LAST_SERVICE_DATE]"
+    },
+    {
+      "trait_type": "Maintenance Schedule",
+      "value": "[MAINTENANCE_SCHEDULE]"
+    },
+    {
+      "trait_type": "Confidence Score",
+      "value": "[CONFIDENCE_SCORE]"
+    }
+  ],
+  
+  "properties": {
+    "equipment_details": {
+      "manufacturer": "[MANUFACTURER]",
+      "model": "[MODEL]",
+      "serial_number": "[SERIAL_NUMBER]",
+      "year": "[YEAR]",
+      "category": "[CATEGORY]",
+      "type": "[TYPE]"
+    },
+    "physical_details": {
+      "dimensions": "[DIMENSIONS]",
+      "weight": "[WEIGHT_NO_COMMAS]",
+      "power_source": "[POWER_SOURCE]",
+      "operating_hours": "[OPERATING_HOURS_NO_COMMAS]",
+      "voltage": "[VOLTAGE]",
+      "capacity": "[CAPACITY]",
+      "max_speed": "[MAX_SPEED]",
+      "horsepower": "[HORSEPOWER]",
+      "fuel_capacity": "[FUEL_CAPACITY]",
+      "fuel_consumption": "[FUEL_CONSUMPTION]"
+    },
+    "ownership_details": {
+      "purchase_date": "[PURCHASE_DATE]",
+      "warranty_expiration": "[WARRANTY_EXPIRATION]",
+      "holding_entity": "[HOLDING_ENTITY]",
+      "location": "[LOCATION]",
+      "asset_tag": "[ASSET_TAG]",
+      "purchase_price": "[PURCHASE_PRICE]",
+      "lien_holder": "[LIEN_HOLDER]"
+    },
+    "value": {
+      "appraisal_source": "[APPRAISAL_SOURCE]",
+      "appraised_value_usd": "[APPRAISED_VALUE_NO_COMMAS]",
+      "estimated_value_source": "[ESTIMATED_VALUE_SOURCE]",
+      "estimated_market_value_usd": "[ESTIMATED_MARKET_VALUE_NO_COMMAS]",
+      "depreciation_schedule": "[DEPRECIATION_SCHEDULE]",
+      "book_value": "[BOOK_VALUE]",
+      "salvage_value": "[SALVAGE_VALUE]"
+    },
+    "condition": {
+      "status": "[CONDITION]",
+      "last_service_date": "[LAST_SERVICE_DATE]",
+      "maintenance_schedule": "[MAINTENANCE_SCHEDULE]",
+      "known_issues": "[KNOWN_ISSUES]",
+      "repairs_history": "[REPAIRS_HISTORY]"
+    },
+    "features": [
+      "[FEATURE1]",
+      "[FEATURE2]",
+      "[FEATURE3]",
+      "[FEATURE4]"
+    ],
+    "documents": {
+      "purchase_agreement": "ipfs://[PURCHASE_AGREEMENT_PDF_CID]",
+      "warranty": "ipfs://[WARRANTY_PDF_CID]",
+      "service_records": "ipfs://[SERVICE_RECORDS_PDF_CID]",
+      "operating_manual": "ipfs://[MANUAL_PDF_CID]",
+      "certification": "ipfs://[CERTIFICATION_PDF_CID]",
+      "inspection_reports": "ipfs://[INSPECTION_REPORTS_PDF_CID]"
+    },
+    "certification": {
+      "certifying_authority": "[CERTIFYING_AUTHORITY]",
+      "certification_date": "[CERTIFICATION_DATE]",
+      "certification_number": "[CERTIFICATION_NUMBER]",
+      "certification_expiration": "[CERTIFICATION_EXPIRATION]"
+    },
+    "insurance": {
+      "insurance_provider": "[INSURANCE_PROVIDER]",
+      "policy_number": "[POLICY_NUMBER]",
+      "coverage_amount": "[COVERAGE_AMOUNT]",
+      "expiration_date": "[INSURANCE_EXPIRATION_DATE]",
+      "annual_premium": "[ANNUAL_PREMIUM]"
+    },
+    "rental_information": {
+      "is_rental": "[IS_RENTAL]",
+      "rental_rate_daily": "[RENTAL_RATE_DAILY]",
+      "rental_rate_weekly": "[RENTAL_RATE_WEEKLY]",
+      "rental_rate_monthly": "[RENTAL_RATE_MONTHLY]"
+    },
+    "additional_info": "[ADDITIONAL_INFO]"
+  }
+} 
