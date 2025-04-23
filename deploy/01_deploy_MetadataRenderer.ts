@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 import { MetadataRenderer } from "../typechain-types";
-import { saveDeployment } from "./helpers";
+import { saveDeployment, getDeployment } from "./helpers";
 
 async function main() {
   // Get the hardhat runtime environment
@@ -13,6 +13,13 @@ async function main() {
   // Get the network
   const network = await hre.ethers.provider.getNetwork();
   console.log("Deploying to network:", network.name);
+
+  // Get ValidatorRegistry address from saved deployments
+  const validatorRegistryDeployment = getDeployment(network.name, "ValidatorRegistry");
+  if (!validatorRegistryDeployment) {
+    throw new Error("ValidatorRegistry deployment not found");
+  }
+  const validatorRegistryAddress = validatorRegistryDeployment.address;
 
   // Deploy MetadataRenderer as an upgradeable contract
   console.log("Deploying MetadataRenderer...");
@@ -28,12 +35,17 @@ async function main() {
 
   // Setup initial roles and configuration
   const ADMIN_ROLE = await metadataRenderer.ADMIN_ROLE();
-  await metadataRenderer.grantRole(ADMIN_ROLE, deployer.address);
-  console.log("Granted ADMIN_ROLE to deployer");
+  const REGISTRY_ADMIN_ROLE = await metadataRenderer.REGISTRY_ADMIN_ROLE();
 
-  // Set base URI (replace with your actual base URI)
-  await metadataRenderer.setBaseURI("https://your-base-uri.com/");
-  console.log("Base URI set");
+  // Grant roles to deployer
+  await metadataRenderer.grantRole(ADMIN_ROLE, deployer.address);
+  await metadataRenderer.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
+  console.log("Granted roles to deployer");
+
+  // Set base URI
+  const baseURI = "https://api.example.com/metadata/";
+  await metadataRenderer.setBaseURI(baseURI);
+  console.log("Set base URI to:", baseURI);
 
   // Save deployment information
   const metadataRendererAbi = metadataRenderer.interface.formatJson();

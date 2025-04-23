@@ -14,18 +14,21 @@ async function main() {
   const network = await hre.ethers.provider.getNetwork();
   console.log("Deploying to network:", network.name);
 
-  // Get the DeedNFT address from saved deployment
+  // Get required contract addresses from saved deployments
+  const validatorRegistryDeployment = getDeployment(network.name, "ValidatorRegistry");
   const deedNFTDeployment = getDeployment(network.name, "DeedNFT");
-  if (!deedNFTDeployment) {
-    throw new Error("DeedNFT deployment not found");
+  
+  if (!validatorRegistryDeployment || !deedNFTDeployment) {
+    throw new Error("Required contract deployments not found");
   }
+  
+  const validatorRegistryAddress = validatorRegistryDeployment.address;
   const deedNFTAddress = deedNFTDeployment.address;
-  console.log("Using DeedNFT at:", deedNFTAddress);
 
   // Deploy FundManager as an upgradeable contract
   console.log("Deploying FundManager...");
   const FundManager = await hre.ethers.getContractFactory("FundManager");
-  const fundManager = await hre.upgrades.deployProxy(FundManager, [deedNFTAddress], {
+  const fundManager = await hre.upgrades.deployProxy(FundManager, [], {
     initializer: "initialize",
     kind: "uups"
   });
@@ -37,9 +40,16 @@ async function main() {
   // Setup initial roles
   const ADMIN_ROLE = await fundManager.ADMIN_ROLE();
   const OPERATOR_ROLE = await fundManager.OPERATOR_ROLE();
+
+  // Grant roles to deployer
   await fundManager.grantRole(ADMIN_ROLE, deployer.address);
   await fundManager.grantRole(OPERATOR_ROLE, deployer.address);
-  console.log("Granted ADMIN_ROLE and OPERATOR_ROLE to deployer");
+  console.log("Granted roles to deployer");
+
+  // Set ValidatorRegistry and DeedNFT
+  await fundManager.setValidatorRegistry(validatorRegistryAddress);
+  await fundManager.setDeedNFT(deedNFTAddress);
+  console.log("Set ValidatorRegistry and DeedNFT");
 
   // Save deployment information
   const fundManagerAbi = fundManager.interface.formatJson();

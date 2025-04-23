@@ -14,18 +14,23 @@ async function main() {
   const network = await hre.ethers.provider.getNetwork();
   console.log("Deploying to network:", network.name);
 
-  // Get the ValidatorRegistry address from saved deployment
+  // Get required contract addresses from saved deployments
   const validatorRegistryDeployment = getDeployment(network.name, "ValidatorRegistry");
-  if (!validatorRegistryDeployment) {
-    throw new Error("ValidatorRegistry deployment not found");
+  const metadataRendererDeployment = getDeployment(network.name, "MetadataRenderer");
+  const validatorDeployment = getDeployment(network.name, "Validator");
+  
+  if (!validatorRegistryDeployment || !metadataRendererDeployment || !validatorDeployment) {
+    throw new Error("Required contract deployments not found");
   }
+  
   const validatorRegistryAddress = validatorRegistryDeployment.address;
-  console.log("Using ValidatorRegistry at:", validatorRegistryAddress);
+  const metadataRendererAddress = metadataRendererDeployment.address;
+  const validatorAddress = validatorDeployment.address;
 
   // Deploy DeedNFT as an upgradeable contract
   console.log("Deploying DeedNFT...");
   const DeedNFT = await hre.ethers.getContractFactory("DeedNFT");
-  const deedNFT = await hre.upgrades.deployProxy(DeedNFT, [validatorRegistryAddress], {
+  const deedNFT = await hre.upgrades.deployProxy(DeedNFT, [], {
     initializer: "initialize",
     kind: "uups"
   });
@@ -37,9 +42,18 @@ async function main() {
   // Setup initial roles
   const ADMIN_ROLE = await deedNFT.ADMIN_ROLE();
   const MINTER_ROLE = await deedNFT.MINTER_ROLE();
+  const VALIDATOR_ROLE = await deedNFT.VALIDATOR_ROLE();
+
+  // Grant roles to deployer and validator
   await deedNFT.grantRole(ADMIN_ROLE, deployer.address);
   await deedNFT.grantRole(MINTER_ROLE, deployer.address);
-  console.log("Granted ADMIN_ROLE and MINTER_ROLE to deployer");
+  await deedNFT.grantRole(MINTER_ROLE, validatorAddress);
+  await deedNFT.grantRole(VALIDATOR_ROLE, validatorAddress);
+  console.log("Granted roles to deployer and validator");
+
+  // Set MetadataRenderer
+  await deedNFT.setMetadataRenderer(metadataRendererAddress);
+  console.log("Set MetadataRenderer");
 
   // Save deployment information
   const deedNFTAbi = deedNFT.interface.formatJson();
