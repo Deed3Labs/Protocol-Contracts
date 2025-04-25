@@ -287,7 +287,16 @@ contract DeedNFT is
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         require(renderer != address(0), "!rend");
+        
+        // Revoke VALIDATOR_ROLE from old renderer if it exists
+        if (metadataRenderer != address(0)) {
+            _revokeRole(VALIDATOR_ROLE, metadataRenderer);
+        }
+        
+        // Set new renderer and grant VALIDATOR_ROLE
         metadataRenderer = renderer;
+        _grantRole(VALIDATOR_ROLE, renderer);
+        
         emit MetadataRendererUpdated(renderer);
     }
 
@@ -412,7 +421,7 @@ contract DeedNFT is
 
         // Parse IPFS metadata and set additional traits if we have a renderer
         if (metadataRenderer != address(0)) {
-            try IERC7572(metadataRenderer).parseAndSetTraitsFromIPFS(
+            try IERC7572(metadataRenderer).parseAndSetTraitsFromURL(
                 tokenId,
                 ipfsDetailsHash,
                 address(this)

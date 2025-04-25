@@ -8,6 +8,7 @@ import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/Base64Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
 
 // Libraries
 import "../libraries/StringUtils.sol";
@@ -36,6 +37,9 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     
     // Image for invalidated assets
     string public invalidatedImageURI;
+    
+    // Base gateway URL for IPFS resolution
+    string public gatewayURL;
     
     // Dynamic trait storage
     struct TokenMetadata {
@@ -130,6 +134,22 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      */
     function setInvalidatedImageURI(string memory imageURI) external onlyOwner {
         invalidatedImageURI = imageURI;
+    }
+    
+    /**
+     * @dev Sets the gateway URL for IPFS resolution
+     * @param _gatewayURL The base gateway URL (e.g., "https://gateway.pinata.cloud/ipfs/")
+     */
+    function setGatewayURL(string memory _gatewayURL) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        gatewayURL = _gatewayURL;
+    }
+    
+    /**
+     * @dev Gets the current gateway URL
+     * @return The current gateway URL
+     */
+    function getGatewayURL() external view returns (string memory) {
+        return gatewayURL;
     }
     
     /**
@@ -344,19 +364,11 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      * @param tokenContract Address of the token contract
      */
     function _initializeMetadataIfNeeded(uint256 tokenId, address tokenContract) internal {
-        TokenMetadata storage metadata = tokenMetadata[tokenId];
-        
-        // Only initialize if we don't have a name yet
-        if (bytes(metadata.name).length == 0) {
-            string memory ipfsDetailsHash = IDeedNFT(tokenContract).tokenURI(tokenId);
-            if (bytes(ipfsDetailsHash).length > 0) {
-                // In a real implementation, this would fetch the metadata from IPFS
-                // For now, we'll just emit an event and let the off-chain process handle it
-                emit MetadataInitialized(tokenId, ipfsDetailsHash);
-                
-                // Parse and set traits from IPFS hash
-                _parseAndSetTraits(tokenId, ipfsDetailsHash);
-            }
+        string memory ipfsDetailsHash = IDeedNFT(tokenContract).tokenURI(tokenId);
+        if (bytes(ipfsDetailsHash).length > 0) {
+            // Parse and set traits from IPFS hash
+            _parseAndSetTraits(tokenId, ipfsDetailsHash);
+            emit MetadataInitialized(tokenId, ipfsDetailsHash);
         }
     }
 
@@ -582,6 +594,37 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     }
     
     /**
+     * @dev Internal function to parse metadata from JSON without state modifications
+     */
+    function _parseMetadataFromJson(
+        string memory jsonData
+    ) internal pure returns (
+        string memory name,
+        string memory description,
+        string memory image,
+        string memory backgroundColor,
+        string memory animationUrl,
+        string[] memory galleryImages,
+        string memory customMetadata
+    ) {
+        // Parse base fields if provided
+        name = JSONUtils.parseJsonField(jsonData, "name");
+        description = JSONUtils.parseJsonField(jsonData, "description");
+        image = JSONUtils.parseJsonField(jsonData, "image");
+        backgroundColor = JSONUtils.parseJsonField(jsonData, "background_color");
+        animationUrl = JSONUtils.parseJsonField(jsonData, "animation_url");
+        
+        // Parse gallery if provided
+        string memory galleryJson = JSONUtils.parseJsonField(jsonData, "gallery");
+        if (bytes(galleryJson).length > 0) {
+            galleryImages = JSONUtils.parseJsonArrayToStringArray(galleryJson);
+        }
+        
+        // Parse custom metadata for complex properties
+        customMetadata = JSONUtils.parseJsonField(jsonData, "properties");
+    }
+
+    /**
      * @dev Generates token URI for a specific token
      * @param tokenContract Address of the token contract
      * @param tokenId ID of the token
@@ -590,39 +633,78 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     function tokenURI(address tokenContract, uint256 tokenId) external view override returns (string memory) {
         if (!isCompatibleDeedContract(tokenContract)) revert Invalid();
         
+        // Get asset type from token
         bytes memory assetTypeBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("assetType"));
-        if (assetTypeBytes.length == 0) return "";
+        if (assetTypeBytes.length == 0) {
+            return ""; // Invalid token
+        }
         
         uint256 assetTypeValue = abi.decode(assetTypeBytes, (uint256));
         uint8 assetType = uint8(assetTypeValue);
         
-        (bool isValidated,) = IDeedNFT(tokenContract).getValidationStatus(tokenId);
+        // Get validation status
+        (bool isValidated, /* address validator */) = IDeedNFT(tokenContract).getValidationStatus(tokenId);
         
+        // Get definition and configuration
         bytes memory definitionBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("definition"));
-        bytes memory configBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("configuration"));
+        bytes memory configurationBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("configuration"));
         
         string memory definition = definitionBytes.length > 0 ? abi.decode(definitionBytes, (string)) : "";
-        string memory config = configBytes.length > 0 ? abi.decode(configBytes, (string)) : "";
+        string memory configuration = configurationBytes.length > 0 ? abi.decode(configurationBytes, (string)) : "";
         
-        string memory name = _generateName(tokenId, assetType);
-        string memory attrs = _generateAttributes(tokenId, assetType, isValidated);
-        string memory props = _generateProperties(tokenId, assetType, definition, config);
-        string memory gallery = _generateGallery(tokenId);
-        string memory imageURI = _getImageURI(tokenId, assetType, isValidated);
-        
-        TokenMetadata storage metadata = tokenMetadata[tokenId];
-        
-        return _generateJSON(
-            tokenId,
-            name,
-            definition,
-            imageURI,
-            metadata.background_color,
-            metadata.animation_url,
-            gallery,
-            attrs,
-            props
-        );
+        // Get the metadata URL and process it
+        try ERC721URIStorageUpgradeable(tokenContract).tokenURI(tokenId) returns (string memory metadataUrl) {
+            if (bytes(metadataUrl).length == 0) revert Invalid();
+            
+            // Parse metadata from URL without state modifications
+            (
+                string memory parsedName,
+                string memory parsedDescription,
+                string memory parsedImage,
+                string memory parsedBackgroundColor,
+                string memory parsedAnimationUrl,
+                string[] memory parsedGalleryImages,
+                string memory parsedCustomMetadata
+            ) = _parseMetadataFromJson(metadataUrl);
+            
+            // Use parsed data or fallback to stored data
+            string memory name = bytes(parsedName).length > 0 ? parsedName : _generateName(tokenId, assetType);
+            string memory imageURI = bytes(parsedImage).length > 0 ? parsedImage : _getImageURI(tokenId, assetType, isValidated);
+            string memory description = bytes(parsedDescription).length > 0 ? parsedDescription : definition;
+            
+            // Generate metadata components
+            string memory attributes = _generateAttributes(tokenId, assetType, isValidated);
+            string memory properties = bytes(parsedCustomMetadata).length > 0 ? 
+                _generateProperties(tokenId, assetType, definition, parsedCustomMetadata) :
+                _generateProperties(tokenId, assetType, definition, configuration);
+            
+            // Use parsed gallery or fallback to stored
+            string memory gallery = "";
+            if (parsedGalleryImages.length > 0) {
+                string memory g = '"gallery":[';
+                for (uint i = 0; i < parsedGalleryImages.length; i++) {
+                    g = string(abi.encodePacked(g, i > 0 ? ',"' : '"', parsedGalleryImages[i], '"'));
+                }
+                gallery = string(abi.encodePacked(g, ']'));
+            } else {
+                gallery = _generateGallery(tokenId);
+            }
+            
+            // Generate JSON with parsed metadata
+            return _generateJSON(
+                tokenId,
+                name,
+                description,
+                imageURI,
+                parsedBackgroundColor,
+                parsedAnimationUrl,
+                gallery,
+                attributes,
+                properties
+            );
+        } catch {
+            revert Invalid();
+        }
     }
     
     /**
@@ -815,18 +897,21 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     }
 
     /**
-     * @dev Parses IPFS JSON and sets traits in DeedNFT during minting
+     * @dev Parses metadata JSON and sets traits in DeedNFT
+     * @param tokenId ID of the token
+     * @param metadataUrl Gateway URL containing the metadata JSON
+     * @param deedNFTContract Address of the DeedNFT contract to set traits on
      */
-    function parseAndSetTraitsFromIPFS(
+    function parseAndSetTraitsFromURL(
         uint256 tokenId,
-        string memory ipfsHash,
+        string memory metadataUrl,
         address deedNFTContract
     ) external override {
-        if (bytes(ipfsHash).length == 0) revert Empty();
+        if (bytes(metadataUrl).length == 0) revert Empty();
         IDeedNFT targetDeedNFT = IDeedNFT(deedNFTContract);
 
-        // Parse the IPFS JSON
-        string memory json = ipfsHash;  // In production, this would fetch from IPFS
+        // Parse the JSON from the URL
+        string memory json = metadataUrl;  // In production, this would fetch from the URL
 
         // Parse and set attributes as traits
         string memory attributesJson = JSONUtils.parseJsonField(json, "attributes");
