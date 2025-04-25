@@ -48,7 +48,7 @@ async function main() {
   const allContractsData = getContractDataFromDeployments();
 
   const fileContent = Object.entries(allContractsData).reduce((content, [chainName, chainConfig]) => {
-    return `${content}${chainName}:${JSON.stringify(chainConfig, null, 2)},`;
+    return `${content}"${chainName}":${JSON.stringify(chainConfig, null, 2)},`;
   }, "");
 
   if (!fs.existsSync(TARGET_DIR)) {

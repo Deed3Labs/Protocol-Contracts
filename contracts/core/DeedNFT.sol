@@ -219,7 +219,7 @@ contract DeedNFT is
     modifier onlyValidatorOrOwner(uint256 tokenId) {
         require(
             hasRole(VALIDATOR_ROLE, msg.sender) || ownerOf(tokenId) == msg.sender,
-            "Not authorized"
+            "!auth"
         );
         _;
     }
@@ -256,12 +256,12 @@ contract DeedNFT is
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        require(validator != address(0), "!validator");
+        require(validator != address(0), "!val");
         require(
             IValidatorRegistry(validatorRegistry).isValidatorRegistered(
                 validator
             ),
-            "!registered"
+            "!reg"
         );
         defaultValidator = validator;
     }
@@ -274,7 +274,7 @@ contract DeedNFT is
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        require(registry != address(0), "!registry");
+        require(registry != address(0), "!reg");
         validatorRegistry = registry;
     }
     
@@ -286,7 +286,7 @@ contract DeedNFT is
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        require(renderer != address(0), "!renderer");
+        require(renderer != address(0), "!rend");
         metadataRenderer = renderer;
         emit MetadataRendererUpdated(renderer);
     }
@@ -297,7 +297,7 @@ contract DeedNFT is
      * @param minter Address to grant the MINTER_ROLE to.
      */
     function addMinter(address minter) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(minter != address(0), "!minter");
+        require(minter != address(0), "!mint");
         _grantRole(MINTER_ROLE, minter);
     }
 
@@ -339,7 +339,7 @@ contract DeedNFT is
         address validatorAddress,
         uint256 salt
     ) external whenNotPaused onlyRole(MINTER_ROLE) returns (uint256) {
-        require(owner != address(0), "!owner");
+        require(owner != address(0), "!own");
         require(
             bytes(ipfsDetailsHash).length > 0,
             "!ipfs"
@@ -358,11 +358,11 @@ contract DeedNFT is
         // Ensure validator is registered
         require(
             selectedValidator != address(0),
-            "!validator"
+            "!val"
         );
         require(
             IValidatorRegistry(validatorRegistry).isValidatorRegistered(selectedValidator),
-            "!registered"
+            "!reg"
         );
         
         // Verify validator supports interface
@@ -370,7 +370,7 @@ contract DeedNFT is
             IERC165Upgradeable(selectedValidator).supportsInterface(
                 type(IValidator).interfaceId
             ),
-            "!interface"
+            "!iface"
         );
         
         // Verify validator supports this asset type
@@ -383,7 +383,7 @@ contract DeedNFT is
         string memory operatingAgreement = IValidator(selectedValidator).defaultOperatingAgreement();
         require(
             bytes(operatingAgreement).length > 0,
-            "!agreement"
+            "!agr"
         );
 
         uint256 tokenId;
@@ -392,7 +392,7 @@ contract DeedNFT is
         if (salt > 0) {
             tokenId = generateUniqueTokenId(owner, assetType, definition, salt);
             // Ensure the token ID doesn't already exist
-            require(!_exists(tokenId), "!unique");
+            require(!_exists(tokenId), "!uniq");
         } else {
             // Use the sequential ID approach
             tokenId = nexttokenId;
@@ -447,7 +447,7 @@ contract DeedNFT is
             uint256 tokenId = tokenIds[i];
             require(
                 ownerOf(tokenId) == msg.sender,
-                "Not owner"
+                "!own"
             );
             burnAsset(tokenId);
         }
@@ -469,23 +469,23 @@ contract DeedNFT is
         
         // If marking as valid, ensure validator address is provided and valid
         if (isValid) {
-            require(validatorAddress != address(0), "!validator");
+            require(validatorAddress != address(0), "!val");
             require(
                 IValidatorRegistry(validatorRegistry).isValidatorRegistered(validatorAddress),
-                "!registered"
+                "!reg"
             );
             
             require(
                 IERC165Upgradeable(validatorAddress).supportsInterface(
                     type(IValidator).interfaceId
                 ),
-                "!interface"
+                "!iface"
             );
             
             bytes memory agrBytes = _tokenTraits[tokenId][keccak256("operatingAgreement")];
             require(
                 IValidator(validatorAddress).validateOperatingAgreement(abi.decode(agrBytes, (string))),
-                "!agreement"
+                "!agr"
             );
             
             // Update traits
@@ -525,7 +525,7 @@ contract DeedNFT is
         );
         require(
             bytes(operatingAgreement).length > 0,
-            "!agreement"
+            "!agr"
         );
         require(
             bytes(definition).length > 0,
@@ -540,20 +540,20 @@ contract DeedNFT is
 
         require(
             validatorAddress != address(0),
-            "!validator"
+            "!val"
         );
         require(
             IERC165Upgradeable(validatorAddress).supportsInterface(
                 type(IValidator).interfaceId
             ),
-            "!interface"
+            "!iface"
         );
 
         string memory agreementName = IValidator(validatorAddress)
             .operatingAgreementName(operatingAgreement);
         require(
             bytes(agreementName).length > 0,
-            "!agreement"
+            "!agr"
         );
 
         _setTokenURI(tokenId, ipfsDetailsHash);
@@ -582,11 +582,22 @@ contract DeedNFT is
      * @notice Updates a trait and emits a TraitUpdated event
      */
     function _setTraitValue(uint256 tokenId, bytes32 traitKey, bytes memory traitValue) internal {
-        require(_exists(tokenId), "Token not found");
+        require(_exists(tokenId), "!token");
         _tokenTraits[tokenId][traitKey] = traitValue;
         emit TraitUpdated(traitKey, tokenId, traitValue);
     }
-    
+
+    /**
+     * @dev Public function to set a trait value for a token
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait
+     * @param traitValue Value of the trait
+     */
+    function setTrait(uint256 tokenId, bytes32 traitKey, bytes memory traitValue) external onlyValidatorOrOwner(tokenId) {
+        require(_exists(tokenId), "!t");
+        _setTraitValue(tokenId, traitKey, traitValue);
+    }
+
     /**
      * @dev Gets a trait value for a token
      * @param tokenId ID of the token
@@ -595,7 +606,7 @@ contract DeedNFT is
      * @notice Part of the ERC-7496 standard for dynamic traits
      */
     function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory) {
-        require(_exists(tokenId), "Token not found");
+        require(_exists(tokenId), "!t");
         return _tokenTraits[tokenId][traitKey];
     }
     
@@ -607,13 +618,11 @@ contract DeedNFT is
      * @notice Part of the ERC-7496 standard for dynamic traits
      */
     function getTraitValues(uint256 tokenId, bytes32[] calldata traitKeys) external view returns (bytes[] memory) {
-        require(_exists(tokenId), "Token does not exist");
+        require(_exists(tokenId), "!t");
         bytes[] memory values = new bytes[](traitKeys.length);
-        
         for (uint256 i = 0; i < traitKeys.length; i++) {
             values[i] = _tokenTraits[tokenId][traitKeys[i]];
         }
-        
         return values;
     }
     
@@ -624,7 +633,7 @@ contract DeedNFT is
      * @notice Part of the ERC-7496 standard for dynamic traits
      */
     function getTraitKeys(uint256 tokenId) external view returns (bytes32[] memory) {
-        require(_exists(tokenId), "No token");
+        require(_exists(tokenId), "!token");
         
         // Count traits with values
         uint256 count;
@@ -846,7 +855,7 @@ contract DeedNFT is
      */
     function approve(address to, uint256 tokenId) public override(ERC721Upgradeable, IERC721Upgradeable) {
         if (_enforceRoyalties && !isApprovedMarketplace(to)) {
-            revert("!marketplace");
+            revert("!mkt");
         }
         super.approve(to, tokenId);
     }
@@ -858,7 +867,7 @@ contract DeedNFT is
      */
     function setApprovalForAll(address operator, bool approved) public override(ERC721Upgradeable, IERC721Upgradeable) {
         if (_enforceRoyalties && approved && !isApprovedMarketplace(operator)) {
-            revert("!marketplace");
+            revert("!mkt");
         }
         super.setApprovalForAll(operator, approved);
     }
@@ -919,7 +928,7 @@ contract DeedNFT is
         // Regular transfer with royalty enforcement
         else if (_enforceRoyalties) {
             address op = _msgSender();
-            if (op != from && !_approvedMarketplaces[op]) revert("!approved");
+            if (op != from && !_approvedMarketplaces[op]) revert("!mkt");
         }
     }
 
@@ -936,7 +945,7 @@ contract DeedNFT is
      * @param _fundManager Address of the FundManager contract
      */
     function setFundManager(address _fundManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(_fundManager != address(0), "!fundManager");
+        require(_fundManager != address(0), "!fund");
         fundManager = IFundManager(_fundManager);
     }
 }

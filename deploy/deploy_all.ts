@@ -79,6 +79,13 @@ async function main() {
     console.log("MetadataRenderer deployed to:", metadataRendererAddress);
     console.log("Transaction hash:", metadataRenderer.deploymentTransaction()?.hash);
 
+    // Setup initial roles for MetadataRenderer
+    const VALIDATOR_ROLE = await metadataRenderer.VALIDATOR_ROLE();
+    const grantValidatorRoleTx = await metadataRenderer.grantRole(VALIDATOR_ROLE, deployer.address);
+    await grantValidatorRoleTx.wait();
+    console.log("Granted VALIDATOR_ROLE to deployer in MetadataRenderer");
+    console.log("Role grant transaction hash:", grantValidatorRoleTx.hash);
+
     // Save MetadataRenderer deployment
     const metadataRendererAbi = metadataRenderer.interface.formatJson();
     saveDeployment(network.name, "MetadataRenderer", metadataRendererAddress, metadataRendererAbi);
@@ -99,11 +106,11 @@ async function main() {
     console.log("Transaction hash:", validator.deploymentTransaction()?.hash);
 
     // Setup initial roles for Validator
-    const VALIDATOR_ROLE = await validator.VALIDATOR_ROLE();
-    const grantValidatorRoleTx = await validator.grantRole(VALIDATOR_ROLE, deployer.address);
-    await grantValidatorRoleTx.wait();
-    console.log("Granted VALIDATOR_ROLE to deployer");
-    console.log("Role grant transaction hash:", grantValidatorRoleTx.hash);
+    const VALIDATOR_ROLE_VALIDATOR = await validator.VALIDATOR_ROLE();
+    const grantValidatorRoleTxValidator = await validator.grantRole(VALIDATOR_ROLE_VALIDATOR, deployer.address);
+    await grantValidatorRoleTxValidator.wait();
+    console.log("Granted VALIDATOR_ROLE to deployer in Validator");
+    console.log("Role grant transaction hash:", grantValidatorRoleTxValidator.hash);
 
     // Save Validator deployment
     const validatorAbi = validator.interface.formatJson();
@@ -132,12 +139,34 @@ async function main() {
     console.log("Validator updated with DeedNFT address");
     console.log("Transaction hash:", setDeedNFTTx.hash);
 
-    // Set MetadataRenderer in DeedNFT
-    console.log("\nSetting MetadataRenderer in DeedNFT...");
-    const setMetadataTx = await deedNFT.setMetadataRenderer(metadataRendererAddress);
-    await setMetadataTx.wait();
-    console.log("MetadataRenderer set in DeedNFT");
-    console.log("Transaction hash:", setMetadataTx.hash);
+    // Set up MetadataRenderer with DeedNFT
+    console.log("\nSetting DeedNFT in MetadataRenderer...");
+    const setDeedNFTInRendererTx = await metadataRenderer.setDeedNFT(deedNFTAddress);
+    await setDeedNFTInRendererTx.wait();
+    console.log("DeedNFT set in MetadataRenderer");
+    console.log("Transaction hash:", setDeedNFTInRendererTx.hash);
+
+    // Set default images for asset types in MetadataRenderer
+    console.log("\nSetting default images for asset types in MetadataRenderer...");
+    const assetTypeImages = [
+      "ipfs://QmLand", // Land
+      "ipfs://QmVehicle", // Vehicle
+      "ipfs://QmLand", // Estate (uses same as Land)
+      "ipfs://QmEquipment" // Commercial Equipment
+    ];
+    
+    for (let i = 0; i < assetTypeImages.length; i++) {
+      const setImageTx = await metadataRenderer.setAssetTypeImageURI(i, assetTypeImages[i]);
+      await setImageTx.wait();
+      console.log(`Set default image for asset type ${i}`);
+      console.log("Transaction hash:", setImageTx.hash);
+    }
+
+    // Set invalidated image URI
+    const setInvalidatedTx = await metadataRenderer.setInvalidatedImageURI("ipfs://QmInvalidated");
+    await setInvalidatedTx.wait();
+    console.log("Set invalidated image URI");
+    console.log("Transaction hash:", setInvalidatedTx.hash);
 
     // 5. Deploy FundManager
     console.log("\n5. Deploying FundManager...");

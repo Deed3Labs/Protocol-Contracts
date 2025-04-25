@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { MetadataRenderer } from "../typechain-types";
+import { MetadataRenderer__factory } from "../typechain-types/factories/contracts/core/MetadataRenderer__factory";
 import { saveDeployment, getDeployment } from "./helpers";
 
 async function main() {
@@ -24,7 +24,7 @@ async function main() {
   // Deploy MetadataRenderer as an upgradeable contract
   console.log("Deploying MetadataRenderer...");
   const MetadataRenderer = await hre.ethers.getContractFactory("MetadataRenderer");
-  const metadataRenderer = await hre.upgrades.deployProxy(MetadataRenderer, [], {
+  const metadataRenderer = await hre.upgrades.deployProxy(MetadataRenderer, ["https://api.example.com/metadata/"], {
     initializer: "initialize",
     kind: "uups"
   });
@@ -41,11 +41,6 @@ async function main() {
   await metadataRenderer.grantRole(ADMIN_ROLE, deployer.address);
   await metadataRenderer.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
   console.log("Granted roles to deployer");
-
-  // Set base URI
-  const baseURI = "https://api.example.com/metadata/";
-  await metadataRenderer.setBaseURI(baseURI);
-  console.log("Set base URI to:", baseURI);
 
   // Save deployment information
   const metadataRendererAbi = metadataRenderer.interface.formatJson();

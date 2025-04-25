@@ -11,6 +11,20 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol"
  *      Consolidates functionality needed by FundManager, Fractionalize, and Subdivide contracts.
  */
 interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
+    // ============ Errors ============
+    
+    /// @dev Thrown when an operation is attempted on a non-existent token
+    error TokenDoesNotExist();
+    
+    /// @dev Thrown when an operation is attempted by an unauthorized address
+    error Unauthorized();
+    
+    /// @dev Thrown when an invalid parameter is provided
+    error InvalidParameter();
+    
+    /// @dev Thrown when a token is already validated
+    error AlreadyValidated();
+
     // ============ Enums ============
     
     /**
@@ -106,14 +120,6 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
     function tokenURI(uint256 tokenId) external view returns (string memory);
     
     /**
-     * @dev Gets the value of a trait for a specific token
-     * @param tokenId ID of the token
-     * @param traitKey Key of the trait to query
-     * @return Trait value as bytes
-     */
-    function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory);
-    
-    /**
      * @dev Returns the validation status of a token
      * @param tokenId ID of the token
      * @return isValidated Whether the token is validated
@@ -135,13 +141,59 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @return royaltyAmount Amount of royalties to be paid
      */
     function royaltyInfo(uint256 tokenId, uint256 salePrice) external view returns (address receiver, uint256 royaltyAmount);
+
+    // ============ Trait Functions ============
+    
+    /**
+     * @dev Gets the value of a trait for a token
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait to query
+     * @return Value of the trait as bytes
+     */
+    function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory);
+
+    /**
+     * @dev Gets multiple trait values for a token
+     * @param tokenId ID of the token
+     * @param traitKeys Array of trait keys to query
+     * @return Array of trait values as bytes
+     */
+    function getTraitValues(uint256 tokenId, bytes32[] calldata traitKeys) external view returns (bytes[] memory);
+
+    /**
+     * @dev Gets all trait keys for a token
+     * @param tokenId ID of the token
+     * @return Array of trait keys
+     */
+    function getTraitKeys(uint256 tokenId) external view returns (bytes32[] memory);
+
+    /**
+     * @dev Gets the name of a trait
+     * @param traitKey Key of the trait
+     * @return Name of the trait
+     */
+    function getTraitName(bytes32 traitKey) external view returns (string memory);
+
+    /**
+     * @dev Gets the trait metadata URI
+     * @return URI of the trait metadata
+     */
+    function getTraitMetadataURI() external view returns (string memory);
+
+    /**
+     * @dev Sets a trait value for a token
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait
+     * @param traitValue Value of the trait
+     */
+    function setTrait(uint256 tokenId, bytes32 traitKey, bytes memory traitValue) external;
+
+    // ============ Transfer Functions ============
     
     /**
      * @dev Sets the security policy for ERC721C
      */
     function setToDefaultSecurityPolicy() external;
-    
-    // ============ Transfer Functions ============
     
     /**
      * @dev Transfers a token between addresses
