@@ -402,13 +402,24 @@ contract DeedNFT is
         _mint(owner, tokenId);
         _setTokenURI(tokenId, ipfsDetailsHash);
 
-        // Set traits using ERC-7496
+        // Set base traits
         _setTraitValue(tokenId, keccak256("assetType"), abi.encode(assetType));
         _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(false));
         _setTraitValue(tokenId, keccak256("operatingAgreement"), abi.encode(operatingAgreement));
         _setTraitValue(tokenId, keccak256("definition"), abi.encode(definition));
         _setTraitValue(tokenId, keccak256("configuration"), abi.encode(configuration));
         _setTraitValue(tokenId, keccak256("validator"), abi.encode(address(0)));
+
+        // Parse IPFS metadata and set additional traits if we have a renderer
+        if (metadataRenderer != address(0)) {
+            try IERC7572(metadataRenderer).parseAndSetTraitsFromIPFS(
+                tokenId,
+                ipfsDetailsHash,
+                address(this)
+            ) {} catch {
+                // If parsing fails, we still have the base traits
+            }
+        }
 
         emit DeedNFTMinted(tokenId, assetType, msg.sender, selectedValidator);
         return tokenId;
@@ -672,7 +683,7 @@ contract DeedNFT is
      * @notice The returned JSON schema defines the structure and validation rules for each trait
      */
     function getTraitMetadataURI() external pure returns (string memory) {
-        return "data:application/json;charset=utf-8;base64,ewogICJ0cmFpdHMiOiB7CiAgICAiYXNzZXRUeXBlIjogewogICAgICAiZGlzcGxheU5hbWUiOiAiQXNzZXQgVHlwZSIsCiAgICAgICJkYXRhVHlwZSI6IHsKICAgICAgICAidHlwZSI6ICJlbnVtIiwKICAgICAgICAidmFsdWVzIjogWyJMYW5kIiwgIlZlaGljbGUiLCAiRXN0YXRlIiwgIkNvbW1lcmNpYWxFcXVpcG1lbnQiXQogICAgICB9CiAgICB9LAogICAgImlzVmFsaWRhdGVkIjogewogICAgICAiZGlzcGxheU5hbWUiOiAiVmFsaWRhdGlvbiBTdGF0dXMiLAogICAgICAiZGF0YVR5cGUiOiB7CiAgICAgICAgInR5cGUiOiAiYm9vbGVhbiIKICAgICAgfQogICAgfSwKICAgICJvcGVyYXRpbmdBZ3JlZW1lbnQiOiB7CiAgICAgICJkaXNwbGF5TmFtZSI6ICJPcGVyYXRpbmcgQWdyZWVtZW50IiwKICAgICAgImRhdGFUeXBlIjogewogICAgICAgICJ0eXBlIjogInN0cmluZyIsCiAgICAgICAgIm1pbkxlbmd0aCI6IDEKICAgICAgfQogICAgfSwKICAgICJkZWZpbml0aW9uIjogewogICAgICAiZGlzcGxheU5hbWUiOiAiRGVmaW5pdGlvbiIsCiAgICAgICJkYXRhVHlwZSI6IHsKICAgICAgICAidHlwZSI6ICJzdHJpbmciLAogICAgICAgICJtaW5MZW5ndGgiOiAxCiAgICAgIH0KICAgIH0sCiAgICAiY29uZmlndXJhdGlvbiI6IHsKICAgICAgImRpc3BsYXlOYW1lIjogIkNvbmZpZ3VyYXRpb24iLAogICAgICAiZGF0YVR5cGUiOiB7CiAgICAgICAgInR5cGUiOiAic3RyaW5nIiwKICAgICAgICAibWluTGVuZ3RoIjogMQogICAgICB9CiAgICB9LAogICAgInZhbGlkYXRvciI6IHsKICAgICAgImRpc3BsYXlOYW1lIjogIlZhbGlkYXRvciIsCiAgICAgICJkYXRhVHlwZSI6IHsKICAgICAgICAidHlwZSI6ICJhZGRyZXNzIgogICAgICB9CiAgICB9CiAgfQp9";
+        return "data:application/json;charset=utf-8;base64,ewogICJ0cmFpdHMiOiB7CiAgICAiYXNzZXRUeXBlIjogeyAiZGlzcGxheU5hbWUiOiAiQXNzZXQgVHlwZSIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAiZW51bSIsICJ2YWx1ZXMiOiBbIkxhbmQiLCAiVmVoaWNsZSIsICJFc3RhdGUiLCAiQ29tbWVyY2lhbEVxdWlwbWVudCJdIH0gfSwKICAgICJpc1ZhbGlkYXRlZCI6IHsgImRpc3BsYXlOYW1lIjogIlZhbGlkYXRpb24gU3RhdHVzIiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJib29sZWFuIiB9IH0sCiAgICAib3BlcmF0aW5nQWdyZWVtZW50IjogeyAiZGlzcGxheU5hbWUiOiAiT3BlcmF0aW5nIEFncmVlbWVudCIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAic3RyaW5nIiwgIm1pbkxlbmd0aCI6IDEgfSB9LAogICAgImRlZmluaXRpb24iOiB7ICJkaXNwbGF5TmFtZSI6ICJEZWZpbml0aW9uIiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJzdHJpbmciLCAibWluTGVuZ3RoIjogMSB9IH0sCiAgICAiY29uZmlndXJhdGlvbiI6IHsgImRpc3BsYXlOYW1lIjogIkNvbmZpZ3VyYXRpb24iLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogInN0cmluZyIsICJtaW5MZW5ndGgiOiAxIH0gfSwKICAgICJ2YWxpZGF0b3IiOiB7ICJkaXNwbGF5TmFtZSI6ICJWYWxpZGF0b3IiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogImFkZHJlc3MiIH0gfSwKICAgICJuYW1lIjogeyAiZGlzcGxheU5hbWUiOiAiTmFtZSIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAic3RyaW5nIiB9IH0sCiAgICAiZGVzY3JpcHRpb24iOiB7ICJkaXNwbGF5TmFtZSI6ICJEZXNjcmlwdGlvbiIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAic3RyaW5nIiB9IH0sCiAgICAiaW1hZ2UiOiB7ICJkaXNwbGF5TmFtZSI6ICJJbWFnZSBVUkkiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogInN0cmluZyIsICJmb3JtYXQiOiAidXJpIiB9IH0sCiAgICAiYmFja2dyb3VuZF9jb2xvciI6IHsgImRpc3BsYXlOYW1lIjogIkJhY2tncm91bmQgQ29sb3IiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogInN0cmluZyIsICJwYXR0ZXJuIjogIl4jWzAtOUEtRmEtZl17Nn0kIiB9IH0sCiAgICAiYW5pbWF0aW9uX3VybCI6IHsgImRpc3BsYXlOYW1lIjogIkFuaW1hdGlvbiBVUkwiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogInN0cmluZyIsICJmb3JtYXQiOiAidXJpIiB9IH0sCiAgICAiZ2FsbGVyeUltYWdlcyI6IHsgImRpc3BsYXlOYW1lIjogIkdhbGxlcnkgSW1hZ2VzIiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJhcnJheSIsICJpdGVtcyI6IHsgInR5cGUiOiAic3RyaW5nIiwgImZvcm1hdCI6ICJ1cmkiIH0gfSB9LAogICAgImRvY3VtZW50VHlwZXMiOiB7ICJkaXNwbGF5TmFtZSI6ICJEb2N1bWVudCBUeXBlcyIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAiYXJyYXkiLCAiaXRlbXMiOiB7ICJ0eXBlIjogInN0cmluZyIgfSB9IH0sCiAgICAiY3VzdG9tTWV0YWRhdGEiOiB7ICJkaXNwbGF5TmFtZSI6ICJDdXN0b20gTWV0YWRhdGEiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogIm9iamVjdCIgfSB9CiAgfQp9";
     }
     
     // ERC-7572 Implementation

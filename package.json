@@ -37,7 +37,8 @@
   "dependencies": {
     "@limitbreak/creator-token-standards": "^4.0.1",
     "@openzeppelin/contracts": "^4.9.3",
-    "@openzeppelin/contracts-upgradeable": "^4.9.3"
+    "@openzeppelin/contracts-upgradeable": "^4.9.3",
+    "solady": "^0.1.16"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",

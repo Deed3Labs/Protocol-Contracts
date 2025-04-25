@@ -66,6 +66,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     event CompatibleDeedContractAdded(address indexed contractAddress);
     event CompatibleDeedContractRemoved(address indexed contractAddress);
     event MetadataInitialized(uint256 indexed tokenId, string ipfsHash);
+    event TraitsParsed(uint256 indexed tokenId, address indexed deedContract);
     
     IDeedNFT public deedNFT;
     
@@ -385,33 +386,31 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      */
     function _generateName(uint256 tokenId, uint8 assetType) internal view returns (string memory) {
         TokenMetadata storage metadata = tokenMetadata[tokenId];
+        if (bytes(metadata.name).length > 0) return metadata.name;
         
-        // If we have a custom name, use it
-        if (bytes(metadata.name).length > 0) {
-            return metadata.name;
-        }
-        
-        // Get traits from DeedNFT
         bytes memory cityBytes = deedNFT.getTraitValue(tokenId, keccak256("city"));
-        bytes memory streetNumberBytes = deedNFT.getTraitValue(tokenId, keccak256("streetNumber"));
+        bytes memory streetNumBytes = deedNFT.getTraitValue(tokenId, keccak256("streetNumber"));
         bytes memory streetNameBytes = deedNFT.getTraitValue(tokenId, keccak256("streetName"));
-        bytes memory parcelNumberBytes = deedNFT.getTraitValue(tokenId, keccak256("parcelNumber"));
+        bytes memory parcelNumBytes = deedNFT.getTraitValue(tokenId, keccak256("parcelNumber"));
         
         string memory city = cityBytes.length > 0 ? abi.decode(cityBytes, (string)) : "";
-        string memory streetNumber = streetNumberBytes.length > 0 ? abi.decode(streetNumberBytes, (string)) : "";
+        string memory streetNum = streetNumBytes.length > 0 ? abi.decode(streetNumBytes, (string)) : "";
         string memory streetName = streetNameBytes.length > 0 ? abi.decode(streetNameBytes, (string)) : "";
-        string memory parcelNumber = parcelNumberBytes.length > 0 ? abi.decode(parcelNumberBytes, (string)) : "";
+        string memory parcelNum = parcelNumBytes.length > 0 ? abi.decode(parcelNumBytes, (string)) : "";
         
-        // Generate name based on asset type
         if (assetType == uint8(IDeedNFT.AssetType.Land)) {
-            if (bytes(streetNumber).length > 0 && bytes(streetName).length > 0) {
-                return string(abi.encodePacked(streetNumber, " ", streetName, " - Land"));
-            } else if (bytes(parcelNumber).length > 0) {
-                return string(abi.encodePacked("Parcel #", parcelNumber, " - Land"));
-            } else if (bytes(city).length > 0) {
+            if (bytes(streetNum).length > 0 && bytes(streetName).length > 0) {
+                return string(abi.encodePacked(streetNum, " ", streetName, " - Land"));
+            }
+            if (bytes(parcelNum).length > 0) {
+                return string(abi.encodePacked("Parcel #", parcelNum, " - Land"));
+            }
+            if (bytes(city).length > 0) {
                 return string(abi.encodePacked(city, " Land #", tokenId.toString()));
             }
-        } else if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
+        }
+        
+        if (assetType == uint8(IDeedNFT.AssetType.Vehicle)) {
             bytes memory makeBytes = deedNFT.getTraitValue(tokenId, keccak256("make"));
             bytes memory modelBytes = deedNFT.getTraitValue(tokenId, keccak256("model"));
             bytes memory yearBytes = deedNFT.getTraitValue(tokenId, keccak256("year"));
@@ -423,23 +422,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             if (bytes(make).length > 0 && bytes(model).length > 0) {
                 return string(abi.encodePacked(year, " ", make, " ", model));
             }
-        } else if (assetType == uint8(IDeedNFT.AssetType.Estate)) {
-            bytes memory estateNameBytes = deedNFT.getTraitValue(tokenId, keccak256("estateName"));
-            string memory estateName = estateNameBytes.length > 0 ? abi.decode(estateNameBytes, (string)) : "";
-            
-            if (bytes(estateName).length > 0) {
-                return string(abi.encodePacked(estateName, " Estate"));
-            }
-        } else if (assetType == uint8(IDeedNFT.AssetType.CommercialEquipment)) {
-            bytes memory equipmentTypeBytes = deedNFT.getTraitValue(tokenId, keccak256("equipmentType"));
-            string memory equipmentType = equipmentTypeBytes.length > 0 ? abi.decode(equipmentTypeBytes, (string)) : "";
-            
-            if (bytes(equipmentType).length > 0) {
-                return string(abi.encodePacked(equipmentType, " #", tokenId.toString()));
-            }
         }
         
-        // Fallback to generic name
         return string(abi.encodePacked(_assetTypeToString(assetType), " #", tokenId.toString()));
     }
     
@@ -449,79 +433,51 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     function _generateGallery(uint256 tokenId) internal view returns (string memory) {
         string[] memory images = tokenMetadata[tokenId].galleryImages;
         if (images.length == 0) return "";
-        
-        // Optimize string concatenation
-        string memory gallery = '"gallery":[';
+        string memory g = '"gallery":[';
         for (uint i = 0; i < images.length; i++) {
-            gallery = string(abi.encodePacked(
-                gallery, 
-                i > 0 ? ',"' : '"',
-                images[i],
-                '"'
-            ));
+            g = string(abi.encodePacked(g, i > 0 ? ',"' : '"', images[i], '"'));
         }
-        return string(abi.encodePacked(gallery, ']'));
+        return string(abi.encodePacked(g, ']'));
     }
     
     /**
      * @dev Generates attributes for a token
      */
     function _generateAttributes(uint256 tokenId, uint8 assetType, bool isValidated) internal view returns (string memory) {
-        // Pre-calculate buffer size to avoid resizing
         bytes32[] memory traitKeys = deedNFT.getTraitKeys(tokenId);
-        uint256 bufferSize = 3; // Base attributes: asset type, validation status, beneficiary
-        bufferSize += traitKeys.length;
+        string[] memory parts = new string[](traitKeys.length + 3);
+        uint256 count;
         
-        // Build attributes array
-        string[] memory attributeParts = new string[](bufferSize);
-        uint256 count = 0;
+        parts[count++] = JSONUtils.createTrait("Type", _assetTypeToString(assetType));
+        parts[count++] = JSONUtils.createTrait("Status", isValidated ? "Valid" : "Invalid");
         
-        // Add base attributes with shorter strings
-        attributeParts[count++] = JSONUtils.createTrait("Type", _assetTypeToString(assetType));
-        attributeParts[count++] = JSONUtils.createTrait("Status", isValidated ? "Valid" : "Invalid");
-        
-        // Add beneficiary if available
         if (address(deedNFT) != address(0)) {
             try IDeedNFT(deedNFT).ownerOf(tokenId) returns (address owner) {
-                attributeParts[count++] = JSONUtils.createTrait("Owner", address(owner).toHexString());
-            } catch {
-                bufferSize--;
-            }
-        } else {
-            bufferSize--;
+                parts[count++] = JSONUtils.createTrait("Owner", address(owner).toHexString());
+            } catch {}
         }
         
-        // Add traits from DeedNFT
         for (uint i = 0; i < traitKeys.length; i++) {
             bytes memory value = deedNFT.getTraitValue(tokenId, traitKeys[i]);
-            string memory traitName = deedNFT.getTraitName(traitKeys[i]);
+            string memory name = deedNFT.getTraitName(traitKeys[i]);
             
-            if (value.length == 32) { // Length of abi.encode(bool)
+            if (value.length == 32) {
                 bool decoded;
-                assembly {
-                    decoded := mload(add(value, 32))
-                }
-                attributeParts[count++] = JSONUtils.createTrait(traitName, decoded ? "true" : "false");
+                assembly { decoded := mload(add(value, 32)) }
+                parts[count++] = JSONUtils.createTrait(name, decoded ? "true" : "false");
             } else {
-                string memory decodedStr = abi.decode(value, (string));
-                if (bytes(decodedStr).length > 0) {
-                    attributeParts[count++] = JSONUtils.createTrait(traitName, decodedStr);
-                } else {
-                    bufferSize--;
+                string memory str = abi.decode(value, (string));
+                if (bytes(str).length > 0) {
+                    parts[count++] = JSONUtils.createTrait(name, str);
                 }
             }
         }
         
-        // Combine all parts
-        string memory attributes;
+        string memory attrs;
         for (uint i = 0; i < count; i++) {
-            if (i > 0) {
-                attributes = string(abi.encodePacked(attributes, ','));
-            }
-            attributes = string(abi.encodePacked(attributes, attributeParts[i]));
+            attrs = string(abi.encodePacked(attrs, i > 0 ? "," : "", parts[i]));
         }
-        
-        return attributes;
+        return attrs;
     }
     
     /**
@@ -530,38 +486,28 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      * @return Array of boolean trait keys
      */
     function _getBoolTraitKeys(uint256 tokenId) internal view returns (string[] memory) {
-        // Get all trait keys from DeedNFT
-        bytes32[] memory traitKeys = deedNFT.getTraitKeys(tokenId);
-        uint256 boolCount = 0;
+        bytes32[] memory keys = deedNFT.getTraitKeys(tokenId);
+        uint256 count;
         
-        // First pass: count boolean traits
-        for (uint i = 0; i < traitKeys.length; i++) {
-            bytes memory value = deedNFT.getTraitValue(tokenId, traitKeys[i]);
-            if (value.length == 32) { // Length of abi.encode(bool)
+        for (uint i = 0; i < keys.length; i++) {
+            bytes memory value = deedNFT.getTraitValue(tokenId, keys[i]);
+            if (value.length == 32) {
                 bool decoded;
-                assembly {
-                    decoded := mload(add(value, 32))
-                }
-                if (decoded) {
-                    boolCount++;
-                }
+                assembly { decoded := mload(add(value, 32)) }
+                if (decoded) count++;
             }
         }
         
-        // Second pass: collect boolean trait names
-        string[] memory boolTraits = new string[](boolCount);
-        uint256 index = 0;
+        string[] memory boolTraits = new string[](count);
+        uint256 j;
         
-        for (uint i = 0; i < traitKeys.length; i++) {
-            bytes memory value = deedNFT.getTraitValue(tokenId, traitKeys[i]);
-            if (value.length == 32) { // Length of abi.encode(bool)
+        for (uint i = 0; i < keys.length; i++) {
+            bytes memory value = deedNFT.getTraitValue(tokenId, keys[i]);
+            if (value.length == 32) {
                 bool decoded;
-                assembly {
-                    decoded := mload(add(value, 32))
-                }
+                assembly { decoded := mload(add(value, 32)) }
                 if (decoded) {
-                    boolTraits[index] = deedNFT.getTraitName(traitKeys[i]);
-                    index++;
+                    boolTraits[j++] = deedNFT.getTraitName(keys[i]);
                 }
             }
         }
@@ -572,77 +518,28 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     /**
      * @dev Generates properties for a token
      */
-    function _generateProperties(uint256 tokenId, uint8 assetType, string memory definition, string memory configuration) internal view returns (string memory) {
-        TokenMetadata storage metadata = tokenMetadata[tokenId];
+    function _generateProperties(uint256 tokenId, uint8 assetType, string memory def, string memory cfg) internal view returns (string memory) {
+        TokenMetadata storage m = tokenMetadata[tokenId];
+        string memory props = string(abi.encodePacked('{"asset_type":"', _assetTypeToString(assetType), '"'));
         
-        // Start with asset type
-        string memory properties = string(abi.encodePacked(
-            '{"asset_type":"', _assetTypeToString(assetType), '"'
-        ));
+        if (bytes(def).length > 0) props = string(abi.encodePacked(props, ',"definition":', def));
+        if (bytes(cfg).length > 0) props = string(abi.encodePacked(props, ',"configuration":', cfg));
         
-        // Add definition and configuration if provided
-        if (bytes(definition).length > 0) {
-            properties = string(abi.encodePacked(properties, ',"definition":', definition));
-        }
-        
-        if (bytes(configuration).length > 0) {
-            properties = string(abi.encodePacked(properties, ',"configuration":', configuration));
-        }
-        
-        // Add custom metadata (complex properties) if available
-        string memory customMetadata = metadata.customMetadata;
-        if (bytes(customMetadata).length > 0) {
-            // Remove the outer braces if they exist
-            if (bytes(customMetadata)[0] == '{' && bytes(customMetadata)[bytes(customMetadata).length - 1] == '}') {
-                customMetadata = _removeOuterBraces(customMetadata);
+        string memory custom = m.customMetadata;
+        if (bytes(custom).length > 0) {
+            if (bytes(custom)[0] == '{' && bytes(custom)[bytes(custom).length - 1] == '}') {
+                bytes memory result = new bytes(bytes(custom).length - 2);
+                for (uint i = 1; i < bytes(custom).length - 1; i++) {
+                    result[i - 1] = bytes(custom)[i];
+                }
+                custom = string(result);
             }
-            properties = string(abi.encodePacked(properties, ',', customMetadata));
+            props = string(abi.encodePacked(props, ',', custom));
         }
         
-        // Close the properties object
-        properties = string(abi.encodePacked(properties, '}'));
-        
-        return properties;
+        return string(abi.encodePacked(props, '}'));
     }
 
-    /**
-     * @dev Helper function to remove outer braces from a JSON string
-     */
-    function _removeOuterBraces(string memory json) internal pure returns (string memory) {
-        bytes memory jsonBytes = bytes(json);
-        if (jsonBytes.length < 2) revert Invalid();
-        bytes memory result = new bytes(jsonBytes.length - 2);
-        for (uint i = 1; i < jsonBytes.length - 1; i++) {
-            result[i - 1] = jsonBytes[i];
-        }
-        return string(result);
-    }
-    
-    /**
-     * @dev Gets image URI for a token
-     */
-    function _getImageURI(uint256 tokenId, uint8 assetType, bool isValidated) internal view returns (string memory) {
-        TokenMetadata storage metadata = tokenMetadata[tokenId];
-        
-        // If token is not validated, return invalidated image
-        if (!isValidated) {
-            return invalidatedImageURI;
-        }
-        
-        // If token has a custom image, use it
-        if (bytes(metadata.image).length > 0) {
-            return metadata.image;
-        }
-        
-        // If token has gallery images, use the first one
-        if (metadata.galleryImages.length > 0) {
-            return metadata.galleryImages[0];
-        }
-        
-        // Otherwise use the default image for the asset type
-        return assetTypeImageURIs[assetType];
-    }
-    
     /**
      * @dev Generates JSON metadata for a token
      */
@@ -657,35 +554,31 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         string memory attributes,
         string memory properties
     ) internal pure returns (string memory) {
-        // Build minimal JSON with standard field names
-        string memory json = string(abi.encodePacked(
-            '{"name":"', name,
-            '","description":"', description,
-            '","image":"', imageURI,
-            '","token_id":"', tokenId.toString(), '"'
-        ));
-        
-        // Add optional fields in a single concatenation
-        bytes memory optionalFields;
-        if (bytes(backgroundColor).length > 0) {
-            optionalFields = abi.encodePacked(optionalFields, ',"background_color":"', backgroundColor, '"');
-        }
-        if (bytes(animationUrl).length > 0) {
-            optionalFields = abi.encodePacked(optionalFields, ',"animation_url":"', animationUrl, '"');
-        }
-        if (bytes(gallery).length > 0) {
-            optionalFields = abi.encodePacked(optionalFields, ',', gallery);
-        }
-        if (bytes(attributes).length > 0) {
-            optionalFields = abi.encodePacked(optionalFields, ',"attributes":[', attributes, ']');
-        }
-        if (bytes(properties).length > 0) {
-            optionalFields = abi.encodePacked(optionalFields, ',"properties":', properties);
-        }
-        
-        // Combine and encode final JSON
-        json = string(abi.encodePacked(json, optionalFields, '}'));
-        return string(abi.encodePacked("data:application/json;base64,", Base64Upgradeable.encode(bytes(json))));
+        return string(
+            abi.encodePacked(
+                '{"name":"', name,
+                '","description":"', description,
+                '","image":"', imageURI,
+                '","token_id":"', StringsUpgradeable.toString(tokenId), '"',
+                ',"attributes":[', attributes,
+                '],"properties":', properties,
+                bytes(gallery).length > 0 ? string(abi.encodePacked(',"gallery":', gallery)) : "",
+                bytes(backgroundColor).length > 0 ? string(abi.encodePacked(',"background_color":"', backgroundColor, '"')) : "",
+                bytes(animationUrl).length > 0 ? string(abi.encodePacked(',"animation_url":"', animationUrl, '"')) : "",
+                '}'
+            )
+        );
+    }
+    
+    /**
+     * @dev Gets image URI for a token
+     */
+    function _getImageURI(uint256 tokenId, uint8 assetType, bool isValidated) internal view returns (string memory) {
+        TokenMetadata storage metadata = tokenMetadata[tokenId];
+        if (!isValidated) return invalidatedImageURI;
+        if (bytes(metadata.image).length > 0) return metadata.image;
+        if (metadata.galleryImages.length > 0) return metadata.galleryImages[0];
+        return assetTypeImageURIs[assetType];
     }
     
     /**
@@ -697,51 +590,38 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     function tokenURI(address tokenContract, uint256 tokenId) external view override returns (string memory) {
         if (!isCompatibleDeedContract(tokenContract)) revert Invalid();
         
-        // Get asset type from token
         bytes memory assetTypeBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("assetType"));
-        if (assetTypeBytes.length == 0) {
-            return ""; // Invalid token
-        }
+        if (assetTypeBytes.length == 0) return "";
         
         uint256 assetTypeValue = abi.decode(assetTypeBytes, (uint256));
         uint8 assetType = uint8(assetTypeValue);
         
-        // Get validation status
-        (bool isValidated, /* address validator */) = IDeedNFT(tokenContract).getValidationStatus(tokenId);
+        (bool isValidated,) = IDeedNFT(tokenContract).getValidationStatus(tokenId);
         
-        // Get definition and configuration
         bytes memory definitionBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("definition"));
-        bytes memory configurationBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("configuration"));
+        bytes memory configBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("configuration"));
         
         string memory definition = definitionBytes.length > 0 ? abi.decode(definitionBytes, (string)) : "";
-        string memory configuration = configurationBytes.length > 0 ? abi.decode(configurationBytes, (string)) : "";
+        string memory config = configBytes.length > 0 ? abi.decode(configBytes, (string)) : "";
         
-        // Get the IPFS hash directly from the DeedNFT contract
-        string memory ipfsHash = IDeedNFT(tokenContract).tokenURI(tokenId);
-        if (bytes(ipfsHash).length == 0) revert Invalid();
-        
-        // Generate metadata components
         string memory name = _generateName(tokenId, assetType);
-        string memory attributes = _generateAttributes(tokenId, assetType, isValidated);
-        string memory properties = _generateProperties(tokenId, assetType, definition, configuration);
+        string memory attrs = _generateAttributes(tokenId, assetType, isValidated);
+        string memory props = _generateProperties(tokenId, assetType, definition, config);
         string memory gallery = _generateGallery(tokenId);
         string memory imageURI = _getImageURI(tokenId, assetType, isValidated);
         
         TokenMetadata storage metadata = tokenMetadata[tokenId];
-        string memory backgroundColor = metadata.background_color;
-        string memory animationUrl = metadata.animation_url;
         
-        // Generate JSON
         return _generateJSON(
             tokenId,
             name,
             definition,
             imageURI,
-            backgroundColor,
-            animationUrl,
+            metadata.background_color,
+            metadata.animation_url,
             gallery,
-            attributes,
-            properties
+            attrs,
+            props
         );
     }
     
@@ -925,17 +805,60 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     }
 
     // Helper function to convert asset type to string
-    function _assetTypeToString(uint8 assetType) internal pure returns (string memory) {
-        // Using shorter strings and a single return
-        return assetType == 0 ? "Land" :
-               assetType == 1 ? "Vehicle" :
-               assetType == 2 ? "Estate" :
-               assetType == 3 ? "Equipment" : // Shortened from "Commercial Equipment"
-               "Unknown";
+    function _assetTypeToString(uint8 t) internal pure returns (string memory) {
+        return t == 0 ? "Land" : t == 1 ? "Vehicle" : t == 2 ? "Estate" : t == 3 ? "Equipment" : "Unknown";
     }
 
     function _validateInputs(uint256 tokenId, string memory input) internal view {
         if (!_exists(tokenId)) revert Invalid();
         if (bytes(input).length == 0) revert Empty();
+    }
+
+    /**
+     * @dev Parses IPFS JSON and sets traits in DeedNFT during minting
+     */
+    function parseAndSetTraitsFromIPFS(
+        uint256 tokenId,
+        string memory ipfsHash,
+        address deedNFTContract
+    ) external override {
+        if (bytes(ipfsHash).length == 0) revert Empty();
+        IDeedNFT targetDeedNFT = IDeedNFT(deedNFTContract);
+
+        // Parse the IPFS JSON
+        string memory json = ipfsHash;  // In production, this would fetch from IPFS
+
+        // Parse and set attributes as traits
+        string memory attributesJson = JSONUtils.parseJsonField(json, "attributes");
+        if (bytes(attributesJson).length > 0) {
+            string[] memory attributes = JSONUtils.parseJsonArrayToStringArray(attributesJson);
+            for (uint i = 0; i < attributes.length; i++) {
+                string memory attr = attributes[i];
+                string memory traitType = JSONUtils.parseJsonField(attr, "trait_type");
+                string memory value = JSONUtils.parseJsonField(attr, "value");
+                
+                if (bytes(traitType).length > 0 && bytes(value).length > 0) {
+                    bytes32 traitKey = keccak256(bytes(traitType));
+                    targetDeedNFT.setTrait(tokenId, traitKey, abi.encode(value));
+                }
+            }
+        }
+
+        // Parse and set properties as traits
+        string memory propertiesJson = JSONUtils.parseJsonField(json, "properties");
+        if (bytes(propertiesJson).length > 0) {
+            string[] memory propertyKeys = JSONUtils.getJsonKeys(propertiesJson);
+            for (uint i = 0; i < propertyKeys.length; i++) {
+                string memory key = propertyKeys[i];
+                string memory value = JSONUtils.parseJsonField(propertiesJson, key);
+                
+                if (bytes(value).length > 0) {
+                    bytes32 traitKey = keccak256(bytes(string(abi.encodePacked("property_", key))));
+                    targetDeedNFT.setTrait(tokenId, traitKey, abi.encode(value));
+                }
+            }
+        }
+
+        emit TraitsParsed(tokenId, deedNFTContract);
     }
 }

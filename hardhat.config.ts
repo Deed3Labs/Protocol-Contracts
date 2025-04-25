@@ -29,7 +29,7 @@ const config: HardhatUserConfig = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 20
+        runs: 1
       },
       viaIR: true,
       // Disable error strings to save gas
@@ -38,7 +38,8 @@ const config: HardhatUserConfig = {
       },
       outputSelection: {
         "*": {
-          "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "metadata"],
+          "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "metadata", "storageLayout", "evm.methodIdentifiers", "evm.gasEstimates"],
+          "": ["ast"]
         },
       }
     },
