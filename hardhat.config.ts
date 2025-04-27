@@ -29,7 +29,13 @@ const config: HardhatUserConfig = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 1
+        runs: 1,
+        details: {
+          yul: true,
+          deduplicate: true,
+          cse: true,
+          constantOptimizer: true
+        }
       },
       viaIR: true,
       // Disable error strings to save gas
@@ -38,8 +44,20 @@ const config: HardhatUserConfig = {
       },
       outputSelection: {
         "*": {
-          "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "metadata", "storageLayout", "evm.methodIdentifiers", "evm.gasEstimates"],
-          "": ["ast"]
+          "": ["ast"],
+          "*": [
+            "abi",
+            "metadata",
+            "devdoc",
+            "userdoc",
+            "storageLayout",
+            "evm.legacyAssembly",
+            "evm.bytecode",
+            "evm.deployedBytecode",
+            "evm.methodIdentifiers",
+            "evm.gasEstimates",
+            "evm.assembly"
+          ]
         },
       }
     },

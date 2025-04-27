@@ -2,15 +2,16 @@
 pragma solidity ^0.8.29;
 
 // OpenZeppelin Upgradeable Contracts
-import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/interfaces/IERC2981Upgradeable.sol";
+import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import {ERC721URIStorageUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {StringsUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
+import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
+import {IERC2981Upgradeable} from "@openzeppelin/contracts-upgradeable/interfaces/IERC2981Upgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 // External validator and registry interfaces
 import "./interfaces/IValidator.sol";
@@ -21,6 +22,9 @@ import "./interfaces/IFundManager.sol";
 // Import ICreatorToken interface for reference
 import "@limitbreak/creator-token-standards/src/interfaces/ICreatorToken.sol";
 import "@limitbreak/creator-token-standards/src/erc721c/ERC721C.sol";
+
+// Import IMetadataRenderer interface
+import "./interfaces/IMetadataRenderer.sol";
 
 /**
  * @title DeedNFT
@@ -93,12 +97,9 @@ contract DeedNFT is
         address validator
     );
     event DeedNFTBurned(uint256 indexed tokenId);
-    event DeedNFTValidatedChanged(uint256 indexed tokenId, bool isValid);
-    event DeedNFTMetadataUpdated(uint256 indexed tokenId);
     event MetadataRendererUpdated(address indexed renderer);
     event ContractURIUpdated(string newURI);
     event TraitUpdated(bytes32 indexed traitKey, uint256 indexed tokenId, bytes traitValue);
-    event TraitMetadataURIUpdated();
     event TokenValidated(uint256 indexed tokenId, bool isValid, address validator);
     event MarketplaceApproved(address indexed marketplace, bool approved);
     event RoyaltyEnforcementChanged(bool enforced);
@@ -161,6 +162,7 @@ contract DeedNFT is
         bytes32 definitionKey = keccak256("definition");
         bytes32 configurationKey = keccak256("configuration");
         bytes32 validatorKey = keccak256("validator");
+        bytes32 beneficiaryKey = keccak256("beneficiary");
         
         // Store trait keys
         _allTraitKeys = [
@@ -169,7 +171,8 @@ contract DeedNFT is
             operatingAgreementKey,
             definitionKey,
             configurationKey,
-            validatorKey
+            validatorKey,
+            beneficiaryKey
         ];
         
         // Map trait keys to names
@@ -179,8 +182,7 @@ contract DeedNFT is
         _traitNames[definitionKey] = "Definition";
         _traitNames[configurationKey] = "Configuration";
         _traitNames[validatorKey] = "Validator";
-        
-        emit TraitMetadataURIUpdated();
+        _traitNames[beneficiaryKey] = "Beneficiary";
     }
 
     /**
@@ -342,17 +344,13 @@ contract DeedNFT is
     function mintAsset(
         address owner,
         AssetType assetType,
-        string memory ipfsDetailsHash,
+        string memory uri,
         string memory definition,
         string memory configuration,
         address validatorAddress,
         uint256 salt
     ) external whenNotPaused onlyRole(MINTER_ROLE) returns (uint256) {
         require(owner != address(0), "!own");
-        require(
-            bytes(ipfsDetailsHash).length > 0,
-            "!ipfs"
-        );
         require(
             bytes(definition).length > 0,
             "!def"
@@ -409,7 +407,11 @@ contract DeedNFT is
         }
         
         _mint(owner, tokenId);
-        _setTokenURI(tokenId, ipfsDetailsHash);
+        
+        // Set token URI as fallback if provided
+        if (bytes(uri).length > 0) {
+            _setTokenURI(tokenId, uri);
+        }
 
         // Set base traits
         _setTraitValue(tokenId, keccak256("assetType"), abi.encode(assetType));
@@ -418,17 +420,7 @@ contract DeedNFT is
         _setTraitValue(tokenId, keccak256("definition"), abi.encode(definition));
         _setTraitValue(tokenId, keccak256("configuration"), abi.encode(configuration));
         _setTraitValue(tokenId, keccak256("validator"), abi.encode(address(0)));
-
-        // Parse IPFS metadata and set additional traits if we have a renderer
-        if (metadataRenderer != address(0)) {
-            try IERC7572(metadataRenderer).parseAndSetTraitsFromURL(
-                tokenId,
-                ipfsDetailsHash,
-                address(this)
-            ) {} catch {
-                // If parsing fails, we still have the base traits
-            }
-        }
+        _setTraitValue(tokenId, keccak256("beneficiary"), abi.encode(owner));
 
         emit DeedNFTMinted(tokenId, assetType, msg.sender, selectedValidator);
         return tokenId;
@@ -527,22 +519,18 @@ contract DeedNFT is
      *      Only callable by the owner or a validator.
      *      If called by a non-validator, sets isValidated to false.
      * @param tokenId ID of the deed.
-     * @param ipfsDetailsHash New IPFS details hash.
+     * @param uri New token URI (used as fallback if metadata renderer fails).
      * @param operatingAgreement New operating agreement.
      * @param definition New definition.
      * @param configuration New configuration.
      */
     function updateMetadata(
         uint256 tokenId,
-        string memory ipfsDetailsHash,
+        string memory uri,
         string memory operatingAgreement,
         string memory definition,
         string memory configuration
-    ) external onlyValidatorOrOwner(tokenId) whenNotPaused {
-        require(
-            bytes(ipfsDetailsHash).length > 0,
-            "!ipfs"
-        );
+    ) external whenNotPaused onlyValidatorOrOwner(tokenId) {
         require(
             bytes(operatingAgreement).length > 0,
             "!agr"
@@ -576,7 +564,10 @@ contract DeedNFT is
             "!agr"
         );
 
-        _setTokenURI(tokenId, ipfsDetailsHash);
+        // Update token URI as fallback if provided
+        if (bytes(uri).length > 0) {
+            _setTokenURI(tokenId, uri);
+        }
 
         // Update traits
         _setTraitValue(tokenId, keccak256("operatingAgreement"), abi.encode(operatingAgreement));
@@ -588,8 +579,6 @@ contract DeedNFT is
             _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(false));
             _setTraitValue(tokenId, keccak256("validator"), abi.encode(address(0)));
         }
-
-        emit DeedNFTMetadataUpdated(tokenId);
     }
     
     // ERC-7496 Implementation
@@ -605,17 +594,128 @@ contract DeedNFT is
         require(_exists(tokenId), "!token");
         _tokenTraits[tokenId][traitKey] = traitValue;
         emit TraitUpdated(traitKey, tokenId, traitValue);
+
+        // Sync with MetadataRenderer if set
+        if (metadataRenderer != address(0)) {
+            try IMetadataRenderer(metadataRenderer).syncTraitUpdate(tokenId, traitKey, traitValue) {
+                // Sync successful
+            } catch {
+                // Sync failed - continue anyway as this is not critical
+            }
+        }
     }
 
     /**
-     * @dev Public function to set a trait value for a token
+     * @dev Helper function to set string trait using human-readable name
      * @param tokenId ID of the token
-     * @param traitKey Key of the trait
-     * @param traitValue Value of the trait
+     * @param traitName Name of the trait
+     * @param value String value of the trait
      */
-    function setTrait(uint256 tokenId, bytes32 traitKey, bytes memory traitValue) external onlyValidatorOrOwner(tokenId) {
+    function setStringTrait(
+        uint256 tokenId,
+        string memory traitName,
+        string memory value
+    ) external onlyValidatorOrOwner(tokenId) {
+        bytes32 key = keccak256(bytes(traitName));
+        _setTraitValue(tokenId, key, abi.encode(value));
+    }
+
+    /**
+     * @dev Helper function to set numeric trait using human-readable name
+     * @param tokenId ID of the token
+     * @param traitName Name of the trait
+     * @param value Numeric value of the trait
+     */
+    function setNumericTrait(
+        uint256 tokenId,
+        string memory traitName,
+        uint256 value
+    ) external onlyValidatorOrOwner(tokenId) {
+        bytes32 key = keccak256(bytes(traitName));
+        _setTraitValue(tokenId, key, abi.encode(value));
+    }
+
+    /**
+     * @dev Helper function to set boolean trait using human-readable name
+     * @param tokenId ID of the token
+     * @param traitName Name of the trait
+     * @param value Boolean value of the trait
+     */
+    function setBooleanTrait(
+        uint256 tokenId,
+        string memory traitName,
+        bool value
+    ) external onlyValidatorOrOwner(tokenId) {
+        bytes32 key = keccak256(bytes(traitName));
+        _setTraitValue(tokenId, key, abi.encode(value));
+    }
+
+    /**
+     * @dev Removes a trait from a token using human-readable name
+     * @param tokenId ID of the token
+     * @param traitName Name of the trait to remove
+     */
+    function removeTrait(uint256 tokenId, string memory traitName) external onlyValidatorOrOwner(tokenId) {
         require(_exists(tokenId), "!t");
-        _setTraitValue(tokenId, traitKey, traitValue);
+        bytes32 traitKey = keccak256(bytes(traitName));
+        require(_tokenTraits[tokenId][traitKey].length > 0, "!trait");
+        delete _tokenTraits[tokenId][traitKey];
+        emit TraitUpdated(traitKey, tokenId, "");
+        
+        // Sync deletion with MetadataRenderer
+        if (metadataRenderer != address(0)) {
+            try IMetadataRenderer(metadataRenderer).syncTraitUpdate(tokenId, traitKey, "") {} catch {}
+        }
+    }
+
+    /**
+     * @dev Sets a trait value with flexible input types
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait (either bytes32 or string)
+     * @param traitValue Value of the trait (supports various types)
+     * @param valueType Type of the value (0=bytes, 1=string, 2=uint256, 3=bool)
+     * @notice This function consolidates all trait setting operations into one
+     *         Can be used with direct bytes32 keys or human-readable names
+     *         Supports different value types through type parameter
+     */
+    function setTrait(
+        uint256 tokenId,
+        bytes memory traitKey,
+        bytes memory traitValue,
+        uint8 valueType
+    ) external onlyValidatorOrOwner(tokenId) {
+        require(_exists(tokenId), "!t");
+        
+        // Convert string trait name to bytes32 key if provided as string
+        bytes32 key;
+        if (traitKey.length == 32) {
+            assembly {
+                key := mload(add(traitKey, 32))
+            }
+        } else {
+            // Assume it's a string and hash it
+            key = keccak256(traitKey);
+        }
+
+        // Handle different value types
+        bytes memory value;
+        if (valueType == 0) {
+            // Direct bytes value
+            value = traitValue;
+        } else if (valueType == 1) {
+            // String value
+            value = abi.encode(string(traitValue));
+        } else if (valueType == 2) {
+            // Numeric value
+            value = abi.encode(uint256(bytes32(traitValue)));
+        } else if (valueType == 3) {
+            // Boolean value
+            value = abi.encode(uint256(bytes32(traitValue)) > 0);
+        } else {
+            revert("!type");
+        }
+        
+        _setTraitValue(tokenId, key, value);
     }
 
     /**
@@ -692,7 +792,8 @@ contract DeedNFT is
      * @notice The returned JSON schema defines the structure and validation rules for each trait
      */
     function getTraitMetadataURI() external pure returns (string memory) {
-        return "data:application/json;charset=utf-8;base64,ewogICJ0cmFpdHMiOiB7CiAgICAiYXNzZXRUeXBlIjogeyAiZGlzcGxheU5hbWUiOiAiQXNzZXQgVHlwZSIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAiZW51bSIsICJ2YWx1ZXMiOiBbIkxhbmQiLCAiVmVoaWNsZSIsICJFc3RhdGUiLCAiQ29tbWVyY2lhbEVxdWlwbWVudCJdIH0gfSwKICAgICJpc1ZhbGlkYXRlZCI6IHsgImRpc3BsYXlOYW1lIjogIlZhbGlkYXRpb24gU3RhdHVzIiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJib29sZWFuIiB9IH0sCiAgICAib3BlcmF0aW5nQWdyZWVtZW50IjogeyAiZGlzcGxheU5hbWUiOiAiT3BlcmF0aW5nIEFncmVlbWVudCIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAic3RyaW5nIiwgIm1pbkxlbmd0aCI6IDEgfSB9LAogICAgImRlZmluaXRpb24iOiB7ICJkaXNwbGF5TmFtZSI6ICJEZWZpbml0aW9uIiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJzdHJpbmciLCAibWluTGVuZ3RoIjogMSB9IH0sCiAgICAiY29uZmlndXJhdGlvbiI6IHsgImRpc3BsYXlOYW1lIjogIkNvbmZpZ3VyYXRpb24iLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogInN0cmluZyIsICJtaW5MZW5ndGgiOiAxIH0gfSwKICAgICJ2YWxpZGF0b3IiOiB7ICJkaXNwbGF5TmFtZSI6ICJWYWxpZGF0b3IiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogImFkZHJlc3MiIH0gfSwKICAgICJuYW1lIjogeyAiZGlzcGxheU5hbWUiOiAiTmFtZSIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAic3RyaW5nIiB9IH0sCiAgICAiZGVzY3JpcHRpb24iOiB7ICJkaXNwbGF5TmFtZSI6ICJEZXNjcmlwdGlvbiIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAic3RyaW5nIiB9IH0sCiAgICAiaW1hZ2UiOiB7ICJkaXNwbGF5TmFtZSI6ICJJbWFnZSBVUkkiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogInN0cmluZyIsICJmb3JtYXQiOiAidXJpIiB9IH0sCiAgICAiYmFja2dyb3VuZF9jb2xvciI6IHsgImRpc3BsYXlOYW1lIjogIkJhY2tncm91bmQgQ29sb3IiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogInN0cmluZyIsICJwYXR0ZXJuIjogIl4jWzAtOUEtRmEtZl17Nn0kIiB9IH0sCiAgICAiYW5pbWF0aW9uX3VybCI6IHsgImRpc3BsYXlOYW1lIjogIkFuaW1hdGlvbiBVUkwiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogInN0cmluZyIsICJmb3JtYXQiOiAidXJpIiB9IH0sCiAgICAiZ2FsbGVyeUltYWdlcyI6IHsgImRpc3BsYXlOYW1lIjogIkdhbGxlcnkgSW1hZ2VzIiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJhcnJheSIsICJpdGVtcyI6IHsgInR5cGUiOiAic3RyaW5nIiwgImZvcm1hdCI6ICJ1cmkiIH0gfSB9LAogICAgImRvY3VtZW50VHlwZXMiOiB7ICJkaXNwbGF5TmFtZSI6ICJEb2N1bWVudCBUeXBlcyIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAiYXJyYXkiLCAiaXRlbXMiOiB7ICJ0eXBlIjogInN0cmluZyIgfSB9IH0sCiAgICAiY3VzdG9tTWV0YWRhdGEiOiB7ICJkaXNwbGF5TmFtZSI6ICJDdXN0b20gTWV0YWRhdGEiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogIm9iamVjdCIgfSB9CiAgfQp9";
+        // Simplified schema to reduce contract size
+        return "data:application/json;charset=utf-8;base64,ewogICJ0cmFpdHMiOiB7CiAgICAiYXNzZXRUeXBlIjogeyAiZGlzcGxheU5hbWUiOiAiQXNzZXQgVHlwZSIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAiZW51bSIsICJ2YWx1ZXMiOiBbIkxhbmQiLCAiVmVoaWNsZSIsICJFc3RhdGUiLCAiQ29tbWVyY2lhbEVxdWlwbWVudCJdIH0gfSwKICAgICJpc1ZhbGlkYXRlZCI6IHsgImRpc3BsYXlOYW1lIjogIlZhbGlkYXRpb24gU3RhdHVzIiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJib29sZWFuIiB9IH0sCiAgICAib3BlcmF0aW5nQWdyZWVtZW50IjogeyAiZGlzcGxheU5hbWUiOiAiT3BlcmF0aW5nIEFncmVlbWVudCIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAic3RyaW5nIiwgIm1pbkxlbmd0aCI6IDEgfSB9LAogICAgImRlZmluaXRpb24iOiB7ICJkaXNwbGF5TmFtZSI6ICJEZWZpbml0aW9uIiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJzdHJpbmciLCAibWluTGVuZ3RoIjogMSB9IH0sCiAgICAiY29uZmlndXJhdGlvbiI6IHsgImRpc3BsYXlOYW1lIjogIkNvbmZpZ3VyYXRpb24iLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogInN0cmluZyIsICJtaW5MZW5ndGgiOiAxIH0gfSwKICAgICJ2YWxpZGF0b3IiOiB7ICJkaXNwbGF5TmFtZSI6ICJWYWxpZGF0b3IiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogImFkZHJlc3MiIH0gfSwKICAgICJiZW5lZmljaWFyeSI6IHsgImRpc3BsYXlOYW1lIjogIkJlbmVmaWNpYXJ5IiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJhZGRyZXNzIiB9IH0KICB9Cn0=";
     }
     
     // ERC-7572 Implementation
@@ -735,15 +836,18 @@ contract DeedNFT is
         override(ERC721Upgradeable, ERC721URIStorageUpgradeable) 
         returns (string memory) 
     {
-        // If we have a metadata renderer, use it
+        // Check if metadata renderer is available and try to use it
         if (metadataRenderer != address(0)) {
             try IERC7572(metadataRenderer).tokenURI(address(this), tokenId) returns (string memory renderedURI) {
-                return renderedURI;
+                if (bytes(renderedURI).length > 0) {
+                    return renderedURI;
+                }
             } catch {
-                // Fall back to standard URI if renderer fails
+                // If renderer fails, fall back to standard URI
             }
         }
         
+        // Fall back to standard URI only if metadata renderer is not available or failed
         return ERC721URIStorageUpgradeable.tokenURI(tokenId);
     }
 
@@ -929,6 +1033,16 @@ contract DeedNFT is
     }
 
     /**
+     * @dev Updates the beneficiary trait to match the current owner
+     * @param tokenId ID of the token
+     */
+    function _updateBeneficiaryTrait(uint256 tokenId) internal {
+        require(_exists(tokenId), "!deed");
+        address owner = ownerOf(tokenId);
+        _setTraitValue(tokenId, keccak256("beneficiary"), abi.encode(owner));
+    }
+
+    /**
      * @dev Hook that is called before any token transfer. Implements ERC721C compatibility.
      */
     function _beforeTokenTransfer(
@@ -949,6 +1063,11 @@ contract DeedNFT is
         else if (_enforceRoyalties) {
             address op = _msgSender();
             if (op != from && !_approvedMarketplaces[op]) revert("!mkt");
+        }
+        
+        // Update beneficiary trait on transfer
+        if (from != address(0) && to != address(0)) {
+            _updateBeneficiaryTrait(tokenId);
         }
     }
 

@@ -161,4 +161,16 @@ interface IMetadataRenderer is IERC7572 {
      * @param isAdd Whether to add or remove the contract
      */
     function manageCompatibleDeedContract(address contractAddress, bool isAdd) external;
+
+    /**
+     * @dev Syncs trait updates from DeedNFT
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait that was updated
+     * @param traitValue New value of the trait (empty bytes for removal)
+     */
+    function syncTraitUpdate(
+        uint256 tokenId,
+        bytes32 traitKey,
+        bytes memory traitValue
+    ) external;
 } 

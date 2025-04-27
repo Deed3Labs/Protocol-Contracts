@@ -146,6 +146,13 @@ async function main() {
     console.log("DeedNFT set in MetadataRenderer");
     console.log("Transaction hash:", setDeedNFTInRendererTx.hash);
 
+    // Set MetadataRenderer in DeedNFT
+    console.log("\nSetting MetadataRenderer in DeedNFT...");
+    const setMetadataRendererTx = await deedNFT.setMetadataRenderer(metadataRendererAddress);
+    await setMetadataRendererTx.wait();
+    console.log("MetadataRenderer set in DeedNFT");
+    console.log("Transaction hash:", setMetadataRendererTx.hash);
+
     // Set default images for asset types in MetadataRenderer
     console.log("\nSetting default images for asset types in MetadataRenderer...");
     const assetTypeImages = [

@@ -30,7 +30,7 @@ async function main() {
   // Deploy DeedNFT as an upgradeable contract
   console.log("Deploying DeedNFT...");
   const DeedNFT = await hre.ethers.getContractFactory("DeedNFT");
-  const deedNFT = await hre.upgrades.deployProxy(DeedNFT, [], {
+  const deedNFT = await hre.upgrades.deployProxy(DeedNFT, [validatorAddress, validatorRegistryAddress], {
     initializer: "initialize",
     kind: "uups"
   });
