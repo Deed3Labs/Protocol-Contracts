@@ -331,6 +331,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         return _parseJsonArray(featuresJson);
     }
     
+    // ============ Condition Information Functions ============
     /**
      * @dev Sets condition information for an asset/property
      * @param tokenId ID of the token
