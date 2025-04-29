@@ -62,9 +62,6 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
 
     // ============ Storage Variables ============
     
-    // Base URI for external links
-    string public baseURI;
-    
     // Default images for each asset type and invalidated image
     mapping(uint8 => string) public defaultImageURIs;
     
@@ -89,15 +86,13 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
 
     // ============ Initializer ============
     /**
-     * @dev Initializes the contract with base URI and default images
-     * @param _baseURI Base URI for external links
+     * @dev Initializes the contract with default images
      */
-    function initialize(string memory _baseURI) public initializer {
+    function initialize() public initializer {
         __Ownable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
         
-        baseURI = _baseURI;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         
         // Set default invalidated image
@@ -146,24 +141,43 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         string memory name = bytes(metadata.name).length > 0 ? metadata.name : _generateName(tokenId, assetType);
         string memory imageURI = bytes(metadata.image).length > 0 ? metadata.image : _getImageURI(tokenId, assetType, isValidated);
         string memory description = bytes(metadata.description).length > 0 ? metadata.description : definition;
-        string memory attributes = _generateAttributes(tokenId, assetType, isValidated);
-        string memory properties = bytes(metadata.customMetadata).length > 0 ? 
-            _generateProperties(tokenId, definition, configuration) :
-            _generateProperties(tokenId, definition, configuration);
-        string memory gallery = _generateGallery(tokenId);
         
-        // Generate final JSON with all metadata
-        string memory json = _generateJSON(
-            tokenId,
-            name,
-            description,
-            imageURI,
-            metadata.background_color,
-            metadata.animation_url,
-            gallery,
-            attributes,
-            properties
+        // Start building the JSON
+        string memory json = string(
+            abi.encodePacked(
+                '{"name":"', name,
+                '","description":"', description,
+                '","image":"', imageURI,
+                '","token_id":', tokenId.toString()
+            )
         );
+
+        // Add attributes array
+        string memory attributes = _generateAttributes(tokenId, assetType, isValidated);
+        json = string(abi.encodePacked(json, ',"attributes":[', attributes, ']'));
+
+        // Add properties if present
+        string memory properties = _generateProperties(tokenId, definition, configuration);
+        if (bytes(properties).length > 0) {
+            json = string(abi.encodePacked(json, ',"properties":', properties));
+        }
+
+        // Add gallery if present
+        string memory gallery = _generateGallery(tokenId);
+        if (bytes(gallery).length > 0) {
+            json = string(abi.encodePacked(json, ',', gallery));
+        }
+
+        // Add optional fields if present
+        if (bytes(metadata.background_color).length > 0) {
+            json = string(abi.encodePacked(json, ',"background_color":"', metadata.background_color, '"'));
+        }
+        if (bytes(metadata.animation_url).length > 0) {
+            json = string(abi.encodePacked(json, ',"animation_url":"', metadata.animation_url, '"'));
+        }
+
+        // Close the JSON object
+        json = string(abi.encodePacked(json, '}'));
 
         // Base64 encode the JSON and return as data URI
         return string(
@@ -569,10 +583,11 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     }
 
     // ============ Contract Configuration Functions ============
-    function setBaseURI(string memory _baseURI) external onlyOwner {
-        baseURI = _baseURI;
+    function setDeedNFT(address _deedNFT) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_deedNFT == address(0)) revert Invalid();
+        deedNFT = IDeedNFT(_deedNFT);
     }
-    
+
     function setAssetTypeImageURI(uint8 assetType, string memory imageURI) external onlyOwner {
         require(assetType < 255, "Invalid asset type"); // Reserve 255 for invalidated image
         defaultImageURIs[assetType] = imageURI;
@@ -580,11 +595,6 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     
     function setInvalidatedImageURI(string memory imageURI) external onlyOwner {
         defaultImageURIs[255] = imageURI; // Use 255 for invalidated image
-    }
-    
-    function setDeedNFT(address _deedNFT) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (_deedNFT == address(0)) revert Invalid();
-        deedNFT = IDeedNFT(_deedNFT);
     }
 
     // ============ Internal Functions ============
@@ -664,18 +674,18 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     
     function _generateAttributes(uint256 tokenId, uint8 assetType, bool isValidated) internal view returns (string memory) {
         bytes32[] memory traitKeys = deedNFT.getTraitKeys(tokenId);
-        string[] memory parts = new string[](traitKeys.length + 2);
-        uint256 count = 2;
+        string[] memory parts = new string[](traitKeys.length + 1); // Reduced by 1 since we combine validation status
+        uint256 count = 1;
         
-        // Add required traits first
+        // Add required traits first - combine validation status into one trait
         parts[0] = _createTrait("Asset Type", _assetTypeToString(assetType));
         parts[1] = _createTrait("Status", isValidated ? "Valid" : "Invalid");
         
         // Process remaining traits
         for (uint i = 0; i < traitKeys.length && count < parts.length; i++) {
             bytes32 key = traitKeys[i];
-            // Skip assetType as we've already handled it
-            if (key == keccak256("assetType")) continue;
+            // Skip assetType and isValidated as we've already handled them
+            if (key == keccak256("assetType") || key == keccak256("isValidated")) continue;
             
             bytes memory value = deedNFT.getTraitValue(tokenId, key);
             string memory name = deedNFT.getTraitName(key);
@@ -715,16 +725,16 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     
     function _generateProperties(uint256 tokenId, string memory def, string memory cfg) internal view returns (string memory) {
         TokenMetadata storage m = tokenMetadata[tokenId];
-        string memory props = "{";  // Start with empty object
+        string memory props = "{";
         
         // Add definition and configuration if present
         bool hasProps = false;
         if (bytes(def).length > 0) {
-            props = string(abi.encodePacked(props, '"definition":', def));
+            props = string(abi.encodePacked(props, '"definition":"', def, '"'));
             hasProps = true;
         }
         if (bytes(cfg).length > 0) {
-            props = string(abi.encodePacked(props, hasProps ? ',"configuration":' : '"configuration":', cfg));
+            props = string(abi.encodePacked(props, hasProps ? ',"configuration":"' : '"configuration":"', cfg, '"'));
             hasProps = true;
         }
         

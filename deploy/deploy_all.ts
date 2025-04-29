@@ -70,7 +70,7 @@ async function main() {
     // 2. Deploy MetadataRenderer
     console.log("\n2. Deploying MetadataRenderer...");
     const MetadataRenderer = await hre.ethers.getContractFactory("MetadataRenderer");
-    const metadataRenderer = await hre.upgrades.deployProxy(MetadataRenderer, ["https://api.example.com/metadata/"], {
+    const metadataRenderer = await hre.upgrades.deployProxy(MetadataRenderer, [], {
       initializer: "initialize",
       kind: "uups"
     });
@@ -156,21 +156,30 @@ async function main() {
     // Set default images for asset types in MetadataRenderer
     console.log("\nSetting default images in MetadataRenderer...");
     
+    // Using real IPFS hashes for placeholder images
+    const defaultImages = {
+      land: "ipfs://bafkreihdwdcbvm3ph3hg4bxplmyqhybmuwgiaroxnqmup76ixlqy4pf6gi", // Simple land image
+      vehicle: "ipfs://bafkreig42cjzl6gn4w7q4sltmildfyh3m3wojrjp4egoqvfnxqcrmv5z3i", // Simple vehicle image
+      equipment: "ipfs://bafkreifo4ugpkguglxwalzrznhvip5gqvgzqyqcqvz2lecwubsu7t4qhyq", // Simple equipment image
+      invalidated: "ipfs://bafkreiabag3ztnhe5pg7js4bj6sxuvkz3sdf34utvoyk7q7bhngrgxqxym" // Invalid/placeholder image
+    };
+    
     // Set asset type images
-    await metadataRenderer.setAssetTypeImageURI(0, "ipfs://QmLand");
+    console.log("Setting default images for asset types...");
+    await metadataRenderer.setAssetTypeImageURI(0, defaultImages.land);
     console.log("Set default image for Land (type 0)");
     
-    await metadataRenderer.setAssetTypeImageURI(1, "ipfs://QmVehicle");
+    await metadataRenderer.setAssetTypeImageURI(1, defaultImages.vehicle);
     console.log("Set default image for Vehicle (type 1)");
     
-    await metadataRenderer.setAssetTypeImageURI(2, "ipfs://QmLand"); // Estate uses same as Land
+    await metadataRenderer.setAssetTypeImageURI(2, defaultImages.land); // Estate uses same as Land
     console.log("Set default image for Estate (type 2)");
     
-    await metadataRenderer.setAssetTypeImageURI(3, "ipfs://QmEquipment");
+    await metadataRenderer.setAssetTypeImageURI(3, defaultImages.equipment);
     console.log("Set default image for Equipment (type 3)");
     
     // Set invalidated image
-    await metadataRenderer.setInvalidatedImageURI("ipfs://QmInvalidated");
+    await metadataRenderer.setInvalidatedImageURI(defaultImages.invalidated);
     console.log("Set default image for invalidated tokens");
 
     // 5. Deploy FundManager
