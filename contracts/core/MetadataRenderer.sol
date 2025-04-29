@@ -15,13 +15,12 @@ import {ERC721URIStorageUpgradeable} from "@openzeppelin/contracts-upgradeable/t
 import "../libraries/StringUtils.sol";
 
 // Interfaces
-import "./interfaces/IERC7572.sol";
+import "./interfaces/IMetadataRenderer.sol";
 import "./interfaces/IDeedNFT.sol";
 
 /**
  * @title MetadataRenderer
  * @dev Renders metadata for NFTs with dynamic trait parsing and management.
- *      Implements ERC-7572 for external metadata rendering.
  *      Handles storage and rendering of:
  *      - Default images for invalidated assets and asset types
  *      - Dynamic name generation based on traits
@@ -29,7 +28,7 @@ import "./interfaces/IDeedNFT.sol";
  *      - Asset features, legal info, and custom metadata
  *      - Gallery images and animation URLs
  */
-contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, IERC7572 {
+contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, IMetadataRenderer {
     using StringsUpgradeable for uint256;
     using StringsUpgradeable for address;
     using Base64Upgradeable for bytes;
@@ -44,8 +43,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      * @param name Token name (optional, generated if not set)
      * @param description Token description
      * @param image Primary image URI
-     * @param background_color Background color in hex
-     * @param animation_url URL to animation if applicable
+     * @param background_color Background color for the token
+     * @param animation_url Animation URL for the token
      * @param galleryImages Array of additional image URIs
      * @param documentTypes Array of document type identifiers
      * @param customMetadata JSON string of additional properties
@@ -62,14 +61,12 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     }
 
     // ============ Storage Variables ============
+    
     // Base URI for external links
     string public baseURI;
     
-    // Default images for each asset type
-    mapping(uint8 => string) public assetTypeImageURIs;
-    
-    // Fallback image for invalidated assets
-    string public invalidatedImageURI;
+    // Default images for each asset type and invalidated image
+    mapping(uint8 => string) public defaultImageURIs;
     
     // Mapping of token ID to its metadata
     mapping(uint256 => TokenMetadata) private tokenMetadata;
@@ -80,22 +77,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     // Registry of compatible DeedNFT contracts
     mapping(address => bool) public compatibleDeedContracts;
     address[] public deedContractsList;
-
-    // ============ Events ============
-    event TokenMetadataUpdated(uint256 indexed tokenId);
-    event TokenGalleryUpdated(uint256 indexed tokenId);
-    event TokenCustomMetadataUpdated(uint256 indexed tokenId);
-    event CompatibleDeedContractAdded(address indexed contractAddress);
-    event CompatibleDeedContractRemoved(address indexed contractAddress);
-    event MetadataInitialized(uint256 indexed tokenId, string ipfsHash);
-    event MetadataSynced(uint256 indexed tokenId, bytes32 indexed traitKey, bytes value);
     
-    // ============ Errors ============
-    error Unauthorized();      // Caller lacks necessary permissions
-    error Invalid();          // Combined InvalidTokenId, InvalidJson, InvalidContract, InvalidAddress
-    error Empty();            // Required input is empty
-    error Exists();           // Item already exists (e.g., contract already registered)
-
     // ============ Modifiers ============
     /**
      * @dev Ensures caller is owner, validator, or token owner
@@ -123,29 +105,32 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         
         // Set default invalidated image
-        invalidatedImageURI = "ipfs://Qm";
+        defaultImageURIs[255] = "ipfs://Qm";
         
         // Set default asset type images - Land/Estate share same image
-        assetTypeImageURIs[0] = "ipfs://Qm1"; // Land
-        assetTypeImageURIs[1] = "ipfs://Qm2"; // Vehicle
-        assetTypeImageURIs[2] = assetTypeImageURIs[0]; // Estate uses Land image
-        assetTypeImageURIs[3] = "ipfs://Qm3"; // Equipment
+        defaultImageURIs[0] = "ipfs://Qm1"; // Land
+        defaultImageURIs[1] = "ipfs://Qm2"; // Vehicle
+        defaultImageURIs[2] = defaultImageURIs[0]; // Estate uses Land image
+        defaultImageURIs[3] = "ipfs://Qm3"; // Equipment
     }
 
     // ============ Core Metadata Functions ============
     /**
-     * @dev Implements ERC-7572 tokenURI function
-     * @param tokenContract Address of the token contract
+     * @dev Returns the metadata URI for a token
      * @param tokenId ID of the token
      * @return URI containing the token metadata in JSON format
      * @notice This function combines stored metadata with dynamic traits from DeedNFT
      *         to generate a complete metadata JSON compatible with marketplaces
      */
-    function tokenURI(address tokenContract, uint256 tokenId) external view override returns (string memory) {
-        if (!isCompatibleDeedContract(tokenContract)) revert Invalid();
+    function tokenURI(uint256 tokenId) external view override returns (string memory) {
+        // Verify DeedNFT contract is set
+        if (address(deedNFT) == address(0)) revert Invalid();
+        
+        // Verify token exists
+        if (!_exists(tokenId)) revert Invalid();
         
         // Get asset type from token
-        bytes memory assetTypeBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("assetType"));
+        bytes memory assetTypeBytes = deedNFT.getTraitValue(tokenId, keccak256("assetType"));
         if (assetTypeBytes.length == 0) {
             return ""; // Invalid token
         }
@@ -154,11 +139,11 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         uint8 assetType = uint8(assetTypeValue);
         
         // Get validation status
-        (bool isValidated, /* address validator */) = IDeedNFT(tokenContract).getValidationStatus(tokenId);
+        (bool isValidated, /* address validator */) = deedNFT.getValidationStatus(tokenId);
         
         // Get definition and configuration
-        bytes memory definitionBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("definition"));
-        bytes memory configurationBytes = IDeedNFT(tokenContract).getTraitValue(tokenId, keccak256("configuration"));
+        bytes memory definitionBytes = deedNFT.getTraitValue(tokenId, keccak256("definition"));
+        bytes memory configurationBytes = deedNFT.getTraitValue(tokenId, keccak256("configuration"));
         
         string memory definition = definitionBytes.length > 0 ? abi.decode(definitionBytes, (string)) : "";
         string memory configuration = configurationBytes.length > 0 ? abi.decode(configurationBytes, (string)) : "";
@@ -216,7 +201,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             } else if (traitKey == keccak256("customMetadata")) {
                 delete tokenMetadata[tokenId].customMetadata;
                 emit TokenCustomMetadataUpdated(tokenId);
-    }
+            }
             return;
         }
 
@@ -296,7 +281,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                 features[i],
                 '"'
             ));
-    }
+        }
         featuresJson = string(abi.encodePacked(featuresJson, ']}}'));
         
         // Store in custom metadata
@@ -321,7 +306,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         string memory propertiesJson = _extractJsonField(customMetadata, "properties");
         if (bytes(propertiesJson).length == 0) {
             return new string[](0);
-            }
+        }
         
         string memory featuresJson = _extractJsonField(propertiesJson, "features");
         if (bytes(featuresJson).length == 0) {
@@ -458,7 +443,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         for (uint i = 0; i < restrictions.length; i++) {
             if (i > 0) restrictionsJson = string(abi.encodePacked(restrictionsJson, ","));
             restrictionsJson = string(abi.encodePacked(restrictionsJson, '"', restrictions[i], '"'));
-                    }
+        }
         restrictionsJson = string(abi.encodePacked(restrictionsJson, "]"));
         
         // Create legal info JSON object
@@ -477,7 +462,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         tokenMetadata[tokenId].customMetadata = legalJson;
         
             emit TokenCustomMetadataUpdated(tokenId);
-        }
+    }
 
     /**
      * @dev Gets legal information for a token
@@ -594,11 +579,12 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     }
     
     function setAssetTypeImageURI(uint8 assetType, string memory imageURI) external onlyOwner {
-        assetTypeImageURIs[assetType] = imageURI;
+        require(assetType < 255, "Invalid asset type"); // Reserve 255 for invalidated image
+        defaultImageURIs[assetType] = imageURI;
     }
     
     function setInvalidatedImageURI(string memory imageURI) external onlyOwner {
-        invalidatedImageURI = imageURI;
+        defaultImageURIs[255] = imageURI; // Use 255 for invalidated image
     }
     
     function setDeedNFT(address _deedNFT) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -805,10 +791,10 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     
     function _getImageURI(uint256 tokenId, uint8 assetType, bool isValidated) internal view returns (string memory) {
         TokenMetadata storage metadata = tokenMetadata[tokenId];
-        if (!isValidated) return invalidatedImageURI;
+        if (!isValidated) return defaultImageURIs[255]; // Use 255 for invalidated image
         if (bytes(metadata.image).length > 0) return metadata.image;
         if (metadata.galleryImages.length > 0) return metadata.galleryImages[0];
-        return assetTypeImageURIs[assetType];
+        return defaultImageURIs[assetType];
     }
     
     // ============ JSON Parsing Functions ============
@@ -858,13 +844,13 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                 pos++;
                 while (pos < bytes(json).length && bytes(json)[pos] != '"') {
                     pos++;
-        }
+                }
                 uint256 end = pos;
                 
                 bytes memory item = new bytes(end - start);
                 for (uint i = 0; i < end - start; i++) {
                     item[i] = bytes(json)[start + i];
-        }
+                }
                 
                 result[count++] = string(item);
             }
@@ -909,7 +895,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                 }
             }
             if (found) return i;
-    }
+        }
 
         return 0;
     }

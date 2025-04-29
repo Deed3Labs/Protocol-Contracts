@@ -16,7 +16,6 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 // External validator and registry interfaces
 import "./interfaces/IValidator.sol";
 import "./interfaces/IValidatorRegistry.sol";
-import "./interfaces/IERC7572.sol";
 import "./interfaces/IFundManager.sol";
 
 // Import ICreatorToken interface for reference
@@ -838,7 +837,7 @@ contract DeedNFT is
     {
         // Check if metadata renderer is available and try to use it
         if (metadataRenderer != address(0)) {
-            try IERC7572(metadataRenderer).tokenURI(address(this), tokenId) returns (string memory renderedURI) {
+            try IMetadataRenderer(metadataRenderer).tokenURI(tokenId) returns (string memory renderedURI) {
                 if (bytes(renderedURI).length > 0) {
                     return renderedURI;
                 }
