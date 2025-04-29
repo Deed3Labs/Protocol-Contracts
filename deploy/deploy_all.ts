@@ -155,20 +155,23 @@ async function main() {
 
     // Set default images for asset types in MetadataRenderer
     console.log("\nSetting default images in MetadataRenderer...");
-    const defaultImages = {
-      "assetType_0": "ipfs://QmLand",
-      "assetType_1": "ipfs://QmVehicle",
-      "assetType_2": "ipfs://QmLand", // Estate (uses same as Land)
-      "assetType_3": "ipfs://QmEquipment",
-      "invalidated": "ipfs://QmInvalidated"
-    };
     
-    for (const [key, uri] of Object.entries(defaultImages)) {
-      const setImageTx = await metadataRenderer.setDefaultImageURI(key, uri);
-      await setImageTx.wait();
-      console.log(`Set default image for ${key}`);
-      console.log("Transaction hash:", setImageTx.hash);
-    }
+    // Set asset type images
+    await metadataRenderer.setAssetTypeImageURI(0, "ipfs://QmLand");
+    console.log("Set default image for Land (type 0)");
+    
+    await metadataRenderer.setAssetTypeImageURI(1, "ipfs://QmVehicle");
+    console.log("Set default image for Vehicle (type 1)");
+    
+    await metadataRenderer.setAssetTypeImageURI(2, "ipfs://QmLand"); // Estate uses same as Land
+    console.log("Set default image for Estate (type 2)");
+    
+    await metadataRenderer.setAssetTypeImageURI(3, "ipfs://QmEquipment");
+    console.log("Set default image for Equipment (type 3)");
+    
+    // Set invalidated image
+    await metadataRenderer.setInvalidatedImageURI("ipfs://QmInvalidated");
+    console.log("Set default image for invalidated tokens");
 
     // 5. Deploy FundManager
     console.log("\n5. Deploying FundManager...");

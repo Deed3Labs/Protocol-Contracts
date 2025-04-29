@@ -227,26 +227,6 @@ interface IMetadataRenderer {
     function setDeedNFT(address deedNFT) external;
 
     /**
-     * @dev Checks if a contract is compatible
-     * @param contractAddress Address to check
-     * @return Whether the contract is compatible
-     */
-    function isCompatibleDeedContract(address contractAddress) external view returns (bool);
-
-    /**
-     * @dev Gets all compatible DeedNFT contracts
-     * @return Array of compatible DeedNFT contract addresses
-     */
-    function getCompatibleDeedContracts() external view returns (address[] memory);
-
-    /**
-     * @dev Manages compatible DeedNFT contracts
-     * @param contractAddress Address of the contract
-     * @param isAdd Whether to add or remove the contract
-     */
-    function manageCompatibleDeedContract(address contractAddress, bool isAdd) external;
-
-    /**
      * @dev Syncs trait updates from DeedNFT
      * @param tokenId ID of the token
      * @param traitKey Key of the trait that was updated
