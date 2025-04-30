@@ -45,6 +45,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      * @param image Primary image URI
      * @param background_color Background color for the token
      * @param animation_url Animation URL for the token
+     * @param external_link External URL for the token (e.g., website, marketplace listing)
      * @param galleryImages Array of additional image URIs
      * @param documentTypes Array of document type identifiers
      * @param customMetadata JSON string of additional properties
@@ -55,6 +56,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         string image;
         string background_color;
         string animation_url;
+        string external_link;
         string[] galleryImages;
         string[] documentTypes;
         string customMetadata;
@@ -64,6 +66,9 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     
     // Default images for each asset type and invalidated image
     mapping(uint8 => string) public defaultImageURIs;
+    
+    // Default background color for each asset type
+    mapping(uint8 => string) public defaultBackgroundColors;
     
     // Mapping of token ID to its metadata
     mapping(uint256 => TokenMetadata) private tokenMetadata;
@@ -533,7 +538,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                     break;
                 }
             }
-                } else {
+        } else {
             // Add document
             deedNFT.setTrait(tokenId, abi.encodePacked(documentKey), abi.encode(documentURI), 1); // 1 = string type
             
@@ -593,8 +598,34 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         defaultImageURIs[assetType] = imageURI;
     }
     
+    function setAssetTypeBackgroundColor(uint8 assetType, string memory backgroundColor) external onlyOwner {
+        require(assetType < 255, "Invalid asset type"); // Reserve 255 for invalidated image
+        defaultBackgroundColors[assetType] = backgroundColor;
+    }
+    
     function setInvalidatedImageURI(string memory imageURI) external onlyOwner {
         defaultImageURIs[255] = imageURI; // Use 255 for invalidated image
+    }
+
+    // ============ Animation URL and External Link Management ============
+    function setTokenAnimationURL(uint256 tokenId, string memory animationURL) external onlyOwnerOrValidator(tokenId) {
+        if (!_exists(tokenId)) revert Invalid();
+        tokenMetadata[tokenId].animation_url = animationURL;
+        emit TokenMetadataUpdated(tokenId);
+    }
+
+    function setTokenExternalLink(uint256 tokenId, string memory externalLink) external onlyOwnerOrValidator(tokenId) {
+        if (!_exists(tokenId)) revert Invalid();
+        tokenMetadata[tokenId].external_link = externalLink;
+        emit TokenMetadataUpdated(tokenId);
+    }
+
+    function getTokenAnimationURL(uint256 tokenId) external view returns (string memory) {
+        return tokenMetadata[tokenId].animation_url;
+    }
+
+    function getTokenExternalLink(uint256 tokenId) external view returns (string memory) {
+        return tokenMetadata[tokenId].external_link;
     }
 
     // ============ Internal Functions ============
@@ -684,8 +715,14 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         // Process remaining traits
         for (uint i = 0; i < traitKeys.length && count < parts.length; i++) {
             bytes32 key = traitKeys[i];
-            // Skip assetType and isValidated as we've already handled them
-            if (key == keccak256("assetType") || key == keccak256("isValidated")) continue;
+            // Skip assetType, isValidated, definition, configuration, background_color, animation_url, and external_link
+            if (key == keccak256("assetType") || 
+                key == keccak256("isValidated") ||
+                key == keccak256("definition") ||
+                key == keccak256("configuration") ||
+                key == keccak256("background_color") ||
+                key == keccak256("animation_url") ||
+                key == keccak256("external_link")) continue;
             
             bytes memory value = deedNFT.getTraitValue(tokenId, key);
             string memory name = deedNFT.getTraitName(key);
@@ -763,7 +800,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         string memory gallery,
         string memory attributes,
         string memory properties
-    ) internal pure returns (string memory) {
+    ) internal view returns (string memory) {
         // Start with required fields
         string memory json = string(
             abi.encodePacked(
@@ -771,7 +808,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                 '","description":"', description,
                 '","image":"', imageURI,
                 '","token_id":', tokenId.toString(),
-                ',"attributes":[', attributes, ']'
+                '","background_color":"', backgroundColor,
+                '","attributes":[', attributes, ']'
             )
         );
 
@@ -782,11 +820,11 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         if (bytes(gallery).length > 0) {
             json = string(abi.encodePacked(json, ',"gallery":', gallery));
         }
-        if (bytes(backgroundColor).length > 0) {
-            json = string(abi.encodePacked(json, ',"background_color":"', backgroundColor, '"'));
-        }
         if (bytes(animationUrl).length > 0) {
             json = string(abi.encodePacked(json, ',"animation_url":"', animationUrl, '"'));
+        }
+        if (bytes(tokenMetadata[tokenId].external_link).length > 0) {
+            json = string(abi.encodePacked(json, ',"external_url":"', tokenMetadata[tokenId].external_link, '"'));
         }
 
         return string(abi.encodePacked(json, '}'));

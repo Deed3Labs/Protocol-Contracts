@@ -178,31 +178,7 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @dev Gets the trait metadata URI
      * @return URI of the trait metadata
      */
-    function getTraitMetadataURI() external view returns (string memory);
-
-    /**
-     * @dev Sets a string trait value for a token
-     * @param tokenId ID of the token
-     * @param traitName Name of the trait (e.g., "color", "size", etc.)
-     * @param value String value of the trait
-     */
-    function setStringTrait(uint256 tokenId, string memory traitName, string memory value) external;
-
-    /**
-     * @dev Sets a numeric trait value for a token
-     * @param tokenId ID of the token
-     * @param traitName Name of the trait (e.g., "level", "score", etc.)
-     * @param value Numeric value of the trait
-     */
-    function setNumericTrait(uint256 tokenId, string memory traitName, uint256 value) external;
-
-    /**
-     * @dev Sets a boolean trait value for a token
-     * @param tokenId ID of the token
-     * @param traitName Name of the trait (e.g., "isRare", "isLimited", etc.)
-     * @param value Boolean value of the trait
-     */
-    function setBooleanTrait(uint256 tokenId, string memory traitName, bool value) external;
+    function getTraitMetadataURI() external pure returns (string memory);
 
     /**
      * @dev Sets a trait value with flexible input types

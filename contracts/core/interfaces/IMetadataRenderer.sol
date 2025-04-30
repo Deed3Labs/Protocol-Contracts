@@ -227,6 +227,34 @@ interface IMetadataRenderer {
     function setDeedNFT(address deedNFT) external;
 
     /**
+     * @dev Sets the animation URL for a token
+     * @param tokenId ID of the token
+     * @param animationURL URL of the animation
+     */
+    function setTokenAnimationURL(uint256 tokenId, string memory animationURL) external;
+
+    /**
+     * @dev Sets the external link for a token
+     * @param tokenId ID of the token
+     * @param externalLink External URL for the token
+     */
+    function setTokenExternalLink(uint256 tokenId, string memory externalLink) external;
+
+    /**
+     * @dev Gets the animation URL for a token
+     * @param tokenId ID of the token
+     * @return Animation URL as a string
+     */
+    function getTokenAnimationURL(uint256 tokenId) external view returns (string memory);
+
+    /**
+     * @dev Gets the external link for a token
+     * @param tokenId ID of the token
+     * @return External URL as a string
+     */
+    function getTokenExternalLink(uint256 tokenId) external view returns (string memory);
+
+    /**
      * @dev Syncs trait updates from DeedNFT
      * @param tokenId ID of the token
      * @param traitKey Key of the trait that was updated

@@ -4,6 +4,7 @@ pragma solidity ^0.8.29;
 // OpenZeppelin Upgradeable Contracts
 import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import {ERC721URIStorageUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
+import {ERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
@@ -35,6 +36,7 @@ contract DeedNFT is
     Initializable,
     ERC721Upgradeable,
     ERC721URIStorageUpgradeable,
+    ERC721EnumerableUpgradeable,
     AccessControlUpgradeable,
     PausableUpgradeable,
     UUPSUpgradeable,
@@ -605,51 +607,6 @@ contract DeedNFT is
     }
 
     /**
-     * @dev Helper function to set string trait using human-readable name
-     * @param tokenId ID of the token
-     * @param traitName Name of the trait
-     * @param value String value of the trait
-     */
-    function setStringTrait(
-        uint256 tokenId,
-        string memory traitName,
-        string memory value
-    ) external onlyValidatorOrOwner(tokenId) {
-        bytes32 key = keccak256(bytes(traitName));
-        _setTraitValue(tokenId, key, abi.encode(value));
-    }
-
-    /**
-     * @dev Helper function to set numeric trait using human-readable name
-     * @param tokenId ID of the token
-     * @param traitName Name of the trait
-     * @param value Numeric value of the trait
-     */
-    function setNumericTrait(
-        uint256 tokenId,
-        string memory traitName,
-        uint256 value
-    ) external onlyValidatorOrOwner(tokenId) {
-        bytes32 key = keccak256(bytes(traitName));
-        _setTraitValue(tokenId, key, abi.encode(value));
-    }
-
-    /**
-     * @dev Helper function to set boolean trait using human-readable name
-     * @param tokenId ID of the token
-     * @param traitName Name of the trait
-     * @param value Boolean value of the trait
-     */
-    function setBooleanTrait(
-        uint256 tokenId,
-        string memory traitName,
-        bool value
-    ) external onlyValidatorOrOwner(tokenId) {
-        bytes32 key = keccak256(bytes(traitName));
-        _setTraitValue(tokenId, key, abi.encode(value));
-    }
-
-    /**
      * @dev Removes a trait from a token using human-readable name
      * @param tokenId ID of the token
      * @param traitName Name of the trait to remove
@@ -858,7 +815,7 @@ contract DeedNFT is
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(ERC721Upgradeable, ERC721URIStorageUpgradeable, AccessControlUpgradeable, IERC165Upgradeable)
+        override(ERC721Upgradeable, ERC721URIStorageUpgradeable, ERC721EnumerableUpgradeable, AccessControlUpgradeable, IERC165Upgradeable)
         returns (bool)
     {
         return 
@@ -999,7 +956,11 @@ contract DeedNFT is
      * @dev Burns a token
      * @param tokenId ID of the token to burn
      */
-    function _burn(uint256 tokenId) internal virtual override(ERC721Upgradeable, ERC721URIStorageUpgradeable) {
+    function _burn(uint256 tokenId) 
+        internal 
+        virtual 
+        override(ERC721Upgradeable, ERC721URIStorageUpgradeable) 
+    {
         super._burn(tokenId);
     }
 
@@ -1032,26 +993,16 @@ contract DeedNFT is
     }
 
     /**
-     * @dev Updates the beneficiary trait to match the current owner
-     * @param tokenId ID of the token
-     */
-    function _updateBeneficiaryTrait(uint256 tokenId) internal {
-        require(_exists(tokenId), "!deed");
-        address owner = ownerOf(tokenId);
-        _setTraitValue(tokenId, keccak256("beneficiary"), abi.encode(owner));
-    }
-
-    /**
      * @dev Hook that is called before any token transfer. Implements ERC721C compatibility.
+     * Updates the beneficiary trait to match the new owner during transfers.
      */
     function _beforeTokenTransfer(
         address from,
         address to,
         uint256 tokenId,
         uint256 batchSize
-    ) internal virtual override {
+    ) internal virtual override(ERC721Upgradeable, ERC721EnumerableUpgradeable) {
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
-        
         if (batchSize == 0) return;
         
         // Minting
@@ -1059,22 +1010,16 @@ contract DeedNFT is
         // Burning
         else if (to == address(0)) _activeTokenCount--;
         // Regular transfer with royalty enforcement
-        else if (_enforceRoyalties) {
-            address op = _msgSender();
-            if (op != from && !_approvedMarketplaces[op]) revert("!mkt");
-        }
-        
+        else if (_enforceRoyalties && _msgSender() != from && !_approvedMarketplaces[_msgSender()]) revert("!mkt");
         // Update beneficiary trait on transfer
-        if (from != address(0) && to != address(0)) {
-            _updateBeneficiaryTrait(tokenId);
-        }
+        if (from != address(0) && to != address(0)) _setTraitValue(tokenId, keccak256("beneficiary"), abi.encode(to));
     }
 
     /**
      * @dev Returns the total supply of tokens (accounts for burned tokens)
      * @return The total number of active tokens
      */
-    function totalSupply() public view returns (uint256) {
+    function totalSupply() public view override(ERC721EnumerableUpgradeable) returns (uint256) {
         return _activeTokenCount;
     }
 

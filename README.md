@@ -11,25 +11,24 @@ Key components of the protocol include:
 - **Validator**: A smart contract that verifies the integrity and authenticity of deed data.
 - **ValidatorRegistry**: A registry for managing and tracking validators responsible for validating deeds.
 - **FundManager**: A smart contract for managing, distributing and maintaining security over transaction funds.
-- **MetadataRenderer**: A contract for standardized metadata handling and asset type management.
+- **MetadataRenderer**: A contract for standardized metadata handling with optimized trait management.
 - **Extension Contracts**: Additional functionality for REIT-style fractional ownership and property subdivision.
 
 ## Project Structure
 
 ```
 contracts/
-├── core/               # Core protocol contracts
+├── core/              # Core protocol contracts
+│   ├── interfaces/    # Contract interfaces
 │   ├── DeedNFT.sol    # Main NFT contract
-│   ├── Validator.sol  # Validation logic
+│   ├── Validator.sol  # Deed Validation logic
 │   ├── ValidatorRegistry.sol
 │   ├── FundManager.sol
-│   ├── MetadataRenderer.sol
-│   ├── interfaces/    # Core contract interfaces
-│   └── templates/     # Contract templates
+│   └── MetadataRenderer.sol
 ├── extensions/        # Extension contracts
 │   ├── Fractionalize.sol
 │   └── Subdivide.sol
-└── libraries/        # Shared libraries
+└── libraries/         # Shared libraries
 ```
 
 ## Asset Types
@@ -113,32 +112,45 @@ The `FundManager` contract is dedicated to managing funds associated with proper
 
 The `MetadataRenderer` contract is responsible for generating and managing token metadata in a standardized format:
 
-- **Dynamic Metadata Generation:** Implements ERC-7572 for standardized metadata handling
+- **Dynamic Metadata Generation:** Generates rich, structured metadata for tokens
 - **Asset Type Support:** Handles different asset types with specific metadata structures
 - **Document Management:** Supports storing and retrieving property documents
 - **Gallery Management:** Manages multiple images per token
 - **Feature Tracking:** Maintains lists of features for each token
 - **Custom Metadata:** Allows for custom metadata fields while maintaining standardization
+- **Trait Management:** Handles dynamic trait updates and synchronization with DeedNFT
 
 ## Interface Contracts
 
-### 1. IValidator
+### 1. IDeedNFT
+
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IDeedNFT.sol)
+
+Defines the interface for the core DeedNFT functionality, including trait management, validation, and asset operations.
+
+### 2. IValidator
 
 [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IValidator.sol)
 
 Defines the interface for validator functionality, outlining the functions that any validator contract must implement to interact with the protocol.
 
-### 2. IValidatorRegistry
+### 3. IValidatorRegistry
 
 [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IValidatorRegistry.sol)
 
 Specifies the interface for the validator registry, ensuring that implementations provide necessary registry management functions.
 
-### 3. IMetadataRenderer
+### 4. IMetadataRenderer
 
 [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IMetadataRenderer.sol)
 
-Defines the interface for metadata rendering functionality, implementing ERC-7572 for standardized metadata handling.
+Defines the interface for metadata rendering functionality, including trait synchronization and metadata generation.
+
+### 5. IFundManager
+
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IFundManager.sol)
+
+Specifies the interface for fund management operations, including commission handling and fund distribution.
 
 ## Extension Contracts
 
@@ -195,7 +207,6 @@ A critical part of the Deed Protocol is its upgradability via proxy contracts. T
 
 ### Metadata & Documentation Standards
 - **Standard Compliance:**
-  - ERC-7572 for standardized metadata handling
   - ERC-7496 for dynamic trait support
 - **Document Management:**
   - Operating agreement storage and validation
