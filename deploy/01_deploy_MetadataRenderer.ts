@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
-import { MetadataRenderer } from "../typechain-types";
-import { saveDeployment } from "./helpers";
+import { MetadataRenderer__factory } from "../typechain-types/factories/contracts/core/MetadataRenderer__factory";
+import { saveDeployment, getDeployment } from "./helpers";
 
 async function main() {
   // Get the hardhat runtime environment
@@ -14,10 +14,17 @@ async function main() {
   const network = await hre.ethers.provider.getNetwork();
   console.log("Deploying to network:", network.name);
 
+  // Get ValidatorRegistry address from saved deployments
+  const validatorRegistryDeployment = getDeployment(network.name, "ValidatorRegistry");
+  if (!validatorRegistryDeployment) {
+    throw new Error("ValidatorRegistry deployment not found");
+  }
+  const validatorRegistryAddress = validatorRegistryDeployment.address;
+
   // Deploy MetadataRenderer as an upgradeable contract
   console.log("Deploying MetadataRenderer...");
   const MetadataRenderer = await hre.ethers.getContractFactory("MetadataRenderer");
-  const metadataRenderer = await hre.upgrades.deployProxy(MetadataRenderer, [], {
+  const metadataRenderer = await hre.upgrades.deployProxy(MetadataRenderer, ["https://api.example.com/metadata/"], {
     initializer: "initialize",
     kind: "uups"
   });
@@ -28,12 +35,12 @@ async function main() {
 
   // Setup initial roles and configuration
   const ADMIN_ROLE = await metadataRenderer.ADMIN_ROLE();
-  await metadataRenderer.grantRole(ADMIN_ROLE, deployer.address);
-  console.log("Granted ADMIN_ROLE to deployer");
+  const REGISTRY_ADMIN_ROLE = await metadataRenderer.REGISTRY_ADMIN_ROLE();
 
-  // Set base URI (replace with your actual base URI)
-  await metadataRenderer.setBaseURI("https://your-base-uri.com/");
-  console.log("Base URI set");
+  // Grant roles to deployer
+  await metadataRenderer.grantRole(ADMIN_ROLE, deployer.address);
+  await metadataRenderer.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
+  console.log("Granted roles to deployer");
 
   // Save deployment information
   const metadataRendererAbi = metadataRenderer.interface.formatJson();

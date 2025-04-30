@@ -298,7 +298,7 @@ This project uses TypeScript and Hardhat for development. The main configuration
 
 - `npx hardhat compile`: Compile the contracts
 - `npx hardhat test`: Run the test suite
-- `npx hardhat run scripts/deploy.ts`: Deploy contracts
+- `npx hardhat run scripts/deploy-all.ts`: Deploy all contracts
 - `npx hardhat run scripts/verify.ts`: Verify contracts on Etherscan
 
 ### Testing

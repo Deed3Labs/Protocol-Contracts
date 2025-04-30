@@ -26,10 +26,16 @@ async function main() {
   const validatorRegistryAddress = await validatorRegistry.getAddress();
   console.log("ValidatorRegistry deployed to:", validatorRegistryAddress);
 
-  // Setup initial roles
+  // Setup initial roles and configuration
   const REGISTRY_ADMIN_ROLE = await validatorRegistry.REGISTRY_ADMIN_ROLE();
+  const VALIDATOR_ROLE = await validatorRegistry.VALIDATOR_ROLE();
+  const OPERATOR_ROLE = await validatorRegistry.OPERATOR_ROLE();
+
+  // Grant roles to deployer
   await validatorRegistry.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
-  console.log("Granted REGISTRY_ADMIN_ROLE to deployer");
+  await validatorRegistry.grantRole(VALIDATOR_ROLE, deployer.address);
+  await validatorRegistry.grantRole(OPERATOR_ROLE, deployer.address);
+  console.log("Granted roles to deployer");
 
   // Save deployment information
   const validatorRegistryAbi = validatorRegistry.interface.formatJson();

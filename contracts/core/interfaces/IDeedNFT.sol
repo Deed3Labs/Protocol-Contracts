@@ -11,6 +11,20 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol"
  *      Consolidates functionality needed by FundManager, Fractionalize, and Subdivide contracts.
  */
 interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
+    // ============ Errors ============
+    
+    /// @dev Thrown when an operation is attempted on a non-existent token
+    error TokenDoesNotExist();
+    
+    /// @dev Thrown when an operation is attempted by an unauthorized address
+    error Unauthorized();
+    
+    /// @dev Thrown when an invalid parameter is provided
+    error InvalidParameter();
+    
+    /// @dev Thrown when a token is already validated
+    error AlreadyValidated();
+
     // ============ Enums ============
     
     /**
@@ -106,14 +120,6 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
     function tokenURI(uint256 tokenId) external view returns (string memory);
     
     /**
-     * @dev Gets the value of a trait for a specific token
-     * @param tokenId ID of the token
-     * @param traitKey Key of the trait to query
-     * @return Trait value as bytes
-     */
-    function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory);
-    
-    /**
      * @dev Returns the validation status of a token
      * @param tokenId ID of the token
      * @return isValidated Whether the token is validated
@@ -135,13 +141,105 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @return royaltyAmount Amount of royalties to be paid
      */
     function royaltyInfo(uint256 tokenId, uint256 salePrice) external view returns (address receiver, uint256 royaltyAmount);
+
+    // ============ Trait Functions ============
+    
+    /**
+     * @dev Gets the value of a trait for a token
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait to query
+     * @return Value of the trait as bytes
+     */
+    function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory);
+
+    /**
+     * @dev Gets multiple trait values for a token
+     * @param tokenId ID of the token
+     * @param traitKeys Array of trait keys to query
+     * @return Array of trait values as bytes
+     */
+    function getTraitValues(uint256 tokenId, bytes32[] calldata traitKeys) external view returns (bytes[] memory);
+
+    /**
+     * @dev Gets all trait keys for a token
+     * @param tokenId ID of the token
+     * @return Array of trait keys
+     */
+    function getTraitKeys(uint256 tokenId) external view returns (bytes32[] memory);
+
+    /**
+     * @dev Gets the name of a trait
+     * @param traitKey Key of the trait
+     * @return Name of the trait
+     */
+    function getTraitName(bytes32 traitKey) external view returns (string memory);
+
+    /**
+     * @dev Gets the trait metadata URI
+     * @return URI of the trait metadata
+     */
+    function getTraitMetadataURI() external view returns (string memory);
+
+    /**
+     * @dev Sets a string trait value for a token
+     * @param tokenId ID of the token
+     * @param traitName Name of the trait (e.g., "color", "size", etc.)
+     * @param value String value of the trait
+     */
+    function setStringTrait(uint256 tokenId, string memory traitName, string memory value) external;
+
+    /**
+     * @dev Sets a numeric trait value for a token
+     * @param tokenId ID of the token
+     * @param traitName Name of the trait (e.g., "level", "score", etc.)
+     * @param value Numeric value of the trait
+     */
+    function setNumericTrait(uint256 tokenId, string memory traitName, uint256 value) external;
+
+    /**
+     * @dev Sets a boolean trait value for a token
+     * @param tokenId ID of the token
+     * @param traitName Name of the trait (e.g., "isRare", "isLimited", etc.)
+     * @param value Boolean value of the trait
+     */
+    function setBooleanTrait(uint256 tokenId, string memory traitName, bool value) external;
+
+    /**
+     * @dev Sets a trait value with flexible input types
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait (either bytes32 or string)
+     * @param traitValue Value of the trait (supports various types)
+     * @param valueType Type of the value (0=bytes, 1=string, 2=uint256, 3=bool)
+     */
+    function setTrait(uint256 tokenId, bytes memory traitKey, bytes memory traitValue, uint8 valueType) external;
+
+    /**
+     * @dev Removes a trait from a token
+     * @param tokenId ID of the token
+     * @param traitName Name of the trait to remove
+     */
+    function removeTrait(uint256 tokenId, string memory traitName) external;
+
+    /**
+     * @dev Internal function to remove a trait from a token
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait to remove
+     */
+    function _removeTrait(uint256 tokenId, bytes32 traitKey) external;
+
+    /**
+     * @dev Internal function to remove a trait value and handle synchronization
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait to remove
+     */
+    function _removeTraitValue(uint256 tokenId, bytes32 traitKey) external;
+
+    // ============ Transfer Functions ============
     
     /**
      * @dev Sets the security policy for ERC721C
      */
     function setToDefaultSecurityPolicy() external;
-    
-    // ============ Transfer Functions ============
     
     /**
      * @dev Transfers a token between addresses
