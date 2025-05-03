@@ -388,9 +388,9 @@ contract DeedNFT is
         );
         
         // Get default operating agreement from validator
-        string memory operatingAgreement = IValidator(selectedValidator).defaultOperatingAgreement();
+        string memory operatingAgreementBase = IValidator(selectedValidator).defaultOperatingAgreement();
         require(
-            bytes(operatingAgreement).length > 0,
+            bytes(operatingAgreementBase).length > 0,
             "!agr"
         );
 
@@ -413,6 +413,9 @@ contract DeedNFT is
         if (bytes(uri).length > 0) {
             _setTokenURI(tokenId, uri);
         }
+
+        // Construct the full operating agreement URI by appending tokenId
+        string memory operatingAgreement = string(abi.encodePacked(operatingAgreementBase, tokenId.toString()));
 
         // Set base traits
         _setTraitValue(tokenId, keccak256("assetType"), abi.encode(assetType));

@@ -211,23 +211,18 @@ contract Validator is
 
     /**
      * @dev Returns the default operating agreement URI.
-     * @return The default operating agreement as a string, not just the URI.
+     * @return The default operating agreement as a string, constructed from baseUri and tokenId.
      */
     function defaultOperatingAgreement() external view override returns (string memory) {
         // Instead of just returning the URI, we need to return a properly formatted agreement
         // This matches what the new DeedNFT contract expects
-        if (bytes(defaultOperatingAgreementUri).length == 0) {
+        if (bytes(baseUri).length == 0) {
             return "Nominee Trust Agreement v1.0";  // Fallback to ensure non-empty return
         }
         
-        string memory agreementName = operatingAgreements[defaultOperatingAgreementUri];
-        if (bytes(agreementName).length == 0) {
-            // If no name is registered, use the URI itself as the content
-            return defaultOperatingAgreementUri;
-        }
-        
-        // Return a properly formatted operating agreement string that combines name and URI
-        return string(abi.encodePacked(agreementName, " (", defaultOperatingAgreementUri, ")"));
+        // Construct the operating agreement URI using baseUri
+        // The tokenId will be appended by the DeedNFT contract when minting
+        return string(abi.encodePacked(baseUri, "agreements/"));
     }
 
     /**
@@ -493,11 +488,16 @@ contract Validator is
      */
     function _validateOperatingAgreement(string memory agreement) internal view returns (bool) {
         // Check if the operating agreement is registered
-        if (bytes(operatingAgreements[agreement]).length == 0 && 
-            !StringUtils.contains(agreement, defaultOperatingAgreementUri)) {
-            return false;
+        if (bytes(operatingAgreements[agreement]).length > 0) {
+            return true;
         }
-        return true;
+        
+        // Check if the agreement contains the baseUri (for default agreements)
+        if (bytes(baseUri).length > 0 && StringUtils.contains(agreement, baseUri)) {
+            return true;
+        }
+        
+        return false;
     }
 
     /**
