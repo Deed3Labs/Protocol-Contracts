@@ -92,9 +92,14 @@ contract Validator is
     mapping(uint256 => string) public deedMetadata;
 
     /// @notice Mapping of asset types to their validation criteria
-    /// @dev Key: asset type ID, Value: validation criteria JSON string
-    /// @notice Criteria should align with MetadataRenderer property structure
-    mapping(uint256 => string) public validationCriteria;
+    /// @dev Key: asset type ID, Value: struct containing required traits and additional criteria
+    struct ValidationCriteria {
+        string[] requiredTraits;
+        string additionalCriteria;
+        bool requireOperatingAgreement;
+        bool requireDefinition;
+    }
+    mapping(uint256 => ValidationCriteria) public validationCriteria;
 
     /// @notice Mapping to track compatible DeedNFT contracts
     mapping(address => bool) public compatibleDeedNFTs;
@@ -311,16 +316,36 @@ contract Validator is
     }
 
     /**
-     * @dev Sets the validation criteria for an asset type.
-     * @param _assetTypeId The ID of the asset type.
-     * @param _criteria The validation criteria JSON string.
+     * @dev Sets the validation criteria for an asset type
+     * @param assetTypeId ID of the asset type
+     * @param requiredTraits_ Array of required trait names
+     * @param additionalCriteria_ JSON string containing additional validation criteria
+     * @param requireOperatingAgreement_ Whether an operating agreement is required
+     * @param requireDefinition_ Whether a definition is required
      */
-    function setValidationCriteria(uint256 _assetTypeId, string memory _criteria)
-        public
-        onlyRole(CRITERIA_MANAGER_ROLE)
+    function setValidationCriteria(
+        uint256 assetTypeId, 
+        string[] memory requiredTraits_,
+        string memory additionalCriteria_,
+        bool requireOperatingAgreement_,
+        bool requireDefinition_
+    ) 
+        public 
+        onlyRole(CRITERIA_MANAGER_ROLE) 
     {
-        require(bytes(_criteria).length > 0, "Validator: Criteria cannot be empty");
-        validationCriteria[_assetTypeId] = _criteria;
+        validationCriteria[assetTypeId] = ValidationCriteria(
+            requiredTraits_,
+            additionalCriteria_,
+            requireOperatingAgreement_,
+            requireDefinition_
+        );
+        emit ValidationCriteriaUpdated(
+            assetTypeId, 
+            requiredTraits_, 
+            additionalCriteria_,
+            requireOperatingAgreement_,
+            requireDefinition_
+        );
     }
 
     /**
@@ -339,53 +364,27 @@ contract Validator is
     /**
      * @dev Validates a deed NFT
      * @param _tokenId ID of the token to validate
-     * @return Whether the deed is valid
+     * @return Whether the validation was successful
+     * @notice Caller must have VALIDATOR_ROLE and the deed must be from a compatible DeedNFT
      */
     function validateDeed(uint256 _tokenId) external override returns (bool) {
-        require(msg.sender != address(0), "Validator: Invalid caller");
-        require(compatibleDeedNFTs[msg.sender], "Validator: Incompatible DeedNFT");
+        // Check if caller has VALIDATOR_ROLE
+        require(hasRole(VALIDATOR_ROLE, msg.sender), "Validator: Caller must have VALIDATOR_ROLE");
         
-        // Get the asset definition and type from the DeedNFT
-        string memory _definition;
-        uint256 assetTypeId;
+        // Get the DeedNFT contract address from the primary DeedNFT
+        address deedNFTAddress = primaryDeedNFT;
+        require(deedNFTAddress != address(0), "Validator: Primary DeedNFT not set");
         
-        try IDeedNFT(msg.sender).getDeedInfo(_tokenId) returns (
-            IDeedNFT.AssetType assetType,
-            bool /* isValidated */,
-            string memory /* operatingAgreement */,
-            string memory definition,
-            string memory /* configuration */,
-            address /* validator */
-        ) {
-            // Extract the definition and asset type from the returned data
-            _definition = definition;
-            assetTypeId = uint256(assetType);
-        } catch Error(string memory /* reason */) {
-            // If getDeedInfo fails, try to get the definition directly from traits
-            try IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("definition")) returns (bytes memory definitionBytes) {
-                if (definitionBytes.length > 0) {
-                    _definition = abi.decode(definitionBytes, (string));
-                } else {
-                    emit ValidationError(_tokenId, "Failed to retrieve asset definition");
-                    return false;
-                }
-                
-                // Get asset type from traits
-                bytes memory assetTypeBytes = IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("assetType"));
-                if (assetTypeBytes.length > 0) {
-                    assetTypeId = uint256(abi.decode(assetTypeBytes, (IDeedNFT.AssetType)));
-                } else {
-                    emit ValidationError(_tokenId, "Failed to retrieve asset type");
-                    return false;
-                }
-            } catch {
-                emit ValidationError(_tokenId, "Failed to retrieve asset data");
-                return false;
-            }
-        } catch {
-            emit ValidationError(_tokenId, "Failed to retrieve asset data");
+        // Check if the DeedNFT is compatible
+        require(compatibleDeedNFTs[deedNFTAddress], "Validator: Incompatible DeedNFT");
+        
+        // Get the asset type from traits
+        bytes memory assetTypeBytes = IDeedNFT(deedNFTAddress).getTraitValue(_tokenId, keccak256("assetType"));
+        if (assetTypeBytes.length == 0) {
+            emit ValidationError(_tokenId, "Failed to retrieve asset type");
             return false;
         }
+        uint256 assetTypeId = uint256(abi.decode(assetTypeBytes, (IDeedNFT.AssetType)));
         
         // Check if the asset type is supported
         if (!supportedAssetTypes[assetTypeId]) {
@@ -394,14 +393,48 @@ contract Validator is
         }
         
         // Get validation criteria for the asset type
-        string memory _criteria = validationCriteria[assetTypeId];
-        if (bytes(_criteria).length == 0) {
-            emit ValidationError(_tokenId, "No validation criteria for asset type");
-            return false;
+        ValidationCriteria memory criteria = validationCriteria[assetTypeId];
+        
+        // Check operating agreement if required
+        if (criteria.requireOperatingAgreement) {
+            bytes memory agreementBytes = IDeedNFT(deedNFTAddress).getTraitValue(_tokenId, keccak256("operatingAgreement"));
+            if (agreementBytes.length == 0) {
+                emit ValidationError(_tokenId, "Operating agreement is required but not set");
+                return false;
+            }
+            string memory agreement = abi.decode(agreementBytes, (string));
+            if (bytes(agreement).length == 0 || !_validateOperatingAgreement(agreement)) {
+                emit ValidationError(_tokenId, "Invalid operating agreement");
+                return false;
+            }
+        }
+        
+        // Check definition if required
+        if (criteria.requireDefinition) {
+            bytes memory definitionBytes = IDeedNFT(deedNFTAddress).getTraitValue(_tokenId, keccak256("definition"));
+            if (definitionBytes.length == 0) {
+                emit ValidationError(_tokenId, "Definition is required but not set");
+                return false;
+            }
+            string memory definition = abi.decode(definitionBytes, (string));
+            if (bytes(definition).length == 0) {
+                emit ValidationError(_tokenId, "Definition cannot be empty");
+                return false;
+            }
+        }
+        
+        // If no traits required, consider valid
+        if (criteria.requiredTraits.length == 0) {
+            IDeedNFT(deedNFTAddress).updateValidationStatus(_tokenId, true, address(this));
+            emit DeedValidated(_tokenId, true);
+            return true;
         }
         
         // Validate the definition against the criteria
-        bool isValid = _validateDefinition(_tokenId, _definition, _criteria);
+        bool isValid = _validateDefinition(_tokenId);
+        
+        // Update validation status in DeedNFT
+        IDeedNFT(deedNFTAddress).updateValidationStatus(_tokenId, isValid, address(this));
         
         // Emit validation result
         emit DeedValidated(_tokenId, isValid);
@@ -412,175 +445,113 @@ contract Validator is
     /**
      * @dev Validates a definition against criteria
      * @param _tokenId ID of the token
-     * @param _definition Definition to validate
-     * @param _criteria Criteria to validate against
      * @return Whether the definition is valid
      */
-    function _validateDefinition(uint256 _tokenId, string memory _definition, string memory _criteria) internal view returns (bool) {
-        // Check if definition is not empty
-        if (bytes(_definition).length == 0) {
-            return false;
-        }
+    function _validateDefinition(uint256 _tokenId) internal view returns (bool) {
+        // Get the asset type from traits
+        bytes memory assetTypeBytes = IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("assetType"));
+        if (assetTypeBytes.length == 0) return false;
+        uint256 assetTypeId = uint256(abi.decode(assetTypeBytes, (IDeedNFT.AssetType)));
         
-        // Get the asset type from the token ID using getTraitValue
-        uint256 assetTypeId;
+        // Get validation criteria for this asset type
+        ValidationCriteria memory criteria = validationCriteria[assetTypeId];
+        if (criteria.requiredTraits.length == 0) return true; // If no traits required, consider valid
         
-        try IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("assetType")) returns (bytes memory assetTypeBytes) {
-            if (assetTypeBytes.length > 0) {
-                assetTypeId = uint256(abi.decode(assetTypeBytes, (IDeedNFT.AssetType)));
-            } else {
+        // Check each required trait directly from traits
+        for (uint i = 0; i < criteria.requiredTraits.length; i++) {
+            bytes memory traitValue = IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256(bytes(criteria.requiredTraits[i])));
+            if (traitValue.length == 0) {
                 return false;
             }
-        } catch {
-            return false; // If we can't get the asset type, validation fails
+            
+            // Check if the trait value is non-empty
+            if (traitValue.length > 0) {
+                string memory decodedValue = abi.decode(traitValue, (string));
+                if (bytes(decodedValue).length == 0) {
+                    return false;
+                }
+            }
         }
-        
-        // Check if this asset type is supported
-        if (!supportedAssetTypes[assetTypeId]) {
-            return false;
-        }
-        
-        // Get the validation criteria for this asset type
-        string memory criteria = _criteria;
-        if (bytes(criteria).length == 0) {
-            criteria = validationCriteria[assetTypeId];
-        }
-        
-        // If no criteria defined, consider it valid
-        if (bytes(criteria).length == 0) {
-            return true;
-        }
-        
-        // Basic validation - check if definition contains required fields from criteria
-        return _basicValidation(_definition, criteria);
-    }
 
-    /**
-     * @dev Adds a simplified validation function
-     * @param _definition Definition to validate
-     * @param _criteria Criteria to validate against
-     * @return Whether the definition is valid
-     */
-    function _basicValidation(string memory _definition, string memory _criteria) internal pure returns (bool) {
-        // Extract required fields from criteria
-        string[] memory requiredFields = _extractRequiredFields(_criteria);
-        
-        // Check if all required fields exist in definition
-        for (uint i = 0; i < requiredFields.length; i++) {
-            if (!StringUtils.contains(_definition, requiredFields[i])) {
-                return false;
-            }
+        // If additional criteria exist, apply them
+        if (bytes(criteria.additionalCriteria).length > 0) {
+            // TODO: Implement additional criteria validation logic
+            // This could include:
+            // - Value ranges (e.g., year must be between 1900 and current year)
+            // - Format requirements (e.g., VIN must be 17 characters)
+            // - Value relationships (e.g., model must be valid for the given make)
+            // - Custom validation logic
         }
         
         return true;
     }
 
     /**
-     * @dev Extracts required fields from criteria
-     * @param _criteria Criteria to extract fields from
-     * @return Array of required field names
+     * @dev Internal function to validate an operating agreement
+     * @param agreement The operating agreement to validate
+     * @return Whether the agreement is valid
      */
-    function _extractRequiredFields(string memory _criteria) internal pure returns (string[] memory) {
-        // This is a simplified implementation
-        // In production, you would use a proper JSON parsing library
-        
-        // Count "requires" fields
-        uint fieldCount = 0;
-        bytes memory criteriaBytes = bytes(_criteria);
-        
-        for (uint i = 0; i < criteriaBytes.length - 8; i++) {
-            if (
-                criteriaBytes[i] == 'r' &&
-                criteriaBytes[i+1] == 'e' &&
-                criteriaBytes[i+2] == 'q' &&
-                criteriaBytes[i+3] == 'u' &&
-                criteriaBytes[i+4] == 'i' &&
-                criteriaBytes[i+5] == 'r' &&
-                criteriaBytes[i+6] == 'e' &&
-                criteriaBytes[i+7] == 's'
-            ) {
-                fieldCount++;
-            }
+    function _validateOperatingAgreement(string memory agreement) internal view returns (bool) {
+        // Check if the operating agreement is registered
+        if (bytes(operatingAgreements[agreement]).length == 0 && 
+            !StringUtils.contains(agreement, defaultOperatingAgreementUri)) {
+            return false;
         }
-        
-        // Create array for field names
-        string[] memory fields = new string[](fieldCount);
-        fieldCount = 0;
-        
-        // Extract field names (simplified)
-        for (uint i = 0; i < criteriaBytes.length - 8; i++) {
-            if (
-                criteriaBytes[i] == 'r' &&
-                criteriaBytes[i+1] == 'e' &&
-                criteriaBytes[i+2] == 'q' &&
-                criteriaBytes[i+3] == 'u' &&
-                criteriaBytes[i+4] == 'i' &&
-                criteriaBytes[i+5] == 'r' &&
-                criteriaBytes[i+6] == 'e' &&
-                criteriaBytes[i+7] == 's'
-            ) {
-                // Extract field name (simplified)
-                uint j = i + 8;
-                while (j < criteriaBytes.length && criteriaBytes[j] != ':') {
-                    j++;
-                }
-                
-                // Convert to field name without "requires" prefix
-                string memory fieldName = _extractFieldName(string(criteriaBytes), i, j);
-                fields[fieldCount] = fieldName;
-                fieldCount++;
-            }
-        }
-        
-        return fields;
+        return true;
     }
 
     /**
-     * @dev Extracts field name from criteria
-     * @param _str String to extract from
-     * @param _start Start position in the string
-     * @param _end End position in the string
-     * @return Extracted field name
-     */
-    function _extractFieldName(string memory _str, uint _start, uint _end) internal pure returns (string memory) {
-        bytes memory strBytes = bytes(_str);
-        bytes memory result = new bytes(_end - _start - 8); // -8 to remove "requires" prefix
-        
-        for (uint i = 0; i < result.length; i++) {
-            result[i] = strBytes[_start + 8 + i]; // +8 to skip "requires" prefix
-        }
-        
-        return string(result);
-    }
-
-    /**
-     * @dev Sets up field requirements for an asset type
+     * @dev Sets up validation criteria for an asset type
      * @param assetTypeId ID of the asset type
      */
-    function setupFieldRequirements(uint256 assetTypeId) public onlyRole(CRITERIA_MANAGER_ROLE) {
+    function setupValidationCriteria(uint256 assetTypeId) public onlyRole(CRITERIA_MANAGER_ROLE) {
         // Set default validation criteria based on asset type
         if (assetTypeId == uint256(IDeedNFT.AssetType.Land) || assetTypeId == uint256(IDeedNFT.AssetType.Estate)) {
-            validationCriteria[assetTypeId] = '{"requiresCountry":true,"requiresState":true,"requiresCounty":true,"requiresParcelNumber":true,"requiresLegalDescription":true}';
+            string[] memory requiredTraits_ = new string[](5);
+            requiredTraits_[0] = "country";
+            requiredTraits_[1] = "state";
+            requiredTraits_[2] = "county";
+            requiredTraits_[3] = "parcelNumber";
+            requiredTraits_[4] = "legalDescription";
+            setValidationCriteria(
+                assetTypeId, 
+                requiredTraits_, 
+                "",  // additionalCriteria
+                true, // requireOperatingAgreement
+                true  // requireDefinition
+            );
         } 
         else if (assetTypeId == uint256(IDeedNFT.AssetType.Vehicle)) {
-            validationCriteria[assetTypeId] = '{"requiresMake":true,"requiresModel":true,"requiresYear":true,"requiresVin":true}';
+            string[] memory requiredTraits_ = new string[](4);
+            requiredTraits_[0] = "make";
+            requiredTraits_[1] = "model";
+            requiredTraits_[2] = "year";
+            requiredTraits_[3] = "vin";
+            setValidationCriteria(
+                assetTypeId, 
+                requiredTraits_, 
+                "",  // additionalCriteria
+                true, // requireOperatingAgreement
+                true  // requireDefinition
+            );
         }
         else if (assetTypeId == uint256(IDeedNFT.AssetType.CommercialEquipment)) {
-            validationCriteria[assetTypeId] = '{"requiresManufacturer":true,"requiresModel":true,"requiresSerialNumber":true,"requiresYear":true}';
+            string[] memory requiredTraits_ = new string[](4);
+            requiredTraits_[0] = "manufacturer";
+            requiredTraits_[1] = "model";
+            requiredTraits_[2] = "serialNumber";
+            requiredTraits_[3] = "year";
+            setValidationCriteria(
+                assetTypeId, 
+                requiredTraits_, 
+                "",  // additionalCriteria
+                true, // requireOperatingAgreement
+                true  // requireDefinition
+            );
         }
         
         // Enable this asset type
         supportedAssetTypes[assetTypeId] = true;
-    }
-
-    /**
-     * @dev Sets up all standard field requirements for all asset types
-     */
-    function setupAllFieldRequirements() external onlyRole(CRITERIA_MANAGER_ROLE) {
-        setupFieldRequirements(uint256(IDeedNFT.AssetType.Land));
-        setupFieldRequirements(uint256(IDeedNFT.AssetType.Estate));
-        setupFieldRequirements(uint256(IDeedNFT.AssetType.Vehicle));
-        setupFieldRequirements(uint256(IDeedNFT.AssetType.CommercialEquipment));
     }
 
     /**
@@ -688,10 +659,29 @@ contract Validator is
     /**
      * @dev Gets the validation criteria for an asset type
      * @param assetTypeId ID of the asset type
-     * @return Validation criteria as a JSON string
+     * @return requiredTraits_ Array of required trait names
+     * @return additionalCriteria_ JSON string containing additional validation criteria
+     * @return requireOperatingAgreement_ Whether an operating agreement is required
+     * @return requireDefinition_ Whether a definition is required
      */
-    function getValidationCriteria(uint256 assetTypeId) external view override returns (string memory) {
-        return validationCriteria[assetTypeId];
+    function getValidationCriteria(uint256 assetTypeId) 
+        external 
+        view 
+        override 
+        returns (
+            string[] memory requiredTraits_,
+            string memory additionalCriteria_,
+            bool requireOperatingAgreement_,
+            bool requireDefinition_
+        ) 
+    {
+        ValidationCriteria memory criteria = validationCriteria[assetTypeId];
+        return (
+            criteria.requiredTraits,
+            criteria.additionalCriteria,
+            criteria.requireOperatingAgreement,
+            criteria.requireDefinition
+        );
     }
 
     /**
@@ -782,34 +772,5 @@ contract Validator is
         return
             interfaceId == type(IValidator).interfaceId ||
             super.supportsInterface(interfaceId);
-    }
-
-    /**
-     * @dev Clears field requirements for an asset type
-     * @param assetTypeId ID of the asset type
-     */
-    function clearFieldRequirements(uint256 assetTypeId) external onlyRole(ADMIN_ROLE) {
-        // In our simplified implementation, we don't need to do anything complex
-        // Just emit the event to maintain interface compatibility
-        emit FieldRequirementsCleared(assetTypeId);
-    }
-
-    /**
-     * @dev Adds field requirements for an asset type
-     * @param assetTypeId ID of the asset type
-     * @param criteriaFields Array of criteria field names
-     * @param definitionFields Array of definition field names
-     */
-    function addFieldRequirementsBatch(
-        uint256 assetTypeId,
-        string[] memory criteriaFields,
-        string[] memory definitionFields
-    ) external onlyRole(ADMIN_ROLE) {
-        require(criteriaFields.length == definitionFields.length, "Validator: Arrays must have same length");
-        
-        // In our simplified implementation, we just emit events for each field requirement
-        for (uint256 i = 0; i < criteriaFields.length; i++) {
-            emit FieldRequirementAdded(assetTypeId, criteriaFields[i], definitionFields[i]);
-        }
     }
 }

@@ -119,20 +119,32 @@ describe("DeedNFT Comprehensive Tests", function() {
     await validator.setBaseUri("ipfs://metadata/");
     
     // Set up validation criteria for Land
-    await validator.setValidationCriteria(0, JSON.stringify({
-      requiresCountry: true,
-      requiresState: true,
-      requiresCounty: true,
-      requiresParcelNumber: true
-    }));
+    await validator.setValidationCriteria(
+      0, // assetTypeId
+      ["country", "state", "county", "parcelNumber"], // requiredTraits
+      JSON.stringify({
+        requiresCountry: true,
+        requiresState: true,
+        requiresCounty: true,
+        requiresParcelNumber: true
+      }), // additionalCriteria
+      true, // requireOperatingAgreement
+      true  // requireDefinition
+    );
     
     // Set up validation criteria for Vehicle
-    await validator.setValidationCriteria(1, JSON.stringify({
-      requiresMake: true,
-      requiresModel: true,
-      requiresYear: true,
-      requiresVin: true
-    }));
+    await validator.setValidationCriteria(
+      1, // assetTypeId
+      ["make", "model", "year", "vin"], // requiredTraits
+      JSON.stringify({
+        requiresMake: true,
+        requiresModel: true,
+        requiresYear: true,
+        requiresVin: true
+      }), // additionalCriteria
+      true, // requireOperatingAgreement
+      true  // requireDefinition
+    );
     
     // Mint initial deed for testing
     const definition = JSON.stringify({

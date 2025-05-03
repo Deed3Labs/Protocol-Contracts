@@ -32,25 +32,20 @@ interface IValidator is IAccessControlUpgradeable {
     event ValidationError(uint256 indexed tokenId, string errorMessage);
 
     /**
-     * @dev Emitted when a field requirement is added
-     * @param assetTypeId ID of the asset type
-     * @param criteriaField Name of the criteria field
-     * @param definitionField Name of the definition field
-     */
-    event FieldRequirementAdded(uint256 indexed assetTypeId, string criteriaField, string definitionField);
-
-    /**
-     * @dev Emitted when field requirements are cleared
-     * @param assetTypeId ID of the asset type
-     */
-    event FieldRequirementsCleared(uint256 indexed assetTypeId);
-
-    /**
      * @dev Emitted when validation criteria is updated
      * @param assetTypeId ID of the asset type
-     * @param criteria New validation criteria
+     * @param requiredTraits Array of required trait names
+     * @param additionalCriteria JSON string containing additional validation criteria
+     * @param requireOperatingAgreement Whether an operating agreement is required
+     * @param requireDefinition Whether a definition is required
      */
-    event ValidationCriteriaUpdated(uint256 indexed assetTypeId, string criteria);
+    event ValidationCriteriaUpdated(
+        uint256 indexed assetTypeId, 
+        string[] requiredTraits,
+        string additionalCriteria,
+        bool requireOperatingAgreement,
+        bool requireDefinition
+    );
 
     /**
      * @dev Emitted when the default operating agreement is updated
@@ -185,33 +180,35 @@ interface IValidator is IAccessControlUpgradeable {
     /**
      * @dev Gets the validation criteria for an asset type
      * @param assetTypeId ID of the asset type
-     * @return Validation criteria as a JSON string
+     * @return requiredTraits Array of required trait names
+     * @return additionalCriteria JSON string containing additional validation criteria
+     * @return requireOperatingAgreement Whether an operating agreement is required
+     * @return requireDefinition Whether a definition is required
      */
-    function getValidationCriteria(uint256 assetTypeId) external view returns (string memory);
+    function getValidationCriteria(uint256 assetTypeId) 
+        external 
+        view 
+        returns (
+            string[] memory requiredTraits,
+            string memory additionalCriteria,
+            bool requireOperatingAgreement,
+            bool requireDefinition
+        );
 
     /**
      * @dev Sets the validation criteria for an asset type
      * @param assetTypeId ID of the asset type
-     * @param criteria Validation criteria as a JSON string
+     * @param requiredTraits Array of required trait names
+     * @param additionalCriteria JSON string containing additional validation criteria
+     * @param requireOperatingAgreement Whether an operating agreement is required
+     * @param requireDefinition Whether a definition is required
      */
-    function setValidationCriteria(uint256 assetTypeId, string memory criteria) external;
-
-    /**
-     * @dev Clears field requirements for an asset type
-     * @param assetTypeId ID of the asset type
-     */
-    function clearFieldRequirements(uint256 assetTypeId) external;
-
-    /**
-     * @dev Adds field requirements for an asset type
-     * @param assetTypeId ID of the asset type
-     * @param criteriaFields Array of criteria field names
-     * @param definitionFields Array of definition field names
-     */
-    function addFieldRequirementsBatch(
-        uint256 assetTypeId,
-        string[] memory criteriaFields,
-        string[] memory definitionFields
+    function setValidationCriteria(
+        uint256 assetTypeId, 
+        string[] memory requiredTraits,
+        string memory additionalCriteria,
+        bool requireOperatingAgreement,
+        bool requireDefinition
     ) external;
 
     // ============ DeedNFT Compatibility Functions ============
@@ -273,3 +270,4 @@ interface IValidator is IAccessControlUpgradeable {
      */
     function setRoyaltyReceiver(address receiver) external;
 }
+

@@ -47,9 +47,8 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @dev Emitted when a deed is validated
      * @param tokenId ID of the validated deed
      * @param isValid Whether the deed is valid
-     * @param validator Address of the validator
      */
-    event TokenValidated(uint256 indexed tokenId, bool isValid, address indexed validator);
+    event DeedValidated(uint256 indexed tokenId, bool isValid);
     
     /**
      * @dev Emitted when a deed is burned
@@ -277,8 +276,9 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @param tokenId ID of the token to validate
      * @param isValid Whether the token is valid
      * @param validatorAddress Address of the validator
+     * @notice This function can only be called by a registered validator
      */
-    function validateDeed(uint256 tokenId, bool isValid, address validatorAddress) external;
+    function updateValidationStatus(uint256 tokenId, bool isValid, address validatorAddress) external;
     
     // ============ Access Control Functions ============
     

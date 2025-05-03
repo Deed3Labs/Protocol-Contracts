@@ -101,7 +101,7 @@ contract DeedNFT is
     event MetadataRendererUpdated(address indexed renderer);
     event ContractURIUpdated(string newURI);
     event TraitUpdated(bytes32 indexed traitKey, uint256 indexed tokenId, bytes traitValue);
-    event TokenValidated(uint256 indexed tokenId, bool isValid, address validator);
+    event DeedValidated(uint256 indexed tokenId, bool isValid);
     event MarketplaceApproved(address indexed marketplace, bool approved);
     event RoyaltyEnforcementChanged(bool enforced);
 
@@ -473,44 +473,23 @@ contract DeedNFT is
      * @param tokenId ID of the token to validate
      * @param isValid Whether the token is valid
      * @param validatorAddress Address of the validator
+     * @notice This function can only be called by a registered validator
      */
-    function validateDeed(uint256 tokenId, bool isValid, address validatorAddress) 
+    function updateValidationStatus(uint256 tokenId, bool isValid, address validatorAddress) 
         external 
-        onlyRole(VALIDATOR_ROLE) 
+        onlyRole(VALIDATOR_ROLE)
     {
         require(_exists(tokenId), "!deed");
+        require(
+            IValidatorRegistry(validatorRegistry).isValidatorRegistered(validatorAddress),
+            "!reg"
+        );
         
-        // If marking as valid, ensure validator address is provided and valid
-        if (isValid) {
-            require(validatorAddress != address(0), "!val");
-            require(
-                IValidatorRegistry(validatorRegistry).isValidatorRegistered(validatorAddress),
-                "!reg"
-            );
-            
-            require(
-                IERC165Upgradeable(validatorAddress).supportsInterface(
-                    type(IValidator).interfaceId
-                ),
-                "!iface"
-            );
-            
-            bytes memory agrBytes = _tokenTraits[tokenId][keccak256("operatingAgreement")];
-            require(
-                IValidator(validatorAddress).validateOperatingAgreement(abi.decode(agrBytes, (string))),
-                "!agr"
-            );
-            
-            // Update traits
-            _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(true));
-            _setTraitValue(tokenId, keccak256("validator"), abi.encode(validatorAddress));
-        } else {
-            // If invalidating, reset validation status
-            _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(false));
-            _setTraitValue(tokenId, keccak256("validator"), abi.encode(address(0)));
-        }
+        // Update traits
+        _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(isValid));
+        _setTraitValue(tokenId, keccak256("validator"), abi.encode(validatorAddress));
         
-        emit TokenValidated(tokenId, isValid, validatorAddress);
+        emit DeedValidated(tokenId, isValid);
     }
 
     // Metadata functions

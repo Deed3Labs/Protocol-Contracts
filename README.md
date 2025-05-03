@@ -36,7 +36,7 @@ The protocol supports various types of real-world assets:
 - **Land**: Real estate properties and land parcels
 - **Vehicle**: Automotive and transportation assets
 - **Estate**: Residential and commercial properties
-- **Commercial Equipment**: Business and industrial equipment
+- **Commercial Equipment**: Industrial and agricultural equipment
 
 Each asset type has specific validation criteria and metadata structures to ensure accurate representation and compliance.
 
@@ -48,7 +48,7 @@ Each asset type has specific validation criteria and metadata structures to ensu
 
 The `DeedNFT` contract is the core ERC721 token representing real world assets. It includes several important features:
 
-- **Custom Metadata:** Each deed is linked to metadata stored on decentralized platforms (e.g., IPFS), which can include detailed property information.
+- **On-Chain Metadata Storage:** Implements ERC-7496 for dynamic trait storage, allowing flexible and efficient on-chain metadata management.
 - **Validation Integration:** Works in conjunction with validator contracts to ensure that deed data is authentic and correct.
 - **Batch Minting:** Supports the minting of multiple deed tokens in a single transaction, reducing gas costs.
 - **Upgradability:** Designed with future enhancements in mind using the UUPS (Universal Upgradeable Proxy Standard) pattern for seamless contract upgrades.
@@ -78,12 +78,15 @@ The royalty system works in conjunction with the `Validator` and `FundManager` c
 
 [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/Validator.sol)
 
-The `Validator` contract is responsible for verifying deed data and generating the appropriate metadata URI. This contract works in tandem with the `ValidatorRegistry` to ensure that only authorized validators can validate deeds.
+The `Validator` contract is responsible for verifying deed data and managing validation criteria. This contract works in tandem with the `ValidatorRegistry` to ensure that only authorized validators can validate deeds.
 
-- **Token Metadata Generation:** Produces token URIs that expose property details, ensuring that the NFT metadata accurately reflects the underlying property data.
-- **Operating Agreement Management:** Manages operating agreements (legal wrapper) associated to each property, storing and retrieving them as needed.
-- **Customizable Validation:** Offers flexibility to define specific validation criteria for different types of properties or regional requirements.
+- **Service Fee Handling:** Manages service fees and token whitelisting for transactions.
+- **Royalty Management:** Handles royalty fee percentages and receiver addresses.
+- **Operating Agreement Management:** Manages operating agreements (legal wrapper) associated to each property, storing and 
+retrieving them as needed.
 - **Integration with the Registry:** Works alongside the ValidatorRegistry to ensure that only authorized validators perform deed validations.
+- **Validation Criteria Management:** Offers flexibility to define specific validation criteria for different types of properties or 
+regional requirements.
 
 ### 3. ValidatorRegistry
 
