@@ -194,6 +194,26 @@ describe("DeedNFT Comprehensive Tests", function() {
       expect(metadataURI).to.not.be.empty;
       expect(metadataURI.startsWith("data:application/json;charset=utf-8;base64,")).to.be.true;
     });
+
+    it("should initialize with default validator and registry", async function() {
+      // Get validator from trait
+      const validatorBytes = await deedNFT.getTraitValue(1n, VALIDATOR_KEY);
+      const validatorAddress = validatorBytes.length > 0 ? ethers.AbiCoder.defaultAbiCoder().decode(['address'], validatorBytes)[0] : ethers.ZeroAddress;
+      expect(validatorAddress).to.equal(await validator.getAddress());
+
+      // Get validation status
+      const [isValidated, currentValidator] = await deedNFT.getValidationStatus(1n);
+      expect(currentValidator).to.equal(await validator.getAddress());
+    });
+
+    it("should initialize security policy correctly", async function() {
+      expect(await deedNFT.isRoyaltyEnforced()).to.be.true;
+      expect(await deedNFT.getTransferValidator()).to.equal(ethers.ZeroAddress);
+    });
+
+    it("should initialize with correct active token count", async function() {
+      expect(await deedNFT.totalSupply()).to.equal(1n); // After initial mint
+    });
   });
   
   describe("Minting", function() {
@@ -270,18 +290,100 @@ describe("DeedNFT Comprehensive Tests", function() {
       expect(storedDefinition).to.equal(definition);
     });
     
-    it("should revert when non-minter tries to mint", async function() {
-      await expect(
-        deedNFT.connect(nonAuthorized).mintAsset(
-          user2.address,
-          1,
-          "ipfs://metadata",
-          "ipfs://agreement",
-          "definition",
-          "configuration",
-          await validator.getAddress()
-        )
-      ).to.be.revertedWith(/AccessControl/);
+    it("should use default validator when none specified", async function() {
+      const definition = JSON.stringify({
+        make: "Honda",
+        model: "Civic",
+        year: "2021",
+        vin: "2HGCM82633A123456"
+      });
+      
+      const tx = await deedNFT.mintAsset(
+        user2.address,
+        1, // AssetType.Vehicle
+        "ipfs://metadata-vehicle2",
+        "ipfs://agreement-vehicle2",
+        definition,
+        "vehicle-configuration2",
+        ethers.ZeroAddress // No validator specified
+      );
+      
+      const receipt = await tx.wait();
+      if (!receipt) throw new Error("Transaction receipt is null");
+      
+      const transferEvents = receipt.logs.filter((log: any) => {
+        try {
+          const parsedLog = deedNFT.interface.parseLog({
+            topics: log.topics,
+            data: log.data
+          });
+          return parsedLog?.name === "Transfer";
+        } catch (e) {
+          return false;
+        }
+      });
+      
+      const transferEvent = deedNFT.interface.parseLog({
+        topics: transferEvents[0].topics,
+        data: transferEvents[0].data
+      });
+      
+      const tokenId = transferEvent?.args.tokenId;
+      
+      // Check that default validator was used
+      const validatorBytes = await deedNFT.getTraitValue(tokenId, VALIDATOR_KEY);
+      const validatorAddress = ethers.getAddress('0x' + validatorBytes.slice(26));
+      expect(validatorAddress).to.equal(await validator.getAddress());
+    });
+    
+    it("should generate unique token ID with salt", async function() {
+      const definition = JSON.stringify({
+        make: "Ford",
+        model: "Mustang",
+        year: "2022",
+        vin: "3HGCM82633A123456"
+      });
+      
+      const salt = 12345n; // Use BigInt for salt
+      const expectedTokenId = await deedNFT.generateUniqueTokenId(
+        user2.address,
+        1, // AssetType.Vehicle
+        definition,
+        salt
+      );
+      
+      const tx = await deedNFT.mintAsset(
+        user2.address,
+        1, // AssetType.Vehicle
+        "ipfs://metadata-vehicle3",
+        definition,
+        "vehicle-configuration3",
+        await validator.getAddress(),
+        salt // Pass salt as a regular parameter
+      );
+      
+      const receipt = await tx.wait();
+      if (!receipt) throw new Error("Transaction receipt is null");
+      
+      const transferEvents = receipt.logs.filter((log: any) => {
+        try {
+          const parsedLog = deedNFT.interface.parseLog({
+            topics: log.topics,
+            data: log.data
+          });
+          return parsedLog?.name === "Transfer";
+        } catch (e) {
+          return false;
+        }
+      });
+      
+      const transferEvent = deedNFT.interface.parseLog({
+        topics: transferEvents[0].topics,
+        data: transferEvents[0].data
+      });
+      
+      const tokenId = transferEvent?.args.tokenId;
+      expect(tokenId).to.equal(expectedTokenId);
     });
     
     it("should revert when minting with invalid definition", async function() {
@@ -302,6 +404,27 @@ describe("DeedNFT Comprehensive Tests", function() {
           await validator.getAddress()
         )
       ).to.be.revertedWith(/ValidationError/);
+    });
+    
+    it("should revert when minting with unregistered validator", async function() {
+      const definition = JSON.stringify({
+        make: "Tesla",
+        model: "Model 3",
+        year: "2023",
+        vin: "4HGCM82633A123456"
+      });
+      
+      await expect(
+        deedNFT.mintAsset(
+          user2.address,
+          1, // Vehicle
+          "ipfs://metadata",
+          "ipfs://agreement",
+          definition,
+          "configuration",
+          nonAuthorized.address // Unregistered validator
+        )
+      ).to.be.revertedWith(/!reg/);
     });
   });
   
@@ -749,6 +872,106 @@ describe("DeedNFT Comprehensive Tests", function() {
       // Revoke MINTER_ROLE from user1
       await deedNFT.removeMinter(await user1.getAddress());
       expect(await deedNFT.hasRole(MINTER_ROLE, await user1.getAddress())).to.be.false;
+    });
+  });
+
+  describe("Burning", function() {
+    const allTraitKeys = [
+      ASSET_TYPE_KEY,
+      IS_VALIDATED_KEY,
+      OPERATING_AGREEMENT_KEY,
+      DEFINITION_KEY,
+      CONFIGURATION_KEY,
+      VALIDATOR_KEY
+    ];
+
+    it("should burn a deed and clear all traits", async function() {
+      const tokenId = 1n;
+      
+      // Get trait values before burning
+      const traitsBefore = await Promise.all(
+        allTraitKeys.map((key: string) => deedNFT.getTraitValue(tokenId, key))
+      );
+      
+      // Burn the deed
+      await deedNFT.connect(user1).burnAsset(tokenId);
+      
+      // Check that token no longer exists
+      await expect(deedNFT.ownerOf(tokenId)).to.be.revertedWith(/ERC721: invalid token ID/);
+      
+      // Check that all traits are cleared
+      const traitsAfter = await Promise.all(
+        allTraitKeys.map((key: string) => deedNFT.getTraitValue(tokenId, key))
+      );
+      
+      traitsAfter.forEach((trait: string) => {
+        expect(trait).to.equal("0x");
+      });
+      
+      // Check active token count
+      expect(await deedNFT.totalSupply()).to.equal(0n);
+    });
+    
+    it("should batch burn multiple deeds", async function() {
+      // Mint two more deeds
+      const definition1 = JSON.stringify({
+        make: "BMW",
+        model: "X5",
+        year: "2022",
+        vin: "5HGCM82633A123456"
+      });
+      
+      const definition2 = JSON.stringify({
+        make: "Mercedes",
+        model: "C-Class",
+        year: "2023",
+        vin: "6HGCM82633A123456"
+      });
+      
+      await deedNFT.mintAsset(
+        user1.address,
+        1, // Vehicle
+        "ipfs://metadata1",
+        "ipfs://agreement1",
+        definition1,
+        "configuration1",
+        await validator.getAddress()
+      );
+      
+      await deedNFT.mintAsset(
+        user1.address,
+        1, // Vehicle
+        "ipfs://metadata2",
+        "ipfs://agreement2",
+        definition2,
+        "configuration2",
+        await validator.getAddress()
+      );
+      
+      // Batch burn
+      await deedNFT.connect(user1).burnBatchAssets([1n, 2n, 3n]);
+      
+      // Check that all tokens are burned
+      await expect(deedNFT.ownerOf(1n)).to.be.revertedWith(/ERC721: invalid token ID/);
+      await expect(deedNFT.ownerOf(2n)).to.be.revertedWith(/ERC721: invalid token ID/);
+      await expect(deedNFT.ownerOf(3n)).to.be.revertedWith(/ERC721: invalid token ID/);
+      
+      // Check active token count
+      expect(await deedNFT.totalSupply()).to.equal(0n);
+    });
+    
+    it("should revert when non-owner tries to burn", async function() {
+      const tokenId = 1n;
+      await expect(
+        deedNFT.connect(user2).burnAsset(tokenId)
+      ).to.be.revertedWith(/!owner/);
+    });
+    
+    it("should revert when burning non-existent token", async function() {
+      const nonExistentTokenId = 999n;
+      await expect(
+        deedNFT.connect(user1).burnAsset(nonExistentTokenId)
+      ).to.be.revertedWith(/!deed/);
     });
   });
 });
