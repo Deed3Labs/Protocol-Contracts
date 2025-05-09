@@ -134,6 +134,14 @@ contract Validator is
     /// @notice Address that receives royalties
     address public royaltyReceiver;
 
+    // ============ Registered Agreements ============
+
+    /// @notice Mapping to store registered operating agreements
+    mapping(string => string) public registeredAgreements;
+    
+    /// @notice Array to store registered operating agreement URIs
+    string[] public registeredAgreementURIs;
+
     // ============ Constructor ============
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -171,14 +179,14 @@ contract Validator is
 
     /**
      * @dev Authorizes the contract upgrade. Only the owner can upgrade.
-     * @param newImplementation Address of the new implementation contract.
      */
-    function _authorizeUpgrade(address newImplementation)
+    function _authorizeUpgrade(address)
         internal
+        view
         override
         onlyOwner
     {
-        // Authorization logic handled by onlyOwner modifier
+        require(msg.sender == owner(), "Ownable: caller is not the owner");
     }
 
     // ============ Public Functions ============
@@ -214,15 +222,8 @@ contract Validator is
      * @return The default operating agreement as a string, constructed from baseUri and tokenId.
      */
     function defaultOperatingAgreement() external view override returns (string memory) {
-        // Instead of just returning the URI, we need to return a properly formatted agreement
-        // This matches what the new DeedNFT contract expects
-        if (bytes(baseUri).length == 0) {
-            return "Nominee Trust Agreement v1.0";  // Fallback to ensure non-empty return
-        }
-        
-        // Construct the operating agreement URI using baseUri
-        // The tokenId will be appended by the DeedNFT contract when minting
-        return string(abi.encodePacked(baseUri, "agreements/"));
+        // Return the default operating agreement URI directly
+        return defaultOperatingAgreementUri;
     }
 
     /**
@@ -232,8 +233,9 @@ contract Validator is
      */
     function setOperatingAgreementName(string memory _uri, string memory _name)
         public
-        onlyOwner
+        onlyRole(METADATA_ROLE)
     {
+        require(hasRole(METADATA_ROLE, msg.sender), "AccessControl: caller must have metadata role");
         require(bytes(_uri).length > 0, "Validator: URI cannot be empty");
         require(bytes(_name).length > 0, "Validator: Name cannot be empty");
         operatingAgreements[_uri] = _name;
@@ -245,8 +247,9 @@ contract Validator is
      */
     function removeOperatingAgreementName(string memory _uri)
         public
-        onlyOwner
+        onlyRole(METADATA_ROLE)
     {
+        require(hasRole(METADATA_ROLE, msg.sender), "Validator: Caller must have METADATA_ROLE");
         require(bytes(_uri).length > 0, "Validator: URI cannot be empty");
         delete operatingAgreements[_uri];
     }
@@ -307,6 +310,7 @@ contract Validator is
         public
         onlyRole(CRITERIA_MANAGER_ROLE)
     {
+        require(hasRole(CRITERIA_MANAGER_ROLE, msg.sender), "AccessControl: caller must have criteria manager role");
         supportedAssetTypes[_assetTypeId] = _isSupported;
     }
 
@@ -328,6 +332,7 @@ contract Validator is
         public 
         onlyRole(CRITERIA_MANAGER_ROLE) 
     {
+        require(hasRole(CRITERIA_MANAGER_ROLE, msg.sender), "AccessControl: caller must have criteria manager role");
         validationCriteria[assetTypeId] = ValidationCriteria(
             requiredTraits_,
             additionalCriteria_,
@@ -495,6 +500,15 @@ contract Validator is
         // Check if the agreement contains the baseUri (for default agreements)
         if (bytes(baseUri).length > 0 && StringUtils.contains(agreement, baseUri)) {
             return true;
+        }
+        
+        // Check if the agreement is a registered agreement with tokenId appended
+        // Check each registered agreement to see if it's a prefix of the provided agreement
+        for (uint256 i = 0; i < registeredAgreementURIs.length; i++) {
+            string memory registeredAgreement = registeredAgreementURIs[i];
+            if (StringUtils.contains(agreement, registeredAgreement)) {
+                return true;
+            }
         }
         
         return false;
@@ -702,6 +716,7 @@ contract Validator is
         require(bytes(uri).length > 0, "Validator: URI cannot be empty");
         require(bytes(name).length > 0, "Validator: Name cannot be empty");
         operatingAgreements[uri] = name;
+        registeredAgreementURIs.push(uri);
         emit OperatingAgreementRegistered(uri, name);
     }
 
@@ -737,7 +752,7 @@ contract Validator is
      * @dev Sets the royalty fee percentage
      * @param percentage The royalty fee percentage in basis points (100 = 1%)
      */
-    function setRoyaltyFeePercentage(uint96 percentage) external override onlyRole(FEE_MANAGER_ROLE) {
+    function setRoyaltyFeePercentage(uint96 percentage) external onlyRole(FEE_MANAGER_ROLE) {
         require(percentage <= 10000, "Validator: Royalty percentage exceeds 100%");
         royaltyFeePercentage = percentage;
     }
@@ -754,7 +769,7 @@ contract Validator is
      * @dev Sets the royalty receiver address
      * @param receiver The address that will receive royalties
      */
-    function setRoyaltyReceiver(address receiver) external override onlyRole(FEE_MANAGER_ROLE) {
+    function setRoyaltyReceiver(address receiver) external onlyRole(FEE_MANAGER_ROLE) {
         require(receiver != address(0), "Validator: Invalid royalty receiver address");
         royaltyReceiver = receiver;
     }
@@ -763,14 +778,22 @@ contract Validator is
      * @dev See {IERC165-supportsInterface}.
      * Declares support for IValidator interface
      */
-    function supportsInterface(bytes4 interfaceId) 
-        public 
-        view 
-        override(AccessControlUpgradeable, ERC165Upgradeable) 
-        returns (bool) 
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC165Upgradeable, AccessControlUpgradeable)
+        returns (bool)
     {
         return
             interfaceId == type(IValidator).interfaceId ||
             super.supportsInterface(interfaceId);
+    }
+
+    function grantRole(bytes32 role, address account) 
+        public 
+        override(AccessControlUpgradeable, IAccessControlUpgradeable) 
+    {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "AccessControl: caller must have admin role");
+        _grantRole(role, account);
     }
 }

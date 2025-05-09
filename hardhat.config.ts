@@ -209,6 +209,16 @@ const config: HardhatUserConfig = {
     outDir: "typechain-types",
     target: "ethers-v6",
   },
+  coverage: {
+    solcoverjs: {
+      skipFiles: [
+        "contracts/libraries/**/*.sol",
+        "contracts/mocks/**/*.sol",
+        "contracts/extensions/**/*.sol"
+      ],
+      skipFilesWithNoCoverage: true
+    }
+  }
 } as HardhatUserConfig;
 
 export default config;

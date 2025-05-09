@@ -30,27 +30,35 @@ describe("Core Contracts Integration", function() {
     
     // Deploy Validator
     const Validator = await ethers.getContractFactory("Validator");
-    validator = await upgrades.deployProxy(Validator, [ethers.ZeroAddress]);
+    validator = await upgrades.deployProxy(Validator, [
+      "ipfs://baseURI/",
+      "ipfs://defaultOperatingAgreement/"
+    ]);
     await validator.waitForDeployment();
     
     // Deploy DeedNFT
     const DeedNFT = await ethers.getContractFactory("DeedNFT");
     deedNFT = await upgrades.deployProxy(DeedNFT, [
-      await validator.getAddress(),
-      await validatorRegistry.getAddress()
+      "ipfs://baseURI/",
+      "ipfs://defaultOperatingAgreement/"
     ]);
     await deedNFT.waitForDeployment();
     
-    // Update Validator with DeedNFT address
-    await validator.setDeedNFT(await deedNFT.getAddress());
+    // Set up roles and permissions
+    await deedNFT.grantRole(await deedNFT.VALIDATOR_ROLE(), validator.address);
+    await validator.grantRole(await validator.VALIDATOR_ROLE(), validator1.address);
+    await validator.grantRole(await validator.METADATA_ROLE(), validator.address);
+    await validator.grantRole(await validator.CRITERIA_MANAGER_ROLE(), validator.address);
+    await validator.grantRole(await validator.FEE_MANAGER_ROLE(), validator.address);
+    
+    // Set up DeedNFT in Validator
+    await validator.setDeedNFT(deedNFT.address);
     
     // Deploy FundManager
     const FundManager = await ethers.getContractFactory("FundManager");
     fundManager = await upgrades.deployProxy(FundManager, [
-      await deedNFT.getAddress(),
-      await validatorRegistry.getAddress(),
-      1000, // 10% commission
-      feeReceiver.address
+      validator.address,
+      500 // 5% commission
     ]);
     await fundManager.waitForDeployment();
     

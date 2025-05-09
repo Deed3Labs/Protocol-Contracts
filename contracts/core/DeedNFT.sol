@@ -423,7 +423,7 @@ contract DeedNFT is
         _setTraitValue(tokenId, keccak256("operatingAgreement"), abi.encode(operatingAgreement));
         _setTraitValue(tokenId, keccak256("definition"), abi.encode(definition));
         _setTraitValue(tokenId, keccak256("configuration"), abi.encode(configuration));
-        _setTraitValue(tokenId, keccak256("validator"), abi.encode(address(0)));
+        _setTraitValue(tokenId, keccak256("validator"), abi.encode(selectedValidator));
         _setTraitValue(tokenId, keccak256("beneficiary"), abi.encode(owner));
 
         emit DeedNFTMinted(tokenId, assetType, msg.sender, selectedValidator);

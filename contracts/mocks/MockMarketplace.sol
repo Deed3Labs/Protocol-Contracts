@@ -11,17 +11,13 @@ import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 contract MockMarketplace is IERC721Receiver {
     /**
      * @dev Handles the receipt of an NFT
-     * @param operator The address which called `safeTransferFrom` function
-     * @param from The address which previously owned the token
-     * @param tokenId The NFT identifier which is being transferred
-     * @param data Additional data with no specified format
      * @return The selector of this function (0x150b7a02)
      */
     function onERC721Received(
-        address operator,
-        address from,
-        uint256 tokenId,
-        bytes memory data
+        address,
+        address,
+        uint256,
+        bytes memory
     ) external pure override returns (bytes4) {
         return this.onERC721Received.selector;
     }

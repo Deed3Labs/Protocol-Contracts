@@ -159,6 +159,7 @@ contract ValidatorRegistry is
         );
 
         validators[validator].name = name;
+        validators[validator].isActive = true;
         emit ValidatorRegistered(validator, name, validators[validator].supportedAssetTypes);
     }
 

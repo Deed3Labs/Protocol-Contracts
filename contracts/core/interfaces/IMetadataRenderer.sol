@@ -202,7 +202,7 @@ interface IMetadataRenderer {
     /**
      * @dev Sets custom metadata for a token
      * @param tokenId ID of the token
-     * @param metadata Custom metadata JSON string
+     * @param metadata Custom metadata string
      */
     function setTokenCustomMetadata(uint256 tokenId, string memory metadata) external;
 
