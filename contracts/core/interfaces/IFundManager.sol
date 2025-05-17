@@ -151,58 +151,65 @@ interface IFundManager {
     // ============ Fee Management Functions ============
 
     /**
-     * @dev Allows validator admins to withdraw their accumulated fees
-     * @param validatorContract Address of the validator contract
-     * @param token Address of the token to withdraw
+     * @dev Allows validator admins or fee managers to withdraw their accumulated fees.
+     *      The tokens are sent to the caller (msg.sender).
+     * @param validatorContract Address of the validator contract.
+     * @param token Address of the token to withdraw.
      */
     function withdrawValidatorFees(address validatorContract, address token) external;
 
     /**
-     * @dev Retrieves the current commission balance for a specific validator and token
-     * @param validatorContract Address of the validator contract
-     * @param token Address of the token
-     * @return balance The current commission balance for the validator and token
+     * @dev Retrieves the current commission balance for a specific validator and token.
+     *      This balance represents the accumulated service fees minus the protocol's commission.
+     * @param validatorContract Address of the validator contract.
+     * @param token Address of the token.
+     * @return balance The current commission balance for the validator and token.
      */
     function getCommissionBalance(address validatorContract, address token) external view returns (uint256);
 
     // ============ Getter Functions ============
 
     /**
-     * @dev Gets the commission percentage
-     * @return The commission percentage in basis points
+     * @dev Gets the commission percentage.
+     *      This percentage is used to calculate the protocol's share of service fees.
+     * @return The commission percentage in basis points (e.g., 500 = 5%).
      */
     function getCommissionPercentage() external view returns (uint256);
 
     /**
-     * @dev Formats a fee amount to a string
-     * @param amount Raw fee amount
-     * @return The formatted fee string
+     * @dev Formats a fee amount to a string.
+     * @param amount Raw fee amount.
+     * @return The formatted fee string.
      */
     function formatFee(uint256 amount) external pure returns (string memory);
 
     /**
-     * @dev Gets the address of the DeedNFT contract
-     * @return The address of the DeedNFT contract
+     * @dev Gets the address of the DeedNFT contract.
+     * @return The address of the DeedNFT contract.
      */
     function deedNFT() external view returns (address);
 
     /**
-     * @dev Gets the address of the ValidatorRegistry contract
-     * @return The address of the ValidatorRegistry contract
+     * @dev Gets the address of the ValidatorRegistry contract.
+     * @return The address of the ValidatorRegistry contract.
      */
     function validatorRegistry() external view returns (address);
 
     /**
-     * @dev Gets the address of the fee receiver
-     * @return The address of the fee receiver
+     * @dev Gets the address of the fee receiver.
+     *      This address receives the protocol's commission from service fees.
+     * @return The address of the fee receiver.
      */
     function feeReceiver() external view returns (address);
 
     /**
-     * @dev Collects commission from a royalty payment
-     * @param tokenId The ID of the token
-     * @param amount The amount of the royalty payment
-     * @param token The token address (for ERC20 payments)
+     * @dev Collects commission from a service fee payment.
+     *      This function is called by the DeedNFT contract when a service fee is paid.
+     *      The protocol's commission is sent to the fee receiver, and the remaining amount
+     *      is added to the validator's commission balance.
+     * @param tokenId The ID of the token.
+     * @param amount The amount of the service fee.
+     * @param token The token address (for ERC20 payments).
      */
     function collectCommission(uint256 tokenId, uint256 amount, address token) external;
 } 
