@@ -140,11 +140,15 @@ contract ValidatorRegistry is
      * @dev Registers a new validator.
      * @param validator Address of the validator contract.
      * @param name Name associated with the validator.
+     * @param description Description of the validator's capabilities.
+     * @param supportedAssetTypes Array of asset types this validator can handle.
      */
-    function registerValidator(address validator, string memory name)
-        public
-        onlyOwner
-    {
+    function registerValidator(
+        address validator,
+        string memory name,
+        string memory description,
+        uint256[] memory supportedAssetTypes
+    ) public onlyOwner {
         require(
             validator != address(0),
             "ValidatorRegistry: Invalid validator address"
@@ -159,8 +163,16 @@ contract ValidatorRegistry is
         );
 
         validators[validator].name = name;
+        validators[validator].description = description;
+        validators[validator].supportedAssetTypes = supportedAssetTypes;
         validators[validator].isActive = true;
-        emit ValidatorRegistered(validator, name, validators[validator].supportedAssetTypes);
+
+        // Update asset type validators mapping
+        for (uint256 i = 0; i < supportedAssetTypes.length; i++) {
+            assetTypeValidators[supportedAssetTypes[i]].push(validator);
+        }
+
+        emit ValidatorRegistered(validator, name, supportedAssetTypes);
     }
 
     /**

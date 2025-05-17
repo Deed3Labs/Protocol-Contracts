@@ -65,13 +65,17 @@ describe("ValidatorRegistry Contract", function() {
       
       await validatorRegistry.registerValidator(
         validatorAddr,
-        "Test Validator"
+        "Test Validator",
+        "A validator for testing purposes",
+        [0, 1, 2, 3] // All asset types
       );
       
       // Check if validator is registered
       const validatorInfo = await validatorRegistry.validators(validatorAddr);
       expect(validatorInfo.name).to.equal("Test Validator");
+      expect(validatorInfo.description).to.equal("A validator for testing purposes");
       expect(validatorInfo.isActive).to.be.true;
+      expect(validatorInfo.supportedAssetTypes).to.deep.equal([0, 1, 2, 3]);
     });
     
     it("should reject registration if caller is not admin", async function() {
@@ -80,7 +84,9 @@ describe("ValidatorRegistry Contract", function() {
       await expect(
         validatorRegistry.connect(user1).registerValidator(
           validatorAddr,
-          "Invalid Register"
+          "Invalid Register",
+          "Invalid description",
+          [0, 1]
         )
       ).to.be.reverted;
     });
@@ -90,13 +96,17 @@ describe("ValidatorRegistry Contract", function() {
       
       await validatorRegistry.registerValidator(
         validatorAddr,
-        "Test Validator"
+        "Test Validator",
+        "Initial description",
+        [0, 1]
       );
       
       await expect(
         validatorRegistry.registerValidator(
           validatorAddr,
-          "Duplicate Validator"
+          "Duplicate Validator",
+          "Duplicate description",
+          [2, 3]
         )
       ).to.be.reverted;
     });
@@ -108,7 +118,9 @@ describe("ValidatorRegistry Contract", function() {
       const validatorAddr = await validator.getAddress();
       await validatorRegistry.registerValidator(
         validatorAddr,
-        "Test Validator"
+        "Test Validator",
+        "A validator for testing purposes",
+        [0, 1, 2, 3]
       );
     });
     
