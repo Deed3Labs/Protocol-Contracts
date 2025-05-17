@@ -270,8 +270,8 @@ contract FundManager is
         // Reset balance before transfer to prevent reentrancy
         validatorBalances[validatorContract][token] = 0;
         
-        // Transfer tokens to the validator
-        IERC20Upgradeable(token).safeTransfer(validatorContract, amount);
+        // Transfer tokens to the caller (validator admin or fee manager)
+        IERC20Upgradeable(token).safeTransfer(msg.sender, amount);
         
         emit ValidatorFeesWithdrawn(validatorContract, token, amount, msg.sender);
     }
@@ -391,9 +391,9 @@ contract FundManager is
     }
 
     /**
-     * @dev Collects commission from a royalty payment
+     * @dev Collects commission from a service fee
      * @param tokenId The ID of the token
-     * @param amount The amount of the royalty payment
+     * @param amount The amount of the service fee
      * @param token The token address (for ERC20 payments)
      */
     function collectCommission(uint256 tokenId, uint256 amount, address token) external override nonReentrant {

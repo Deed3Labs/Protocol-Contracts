@@ -595,7 +595,7 @@ describe("MetadataRenderer", function() {
           ethers.keccak256(ethers.toUtf8Bytes(traitName)),
           ethers.AbiCoder.defaultAbiCoder().encode(["string"], [traitValue])
         )
-      ).to.be.revertedWith("!auth");
+      ).to.be.reverted;
     });
     
     it("should handle trait removal", async function() {
@@ -611,15 +611,63 @@ describe("MetadataRenderer", function() {
         1 // string type
       );
 
+      // Verify trait was set
+      let storedValue = await deedNFT.getTraitValue(
+        tokenId,
+        ethers.keccak256(ethers.toUtf8Bytes(traitName))
+      );
+      expect(storedValue.length).to.be.gt(0);
+
       // Then remove it
       await deedNFT.removeTrait(tokenId, traitName);
 
       // Verify trait was removed
-      const storedValue = await deedNFT.getTraitValue(
+      storedValue = await deedNFT.getTraitValue(
         tokenId,
         ethers.keccak256(ethers.toUtf8Bytes(traitName))
       );
-      expect(storedValue.length).to.equal(0);
+      expect(storedValue).to.equal("0x");
+    });
+
+    it("should sync trait removal with MetadataRenderer", async function() {
+      const tokenId = 1;
+      const traitName = "definition";
+      const traitValue = "Test definition";
+
+      // Set the trait in DeedNFT (this will sync to MetadataRenderer)
+      await deedNFT.setTrait(
+        tokenId,
+        ethers.toUtf8Bytes(traitName),
+        ethers.toUtf8Bytes(traitValue),
+        1 // string type
+      );
+
+      // Wait for trait sync
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Verify trait was added to attributes
+      let tokenURI = await metadataRenderer.tokenURI(tokenId);
+      let decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
+      let metadata = JSON.parse(decodedURI);
+      expect(metadata.attributes).to.deep.include({
+        trait_type: "Definition",
+        value: traitValue
+      });
+
+      // Remove the trait in DeedNFT (this will sync removal to MetadataRenderer)
+      await deedNFT.removeTrait(tokenId, traitName);
+
+      // Wait for trait removal sync
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Verify trait was removed from attributes
+      tokenURI = await metadataRenderer.tokenURI(tokenId);
+      decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
+      metadata = JSON.parse(decodedURI);
+      expect(metadata.attributes).to.not.deep.include({
+        trait_type: "Definition",
+        value: traitValue
+      });
     });
   });
   

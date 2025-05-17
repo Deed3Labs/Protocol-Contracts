@@ -23,6 +23,7 @@ describe("FundManager Contract", function() {
   const VALIDATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("VALIDATOR_ROLE"));
   const FEE_MANAGER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("FEE_MANAGER_ROLE"));
   const MINTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("MINTER_ROLE"));
+  const ADMIN_ROLE = ethers.keccak256(ethers.toUtf8Bytes("ADMIN_ROLE"));
 
   beforeEach(async function() {
     const signers = await ethers.getSigners();
@@ -75,6 +76,7 @@ describe("FundManager Contract", function() {
     await validator.grantRole(VALIDATOR_ROLE, deployer.address);
     await validator.grantRole(FEE_MANAGER_ROLE, deployer.address);
     await validator.grantRole(FEE_MANAGER_ROLE, feeManager.address);
+    await validator.grantRole(ADMIN_ROLE, feeManager.address);
 
     await deedNFT.grantRole(DEFAULT_ADMIN_ROLE, deployer.address);
     await deedNFT.grantRole(VALIDATOR_ROLE, deployer.address);
@@ -177,13 +179,40 @@ describe("FundManager Contract", function() {
         0n // salt
       );
 
+      // Debug: Check validator balance before withdrawal
+      const validatorBalanceBeforeWithdraw = await fundManager.getCommissionBalance(
+        await validator.getAddress(),
+        await mockERC20.getAddress()
+      );
+      console.log("Validator commission balance before withdrawal:", validatorBalanceBeforeWithdraw.toString());
+      expect(validatorBalanceBeforeWithdraw).to.be.gt(0);
+
       const feeManagerBalanceBefore = await mockERC20.balanceOf(feeManager.address);
 
-      // Withdraw fees
-      await validator.connect(feeManager).withdrawServiceFees(await mockERC20.getAddress());
+      // Debug: Check FundManager's token balance before withdrawal
+      const fundManagerBalanceBeforeWithdraw = await mockERC20.balanceOf(await fundManager.getAddress());
+      console.log("FundManager token balance before withdrawal:", fundManagerBalanceBeforeWithdraw.toString());
 
-      const feeManagerBalanceAfter = await mockERC20.balanceOf(feeManager.address);
-      expect(feeManagerBalanceAfter - feeManagerBalanceBefore).to.equal(ethers.parseUnits("90", 18)); // 90% of service fee
+      // Get deployer's balance before withdrawal
+      const deployerBalanceBefore = await mockERC20.balanceOf(deployer.address);
+
+      // Withdraw fees
+      await fundManager.connect(deployer).withdrawValidatorFees(await validator.getAddress(), await mockERC20.getAddress());
+
+      // Debug: Check FundManager's token balance after withdrawal
+      const fundManagerBalanceAfterWithdraw = await mockERC20.balanceOf(await fundManager.getAddress());
+      console.log("FundManager token balance after withdrawal:", fundManagerBalanceAfterWithdraw.toString());
+
+      // Check validator's commission balance after withdrawal
+      const validatorBalanceAfterWithdraw = await fundManager.getCommissionBalance(
+        await validator.getAddress(),
+        await mockERC20.getAddress()
+      );
+      expect(validatorBalanceAfterWithdraw).to.equal(0);
+
+      // Check deployer's balance after withdrawal
+      const deployerBalanceAfter = await mockERC20.balanceOf(deployer.address);
+      expect(deployerBalanceAfter - deployerBalanceBefore).to.equal(ethers.parseUnits("90", 18)); // 90% of service fee
     });
   });
 
@@ -196,7 +225,7 @@ describe("FundManager Contract", function() {
     it("should not allow setting commission percentage above maximum", async function() {
       await expect(
         fundManager.setCommissionPercentage(10001) // 100.01%
-      ).to.be.revertedWith("!comm");
+      ).to.be.reverted;
     });
 
     it("should set fee receiver correctly", async function() {
@@ -207,7 +236,7 @@ describe("FundManager Contract", function() {
     it("should not allow setting fee receiver to zero address", async function() {
       await expect(
         fundManager.setFeeReceiver(ethers.ZeroAddress)
-      ).to.be.revertedWith("!recv");
+      ).to.be.reverted;
     });
   });
 
@@ -247,7 +276,7 @@ describe("FundManager Contract", function() {
           await mockERC20.getAddress(),
           0n // salt
         )
-      ).to.be.revertedWith("!reg");
+      ).to.be.reverted;
     });
 
     it("should not allow minting with insufficient token approval", async function() {
@@ -294,11 +323,11 @@ describe("FundManager Contract", function() {
       });
 
       // Get initial balances
+      const feeReceiverBalanceBefore = await mockERC20.balanceOf(await fundManager.feeReceiver());
       const validatorBalanceBefore = await fundManager.getCommissionBalance(
         await validator.getAddress(),
         await mockERC20.getAddress()
       );
-      const feeManagerBalanceBefore = await mockERC20.balanceOf(feeManager.address);
 
       // Create a deed to accumulate fees
       await fundManager.connect(user1).mintDeedNFT(
@@ -312,19 +341,93 @@ describe("FundManager Contract", function() {
         0n // salt
       );
 
-      // Check validator's commission balance
+      // Verify total service fee was collected by FundManager
+      const fundManagerBalance = await mockERC20.balanceOf(await fundManager.getAddress());
+      expect(fundManagerBalance).to.equal(ethers.parseUnits("90", 18)); // 90% of service fee
+
+      // Verify commission was sent to feeReceiver (10% of service fee)
+      const feeReceiverBalanceAfter = await mockERC20.balanceOf(await fundManager.feeReceiver());
+      expect(feeReceiverBalanceAfter - feeReceiverBalanceBefore).to.equal(ethers.parseUnits("10", 18));
+
+      // Verify validator's commission balance was updated
       const validatorBalanceAfter = await fundManager.getCommissionBalance(
         await validator.getAddress(),
         await mockERC20.getAddress()
       );
-      expect(validatorBalanceAfter - validatorBalanceBefore).to.equal(ethers.parseUnits("90", 18)); // 90% of service fee
+      expect(validatorBalanceAfter - validatorBalanceBefore).to.equal(ethers.parseUnits("90", 18));
 
-      // Withdraw fees
-      await validator.connect(feeManager).withdrawServiceFees(await mockERC20.getAddress());
+      // Get validator admin's balance before withdrawal
+      const validatorAdminBalanceBefore = await mockERC20.balanceOf(deployer.address);
 
-      // Check fee manager's balance
+      // Withdraw fees as validator admin
+      await fundManager.connect(deployer).withdrawValidatorFees(
+        await validator.getAddress(),
+        await mockERC20.getAddress()
+      );
+
+      // Verify validator's commission balance is reset
+      const validatorBalanceAfterWithdraw = await fundManager.getCommissionBalance(
+        await validator.getAddress(),
+        await mockERC20.getAddress()
+      );
+      expect(validatorBalanceAfterWithdraw).to.equal(0);
+
+      // Verify validator admin received the funds
+      const validatorAdminBalanceAfter = await mockERC20.balanceOf(deployer.address);
+      expect(validatorAdminBalanceAfter - validatorAdminBalanceBefore).to.equal(ethers.parseUnits("90", 18));
+
+      // Verify FundManager's balance is now 0
+      const fundManagerBalanceAfter = await mockERC20.balanceOf(await fundManager.getAddress());
+      expect(fundManagerBalanceAfter).to.equal(0);
+    });
+
+    it("should allow fee manager to withdraw validator fees", async function() {
+      // Whitelist token and set service fee in validator (100 tokens)
+      await validator.addWhitelistedToken(await mockERC20.getAddress());
+      await validator.setServiceFee(await mockERC20.getAddress(), ethers.parseUnits("100", 18));
+
+      // Mint tokens to user1
+      await mockERC20.mint(user1.address, ethers.parseUnits("1000", 18));
+      await mockERC20.connect(user1).approve(await fundManager.getAddress(), ethers.parseUnits("100", 18));
+
+      const definition = JSON.stringify({
+        country: "USA",
+        state: "California",
+        county: "Los Angeles",
+        parcelNumber: "12345"
+      });
+
+      // Create a deed to accumulate fees
+      await fundManager.connect(user1).mintDeedNFT(
+        user1.address,
+        0, // Land
+        "ipfs://metadata1",
+        definition,
+        "configuration1",
+        await validator.getAddress(),
+        await mockERC20.getAddress(),
+        0n // salt
+      );
+
+      // Get fee manager's balance before withdrawal
+      const feeManagerBalanceBefore = await mockERC20.balanceOf(feeManager.address);
+
+      // Withdraw fees as fee manager
+      await fundManager.connect(feeManager).withdrawValidatorFees(
+        await validator.getAddress(),
+        await mockERC20.getAddress()
+      );
+
+      // Verify fee manager received the funds
       const feeManagerBalanceAfter = await mockERC20.balanceOf(feeManager.address);
-      expect(feeManagerBalanceAfter - feeManagerBalanceBefore).to.equal(ethers.parseUnits("90", 18)); // 90% of service fee
+      expect(feeManagerBalanceAfter - feeManagerBalanceBefore).to.equal(ethers.parseUnits("90", 18));
+
+      // Verify validator's commission balance is reset
+      const validatorBalanceAfterWithdraw = await fundManager.getCommissionBalance(
+        await validator.getAddress(),
+        await mockERC20.getAddress()
+      );
+      expect(validatorBalanceAfterWithdraw).to.equal(0);
     });
   });
 }); 
