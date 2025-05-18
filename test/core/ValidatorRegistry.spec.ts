@@ -75,7 +75,10 @@ describe("ValidatorRegistry Contract", function() {
       expect(validatorInfo.name).to.equal("Test Validator");
       expect(validatorInfo.description).to.equal("A validator for testing purposes");
       expect(validatorInfo.isActive).to.be.true;
-      expect(validatorInfo.supportedAssetTypes).to.deep.equal([0, 1, 2, 3]);
+      
+      // Get supported asset types using the new getter
+      const supportedAssetTypes = await validatorRegistry.getSupportedAssetTypes(validatorAddr);
+      expect(supportedAssetTypes).to.deep.equal([0, 1, 2, 3]);
     });
     
     it("should reject registration if caller is not admin", async function() {

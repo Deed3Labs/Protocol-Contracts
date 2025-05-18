@@ -91,26 +91,7 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @return Boolean indicating if the deed can be subdivided
      */
     function canSubdivide(uint256 tokenId) external view returns (bool);
-    
-    /**
-     * @dev Gets comprehensive information about a deed
-     * @param tokenId ID of the deed to query
-     * @return assetType Type of the asset
-     * @return isValidated Whether the deed has been validated
-     * @return operatingAgreement Operating agreement URI
-     * @return definition Definition of the deed
-     * @return configuration Configuration of the deed
-     * @return validator Address of the validator
-     */
-    function getDeedInfo(uint256 tokenId) external view returns (
-        AssetType assetType,
-        bool isValidated,
-        string memory operatingAgreement,
-        string memory definition,
-        string memory configuration,
-        address validator
-    );
-    
+     
     /**
      * @dev Gets the URI for a specific token
      * @param tokenId ID of the token to query

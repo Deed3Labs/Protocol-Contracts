@@ -89,6 +89,13 @@ interface IValidatorRegistry {
      */
     function getValidatorName(address validator) external view returns (string memory);
 
+    /**
+     * @dev Returns the supported asset types for a validator
+     * @param validator Address of the validator
+     * @return Array of supported asset type IDs
+     */
+    function getSupportedAssetTypes(address validator) external view returns (uint256[] memory);
+
     // ============ State-Changing Functions ============
 
     /**

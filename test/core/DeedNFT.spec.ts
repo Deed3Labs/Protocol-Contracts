@@ -47,7 +47,9 @@ describe("DeedNFT", function() {
     // Register validator in registry
     await validatorRegistry.registerValidator(
       await validator.getAddress(),
-      "Test Validator"
+      "Test Validator",
+      "A validator for testing",
+      [0, 1, 2, 3]
     );
 
     // Set up validator's asset type support and criteria

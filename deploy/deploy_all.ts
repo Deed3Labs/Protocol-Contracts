@@ -217,7 +217,9 @@ async function main() {
     // Register validator with name
     const registerTx = await validatorRegistry.registerValidator(
       validatorAddress,
-      "Default Validator"
+      "Default Validator",
+      "A default validator for deployment",
+      [0, 1, 2, 3]
     );
     console.log("Registering Validator in Registry...");
     const registerReceipt = await registerTx.wait();

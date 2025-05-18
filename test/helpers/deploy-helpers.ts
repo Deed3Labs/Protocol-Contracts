@@ -32,7 +32,10 @@ export async function deployContracts(): Promise<DeployedContracts> {
   
   // Deploy Validator
   const Validator = await ethers.getContractFactory("Validator");
-  const validator = await upgrades.deployProxy(Validator, [ethers.ZeroAddress]);
+  const validator = await upgrades.deployProxy(Validator, [
+    "ipfs://metadata/",  // baseUri
+    "ipfs://agreements/" // defaultOperatingAgreementUri
+  ]);
   await validator.waitForDeployment();
   
   // Deploy FundManager (with temporary addresses)
@@ -41,8 +44,7 @@ export async function deployContracts(): Promise<DeployedContracts> {
     500,                      // _commissionPercentageRegular (5%)
     300,                      // _commissionPercentageValidator (3%)
     deployer.address,         // _feeReceiver
-    validatorRegistry.getAddress(), // In v6, .address is .getAddress()
-    ethers.ZeroAddress  // Temporary DeedNFT address
+    validatorRegistry.getAddress() // _validatorRegistry
   ]);
   await fundManager.waitForDeployment();
   
@@ -92,10 +94,10 @@ export async function deployContracts(): Promise<DeployedContracts> {
   // Setup mock data for testing
   // Register validator in ValidatorRegistry
   await validatorRegistry.registerValidator(
-    await validator.getAddress(),
+    validator.address,
     "Test Validator",
     "A validator for testing",
-    [0, 1, 2, 3] // All asset types
+    [0, 1, 2, 3]
   );
   
   return {
@@ -116,9 +118,9 @@ export async function deployContracts(): Promise<DeployedContracts> {
 }
 
 // Helper to deploy a mock ERC20 token for testing
-export async function deployMockToken(name: string, symbol: string) {
+export async function deployMockToken(name: string, symbol: string, decimals: number = 18) {
   const MockToken = await ethers.getContractFactory("MockERC20");
-  const mockToken = await MockToken.deploy(name, symbol);
+  const mockToken = await MockToken.deploy(name, symbol, decimals);
   await mockToken.waitForDeployment();
   return mockToken;
 } 

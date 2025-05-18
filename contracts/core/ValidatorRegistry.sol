@@ -299,6 +299,23 @@ contract ValidatorRegistry is
     }
 
     /**
+     * @dev Returns the supported asset types for a validator.
+     * @param validator Address of the validator.
+     * @return Array of supported asset type IDs.
+     */
+    function getSupportedAssetTypes(address validator)
+        external
+        view
+        returns (uint256[] memory)
+    {
+        require(
+            bytes(validators[validator].name).length > 0,
+            "ValidatorRegistry: Validator not registered"
+        );
+        return validators[validator].supportedAssetTypes;
+    }
+
+    /**
      * @dev See {IERC165-supportsInterface}.
      * Adds support for the IValidatorRegistry interface.
      */
