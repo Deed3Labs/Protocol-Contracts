@@ -239,13 +239,6 @@ interface IValidator is IAccessControlUpgradeable {
     function isCompatibleDeedNFT(address deedNFT) external view returns (bool);
 
     /**
-     * @dev Returns the token URI for a given token ID
-     * @param tokenId ID of the token
-     * @return The token URI
-     */
-    function tokenURI(uint256 tokenId) external view returns (string memory);
-
-    /**
      * @dev Gets the royalty fee percentage for a token
      * @param tokenId ID of the token
      * @return The royalty fee percentage in basis points (100 = 1%)

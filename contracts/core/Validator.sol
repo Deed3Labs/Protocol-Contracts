@@ -87,10 +87,6 @@ contract Validator is
     /// @dev Key: agreement URI, Value: human-readable name
     mapping(string => string) public operatingAgreements;
 
-    /// @notice Mapping of deed IDs to their metadata URIs
-    /// @dev Key: deed ID, Value: metadata URI
-    mapping(uint256 => string) public deedMetadata;
-
     /// @notice Mapping of asset types to their validation criteria
     /// @dev Key: asset type ID, Value: struct containing required traits and additional criteria
     struct ValidationCriteria {
@@ -349,19 +345,6 @@ contract Validator is
     }
 
     /**
-     * @dev Sets the metadata URI for a deed.
-     * @param _tokenId The ID of the deed.
-     * @param _metadataUri The metadata URI.
-     */
-    function setDeedMetadata(uint256 _tokenId, string memory _metadataUri)
-        public
-        onlyRole(METADATA_ROLE)
-    {
-        require(bytes(_metadataUri).length > 0, "Validator: URI cannot be empty");
-        deedMetadata[_tokenId] = _metadataUri;
-    }
-
-    /**
      * @dev Validates a deed NFT
      * @param _tokenId ID of the token to validate
      * @return Whether the validation was successful
@@ -584,19 +567,6 @@ contract Validator is
      */
     function supportsAssetType(uint256 assetTypeId) external view override returns (bool) {
         return supportedAssetTypes[assetTypeId];
-    }
-
-    /**
-     * @dev Returns the metadata URI for a token
-     * @param tokenId ID of the token
-     * @return Metadata URI for the token
-     */
-    function tokenURI(uint256 tokenId) external view override returns (string memory) {
-        string memory metadataUri = deedMetadata[tokenId];
-        if (bytes(metadataUri).length > 0) {
-            return metadataUri;
-        }
-        return string(abi.encodePacked(baseUri, tokenId.toString()));
     }
 
     /**
