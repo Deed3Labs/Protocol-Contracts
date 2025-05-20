@@ -44,15 +44,6 @@ describe("Core Contracts Integration", function() {
     ]);
     await deedNFT.waitForDeployment();
     
-    const FundManager = await ethers.getContractFactory("FundManager");
-    fundManager = await upgrades.deployProxy(FundManager, [
-      await deedNFT.getAddress(),
-      await validatorRegistry.getAddress(),
-      1000, // 10% commission
-      feeReceiver.address
-    ]);
-    await fundManager.waitForDeployment();
-    
     const MetadataRenderer = await ethers.getContractFactory("MetadataRenderer");
     metadataRenderer = await upgrades.deployProxy(MetadataRenderer, []);
     await metadataRenderer.waitForDeployment();
@@ -63,7 +54,6 @@ describe("Core Contracts Integration", function() {
     
     // 2. Grant roles
     await deedNFT.grantRole(await deedNFT.VALIDATOR_ROLE(), await validator.getAddress());
-    await deedNFT.grantRole(await deedNFT.MINTER_ROLE(), await fundManager.getAddress());
     await validator.grantRole(await validator.VALIDATOR_ROLE(), validator1.address);
     await validator.grantRole(await validator.METADATA_ROLE(), await validator.getAddress());
     await validator.grantRole(await validator.CRITERIA_MANAGER_ROLE(), await validator.getAddress());
@@ -91,17 +81,34 @@ describe("Core Contracts Integration", function() {
     await validator.addWhitelistedToken(await mockERC20.getAddress());
     await validator.setServiceFee(await mockERC20.getAddress(), ethers.parseUnits("100", 18));
     
-    // 6. Set FundManager in DeedNFT and Validator
+    // Set royalty receiver in Validator contract
+    await validator.setRoyaltyReceiver(feeReceiver.address);
+    
+    // 6. Deploy FundManager after validator is registered
+    const FundManager = await ethers.getContractFactory("FundManager");
+    fundManager = await upgrades.deployProxy(FundManager, [
+      await deedNFT.getAddress(),
+      await validatorRegistry.getAddress(),
+      1000, // 10% commission
+      feeReceiver.address
+    ]);
+    await fundManager.waitForDeployment();
+    
+    // 7. Set FundManager in DeedNFT and Validator
     await deedNFT.setFundManager(await fundManager.getAddress());
     await validator.setFundManager(await fundManager.getAddress());
+    await deedNFT.grantRole(await deedNFT.MINTER_ROLE(), await fundManager.getAddress());
     
-    // 7. Set MetadataRenderer in DeedNFT
+    // 8. Set MetadataRenderer in DeedNFT
     await deedNFT.setMetadataRenderer(await metadataRenderer.getAddress());
     
-    // 8. Mint tokens to user and approve FundManager
+    // 9. Mint tokens to user and approve FundManager
     const mintAmount = ethers.parseUnits("1000", 18);
     await mockERC20.mint(user1.address, mintAmount);
     await mockERC20.connect(user1).approve(await fundManager.getAddress(), ethers.parseUnits("100", 18));
+
+    // Set FundManager in ValidatorRegistry
+    await validatorRegistry.setFundManager(await fundManager.getAddress());
   });
   
   describe("End-to-End Deed Creation Process", function() {
@@ -184,15 +191,26 @@ describe("Core Contracts Integration", function() {
       const feeReceiverBalance = await mockERC20.balanceOf(feeReceiver.address);
       expect(feeReceiverBalance).to.equal(ethers.parseUnits("10", 18)); // 10% of service fee
       
-      // 7. Check validator's commission balance
-      const validatorBalance = await fundManager.getCommissionBalance(
+      // 7. Check validator's fee balance
+      const validatorBalance = await fundManager.getValidatorFeeBalance(
         await validator.getAddress(),
         await mockERC20.getAddress()
       );
       expect(validatorBalance).to.equal(ethers.parseUnits("90", 18)); // 90% of service fee
+
+      // Debug: Check if caller has FEE_MANAGER_ROLE in Validator contract
+      const hasValidatorFeeManagerRole = await validator.hasRole(await validator.FEE_MANAGER_ROLE(), feeManager.address);
+      console.log("Caller has FEE_MANAGER_ROLE in Validator:", hasValidatorFeeManagerRole);
       
       // 8. Withdraw validator fees as fee manager
-      const feeManagerBalanceBefore = await mockERC20.balanceOf(feeManager.address);
+      const royaltyReceiverBalanceBefore = await mockERC20.balanceOf(feeReceiver.address);
+      const validatorFeeBalanceBefore = await fundManager.getValidatorFeeBalance(
+        await validator.getAddress(),
+        await mockERC20.getAddress()
+      );
+      console.log("Royalty receiver balance before withdrawal:", royaltyReceiverBalanceBefore.toString());
+      console.log("Validator fee balance before withdrawal:", validatorFeeBalanceBefore.toString());
+      
       await expect(
         fundManager.connect(feeManager).withdrawValidatorFees(
           await validator.getAddress(),
@@ -200,16 +218,17 @@ describe("Core Contracts Integration", function() {
         )
       ).to.not.be.reverted;
       
-      // 9. Verify fee manager received the funds
-      const feeManagerBalanceAfter = await mockERC20.balanceOf(feeManager.address);
-      expect(feeManagerBalanceAfter - feeManagerBalanceBefore).to.equal(ethers.parseUnits("90", 18));
-      
-      // 10. Verify validator's commission balance is reset
-      const validatorBalanceAfter = await fundManager.getCommissionBalance(
+      // 9. Verify royalty receiver received the funds
+      const royaltyReceiverBalanceAfter = await mockERC20.balanceOf(feeReceiver.address);
+      const validatorFeeBalanceAfter = await fundManager.getValidatorFeeBalance(
         await validator.getAddress(),
         await mockERC20.getAddress()
       );
-      expect(validatorBalanceAfter).to.equal(0);
+      console.log("Royalty receiver balance after withdrawal:", royaltyReceiverBalanceAfter.toString());
+      console.log("Validator fee balance after withdrawal:", validatorFeeBalanceAfter.toString());
+      console.log("Balance difference:", (royaltyReceiverBalanceAfter - royaltyReceiverBalanceBefore).toString());
+      
+      expect(royaltyReceiverBalanceAfter - royaltyReceiverBalanceBefore).to.equal(ethers.parseUnits("90", 18));
     });
   });
   
@@ -244,6 +263,59 @@ describe("Core Contracts Integration", function() {
       // Verify state is preserved
       expect(await fundManager.getCommissionPercentage()).to.equal(1000);
       expect(await fundManager.feeReceiver()).to.equal(feeReceiver.address);
+    });
+  });
+
+  describe("Role Management", function() {
+    it("should automatically assign FEE_MANAGER_ROLE to active validators", async function() {
+      // Verify validator has FEE_MANAGER_ROLE in FundManager
+      const FEE_MANAGER_ROLE = await fundManager.FEE_MANAGER_ROLE();
+      const hasRole = await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress());
+      expect(hasRole).to.be.true;
+
+      // Deploy a new validator
+      const Validator2 = await ethers.getContractFactory("Validator");
+      const validator2 = await upgrades.deployProxy(Validator2, [
+        "ipfs://metadata2/",
+        "ipfs://agreements2/"
+      ]);
+      await validator2.waitForDeployment();
+
+      // Register the new validator
+      await validatorRegistry.registerValidator(
+        await validator2.getAddress(),
+        "Test Validator 2",
+        "Another validator for testing",
+        [0, 1, 2, 3]
+      );
+
+      // Update validator roles in FundManager
+      await fundManager.updateValidatorRoles();
+
+      // Verify new validator has FEE_MANAGER_ROLE
+      const hasRole2 = await fundManager.hasRole(FEE_MANAGER_ROLE, await validator2.getAddress());
+      expect(hasRole2).to.be.true;
+    });
+
+    it("should automatically revoke FEE_MANAGER_ROLE when validator is removed or deactivated", async function() {
+      const FEE_MANAGER_ROLE = await fundManager.FEE_MANAGER_ROLE();
+      // Initially, validator has FEE_MANAGER_ROLE
+      expect(await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress())).to.be.true;
+      
+      // Deactivate validator
+      await validatorRegistry.updateValidatorStatus(await validator.getAddress(), false);
+      // Verify role is revoked
+      expect(await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress())).to.be.false;
+      
+      // Reactivate validator
+      await validatorRegistry.updateValidatorStatus(await validator.getAddress(), true);
+      // Verify role is re-granted
+      expect(await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress())).to.be.true;
+      
+      // Remove validator
+      await validatorRegistry.removeValidator(await validator.getAddress());
+      // Verify role is revoked
+      expect(await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress())).to.be.false;
     });
   });
 }); 

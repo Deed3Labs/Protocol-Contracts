@@ -610,15 +610,17 @@ contract Validator is
     /**
      * @dev Allows validator admins to withdraw accumulated service fees from the FundManager
      * @param token Address of the token to withdraw
+     * @notice Fees are withdrawn to the royalty receiver address set in this contract
      */
     function withdrawServiceFees(address token) external onlyRole(FEE_MANAGER_ROLE) {
         require(fundManager != address(0), "Validator: FundManager not set");
+        require(royaltyReceiver != address(0), "Validator: Royalty receiver not set");
         
         // Check if there are fees to withdraw
-        uint256 amount = IFundManager(fundManager).getCommissionBalance(address(this), token);
+        uint256 amount = IFundManager(fundManager).getValidatorFeeBalance(address(this), token);
         require(amount > 0, "Validator: No service fees to withdraw");
         
-        // Call the FundManager to withdraw fees
+        // Call the FundManager to withdraw fees to the royalty receiver
         IFundManager(fundManager).withdrawValidatorFees(address(this), token);
     }
 
@@ -723,7 +725,7 @@ contract Validator is
      * @param percentage The royalty fee percentage in basis points (100 = 1%)
      */
     function setRoyaltyFeePercentage(uint96 percentage) external onlyRole(FEE_MANAGER_ROLE) {
-        require(percentage <= 10000, "Validator: Royalty percentage exceeds 100%");
+        require(percentage <= 500, "Validator: Royalty percentage exceeds 5%");
         royaltyFeePercentage = percentage;
     }
 

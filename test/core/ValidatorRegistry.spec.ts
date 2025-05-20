@@ -18,6 +18,7 @@ describe("ValidatorRegistry Contract", function() {
   let validator1: SignerWithAddress;
   let validator2: SignerWithAddress;
   let REGISTRY_ADMIN_ROLE: string;
+  let fundManager: any;
   
   beforeEach(async function() {
     const signers = await ethers.getSigners();
@@ -45,6 +46,19 @@ describe("ValidatorRegistry Contract", function() {
       await validatorRegistry.getAddress()
     ]);
     await deedNFT.waitForDeployment();
+    
+    // Deploy FundManager
+    const FundManager = await ethers.getContractFactory("FundManager");
+    fundManager = await upgrades.deployProxy(FundManager, [
+      await deedNFT.getAddress(),
+      await validatorRegistry.getAddress(),
+      1000, // 10% commission
+      deployer.address // fee receiver
+    ]);
+    await fundManager.waitForDeployment();
+
+    // Set FundManager in ValidatorRegistry
+    await validatorRegistry.setFundManager(await fundManager.getAddress());
     
     // Get the admin role
     REGISTRY_ADMIN_ROLE = await validatorRegistry.REGISTRY_ADMIN_ROLE();
@@ -149,6 +163,27 @@ describe("ValidatorRegistry Contract", function() {
       // Update name
       await validatorRegistry.updateValidatorName(validatorAddr, "Updated Validator Name");
       expect((await validatorRegistry.validators(validatorAddr)).name).to.equal("Updated Validator Name");
+    });
+    
+    it("should automatically revoke FEE_MANAGER_ROLE when validator is removed or deactivated", async function() {
+      const FEE_MANAGER_ROLE = await fundManager.FEE_MANAGER_ROLE();
+      // Initially, validator has FEE_MANAGER_ROLE
+      expect(await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress())).to.be.true;
+      
+      // Deactivate validator
+      await validatorRegistry.updateValidatorStatus(await validator.getAddress(), false);
+      // Verify role is revoked
+      expect(await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress())).to.be.false;
+      
+      // Reactivate validator
+      await validatorRegistry.updateValidatorStatus(await validator.getAddress(), true);
+      // Verify role is re-granted
+      expect(await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress())).to.be.true;
+      
+      // Remove validator
+      await validatorRegistry.removeValidator(await validator.getAddress());
+      // Verify role is revoked
+      expect(await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress())).to.be.false;
     });
   });
 });

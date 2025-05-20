@@ -49,6 +49,10 @@ contract FundManager is
     // Mapping to track validator balances per token
     mapping(address => mapping(address => uint256)) private validatorBalances;
     
+    // Track all ever-assigned validators for role revocation
+    address[] private allAssignedValidators;
+    mapping(address => bool) private isAssignedValidator;
+
     /**
      * @dev Initializes the contract.
      * @param _deedNFT Address of the DeedNFT contract.
@@ -80,6 +84,9 @@ contract FundManager is
         _grantRole(ADMIN_ROLE, msg.sender);
         _grantRole(MINTER_ROLE, msg.sender);
         _grantRole(FEE_MANAGER_ROLE, msg.sender);
+
+        // Grant FEE_MANAGER_ROLE to all active validators
+        _updateValidatorRoles();
     }
     
     /**
@@ -95,7 +102,7 @@ contract FundManager is
      * @param newCommissionPercentage New commission percentage in basis points.
      */
     function setCommissionPercentage(uint256 newCommissionPercentage) external onlyRole(ADMIN_ROLE) {
-        require(newCommissionPercentage <= 10000, "FundManager: Commission percentage exceeds 100%");
+        require(newCommissionPercentage <= 1000, "FundManager: Commission percentage exceeds 10%");
         _commissionPercentage = newCommissionPercentage;
         emit CommissionPercentageUpdated(newCommissionPercentage);
     }
@@ -111,13 +118,47 @@ contract FundManager is
     }
     
     /**
-     * @dev Sets the validator registry address.
+     * @dev Sets the validator registry address and grants FEE_MANAGER_ROLE to active validators.
      * @param _validatorRegistry New validator registry address.
      */
     function setValidatorRegistry(address _validatorRegistry) external onlyRole(ADMIN_ROLE) {
         require(_validatorRegistry != address(0), "FundManager: Invalid validator registry address");
         validatorRegistry = _validatorRegistry;
+        
+        // Grant FEE_MANAGER_ROLE to all active validators
+        _updateValidatorRoles();
+        
         emit ValidatorRegistryUpdated(_validatorRegistry);
+    }
+    
+    /**
+     * @dev Updates FEE_MANAGER_ROLE assignments for all active validators.
+     * Can be called by admin to refresh role assignments.
+     */
+    function updateValidatorRoles() external {
+        require(
+            hasRole(ADMIN_ROLE, msg.sender) || msg.sender == validatorRegistry,
+            "FundManager: Caller must be admin or validator registry"
+        );
+        _updateValidatorRoles();
+    }
+    
+    /**
+     * @dev Internal function to update FEE_MANAGER_ROLE assignments for active validators.
+     */
+    function _updateValidatorRoles() internal {
+        // Revoke FEE_MANAGER_ROLE from all previously assigned validators
+        for (uint256 i = 0; i < allAssignedValidators.length; i++) {
+            _revokeRole(FEE_MANAGER_ROLE, allAssignedValidators[i]);
+        }
+        // Clear the list
+        delete allAssignedValidators;
+        // Grant FEE_MANAGER_ROLE to all active validators
+        address[] memory activeValidators = IValidatorRegistry(validatorRegistry).getActiveValidators();
+        for (uint256 i = 0; i < activeValidators.length; i++) {
+            _grantRole(FEE_MANAGER_ROLE, activeValidators[i]);
+            allAssignedValidators.push(activeValidators[i]);
+        }
     }
     
     /**
@@ -259,6 +300,7 @@ contract FundManager is
         // Check if caller is authorized to withdraw fees
         require(
             IValidator(validatorContract).hasRole(keccak256("ADMIN_ROLE"), msg.sender) ||
+            IValidator(validatorContract).hasRole(keccak256("FEE_MANAGER_ROLE"), msg.sender) ||
             hasRole(FEE_MANAGER_ROLE, msg.sender),
             "FundManager: Not authorized to withdraw fees"
         );
@@ -267,22 +309,26 @@ contract FundManager is
         uint256 amount = validatorBalances[validatorContract][token];
         require(amount > 0, "FundManager: No fees to withdraw");
         
+        // Get the royalty receiver from the validator
+        address royaltyReceiver = IValidator(validatorContract).getRoyaltyReceiver();
+        require(royaltyReceiver != address(0), "FundManager: Invalid royalty receiver");
+        
         // Reset balance before transfer to prevent reentrancy
         validatorBalances[validatorContract][token] = 0;
         
-        // Transfer tokens to the caller (validator admin or fee manager)
-        IERC20Upgradeable(token).safeTransfer(msg.sender, amount);
+        // Transfer tokens to the validator's royalty receiver
+        IERC20Upgradeable(token).safeTransfer(royaltyReceiver, amount);
         
-        emit ValidatorFeesWithdrawn(validatorContract, token, amount, msg.sender);
+        emit ValidatorFeesWithdrawn(validatorContract, token, amount, royaltyReceiver);
     }
     
     /**
-     * @dev Gets the commission balance for a validator and token.
+     * @dev Gets the validator fee balance for a validator and token.
      * @param validatorContract Address of the validator.
      * @param token Address of the token.
-     * @return The commission balance.
+     * @return The validator fee balance.
      */
-    function getCommissionBalance(address validatorContract, address token) external view returns (uint256) {
+    function getValidatorFeeBalance(address validatorContract, address token) external view returns (uint256) {
         return validatorBalances[validatorContract][token];
     }
     

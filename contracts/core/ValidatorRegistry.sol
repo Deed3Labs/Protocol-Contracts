@@ -10,6 +10,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 // Interfaces
 import "./interfaces/IValidatorRegistry.sol";
 import "./interfaces/IValidator.sol";
+import "./interfaces/IFundManager.sol";
 
 /**
  * @title ValidatorRegistry
@@ -65,6 +66,11 @@ contract ValidatorRegistry is
     /// @notice Mapping of asset types to their approved validators
     /// @dev Key: asset type ID, Value: array of validator addresses
     mapping(uint256 => address[]) public assetTypeValidators;
+
+    /// @notice Array of all registered validator addresses
+    address[] private validatorAddresses;
+
+    address public fundManager;
 
     // ============ Events ============
 
@@ -136,6 +142,17 @@ contract ValidatorRegistry is
         // Authorization logic handled by onlyOwner modifier
     }
 
+    function setFundManager(address _fundManager) external onlyOwner {
+        require(_fundManager != address(0), "Invalid address");
+        fundManager = _fundManager;
+    }
+
+    function _updateFundManagerRoles() internal {
+        if (fundManager != address(0)) {
+            IFundManager(fundManager).updateValidatorRoles();
+        }
+    }
+
     /**
      * @dev Registers a new validator.
      * @param validator Address of the validator contract.
@@ -166,6 +183,9 @@ contract ValidatorRegistry is
         validators[validator].description = description;
         validators[validator].supportedAssetTypes = supportedAssetTypes;
         validators[validator].isActive = true;
+        
+        // Add validator to the array
+        validatorAddresses.push(validator);
 
         // Update asset type validators mapping
         for (uint256 i = 0; i < supportedAssetTypes.length; i++) {
@@ -173,6 +193,7 @@ contract ValidatorRegistry is
         }
 
         emit ValidatorRegistered(validator, name, supportedAssetTypes);
+        _updateFundManagerRoles();
     }
 
     /**
@@ -185,8 +206,18 @@ contract ValidatorRegistry is
             "ValidatorRegistry: Validator not registered"
         );
 
+        // Remove validator from the array
+        for (uint256 i = 0; i < validatorAddresses.length; i++) {
+            if (validatorAddresses[i] == validator) {
+                validatorAddresses[i] = validatorAddresses[validatorAddresses.length - 1];
+                validatorAddresses.pop();
+                break;
+            }
+        }
+
         delete validators[validator];
         emit ValidatorRegistered(validator, "", new uint256[](0));
+        _updateFundManagerRoles();
     }
 
     /**
@@ -296,6 +327,7 @@ contract ValidatorRegistry is
 
         validators[validator].isActive = isActive;
         emit ValidatorStatusUpdated(validator, isActive);
+        _updateFundManagerRoles();
     }
 
     /**
@@ -313,6 +345,35 @@ contract ValidatorRegistry is
             "ValidatorRegistry: Validator not registered"
         );
         return validators[validator].supportedAssetTypes;
+    }
+
+    /**
+     * @dev Returns an array of all active validator addresses.
+     * @return Array of active validator addresses.
+     */
+    function getActiveValidators() external view returns (address[] memory) {
+        uint256 activeCount = 0;
+        
+        // Count active validators
+        for (uint256 i = 0; i < validatorAddresses.length; i++) {
+            if (validators[validatorAddresses[i]].isActive) {
+                activeCount++;
+            }
+        }
+        
+        // Create array of active validators
+        address[] memory activeValidators = new address[](activeCount);
+        uint256 index = 0;
+        
+        // Fill array with active validators
+        for (uint256 i = 0; i < validatorAddresses.length; i++) {
+            if (validators[validatorAddresses[i]].isActive) {
+                activeValidators[index] = validatorAddresses[i];
+                index++;
+            }
+        }
+        
+        return activeValidators;
     }
 
     /**

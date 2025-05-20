@@ -95,6 +95,7 @@ interface IFundManager {
     /**
      * @dev Sets the commission percentage
      * @param _percentage New commission percentage in basis points (e.g., 500 = 5%)
+     * @notice Maximum commission percentage is 10% (1000 basis points)
      */
     function setCommissionPercentage(uint256 _percentage) external;
 
@@ -151,21 +152,23 @@ interface IFundManager {
     // ============ Fee Management Functions ============
 
     /**
-     * @dev Allows validator admins or fee managers to withdraw their accumulated fees.
-     *      The tokens are sent to the caller (msg.sender).
+     * @dev Allows validator admins or fee managers to withdraw accumulated validator fees.
+     *      The tokens are sent to the Validator's royalty receiver address.
      * @param validatorContract Address of the validator contract.
      * @param token Address of the token to withdraw.
+     * @notice The fees are always sent to the Validator's royalty receiver address,
+     *         regardless of who initiates the withdrawal.
      */
     function withdrawValidatorFees(address validatorContract, address token) external;
 
     /**
-     * @dev Retrieves the current commission balance for a specific validator and token.
+     * @dev Retrieves the current validator fee balance for a specific validator and token.
      *      This balance represents the accumulated service fees minus the protocol's commission.
      * @param validatorContract Address of the validator contract.
      * @param token Address of the token.
-     * @return balance The current commission balance for the validator and token.
+     * @return balance The current validator fee balance for the validator and token.
      */
-    function getCommissionBalance(address validatorContract, address token) external view returns (uint256);
+    function getValidatorFeeBalance(address validatorContract, address token) external view returns (uint256);
 
     // ============ Getter Functions ============
 
@@ -212,4 +215,9 @@ interface IFundManager {
      * @param token The token address (for ERC20 payments).
      */
     function collectCommission(uint256 tokenId, uint256 amount, address token) external;
+
+    /**
+     * @dev Updates FEE_MANAGER_ROLE assignments for all active validators.
+     */
+    function updateValidatorRoles() external;
 } 

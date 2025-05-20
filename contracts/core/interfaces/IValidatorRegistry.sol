@@ -96,6 +96,12 @@ interface IValidatorRegistry {
      */
     function getSupportedAssetTypes(address validator) external view returns (uint256[] memory);
 
+    /**
+     * @dev Returns an array of all active validator addresses
+     * @return Array of active validator addresses
+     */
+    function getActiveValidators() external view returns (address[] memory);
+
     // ============ State-Changing Functions ============
 
     /**
@@ -137,4 +143,15 @@ interface IValidatorRegistry {
      * @param isActive New operational status
      */
     function updateValidatorStatus(address validator, bool isActive) external;
+
+    /**
+     * @dev Sets the FundManager address.
+     * @param _fundManager New FundManager address.
+     */
+    function setFundManager(address _fundManager) external;
+
+    /**
+     * @dev Internal function to update FundManager roles.
+     */
+    function _updateFundManagerRoles() external;
 }

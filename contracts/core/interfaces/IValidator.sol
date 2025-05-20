@@ -248,19 +248,27 @@ interface IValidator is IAccessControlUpgradeable {
     /**
      * @dev Sets the royalty fee percentage
      * @param percentage The royalty fee percentage in basis points (100 = 1%)
+     * @notice Maximum royalty fee percentage is 5% (500 basis points)
      */
     function setRoyaltyFeePercentage(uint96 percentage) external;
 
     /**
      * @dev Gets the royalty receiver address
-     * @return The address that receives royalties
+     * @return The address that receives royalties and validator service fees
      */
     function getRoyaltyReceiver() external view returns (address);
 
     /**
      * @dev Sets the royalty receiver address
-     * @param receiver The address that will receive royalties
+     * @param receiver The address that will receive royalties and validator service fees
      */
     function setRoyaltyReceiver(address receiver) external;
+
+    /**
+     * @dev Allows validator admins to withdraw accumulated service fees from the FundManager
+     * @param token Address of the token to withdraw
+     * @notice Fees are withdrawn to the royalty receiver address set in this contract
+     */
+    function withdrawServiceFees(address token) external;
 }
 

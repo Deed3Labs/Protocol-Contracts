@@ -42,7 +42,7 @@ describe("Validator Contract", function() {
     await validator.waitForDeployment();
     
     // Register validator in registry
-    await validatorRegistry.registerValidator(
+    await validatorRegistry.connect(deployer).registerValidator(
       await validator.getAddress(),
       "Test Validator",
       "A validator for testing",
@@ -287,6 +287,109 @@ describe("Validator Contract", function() {
       await validator.connect(admin).removeWhitelistedToken(await token.getAddress());
       expect(await validator.isTokenWhitelisted(await token.getAddress())).to.be.false;
     });
+
+    it("should withdraw service fees to royalty receiver", async function() {
+      const MockERC20 = await ethers.getContractFactory("MockERC20");
+      const token = await MockERC20.deploy("Test Token", "TT", 18);
+      await token.waitForDeployment();
+      
+      // Set up royalty receiver
+      await validator.connect(admin).setRoyaltyReceiver(user1.address);
+      
+      // Whitelist token and set service fee
+      await validator.connect(admin).addWhitelistedToken(await token.getAddress());
+      await validator.connect(admin).setServiceFee(await token.getAddress(), 100);
+      
+      // Ensure asset type 0 is supported
+      await validator.connect(admin).setAssetTypeSupport(0, true);
+      
+      // Set up FundManager
+      const FundManager = await ethers.getContractFactory("FundManager");
+      const fundManager = await upgrades.deployProxy(FundManager, [
+        await deedNFT.getAddress(),
+        await validatorRegistry.getAddress(),
+        1000, // 10% commission
+        admin.address // fee receiver
+      ]);
+      await fundManager.waitForDeployment();
+      
+      // Grant MINTER_ROLE to FundManager in DeedNFT
+      const MINTER_ROLE = await deedNFT.MINTER_ROLE();
+      await deedNFT.grantRole(MINTER_ROLE, await fundManager.getAddress());
+      
+      await validator.setFundManager(await fundManager.getAddress());
+      
+      // Mint tokens to user2 and approve FundManager
+      await token.mint(user2.address, 1000);
+      await token.connect(user2).approve(await fundManager.getAddress(), 100);
+      
+      // Create a deed to accumulate fees
+      const definition = JSON.stringify({
+        country: "USA",
+        state: "California",
+        county: "Los Angeles",
+        parcelNumber: "12345"
+      });
+      
+      await fundManager.connect(user2).mintDeedNFT(
+        user2.address,
+        0, // Land
+        "ipfs://metadata1",
+        definition,
+        "configuration1",
+        await validator.getAddress(),
+        await token.getAddress(),
+        0n // salt
+      );
+      
+      // Get initial balances
+      const royaltyReceiverBalanceBefore = await token.balanceOf(user1.address);
+      console.log('Royalty receiver balance before withdrawal:', royaltyReceiverBalanceBefore.toString());
+
+      // Debug: Check FundManager balance before withdrawal
+      const fundManagerBalanceBefore = await token.balanceOf(await fundManager.getAddress());
+      console.log('FundManager balance before withdrawal:', fundManagerBalanceBefore.toString());
+
+      // Debug: Check commission balance before withdrawal
+      const commissionBalance = await fundManager.getValidatorFeeBalance(
+        await validator.getAddress(),
+        await token.getAddress()
+      );
+      console.log('Validator service fee balance before withdrawal:', commissionBalance.toString());
+
+      // Debug: Check royalty receiver and FundManager address
+      const royaltyReceiver = await validator.getRoyaltyReceiver();
+      const fundManagerAddress = await validator.fundManager();
+      console.log('Royalty receiver:', royaltyReceiver);
+      console.log('FundManager address:', fundManagerAddress);
+
+      // Debug: Check if Validator has FEE_MANAGER_ROLE in FundManager
+      const FEE_MANAGER_ROLE = await fundManager.FEE_MANAGER_ROLE();
+      const hasRole = await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress());
+      console.log('Validator has FEE_MANAGER_ROLE in FundManager:', hasRole);
+
+      // Grant FEE_MANAGER_ROLE to Validator contract itself for FundManager withdrawal
+      await fundManager.grantRole(FEE_MANAGER_ROLE, await validator.getAddress());
+
+      // Withdraw fees
+      await validator.connect(admin).withdrawServiceFees(await token.getAddress());
+      
+      // Debug: Check FundManager balance after withdrawal
+      const fundManagerBalanceAfter = await token.balanceOf(await fundManager.getAddress());
+      console.log('FundManager balance after withdrawal:', fundManagerBalanceAfter.toString());
+
+      // Verify royalty receiver received the funds
+      const royaltyReceiverBalanceAfter = await token.balanceOf(user1.address);
+      console.log('Royalty receiver balance after withdrawal:', royaltyReceiverBalanceAfter.toString());
+      expect(royaltyReceiverBalanceAfter - royaltyReceiverBalanceBefore).to.equal(90); // 90% of service fee
+
+      // Debug: Check commission balance after withdrawal
+      const commissionBalanceAfter = await fundManager.getValidatorFeeBalance(
+        await validator.getAddress(),
+        await token.getAddress()
+      );
+      console.log('Validator service fee balance after withdrawal:', commissionBalanceAfter.toString());
+    });
   });
 
   describe("Royalty Management", function() {
@@ -295,9 +398,9 @@ describe("Validator Contract", function() {
       expect(await validator.getRoyaltyFeePercentage(0)).to.equal(500);
     });
 
-    it("should prevent setting royalty fee percentage above 100%", async function() {
+    it("should prevent setting royalty fee percentage above 5%", async function() {
       await expect(
-        validator.connect(admin).setRoyaltyFeePercentage(10001)
+        validator.connect(admin).setRoyaltyFeePercentage(501)
       ).to.be.reverted;
     });
 
