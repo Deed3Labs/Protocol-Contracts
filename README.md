@@ -173,7 +173,7 @@ The `Fractionalize` contract enables the creation of ERC1155 tokens representing
 - **REIT Share Creation:** Converts DeedNFT tokens into tradeable ERC1155 shares, enabling REIT-like investment structures
 - **Asset Locking:** Securely locks the original DeedNFT while shares are active
 - **Transfer Restrictions:** Implements wallet limits and transfer restrictions for regulatory compliance
-- **Approval System:** Requires approval of configured majority of outstanding shares for unlocking underlying DeedNFT
+- **Approval System:** Requires approval of configured majority of outstanding shares to unlock original DeedNFT
 - **Security Features:** Includes pausable functionality and role-based access control
 - **Dividend Distribution:** Supports automated dividend distribution to share holders
 - **Regulatory Compliance:** Built-in features to support REIT regulatory requirements
