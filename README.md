@@ -53,6 +53,7 @@ The `DeedNFT` contract is the core ERC721 token representing real world assets. 
 - **Batch Minting:** Supports the minting of multiple deed tokens in a single transaction, reducing gas costs.
 - **Upgradability:** Designed with future enhancements in mind using the UUPS (Universal Upgradeable Proxy Standard) pattern for seamless contract upgrades.
 - **Royalty Enforcement:** Implements ERC721C for on-chain royalty enforcement with marketplace approval system.
+- **FundManager Integration:** Seamless integration with FundManager for commission handling and fee distribution.
 
 ### Royalty System
 
@@ -82,11 +83,11 @@ The `Validator` contract is responsible for verifying deed data and managing val
 
 - **Service Fee Handling:** Manages service fees and token whitelisting for transactions.
 - **Royalty Management:** Handles royalty fee percentages and receiver addresses.
-- **Operating Agreement Management:** Manages operating agreements (legal wrapper) associated to each property, storing and 
-retrieving them as needed.
+- **Operating Agreement Management:** Manages operating agreements (legal wrapper) associated to each property, storing and retrieving them as needed.
 - **Integration with the Registry:** Works alongside the ValidatorRegistry to ensure that only authorized validators perform deed validations.
-- **Validation Criteria Management:** Offers flexibility to define specific validation criteria for different types of properties or 
-regional requirements.
+- **Validation Criteria Management:** Offers flexibility to define specific validation criteria for different types of properties or regional requirements.
+- **Multi-DeedNFT Support:** Supports multiple compatible DeedNFT contracts with primary contract designation.
+- **FundManager Integration:** Seamless integration for fee management and distribution.
 
 ### 3. ValidatorRegistry
 
@@ -97,6 +98,8 @@ The `ValidatorRegistry` contract manages a list of authorized validators, ensuri
 - **Validator Registration:** Allows new validators to be registered, as well as updates or removals of existing ones.
 - **Centralized Validation Control:** Ensures that only trusted validators can interact with the DeedNFT contract, thereby maintaining the integrity of the validation process.
 - **Governance and Administration:** Supports role-based permissions to manage who can add or remove validators, contributing to the overall security of the protocol.
+- **FundManager Integration:** Manages validator roles and permissions for fee management.
+- **Enhanced Status Tracking:** Improved tracking of validator operational status and capabilities.
 
 ### 4. FundManager
 
@@ -108,6 +111,9 @@ The `FundManager` contract is dedicated to managing funds associated with proper
 - **Funds Allocation and Distribution:** Implements mechanisms to distribute collected funds among various stakeholders (such as validators, platform operators, or other designated parties) based on predetermined rules.
 - **Secure Financial Operations:** Integrates with other core contracts (like DeedNFT and Validator) to ensure that all financial operations are carried out securely and transparently.
 - **Efficient Fund Handling:** Designed to facilitate both deposit and withdrawal operations, ensuring smooth financial transactions within the ecosystem.
+- **Commission System:** Manages platform commission fees with configurable percentages.
+- **Validator Fee Management:** Handles validator service fees and royalty distributions.
+- **Role-Based Access Control:** Implements comprehensive role management for fee operations.
 
 ### 5. MetadataRenderer
 
@@ -122,6 +128,7 @@ The `MetadataRenderer` contract is responsible for generating and managing token
 - **Feature Tracking:** Maintains lists of features for each token
 - **Custom Metadata:** Allows for custom metadata fields while maintaining standardization
 - **Trait Management:** Handles dynamic trait updates and synchronization with DeedNFT
+- **Enhanced Document Management:** Improved document type handling and organization
 
 ## Interface Contracts
 
