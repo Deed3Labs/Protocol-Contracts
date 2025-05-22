@@ -36,7 +36,7 @@ The protocol supports various types of real-world assets:
 - **Land**: Real estate properties and land parcels
 - **Vehicle**: Automotive and transportation assets
 - **Estate**: Residential and commercial properties
-- **Commercial Equipment**: Industrial and agricultural equipment
+- **Heavy Equipment**: Commercial, industrial and agricultural equipment
 
 Each asset type has specific validation criteria and metadata structures to ensure accurate representation and compliance.
 
