@@ -2,6 +2,14 @@ import { ethers } from "ethers";
 import { ValidatorRegistry } from "../typechain-types";
 import { saveDeployment } from "./helpers";
 
+/**
+ * Deploys the ValidatorRegistry contract
+ * 
+ * This contract:
+ * - Manages validator registration and capabilities
+ * - Integrates with FundManager for role management
+ * - Handles asset type validation
+ */
 async function main() {
   // Get the hardhat runtime environment
   const hre = require("hardhat");
@@ -27,6 +35,7 @@ async function main() {
   console.log("ValidatorRegistry deployed to:", validatorRegistryAddress);
 
   // Setup initial roles and configuration
+  // Note: Additional roles will be managed through FundManager integration
   const REGISTRY_ADMIN_ROLE = await validatorRegistry.REGISTRY_ADMIN_ROLE();
   const VALIDATOR_ROLE = await validatorRegistry.VALIDATOR_ROLE();
   const OPERATOR_ROLE = await validatorRegistry.OPERATOR_ROLE();
@@ -35,7 +44,7 @@ async function main() {
   await validatorRegistry.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
   await validatorRegistry.grantRole(VALIDATOR_ROLE, deployer.address);
   await validatorRegistry.grantRole(OPERATOR_ROLE, deployer.address);
-  console.log("Granted roles to deployer");
+  console.log("Granted initial roles to deployer");
 
   // Save deployment information
   const validatorRegistryAbi = validatorRegistry.interface.formatJson();

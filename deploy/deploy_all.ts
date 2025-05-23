@@ -17,6 +17,7 @@ const execAsync = promisify(exec);
  * - DeedNFT needs Validator and MetadataRenderer
  * - Validator needs to be registered in ValidatorRegistry
  * - FundManager needs DeedNFT and ValidatorRegistry
+ * - ValidatorRegistry and FundManager have bidirectional relationship for role management
  */
 async function main() {
   // Get the hardhat runtime environment
@@ -188,7 +189,7 @@ async function main() {
     const fundManager = await hre.upgrades.deployProxy(FundManager, [
       deedNFTAddress,
       validatorRegistryAddress,
-      500, // 5% initial commission percentage (500 basis points)
+      500, // 5% initial commission percentage (500 basis points) - within 10% max limit
       deployer.address // Fee receiver address
     ], {
       initializer: "initialize",
@@ -202,6 +203,13 @@ async function main() {
     // Save FundManager deployment
     const fundManagerAbi = fundManager.interface.formatJson();
     saveDeployment(network.name, "FundManager", fundManagerAddress, fundManagerAbi);
+
+    // Set FundManager in ValidatorRegistry for role management
+    console.log("\nSetting FundManager in ValidatorRegistry for role management...");
+    const setFundManagerInRegistryTx = await validatorRegistry.setFundManager(fundManagerAddress);
+    await setFundManagerInRegistryTx.wait();
+    console.log("FundManager set in ValidatorRegistry");
+    console.log("Transaction hash:", setFundManagerInRegistryTx.hash);
 
     // 6. Setup Validator in Registry
     console.log("\n6. Setting up Validator in Registry...");
