@@ -732,7 +732,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     
     // ============ Metadata Generation Functions ============
     function _generateName(uint256 tokenId, uint8 assetType) internal view returns (string memory) {
-        if (assetType == 0) { // Land
+        if (assetType == 0 || assetType == 2) { // Land or Estate
             // Get traits directly using their names
             bytes memory streetNumBytes = deedNFT.getTraitValue(tokenId, keccak256("streetNumber"));
             bytes memory streetNameBytes = deedNFT.getTraitValue(tokenId, keccak256("streetName"));
@@ -744,11 +744,11 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             
             // Try street address first
             if (bytes(streetNumber).length > 0 && bytes(streetName).length > 0) {
-                return string(abi.encodePacked(streetNumber, " ", streetName, " - Land"));
+                return string(abi.encodePacked(streetNumber, " ", streetName, assetType == 0 ? " - Land" : " - Estate"));
             }
             // Fallback to parcel number
             if (bytes(parcelNumber).length > 0) {
-                return string(abi.encodePacked("Parcel #", parcelNumber, " - Land"));
+                return string(abi.encodePacked("Parcel #", parcelNumber, assetType == 0 ? " - Land" : " - Estate"));
             }
         } else if (assetType == 1) { // Vehicle
             // Get vehicle traits
@@ -771,6 +771,34 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             // Fallback to just make
             if (bytes(vehicleMake).length > 0) {
                 return string(abi.encodePacked(vehicleMake, " Vehicle"));
+            }
+        } else if (assetType == 3) { // Equipment
+            // Get equipment traits
+            bytes memory equipmentTypeBytes = deedNFT.getTraitValue(tokenId, keccak256("equipmentType"));
+            bytes memory manufacturerBytes = deedNFT.getTraitValue(tokenId, keccak256("manufacturer"));
+            bytes memory modelBytes = deedNFT.getTraitValue(tokenId, keccak256("model"));
+            bytes memory serialNumberBytes = deedNFT.getTraitValue(tokenId, keccak256("serialNumber"));
+            
+            string memory equipmentType = equipmentTypeBytes.length > 0 ? abi.decode(equipmentTypeBytes, (string)) : "";
+            string memory manufacturer = manufacturerBytes.length > 0 ? abi.decode(manufacturerBytes, (string)) : "";
+            string memory model = modelBytes.length > 0 ? abi.decode(modelBytes, (string)) : "";
+            string memory serialNumber = serialNumberBytes.length > 0 ? abi.decode(serialNumberBytes, (string)) : "";
+            
+            // Try full equipment name with serial number
+            if (bytes(manufacturer).length > 0 && bytes(model).length > 0 && bytes(serialNumber).length > 0) {
+                return string(abi.encodePacked(manufacturer, " ", model, " (S/N: ", serialNumber, ")"));
+            }
+            // Try equipment type with manufacturer and model
+            if (bytes(equipmentType).length > 0 && bytes(manufacturer).length > 0 && bytes(model).length > 0) {
+                return string(abi.encodePacked(equipmentType, " - ", manufacturer, " ", model));
+            }
+            // Fallback to manufacturer and model only
+            if (bytes(manufacturer).length > 0 && bytes(model).length > 0) {
+                return string(abi.encodePacked(manufacturer, " ", model));
+            }
+            // Fallback to just manufacturer
+            if (bytes(manufacturer).length > 0) {
+                return string(abi.encodePacked(manufacturer, " Equipment"));
             }
         }
         
