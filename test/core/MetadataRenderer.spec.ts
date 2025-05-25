@@ -92,7 +92,8 @@ describe("MetadataRenderer", function() {
         country: "USA",
         state: "California",
         county: "Los Angeles",
-        parcelNumber: "12345"
+        parcelNumber: "12345",
+        zipCode: "90210"
       }),
       "configuration1",
       await validator.getAddress(),
@@ -118,14 +119,33 @@ describe("MetadataRenderer", function() {
       ethers.toUtf8Bytes("Main St"),
       1 // string type
     );
+    await deedNFT.setTrait(
+      1,
+      ethers.toUtf8Bytes("state"),
+      ethers.toUtf8Bytes("California"),
+      1 // string type
+    );
+    await deedNFT.setTrait(
+      1,
+      ethers.toUtf8Bytes("country"),
+      ethers.toUtf8Bytes("USA"),
+      1 // string type
+    );
+    await deedNFT.setTrait(
+      1,
+      ethers.toUtf8Bytes("zipCode"),
+      ethers.toUtf8Bytes("90210"),
+      1 // string type
+    );
 
-    // Token 2: Land with only parcel number
+    // Token 2: Land with only parcel number and state
     await deedNFT.mintAsset(
       user1.address, 
       0, // AssetType.Land
       "ipfs://metadata2",
       JSON.stringify({
-        parcelNumber: "P12345"
+        parcelNumber: "P12345",
+        state: "California"
       }),
       "configuration2",
       await validator.getAddress(),
@@ -145,17 +165,24 @@ describe("MetadataRenderer", function() {
       ethers.toUtf8Bytes("P12345"),
       1 // string type
     );
+    await deedNFT.setTrait(
+      2,
+      ethers.toUtf8Bytes("state"),
+      ethers.toUtf8Bytes("California"),
+      1 // string type
+    );
 
-    // Token 3: Vehicle with full details
+    // Token 3: Estate with full address
     await deedNFT.mintAsset(
       user1.address,
-      1, // AssetType.Vehicle
+      2, // AssetType.Estate
       "ipfs://metadata3",
       JSON.stringify({
-        make: "Tesla",
-        model: "Model S",
-        year: "2024",
-        vin: "12345"
+        streetNumber: "456",
+        streetName: "Oak Ave",
+        state: "New York",
+        country: "USA",
+        zipCode: "10001"
       }),
       "configuration3",
       await validator.getAddress(),
@@ -166,36 +193,50 @@ describe("MetadataRenderer", function() {
     await deedNFT.setTrait(
       3,
       ethers.toUtf8Bytes("assetType"),
-      ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [1]),
+      ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [2]),
       0 // bytes type
     );
     await deedNFT.setTrait(
       3,
-      ethers.toUtf8Bytes("year"),
-      ethers.toUtf8Bytes("2024"),
+      ethers.toUtf8Bytes("streetNumber"),
+      ethers.toUtf8Bytes("456"),
       1 // string type
     );
     await deedNFT.setTrait(
       3,
-      ethers.toUtf8Bytes("make"),
-      ethers.toUtf8Bytes("Tesla"),
+      ethers.toUtf8Bytes("streetName"),
+      ethers.toUtf8Bytes("Oak Ave"),
       1 // string type
     );
     await deedNFT.setTrait(
       3,
-      ethers.toUtf8Bytes("model"),
-      ethers.toUtf8Bytes("Model S"),
+      ethers.toUtf8Bytes("state"),
+      ethers.toUtf8Bytes("New York"),
+      1 // string type
+    );
+    await deedNFT.setTrait(
+      3,
+      ethers.toUtf8Bytes("country"),
+      ethers.toUtf8Bytes("USA"),
+      1 // string type
+    );
+    await deedNFT.setTrait(
+      3,
+      ethers.toUtf8Bytes("zipCode"),
+      ethers.toUtf8Bytes("10001"),
       1 // string type
     );
 
-    // Token 4: Vehicle with make and model
+    // Token 4: Equipment with full details
     await deedNFT.mintAsset(
       user1.address,
-      1, // AssetType.Vehicle
+      3, // AssetType.Equipment
       "ipfs://metadata4",
       JSON.stringify({
-        make: "Tesla",
-        model: "Model S"
+        equipmentType: "Excavator",
+        manufacturer: "Caterpillar",
+        model: "320D2",
+        serialNumber: "SN123456"
       }),
       "configuration4",
       await validator.getAddress(),
@@ -206,29 +247,42 @@ describe("MetadataRenderer", function() {
     await deedNFT.setTrait(
       4,
       ethers.toUtf8Bytes("assetType"),
-      ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [1]),
+      ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [3]),
       0 // bytes type
     );
     await deedNFT.setTrait(
       4,
-      ethers.toUtf8Bytes("make"),
-      ethers.toUtf8Bytes("Tesla"),
+      ethers.toUtf8Bytes("equipmentType"),
+      ethers.toUtf8Bytes("Excavator"),
+      1 // string type
+    );
+    await deedNFT.setTrait(
+      4,
+      ethers.toUtf8Bytes("manufacturer"),
+      ethers.toUtf8Bytes("Caterpillar"),
       1 // string type
     );
     await deedNFT.setTrait(
       4,
       ethers.toUtf8Bytes("model"),
-      ethers.toUtf8Bytes("Model S"),
+      ethers.toUtf8Bytes("320D2"),
       1 // string type
     );
-    
-    // Token 5: Vehicle with only make
+    await deedNFT.setTrait(
+      4,
+      ethers.toUtf8Bytes("serialNumber"),
+      ethers.toUtf8Bytes("SN123456"),
+      1 // string type
+    );
+
+    // Token 5: Equipment with manufacturer and model only
     await deedNFT.mintAsset(
       user1.address,
-      1, // AssetType.Vehicle
+      3, // AssetType.Equipment
       "ipfs://metadata5",
       JSON.stringify({
-        make: "Tesla"
+        manufacturer: "Honda",
+        model: "EU3000i"
       }),
       "configuration5",
       await validator.getAddress(),
@@ -239,13 +293,19 @@ describe("MetadataRenderer", function() {
     await deedNFT.setTrait(
       5,
       ethers.toUtf8Bytes("assetType"),
-      ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [1]),
+      ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [3]),
       0 // bytes type
     );
     await deedNFT.setTrait(
       5,
-      ethers.toUtf8Bytes("make"),
-      ethers.toUtf8Bytes("Tesla"),
+      ethers.toUtf8Bytes("manufacturer"),
+      ethers.toUtf8Bytes("Honda"),
+      1 // string type
+    );
+    await deedNFT.setTrait(
+      5,
+      ethers.toUtf8Bytes("model"),
+      ethers.toUtf8Bytes("EU3000i"),
       1 // string type
     );
 
@@ -266,6 +326,109 @@ describe("MetadataRenderer", function() {
       ethers.toUtf8Bytes("assetType"),
       ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [0]),
       0 // bytes type
+    );
+
+    // Token 6: Vehicle with full details
+    await deedNFT.mintAsset(
+      user1.address,
+      1, // AssetType.Vehicle
+      "ipfs://metadata6",
+      JSON.stringify({
+        make: "Tesla",
+        model: "Model S",
+        year: "2024",
+        vin: "12345"
+      }),
+      "configuration6",
+      await validator.getAddress(),
+      0n
+    );
+
+    // Set up traits for Token 6
+    await deedNFT.setTrait(
+      6,
+      ethers.toUtf8Bytes("assetType"),
+      ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [1]),
+      0 // bytes type
+    );
+    await deedNFT.setTrait(
+      6,
+      ethers.toUtf8Bytes("year"),
+      ethers.toUtf8Bytes("2024"),
+      1 // string type
+    );
+    await deedNFT.setTrait(
+      6,
+      ethers.toUtf8Bytes("make"),
+      ethers.toUtf8Bytes("Tesla"),
+      1 // string type
+    );
+    await deedNFT.setTrait(
+      6,
+      ethers.toUtf8Bytes("model"),
+      ethers.toUtf8Bytes("Model S"),
+      1 // string type
+    );
+
+    // Token 7: Vehicle with make and model only
+    await deedNFT.mintAsset(
+      user1.address,
+      1, // AssetType.Vehicle
+      "ipfs://metadata7",
+      JSON.stringify({
+        make: "Toyota",
+        model: "Camry"
+      }),
+      "configuration7",
+      await validator.getAddress(),
+      0n
+    );
+
+    // Set up traits for Token 7
+    await deedNFT.setTrait(
+      7,
+      ethers.toUtf8Bytes("assetType"),
+      ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [1]),
+      0 // bytes type
+    );
+    await deedNFT.setTrait(
+      7,
+      ethers.toUtf8Bytes("make"),
+      ethers.toUtf8Bytes("Toyota"),
+      1 // string type
+    );
+    await deedNFT.setTrait(
+      7,
+      ethers.toUtf8Bytes("model"),
+      ethers.toUtf8Bytes("Camry"),
+      1 // string type
+    );
+
+    // Token 8: Vehicle with only make
+    await deedNFT.mintAsset(
+      user1.address,
+      1, // AssetType.Vehicle
+      "ipfs://metadata8",
+      JSON.stringify({
+        make: "Honda"
+      }),
+      "configuration8",
+      await validator.getAddress(),
+      0n
+    );
+
+    // Set up traits for Token 8
+    await deedNFT.setTrait(
+      8,
+      ethers.toUtf8Bytes("assetType"),
+      ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [1]),
+      0 // bytes type
+    );
+    await deedNFT.setTrait(
+      8,
+      ethers.toUtf8Bytes("make"),
+      ethers.toUtf8Bytes("Honda"),
+      1 // string type
     );
 
     // Wait for trait sync
@@ -760,7 +923,7 @@ describe("MetadataRenderer", function() {
       const metadata = JSON.parse(decodedURI);
 
       // Verify basic metadata
-      expect(metadata.name).to.equal("123 Main St - Land");
+      expect(metadata.name).to.equal("123 Main St, California 90210, USA - Land");
       expect(metadata.description).to.equal("Test definition");
       expect(metadata.image).to.equal("ipfs://gallery1");
       expect(metadata.background_color).to.equal("");
@@ -1067,6 +1230,64 @@ describe("MetadataRenderer", function() {
       expect(retrievedCondition.knownIssues).to.be.empty;
       expect(retrievedCondition.improvements).to.be.empty;
       expect(retrievedCondition.additionalNotes).to.equal("");
+    });
+  });
+
+  describe("Name Generation", function() {
+    it("should generate correct names for Land assets with full address", async function() {
+      const tokenURI = await metadataRenderer.tokenURI(1);
+      const decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
+      const metadata = JSON.parse(decodedURI);
+      expect(metadata.name).to.equal("123 Main St, California 90210, USA - Land");
+    });
+
+    it("should generate correct names for Land assets with parcel number and state", async function() {
+      const tokenURI = await metadataRenderer.tokenURI(2);
+      const decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
+      const metadata = JSON.parse(decodedURI);
+      expect(metadata.name).to.equal("Parcel #P12345, California - Land");
+    });
+
+    it("should generate correct names for Estate assets with full address", async function() {
+      const tokenURI = await metadataRenderer.tokenURI(3);
+      const decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
+      const metadata = JSON.parse(decodedURI);
+      expect(metadata.name).to.equal("456 Oak Ave, New York 10001, USA - Estate");
+    });
+
+    it("should generate correct names for Equipment with full details", async function() {
+      const tokenURI = await metadataRenderer.tokenURI(4);
+      const decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
+      const metadata = JSON.parse(decodedURI);
+      expect(metadata.name).to.equal("Caterpillar 320D2 (S/N: SN123456)");
+    });
+
+    it("should generate correct names for Equipment with manufacturer and model", async function() {
+      const tokenURI = await metadataRenderer.tokenURI(5);
+      const decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
+      const metadata = JSON.parse(decodedURI);
+      expect(metadata.name).to.equal("Honda EU3000i");
+    });
+
+    it("should generate correct names for Vehicle with full details", async function() {
+      const tokenURI = await metadataRenderer.tokenURI(6);
+      const decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
+      const metadata = JSON.parse(decodedURI);
+      expect(metadata.name).to.equal("2024 Tesla Model S");
+    });
+
+    it("should generate correct names for Vehicle with make and model only", async function() {
+      const tokenURI = await metadataRenderer.tokenURI(7);
+      const decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
+      const metadata = JSON.parse(decodedURI);
+      expect(metadata.name).to.equal("Toyota Camry");
+    });
+
+    it("should generate correct names for Vehicle with only make", async function() {
+      const tokenURI = await metadataRenderer.tokenURI(8);
+      const decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
+      const metadata = JSON.parse(decodedURI);
+      expect(metadata.name).to.equal("Honda Vehicle");
     });
   });
 }); 
