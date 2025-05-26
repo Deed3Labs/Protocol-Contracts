@@ -105,13 +105,6 @@ interface IMetadataRenderer {
     function getTokenDocument(uint256 tokenId, string calldata docType) external view returns (string memory);
 
     /**
-     * @dev Gets all document types for a token
-     * @param tokenId ID of the token
-     * @return Array of document types
-     */
-    function getTokenDocumentTypes(uint256 tokenId) external view returns (string[] memory);
-
-    /**
      * @dev Sets features for a token
      * @param tokenId ID of the token
      * @param features Array of features

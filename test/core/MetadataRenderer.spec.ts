@@ -465,10 +465,6 @@ describe("MetadataRenderer", function() {
 
       // Verify document was added
       expect(await metadataRenderer.getTokenDocument(tokenId, docType)).to.equal(docUri);
-      
-      // Verify document type was added to list
-      const docTypes = await metadataRenderer.getTokenDocumentTypes(tokenId);
-      expect(docTypes).to.include(docType);
 
       // Verify document was added to documents array
       const documents = await metadataRenderer.getTokenDocuments(tokenId);
@@ -484,10 +480,6 @@ describe("MetadataRenderer", function() {
 
       // Verify document was removed
       expect(await metadataRenderer.getTokenDocument(tokenId, docType)).to.equal("");
-      
-      // Verify document type was removed from list
-      const updatedDocTypes = await metadataRenderer.getTokenDocumentTypes(tokenId);
-      expect(updatedDocTypes).to.not.include(docType);
 
       // Verify document was removed from documents array
       const updatedDocuments = await metadataRenderer.getTokenDocuments(tokenId);
@@ -516,23 +508,17 @@ describe("MetadataRenderer", function() {
       }
 
       // Verify all documents were added
-      const documentTypes = await metadataRenderer.getTokenDocumentTypes(tokenId);
-      expect(documentTypes).to.have.lengthOf(2);
-      expect(documentTypes).to.include(documents[0].type);
-      expect(documentTypes).to.include(documents[1].type);
-
-      // Verify each document's URI
-      for (const doc of documents) {
-        expect(await metadataRenderer.getTokenDocument(tokenId, doc.type)).to.equal(doc.uri);
-      }
-
-      // Verify all documents in documents array
       const storedDocuments = await metadataRenderer.getTokenDocuments(tokenId);
       expect(storedDocuments.length).to.equal(2);
       expect(storedDocuments[0].docType).to.equal(documents[0].type);
       expect(storedDocuments[0].documentURI).to.equal(documents[0].uri);
       expect(storedDocuments[1].docType).to.equal(documents[1].type);
       expect(storedDocuments[1].documentURI).to.equal(documents[1].uri);
+
+      // Verify each document's URI
+      for (const doc of documents) {
+        expect(await metadataRenderer.getTokenDocument(tokenId, doc.type)).to.equal(doc.uri);
+      }
     });
 
     it("should update existing document", async function() {
@@ -810,14 +796,11 @@ describe("MetadataRenderer", function() {
       // Wait for trait sync
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Verify trait was added to attributes
+      // Verify trait was added to description
       let tokenURI = await metadataRenderer.tokenURI(tokenId);
       let decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
       let metadata = JSON.parse(decodedURI);
-      expect(metadata.attributes).to.deep.include({
-        trait_type: "Definition",
-        value: traitValue
-      });
+      expect(metadata.description).to.equal(traitValue);
 
       // Remove the trait in DeedNFT (this will sync removal to MetadataRenderer)
       await deedNFT.removeTrait(tokenId, traitName);
@@ -825,14 +808,11 @@ describe("MetadataRenderer", function() {
       // Wait for trait removal sync
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Verify trait was removed from attributes
+      // Verify trait was removed from description
       tokenURI = await metadataRenderer.tokenURI(tokenId);
       decodedURI = Buffer.from(tokenURI.split(",")[1], "base64").toString();
       metadata = JSON.parse(decodedURI);
-      expect(metadata.attributes).to.not.deep.include({
-        trait_type: "Definition",
-        value: traitValue
-      });
+      expect(metadata.description).to.equal("");
     });
   });
   
@@ -936,10 +916,10 @@ describe("MetadataRenderer", function() {
         "ipfs://gallery2"
       ]);
 
-      // Verify document types
-      expect(metadata.document_types).to.deep.equal([
-        "deed",
-        "survey"
+      // Verify documents array
+      expect(metadata.documents).to.deep.equal([
+        { docType: "deed", documentURI: "ipfs://deed" },
+        { docType: "survey", documentURI: "ipfs://survey" }
       ]);
 
       // Verify features
@@ -977,10 +957,7 @@ describe("MetadataRenderer", function() {
         trait_type: "Validation Status",
         value: "Valid"
       });
-      expect(attributes).to.deep.include({
-        trait_type: "Definition",
-        value: "Test definition"
-      });
+      expect(metadata.description).to.equal("Test definition");
     });
 
     it("should use default image when no gallery images", async function() {

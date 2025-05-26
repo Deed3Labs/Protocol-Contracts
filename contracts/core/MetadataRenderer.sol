@@ -44,6 +44,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     bytes32 constant TRAIT_ANIMATION_URL = keccak256("animation_url");
     bytes32 constant TRAIT_VALIDATOR = keccak256("validator");
     bytes32 constant TRAIT_BENEFICIARY = keccak256("beneficiary");
+    bytes32 constant TRAIT_CONFIGURATION = keccak256("configuration");
     
     // ============ Structs ============
     /**
@@ -128,9 +129,6 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     // Mapping of token ID to its legal information
     mapping(uint256 => LegalInfo) private legalInfo;
 
-    // Mapping of token ID to its documents
-    mapping(uint256 => Document[]) private tokenDocuments;
-    
     // Reference to the DeedNFT contract
     IDeedNFT public deedNFT;
     
@@ -188,6 +186,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         uint8 assetType = 0;
         bool isValidated = true;
         string memory definition = "";
+        string memory configuration = "";
         if (address(deedNFT) != address(0)) {
             bytes memory assetTypeBytes = deedNFT.getTraitValue(tokenId, TRAIT_ASSET_TYPE);
             if (assetTypeBytes.length > 0) {
@@ -199,113 +198,126 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             }
             bytes memory definitionBytes = deedNFT.getTraitValue(tokenId, TRAIT_DEFINITION);
             if (definitionBytes.length > 0) {
-                string memory traitDefinition = abi.decode(definitionBytes, (string));
-                definition = traitDefinition;
+                definition = abi.decode(definitionBytes, (string));
+            }
+            bytes memory configurationBytes = deedNFT.getTraitValue(tokenId, TRAIT_CONFIGURATION);
+            if (configurationBytes.length > 0) {
+                configuration = abi.decode(configurationBytes, (string));
             }
         }
         
-        // Always use generated name
+        // Generate name and image URI
         string memory name = _generateName(tokenId, assetType);
+        string memory imageURI = _getImageURI(tokenId, assetType, isValidated);
         
         // Start building the JSON string
-        string memory json = string(abi.encodePacked(
+        bytes memory json = abi.encodePacked(
             '{"name":"', _escapeJSON(name), '",',
             '"description":"', _escapeJSON(definition), '",',
-            '"image":"', _escapeJSON(_getImageURI(tokenId, assetType, isValidated)), '",',
+            '"image":"', _escapeJSON(imageURI), '",',
             '"background_color":"', _escapeJSON(metadata.background_color), '",',
             '"animation_url":"', _escapeJSON(metadata.animation_url), '",',
             '"external_link":"', _escapeJSON(metadata.external_link), '"'
-        ));
+        );
+        
+        // Add configuration if present
+        if (bytes(configuration).length > 0) {
+            json = abi.encodePacked(json, ',"configuration":"', _escapeJSON(configuration), '"');
+        }
         
         // Add gallery images if any
         if (metadata.galleryImages.length > 0) {
-            json = string(abi.encodePacked(json, ',"gallery_images":['));
+            json = abi.encodePacked(json, ',"gallery_images":[');
             for (uint i = 0; i < metadata.galleryImages.length; i++) {
-                if (i > 0) json = string(abi.encodePacked(json, ","));
-                json = string(abi.encodePacked(json, '"', _escapeJSON(metadata.galleryImages[i]), '"'));
+                if (i > 0) json = abi.encodePacked(json, ",");
+                json = abi.encodePacked(json, '"', _escapeJSON(metadata.galleryImages[i]), '"');
             }
-            json = string(abi.encodePacked(json, "]"));
+            json = abi.encodePacked(json, "]");
         }
         
-        // Add document types if any
+        // Add documents array if any
         if (metadata.documents.length > 0) {
-            json = string(abi.encodePacked(json, ',"document_types":['));
+            json = abi.encodePacked(json, ',"documents":[');
             for (uint i = 0; i < metadata.documents.length; i++) {
-                if (i > 0) json = string(abi.encodePacked(json, ","));
-                json = string(abi.encodePacked(json, '"', _escapeJSON(metadata.documents[i].docType), '"'));
+                if (i > 0) json = abi.encodePacked(json, ",");
+                json = abi.encodePacked(json, '{"docType":"', _escapeJSON(metadata.documents[i].docType), '","documentURI":"', _escapeJSON(metadata.documents[i].documentURI), '"}');
             }
-            json = string(abi.encodePacked(json, "]"));
+            json = abi.encodePacked(json, "]");
         }
         
         // Add features if any
         if (features.features.length > 0) {
-            json = string(abi.encodePacked(json, ',"features":['));
+            json = abi.encodePacked(json, ',"features":[');
             for (uint i = 0; i < features.features.length; i++) {
-                if (i > 0) json = string(abi.encodePacked(json, ","));
-                json = string(abi.encodePacked(json, '"', _escapeJSON(features.features[i]), '"'));
+                if (i > 0) json = abi.encodePacked(json, ",");
+                json = abi.encodePacked(json, '"', _escapeJSON(features.features[i]), '"');
             }
-            json = string(abi.encodePacked(json, "]"));
+            json = abi.encodePacked(json, "]");
         }
         
         // Add asset condition if set
         if (bytes(condition.generalCondition).length > 0) {
-            json = string(abi.encodePacked(json, ',"asset_condition":{',
+            json = abi.encodePacked(json, ',"asset_condition":{',
                 '"general_condition":"', _escapeJSON(condition.generalCondition), '",',
                 '"last_inspection_date":"', _escapeJSON(condition.lastInspectionDate), '",',
-                '"known_issues":['));
+                '"known_issues":[');
             
             for (uint i = 0; i < condition.knownIssues.length; i++) {
-                if (i > 0) json = string(abi.encodePacked(json, ","));
-                json = string(abi.encodePacked(json, '"', _escapeJSON(condition.knownIssues[i]), '"'));
+                if (i > 0) json = abi.encodePacked(json, ",");
+                json = abi.encodePacked(json, '"', _escapeJSON(condition.knownIssues[i]), '"');
             }
             
-            json = string(abi.encodePacked(json, '],"improvements":['));
+            json = abi.encodePacked(json, '],"improvements":[');
             
             for (uint i = 0; i < condition.improvements.length; i++) {
-                if (i > 0) json = string(abi.encodePacked(json, ","));
-                json = string(abi.encodePacked(json, '"', _escapeJSON(condition.improvements[i]), '"'));
+                if (i > 0) json = abi.encodePacked(json, ",");
+                json = abi.encodePacked(json, '"', _escapeJSON(condition.improvements[i]), '"');
             }
             
-            json = string(abi.encodePacked(json, '],"additional_notes":"', _escapeJSON(condition.additionalNotes), '"}'));
+            json = abi.encodePacked(json, '],"additional_notes":"', _escapeJSON(condition.additionalNotes), '"}');
         }
         
         // Add legal info if set
         if (bytes(legal.jurisdiction).length > 0) {
-            json = string(abi.encodePacked(json, ',"legal_info":{',
+            json = abi.encodePacked(json, ',"legal_info":{',
                 '"jurisdiction":"', _escapeJSON(legal.jurisdiction), '",',
                 '"registration_number":"', _escapeJSON(legal.registrationNumber), '",',
                 '"registration_date":"', _escapeJSON(legal.registrationDate), '",',
-                '"documents":['));
+                '"documents":[');
             
             for (uint i = 0; i < legal.documents.length; i++) {
-                if (i > 0) json = string(abi.encodePacked(json, ","));
-                json = string(abi.encodePacked(json, '"', _escapeJSON(legal.documents[i]), '"'));
+                if (i > 0) json = abi.encodePacked(json, ",");
+                json = abi.encodePacked(json, '"', _escapeJSON(legal.documents[i]), '"');
             }
             
-            json = string(abi.encodePacked(json, '],"restrictions":['));
+            json = abi.encodePacked(json, '],"restrictions":[');
             
             for (uint i = 0; i < legal.restrictions.length; i++) {
-                if (i > 0) json = string(abi.encodePacked(json, ","));
-                json = string(abi.encodePacked(json, '"', _escapeJSON(legal.restrictions[i]), '"'));
+                if (i > 0) json = abi.encodePacked(json, ",");
+                json = abi.encodePacked(json, '"', _escapeJSON(legal.restrictions[i]), '"');
             }
             
-            json = string(abi.encodePacked(json, '],"additional_info":"', _escapeJSON(legal.additionalInfo), '"}'));
+            json = abi.encodePacked(json, '],"additional_info":"', _escapeJSON(legal.additionalInfo), '"}');
         }
         
         // Add dynamic traits from DeedNFT if set
         if (address(deedNFT) != address(0)) {
             // Get all trait keys
             bytes32[] memory traitKeys = deedNFT.getTraitKeys(tokenId);
-            
             // Get trait values
             bytes[] memory traitValues = deedNFT.getTraitValues(tokenId, traitKeys);
             
             // Add attributes array
-            json = string(abi.encodePacked(json, ',"attributes":['));
+            json = abi.encodePacked(json, ',"attributes":[');
             
-            // Add all traits
+            bool firstAttribute = true;
             for (uint i = 0; i < traitKeys.length; i++) {
-                if (i > 0) json = string(abi.encodePacked(json, ','));
+                // Skip definition and configuration traits
+                if (traitKeys[i] == TRAIT_DEFINITION || traitKeys[i] == TRAIT_CONFIGURATION) {
+                    continue;
+                }
+                if (!firstAttribute) json = abi.encodePacked(json, ',');
+                firstAttribute = false;
                 
                 // Get trait name from DeedNFT
                 string memory traitName = deedNFT.getTraitName(traitKeys[i]);
@@ -313,29 +325,29 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                 // Handle different trait types
                 if (traitKeys[i] == TRAIT_ASSET_TYPE) {
                     uint8 decodedAssetType = abi.decode(traitValues[i], (uint8));
-                    json = string(abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', _escapeJSON(_assetTypeToString(decodedAssetType)), '"}'));
+                    json = abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', _escapeJSON(_assetTypeToString(decodedAssetType)), '"}');
                 } else if (traitKeys[i] == TRAIT_IS_VALIDATED) {
                     bool decodedIsValidated = abi.decode(traitValues[i], (bool));
-                    json = string(abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', decodedIsValidated ? "Valid" : "Invalid", '"}'));
+                    json = abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', decodedIsValidated ? "Valid" : "Invalid", '"}');
                 } else if (traitKeys[i] == TRAIT_VALIDATOR || traitKeys[i] == TRAIT_BENEFICIARY) {
                     address addr = abi.decode(traitValues[i], (address));
                     if (addr != address(0)) {
-                        json = string(abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', addr.toHexString(), '"}'));
+                        json = abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', addr.toHexString(), '"}');
                     }
                 } else {
-                    // Default to string decoding for other traits
+                    // Handle string traits
                     string memory value = abi.decode(traitValues[i], (string));
-                    json = string(abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', _escapeJSON(value), '"}'));
+                    json = abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', _escapeJSON(value), '"}');
                 }
             }
             
-            json = string(abi.encodePacked(json, "]"));
+            json = abi.encodePacked(json, "]");
         }
         
         // Close the JSON object
-        json = string(abi.encodePacked(json, "}"));
+        json = abi.encodePacked(json, "}");
         
-        return string(abi.encodePacked("data:application/json;base64,", Base64Upgradeable.encode(bytes(json))));
+        return string(abi.encodePacked("data:application/json;base64,", Base64Upgradeable.encode(json)));
     }
     
     /**
@@ -589,9 +601,10 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         if (!_exists(tokenId)) revert Invalid();
         if (!isRemove && bytes(docType).length == 0) revert Empty();
         
+        Document[] storage docs = tokenMetadata[tokenId].documents;
+        
         if (isRemove) {
             // Remove document
-            Document[] storage docs = tokenDocuments[tokenId];
             for (uint i = 0; i < docs.length; i++) {
                 if (keccak256(bytes(docs[i].docType)) == keccak256(bytes(docType))) {
                     docs[i] = docs[docs.length - 1];
@@ -599,19 +612,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                     break;
                 }
             }
-            
-            // Remove from document types array
-            Document[] storage docTypes = tokenMetadata[tokenId].documents;
-            for (uint i = 0; i < docTypes.length; i++) {
-                if (keccak256(bytes(docTypes[i].docType)) == keccak256(bytes(docType))) {
-                    docTypes[i] = docTypes[docTypes.length - 1];
-                    docTypes.pop();
-                    break;
-                }
-            }
         } else {
             // Add or update document
-            Document[] storage docs = tokenDocuments[tokenId];
             bool exists = false;
             
             // Check if document type exists
@@ -626,9 +628,6 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             // If document type doesn't exist, add it
             if (!exists) {
                 docs.push(Document(docType, documentURI));
-                
-                // Add to document types array
-                tokenMetadata[tokenId].documents.push(Document(docType, documentURI));
             }
         }
         
@@ -636,7 +635,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     }
 
     function getTokenDocument(uint256 tokenId, string memory docType) external view returns (string memory) {
-        Document[] storage docs = tokenDocuments[tokenId];
+        Document[] storage docs = tokenMetadata[tokenId].documents;
         for (uint i = 0; i < docs.length; i++) {
             if (keccak256(bytes(docs[i].docType)) == keccak256(bytes(docType))) {
                 return docs[i].documentURI;
@@ -645,17 +644,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         return "";
     }
 
-    function getTokenDocumentTypes(uint256 tokenId) external view returns (string[] memory) {
-        Document[] storage docTypes = tokenMetadata[tokenId].documents;
-        string[] memory types = new string[](docTypes.length);
-        for (uint i = 0; i < docTypes.length; i++) {
-            types[i] = docTypes[i].docType;
-        }
-        return types;
-    }
-
     function getTokenDocuments(uint256 tokenId) external view returns (Document[] memory) {
-        return tokenDocuments[tokenId];
+        return tokenMetadata[tokenId].documents;
     }
 
     // ============ Gallery Management Functions ============
@@ -683,12 +673,12 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     }
 
     function setAssetTypeImageURI(uint8 assetType, string memory imageURI) external onlyOwner {
-        require(assetType < 255, "Invalid asset type"); // Reserve 255 for invalidated image
+        if (assetType >= 255) revert Invalid(); // Reserve 255 for invalidated image
         defaultImageURIs[assetType] = imageURI;
     }
     
     function setAssetTypeBackgroundColor(uint8 assetType, string memory backgroundColor) external onlyOwner {
-        require(assetType < 255, "Invalid asset type"); // Reserve 255 for invalidated image
+        if (assetType >= 255) revert Invalid(); // Reserve 255 for invalidated image
         defaultBackgroundColors[assetType] = backgroundColor;
     }
     
