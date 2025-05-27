@@ -414,7 +414,7 @@ contract Validator is
         }
         
         // Validate the definition against the criteria
-        bool isValid = _validateDefinition(_tokenId);
+        bool isValid = _validateDefinition(_tokenId, deedNFTAddress);
         
         // Update validation status in DeedNFT
         IDeedNFT(deedNFTAddress).updateValidationStatus(_tokenId, isValid, address(this));
@@ -428,11 +428,12 @@ contract Validator is
     /**
      * @dev Validates a definition against criteria
      * @param _tokenId ID of the token
+     * @param deedNFTAddress Address of the DeedNFT contract
      * @return Whether the definition is valid
      */
-    function _validateDefinition(uint256 _tokenId) internal view returns (bool) {
+    function _validateDefinition(uint256 _tokenId, address deedNFTAddress) internal view returns (bool) {
         // Get the asset type from traits
-        bytes memory assetTypeBytes = IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256("assetType"));
+        bytes memory assetTypeBytes = IDeedNFT(deedNFTAddress).getTraitValue(_tokenId, keccak256("assetType"));
         if (assetTypeBytes.length == 0) return false;
         uint256 assetTypeId = uint256(abi.decode(assetTypeBytes, (IDeedNFT.AssetType)));
         
@@ -442,7 +443,7 @@ contract Validator is
         
         // Check each required trait directly from traits
         for (uint i = 0; i < criteria.requiredTraits.length; i++) {
-            bytes memory traitValue = IDeedNFT(msg.sender).getTraitValue(_tokenId, keccak256(bytes(criteria.requiredTraits[i])));
+            bytes memory traitValue = IDeedNFT(deedNFTAddress).getTraitValue(_tokenId, keccak256(bytes(criteria.requiredTraits[i])));
             if (traitValue.length == 0) {
                 return false;
             }

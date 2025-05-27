@@ -434,4 +434,136 @@ describe("Validator Contract", function() {
       ).to.be.reverted;
     });
   });
+
+  describe("Validation Logic", function() {
+    let tokenId: number;
+    beforeEach(async function() {
+      // Set up asset type support and criteria
+      await validator.connect(admin).setAssetTypeSupport(0, true);
+      await validator.connect(admin).setValidationCriteria(
+        0,
+        ["country", "state"],
+        "",
+        true,
+        true
+      );
+
+      // Register operating agreement in Validator first
+      await validator.connect(admin).registerOperatingAgreement("ipfs://agreements/1", "Agreement 1");
+
+      // Mint a deed with required traits
+      const definition = JSON.stringify({ country: "USA", state: "CA" });
+      await deedNFT.grantRole(await deedNFT.MINTER_ROLE(), deployer.address);
+      await deedNFT.mintAsset(
+        user1.address,
+        0,
+        "ipfs://metadata1",
+        definition,
+        "configuration1",
+        await validator.getAddress(),
+        0n
+      );
+      tokenId = 1;
+      // Set required traits using setTrait as the deed owner
+      await deedNFT.connect(user1).setTrait(tokenId, ethers.toUtf8Bytes("country"), ethers.toUtf8Bytes("USA"), 1);
+      await deedNFT.connect(user1).setTrait(tokenId, ethers.toUtf8Bytes("state"), ethers.toUtf8Bytes("CA"), 1);
+    });
+
+    it("should validate a deed with all required traits", async function() {
+      await validator.connect(validator1).validateDeed(tokenId);
+      const [isValidated] = await deedNFT.getValidationStatus(tokenId);
+      expect(isValidated).to.be.true;
+    });
+
+    it("should fail validation if a required trait is missing", async function() {
+      // Remove 'state' trait as the deed owner
+      await deedNFT.connect(user1).removeTrait(tokenId, "state");
+      await validator.connect(validator1).validateDeed(tokenId);
+      const [isValidated] = await deedNFT.getValidationStatus(tokenId);
+      expect(isValidated).to.be.false;
+    });
+
+    it("should fail validation if asset type is not supported", async function() {
+      await validator.connect(admin).setAssetTypeSupport(0, false);
+      await validator.connect(validator1).validateDeed(tokenId);
+      const [isValidated] = await deedNFT.getValidationStatus(tokenId);
+      expect(isValidated).to.be.false;
+    });
+
+    it("should fail validation if operating agreement is invalid", async function() {
+      // Set an invalid operating agreement
+      await deedNFT.removeTrait(tokenId, "operatingAgreement");
+      await validator.connect(validator1).validateDeed(tokenId);
+      const [isValidated] = await deedNFT.getValidationStatus(tokenId);
+      expect(isValidated).to.be.false;
+    });
+
+    it("should fail validation if definition is missing", async function() {
+      await deedNFT.removeTrait(tokenId, "definition");
+      await validator.connect(validator1).validateDeed(tokenId);
+      const [isValidated] = await deedNFT.getValidationStatus(tokenId);
+      expect(isValidated).to.be.false;
+    });
+
+    it("should validate deed if no required traits are set in criteria", async function() {
+      await validator.connect(admin).setValidationCriteria(
+        0,
+        [],
+        "",
+        true,
+        true
+      );
+      await validator.connect(validator1).validateDeed(tokenId);
+      const [isValidated] = await deedNFT.getValidationStatus(tokenId);
+      expect(isValidated).to.be.true;
+    });
+  });
+
+  describe("Agreement Registration and Validation", function() {
+    it("should register and validate an operating agreement", async function() {
+      await validator.connect(admin).registerOperatingAgreement("ipfs://agreementX", "Agreement X");
+      expect(await validator.operatingAgreementName("ipfs://agreementX")).to.equal("Agreement X");
+      expect(await validator.validateOperatingAgreement("ipfs://agreementX")).to.be.true;
+    });
+    it("should not validate an unregistered agreement", async function() {
+      expect(await validator.validateOperatingAgreement("ipfs://not-registered")).to.be.false;
+    });
+  });
+
+  describe("Edge Cases and Access Control", function() {
+    it("should not allow removing primary DeedNFT as compatible", async function() {
+      await expect(
+        validator.removeCompatibleDeedNFT(await deedNFT.getAddress())
+      ).to.be.reverted;
+    });
+    it("should not allow setting primary DeedNFT to non-compatible address", async function() {
+      const DeedNFT = await ethers.getContractFactory("DeedNFT");
+      const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
+        await validator.getAddress(),
+        await validatorRegistry.getAddress()
+      ]);
+      await newDeedNFT.waitForDeployment();
+      await expect(
+        validator.setPrimaryDeedNFT(await newDeedNFT.getAddress())
+      ).to.be.reverted;
+    });
+    it("should only allow owner to set base URI and default operating agreement", async function() {
+      await expect(validator.connect(user1).setBaseUri("ipfs://newbase/")).to.be.reverted;
+      await expect(validator.connect(user1).setDefaultOperatingAgreement("ipfs://newagreement/")).to.be.reverted;
+      await validator.setBaseUri("ipfs://newbase/");
+      expect(await validator.getBaseUri()).to.equal("ipfs://newbase/");
+      await validator.setDefaultOperatingAgreement("ipfs://newagreement/");
+      expect(await validator.defaultOperatingAgreement()).to.equal("ipfs://newagreement/");
+    });
+    it("should return correct compatibility for DeedNFT", async function() {
+      expect(await validator.isCompatibleDeedNFT(await deedNFT.getAddress())).to.be.true;
+      const DeedNFT = await ethers.getContractFactory("DeedNFT");
+      const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
+        await validator.getAddress(),
+        await validatorRegistry.getAddress()
+      ]);
+      await newDeedNFT.waitForDeployment();
+      expect(await validator.isCompatibleDeedNFT(await newDeedNFT.getAddress())).to.be.false;
+    });
+  });
 });

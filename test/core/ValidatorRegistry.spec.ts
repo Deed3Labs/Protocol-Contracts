@@ -186,4 +186,130 @@ describe("ValidatorRegistry Contract", function() {
       expect(await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress())).to.be.false;
     });
   });
+
+  describe("FundManager Integration", function() {
+    it("should set fund manager only by owner and revert on zero address", async function() {
+      const newFundManager = user1.address;
+      await expect(validatorRegistry.connect(user1).setFundManager(newFundManager)).to.be.reverted;
+      await expect(validatorRegistry.setFundManager(ethers.ZeroAddress)).to.be.reverted;
+      await validatorRegistry.setFundManager(newFundManager);
+      expect(await validatorRegistry.fundManager()).to.equal(newFundManager);
+    });
+  });
+
+  describe("Validator Removal", function() {
+    it("should remove a validator and emit event", async function() {
+      const validatorAddr = await validator.getAddress();
+      await validatorRegistry.registerValidator(
+        validatorAddr,
+        "Test Validator",
+        "A validator for testing purposes",
+        [0, 1, 2, 3]
+      );
+      await expect(validatorRegistry.removeValidator(validatorAddr))
+        .to.emit(validatorRegistry, "ValidatorRegistered");
+      expect((await validatorRegistry.validators(validatorAddr)).name).to.equal("");
+      expect(await validatorRegistry.isValidatorRegistered(validatorAddr)).to.be.false;
+    });
+    it("should revert when removing unregistered validator", async function() {
+      await expect(validatorRegistry.removeValidator(user1.address)).to.be.reverted;
+    });
+  });
+
+  describe("Validator Name Update", function() {
+    it("should revert if validator not registered or name empty", async function() {
+      const validatorAddr = await validator.getAddress();
+      await expect(validatorRegistry.updateValidatorName(validatorAddr, "")).to.be.reverted;
+      await expect(validatorRegistry.updateValidatorName(user1.address, "NewName")).to.be.reverted;
+    });
+    it("should update validator name and emit event", async function() {
+      const validatorAddr = await validator.getAddress();
+      await validatorRegistry.registerValidator(
+        validatorAddr,
+        "Test Validator",
+        "A validator for testing purposes",
+        [0, 1, 2, 3]
+      );
+      await expect(validatorRegistry.updateValidatorName(validatorAddr, "NewName"))
+        .to.emit(validatorRegistry, "ValidatorRegistered");
+      expect((await validatorRegistry.validators(validatorAddr)).name).to.equal("NewName");
+    });
+  });
+
+  describe("Validator Info and Status", function() {
+    it("should return correct validator name and registration status", async function() {
+      const validatorAddr = await validator.getAddress();
+      await validatorRegistry.registerValidator(
+        validatorAddr,
+        "Test Validator",
+        "A validator for testing purposes",
+        [0, 1, 2, 3]
+      );
+      expect(await validatorRegistry.getValidatorName(validatorAddr)).to.equal("Test Validator");
+      expect(await validatorRegistry.isValidatorRegistered(validatorAddr)).to.be.true;
+      expect(await validatorRegistry.isValidatorRegistered(user1.address)).to.be.false;
+    });
+    it("should revert getSupportedAssetTypes for unregistered validator", async function() {
+      await expect(validatorRegistry.getSupportedAssetTypes(user1.address)).to.be.reverted;
+    });
+    it("should return correct supported asset types", async function() {
+      const validatorAddr = await validator.getAddress();
+      await validatorRegistry.registerValidator(
+        validatorAddr,
+        "Test Validator",
+        "A validator for testing purposes",
+        [0, 1, 2, 3]
+      );
+      const types = await validatorRegistry.getSupportedAssetTypes(validatorAddr);
+      expect(types).to.deep.equal([0, 1, 2, 3]);
+    });
+    it("should update validator status and emit event", async function() {
+      const validatorAddr = await validator.getAddress();
+      await validatorRegistry.registerValidator(
+        validatorAddr,
+        "Test Validator",
+        "A validator for testing purposes",
+        [0, 1, 2, 3]
+      );
+      await expect(validatorRegistry.updateValidatorStatus(validatorAddr, false))
+        .to.emit(validatorRegistry, "ValidatorStatusUpdated");
+      expect((await validatorRegistry.validators(validatorAddr)).isActive).to.be.false;
+    });
+    it("should revert updateValidatorStatus for unregistered validator", async function() {
+      await expect(validatorRegistry.updateValidatorStatus(user1.address, false)).to.be.reverted;
+    });
+  });
+
+  describe("getValidatorAssetTypes", function() {
+    it("should revert if validator not registered", async function() {
+      await expect(validatorRegistry.getValidatorAssetTypes(user1.address)).to.be.reverted;
+    });
+    it("should revert if validator has no supported asset types", async function() {
+      const validatorAddr = await validator.getAddress();
+      await validatorRegistry.registerValidator(
+        validatorAddr,
+        "Test Validator",
+        "A validator for testing purposes",
+        [] // Empty array of asset types
+      );
+      await expect(validatorRegistry.getValidatorAssetTypes(validatorAddr)).to.be.reverted;
+    });
+  });
+
+  describe("getActiveValidators", function() {
+    it("should return only active validators", async function() {
+      const validatorAddr = await validator.getAddress();
+      await validatorRegistry.registerValidator(
+        validatorAddr,
+        "Test Validator",
+        "A validator for testing purposes",
+        [0, 1, 2, 3]
+      );
+      let active = await validatorRegistry.getActiveValidators();
+      expect(active).to.include(validatorAddr);
+      await validatorRegistry.updateValidatorStatus(validatorAddr, false);
+      active = await validatorRegistry.getActiveValidators();
+      expect(active).to.not.include(validatorAddr);
+    });
+  });
 });

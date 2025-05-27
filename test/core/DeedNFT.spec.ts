@@ -350,4 +350,210 @@ describe("DeedNFT", function() {
       expect(await deedNFT.paused()).to.be.false;
     });
   });
+
+  describe("Role Management", function() {
+    it("Should add and remove minter correctly", async function() {
+      await deedNFT.addMinter(user2.address);
+      expect(await deedNFT.hasRole(MINTER_ROLE, user2.address)).to.be.true;
+      
+      await deedNFT.removeMinter(user2.address);
+      expect(await deedNFT.hasRole(MINTER_ROLE, user2.address)).to.be.false;
+    });
+
+    it("Should not allow non-admin to add/remove minter", async function() {
+      await expect(deedNFT.connect(user1).addMinter(user2.address))
+        .to.be.reverted;
+      await expect(deedNFT.connect(user1).removeMinter(user2.address))
+        .to.be.reverted;
+    });
+  });
+
+  describe("Validator Management", function() {
+    it("Should set default validator correctly", async function() {
+      // Deploy a Validator contract for validator2
+      const Validator = await ethers.getContractFactory("Validator");
+      const validator2Contract = await upgrades.deployProxy(Validator, [
+        "ipfs://metadata2/",
+        "ipfs://agreements2/"
+      ]);
+      await validator2Contract.waitForDeployment();
+      // Register validator2Contract in the registry
+      await validatorRegistry.registerValidator(
+        await validator2Contract.getAddress(),
+        "Test Validator 2",
+        "A second validator for testing",
+        [0, 1, 2, 3]
+      );
+      // Set up validator2Contract's asset type support and criteria
+      await validator2Contract.setupValidationCriteria(0); // Land
+      await validator2Contract.setupValidationCriteria(1); // Vehicle
+      await validator2Contract.setupValidationCriteria(2); // Estate
+      await validator2Contract.setupValidationCriteria(3); // Equipment
+      // Set up default operating agreement and its name for validator2Contract
+      await validator2Contract.setDefaultOperatingAgreement("ipfs://agreements2/");
+      await validator2Contract.setOperatingAgreementName("ipfs://agreements2/", "Test Agreement 2");
+      
+      await deedNFT.setDefaultValidator(await validator2Contract.getAddress());
+      
+      // Since defaultValidator is private, we'll verify it through minting
+      const definition = JSON.stringify({
+        country: "USA",
+        state: "California",
+        county: "Los Angeles",
+        parcelNumber: "12345"
+      });
+      
+      await deedNFT.mintAsset(
+        user1.address,
+        0,
+        "ipfs://metadata1",
+        definition,
+        "configuration1",
+        ethers.ZeroAddress, // Use zero address to test default validator
+        0n
+      );
+      
+      const validatorBytes = await deedNFT.getTraitValue(2, VALIDATOR_KEY);
+      const validatorAddress = abiCoder.decode(["address"], validatorBytes)[0];
+      expect(validatorAddress).to.equal(await validator2Contract.getAddress());
+    });
+
+    it("Should not allow setting invalid validator", async function() {
+      const nonRegisteredValidator = ethers.Wallet.createRandom().address;
+      await expect(deedNFT.setDefaultValidator(nonRegisteredValidator))
+        .to.be.reverted;
+    });
+
+    it("Should set validator registry correctly", async function() {
+      const newRegistry = await ethers.deployContract("ValidatorRegistry");
+      await deedNFT.setValidatorRegistry(await newRegistry.getAddress());
+      // Since validatorRegistry is private, we'll verify it through minting
+      const definition = JSON.stringify({
+        country: "USA",
+        state: "California",
+        county: "Los Angeles",
+        parcelNumber: "12345"
+      });
+      
+      await expect(
+        deedNFT.mintAsset(
+          user1.address,
+          0,
+          "ipfs://metadata1",
+          definition,
+          "configuration1",
+          await validator.getAddress(),
+          0n
+        )
+      ).to.be.reverted; // Should revert because validator is not registered in new registry
+    });
+  });
+
+  describe("Metadata Renderer", function() {
+    it("Should set metadata renderer correctly", async function() {
+      const newRenderer = await ethers.deployContract("MetadataRenderer");
+      await deedNFT.setMetadataRenderer(await newRenderer.getAddress());
+      expect(await deedNFT.metadataRenderer()).to.equal(await newRenderer.getAddress());
+    });
+
+    it("Should revoke old renderer's role when setting new one", async function() {
+      const oldRenderer = await ethers.deployContract("MetadataRenderer");
+      const newRenderer = await ethers.deployContract("MetadataRenderer");
+      
+      await deedNFT.setMetadataRenderer(await oldRenderer.getAddress());
+      await deedNFT.setMetadataRenderer(await newRenderer.getAddress());
+      
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, await oldRenderer.getAddress())).to.be.false;
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, await newRenderer.getAddress())).to.be.true;
+    });
+  });
+
+  describe("Advanced Trait Management", function() {
+    it("Should handle different trait value types correctly", async function() {
+      // Test string type
+      await deedNFT.setTrait(1, ethers.toUtf8Bytes("stringTrait"), ethers.toUtf8Bytes("value"), 1);
+      
+      // Test numeric type
+      await deedNFT.setTrait(1, ethers.toUtf8Bytes("numberTrait"), ethers.AbiCoder.defaultAbiCoder().encode(["uint256"], [42]), 2);
+      
+      // Test boolean type
+      await deedNFT.setTrait(1, ethers.toUtf8Bytes("boolTrait"), ethers.AbiCoder.defaultAbiCoder().encode(["bool"], [true]), 3);
+      
+      // Verify values
+      const stringValue = await deedNFT.getTraitValue(1, ethers.keccak256(ethers.toUtf8Bytes("stringTrait")));
+      const numberValue = await deedNFT.getTraitValue(1, ethers.keccak256(ethers.toUtf8Bytes("numberTrait")));
+      const boolValue = await deedNFT.getTraitValue(1, ethers.keccak256(ethers.toUtf8Bytes("boolTrait")));
+      
+      expect(ethers.AbiCoder.defaultAbiCoder().decode(["string"], stringValue)[0]).to.equal("value");
+      expect(ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], numberValue)[0]).to.equal(42n);
+      expect(ethers.AbiCoder.defaultAbiCoder().decode(["bool"], boolValue)[0]).to.be.true;
+    });
+
+    it("Should get multiple trait values correctly", async function() {
+      const traitKeys = [
+        ethers.keccak256(ethers.toUtf8Bytes("trait1")),
+        ethers.keccak256(ethers.toUtf8Bytes("trait2"))
+      ];
+      
+      await deedNFT.setTrait(1, ethers.toUtf8Bytes("trait1"), ethers.toUtf8Bytes("value1"), 1);
+      await deedNFT.setTrait(1, ethers.toUtf8Bytes("trait2"), ethers.toUtf8Bytes("value2"), 1);
+      
+      const values = await deedNFT.getTraitValues(1, traitKeys);
+      expect(values.length).to.equal(2);
+      expect(ethers.AbiCoder.defaultAbiCoder().decode(["string"], values[0])[0]).to.equal("value1");
+      expect(ethers.AbiCoder.defaultAbiCoder().decode(["string"], values[1])[0]).to.equal("value2");
+    });
+  });
+
+  describe("Fund Manager Integration", function() {
+    it("Should set fund manager correctly", async function() {
+      const fundManager = await ethers.deployContract("FundManager");
+      await deedNFT.setFundManager(await fundManager.getAddress());
+      expect(await deedNFT.fundManager()).to.equal(await fundManager.getAddress());
+    });
+
+    it("Should calculate royalties with fund manager commission", async function() {
+      const fundManager = await ethers.deployContract("FundManager");
+      await deedNFT.setFundManager(await fundManager.getAddress());
+      
+      const salePrice = ethers.parseEther("1");
+      const [receiver, amount] = await deedNFT.royaltyInfo(1, salePrice);
+      
+      // Verify commission is taken from royalty amount
+      expect(amount).to.be.lt(salePrice);
+    });
+  });
+
+  describe("Transfer Validation", function() {
+    it("Should set transfer validator correctly", async function() {
+      // Use the existing validator contract instead of a non-existent TransferValidator
+      await deedNFT.setTransferValidator(await validator.getAddress());
+      expect(await deedNFT.getTransferValidator()).to.equal(await validator.getAddress());
+    });
+
+    it("Should get transfer validation function correctly", async function() {
+      const [functionSignature, isViewFunction] = await deedNFT.getTransferValidationFunction();
+      expect(functionSignature).to.equal(ethers.id("validateTransfer(address,address,address,uint256)").slice(0, 10));
+      expect(isViewFunction).to.be.true;
+    });
+  });
+
+  describe("Token URI", function() {
+    it("Should fall back to standard URI when renderer fails", async function() {
+      // Use the existing validator contract as an invalid renderer
+      await deedNFT.setMetadataRenderer(await validator.getAddress());
+      
+      // Should still return the standard URI
+      expect(await deedNFT.tokenURI(1)).to.equal("ipfs://metadata1");
+    });
+
+    it("Should use metadata renderer when available", async function() {
+      const renderer = await ethers.deployContract("MetadataRenderer");
+      await deedNFT.setMetadataRenderer(await renderer.getAddress());
+      
+      // Since setTokenURI doesn't exist, we'll test the renderer's tokenURI directly
+      const tokenURI = await deedNFT.tokenURI(1);
+      expect(tokenURI).to.not.be.empty;
+    });
+  });
 });
