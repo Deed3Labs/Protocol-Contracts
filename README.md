@@ -2,6 +2,8 @@
 
 This repository contains the smart contracts for **The Deed Protocol**, which facilitates decentralized Real World Asset transactions via Smart Contracts. These contracts represent real world assets as ERC721 tokens, ensuring seamless integration with external validation services and enabling future enhancements.
 
+> ⚠️ **BETA WARNING**: This protocol is currently in beta. Use at your own risk. The contracts have not been audited and may contain bugs or security vulnerabilities. Do not use with real assets until the protocol has been thoroughly tested and audited.
+
 ## Overview
 
 The Deed Protocol uses legal engineering to merge technology with Real World Assets by tokenizing ownership, validation and administration. Each property deed or title is represented as a unique non-fungible token (NFT) on the blockchain, providing decentralized, secure, and transparent records of ownership.
@@ -12,6 +14,7 @@ Key components of the protocol include:
 - **ValidatorRegistry**: A registry for managing and tracking validators responsible for validating deeds.
 - **FundManager**: A smart contract for managing, distributing and maintaining security over transaction funds.
 - **MetadataRenderer**: A contract for standardized metadata handling with optimized trait management.
+- **ValidatorFactory**: A factory contract for deploying new validator instances with standardized configurations.
 - **Extension Contracts**: Additional functionality for REIT-style fractional ownership and property subdivision.
 
 ## Project Structure
@@ -20,6 +23,8 @@ Key components of the protocol include:
 contracts/
 ├── core/              # Core protocol contracts
 │   ├── interfaces/    # Contract interfaces
+│   ├── factories/     # Factory contracts
+│   │   └── ValidatorFactory.sol
 │   ├── DeedNFT.sol    # Main NFT contract
 │   ├── Validator.sol  # Deed Validation logic
 │   ├── ValidatorRegistry.sol
@@ -88,6 +93,7 @@ The `Validator` contract is responsible for verifying deed data and managing val
 - **Validation Criteria Management:** Offers flexibility to define specific validation criteria for different types of properties or regional requirements.
 - **Multi-DeedNFT Support:** Supports multiple compatible DeedNFT contracts with primary contract designation.
 - **FundManager Integration:** Seamless integration for fee management and distribution.
+- **Asset Type Validation:** Implements specific validation rules for different asset types (Land, Vehicle, Estate, Commercial Equipment).
 
 ### 3. ValidatorRegistry
 
@@ -114,6 +120,7 @@ The `FundManager` contract is dedicated to managing funds associated with proper
 - **Commission System:** Manages platform commission fees with configurable percentages.
 - **Validator Fee Management:** Handles validator service fees and royalty distributions.
 - **Role-Based Access Control:** Implements comprehensive role management for fee operations.
+- **Token Whitelisting:** Supports whitelisting of payment tokens for enhanced security.
 
 ### 5. MetadataRenderer
 
@@ -129,6 +136,18 @@ The `MetadataRenderer` contract is responsible for generating and managing token
 - **Custom Metadata:** Allows for custom metadata fields while maintaining standardization
 - **Trait Management:** Handles dynamic trait updates and synchronization with DeedNFT
 - **Enhanced Document Management:** Improved document type handling and organization
+
+### 6. ValidatorFactory
+
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/factories/ValidatorFactory.sol)
+
+The `ValidatorFactory` contract provides a standardized way to deploy new validator instances:
+
+- **Standardized Deployment:** Ensures consistent configuration of new validator instances
+- **Configuration Management:** Handles initialization parameters and default settings
+- **Role Assignment:** Automatically sets up required roles and permissions
+- **Integration Setup:** Configures connections with other protocol contracts
+- **Validation Criteria:** Sets up default validation rules for different asset types
 
 ## Interface Contracts
 

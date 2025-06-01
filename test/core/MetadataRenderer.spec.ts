@@ -97,6 +97,7 @@ describe("MetadataRenderer", function() {
       }),
       "configuration1",
       await validator.getAddress(),
+      ethers.ZeroAddress, // token address
       0n // salt
     );
     
@@ -149,6 +150,7 @@ describe("MetadataRenderer", function() {
       }),
       "configuration2",
       await validator.getAddress(),
+      ethers.ZeroAddress, // token address
       0n
     );
 
@@ -186,6 +188,7 @@ describe("MetadataRenderer", function() {
       }),
       "configuration3",
       await validator.getAddress(),
+      ethers.ZeroAddress, // token address
       0n
     );
 
@@ -240,6 +243,7 @@ describe("MetadataRenderer", function() {
       }),
       "configuration4",
       await validator.getAddress(),
+      ethers.ZeroAddress, // token address
       0n
     );
 
@@ -286,6 +290,7 @@ describe("MetadataRenderer", function() {
       }),
       "configuration5",
       await validator.getAddress(),
+      ethers.ZeroAddress, // token address
       0n
     );
 
@@ -317,6 +322,7 @@ describe("MetadataRenderer", function() {
       "{}",
       "configuration6",
       await validator.getAddress(),
+      ethers.ZeroAddress, // token address
       0n
     );
 
@@ -341,6 +347,7 @@ describe("MetadataRenderer", function() {
       }),
       "configuration6",
       await validator.getAddress(),
+      ethers.ZeroAddress, // token address
       0n
     );
 
@@ -381,6 +388,7 @@ describe("MetadataRenderer", function() {
       }),
       "configuration7",
       await validator.getAddress(),
+      ethers.ZeroAddress, // token address
       0n
     );
 
@@ -414,6 +422,7 @@ describe("MetadataRenderer", function() {
       }),
       "configuration8",
       await validator.getAddress(),
+      ethers.ZeroAddress, // token address
       0n
     );
 
@@ -686,6 +695,7 @@ describe("MetadataRenderer", function() {
         "{}",
         "configuration1",
         await validator.getAddress(),
+        ethers.ZeroAddress, // token address
         0n
       );
 
@@ -828,6 +838,7 @@ describe("MetadataRenderer", function() {
         "{}",
         "configuration1",
         await validator.getAddress(),
+        ethers.ZeroAddress, // token address
         0n
       );
 
@@ -971,6 +982,7 @@ describe("MetadataRenderer", function() {
         "{}",
         "configuration7",
         await validator.getAddress(),
+        ethers.ZeroAddress, // token address
         0n
       );
       

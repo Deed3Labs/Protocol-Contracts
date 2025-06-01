@@ -87,7 +87,6 @@ describe("Core Contracts Integration", function() {
     // 6. Deploy FundManager after validator is registered
     const FundManager = await ethers.getContractFactory("FundManager");
     fundManager = await upgrades.deployProxy(FundManager, [
-      await deedNFT.getAddress(),
       await validatorRegistry.getAddress(),
       1000, // 10% commission
       feeReceiver.address
@@ -98,6 +97,10 @@ describe("Core Contracts Integration", function() {
     await deedNFT.setFundManager(await fundManager.getAddress());
     await validator.setFundManager(await fundManager.getAddress());
     await deedNFT.grantRole(await deedNFT.MINTER_ROLE(), await fundManager.getAddress());
+    await deedNFT.grantRole(await deedNFT.MINTER_ROLE(), user1.address);
+
+    // Add DeedNFT as compatible in FundManager
+    await fundManager.addCompatibleDeedNFT(await deedNFT.getAddress());
     
     // 8. Set MetadataRenderer in DeedNFT
     await deedNFT.setMetadataRenderer(await metadataRenderer.getAddress());
@@ -109,6 +112,10 @@ describe("Core Contracts Integration", function() {
 
     // Set FundManager in ValidatorRegistry
     await validatorRegistry.setFundManager(await fundManager.getAddress());
+
+    // 10. Set asset type support and royalty receiver before minting
+    await validator.setAssetTypeSupport(0, true);
+    await validator.setRoyaltyReceiver(feeReceiver.address);
   });
   
   describe("End-to-End Deed Creation Process", function() {
@@ -131,7 +138,7 @@ describe("Core Contracts Integration", function() {
 
       // Verify service fee is set
       const serviceFee = await validator.getServiceFee(await mockERC20.getAddress());
-      expect(serviceFee).to.be.gt(0);
+      expect(serviceFee).to.equal(ethers.parseUnits("100", 18));
 
       // Verify DeedNFT roles and permissions
       const hasValidatorRole = await deedNFT.hasRole(await deedNFT.VALIDATOR_ROLE(), await validator.getAddress());
@@ -154,9 +161,9 @@ describe("Core Contracts Integration", function() {
         parcelNumber: "12345"
       });
       
-      // 1. Create a new deed using the FundManager
+      // 1. Create a new deed using the DeedNFT
       await expect(
-        fundManager.connect(user1).mintDeedNFT(
+        deedNFT.connect(user1).mintAsset(
           user1.address,
           0, // Land type (AssetType.LAND)
           "ipfs://metadata1",
@@ -229,6 +236,62 @@ describe("Core Contracts Integration", function() {
       console.log("Balance difference:", (royaltyReceiverBalanceAfter - royaltyReceiverBalanceBefore).toString());
       
       expect(royaltyReceiverBalanceAfter - royaltyReceiverBalanceBefore).to.equal(ethers.parseUnits("90", 18));
+    });
+
+    it("should support multiple compatible DeedNFTs", async function() {
+      // Deploy a new DeedNFT
+      const DeedNFT = await ethers.getContractFactory("DeedNFT");
+      const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
+        await validator.getAddress(),
+        await validatorRegistry.getAddress()
+      ]);
+      await newDeedNFT.waitForDeployment();
+
+      // Add as compatible
+      await fundManager.addCompatibleDeedNFT(await newDeedNFT.getAddress());
+
+      // Set up new DeedNFT
+      await newDeedNFT.setFundManager(await fundManager.getAddress());
+      await newDeedNFT.grantRole(await newDeedNFT.MINTER_ROLE(), await fundManager.getAddress());
+      await newDeedNFT.grantRole(await newDeedNFT.VALIDATOR_ROLE(), await validator.getAddress());
+      await newDeedNFT.grantRole(await newDeedNFT.MINTER_ROLE(), user1.address);
+
+      // Verify both DeedNFTs are compatible
+      expect(await fundManager.isCompatibleDeedNFT(await deedNFT.getAddress())).to.be.true;
+      expect(await fundManager.isCompatibleDeedNFT(await newDeedNFT.getAddress())).to.be.true;
+
+      // Get all compatible DeedNFTs
+      const compatibleDeedNFTs = await fundManager.getCompatibleDeedNFTs();
+      expect(compatibleDeedNFTs).to.include(await deedNFT.getAddress());
+      expect(compatibleDeedNFTs).to.include(await newDeedNFT.getAddress());
+      expect(compatibleDeedNFTs.length).to.equal(2);
+
+      // Mint a deed using the new DeedNFT
+      const definition = JSON.stringify({
+        country: "USA",
+        state: "California",
+        county: "Los Angeles",
+        parcelNumber: "12345"
+      });
+
+      // Approve tokens for the new DeedNFT
+      await mockERC20.connect(user1).approve(await fundManager.getAddress(), ethers.parseUnits("100", 18));
+
+      await expect(
+        newDeedNFT.connect(user1).mintAsset(
+          user1.address,
+          0, // Land type
+          "ipfs://metadata1",
+          definition,
+          "configuration1",
+          await validator.getAddress(),
+          await mockERC20.getAddress(),
+          0n // salt
+        )
+      ).to.not.be.reverted;
+
+      // Verify the deed was minted on the new DeedNFT
+      expect(await newDeedNFT.ownerOf(1)).to.equal(user1.address);
     });
   });
   

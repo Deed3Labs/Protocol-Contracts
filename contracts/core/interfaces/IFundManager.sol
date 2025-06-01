@@ -6,24 +6,9 @@ import "../interfaces/IDeedNFT.sol";
 /**
  * @title IFundManager
  * @dev Interface for the FundManager contract to allow other contracts to interact with it.
- *      Focuses on commission collection, minting operations, and validator fee distribution.
+ *      Focuses on payment processing and validator fee distribution.
  */
 interface IFundManager {
-    // ============ Structs ============
-    
-    /**
-     * @dev Struct for batch minting data
-     */
-    struct DeedMintData {
-        IDeedNFT.AssetType assetType;
-        string ipfsDetailsHash;
-        string definition;
-        string configuration;
-        address validatorContract;
-        address token;
-        uint256 salt;
-    }
-
     // ============ Events ============
 
     /**
@@ -45,10 +30,11 @@ interface IFundManager {
     event ValidatorRegistryUpdated(address indexed newValidatorRegistry);
 
     /**
-     * @dev Emitted when the DeedNFT contract address is updated
-     * @param newDeedNFT The new DeedNFT contract address
+     * @dev Emitted when a DeedNFT's compatibility status is updated
+     * @param deedNFT The DeedNFT contract address
+     * @param isCompatible Whether the DeedNFT is compatible
      */
-    event DeedNFTUpdated(address indexed newDeedNFT);
+    event CompatibleDeedNFTUpdated(address indexed deedNFT, bool isCompatible);
 
     /**
      * @dev Emitted when a service fee is collected
@@ -63,18 +49,6 @@ interface IFundManager {
         uint256 amount,
         uint256 commission
     );
-
-    /**
-     * @dev Emitted when a deed is minted
-     * @param tokenId ID of the minted deed
-     * @param owner Address of the deed owner
-     * @param validator Address of the validator
-     */
-    event DeedMinted(
-        uint256 indexed tokenId,
-        address indexed owner,
-        address indexed validator
-    );
     
     /**
      * @dev Emitted when validator fees are withdrawn
@@ -88,6 +62,20 @@ interface IFundManager {
         address indexed token,
         uint256 amount,
         address indexed recipient
+    );
+
+    /**
+     * @dev Emitted when royalties are withdrawn with commission
+     * @param validator Address of the validator
+     * @param token Address of the token
+     * @param amount Total amount withdrawn
+     * @param commissionAmount Amount taken as commission
+     */
+    event RoyaltyCommissionWithdrawn(
+        address indexed validator,
+        address indexed token,
+        uint256 amount,
+        uint256 commissionAmount
     );
 
     // ============ Administrative Functions ============
@@ -111,43 +99,50 @@ interface IFundManager {
      */
     function setValidatorRegistry(address _validatorRegistry) external;
 
-    /**
-     * @dev Sets the DeedNFT contract address
-     * @param _deedNFT New DeedNFT contract address
-     */
-    function setDeedNFT(address _deedNFT) external;
-
-    // ============ Minting Functions ============
+    // ============ DeedNFT Management Functions ============
 
     /**
-     * @dev Allows users to deposit funds and mint a single DeedNFT in a single transaction
-     * @param owner Address of the owner
-     * @param assetType Type of the asset
-     * @param ipfsDetailsHash IPFS hash of the deed details
-     * @param definition Definition of the deed
-     * @param configuration Configuration data for the deed
-     * @param validatorContract Address of the ValidatorContract associated with the mint
-     * @param token Address of the token being used for payment
-     * @param salt Optional value used to generate a unique token ID (use 0 for sequential IDs)
-     * @return tokenId The ID of the minted deed
+     * @dev Adds a compatible DeedNFT contract
+     * @param _deedNFT DeedNFT contract address to add
      */
-    function mintDeedNFT(
-        address owner,
-        IDeedNFT.AssetType assetType,
-        string memory ipfsDetailsHash,
-        string memory definition,
-        string memory configuration,
-        address validatorContract,
+    function addCompatibleDeedNFT(address _deedNFT) external;
+
+    /**
+     * @dev Removes a compatible DeedNFT contract
+     * @param _deedNFT DeedNFT contract address to remove
+     */
+    function removeCompatibleDeedNFT(address _deedNFT) external;
+
+    /**
+     * @dev Checks if a DeedNFT contract is compatible
+     * @param _deedNFT Address of the DeedNFT contract
+     * @return Boolean indicating if the DeedNFT is compatible
+     */
+    function isCompatibleDeedNFT(address _deedNFT) external view returns (bool);
+
+    /**
+     * @dev Gets all compatible DeedNFT contracts
+     * @return Array of compatible DeedNFT addresses
+     */
+    function getCompatibleDeedNFTs() external view returns (address[] memory);
+
+    // ============ Payment Processing Functions ============
+
+    /**
+     * @dev Processes a payment for a deed minting
+     * @param payer Address of the payer
+     * @param validatorAddress Address of the validator
+     * @param token Address of the token
+     * @param serviceFee Service fee amount
+     * @return commissionAmount Amount taken as commission
+     * @return validatorAmount Amount sent to validator
+     */
+    function processPayment(
+        address payer,
+        address validatorAddress,
         address token,
-        uint256 salt
-    ) external returns (uint256 tokenId);
-
-    /**
-     * @dev Batch mints multiple DeedNFTs
-     * @param deeds Array of DeedMintData structs containing data for each deed to mint
-     * @return tokenIds Array of minted deed IDs
-     */
-    function mintBatchDeedNFT(DeedMintData[] memory deeds) external returns (uint256[] memory tokenIds);
+        uint256 serviceFee
+    ) external returns (uint256 commissionAmount, uint256 validatorAmount);
 
     // ============ Fee Management Functions ============
 
@@ -170,6 +165,18 @@ interface IFundManager {
      */
     function getValidatorFeeBalance(address validatorContract, address token) external view returns (uint256);
 
+    /**
+     * @dev Allows admin or fee manager to withdraw royalties from a validator.
+     *      This function calls the validator's withdrawRoyalties function which handles:
+     *      - Withdrawing royalties for all whitelisted tokens
+     *      - Calculating and taking commission
+     *      - Distributing funds to appropriate recipients
+     * @param validatorContract Address of the validator contract
+     * @param token Address of the token to withdraw
+     * @notice Only callable by admin or fee manager roles
+     */
+    function withdrawRoyaltyCommission(address validatorContract, address token) external;
+
     // ============ Getter Functions ============
 
     /**
@@ -187,12 +194,6 @@ interface IFundManager {
     function formatFee(uint256 amount) external pure returns (string memory);
 
     /**
-     * @dev Gets the address of the DeedNFT contract.
-     * @return The address of the DeedNFT contract.
-     */
-    function deedNFT() external view returns (address);
-
-    /**
      * @dev Gets the address of the ValidatorRegistry contract.
      * @return The address of the ValidatorRegistry contract.
      */
@@ -206,18 +207,13 @@ interface IFundManager {
     function feeReceiver() external view returns (address);
 
     /**
-     * @dev Collects commission from a service fee payment.
-     *      This function is called by the DeedNFT contract when a service fee is paid.
-     *      The protocol's commission is sent to the fee receiver, and the remaining amount
-     *      is added to the validator's commission balance.
-     * @param tokenId The ID of the token.
-     * @param amount The amount of the service fee.
-     * @param token The token address (for ERC20 payments).
-     */
-    function collectCommission(uint256 tokenId, uint256 amount, address token) external;
-
-    /**
      * @dev Updates FEE_MANAGER_ROLE assignments for all active validators.
      */
     function updateValidatorRoles() external;
+
+    /**
+     * @dev Gets all whitelisted tokens
+     * @return Array of whitelisted token addresses
+     */
+    function getWhitelistedTokens() external view returns (address[] memory);
 } 

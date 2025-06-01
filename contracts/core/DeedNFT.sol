@@ -349,13 +349,11 @@ contract DeedNFT is
         string memory definition,
         string memory configuration,
         address validatorAddress,
+        address token,
         uint256 salt
     ) external whenNotPaused onlyRole(MINTER_ROLE) returns (uint256) {
         require(owner != address(0), "!own");
-        require(
-            bytes(definition).length > 0,
-            "!def"
-        );
+        require(bytes(definition).length > 0, "!def");
 
         // Determine which validator to use
         address selectedValidator = validatorAddress;
@@ -364,10 +362,7 @@ contract DeedNFT is
         }
         
         // Ensure validator is registered
-        require(
-            selectedValidator != address(0),
-            "!val"
-        );
+        require(selectedValidator != address(0), "!val");
         require(
             IValidatorRegistry(validatorRegistry).isValidatorRegistered(selectedValidator),
             "!reg"
@@ -389,10 +384,21 @@ contract DeedNFT is
         
         // Get default operating agreement from validator
         string memory operatingAgreementBase = IValidator(selectedValidator).defaultOperatingAgreement();
-        require(
-            bytes(operatingAgreementBase).length > 0,
-            "!agr"
-        );
+        require(bytes(operatingAgreementBase).length > 0, "!agr");
+
+        // Process payment through FundManager if set
+        if (address(fundManager) != address(0)) {
+            require(token != address(0), "!token");
+            // Get service fee from validator
+            uint256 serviceFee = IValidator(selectedValidator).getServiceFee(token);
+            require(serviceFee > 0, "!fee");
+
+            // Process payment
+            fundManager.processPayment(msg.sender, selectedValidator, token, serviceFee);
+        } else {
+            // If no FundManager is set, token parameter is optional
+            require(token == address(0), "!token");
+        }
 
         uint256 tokenId;
         
@@ -833,7 +839,7 @@ contract DeedNFT is
      * @dev Returns the royalty information for a token
      * @param tokenId ID of the token
      * @param salePrice Sale price of the token
-     * @return receiver Address that should receive royalties
+     * @return receiver Address that should receive royalties (Validator contract)
      * @return royaltyAmount Amount of royalties to be paid
      */
     function royaltyInfo(uint256 tokenId, uint256 salePrice) 
@@ -844,26 +850,19 @@ contract DeedNFT is
     {
         require(_exists(tokenId), "!token");
         
+        // Get validator from traits
         bytes memory validatorBytes = _tokenTraits[tokenId][keccak256("validator")];
-        address validator = validatorBytes.length > 0 
-            ? abi.decode(validatorBytes, (address)) 
-            : defaultValidator;
-        
-        if (validator == address(0)) return (address(0), 0);
+        require(validatorBytes.length > 0, "!val");
+        address validator = abi.decode(validatorBytes, (address));
+        require(validator != address(0), "!val");
         
         uint96 fee = IValidator(validator).getRoyaltyFeePercentage(tokenId);
-        receiver = IValidator(validator).getRoyaltyReceiver();
+        
+        // Return the validator contract as the receiver
+        receiver = validator;
         
         // Calculate the full royalty amount
-        uint256 fullRoyaltyAmount = (salePrice * fee) / 10000;
-        
-        // If FundManager is set, take commission
-        if (address(fundManager) != address(0)) {
-            uint256 commissionPercentage = fundManager.getCommissionPercentage();
-            royaltyAmount = fullRoyaltyAmount - ((fullRoyaltyAmount * commissionPercentage) / 10000);
-        } else {
-            royaltyAmount = fullRoyaltyAmount;
-        }
+        royaltyAmount = (salePrice * fee) / 10000;
     }
 
     /**

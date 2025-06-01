@@ -41,7 +41,10 @@ contract FundManager is
     bytes32 public constant FEE_MANAGER_ROLE = keccak256("FEE_MANAGER_ROLE");
 
     // ============ State Variables ============
-    address public deedNFTContract;
+    // Compatible DeedNFT tracking
+    mapping(address => bool) public compatibleDeedNFTs;
+    address[] public allCompatibleDeedNFTs;
+
     address public validatorRegistry;
     uint256 private _commissionPercentage;
     address public feeReceiver;
@@ -53,15 +56,17 @@ contract FundManager is
     address[] private allAssignedValidators;
     mapping(address => bool) private isAssignedValidator;
 
+    // Track whitelisted tokens
+    address[] private whitelistedTokens;
+    mapping(address => bool) private isWhitelistedToken;
+
     /**
      * @dev Initializes the contract.
-     * @param _deedNFT Address of the DeedNFT contract.
      * @param _validatorRegistry Address of the validator registry.
      * @param initialCommissionPercentage Initial commission percentage in basis points.
      * @param _feeReceiver Address that receives commission fees.
      */
     function initialize(
-        address _deedNFT,
         address _validatorRegistry,
         uint256 initialCommissionPercentage,
         address _feeReceiver
@@ -70,12 +75,10 @@ contract FundManager is
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
         
-        require(_deedNFT != address(0), "FundManager: Invalid DeedNFT address");
         require(_validatorRegistry != address(0), "FundManager: Invalid ValidatorRegistry address");
         require(_feeReceiver != address(0), "FundManager: Invalid fee receiver address");
         require(initialCommissionPercentage <= 10000, "FundManager: Commission percentage exceeds 100%");
         
-        deedNFTContract = _deedNFT;
         validatorRegistry = _validatorRegistry;
         _commissionPercentage = initialCommissionPercentage;
         feeReceiver = _feeReceiver;
@@ -127,7 +130,6 @@ contract FundManager is
         
         // Grant FEE_MANAGER_ROLE to all active validators
         _updateValidatorRoles();
-        
         emit ValidatorRegistryUpdated(_validatorRegistry);
     }
     
@@ -161,50 +163,80 @@ contract FundManager is
         }
     }
     
-    /**
-     * @dev Sets the DeedNFT contract address.
-     * @param _deedNFT New DeedNFT contract address.
-     */
-    function setDeedNFT(address _deedNFT) external onlyRole(ADMIN_ROLE) {
-        require(_deedNFT != address(0), "FundManager: Invalid DeedNFT address");
-        deedNFTContract = _deedNFT;
-        emit DeedNFTUpdated(_deedNFT);
-    }
-
-    // ============ Minting Functions ============
+    // ============ DeedNFT Management Functions ============
     
     /**
-     * @dev Mints a new deed NFT.
-     * @param owner Address of the owner.
-     * @param assetType Type of asset.
-     * @param ipfsDetailsHash IPFS hash of details.
-     * @param definition Definition of the deed.
-     * @param configuration Configuration of the deed.
-     * @param validatorAddress Address of the validator.
-     * @param token Address of the token.
-     * @param salt Optional value used to generate a unique token ID
-     * @return The ID of the minted deed.
+     * @dev Adds a compatible DeedNFT contract
+     * @param _deedNFT DeedNFT contract address to add
      */
-    function mintDeedNFT(
-        address owner,
-        IDeedNFT.AssetType assetType,
-        string memory ipfsDetailsHash,
-        string memory definition,
-        string memory configuration,
+    function addCompatibleDeedNFT(address _deedNFT) external onlyRole(ADMIN_ROLE) {
+        require(_deedNFT != address(0), "FundManager: Invalid DeedNFT address");
+        require(!compatibleDeedNFTs[_deedNFT], "FundManager: DeedNFT already compatible");
+        
+        compatibleDeedNFTs[_deedNFT] = true;
+        allCompatibleDeedNFTs.push(_deedNFT);
+        emit CompatibleDeedNFTUpdated(_deedNFT, true);
+    }
+
+    /**
+     * @dev Removes a compatible DeedNFT contract
+     * @param _deedNFT DeedNFT contract address to remove
+     */
+    function removeCompatibleDeedNFT(address _deedNFT) external onlyRole(ADMIN_ROLE) {
+        require(_deedNFT != address(0), "FundManager: Invalid DeedNFT address");
+        require(compatibleDeedNFTs[_deedNFT], "FundManager: DeedNFT not compatible");
+        
+        compatibleDeedNFTs[_deedNFT] = false;
+        
+        // Remove from array
+        for (uint256 i = 0; i < allCompatibleDeedNFTs.length; i++) {
+            if (allCompatibleDeedNFTs[i] == _deedNFT) {
+                allCompatibleDeedNFTs[i] = allCompatibleDeedNFTs[allCompatibleDeedNFTs.length - 1];
+                allCompatibleDeedNFTs.pop();
+                break;
+            }
+        }
+        emit CompatibleDeedNFTUpdated(_deedNFT, false);
+    }
+    
+    /**
+     * @dev Checks if a DeedNFT contract is compatible
+     * @param _deedNFT Address of the DeedNFT contract
+     * @return Boolean indicating if the DeedNFT is compatible
+     */
+    function isCompatibleDeedNFT(address _deedNFT) external view returns (bool) {
+        return compatibleDeedNFTs[_deedNFT];
+    }
+
+    /**
+     * @dev Gets all compatible DeedNFT contracts
+     * @return Array of compatible DeedNFT addresses
+     */
+    function getCompatibleDeedNFTs() external view returns (address[] memory) {
+        return allCompatibleDeedNFTs;
+    }
+
+    // ============ Payment Processing Functions ============
+    
+    /**
+     * @dev Processes a payment for a deed minting
+     * @param payer Address of the payer
+     * @param validatorAddress Address of the validator
+     * @param token Address of the token
+     * @param serviceFee Service fee amount
+     * @return commissionAmount Amount taken as commission
+     * @return validatorAmount Amount sent to validator
+     */
+    function processPayment(
+        address payer,
         address validatorAddress,
         address token,
-        uint256 salt
-    ) external nonReentrant returns (uint256) {
-        // Validate inputs
-        require(owner != address(0), "FundManager: Invalid owner address");
-        require(validatorAddress != address(0), "FundManager: Invalid validator address");
+        uint256 serviceFee
+    ) external nonReentrant returns (uint256 commissionAmount, uint256 validatorAmount) {
+        require(compatibleDeedNFTs[msg.sender], "FundManager: Only compatible DeedNFT can call this function");
+        require(serviceFee > 0, "FundManager: Amount must be greater than 0");
         require(token != address(0), "FundManager: Invalid token address");
-        
-        // Check if validator is registered
-        require(
-            IValidatorRegistry(validatorRegistry).isValidatorRegistered(validatorAddress),
-            "FundManager: Validator not registered"
-        );
+        require(validatorAddress != address(0), "FundManager: Invalid validator address");
         
         // Check if token is whitelisted by validator
         require(
@@ -212,81 +244,28 @@ contract FundManager is
             "FundManager: Token not whitelisted by validator"
         );
         
-        // Get service fee from validator
-        uint256 serviceFee = IValidator(validatorAddress).getServiceFee(token);
-        require(serviceFee > 0, "FundManager: Service fee not set");
+        // Verify service fee matches validator's requirement
+        uint256 requiredFee = IValidator(validatorAddress).getServiceFee(token);
+        require(serviceFee == requiredFee, "FundManager: Service fee mismatch");
         
-        // Process payment
-        _processPayment(msg.sender, validatorAddress, token, serviceFee);
+        // Calculate commission amount
+        commissionAmount = (serviceFee * _commissionPercentage) / 10000;
+        validatorAmount = serviceFee - commissionAmount;
         
-        // Process mint with optional salt parameter
-        uint256 tokenId = IDeedNFT(deedNFTContract).mintAsset(
-            owner,
-            assetType,
-            ipfsDetailsHash,
-            definition,
-            configuration,
-            validatorAddress,
-            salt
-        );
+        // Transfer tokens from payer to this contract
+        IERC20Upgradeable(token).safeTransferFrom(payer, address(this), serviceFee);
+            
+        // Update validator balance
+        validatorBalances[validatorAddress][token] += validatorAmount;
         
-        emit DeedMinted(tokenId, owner, validatorAddress);
-        
-        return tokenId;
-    }
-    
-    /**
-     * @dev Mints multiple deed NFTs in a batch.
-     * @param deeds Array of deed minting data.
-     * @return tokenIds Array of minted deed IDs.
-     */
-    function mintBatchDeedNFT(DeedMintData[] memory deeds) external nonReentrant returns (uint256[] memory tokenIds) {
-        uint256 length = deeds.length;
-        require(length > 0, "FundManager: Empty deeds array");
-        
-        tokenIds = new uint256[](length);
-        
-        for (uint256 i = 0; i < length; i++) {
-            DeedMintData memory deed = deeds[i];
-            
-            // Validate inputs
-            require(deed.validatorContract != address(0), "FundManager: Invalid validator address");
-            require(deed.token != address(0), "FundManager: Invalid token address");
-            
-            // Check if validator is registered
-            require(
-                IValidatorRegistry(validatorRegistry).isValidatorRegistered(deed.validatorContract),
-                "FundManager: Validator not registered"
-            );
-            
-            // Check if token is whitelisted by validator
-            require(
-                IValidator(deed.validatorContract).isTokenWhitelisted(deed.token),
-                "FundManager: Token not whitelisted by validator"
-            );
-            
-            // Get service fee from validator
-            uint256 serviceFee = IValidator(deed.validatorContract).getServiceFee(deed.token);
-            require(serviceFee > 0, "FundManager: Service fee not set for token");
-            
-            // Process payment
-            _processPayment(msg.sender, deed.validatorContract, deed.token, serviceFee);
-            
-            // Process mint
-            tokenIds[i] = _processMint(
-                msg.sender,
-                deed.assetType,
-                deed.ipfsDetailsHash,
-                deed.definition,
-                deed.configuration,
-                deed.validatorContract,
-                deed.salt
-            );
-            
-            emit DeedMinted(tokenIds[i], msg.sender, deed.validatorContract);
+        // Transfer commission to fee receiver
+        if (commissionAmount > 0) {
+            IERC20Upgradeable(token).safeTransfer(feeReceiver, commissionAmount);
         }
         
-        return tokenIds;
+        emit ServiceFeeCollected(validatorAddress, token, serviceFee, commissionAmount);
+        
+        return (commissionAmount, validatorAmount);
     }
     
     // ============ Fee Management Functions ============
@@ -332,6 +311,22 @@ contract FundManager is
         return validatorBalances[validatorContract][token];
     }
     
+    /**
+     * @dev Allows admin or fee manager to withdraw royalties from a validator
+     * @param validatorContract Address of the validator contract
+     * @param token Address of the token to withdraw
+     */
+    function withdrawRoyaltyCommission(address validatorContract, address token) external nonReentrant {
+        require(
+            hasRole(ADMIN_ROLE, msg.sender) || 
+            hasRole(FEE_MANAGER_ROLE, msg.sender),
+            "FundManager: Not authorized"
+        );
+        
+        // Call validator's withdrawRoyalties function
+        IValidator(validatorContract).withdrawRoyalties(token);
+    }
+    
     // ============ Getter Functions ============
     
     /**
@@ -349,14 +344,6 @@ contract FundManager is
     function commissionPercentage() external view returns (uint256) {
         return _commissionPercentage;
     }
-    
-    /**
-     * @dev Gets the DeedNFT contract address.
-     * @return The DeedNFT contract address.
-     */
-    function deedNFT() external view returns (address) {
-        return deedNFTContract;
-    }
 
     /**
      * @dev Formats a fee amount.
@@ -367,103 +354,40 @@ contract FundManager is
         return amount.toString();
     }
 
-    // ============ Internal Functions ============
-    
     /**
-     * @dev Processes a payment.
-     * @param payer Address of the payer.
-     * @param validatorAddress Address of the validator.
-     * @param token Address of the token.
-     * @param serviceFee Service fee amount.
+     * @dev Adds a token to the whitelist
+     * @param token Address of the token to whitelist
      */
-    function _processPayment(
-        address payer,
-        address validatorAddress,
-        address token,
-        uint256 serviceFee
-    ) internal {
-        // Calculate commission amount
-        uint256 commissionAmount = (serviceFee * _commissionPercentage) / 10000;
-        uint256 validatorAmount = serviceFee - commissionAmount;
-        
-        // Transfer tokens from payer to this contract
-        IERC20Upgradeable(token).safeTransferFrom(payer, address(this), serviceFee);
-        
-        // Update validator balance
-        validatorBalances[validatorAddress][token] += validatorAmount;
-        
-        // Transfer commission to fee receiver
-        if (commissionAmount > 0) {
-            IERC20Upgradeable(token).safeTransfer(feeReceiver, commissionAmount);
-        }
-        
-        emit ServiceFeeCollected(validatorAddress, token, serviceFee, commissionAmount);
-    }
-    
-    /**
-     * @dev Processes a mint.
-     * @param owner Address of the owner.
-     * @param assetType Type of asset.
-     * @param ipfsDetailsHash IPFS hash of details.
-     * @param definition Definition of the deed.
-     * @param configuration Configuration of the deed.
-     * @param validatorAddress Address of the validator.
-     * @param salt Optional value used to generate a unique token ID
-     * @return The ID of the minted deed.
-     */
-    function _processMint(
-        address owner,
-        IDeedNFT.AssetType assetType,
-        string memory ipfsDetailsHash,
-        string memory definition,
-        string memory configuration,
-        address validatorAddress,
-        uint256 salt
-    ) internal returns (uint256) {
-        // Mint the deed
-        uint256 tokenId = IDeedNFT(deedNFTContract).mintAsset(
-            owner,
-            assetType,
-            ipfsDetailsHash,
-            definition,
-            configuration,
-            validatorAddress,
-            salt
-        );
-        
-        emit DeedMinted(tokenId, owner, validatorAddress);
-        
-        return tokenId;
-    }
-
-    /**
-     * @dev Collects commission from a service fee
-     * @param tokenId The ID of the token
-     * @param amount The amount of the service fee
-     * @param token The token address (for ERC20 payments)
-     */
-    function collectCommission(uint256 tokenId, uint256 amount, address token) external override nonReentrant {
-        require(msg.sender == deedNFTContract, "FundManager: Only DeedNFT can call this function");
-        require(amount > 0, "FundManager: Amount must be greater than 0");
+    function addWhitelistedToken(address token) external onlyRole(ADMIN_ROLE) {
         require(token != address(0), "FundManager: Invalid token address");
+        require(!isWhitelistedToken[token], "FundManager: Token already whitelisted");
+        isWhitelistedToken[token] = true;
+        whitelistedTokens.push(token);
+    }
 
-        // Get the validator for this token using getValidationStatus
-        (bool isValidated, address validator) = IDeedNFT(deedNFTContract).getValidationStatus(tokenId);
-        require(validator != address(0), "FundManager: Invalid validator");
-        require(isValidated, "FundManager: Token not validated");
-
-        // Calculate commission
-        uint256 commissionAmount = (amount * _commissionPercentage) / 10000;
-        uint256 validatorAmount = amount - commissionAmount;
-
-        // Update validator balance
-        validatorBalances[validator][token] += validatorAmount;
-
-        // Transfer commission to fee receiver if any
-        if (commissionAmount > 0) {
-            IERC20Upgradeable(token).safeTransfer(feeReceiver, commissionAmount);
+    /**
+     * @dev Removes a token from the whitelist
+     * @param token Address of the token to remove
+     */
+    function removeWhitelistedToken(address token) external onlyRole(ADMIN_ROLE) {
+        require(isWhitelistedToken[token], "FundManager: Token not whitelisted");
+        isWhitelistedToken[token] = false;
+        
+        // Remove from array
+        for (uint256 i = 0; i < whitelistedTokens.length; i++) {
+            if (whitelistedTokens[i] == token) {
+                whitelistedTokens[i] = whitelistedTokens[whitelistedTokens.length - 1];
+                whitelistedTokens.pop();
+                break;
+            }
         }
+    }
 
-        emit ServiceFeeCollected(validator, token, amount, commissionAmount);
+    /**
+     * @dev Gets all whitelisted tokens
+     * @return Array of whitelisted token addresses
+     */
+    function getWhitelistedTokens() external view returns (address[] memory) {
+        return whitelistedTokens;
     }
 }

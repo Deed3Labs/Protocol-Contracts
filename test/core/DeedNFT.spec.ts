@@ -16,6 +16,7 @@ describe("DeedNFT", function() {
   let validator1: SignerWithAddress;
   let validator2: SignerWithAddress;
   let nonAuthorized: SignerWithAddress;
+  let mockERC20: any;
 
   const DEFAULT_ADMIN_ROLE = "0x0000000000000000000000000000000000000000000000000000000000000000";
   const VALIDATOR_ROLE = ethers.keccak256(ethers.toUtf8Bytes("VALIDATOR_ROLE"));
@@ -91,8 +92,14 @@ describe("DeedNFT", function() {
       definition,
       "configuration1",
       await validator.getAddress(),
+      ethers.ZeroAddress, // token address (zero address for testing)
       0n // salt
     );
+
+    // Deploy MockERC20 for payment testing
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
+    mockERC20 = await MockERC20.deploy("Test Token", "TT", 18);
+    await mockERC20.waitForDeployment();
   });
 
   describe("Minting", function() {
@@ -112,6 +119,7 @@ describe("DeedNFT", function() {
           definition,
           "configuration1",
           await validator.getAddress(),
+          ethers.ZeroAddress, // token address (zero address for testing)
           0n // salt
         )
       ).to.emit(deedNFT, "DeedNFTMinted")
@@ -154,6 +162,7 @@ describe("DeedNFT", function() {
           definition,
           "configuration1",
           nonRegisteredValidator,
+          ethers.ZeroAddress, // token address (zero address for testing)
           0n // salt
         )
       ).to.be.reverted;
@@ -178,6 +187,194 @@ describe("DeedNFT", function() {
           definition,
           "configuration1",
           await validator.getAddress(),
+          ethers.ZeroAddress, // token address (zero address for testing)
+          0n // salt
+        )
+      ).to.be.reverted;
+    });
+
+    it("Should mint a new deed with ERC20 payment", async function() {
+      // Deploy and set up FundManager first
+      const FundManager = await ethers.getContractFactory("FundManager");
+      const fundManager = await upgrades.deployProxy(FundManager, [
+        await validatorRegistry.getAddress(),
+        1000, // 10% commission
+        deployer.address // fee receiver
+      ]);
+      await fundManager.waitForDeployment();
+
+      // Set up FundManager in DeedNFT
+      await deedNFT.setFundManager(await fundManager.getAddress());
+      await fundManager.addCompatibleDeedNFT(await deedNFT.getAddress());
+
+      // Whitelist token and set service fee in validator
+      await validator.addWhitelistedToken(await mockERC20.getAddress());
+      await validator.setServiceFee(await mockERC20.getAddress(), ethers.parseUnits("100", 18));
+      
+      // Grant MINTER_ROLE to user1
+      await deedNFT.grantRole(MINTER_ROLE, user1.address);
+      
+      // Mint tokens to user1
+      await mockERC20.mint(user1.address, ethers.parseUnits("1000", 18));
+      // Approve FundManager to spend tokens
+      await mockERC20.connect(user1).approve(await fundManager.getAddress(), ethers.parseUnits("100", 18));
+
+      const definition = JSON.stringify({
+        country: "USA",
+        state: "California",
+        county: "Los Angeles",
+        parcelNumber: "54321"
+      });
+
+      await expect(
+        deedNFT.connect(user1).mintAsset(
+          user1.address,
+          0, // AssetType.Land
+          "ipfs://metadata2",
+          definition,
+          "configuration2",
+          await validator.getAddress(),
+          await mockERC20.getAddress(),
+          1n // salt
+        )
+      ).to.emit(deedNFT, "DeedNFTMinted");
+    });
+
+    it("Should mint a deed without FundManager when no token is provided", async function() {
+      const definition = JSON.stringify({
+        country: "USA",
+        state: "California",
+        county: "Los Angeles",
+        parcelNumber: "12345"
+      });
+
+      await expect(
+        deedNFT.mintAsset(
+          user1.address,
+          0, // AssetType.Land
+          "ipfs://metadata1",
+          definition,
+          "configuration1",
+          await validator.getAddress(),
+          ethers.ZeroAddress, // token address (zero address for testing)
+          0n // salt
+        )
+      ).to.emit(deedNFT, "DeedNFTMinted")
+        .withArgs(2, 0, deployer.address, await validator.getAddress());
+
+      // Check ownership
+      expect(await deedNFT.ownerOf(2)).to.equal(user1.address);
+    });
+
+    it("Should not mint a deed without FundManager when token is provided", async function() {
+      const definition = JSON.stringify({
+        country: "USA",
+        state: "California",
+        county: "Los Angeles",
+        parcelNumber: "12345"
+      });
+
+      await expect(
+        deedNFT.mintAsset(
+          user1.address,
+          0, // AssetType.Land
+          "ipfs://metadata1",
+          definition,
+          "configuration1",
+          await validator.getAddress(),
+          await mockERC20.getAddress(), // token address
+          0n // salt
+        )
+      ).to.be.reverted;
+    });
+
+    it("Should mint a deed with FundManager when token is provided", async function() {
+      // Deploy and set up FundManager
+      const FundManager = await ethers.getContractFactory("FundManager");
+      const fundManager = await upgrades.deployProxy(FundManager, [
+        await validatorRegistry.getAddress(),
+        1000, // 10% commission
+        deployer.address // fee receiver
+      ]);
+      await fundManager.waitForDeployment();
+
+      // Set up FundManager in DeedNFT
+      await deedNFT.setFundManager(await fundManager.getAddress());
+      await fundManager.addCompatibleDeedNFT(await deedNFT.getAddress());
+
+      // Whitelist token and set service fee in validator
+      await validator.addWhitelistedToken(await mockERC20.getAddress());
+      await validator.setServiceFee(await mockERC20.getAddress(), ethers.parseUnits("100", 18));
+
+      // Grant MINTER_ROLE to user1
+      await deedNFT.grantRole(MINTER_ROLE, user1.address);
+
+      // Mint tokens to user1 and approve FundManager
+      await mockERC20.mint(user1.address, ethers.parseUnits("1000", 18));
+      await mockERC20.connect(user1).approve(await fundManager.getAddress(), ethers.parseUnits("100", 18));
+
+      const definition = JSON.stringify({
+        country: "USA",
+        state: "California",
+        county: "Los Angeles",
+        parcelNumber: "12345"
+      });
+
+      await expect(
+        deedNFT.connect(user1).mintAsset(
+          user1.address,
+          0, // AssetType.Land
+          "ipfs://metadata1",
+          definition,
+          "configuration1",
+          await validator.getAddress(),
+          await mockERC20.getAddress(), // token address
+          0n // salt
+        )
+      ).to.emit(deedNFT, "DeedNFTMinted")
+        .withArgs(2, 0, user1.address, await validator.getAddress());
+
+      // Check ownership
+      expect(await deedNFT.ownerOf(2)).to.equal(user1.address);
+
+      // Check FundManager balances
+      const validatorBalance = await fundManager.getValidatorFeeBalance(
+        await validator.getAddress(),
+        await mockERC20.getAddress()
+      );
+      expect(validatorBalance).to.equal(ethers.parseUnits("90", 18)); // 90% of service fee
+    });
+
+    it("Should not mint a deed with FundManager when no token is provided", async function() {
+      // Deploy and set up FundManager
+      const FundManager = await ethers.getContractFactory("FundManager");
+      const fundManager = await upgrades.deployProxy(FundManager, [
+        await validatorRegistry.getAddress(),
+        1000, // 10% commission
+        deployer.address // fee receiver
+      ]);
+      await fundManager.waitForDeployment();
+
+      // Set up FundManager in DeedNFT
+      await deedNFT.setFundManager(await fundManager.getAddress());
+      await fundManager.addCompatibleDeedNFT(await deedNFT.getAddress());
+
+      const definition = JSON.stringify({
+        country: "USA",
+        state: "California",
+        county: "Los Angeles",
+        parcelNumber: "12345"
+      });
+
+      await expect(
+        deedNFT.mintAsset(
+          user1.address,
+          0, // AssetType.Land
+          "ipfs://metadata1",
+          definition,
+          "configuration1",
+          await validator.getAddress(),
+          ethers.ZeroAddress, // token address (zero address for testing)
           0n // salt
         )
       ).to.be.reverted;
@@ -201,6 +398,7 @@ describe("DeedNFT", function() {
         definition,
         "configuration1",
         await validator.getAddress(),
+        ethers.ZeroAddress, // token address (zero address for testing)
         0n // salt
       );
 
@@ -342,6 +540,7 @@ describe("DeedNFT", function() {
           definition,
           "configuration1",
           await validator.getAddress(),
+          ethers.ZeroAddress, // token address (zero address for testing)
           0n
         )
       ).to.be.reverted;
@@ -410,6 +609,7 @@ describe("DeedNFT", function() {
         definition,
         "configuration1",
         ethers.ZeroAddress, // Use zero address to test default validator
+        ethers.ZeroAddress, // token address (zero address for testing)
         0n
       );
       
@@ -443,6 +643,7 @@ describe("DeedNFT", function() {
           definition,
           "configuration1",
           await validator.getAddress(),
+          ethers.ZeroAddress, // token address (zero address for testing)
           0n
         )
       ).to.be.reverted; // Should revert because validator is not registered in new registry
@@ -554,6 +755,134 @@ describe("DeedNFT", function() {
       // Since setTokenURI doesn't exist, we'll test the renderer's tokenURI directly
       const tokenURI = await deedNFT.tokenURI(1);
       expect(tokenURI).to.not.be.empty;
+    });
+  });
+
+  describe("Marketplace and Royalty Integration", function() {
+    let mockMarketplace: any;
+
+    beforeEach(async function() {
+      // Deploy MockMarketplace
+      const MockMarketplace = await ethers.getContractFactory("MockMarketplace");
+      mockMarketplace = await MockMarketplace.deploy();
+      await mockMarketplace.waitForDeployment();
+
+      // Set up royalty fee percentage and receiver in validator
+      await validator.connect(deployer).setRoyaltyFeePercentage(500); // 5%
+      await validator.connect(deployer).setRoyaltyReceiver(user1.address);
+
+      // Approve marketplace in DeedNFT
+      await deedNFT.setApprovedMarketplace(await mockMarketplace.getAddress(), true);
+    });
+
+    it("should enforce royalties through approved marketplace", async function() {
+      // Mint tokens to user2 for payment
+      await mockERC20.mint(user2.address, ethers.parseUnits("1000", 18));
+      await mockERC20.connect(user2).approve(await mockMarketplace.getAddress(), ethers.parseUnits("1000", 18));
+
+      // List NFT on marketplace
+      await deedNFT.connect(user1).approve(await mockMarketplace.getAddress(), 1);
+      await mockMarketplace.connect(user1).listNFT(
+        await deedNFT.getAddress(),
+        1,
+        await mockERC20.getAddress(),
+        ethers.parseUnits("100", 18)
+      );
+
+      // Get initial balances
+      const validatorBalanceBefore = await mockERC20.balanceOf(await validator.getAddress());
+      const sellerBalanceBefore = await mockERC20.balanceOf(user1.address);
+
+      // Buy NFT through marketplace
+      await mockMarketplace.connect(user2).buyNFT(
+        await deedNFT.getAddress(),
+        1
+      );
+
+      // Check balances after sale
+      const validatorBalanceAfter = await mockERC20.balanceOf(await validator.getAddress());
+      const sellerBalanceAfter = await mockERC20.balanceOf(user1.address);
+
+      // Verify royalty payment (5% of 100 tokens = 5 tokens)
+      expect(validatorBalanceAfter - validatorBalanceBefore).to.equal(ethers.parseUnits("5", 18));
+      // Verify seller received remaining amount (95 tokens)
+      expect(sellerBalanceAfter - sellerBalanceBefore).to.equal(ethers.parseUnits("95", 18));
+    });
+
+    it("should prevent transfers through non-approved marketplace when royalties are enforced", async function() {
+      // Deploy another marketplace that's not approved
+      const MockMarketplace = await ethers.getContractFactory("MockMarketplace");
+      const unapprovedMarketplace = await MockMarketplace.deploy();
+      await unapprovedMarketplace.waitForDeployment();
+
+      // Try to approve unapproved marketplace
+      await expect(
+        deedNFT.connect(user1).approve(await unapprovedMarketplace.getAddress(), 1)
+      ).to.be.reverted;
+
+      // Try to set approval for all
+      await expect(
+        deedNFT.connect(user1).setApprovalForAll(await unapprovedMarketplace.getAddress(), true)
+      ).to.be.reverted;
+    });
+
+    it("should allow transfers through approved marketplace even when royalties are enforced", async function() {
+      // Approve marketplace
+      await deedNFT.connect(user1).approve(await mockMarketplace.getAddress(), 1);
+      
+      // List NFT on marketplace
+      await mockMarketplace.connect(user1).listNFT(
+        await deedNFT.getAddress(),
+        1,
+        await mockERC20.getAddress(),
+        ethers.parseUnits("100", 18)
+      );
+
+      // Verify listing was successful
+      const listing = await mockMarketplace.getListing(await deedNFT.getAddress(), 1);
+      expect(listing.isActive).to.be.true;
+      expect(listing.seller).to.equal(user1.address);
+    });
+
+    it("should calculate royalties correctly", async function() {
+      const salePrice = ethers.parseUnits("100", 18);
+      const [receiver, amount] = await deedNFT.royaltyInfo(1, salePrice);
+      
+      // Verify receiver is the validator
+      expect(receiver).to.equal(await validator.getAddress());
+      // Verify amount is 5% of sale price
+      expect(amount).to.equal(ethers.parseUnits("5", 18));
+    });
+
+    it("should handle marketplace approval changes correctly", async function() {
+      // Initially approved
+      expect(await deedNFT.isApprovedMarketplace(await mockMarketplace.getAddress())).to.be.true;
+
+      // Revoke approval
+      await deedNFT.setApprovedMarketplace(await mockMarketplace.getAddress(), false);
+      expect(await deedNFT.isApprovedMarketplace(await mockMarketplace.getAddress())).to.be.false;
+
+      // Try to approve marketplace after revocation
+      await expect(
+        deedNFT.connect(user1).approve(await mockMarketplace.getAddress(), 1)
+      ).to.be.reverted;
+    });
+
+    it("should handle royalty enforcement changes correctly", async function() {
+      // Initially enforced
+      expect(await deedNFT.isRoyaltyEnforced()).to.be.true;
+
+      // Disable enforcement
+      await deedNFT.setRoyaltyEnforcement(false);
+      expect(await deedNFT.isRoyaltyEnforced()).to.be.false;
+
+      // Should now allow approval of non-approved marketplace
+      const MockMarketplace = await ethers.getContractFactory("MockMarketplace");
+      const unapprovedMarketplace = await MockMarketplace.deploy();
+      await unapprovedMarketplace.waitForDeployment();
+
+      await deedNFT.connect(user1).approve(await unapprovedMarketplace.getAddress(), 1);
+      expect(await deedNFT.getApproved(1)).to.equal(await unapprovedMarketplace.getAddress());
     });
   });
 });

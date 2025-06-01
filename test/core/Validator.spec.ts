@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { Contract } from "ethers";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
 // Direct access to upgrades from hardhat runtime environment
 const hre = require("hardhat");
@@ -11,11 +11,11 @@ describe("Validator Contract", function() {
   let validator: any;
   let deedNFT: any;
   let validatorRegistry: any;
-  let deployer: SignerWithAddress;
-  let admin: SignerWithAddress;
-  let validator1: SignerWithAddress;
-  let user1: SignerWithAddress;
-  let user2: SignerWithAddress;
+  let deployer: HardhatEthersSigner;
+  let admin: HardhatEthersSigner;
+  let validator1: HardhatEthersSigner;
+  let user1: HardhatEthersSigner;
+  let user2: HardhatEthersSigner;
   let VALIDATOR_ROLE: string;
   let METADATA_ROLE: string;
   let CRITERIA_MANAGER_ROLE: string;
@@ -62,7 +62,13 @@ describe("Validator Contract", function() {
     
     // Set up roles
     const DEED_VALIDATOR_ROLE = await deedNFT.VALIDATOR_ROLE();
-    await deedNFT.grantRole(DEED_VALIDATOR_ROLE, await validator.getAddress());
+    await deedNFT.grantRole(DEED_VALIDATOR_ROLE, await validator.target);
+
+    // Grant MINTER_ROLE to users
+    await deedNFT.grantRole(await deedNFT.MINTER_ROLE(), user1.address);
+    await deedNFT.grantRole(await deedNFT.MINTER_ROLE(), user2.address);
+    // Grant VALIDATOR_ROLE to validator contract
+    await deedNFT.grantRole(await deedNFT.VALIDATOR_ROLE(), await validator.target);
 
     // Deploy MockERC20 with correct parameters
     const MockERC20 = await ethers.getContractFactory("MockERC20");
@@ -77,18 +83,18 @@ describe("Validator Contract", function() {
     ADMIN_ROLE = await validator.ADMIN_ROLE();
     
     // Set up permissions
-    await validator.grantRole(VALIDATOR_ROLE, await validator1.getAddress());
-    await validator.grantRole(METADATA_ROLE, await admin.getAddress());
-    await validator.grantRole(CRITERIA_MANAGER_ROLE, await admin.getAddress());
-    await validator.grantRole(FEE_MANAGER_ROLE, await admin.getAddress());
+    await validator.grantRole(VALIDATOR_ROLE, await validator1.address);
+    await validator.grantRole(METADATA_ROLE, await admin.address);
+    await validator.grantRole(CRITERIA_MANAGER_ROLE, await admin.address);
+    await validator.grantRole(FEE_MANAGER_ROLE, await admin.address);
   });
   
   describe("Initialization", function() {
     it("should initialize with correct roles", async function() {
-      expect(await validator.hasRole(VALIDATOR_ROLE, await validator1.getAddress())).to.be.true;
-      expect(await validator.hasRole(METADATA_ROLE, await admin.getAddress())).to.be.true;
-      expect(await validator.hasRole(CRITERIA_MANAGER_ROLE, await admin.getAddress())).to.be.true;
-      expect(await validator.hasRole(FEE_MANAGER_ROLE, await admin.getAddress())).to.be.true;
+      expect(await validator.hasRole(VALIDATOR_ROLE, await validator1.address)).to.be.true;
+      expect(await validator.hasRole(METADATA_ROLE, await admin.address)).to.be.true;
+      expect(await validator.hasRole(CRITERIA_MANAGER_ROLE, await admin.address)).to.be.true;
+      expect(await validator.hasRole(FEE_MANAGER_ROLE, await admin.address)).to.be.true;
     });
     
     it("should initialize with correct DeedNFT address", async function() {
@@ -106,19 +112,19 @@ describe("Validator Contract", function() {
 
   describe("Role Management", function() {
     it("should allow admin to grant roles", async function() {
-      await validator.grantRole(VALIDATOR_ROLE, await user1.getAddress());
-      expect(await validator.hasRole(VALIDATOR_ROLE, await user1.getAddress())).to.be.true;
+      await validator.grantRole(VALIDATOR_ROLE, await user1.address);
+      expect(await validator.hasRole(VALIDATOR_ROLE, await user1.address)).to.be.true;
     });
 
     it("should allow admin to revoke roles", async function() {
-      await validator.grantRole(VALIDATOR_ROLE, await user1.getAddress());
-      await validator.revokeRole(VALIDATOR_ROLE, await user1.getAddress());
-      expect(await validator.hasRole(VALIDATOR_ROLE, await user1.getAddress())).to.be.false;
+      await validator.grantRole(VALIDATOR_ROLE, await user1.address);
+      await validator.revokeRole(VALIDATOR_ROLE, await user1.address);
+      expect(await validator.hasRole(VALIDATOR_ROLE, await user1.address)).to.be.false;
     });
 
     it("should prevent non-admin from granting roles", async function() {
       await expect(
-        validator.connect(user1).grantRole(VALIDATOR_ROLE, await user2.getAddress())
+        validator.connect(user1).grantRole(VALIDATOR_ROLE, await user2.address)
       ).to.be.reverted;
     });
   });
@@ -207,7 +213,7 @@ describe("Validator Contract", function() {
     it("should allow admin to set DeedNFT address", async function() {
       const DeedNFT = await ethers.getContractFactory("DeedNFT");
       const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
-        await validator.getAddress(),
+        await validator.target,
         await validatorRegistry.getAddress()
       ]);
       await newDeedNFT.waitForDeployment();
@@ -225,7 +231,7 @@ describe("Validator Contract", function() {
     it("should allow admin to add compatible DeedNFT", async function() {
       const DeedNFT = await ethers.getContractFactory("DeedNFT");
       const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
-        await validator.getAddress(),
+        await validator.target,
         await validatorRegistry.getAddress()
       ]);
       await newDeedNFT.waitForDeployment();
@@ -237,7 +243,7 @@ describe("Validator Contract", function() {
     it("should allow admin to remove compatible DeedNFT", async function() {
       const DeedNFT = await ethers.getContractFactory("DeedNFT");
       const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
-        await validator.getAddress(),
+        await validator.target,
         await validatorRegistry.getAddress()
       ]);
       await newDeedNFT.waitForDeployment();
@@ -293,106 +299,160 @@ describe("Validator Contract", function() {
       const token = await MockERC20.deploy("Test Token", "TT", 18);
       await token.waitForDeployment();
       
-      // Set up royalty receiver
-      await validator.connect(admin).setRoyaltyReceiver(user1.address);
-      
-      // Whitelist token and set service fee
-      await validator.connect(admin).addWhitelistedToken(await token.getAddress());
-      await validator.connect(admin).setServiceFee(await token.getAddress(), 100);
-      
-      // Ensure asset type 0 is supported
-      await validator.connect(admin).setAssetTypeSupport(0, true);
-      
-      // Set up FundManager
+      // Set up FundManager first
       const FundManager = await ethers.getContractFactory("FundManager");
       const fundManager = await upgrades.deployProxy(FundManager, [
-        await deedNFT.getAddress(),
         await validatorRegistry.getAddress(),
         1000, // 10% commission
         admin.address // fee receiver
       ]);
       await fundManager.waitForDeployment();
-      
-      // Grant MINTER_ROLE to FundManager in DeedNFT
+
+      // Grant FEE_MANAGER_ROLE to admin in FundManager
+      const FEE_MANAGER_ROLE_FM = await fundManager.FEE_MANAGER_ROLE();
+      await fundManager.grantRole(FEE_MANAGER_ROLE_FM, admin.address);
+
+      // Set up roles and permissions
       const MINTER_ROLE = await deedNFT.MINTER_ROLE();
       await deedNFT.grantRole(MINTER_ROLE, await fundManager.getAddress());
-      
+      await deedNFT.grantRole(MINTER_ROLE, user2.address);
+
+      // Set up validator and deedNFT with fundManager
       await validator.setFundManager(await fundManager.getAddress());
-      
-      // Mint tokens to user2 and approve FundManager
-      await token.mint(user2.address, 1000);
-      await token.connect(user2).approve(await fundManager.getAddress(), 100);
-      
-      // Create a deed to accumulate fees
+      await deedNFT.setFundManager(await fundManager.getAddress());
+      await fundManager.addCompatibleDeedNFT(await deedNFT.getAddress());
+
+      // Set up royalty receiver and fees
+      await validator.connect(admin).setRoyaltyReceiver(user1.address);
+      await validator.connect(admin).addWhitelistedToken(await token.getAddress());
+      await validator.connect(admin).setServiceFee(await token.getAddress(), ethers.parseUnits("100", 18));
+      await validator.connect(admin).setAssetTypeSupport(0, true);
+
+      // Set up token balance and approval
+      await token.mint(user2.address, ethers.parseUnits("1000", 18));
+      await token.connect(user2).approve(await fundManager.getAddress(), ethers.parseUnits("1000", 18));
+
+      // Debug: Check initial balances
+      const feeReceiverBalanceBefore = await token.balanceOf(admin.address);
+      console.log("Fee receiver balance before mint:", feeReceiverBalanceBefore.toString());
+      const fundManagerBalanceBefore = await token.balanceOf(await fundManager.getAddress());
+      console.log("FundManager balance before mint:", fundManagerBalanceBefore.toString());
+
+      // Mint deed with token payment
       const definition = JSON.stringify({
         country: "USA",
         state: "California",
         county: "Los Angeles",
         parcelNumber: "12345"
       });
-      
-      await fundManager.connect(user2).mintDeedNFT(
-        user2.address,
-        0, // Land
+
+      await deedNFT.connect(user2).mintAsset(
+        user1.address,
+        0,
         "ipfs://metadata1",
         definition,
         "configuration1",
-        await validator.getAddress(),
+        await validator.target,
         await token.getAddress(),
-        0n // salt
+        ethers.parseUnits("100", 18)
       );
-      
-      // Get initial balances
+
+      // Debug: Check balances after mint
+      const feeReceiverBalanceAfterMint = await token.balanceOf(admin.address);
+      console.log("Fee receiver balance after mint:", feeReceiverBalanceAfterMint.toString());
+      console.log("Commission received:", (feeReceiverBalanceAfterMint - feeReceiverBalanceBefore).toString());
+      const fundManagerBalanceAfterMint = await token.balanceOf(await fundManager.getAddress());
+      console.log("FundManager balance after mint:", fundManagerBalanceAfterMint.toString());
+
+      // Debug: Check balances before withdrawal
       const royaltyReceiverBalanceBefore = await token.balanceOf(user1.address);
-      console.log('Royalty receiver balance before withdrawal:', royaltyReceiverBalanceBefore.toString());
-
-      // Debug: Check FundManager balance before withdrawal
-      const fundManagerBalanceBefore = await token.balanceOf(await fundManager.getAddress());
-      console.log('FundManager balance before withdrawal:', fundManagerBalanceBefore.toString());
-
-      // Debug: Check commission balance before withdrawal
-      const commissionBalance = await fundManager.getValidatorFeeBalance(
-        await validator.getAddress(),
+      console.log("Royalty receiver balance before withdrawal:", royaltyReceiverBalanceBefore.toString());
+      const validatorFeeBalanceBefore = await fundManager.getValidatorFeeBalance(
+        await validator.target,
         await token.getAddress()
       );
-      console.log('Validator service fee balance before withdrawal:', commissionBalance.toString());
+      console.log("Validator fee balance before withdrawal:", validatorFeeBalanceBefore.toString());
 
-      // Debug: Check royalty receiver and FundManager address
-      const royaltyReceiver = await validator.getRoyaltyReceiver();
-      const fundManagerAddress = await validator.fundManager();
-      console.log('Royalty receiver:', royaltyReceiver);
-      console.log('FundManager address:', fundManagerAddress);
-
-      // Debug: Check if Validator has FEE_MANAGER_ROLE in FundManager
-      const FEE_MANAGER_ROLE = await fundManager.FEE_MANAGER_ROLE();
-      const hasRole = await fundManager.hasRole(FEE_MANAGER_ROLE, await validator.getAddress());
-      console.log('Validator has FEE_MANAGER_ROLE in FundManager:', hasRole);
-
-      // Grant FEE_MANAGER_ROLE to Validator contract itself for FundManager withdrawal
-      await fundManager.grantRole(FEE_MANAGER_ROLE, await validator.getAddress());
-
-      // Withdraw fees
-      await validator.connect(admin).withdrawServiceFees(await token.getAddress());
+      // Withdraw fees via FundManager
+      await fundManager.connect(deployer).withdrawValidatorFees(await validator.getAddress(), await token.getAddress());
       
-      // Debug: Check FundManager balance after withdrawal
-      const fundManagerBalanceAfter = await token.balanceOf(await fundManager.getAddress());
-      console.log('FundManager balance after withdrawal:', fundManagerBalanceAfter.toString());
-
-      // Verify royalty receiver received the funds
+      // Debug: Check balances after withdrawal
       const royaltyReceiverBalanceAfter = await token.balanceOf(user1.address);
-      console.log('Royalty receiver balance after withdrawal:', royaltyReceiverBalanceAfter.toString());
-      expect(royaltyReceiverBalanceAfter - royaltyReceiverBalanceBefore).to.equal(90); // 90% of service fee
-
-      // Debug: Check commission balance after withdrawal
-      const commissionBalanceAfter = await fundManager.getValidatorFeeBalance(
-        await validator.getAddress(),
+      console.log("Royalty receiver balance after withdrawal:", royaltyReceiverBalanceAfter.toString());
+      console.log("Royalty amount received:", (royaltyReceiverBalanceAfter - royaltyReceiverBalanceBefore).toString());
+      const validatorFeeBalanceAfter = await fundManager.getValidatorFeeBalance(
+        await validator.target,
         await token.getAddress()
       );
-      console.log('Validator service fee balance after withdrawal:', commissionBalanceAfter.toString());
+      console.log("Validator fee balance after withdrawal:", validatorFeeBalanceAfter.toString());
+      
+      // Verify royalty receiver received the funds
+      expect(royaltyReceiverBalanceAfter).to.equal(ethers.parseUnits("90", 18)); // 90% of service fee
     });
   });
 
   describe("Royalty Management", function() {
+    let mockERC20: any;
+    let fundManager: any;
+
+    beforeEach(async function() {
+      // Deploy FundManager first
+      const FundManager = await ethers.getContractFactory("FundManager");
+      fundManager = await upgrades.deployProxy(FundManager, [
+        await validatorRegistry.getAddress(),
+        1000, // 10% commission
+        admin.address // fee receiver
+      ]);
+      await fundManager.waitForDeployment();
+
+      // Grant ADMIN_ROLE to admin in FundManager
+      const ADMIN_ROLE_FM = await fundManager.ADMIN_ROLE();
+      await fundManager.grantRole(ADMIN_ROLE_FM, admin.address);
+
+      // Grant FEE_MANAGER_ROLE to admin in FundManager
+      const FEE_MANAGER_ROLE_FM = await fundManager.FEE_MANAGER_ROLE();
+      await fundManager.grantRole(FEE_MANAGER_ROLE_FM, admin.address);
+
+      // Set up validator and deedNFT with fundManager
+      await validator.setFundManager(await fundManager.getAddress());
+      await deedNFT.setFundManager(await fundManager.getAddress());
+      await fundManager.addCompatibleDeedNFT(await deedNFT.getAddress());
+
+      // Set up asset type support
+      await validator.connect(admin).setAssetTypeSupport(0, true);
+      
+      // Set up validation criteria (empty array since we don't need traits)
+      await validator.connect(admin).setValidationCriteria(
+        0,
+        [],
+        "",
+        true, // require operating agreement
+        true  // require definition
+      );
+      
+      // Register operating agreement
+      await validator.connect(admin).setOperatingAgreementName("ipfs://agreements/1", "Test Agreement");
+      
+      // Set royalty fee percentage (5%)
+      await validator.connect(admin).setRoyaltyFeePercentage(500);
+      
+      // Set royalty receiver
+      await validator.connect(admin).setRoyaltyReceiver(user1.address);
+      
+      // Deploy MockERC20
+      const MockERC20 = await ethers.getContractFactory("MockERC20");
+      mockERC20 = await MockERC20.deploy("Test Token", "TT", 18);
+      await mockERC20.waitForDeployment();
+      
+      // Whitelist token in validator and fundManager
+      await validator.connect(admin).addWhitelistedToken(await mockERC20.getAddress());
+      await fundManager.connect(admin).addWhitelistedToken(await mockERC20.getAddress());
+      
+      // Mint tokens to users
+      await mockERC20.mint(user1.address, ethers.parseUnits("1000", 18));
+      await mockERC20.mint(user2.address, ethers.parseUnits("1000", 18));
+    });
+
     it("should allow fee manager to set royalty fee percentage", async function() {
       await validator.connect(admin).setRoyaltyFeePercentage(500); // 5%
       expect(await validator.getRoyaltyFeePercentage(0)).to.equal(500);
@@ -405,14 +465,110 @@ describe("Validator Contract", function() {
     });
 
     it("should allow fee manager to set royalty receiver", async function() {
-      await validator.connect(admin).setRoyaltyReceiver(await user1.getAddress());
-      expect(await validator.getRoyaltyReceiver()).to.equal(await user1.getAddress());
+      await validator.connect(admin).setRoyaltyReceiver(await user1.address);
+      expect(await validator.getRoyaltyReceiver()).to.equal(await user1.address);
     });
 
     it("should prevent setting zero address as royalty receiver", async function() {
       await expect(
         validator.connect(admin).setRoyaltyReceiver(ethers.ZeroAddress)
       ).to.be.reverted;
+    });
+
+    it("should track and allow withdrawal of royalties", async function() {
+      // Set up royalty fee percentage and receiver
+      await validator.connect(admin).setRoyaltyFeePercentage(500); // 5%
+      await validator.connect(admin).setRoyaltyReceiver(user1.address);
+
+      // Deploy mock ERC20 token
+      const MockERC20 = await ethers.getContractFactory("MockERC20");
+      mockERC20 = await MockERC20.deploy("Mock Token", "MTK", 18);
+      await mockERC20.waitForDeployment();
+
+      // Whitelist token in validator
+      await validator.connect(admin).addWhitelistedToken(await mockERC20.getAddress());
+
+      // Mint tokens to user2
+      await mockERC20.mint(user2.address, ethers.parseUnits("100", 18));
+
+      // Debug: Check initial balances
+      console.log("Initial validator balance:", (await mockERC20.balanceOf(await validator.getAddress())).toString());
+      console.log("Initial user2 balance:", (await mockERC20.balanceOf(user2.address)).toString());
+
+      // Transfer tokens to validator to simulate royalty accrual
+      await mockERC20.connect(user2).transfer(await validator.getAddress(), ethers.parseUnits("5", 18));
+
+      // Debug: Check balances after transfer
+      console.log("Validator balance after transfer:", (await mockERC20.balanceOf(await validator.getAddress())).toString());
+      console.log("User2 balance after transfer:", (await mockERC20.balanceOf(user2.address)).toString());
+
+      // Check royalty balance
+      const royaltyBalance = await validator.getRoyaltyBalance(await mockERC20.getAddress());
+      console.log("Royalty balance:", royaltyBalance.toString());
+      expect(royaltyBalance).to.equal(ethers.parseUnits("5", 18));
+
+      // Withdraw royalties
+      const royaltyReceiverBalanceBefore = await mockERC20.balanceOf(user1.address);
+      const feeReceiverBalanceBefore = await mockERC20.balanceOf(admin.address);
+      
+      console.log("Royalty receiver balance before withdrawal:", royaltyReceiverBalanceBefore.toString());
+      console.log("Fee receiver balance before withdrawal:", feeReceiverBalanceBefore.toString());
+      
+      await validator.connect(user1).withdrawRoyalties(await mockERC20.getAddress());
+      
+      const royaltyReceiverBalanceAfter = await mockERC20.balanceOf(user1.address);
+      const feeReceiverBalanceAfter = await mockERC20.balanceOf(admin.address);
+
+      console.log("Royalty receiver balance after withdrawal:", royaltyReceiverBalanceAfter.toString());
+      console.log("Fee receiver balance after withdrawal:", feeReceiverBalanceAfter.toString());
+
+      // Calculate expected amounts (10% commission)
+      const expectedCommission = ethers.parseUnits("0.5", 18); // 10% of 5 tokens
+      const expectedReceiverAmount = ethers.parseUnits("4.5", 18); // 90% of 5 tokens
+
+      // Verify royalty receiver received the correct amount
+      expect(royaltyReceiverBalanceAfter - royaltyReceiverBalanceBefore).to.equal(expectedReceiverAmount);
+      
+      // Verify fee receiver received the commission
+      expect(feeReceiverBalanceAfter - feeReceiverBalanceBefore).to.equal(expectedCommission);
+
+      // Verify validator's royalty balance is zero
+      const finalRoyaltyBalance = await validator.getRoyaltyBalance(await mockERC20.getAddress());
+      console.log("Final validator royalty balance:", finalRoyaltyBalance.toString());
+      expect(finalRoyaltyBalance).to.equal(0);
+    });
+
+    it("should prevent unauthorized withdrawal of royalties", async function() {
+      // Transfer tokens to validator to simulate royalty accrual
+      await mockERC20.connect(user2).transfer(await validator.getAddress(), ethers.parseUnits("5", 18));
+
+      // Debug: Check balances before unauthorized attempt
+      console.log("Validator balance before unauthorized attempt:", (await mockERC20.balanceOf(await validator.getAddress())).toString());
+      console.log("User2 balance before unauthorized attempt:", (await mockERC20.balanceOf(user2.address)).toString());
+
+      // Try to withdraw royalties as unauthorized user
+      await expect(
+        validator.connect(user2).withdrawRoyalties(await mockERC20.getAddress())
+      ).to.be.reverted;
+
+      // Debug: Check balances after unauthorized attempt
+      console.log("Validator balance after unauthorized attempt:", (await mockERC20.balanceOf(await validator.getAddress())).toString());
+      console.log("User2 balance after unauthorized attempt:", (await mockERC20.balanceOf(user2.address)).toString());
+    });
+
+    it("should handle zero balance correctly", async function() {
+      // Debug: Check initial balances
+      console.log("Initial validator balance:", (await mockERC20.balanceOf(await validator.getAddress())).toString());
+      console.log("Initial royalty receiver balance:", (await mockERC20.balanceOf(user1.address)).toString());
+
+      // Try to withdraw royalties when balance is zero
+      await expect(
+        validator.connect(user1).withdrawRoyalties(await mockERC20.getAddress())
+      ).to.be.reverted;
+
+      // Debug: Check final balances
+      console.log("Final validator balance:", (await mockERC20.balanceOf(await validator.getAddress())).toString());
+      console.log("Final royalty receiver balance:", (await mockERC20.balanceOf(user1.address)).toString());
     });
   });
 
@@ -451,22 +607,31 @@ describe("Validator Contract", function() {
       // Register operating agreement in Validator first
       await validator.connect(admin).registerOperatingAgreement("ipfs://agreements/1", "Agreement 1");
 
+      // Set up roles
+      const MINTER_ROLE = await deedNFT.MINTER_ROLE();
+      await deedNFT.grantRole(MINTER_ROLE, deployer.address);
+      await deedNFT.grantRole(MINTER_ROLE, user2.address);
+
       // Mint a deed with required traits
       const definition = JSON.stringify({ country: "USA", state: "CA" });
-      await deedNFT.grantRole(await deedNFT.MINTER_ROLE(), deployer.address);
-      await deedNFT.mintAsset(
+      await deedNFT.connect(user2).mintAsset(
         user1.address,
         0,
         "ipfs://metadata1",
         definition,
         "configuration1",
-        await validator.getAddress(),
+        await validator.target,
+        ethers.ZeroAddress,
         0n
       );
       tokenId = 1;
-      // Set required traits using setTrait as the deed owner
-      await deedNFT.connect(user1).setTrait(tokenId, ethers.toUtf8Bytes("country"), ethers.toUtf8Bytes("USA"), 1);
-      await deedNFT.connect(user1).setTrait(tokenId, ethers.toUtf8Bytes("state"), ethers.toUtf8Bytes("CA"), 1);
+
+      // Grant VALIDATOR_ROLE to the validator contract
+      await deedNFT.grantRole(await deedNFT.VALIDATOR_ROLE(), validator.getAddress());
+
+      // Set up required traits for the NFT
+      await deedNFT.setTrait(tokenId, ethers.toUtf8Bytes("country"), ethers.toUtf8Bytes("USA"), 1);
+      await deedNFT.setTrait(tokenId, ethers.toUtf8Bytes("state"), ethers.toUtf8Bytes("California"), 1);
     });
 
     it("should validate a deed with all required traits", async function() {
@@ -539,7 +704,7 @@ describe("Validator Contract", function() {
     it("should not allow setting primary DeedNFT to non-compatible address", async function() {
       const DeedNFT = await ethers.getContractFactory("DeedNFT");
       const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
-        await validator.getAddress(),
+        await validator.target,
         await validatorRegistry.getAddress()
       ]);
       await newDeedNFT.waitForDeployment();
@@ -559,7 +724,7 @@ describe("Validator Contract", function() {
       expect(await validator.isCompatibleDeedNFT(await deedNFT.getAddress())).to.be.true;
       const DeedNFT = await ethers.getContractFactory("DeedNFT");
       const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
-        await validator.getAddress(),
+        await validator.target,
         await validatorRegistry.getAddress()
       ]);
       await newDeedNFT.waitForDeployment();

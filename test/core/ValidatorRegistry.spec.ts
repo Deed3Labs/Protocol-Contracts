@@ -50,7 +50,6 @@ describe("ValidatorRegistry Contract", function() {
     // Deploy FundManager
     const FundManager = await ethers.getContractFactory("FundManager");
     fundManager = await upgrades.deployProxy(FundManager, [
-      await deedNFT.getAddress(),
       await validatorRegistry.getAddress(),
       1000, // 10% commission
       deployer.address // fee receiver

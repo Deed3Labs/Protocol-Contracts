@@ -93,6 +93,18 @@ interface IValidator is IAccessControlUpgradeable {
      */
     event CompatibleDeedNFTUpdated(address indexed deedNFTAddress, bool isCompatible);
 
+    /**
+     * @dev Emitted when royalties are withdrawn
+     * @param token Address of the token
+     * @param amount Total amount withdrawn
+     * @param commissionAmount Amount taken as commission
+     */
+    event RoyaltyWithdrawn(
+        address indexed token,
+        uint256 amount,
+        uint256 commissionAmount
+    );
+
     // ============ Validation Functions ============
 
     /**
@@ -270,5 +282,20 @@ interface IValidator is IAccessControlUpgradeable {
      * @notice Fees are withdrawn to the royalty receiver address set in this contract
      */
     function withdrawServiceFees(address token) external;
+
+    /**
+     * @dev Allows royalty receiver or FundManager to withdraw accumulated royalties for a specific token.
+     *      Calculates and transfers commission to FundManager's fee receiver before sending remaining amount to royalty receiver.
+     * @param token Address of the token to withdraw
+     * @notice Commission is always taken and sent to FundManager's fee receiver, regardless of who calls the function
+     */
+    function withdrawRoyalties(address token) external;
+
+    /**
+     * @dev Gets the current royalty balance for a specific token
+     * @param token Address of the token to check
+     * @return The current royalty balance for the token
+     */
+    function getRoyaltyBalance(address token) external view returns (uint256);
 }
 

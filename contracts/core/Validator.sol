@@ -9,6 +9,9 @@ import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/acce
 import {IERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
+import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
 // Libraries
 import "../libraries/StringUtils.sol";
@@ -41,10 +44,12 @@ contract Validator is
     AccessControlUpgradeable,
     OwnableUpgradeable,
     UUPSUpgradeable,
+    ReentrancyGuardUpgradeable,
     IValidator
 {
     using StringsUpgradeable for uint256;
     using StringUtils for string;
+    using SafeERC20Upgradeable for IERC20Upgradeable;
 
     // ============ Role Definitions ============
 
@@ -138,6 +143,9 @@ contract Validator is
     /// @notice Array to store registered operating agreement URIs
     string[] public registeredAgreementURIs;
 
+    // Mapping to track royalty balances per token
+    mapping(address => uint256) private royaltyBalances;
+
     // ============ Constructor ============
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -158,6 +166,7 @@ contract Validator is
         __Ownable_init();
         __UUPSUpgradeable_init();
         __ERC165_init();
+        __ReentrancyGuard_init();
         
         baseUri = _baseUri;
         defaultOperatingAgreementUri = _defaultOperatingAgreementUri;
@@ -768,5 +777,41 @@ contract Validator is
     {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "AccessControl: caller must have admin role");
         _grantRole(role, account);
+    }
+
+    /**
+     * @dev Gets the royalty balance for a token
+     * @param token Address of the token
+     * @return The royalty balance
+     */
+    function getRoyaltyBalance(address token) external view returns (uint256) {
+        return IERC20Upgradeable(token).balanceOf(address(this));
+    }
+
+    /**
+     * @dev Allows royalty receiver or FundManager to withdraw accumulated royalties for a specific token
+     * @param token Address of the token to withdraw
+     */
+    function withdrawRoyalties(address token) external nonReentrant {
+        require(
+            msg.sender == royaltyReceiver || 
+            msg.sender == fundManager,
+            "!auth"
+        );
+
+        uint256 balance = IERC20Upgradeable(token).balanceOf(address(this));
+        require(balance > 0, "Validator: No royalties to withdraw");
+        
+        // Calculate commission
+        uint256 commissionPercentage = IFundManager(fundManager).getCommissionPercentage();
+        uint256 commissionAmount = (balance * commissionPercentage) / 10000;
+        uint256 receiverAmount = balance - commissionAmount;
+
+        // Transfer commission to FundManager's fee receiver
+        IERC20Upgradeable(token).safeTransfer(IFundManager(fundManager).feeReceiver(), commissionAmount);
+        // Transfer remaining to royalty receiver
+        IERC20Upgradeable(token).safeTransfer(royaltyReceiver, receiverAmount);
+
+        emit RoyaltyWithdrawn(token, balance, commissionAmount);
     }
 }
