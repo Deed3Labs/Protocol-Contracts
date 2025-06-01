@@ -1,6 +1,6 @@
 # The Deed Protocol - Smart Contracts
 
-This repository contains the smart contracts for **The Deed Protocol**, which facilitates decentralized (P2P) Real World Asset transactions via Smart Contracts. These contracts represent real world assets as secured digital certificates, ensuring seamless integration with external validation services and enabling future enhancements.
+This repository contains the smart contracts for **The Deed Protocol**, which facilitates decentralized (P2P) Real World Asset transactions via Smart Contracts. These contracts represent real world assets as Secured Digital Representations (SDRs), ensuring seamless integration with external validation services and enabling future enhancements.
 
 > ⚠️ **BETA WARNING**: This protocol is currently in beta. Use at your own risk. The contracts have not been audited and may contain bugs or security vulnerabilities.
 
