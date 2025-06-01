@@ -2,7 +2,7 @@
 
 This repository contains the smart contracts for **The Deed Protocol**, which facilitates decentralized Real World Asset transactions via Smart Contracts. These contracts represent real world assets as ERC721 tokens, ensuring seamless integration with external validation services and enabling future enhancements.
 
-> ⚠️ **BETA WARNING**: This protocol is currently in beta. Use at your own risk. The contracts have not been audited and may contain bugs or security vulnerabilities. Do not use with real assets until the protocol has been thoroughly tested and audited.
+> ⚠️ **BETA WARNING**: This protocol is currently in beta. Use at your own risk. The contracts have not been audited and may contain bugs or security vulnerabilities.
 
 ## Overview
 
