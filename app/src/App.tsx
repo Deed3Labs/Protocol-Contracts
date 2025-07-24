@@ -34,7 +34,7 @@ function Home() {
                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform duration-200" />
                 </Button>
               </Link>
-              <Button variant="outline" className="px-8 py-3 border-2 border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 rounded-xl font-semibold transition-all duration-200">
+              <Button variant="outline" className="px-8 py-3 border-2 border-border hover:border-blue-300 dark:hover:border-blue-600 rounded-xl font-semibold transition-all duration-200">
                 Learn More
               </Button>
             </div>
@@ -42,7 +42,7 @@ function Home() {
           
           {/* Features Grid */}
           <div className="grid md:grid-cols-3 gap-8 mb-16">
-            <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 group">
+            <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-border hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-300 group">
               <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
                 <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
@@ -52,7 +52,7 @@ function Home() {
               </p>
             </div>
             
-            <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600 transition-all duration-300 group">
+            <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-border hover:border-purple-300 dark:hover:border-purple-600 transition-all duration-300 group">
               <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
                 <Zap className="w-6 h-6 text-purple-600 dark:text-purple-400" />
               </div>
@@ -62,7 +62,7 @@ function Home() {
               </p>
             </div>
             
-            <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200 dark:border-gray-700 hover:border-green-300 dark:hover:border-green-600 transition-all duration-300 group">
+            <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-border hover:border-green-300 dark:hover:border-green-600 transition-all duration-300 group">
               <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
                 <Globe className="w-6 h-6 text-green-600 dark:text-green-400" />
               </div>
@@ -74,7 +74,7 @@ function Home() {
           </div>
           
           {/* Stats Section */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 p-8 rounded-2xl bg-white/40 dark:bg-gray-800/40 backdrop-blur-sm border border-gray-200 dark:border-gray-700">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 p-8 rounded-2xl bg-white/40 dark:bg-gray-800/40 backdrop-blur-sm border border-border">
             <div className="text-center">
               <div className="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-2">1M+</div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Assets Minted</div>
@@ -126,29 +126,29 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-white dark:bg-gray-950 transition-colors duration-500">
-        <header className="sticky top-0 z-50 w-full bg-white/80 dark:bg-gray-950/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800 transition-colors duration-300">
+      <div className="min-h-screen bg-background text-foreground transition-colors duration-500">
+        <header className="sticky top-0 z-50 w-full bg-background/80 backdrop-blur-xl border-b border-border transition-colors duration-300">
           <nav className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
             {/* Logo */}
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                 <div className="w-4 h-4 bg-white rounded-sm"></div>
               </div>
-              <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">Protocol</span>
+              <span className="text-xl font-bold tracking-tight text-foreground">Protocol</span>
             </div>
             
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center space-x-8">
-              <Link to="/" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium transition-colors duration-200">
+              <Link to="/" className="text-muted-foreground hover:text-foreground font-medium transition-colors duration-200">
                 Home
               </Link>
-              <Link to="/mint" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium transition-colors duration-200">
+              <Link to="/mint" className="text-muted-foreground hover:text-foreground font-medium transition-colors duration-200">
                 Mint
               </Link>
-              <Link to="/page-one" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium transition-colors duration-200">
+              <Link to="/page-one" className="text-muted-foreground hover:text-foreground font-medium transition-colors duration-200">
                 Explorer
               </Link>
-              <Link to="/page-two" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium transition-colors duration-200">
+              <Link to="/page-two" className="text-muted-foreground hover:text-foreground font-medium transition-colors duration-200">
                 Analytics
               </Link>
             </div>
@@ -159,12 +159,12 @@ function App() {
                 variant="ghost"
                 size="icon"
                 onClick={toggleTheme}
-                className="w-9 h-9 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors duration-200"
+                className="w-9 h-9 rounded-lg hover:bg-accent transition-colors duration-200"
               >
                 {isDark ? (
-                  <Sun className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                  <Sun className="h-4 w-4 text-muted-foreground" />
                 ) : (
-                  <Moon className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                  <Moon className="h-4 w-4 text-muted-foreground" />
                 )}
               </Button>
               
@@ -172,13 +172,13 @@ function App() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden w-9 h-9 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="md:hidden w-9 h-9 rounded-lg hover:bg-accent"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               >
                 {isMobileMenuOpen ? (
-                  <X className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                  <X className="h-4 w-4 text-muted-foreground" />
                 ) : (
-                  <Menu className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                  <Menu className="h-4 w-4 text-muted-foreground" />
                 )}
               </Button>
             </div>
@@ -186,18 +186,18 @@ function App() {
           
           {/* Mobile Navigation */}
           {isMobileMenuOpen && (
-            <div className="md:hidden border-t border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-950/95 backdrop-blur-xl">
+            <div className="md:hidden border-t border-border bg-background/95 backdrop-blur-xl">
               <div className="px-6 py-4 space-y-4">
-                <Link to="/" className="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium transition-colors duration-200">
+                <Link to="/" className="block text-muted-foreground hover:text-foreground font-medium transition-colors duration-200">
                   Home
                 </Link>
-                <Link to="/mint" className="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium transition-colors duration-200">
+                <Link to="/mint" className="block text-muted-foreground hover:text-foreground font-medium transition-colors duration-200">
                   Mint
                 </Link>
-                <Link to="/page-one" className="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium transition-colors duration-200">
+                <Link to="/page-one" className="block text-muted-foreground hover:text-foreground font-medium transition-colors duration-200">
                   Explorer
                 </Link>
-                <Link to="/page-two" className="block text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white font-medium transition-colors duration-200">
+                <Link to="/page-two" className="block text-muted-foreground hover:text-foreground font-medium transition-colors duration-200">
                   Analytics
                 </Link>
               </div>
