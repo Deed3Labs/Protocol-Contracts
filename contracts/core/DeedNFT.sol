@@ -201,10 +201,21 @@ contract DeedNFT is
     // Modifiers
 
     /**
+     * @dev Modifier to allow only admin or the validator registry
+     */
+    modifier onlyAdminOrRegistry() {
+        require(
+            hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || msg.sender == validatorRegistry,
+            "Not admin or registry"
+        );
+        _;
+    }
+
+    /**
      * @dev Modifier to check if the deed exists
      */
     modifier deedExists(uint256 tokenId) {
-        require(_exists(tokenId), "!deed");
+        require(_exists(tokenId), "Deed does not exist");
         _;
     }
 
@@ -212,7 +223,7 @@ contract DeedNFT is
      * @dev Modifier to check if the caller is the deed owner
      */
     modifier onlyDeedOwner(uint256 tokenId) {
-        require(ownerOf(tokenId) == msg.sender, "!owner");
+        require(ownerOf(tokenId) == msg.sender, "Not deed owner");
         _;
     }
 
@@ -222,7 +233,7 @@ contract DeedNFT is
     modifier onlyValidatorOrOwner(uint256 tokenId) {
         require(
             hasRole(VALIDATOR_ROLE, msg.sender) || ownerOf(tokenId) == msg.sender,
-            "!auth"
+            "Not authorized"
         );
         _;
     }
@@ -259,12 +270,12 @@ contract DeedNFT is
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        require(validator != address(0), "!val");
+        require(validator != address(0), "Invalid validator address");
         require(
             IValidatorRegistry(validatorRegistry).isValidatorRegistered(
                 validator
             ),
-            "!reg"
+            "Validator not registered"
         );
         defaultValidator = validator;
     }
@@ -277,7 +288,7 @@ contract DeedNFT is
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        require(registry != address(0), "!reg");
+        require(registry != address(0), "Invalid registry address");
         validatorRegistry = registry;
     }
     
@@ -289,7 +300,7 @@ contract DeedNFT is
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        require(renderer != address(0), "!rend");
+        require(renderer != address(0), "Invalid renderer address");
         
         // Revoke VALIDATOR_ROLE from old renderer if it exists
         if (metadataRenderer != address(0)) {
@@ -309,7 +320,7 @@ contract DeedNFT is
      * @param minter Address to grant the MINTER_ROLE to.
      */
     function addMinter(address minter) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(minter != address(0), "!mint");
+        require(minter != address(0), "Invalid minter address");
         _grantRole(MINTER_ROLE, minter);
     }
 
@@ -320,6 +331,25 @@ contract DeedNFT is
      */
     function removeMinter(address minter) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _revokeRole(MINTER_ROLE, minter);
+    }
+
+    /**
+     * @dev Grants the VALIDATOR_ROLE to an address.
+     *      Only callable by accounts with DEFAULT_ADMIN_ROLE.
+     * @param validator Address to grant the VALIDATOR_ROLE to.
+     */
+    function addValidator(address validator) external onlyAdminOrRegistry {
+        require(validator != address(0), "Invalid validator address");
+        _grantRole(VALIDATOR_ROLE, validator);
+    }
+
+    /**
+     * @dev Revokes the VALIDATOR_ROLE from an address.
+     *      Only callable by accounts with DEFAULT_ADMIN_ROLE.
+     * @param validator Address to revoke the VALIDATOR_ROLE from.
+     */
+    function removeValidator(address validator) external onlyAdminOrRegistry {
+        _revokeRole(VALIDATOR_ROLE, validator);
     }
 
     /**
@@ -352,8 +382,8 @@ contract DeedNFT is
         address token,
         uint256 salt
     ) external whenNotPaused onlyRole(MINTER_ROLE) returns (uint256) {
-        require(owner != address(0), "!own");
-        require(bytes(definition).length > 0, "!def");
+        require(owner != address(0), "Invalid owner address");
+        require(bytes(definition).length > 0, "Definition cannot be empty");
 
         // Determine which validator to use
         address selectedValidator = validatorAddress;
@@ -361,11 +391,11 @@ contract DeedNFT is
             selectedValidator = defaultValidator;
         }
         
-        // Ensure validator is registered
-        require(selectedValidator != address(0), "!val");
+        // Ensure validator is active
+        require(selectedValidator != address(0), "No validator available");
         require(
-            IValidatorRegistry(validatorRegistry).isValidatorRegistered(selectedValidator),
-            "!reg"
+            IValidatorRegistry(validatorRegistry).isValidatorActive(selectedValidator),
+            "Validator not active"
         );
         
         // Verify validator supports interface
@@ -373,31 +403,31 @@ contract DeedNFT is
             IERC165Upgradeable(selectedValidator).supportsInterface(
                 type(IValidator).interfaceId
             ),
-            "!iface"
+            "Validator interface not supported"
         );
         
         // Verify validator supports this asset type
         require(
             IValidator(selectedValidator).supportsAssetType(uint256(assetType)),
-            "!asset"
+            "Asset type not supported"
         );
         
         // Get default operating agreement from validator
         string memory operatingAgreementBase = IValidator(selectedValidator).defaultOperatingAgreement();
-        require(bytes(operatingAgreementBase).length > 0, "!agr");
+        require(bytes(operatingAgreementBase).length > 0, "No operating agreement available");
 
         // Process payment through FundManager if set
         if (address(fundManager) != address(0)) {
-            require(token != address(0), "!token");
+            require(token != address(0), "Payment token required");
             // Get service fee from validator
             uint256 serviceFee = IValidator(selectedValidator).getServiceFee(token);
-            require(serviceFee > 0, "!fee");
+            require(serviceFee > 0, "Service fee not set");
 
             // Process payment
             fundManager.processPayment(msg.sender, selectedValidator, token, serviceFee);
         } else {
             // If no FundManager is set, token parameter is optional
-            require(token == address(0), "!token");
+            require(token == address(0), "Payment token not allowed without FundManager");
         }
 
         uint256 tokenId;
@@ -406,7 +436,7 @@ contract DeedNFT is
         if (salt > 0) {
             tokenId = generateUniqueTokenId(owner, assetType, definition, salt);
             // Ensure the token ID doesn't already exist
-            require(!_exists(tokenId), "!uniq");
+            require(!_exists(tokenId), "Token ID already exists");
         } else {
             // Use the sequential ID approach
             tokenId = nexttokenId;
@@ -469,7 +499,7 @@ contract DeedNFT is
             uint256 tokenId = tokenIds[i];
             require(
                 ownerOf(tokenId) == msg.sender,
-                "!own"
+                "Not token owner"
             );
             burnAsset(tokenId);
         }
@@ -488,10 +518,10 @@ contract DeedNFT is
         external 
         onlyRole(VALIDATOR_ROLE)
     {
-        require(_exists(tokenId), "!deed");
+        require(_exists(tokenId), "Deed does not exist");
         require(
-            IValidatorRegistry(validatorRegistry).isValidatorRegistered(validatorAddress),
-            "!reg"
+            IValidatorRegistry(validatorRegistry).isValidatorActive(validatorAddress),
+            "Validator not active"
         );
         
         // Update traits
@@ -522,11 +552,11 @@ contract DeedNFT is
     ) external whenNotPaused onlyValidatorOrOwner(tokenId) {
         require(
             bytes(operatingAgreement).length > 0,
-            "!agr"
+            "Operating agreement cannot be empty"
         );
         require(
             bytes(definition).length > 0,
-            "!def"
+            "Definition cannot be empty"
         );
 
         // Check if operating agreement is valid
@@ -537,20 +567,20 @@ contract DeedNFT is
 
         require(
             validatorAddress != address(0),
-            "!val"
+            "No validator available"
         );
         require(
             IERC165Upgradeable(validatorAddress).supportsInterface(
                 type(IValidator).interfaceId
             ),
-            "!iface"
+            "Validator interface not supported"
         );
 
         string memory agreementName = IValidator(validatorAddress)
             .operatingAgreementName(operatingAgreement);
         require(
             bytes(agreementName).length > 0,
-            "!agr"
+            "Invalid operating agreement"
         );
 
         // Update token URI as fallback if provided
@@ -580,7 +610,7 @@ contract DeedNFT is
      * @notice Updates a trait and emits a TraitUpdated event
      */
     function _setTraitValue(uint256 tokenId, bytes32 traitKey, bytes memory traitValue) internal {
-        require(_exists(tokenId), "!token");
+        require(_exists(tokenId), "Token does not exist");
         _tokenTraits[tokenId][traitKey] = traitValue;
         emit TraitUpdated(traitKey, tokenId, traitValue);
 
@@ -600,9 +630,9 @@ contract DeedNFT is
      * @param traitName Name of the trait to remove
      */
     function removeTrait(uint256 tokenId, string memory traitName) external onlyValidatorOrOwner(tokenId) {
-        require(_exists(tokenId), "!t");
+        require(_exists(tokenId), "Token does not exist");
         bytes32 traitKey = keccak256(bytes(traitName));
-        require(_tokenTraits[tokenId][traitKey].length > 0, "!trait");
+        require(_tokenTraits[tokenId][traitKey].length > 0, "Trait does not exist");
         delete _tokenTraits[tokenId][traitKey];
         emit TraitUpdated(traitKey, tokenId, "");
         
@@ -628,7 +658,7 @@ contract DeedNFT is
         bytes memory traitValue,
         uint8 valueType
     ) external onlyValidatorOrOwner(tokenId) {
-        require(_exists(tokenId), "!t");
+        require(_exists(tokenId), "Token does not exist");
         
         // Convert string trait name to bytes32 key if provided as string
         bytes32 key;
@@ -656,7 +686,7 @@ contract DeedNFT is
             // Boolean value
             value = abi.encode(uint256(bytes32(traitValue)) > 0);
         } else {
-            revert("!type");
+            revert("Invalid value type");
         }
         
         _setTraitValue(tokenId, key, value);
@@ -670,7 +700,7 @@ contract DeedNFT is
      * @notice Part of the ERC-7496 standard for dynamic traits
      */
     function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory) {
-        require(_exists(tokenId), "!t");
+        require(_exists(tokenId), "Token does not exist");
         return _tokenTraits[tokenId][traitKey];
     }
     
@@ -682,7 +712,7 @@ contract DeedNFT is
      * @notice Part of the ERC-7496 standard for dynamic traits
      */
     function getTraitValues(uint256 tokenId, bytes32[] calldata traitKeys) external view returns (bytes[] memory) {
-        require(_exists(tokenId), "!t");
+        require(_exists(tokenId), "Token does not exist");
         bytes[] memory values = new bytes[](traitKeys.length);
         for (uint256 i = 0; i < traitKeys.length; i++) {
             values[i] = _tokenTraits[tokenId][traitKeys[i]];
@@ -697,7 +727,7 @@ contract DeedNFT is
      * @notice Part of the ERC-7496 standard for dynamic traits
      */
     function getTraitKeys(uint256 tokenId) external view returns (bytes32[] memory) {
-        require(_exists(tokenId), "!token");
+        require(_exists(tokenId), "Token does not exist");
         
         // Count traits with values
         uint256 count;
@@ -731,13 +761,13 @@ contract DeedNFT is
     
     /**
      * @dev Gets the metadata URI for traits
-     * @return Base64-encoded JSON schema of all traits
+     * @return Base64-encoded JSON schema indicating dynamic trait support
      * @notice Part of the ERC-7496 standard for dynamic traits
-     * @notice The returned JSON schema defines the structure and validation rules for each trait
+     * @notice The actual trait schema is generated dynamically by MetadataRenderer
      */
     function getTraitMetadataURI() external pure returns (string memory) {
-        // Simplified schema to reduce contract size
-        return "data:application/json;charset=utf-8;base64,ewogICJ0cmFpdHMiOiB7CiAgICAiYXNzZXRUeXBlIjogeyAiZGlzcGxheU5hbWUiOiAiQXNzZXQgVHlwZSIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAiZW51bSIsICJ2YWx1ZXMiOiBbIkxhbmQiLCAiVmVoaWNsZSIsICJFc3RhdGUiLCAiQ29tbWVyY2lhbEVxdWlwbWVudCJdIH0gfSwKICAgICJpc1ZhbGlkYXRlZCI6IHsgImRpc3BsYXlOYW1lIjogIlZhbGlkYXRpb24gU3RhdHVzIiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJib29sZWFuIiB9IH0sCiAgICAib3BlcmF0aW5nQWdyZWVtZW50IjogeyAiZGlzcGxheU5hbWUiOiAiT3BlcmF0aW5nIEFncmVlbWVudCIsICJkYXRhVHlwZSI6IHsgInR5cGUiOiAic3RyaW5nIiwgIm1pbkxlbmd0aCI6IDEgfSB9LAogICAgImRlZmluaXRpb24iOiB7ICJkaXNwbGF5TmFtZSI6ICJEZWZpbml0aW9uIiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJzdHJpbmciLCAibWluTGVuZ3RoIjogMSB9IH0sCiAgICAiY29uZmlndXJhdGlvbiI6IHsgImRpc3BsYXlOYW1lIjogIkNvbmZpZ3VyYXRpb24iLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogInN0cmluZyIsICJtaW5MZW5ndGgiOiAxIH0gfSwKICAgICJ2YWxpZGF0b3IiOiB7ICJkaXNwbGF5TmFtZSI6ICJWYWxpZGF0b3IiLCAiZGF0YVR5cGUiOiB7ICJ0eXBlIjogImFkZHJlc3MiIH0gfSwKICAgICJiZW5lZmljaWFyeSI6IHsgImRpc3BsYXlOYW1lIjogIkJlbmVmaWNpYXJ5IiwgImRhdGFUeXBlIjogeyAidHlwZSI6ICJhZGRyZXNzIiB9IH0KICB9Cn0=";
+        // Simple schema indicating dynamic trait support
+        return "data:application/json;base64,eyJ0cmFpdHMiOiB7ImR5bmFtaWMiOiB0cnVlfX0=";
     }
     
     // ERC-7572 Implementation
@@ -767,7 +797,7 @@ contract DeedNFT is
      * @param _tokenURI string URI to assign
      */
     function _setTokenURI(uint256 tokenId, string memory _tokenURI) internal virtual override {
-        require(_exists(tokenId), "!token");
+        require(_exists(tokenId), "Token does not exist");
         super._setTokenURI(tokenId, _tokenURI);
     }
 
@@ -824,7 +854,7 @@ contract DeedNFT is
         view 
         returns (bool isValidated, address validator) 
     {
-        require(_exists(tokenId), "!deed");
+        require(_exists(tokenId), "Deed does not exist");
         
         bytes memory isValidatedBytes = _tokenTraits[tokenId][keccak256("isValidated")];
         bytes memory validatorBytes = _tokenTraits[tokenId][keccak256("validator")];
@@ -848,13 +878,13 @@ contract DeedNFT is
         override 
         returns (address receiver, uint256 royaltyAmount) 
     {
-        require(_exists(tokenId), "!token");
+        require(_exists(tokenId), "Token does not exist");
         
         // Get validator from traits
         bytes memory validatorBytes = _tokenTraits[tokenId][keccak256("validator")];
-        require(validatorBytes.length > 0, "!val");
+        require(validatorBytes.length > 0, "No validator found");
         address validator = abi.decode(validatorBytes, (address));
-        require(validator != address(0), "!val");
+        require(validator != address(0), "Invalid validator address");
         
         uint96 fee = IValidator(validator).getRoyaltyFeePercentage(tokenId);
         
@@ -1009,7 +1039,7 @@ contract DeedNFT is
      * @param _fundManager Address of the FundManager contract
      */
     function setFundManager(address _fundManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(_fundManager != address(0), "!fund");
+        require(_fundManager != address(0), "Invalid FundManager address");
         fundManager = IFundManager(_fundManager);
     }
 }

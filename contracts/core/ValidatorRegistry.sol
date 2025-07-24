@@ -11,6 +11,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import "./interfaces/IValidatorRegistry.sol";
 import "./interfaces/IValidator.sol";
 import "./interfaces/IFundManager.sol";
+import "./interfaces/IDeedNFT.sol";
 
 /**
  * @title ValidatorRegistry
@@ -71,6 +72,7 @@ contract ValidatorRegistry is
     address[] private validatorAddresses;
 
     address public fundManager;
+    address public deedNFT;
 
     // ============ Events ============
 
@@ -102,6 +104,12 @@ contract ValidatorRegistry is
         address indexed validator,
         uint256[] assetTypes
     );
+
+    /**
+     * @dev Emitted when DeedNFT address is set
+     * @param deedNFT Address of the DeedNFT contract
+     */
+    event DeedNFTUpdated(address indexed deedNFT);
 
     // ============ Upgrade Gap ============
 
@@ -147,9 +155,35 @@ contract ValidatorRegistry is
         fundManager = _fundManager;
     }
 
+    function setDeedNFT(address _deedNFT) external onlyOwner {
+        require(_deedNFT != address(0), "Invalid address");
+        deedNFT = _deedNFT;
+        emit DeedNFTUpdated(_deedNFT);
+    }
+
     function _updateFundManagerRoles() internal {
         if (fundManager != address(0)) {
             IFundManager(fundManager).updateValidatorRoles();
+        }
+    }
+
+    /**
+     * @dev Updates VALIDATOR_ROLE assignments in DeedNFT based on registry status.
+     *      Grants role to active validators and revokes from inactive ones.
+     */
+    function _updateDeedNFTRoles() internal {
+        if (deedNFT == address(0)) return;
+
+        for (uint256 i = 0; i < validatorAddresses.length; i++) {
+            address validator = validatorAddresses[i];
+            bool isActive = validators[validator].isActive;
+            bool hasRole = IDeedNFT(deedNFT).hasRole(IDeedNFT(deedNFT).VALIDATOR_ROLE(), validator);
+
+            if (isActive && !hasRole) {
+                IDeedNFT(deedNFT).addValidator(validator);
+            } else if (!isActive && hasRole) {
+                IDeedNFT(deedNFT).removeValidator(validator);
+            }
         }
     }
 
@@ -182,7 +216,7 @@ contract ValidatorRegistry is
         validators[validator].name = name;
         validators[validator].description = description;
         validators[validator].supportedAssetTypes = supportedAssetTypes;
-        validators[validator].isActive = true;
+        validators[validator].isActive = false; // Inactive by default
         
         // Add validator to the array
         validatorAddresses.push(validator);
@@ -215,9 +249,15 @@ contract ValidatorRegistry is
             }
         }
 
+        // Revoke VALIDATOR_ROLE in DeedNFT if present
+        if (deedNFT != address(0) && IDeedNFT(deedNFT).hasRole(IDeedNFT(deedNFT).VALIDATOR_ROLE(), validator)) {
+            IDeedNFT(deedNFT).removeValidator(validator);
+        }
+
         delete validators[validator];
         emit ValidatorRegistered(validator, "", new uint256[](0));
         _updateFundManagerRoles();
+        _updateDeedNFTRoles();
     }
 
     /**
@@ -266,6 +306,14 @@ contract ValidatorRegistry is
         returns (bool)
     {
         return bytes(validators[validator].name).length > 0;
+    }
+
+    /**
+     * @dev Returns true if the validator is registered and active.
+     * @param validator Address of the validator.
+     */
+    function isValidatorActive(address validator) public view returns (bool) {
+        return bytes(validators[validator].name).length > 0 && validators[validator].isActive;
     }
 
     /**
@@ -328,6 +376,7 @@ contract ValidatorRegistry is
         validators[validator].isActive = isActive;
         emit ValidatorStatusUpdated(validator, isActive);
         _updateFundManagerRoles();
+        _updateDeedNFTRoles();
     }
 
     /**

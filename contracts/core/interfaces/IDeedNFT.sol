@@ -11,6 +11,11 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol"
  *      Consolidates functionality needed by FundManager, Fractionalize, and Subdivide contracts.
  */
 interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
+    // ============ Role Constants ============
+    
+    /// @dev Role for validation operations
+    function VALIDATOR_ROLE() external view returns (bytes32);
+    
     // ============ Errors ============
     
     /// @dev Thrown when an operation is attempted on a non-existent token
@@ -274,6 +279,13 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
     function hasRole(bytes32 role, address account) external view returns (bool);
 
     /**
+     * @dev Grants a role to an account
+     * @param role Role identifier
+     * @param account Account to grant the role to
+     */
+    function grantRole(bytes32 role, address account) external;
+
+    /**
      * @dev Approves a marketplace for trading
      * @param marketplace Address of the marketplace
      * @param approved Whether the marketplace is approved
@@ -338,4 +350,18 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @return isValidated Whether the token is validated
      */
     function isValidated(uint256 tokenId) external view returns (bool);
+
+    // ============ Role Management Functions ============
+    
+    /**
+     * @dev Grants the VALIDATOR_ROLE to an address.
+     * @param validator Address to grant the VALIDATOR_ROLE to.
+     */
+    function addValidator(address validator) external;
+    
+    /**
+     * @dev Revokes the VALIDATOR_ROLE from an address.
+     * @param validator Address to revoke the VALIDATOR_ROLE from.
+     */
+    function removeValidator(address validator) external;
 } 

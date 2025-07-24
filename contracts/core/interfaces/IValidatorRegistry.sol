@@ -102,6 +102,13 @@ interface IValidatorRegistry {
      */
     function getActiveValidators() external view returns (address[] memory);
 
+    /**
+     * @dev Returns true if the validator is registered and active.
+     * @param validator Address of the validator
+     * @return Boolean indicating if the validator is active
+     */
+    function isValidatorActive(address validator) external view returns (bool);
+
     // ============ State-Changing Functions ============
 
     /**

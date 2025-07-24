@@ -52,6 +52,8 @@ describe("DeedNFT", function() {
       "A validator for testing",
       [0, 1, 2, 3]
     );
+    // Explicitly activate validator after registration
+    await validatorRegistry.updateValidatorStatus(await validator.getAddress(), true);
 
     // Set up validator's asset type support and criteria
     await validator.setupValidationCriteria(0); // Land
@@ -583,6 +585,8 @@ describe("DeedNFT", function() {
         "A second validator for testing",
         [0, 1, 2, 3]
       );
+      // Explicitly activate validator2Contract after registration
+      await validatorRegistry.updateValidatorStatus(await validator2Contract.getAddress(), true);
       // Set up validator2Contract's asset type support and criteria
       await validator2Contract.setupValidationCriteria(0); // Land
       await validator2Contract.setupValidationCriteria(1); // Vehicle

@@ -47,6 +47,8 @@ describe("MetadataRenderer", function() {
       "A validator for testing",
       [0, 1, 2, 3]
     );
+    // Explicitly activate validator after registration
+    await validatorRegistry.updateValidatorStatus(await validator.getAddress(), true);
 
     // Set up validator's asset type support
     await validator.setAssetTypeSupport(0, true); // Land

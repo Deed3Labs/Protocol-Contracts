@@ -42,12 +42,14 @@ describe("Validator Contract", function() {
     await validator.waitForDeployment();
     
     // Register validator in registry
-    await validatorRegistry.connect(deployer).registerValidator(
+    await validatorRegistry.registerValidator(
       await validator.getAddress(),
       "Test Validator",
       "A validator for testing",
       [0, 1, 2, 3]
     );
+    // Explicitly activate validator after registration
+    await validatorRegistry.updateValidatorStatus(await validator.getAddress(), true);
     
     // Deploy DeedNFT with correct parameters
     const DeedNFT = await ethers.getContractFactory("DeedNFT");

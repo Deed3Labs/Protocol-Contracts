@@ -49,6 +49,8 @@ describe("FundManager Contract", function() {
       "A validator for testing",
       [0, 1, 2, 3]
     );
+    // Explicitly activate validator after registration
+    await validatorRegistry.updateValidatorStatus(await validator.getAddress(), true);
 
     // Deploy DeedNFT
     const DeedNFT = await ethers.getContractFactory("DeedNFT");

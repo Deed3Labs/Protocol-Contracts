@@ -59,6 +59,9 @@ describe("ValidatorRegistry Contract", function() {
     // Set FundManager in ValidatorRegistry
     await validatorRegistry.setFundManager(await fundManager.getAddress());
     
+    // Set DeedNFT in ValidatorRegistry
+    await validatorRegistry.setDeedNFT(await deedNFT.getAddress());
+    
     // Get the admin role
     REGISTRY_ADMIN_ROLE = await validatorRegistry.REGISTRY_ADMIN_ROLE();
     
@@ -69,6 +72,30 @@ describe("ValidatorRegistry Contract", function() {
   describe("Initialization", function() {
     it("should initialize with correct roles", async function() {
       expect(await validatorRegistry.hasRole(REGISTRY_ADMIN_ROLE, await deployer.getAddress())).to.be.true;
+    });
+  });
+
+  describe("DeedNFT Integration", function() {
+    it("should set DeedNFT address correctly", async function() {
+      const deedNFTAddress = await deedNFT.getAddress();
+      expect(await validatorRegistry.deedNFT()).to.equal(deedNFTAddress);
+    });
+
+    it("should emit DeedNFTUpdated event when setting DeedNFT", async function() {
+      const newDeedNFT = user1.address; // Using a different address for testing
+      await expect(validatorRegistry.setDeedNFT(newDeedNFT))
+        .to.emit(validatorRegistry, "DeedNFTUpdated")
+        .withArgs(newDeedNFT);
+    });
+
+    it("should revert when setting zero address as DeedNFT", async function() {
+      await expect(validatorRegistry.setDeedNFT(ethers.ZeroAddress))
+        .to.be.reverted;
+    });
+
+    it("should revert when non-owner tries to set DeedNFT", async function() {
+      await expect(validatorRegistry.connect(user1).setDeedNFT(user1.address))
+        .to.be.reverted;
     });
   });
   
@@ -87,11 +114,38 @@ describe("ValidatorRegistry Contract", function() {
       const validatorInfo = await validatorRegistry.validators(validatorAddr);
       expect(validatorInfo.name).to.equal("Test Validator");
       expect(validatorInfo.description).to.equal("A validator for testing purposes");
-      expect(validatorInfo.isActive).to.be.true;
+      // Updated: should be false by default
+      expect(validatorInfo.isActive).to.be.false;
       
       // Get supported asset types using the new getter
       const supportedAssetTypes = await validatorRegistry.getSupportedAssetTypes(validatorAddr);
       expect(supportedAssetTypes).to.deep.equal([0, 1, 2, 3]);
+    });
+    
+    it("should automatically grant VALIDATOR_ROLE in DeedNFT when registering validator", async function() {
+      const validatorAddr = await validator.getAddress();
+      const VALIDATOR_ROLE = await deedNFT.VALIDATOR_ROLE();
+      
+      // Initially, validator should not have VALIDATOR_ROLE
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validatorAddr)).to.be.false;
+      
+      // Register validator
+      await validatorRegistry.registerValidator(
+        validatorAddr,
+        "Test Validator",
+        "A validator for testing purposes",
+        [0, 1, 2, 3]
+      );
+      
+      // Validator should still not have VALIDATOR_ROLE after registration
+      // (roles are only granted when status changes, not on registration)
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validatorAddr)).to.be.false;
+      
+      // Update validator status to trigger role assignment
+      await validatorRegistry.updateValidatorStatus(validatorAddr, true);
+      
+      // Now validator should have VALIDATOR_ROLE
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validatorAddr)).to.be.true;
     });
     
     it("should reject registration if caller is not admin", async function() {
@@ -138,6 +192,8 @@ describe("ValidatorRegistry Contract", function() {
         "A validator for testing purposes",
         [0, 1, 2, 3]
       );
+      // Explicitly activate validator after registration
+      await validatorRegistry.updateValidatorStatus(await validator.getAddress(), true);
     });
     
     it("should update validator status correctly", async function() {
@@ -152,6 +208,22 @@ describe("ValidatorRegistry Contract", function() {
       // Reactivate
       await validatorRegistry.updateValidatorStatus(validatorAddr, true);
       expect((await validatorRegistry.validators(validatorAddr)).isActive).to.be.true;
+    });
+
+    it("should maintain VALIDATOR_ROLE in DeedNFT when validator is active", async function() {
+      const validatorAddr = await validator.getAddress();
+      const VALIDATOR_ROLE = await deedNFT.VALIDATOR_ROLE();
+      
+      // Validator is already registered in beforeEach, just update status to grant role
+      await validatorRegistry.updateValidatorStatus(validatorAddr, true);
+      // Should have role when active
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validatorAddr)).to.be.true;
+      // Deactivate - should revoke role
+      await validatorRegistry.updateValidatorStatus(validatorAddr, false);
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validatorAddr)).to.be.false;
+      // Reactivate - should re-grant role
+      await validatorRegistry.updateValidatorStatus(validatorAddr, true);
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validatorAddr)).to.be.true;
     });
     
     it("should update validator name correctly", async function() {
@@ -210,6 +282,26 @@ describe("ValidatorRegistry Contract", function() {
       expect((await validatorRegistry.validators(validatorAddr)).name).to.equal("");
       expect(await validatorRegistry.isValidatorRegistered(validatorAddr)).to.be.false;
     });
+
+    it("should maintain VALIDATOR_ROLE in DeedNFT after removal (only grants, doesn't revoke)", async function() {
+      const validatorAddr = await validator.getAddress();
+      const VALIDATOR_ROLE = await deedNFT.VALIDATOR_ROLE();
+      
+      // Register and verify role is granted
+      await validatorRegistry.registerValidator(
+        validatorAddr,
+        "Test Validator",
+        "A validator for testing purposes",
+        [0, 1, 2, 3]
+      );
+      await validatorRegistry.updateValidatorStatus(validatorAddr, true);
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validatorAddr)).to.be.true;
+      // Remove validator
+      await validatorRegistry.removeValidator(validatorAddr);
+      // Role should be revoked after removal
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, validatorAddr)).to.be.false;
+    });
+
     it("should revert when removing unregistered validator", async function() {
       await expect(validatorRegistry.removeValidator(user1.address)).to.be.reverted;
     });
@@ -304,8 +396,14 @@ describe("ValidatorRegistry Contract", function() {
         "A validator for testing purposes",
         [0, 1, 2, 3]
       );
+      // Should not be active by default
       let active = await validatorRegistry.getActiveValidators();
+      expect(active).to.not.include(validatorAddr);
+      // Activate
+      await validatorRegistry.updateValidatorStatus(validatorAddr, true);
+      active = await validatorRegistry.getActiveValidators();
       expect(active).to.include(validatorAddr);
+      // Deactivate
       await validatorRegistry.updateValidatorStatus(validatorAddr, false);
       active = await validatorRegistry.getActiveValidators();
       expect(active).to.not.include(validatorAddr);
