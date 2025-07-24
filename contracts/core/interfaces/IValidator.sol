@@ -32,25 +32,20 @@ interface IValidator is IAccessControlUpgradeable {
     event ValidationError(uint256 indexed tokenId, string errorMessage);
 
     /**
-     * @dev Emitted when a field requirement is added
-     * @param assetTypeId ID of the asset type
-     * @param criteriaField Name of the criteria field
-     * @param definitionField Name of the definition field
-     */
-    event FieldRequirementAdded(uint256 indexed assetTypeId, string criteriaField, string definitionField);
-
-    /**
-     * @dev Emitted when field requirements are cleared
-     * @param assetTypeId ID of the asset type
-     */
-    event FieldRequirementsCleared(uint256 indexed assetTypeId);
-
-    /**
      * @dev Emitted when validation criteria is updated
      * @param assetTypeId ID of the asset type
-     * @param criteria New validation criteria
+     * @param requiredTraits Array of required trait names
+     * @param additionalCriteria JSON string containing additional validation criteria
+     * @param requireOperatingAgreement Whether an operating agreement is required
+     * @param requireDefinition Whether a definition is required
      */
-    event ValidationCriteriaUpdated(uint256 indexed assetTypeId, string criteria);
+    event ValidationCriteriaUpdated(
+        uint256 indexed assetTypeId, 
+        string[] requiredTraits,
+        string additionalCriteria,
+        bool requireOperatingAgreement,
+        bool requireDefinition
+    );
 
     /**
      * @dev Emitted when the default operating agreement is updated
@@ -97,6 +92,18 @@ interface IValidator is IAccessControlUpgradeable {
      * @param isCompatible Whether the contract is compatible
      */
     event CompatibleDeedNFTUpdated(address indexed deedNFTAddress, bool isCompatible);
+
+    /**
+     * @dev Emitted when royalties are withdrawn
+     * @param token Address of the token
+     * @param amount Total amount withdrawn
+     * @param commissionAmount Amount taken as commission
+     */
+    event RoyaltyWithdrawn(
+        address indexed token,
+        uint256 amount,
+        uint256 commissionAmount
+    );
 
     // ============ Validation Functions ============
 
@@ -185,33 +192,35 @@ interface IValidator is IAccessControlUpgradeable {
     /**
      * @dev Gets the validation criteria for an asset type
      * @param assetTypeId ID of the asset type
-     * @return Validation criteria as a JSON string
+     * @return requiredTraits Array of required trait names
+     * @return additionalCriteria JSON string containing additional validation criteria
+     * @return requireOperatingAgreement Whether an operating agreement is required
+     * @return requireDefinition Whether a definition is required
      */
-    function getValidationCriteria(uint256 assetTypeId) external view returns (string memory);
+    function getValidationCriteria(uint256 assetTypeId) 
+        external 
+        view 
+        returns (
+            string[] memory requiredTraits,
+            string memory additionalCriteria,
+            bool requireOperatingAgreement,
+            bool requireDefinition
+        );
 
     /**
      * @dev Sets the validation criteria for an asset type
      * @param assetTypeId ID of the asset type
-     * @param criteria Validation criteria as a JSON string
+     * @param requiredTraits Array of required trait names
+     * @param additionalCriteria JSON string containing additional validation criteria
+     * @param requireOperatingAgreement Whether an operating agreement is required
+     * @param requireDefinition Whether a definition is required
      */
-    function setValidationCriteria(uint256 assetTypeId, string memory criteria) external;
-
-    /**
-     * @dev Clears field requirements for an asset type
-     * @param assetTypeId ID of the asset type
-     */
-    function clearFieldRequirements(uint256 assetTypeId) external;
-
-    /**
-     * @dev Adds field requirements for an asset type
-     * @param assetTypeId ID of the asset type
-     * @param criteriaFields Array of criteria field names
-     * @param definitionFields Array of definition field names
-     */
-    function addFieldRequirementsBatch(
-        uint256 assetTypeId,
-        string[] memory criteriaFields,
-        string[] memory definitionFields
+    function setValidationCriteria(
+        uint256 assetTypeId, 
+        string[] memory requiredTraits,
+        string memory additionalCriteria,
+        bool requireOperatingAgreement,
+        bool requireDefinition
     ) external;
 
     // ============ DeedNFT Compatibility Functions ============
@@ -242,13 +251,6 @@ interface IValidator is IAccessControlUpgradeable {
     function isCompatibleDeedNFT(address deedNFT) external view returns (bool);
 
     /**
-     * @dev Returns the token URI for a given token ID
-     * @param tokenId ID of the token
-     * @return The token URI
-     */
-    function tokenURI(uint256 tokenId) external view returns (string memory);
-
-    /**
      * @dev Gets the royalty fee percentage for a token
      * @param tokenId ID of the token
      * @return The royalty fee percentage in basis points (100 = 1%)
@@ -258,18 +260,42 @@ interface IValidator is IAccessControlUpgradeable {
     /**
      * @dev Sets the royalty fee percentage
      * @param percentage The royalty fee percentage in basis points (100 = 1%)
+     * @notice Maximum royalty fee percentage is 5% (500 basis points)
      */
     function setRoyaltyFeePercentage(uint96 percentage) external;
 
     /**
      * @dev Gets the royalty receiver address
-     * @return The address that receives royalties
+     * @return The address that receives royalties and validator service fees
      */
     function getRoyaltyReceiver() external view returns (address);
 
     /**
      * @dev Sets the royalty receiver address
-     * @param receiver The address that will receive royalties
+     * @param receiver The address that will receive royalties and validator service fees
      */
     function setRoyaltyReceiver(address receiver) external;
+
+    /**
+     * @dev Allows validator admins to withdraw accumulated service fees from the FundManager
+     * @param token Address of the token to withdraw
+     * @notice Fees are withdrawn to the royalty receiver address set in this contract
+     */
+    function withdrawServiceFees(address token) external;
+
+    /**
+     * @dev Allows royalty receiver or FundManager to withdraw accumulated royalties for a specific token.
+     *      Calculates and transfers commission to FundManager's fee receiver before sending remaining amount to royalty receiver.
+     * @param token Address of the token to withdraw
+     * @notice Commission is always taken and sent to FundManager's fee receiver, regardless of who calls the function
+     */
+    function withdrawRoyalties(address token) external;
+
+    /**
+     * @dev Gets the current royalty balance for a specific token
+     * @param token Address of the token to check
+     * @return The current royalty balance for the token
+     */
+    function getRoyaltyBalance(address token) external view returns (uint256);
 }
+

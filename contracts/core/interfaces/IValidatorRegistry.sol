@@ -28,35 +28,52 @@ interface IValidatorRegistry {
         string description;
     }
 
-    // ============ View Functions ============
+    // ============ Events ============
 
     /**
-     * @dev Returns the owner of a validator contract
-     * @param validatorContract Address of the validator contract
-     * @return owner Address of the validator owner
+     * @dev Emitted when a new validator is registered
+     * @param validator Address of the registered validator
+     * @param name Name of the validator
+     * @param supportedAssetTypes Array of supported asset type IDs
      */
-    function getValidatorOwner(address validatorContract) external view returns (address owner);
+    event ValidatorRegistered(
+        address indexed validator,
+        string name,
+        uint256[] supportedAssetTypes
+    );
+
+    /**
+     * @dev Emitted when a validator's status is updated
+     * @param validator Address of the affected validator
+     * @param isActive New operational status
+     */
+    event ValidatorStatusUpdated(address indexed validator, bool isActive);
+
+    /**
+     * @dev Emitted when a validator's supported asset types are updated
+     * @param validator Address of the affected validator
+     * @param assetTypes Updated array of supported asset type IDs
+     */
+    event ValidatorAssetTypesUpdated(
+        address indexed validator,
+        uint256[] assetTypes
+    );
+
+    // ============ View Functions ============
 
     /**
      * @dev Returns information about a validator
      * @param validator Address of the validator
      * @return ValidatorInfo struct containing validator details
      */
-    function getValidatorInfo(address validator) external view returns (ValidatorInfo memory);
+    function validators(address validator) external view returns (ValidatorInfo memory);
 
     /**
      * @dev Returns all validators supporting an asset type
      * @param assetTypeId ID of the asset type
      * @return Array of validator addresses
      */
-    function getValidatorsForAssetType(uint256 assetTypeId) external view returns (address[] memory);
-
-    /**
-     * @dev Checks if a validator is active
-     * @param validator Address of the validator to check
-     * @return Boolean indicating validator status
-     */
-    function isValidatorActive(address validator) external view returns (bool);
+    function assetTypeValidators(uint256 assetTypeId) external view returns (address[] memory);
 
     /**
      * @dev Checks if a validator is registered
@@ -71,4 +88,77 @@ interface IValidatorRegistry {
      * @return Name of the validator
      */
     function getValidatorName(address validator) external view returns (string memory);
+
+    /**
+     * @dev Returns the supported asset types for a validator
+     * @param validator Address of the validator
+     * @return Array of supported asset type IDs
+     */
+    function getSupportedAssetTypes(address validator) external view returns (uint256[] memory);
+
+    /**
+     * @dev Returns an array of all active validator addresses
+     * @return Array of active validator addresses
+     */
+    function getActiveValidators() external view returns (address[] memory);
+
+    /**
+     * @dev Returns true if the validator is registered and active.
+     * @param validator Address of the validator
+     * @return Boolean indicating if the validator is active
+     */
+    function isValidatorActive(address validator) external view returns (bool);
+
+    // ============ State-Changing Functions ============
+
+    /**
+     * @dev Registers a new validator
+     * @param validator Address of the validator contract
+     * @param name Name associated with the validator
+     * @param description Description of the validator's capabilities
+     * @param supportedAssetTypes Array of asset types this validator can handle
+     */
+    function registerValidator(
+        address validator,
+        string memory name,
+        string memory description,
+        uint256[] memory supportedAssetTypes
+    ) external;
+
+    /**
+     * @dev Removes a validator from the registry
+     * @param validator Address of the validator contract
+     */
+    function removeValidator(address validator) external;
+
+    /**
+     * @dev Updates the name of a registered validator
+     * @param validator Address of the validator contract
+     * @param newName New name to associate with the validator
+     */
+    function updateValidatorName(address validator, string memory newName) external;
+
+    /**
+     * @dev Gets the supported asset types for a registered validator from the validator contract
+     * @param validator Address of the validator contract
+     */
+    function getValidatorAssetTypes(address validator) external;
+
+    /**
+     * @dev Updates the operational status of a registered validator
+     * @param validator Address of the validator contract
+     * @param isActive New operational status
+     */
+    function updateValidatorStatus(address validator, bool isActive) external;
+
+    /**
+     * @dev Sets the FundManager address.
+     * @param _fundManager New FundManager address.
+     */
+    function setFundManager(address _fundManager) external;
+
+    /**
+     * @dev Internal function to update FundManager roles.
+     */
+    function _updateFundManagerRoles() external;
 }

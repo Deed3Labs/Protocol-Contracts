@@ -11,6 +11,25 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol"
  *      Consolidates functionality needed by FundManager, Fractionalize, and Subdivide contracts.
  */
 interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
+    // ============ Role Constants ============
+    
+    /// @dev Role for validation operations
+    function VALIDATOR_ROLE() external view returns (bytes32);
+    
+    // ============ Errors ============
+    
+    /// @dev Thrown when an operation is attempted on a non-existent token
+    error TokenDoesNotExist();
+    
+    /// @dev Thrown when an operation is attempted by an unauthorized address
+    error Unauthorized();
+    
+    /// @dev Thrown when an invalid parameter is provided
+    error InvalidParameter();
+    
+    /// @dev Thrown when a token is already validated
+    error AlreadyValidated();
+
     // ============ Enums ============
     
     /**
@@ -33,9 +52,8 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @dev Emitted when a deed is validated
      * @param tokenId ID of the validated deed
      * @param isValid Whether the deed is valid
-     * @param validator Address of the validator
      */
-    event TokenValidated(uint256 indexed tokenId, bool isValid, address indexed validator);
+    event DeedValidated(uint256 indexed tokenId, bool isValid);
     
     /**
      * @dev Emitted when a deed is burned
@@ -78,40 +96,13 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @return Boolean indicating if the deed can be subdivided
      */
     function canSubdivide(uint256 tokenId) external view returns (bool);
-    
-    /**
-     * @dev Gets comprehensive information about a deed
-     * @param tokenId ID of the deed to query
-     * @return assetType Type of the asset
-     * @return isValidated Whether the deed has been validated
-     * @return operatingAgreement Operating agreement URI
-     * @return definition Definition of the deed
-     * @return configuration Configuration of the deed
-     * @return validator Address of the validator
-     */
-    function getDeedInfo(uint256 tokenId) external view returns (
-        AssetType assetType,
-        bool isValidated,
-        string memory operatingAgreement,
-        string memory definition,
-        string memory configuration,
-        address validator
-    );
-    
+     
     /**
      * @dev Gets the URI for a specific token
      * @param tokenId ID of the token to query
      * @return URI string for the token metadata
      */
     function tokenURI(uint256 tokenId) external view returns (string memory);
-    
-    /**
-     * @dev Gets the value of a trait for a specific token
-     * @param tokenId ID of the token
-     * @param traitKey Key of the trait to query
-     * @return Trait value as bytes
-     */
-    function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory);
     
     /**
      * @dev Returns the validation status of a token
@@ -135,13 +126,81 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @return royaltyAmount Amount of royalties to be paid
      */
     function royaltyInfo(uint256 tokenId, uint256 salePrice) external view returns (address receiver, uint256 royaltyAmount);
+
+    // ============ Trait Functions ============
+    
+    /**
+     * @dev Gets the value of a trait for a token
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait to query
+     * @return Value of the trait as bytes
+     */
+    function getTraitValue(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory);
+
+    /**
+     * @dev Gets multiple trait values for a token
+     * @param tokenId ID of the token
+     * @param traitKeys Array of trait keys to query
+     * @return Array of trait values as bytes
+     */
+    function getTraitValues(uint256 tokenId, bytes32[] calldata traitKeys) external view returns (bytes[] memory);
+
+    /**
+     * @dev Gets all trait keys for a token
+     * @param tokenId ID of the token
+     * @return Array of trait keys
+     */
+    function getTraitKeys(uint256 tokenId) external view returns (bytes32[] memory);
+
+    /**
+     * @dev Gets the name of a trait
+     * @param traitKey Key of the trait
+     * @return Name of the trait
+     */
+    function getTraitName(bytes32 traitKey) external view returns (string memory);
+
+    /**
+     * @dev Gets the trait metadata URI
+     * @return URI of the trait metadata
+     */
+    function getTraitMetadataURI() external pure returns (string memory);
+
+    /**
+     * @dev Sets a trait value with flexible input types
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait (either bytes32 or string)
+     * @param traitValue Value of the trait (supports various types)
+     * @param valueType Type of the value (0=bytes, 1=string, 2=uint256, 3=bool)
+     */
+    function setTrait(uint256 tokenId, bytes memory traitKey, bytes memory traitValue, uint8 valueType) external;
+
+    /**
+     * @dev Removes a trait from a token
+     * @param tokenId ID of the token
+     * @param traitName Name of the trait to remove
+     */
+    function removeTrait(uint256 tokenId, string memory traitName) external;
+
+    /**
+     * @dev Internal function to remove a trait from a token
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait to remove
+     */
+    function _removeTrait(uint256 tokenId, bytes32 traitKey) external;
+
+    /**
+     * @dev Internal function to remove a trait value and handle synchronization
+     * @param tokenId ID of the token
+     * @param traitKey Key of the trait to remove
+     */
+    function _removeTraitValue(uint256 tokenId, bytes32 traitKey) external;
+
+    // ============ Transfer Functions ============
     
     /**
      * @dev Sets the security policy for ERC721C
      */
     function setToDefaultSecurityPolicy() external;
-    
-    // ============ Transfer Functions ============
     
     /**
      * @dev Transfers a token between addresses
@@ -169,6 +228,7 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @param definition Definition of the deed
      * @param configuration Configuration of the deed
      * @param validatorAddress Address of the validator to use (or address(0) for default)
+     * @param token Address of the token to use for payment (or address(0) if no payment required)
      * @param salt Optional value used to generate a unique token ID (use 0 for sequential IDs)
      * @return The ID of the minted deed
      */
@@ -179,6 +239,7 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
         string memory definition,
         string memory configuration,
         address validatorAddress,
+        address token,
         uint256 salt
     ) external returns (uint256);
     
@@ -203,8 +264,9 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @param tokenId ID of the token to validate
      * @param isValid Whether the token is valid
      * @param validatorAddress Address of the validator
+     * @notice This function can only be called by a registered validator
      */
-    function validateDeed(uint256 tokenId, bool isValid, address validatorAddress) external;
+    function updateValidationStatus(uint256 tokenId, bool isValid, address validatorAddress) external;
     
     // ============ Access Control Functions ============
     
@@ -215,6 +277,13 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @return Boolean indicating if the account has the role
      */
     function hasRole(bytes32 role, address account) external view returns (bool);
+
+    /**
+     * @dev Grants a role to an account
+     * @param role Role identifier
+     * @param account Account to grant the role to
+     */
+    function grantRole(bytes32 role, address account) external;
 
     /**
      * @dev Approves a marketplace for trading
@@ -281,4 +350,18 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @return isValidated Whether the token is validated
      */
     function isValidated(uint256 tokenId) external view returns (bool);
+
+    // ============ Role Management Functions ============
+    
+    /**
+     * @dev Grants the VALIDATOR_ROLE to an address.
+     * @param validator Address to grant the VALIDATOR_ROLE to.
+     */
+    function addValidator(address validator) external;
+    
+    /**
+     * @dev Revokes the VALIDATOR_ROLE from an address.
+     * @param validator Address to revoke the VALIDATOR_ROLE from.
+     */
+    function removeValidator(address validator) external;
 } 

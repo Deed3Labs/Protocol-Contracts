@@ -2,14 +2,16 @@
 pragma solidity ^0.8.29;
 
 // OpenZeppelin Upgradeable Contracts
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 // Interfaces
 import "./interfaces/IValidatorRegistry.sol";
 import "./interfaces/IValidator.sol";
+import "./interfaces/IFundManager.sol";
+import "./interfaces/IDeedNFT.sol";
 
 /**
  * @title ValidatorRegistry
@@ -66,6 +68,12 @@ contract ValidatorRegistry is
     /// @dev Key: asset type ID, Value: array of validator addresses
     mapping(uint256 => address[]) public assetTypeValidators;
 
+    /// @notice Array of all registered validator addresses
+    address[] private validatorAddresses;
+
+    address public fundManager;
+    address public deedNFT;
+
     // ============ Events ============
 
     /**
@@ -96,6 +104,12 @@ contract ValidatorRegistry is
         address indexed validator,
         uint256[] assetTypes
     );
+
+    /**
+     * @dev Emitted when DeedNFT address is set
+     * @param deedNFT Address of the DeedNFT contract
+     */
+    event DeedNFTUpdated(address indexed deedNFT);
 
     // ============ Upgrade Gap ============
 
@@ -136,15 +150,56 @@ contract ValidatorRegistry is
         // Authorization logic handled by onlyOwner modifier
     }
 
+    function setFundManager(address _fundManager) external onlyOwner {
+        require(_fundManager != address(0), "Invalid address");
+        fundManager = _fundManager;
+    }
+
+    function setDeedNFT(address _deedNFT) external onlyOwner {
+        require(_deedNFT != address(0), "Invalid address");
+        deedNFT = _deedNFT;
+        emit DeedNFTUpdated(_deedNFT);
+    }
+
+    function _updateFundManagerRoles() internal {
+        if (fundManager != address(0)) {
+            IFundManager(fundManager).updateValidatorRoles();
+        }
+    }
+
+    /**
+     * @dev Updates VALIDATOR_ROLE assignments in DeedNFT based on registry status.
+     *      Grants role to active validators and revokes from inactive ones.
+     */
+    function _updateDeedNFTRoles() internal {
+        if (deedNFT == address(0)) return;
+
+        for (uint256 i = 0; i < validatorAddresses.length; i++) {
+            address validator = validatorAddresses[i];
+            bool isActive = validators[validator].isActive;
+            bool hasRole = IDeedNFT(deedNFT).hasRole(IDeedNFT(deedNFT).VALIDATOR_ROLE(), validator);
+
+            if (isActive && !hasRole) {
+                IDeedNFT(deedNFT).addValidator(validator);
+            } else if (!isActive && hasRole) {
+                IDeedNFT(deedNFT).removeValidator(validator);
+            }
+        }
+    }
+
     /**
      * @dev Registers a new validator.
      * @param validator Address of the validator contract.
      * @param name Name associated with the validator.
+     * @param description Description of the validator's capabilities.
+     * @param supportedAssetTypes Array of asset types this validator can handle.
      */
-    function registerValidator(address validator, string memory name)
-        public
-        onlyOwner
-    {
+    function registerValidator(
+        address validator,
+        string memory name,
+        string memory description,
+        uint256[] memory supportedAssetTypes
+    ) public onlyOwner {
         require(
             validator != address(0),
             "ValidatorRegistry: Invalid validator address"
@@ -159,7 +214,20 @@ contract ValidatorRegistry is
         );
 
         validators[validator].name = name;
-        emit ValidatorRegistered(validator, name, validators[validator].supportedAssetTypes);
+        validators[validator].description = description;
+        validators[validator].supportedAssetTypes = supportedAssetTypes;
+        validators[validator].isActive = false; // Inactive by default
+        
+        // Add validator to the array
+        validatorAddresses.push(validator);
+
+        // Update asset type validators mapping
+        for (uint256 i = 0; i < supportedAssetTypes.length; i++) {
+            assetTypeValidators[supportedAssetTypes[i]].push(validator);
+        }
+
+        emit ValidatorRegistered(validator, name, supportedAssetTypes);
+        _updateFundManagerRoles();
     }
 
     /**
@@ -172,8 +240,24 @@ contract ValidatorRegistry is
             "ValidatorRegistry: Validator not registered"
         );
 
+        // Remove validator from the array
+        for (uint256 i = 0; i < validatorAddresses.length; i++) {
+            if (validatorAddresses[i] == validator) {
+                validatorAddresses[i] = validatorAddresses[validatorAddresses.length - 1];
+                validatorAddresses.pop();
+                break;
+            }
+        }
+
+        // Revoke VALIDATOR_ROLE in DeedNFT if present
+        if (deedNFT != address(0) && IDeedNFT(deedNFT).hasRole(IDeedNFT(deedNFT).VALIDATOR_ROLE(), validator)) {
+            IDeedNFT(deedNFT).removeValidator(validator);
+        }
+
         delete validators[validator];
         emit ValidatorRegistered(validator, "", new uint256[](0));
+        _updateFundManagerRoles();
+        _updateDeedNFTRoles();
     }
 
     /**
@@ -225,11 +309,18 @@ contract ValidatorRegistry is
     }
 
     /**
-     * @dev Updates the supported asset types for a registered validator.
-     * @param validator Address of the validator contract.
-     * @param assetTypes Array of asset type IDs to be supported by the validator.
+     * @dev Returns true if the validator is registered and active.
+     * @param validator Address of the validator.
      */
-    function updateValidatorAssetTypes(address validator, uint256[] memory assetTypes)
+    function isValidatorActive(address validator) public view returns (bool) {
+        return bytes(validators[validator].name).length > 0 && validators[validator].isActive;
+    }
+
+    /**
+     * @dev Gets the supported asset types for a registered validator from the validator contract.
+     * @param validator Address of the validator contract.
+     */
+    function getValidatorAssetTypes(address validator)
         public
         onlyOwner
     {
@@ -237,9 +328,31 @@ contract ValidatorRegistry is
             bytes(validators[validator].name).length > 0,
             "ValidatorRegistry: Validator not registered"
         );
+
+        // Get the validator contract
+        IValidator validatorContract = IValidator(validator);
+        
+        // Create an array to store supported asset types
+        uint256[] memory supportedTypes = new uint256[](4); // Assuming max 4 asset types
+        uint256 count = 0;
+        
+        // Check each asset type (0-3)
+        for (uint256 i = 0; i < 4; i++) {
+            if (validatorContract.supportsAssetType(i)) {
+                supportedTypes[count] = i;
+                count++;
+            }
+        }
+        
+        // Resize the array to the actual count
+        uint256[] memory assetTypes = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            assetTypes[i] = supportedTypes[i];
+        }
+        
         require(
             assetTypes.length > 0,
-            "ValidatorRegistry: Asset types array cannot be empty"
+            "ValidatorRegistry: No supported asset types found"
         );
 
         validators[validator].supportedAssetTypes = assetTypes;
@@ -262,6 +375,54 @@ contract ValidatorRegistry is
 
         validators[validator].isActive = isActive;
         emit ValidatorStatusUpdated(validator, isActive);
+        _updateFundManagerRoles();
+        _updateDeedNFTRoles();
+    }
+
+    /**
+     * @dev Returns the supported asset types for a validator.
+     * @param validator Address of the validator.
+     * @return Array of supported asset type IDs.
+     */
+    function getSupportedAssetTypes(address validator)
+        external
+        view
+        returns (uint256[] memory)
+    {
+        require(
+            bytes(validators[validator].name).length > 0,
+            "ValidatorRegistry: Validator not registered"
+        );
+        return validators[validator].supportedAssetTypes;
+    }
+
+    /**
+     * @dev Returns an array of all active validator addresses.
+     * @return Array of active validator addresses.
+     */
+    function getActiveValidators() external view returns (address[] memory) {
+        uint256 activeCount = 0;
+        
+        // Count active validators
+        for (uint256 i = 0; i < validatorAddresses.length; i++) {
+            if (validators[validatorAddresses[i]].isActive) {
+                activeCount++;
+            }
+        }
+        
+        // Create array of active validators
+        address[] memory activeValidators = new address[](activeCount);
+        uint256 index = 0;
+        
+        // Fill array with active validators
+        for (uint256 i = 0; i < validatorAddresses.length; i++) {
+            if (validators[validatorAddresses[i]].isActive) {
+                activeValidators[index] = validatorAddresses[i];
+                index++;
+            }
+        }
+        
+        return activeValidators;
     }
 
     /**

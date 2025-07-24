@@ -1,6 +1,8 @@
 # The Deed Protocol - Smart Contracts
 
-This repository contains the smart contracts for **The Deed Protocol**, which facilitates decentralized Real World Asset transactions via Smart Contracts. These contracts represent real world assets as ERC721 tokens, ensuring seamless integration with external validation services and enabling future enhancements.
+This repository contains the smart contracts for **The Deed Protocol**, which facilitates decentralized (P2P) Real World Asset transactions via Smart Contracts. These contracts represent real world assets as Secured Digital Representations (SDRs), ensuring seamless integration with external validation services and enabling future enhancements.
+
+> ⚠️ **BETA WARNING**: This protocol is currently in beta. Use at your own risk. The contracts have not been audited and may contain bugs or security vulnerabilities.
 
 ## Overview
 
@@ -11,25 +13,27 @@ Key components of the protocol include:
 - **Validator**: A smart contract that verifies the integrity and authenticity of deed data.
 - **ValidatorRegistry**: A registry for managing and tracking validators responsible for validating deeds.
 - **FundManager**: A smart contract for managing, distributing and maintaining security over transaction funds.
-- **MetadataRenderer**: A contract for standardized metadata handling and asset type management.
+- **MetadataRenderer**: A contract for standardized metadata handling with optimized trait management.
+- **ValidatorFactory**: A factory contract for deploying new validator instances with standardized configurations.
 - **Extension Contracts**: Additional functionality for REIT-style fractional ownership and property subdivision.
 
 ## Project Structure
 
 ```
 contracts/
-├── core/               # Core protocol contracts
+├── core/              # Core protocol contracts
+│   ├── interfaces/    # Contract interfaces
+│   ├── factories/     # Factory contracts
+│   │   └── ValidatorFactory.sol
 │   ├── DeedNFT.sol    # Main NFT contract
-│   ├── Validator.sol  # Validation logic
+│   ├── Validator.sol  # Deed Validation logic
 │   ├── ValidatorRegistry.sol
 │   ├── FundManager.sol
-│   ├── MetadataRenderer.sol
-│   ├── interfaces/    # Core contract interfaces
-│   └── templates/     # Contract templates
+│   └── MetadataRenderer.sol
 ├── extensions/        # Extension contracts
 │   ├── Fractionalize.sol
 │   └── Subdivide.sol
-└── libraries/        # Shared libraries
+└── libraries/         # Shared libraries
 ```
 
 ## Asset Types
@@ -37,7 +41,7 @@ The protocol supports various types of real-world assets:
 - **Land**: Real estate properties and land parcels
 - **Vehicle**: Automotive and transportation assets
 - **Estate**: Residential and commercial properties
-- **Commercial Equipment**: Business and industrial equipment
+- **Heavy Equipment**: Commercial, industrial and agricultural equipment
 
 Each asset type has specific validation criteria and metadata structures to ensure accurate representation and compliance.
 
@@ -49,11 +53,12 @@ Each asset type has specific validation criteria and metadata structures to ensu
 
 The `DeedNFT` contract is the core ERC721 token representing real world assets. It includes several important features:
 
-- **Custom Metadata:** Each deed is linked to metadata stored on decentralized platforms (e.g., IPFS), which can include detailed property information.
+- **On-Chain Metadata Storage:** Implements ERC-7496 for dynamic trait storage, allowing flexible and efficient on-chain metadata management.
 - **Validation Integration:** Works in conjunction with validator contracts to ensure that deed data is authentic and correct.
 - **Batch Minting:** Supports the minting of multiple deed tokens in a single transaction, reducing gas costs.
 - **Upgradability:** Designed with future enhancements in mind using the UUPS (Universal Upgradeable Proxy Standard) pattern for seamless contract upgrades.
 - **Royalty Enforcement:** Implements ERC721C for on-chain royalty enforcement with marketplace approval system.
+- **FundManager Integration:** Seamless integration with FundManager for commission handling and fee distribution.
 
 ### Royalty System
 
@@ -79,12 +84,16 @@ The royalty system works in conjunction with the `Validator` and `FundManager` c
 
 [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/Validator.sol)
 
-The `Validator` contract is responsible for verifying deed data and generating the appropriate metadata URI. This contract works in tandem with the `ValidatorRegistry` to ensure that only authorized validators can validate deeds.
+The `Validator` contract is responsible for verifying deed data and managing validation criteria. This contract works in tandem with the `ValidatorRegistry` to ensure that only authorized validators can validate deeds.
 
-- **Token Metadata Generation:** Produces token URIs that expose property details, ensuring that the NFT metadata accurately reflects the underlying property data.
+- **Service Fee Handling:** Manages service fees and token whitelisting for transactions.
+- **Royalty Management:** Handles royalty fee percentages and receiver addresses.
 - **Operating Agreement Management:** Manages operating agreements (legal wrapper) associated to each property, storing and retrieving them as needed.
-- **Customizable Validation:** Offers flexibility to define specific validation criteria for different types of properties or regional requirements.
 - **Integration with the Registry:** Works alongside the ValidatorRegistry to ensure that only authorized validators perform deed validations.
+- **Validation Criteria Management:** Offers flexibility to define specific validation criteria for different types of properties or regional requirements.
+- **Multi-DeedNFT Support:** Supports multiple compatible DeedNFT contracts with primary contract designation.
+- **FundManager Integration:** Seamless integration for fee management and distribution.
+- **Asset Type Validation:** Implements specific validation rules for different asset types (Land, Vehicle, Estate, Commercial Equipment).
 
 ### 3. ValidatorRegistry
 
@@ -95,6 +104,8 @@ The `ValidatorRegistry` contract manages a list of authorized validators, ensuri
 - **Validator Registration:** Allows new validators to be registered, as well as updates or removals of existing ones.
 - **Centralized Validation Control:** Ensures that only trusted validators can interact with the DeedNFT contract, thereby maintaining the integrity of the validation process.
 - **Governance and Administration:** Supports role-based permissions to manage who can add or remove validators, contributing to the overall security of the protocol.
+- **FundManager Integration:** Manages validator roles and permissions for fee management.
+- **Enhanced Status Tracking:** Improved tracking of validator operational status and capabilities.
 
 ### 4. FundManager
 
@@ -106,6 +117,10 @@ The `FundManager` contract is dedicated to managing funds associated with proper
 - **Funds Allocation and Distribution:** Implements mechanisms to distribute collected funds among various stakeholders (such as validators, platform operators, or other designated parties) based on predetermined rules.
 - **Secure Financial Operations:** Integrates with other core contracts (like DeedNFT and Validator) to ensure that all financial operations are carried out securely and transparently.
 - **Efficient Fund Handling:** Designed to facilitate both deposit and withdrawal operations, ensuring smooth financial transactions within the ecosystem.
+- **Commission System:** Manages platform commission fees with configurable percentages.
+- **Validator Fee Management:** Handles validator service fees and royalty distributions.
+- **Role-Based Access Control:** Implements comprehensive role management for fee operations.
+- **Token Whitelisting:** Supports whitelisting of payment tokens for enhanced security.
 
 ### 5. MetadataRenderer
 
@@ -113,32 +128,58 @@ The `FundManager` contract is dedicated to managing funds associated with proper
 
 The `MetadataRenderer` contract is responsible for generating and managing token metadata in a standardized format:
 
-- **Dynamic Metadata Generation:** Implements ERC-7572 for standardized metadata handling
+- **Dynamic Metadata Generation:** Generates rich, structured metadata for tokens
 - **Asset Type Support:** Handles different asset types with specific metadata structures
 - **Document Management:** Supports storing and retrieving property documents
 - **Gallery Management:** Manages multiple images per token
 - **Feature Tracking:** Maintains lists of features for each token
 - **Custom Metadata:** Allows for custom metadata fields while maintaining standardization
+- **Trait Management:** Handles dynamic trait updates and synchronization with DeedNFT
+- **Enhanced Document Management:** Improved document type handling and organization
+
+### 6. ValidatorFactory
+
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/factories/ValidatorFactory.sol)
+
+The `ValidatorFactory` contract provides a standardized way to deploy new validator instances:
+
+- **Standardized Deployment:** Ensures consistent configuration of new validator instances
+- **Configuration Management:** Handles initialization parameters and default settings
+- **Role Assignment:** Automatically sets up required roles and permissions
+- **Integration Setup:** Configures connections with other protocol contracts
+- **Validation Criteria:** Sets up default validation rules for different asset types
 
 ## Interface Contracts
 
-### 1. IValidator
+### 1. IDeedNFT
+
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IDeedNFT.sol)
+
+Defines the interface for the core DeedNFT functionality, including trait management, validation, and asset operations.
+
+### 2. IValidator
 
 [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IValidator.sol)
 
 Defines the interface for validator functionality, outlining the functions that any validator contract must implement to interact with the protocol.
 
-### 2. IValidatorRegistry
+### 3. IValidatorRegistry
 
 [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IValidatorRegistry.sol)
 
 Specifies the interface for the validator registry, ensuring that implementations provide necessary registry management functions.
 
-### 3. IMetadataRenderer
+### 4. IMetadataRenderer
 
 [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IMetadataRenderer.sol)
 
-Defines the interface for metadata rendering functionality, implementing ERC-7572 for standardized metadata handling.
+Defines the interface for metadata rendering functionality, including trait synchronization and metadata generation.
+
+### 5. IFundManager
+
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/interfaces/IFundManager.sol)
+
+Specifies the interface for fund management operations, including commission handling and fund distribution.
 
 ## Extension Contracts
 
@@ -151,7 +192,7 @@ The `Fractionalize` contract enables the creation of ERC1155 tokens representing
 - **REIT Share Creation:** Converts DeedNFT tokens into tradeable ERC1155 shares, enabling REIT-like investment structures
 - **Asset Locking:** Securely locks the original DeedNFT while shares are active
 - **Transfer Restrictions:** Implements wallet limits and transfer restrictions for regulatory compliance
-- **Approval System:** Requires approval for unlocking original assets
+- **Approval System:** Requires approval of configured majority of outstanding shares to unlock original DeedNFT
 - **Security Features:** Includes pausable functionality and role-based access control
 - **Dividend Distribution:** Supports automated dividend distribution to share holders
 - **Regulatory Compliance:** Built-in features to support REIT regulatory requirements
@@ -195,7 +236,6 @@ A critical part of the Deed Protocol is its upgradability via proxy contracts. T
 
 ### Metadata & Documentation Standards
 - **Standard Compliance:**
-  - ERC-7572 for standardized metadata handling
   - ERC-7496 for dynamic trait support
 - **Document Management:**
   - Operating agreement storage and validation
@@ -298,7 +338,7 @@ This project uses TypeScript and Hardhat for development. The main configuration
 
 - `npx hardhat compile`: Compile the contracts
 - `npx hardhat test`: Run the test suite
-- `npx hardhat run scripts/deploy.ts`: Deploy contracts
+- `npx hardhat run scripts/deploy-all.ts`: Deploy all contracts
 - `npx hardhat run scripts/verify.ts`: Verify contracts on Etherscan
 
 ### Testing

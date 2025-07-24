@@ -59,6 +59,28 @@ library JSONUtils {
     }
     
     /**
+     * @dev Converts a string array to a JSON array string
+     * @param arr Array of strings to convert
+     * @return JSON array string
+     */
+    function arrayToJson(string[] memory arr) internal pure returns (string memory) {
+        if (arr.length == 0) {
+            return "[]";
+        }
+        
+        string memory result = "[";
+        for (uint i = 0; i < arr.length; i++) {
+            if (i > 0) {
+                result = string(abi.encodePacked(result, ","));
+            }
+            result = string(abi.encodePacked(result, '"', arr[i], '"'));
+        }
+        result = string(abi.encodePacked(result, "]"));
+        
+        return result;
+    }
+    
+    /**
      * @dev Adds a string-to-string mapping to JSON as an object
      */
     function addStringMap(string memory json, string memory mapName, string[] memory keys, mapping(string => string) storage values) internal view returns (string memory) {
@@ -227,5 +249,45 @@ library JSONUtils {
         }
         
         return ""; // Field not found
+    }
+
+    /**
+     * @dev Gets all keys from a JSON object
+     * @param json JSON string
+     * @return Array of keys
+     */
+    function getJsonKeys(string memory json) internal pure returns (string[] memory) {
+        // This is a simplified implementation
+        // In a real implementation, you would use a proper JSON parser
+        bytes memory jsonBytes = bytes(json);
+        uint count = 0;
+        
+        // Count keys
+        for (uint i = 0; i < jsonBytes.length - 2; i++) {
+            if (jsonBytes[i] == '"' && jsonBytes[i + 1] != '"' && jsonBytes[i + 1] != ':') {
+                count++;
+            }
+        }
+        
+        // Create array
+        string[] memory keys = new string[](count);
+        uint currentIndex = 0;
+        uint startIndex = 0;
+        
+        // Parse keys
+        for (uint i = 0; i < jsonBytes.length - 2; i++) {
+            if (jsonBytes[i] == '"' && jsonBytes[i + 1] != '"' && jsonBytes[i + 1] != ':') {
+                startIndex = i + 1;
+            } else if (jsonBytes[i] == '"' && jsonBytes[i - 1] != '"' && jsonBytes[i - 1] != ':') {
+                uint endIndex = i;
+                bytes memory key = new bytes(endIndex - startIndex);
+                for (uint j = 0; j < endIndex - startIndex; j++) {
+                    key[j] = jsonBytes[startIndex + j];
+                }
+                keys[currentIndex++] = string(key);
+            }
+        }
+        
+        return keys;
     }
 } 

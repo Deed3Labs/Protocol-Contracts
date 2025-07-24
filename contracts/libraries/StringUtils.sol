@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
+import "solady/src/utils/Base64.sol";
+
 /**
  * @title StringUtils
  * @dev Library for string operations
@@ -131,5 +133,36 @@ library StringUtils {
         }
         
         return string(result);
+    }
+
+    function startsWith(string memory str, string memory prefix) internal pure returns (bool) {
+        bytes memory strBytes = bytes(str);
+        bytes memory prefixBytes = bytes(prefix);
+        
+        if (strBytes.length < prefixBytes.length) {
+            return false;
+        }
+        
+        for (uint i = 0; i < prefixBytes.length; i++) {
+            if (strBytes[i] != prefixBytes[i]) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    function parseBase64DataURI(string memory uri) internal pure returns (string memory) {
+        bytes memory uriBytes = bytes(uri);
+        uint256 prefixLength = bytes("data:application/json;base64,").length;
+        
+        require(uriBytes.length > prefixLength, "Invalid data URI");
+        
+        bytes memory encodedData = new bytes(uriBytes.length - prefixLength);
+        for (uint i = 0; i < encodedData.length; i++) {
+            encodedData[i] = uriBytes[i + prefixLength];
+        }
+        
+        return string(Base64.decode(string(encodedData)));
     }
 } 
