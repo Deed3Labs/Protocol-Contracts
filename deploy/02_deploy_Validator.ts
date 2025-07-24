@@ -65,7 +65,12 @@ async function main() {
 
   // Register validator in the registry
   const validatorRegistry = await hre.ethers.getContractAt("ValidatorRegistry", validatorRegistryAddress);
-  await validatorRegistry.registerValidator(validatorAddress, "Default Validator");
+  await validatorRegistry.registerValidator(
+    validatorAddress,
+    "Default Validator",
+    "A default validator for deployment",
+    [0, 1, 2, 3]
+  );
   console.log("Registered validator in ValidatorRegistry");
 
   // Update validator status

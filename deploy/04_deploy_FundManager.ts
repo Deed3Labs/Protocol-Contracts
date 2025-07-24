@@ -2,6 +2,15 @@ import { ethers } from "ethers";
 import { FundManager } from "../typechain-types";
 import { saveDeployment, getDeployment } from "./helpers";
 
+/**
+ * Deploys the FundManager contract
+ * 
+ * This contract:
+ * - Manages fund operations and commission handling
+ * - Integrates with ValidatorRegistry for role management
+ * - Enforces maximum commission percentage (10%)
+ * - Initial commission set to 5% (500 basis points)
+ */
 async function main() {
   // Get the hardhat runtime environment
   const hre = require("hardhat");
@@ -28,7 +37,12 @@ async function main() {
   // Deploy FundManager as an upgradeable contract
   console.log("Deploying FundManager...");
   const FundManager = await hre.ethers.getContractFactory("FundManager");
-  const fundManager = await hre.upgrades.deployProxy(FundManager, [], {
+  const fundManager = await hre.upgrades.deployProxy(FundManager, [
+    deedNFTAddress,
+    validatorRegistryAddress,
+    500, // 5% initial commission percentage (500 basis points) - within 10% max limit
+    deployer.address // Fee receiver address
+  ], {
     initializer: "initialize",
     kind: "uups"
   });
@@ -38,13 +52,14 @@ async function main() {
   console.log("FundManager deployed to:", fundManagerAddress);
 
   // Setup initial roles
+  // Note: Additional roles will be managed through ValidatorRegistry integration
   const ADMIN_ROLE = await fundManager.ADMIN_ROLE();
   const OPERATOR_ROLE = await fundManager.OPERATOR_ROLE();
 
   // Grant roles to deployer
   await fundManager.grantRole(ADMIN_ROLE, deployer.address);
   await fundManager.grantRole(OPERATOR_ROLE, deployer.address);
-  console.log("Granted roles to deployer");
+  console.log("Granted initial roles to deployer");
 
   // Set ValidatorRegistry and DeedNFT
   await fundManager.setValidatorRegistry(validatorRegistryAddress);

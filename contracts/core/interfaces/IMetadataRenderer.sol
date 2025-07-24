@@ -105,13 +105,6 @@ interface IMetadataRenderer {
     function getTokenDocument(uint256 tokenId, string calldata docType) external view returns (string memory);
 
     /**
-     * @dev Gets all document types for a token
-     * @param tokenId ID of the token
-     * @return Array of document types
-     */
-    function getTokenDocumentTypes(uint256 tokenId) external view returns (string[] memory);
-
-    /**
      * @dev Sets features for a token
      * @param tokenId ID of the token
      * @param features Array of features
@@ -202,7 +195,7 @@ interface IMetadataRenderer {
     /**
      * @dev Sets custom metadata for a token
      * @param tokenId ID of the token
-     * @param metadata Custom metadata JSON string
+     * @param metadata Custom metadata string
      */
     function setTokenCustomMetadata(uint256 tokenId, string memory metadata) external;
 
@@ -225,6 +218,34 @@ interface IMetadataRenderer {
      * @param deedNFT Address of the DeedNFT contract
      */
     function setDeedNFT(address deedNFT) external;
+
+    /**
+     * @dev Sets the animation URL for a token
+     * @param tokenId ID of the token
+     * @param animationURL URL of the animation
+     */
+    function setTokenAnimationURL(uint256 tokenId, string memory animationURL) external;
+
+    /**
+     * @dev Sets the external link for a token
+     * @param tokenId ID of the token
+     * @param externalLink External URL for the token
+     */
+    function setTokenExternalLink(uint256 tokenId, string memory externalLink) external;
+
+    /**
+     * @dev Gets the animation URL for a token
+     * @param tokenId ID of the token
+     * @return Animation URL as a string
+     */
+    function getTokenAnimationURL(uint256 tokenId) external view returns (string memory);
+
+    /**
+     * @dev Gets the external link for a token
+     * @param tokenId ID of the token
+     * @return External URL as a string
+     */
+    function getTokenExternalLink(uint256 tokenId) external view returns (string memory);
 
     /**
      * @dev Syncs trait updates from DeedNFT

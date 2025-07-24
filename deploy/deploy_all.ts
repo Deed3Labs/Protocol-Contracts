@@ -17,6 +17,7 @@ const execAsync = promisify(exec);
  * - DeedNFT needs Validator and MetadataRenderer
  * - Validator needs to be registered in ValidatorRegistry
  * - FundManager needs DeedNFT and ValidatorRegistry
+ * - ValidatorRegistry and FundManager have bidirectional relationship for role management
  */
 async function main() {
   // Get the hardhat runtime environment
@@ -132,6 +133,13 @@ async function main() {
     const deedNFTAbi = deedNFT.interface.formatJson();
     saveDeployment(network.name, "DeedNFT", deedNFTAddress, deedNFTAbi);
 
+    // Set DeedNFT in ValidatorRegistry for automatic role management
+    console.log("\nSetting DeedNFT in ValidatorRegistry for automatic role management...");
+    const setDeedNFTInRegistryTx = await validatorRegistry.setDeedNFT(deedNFTAddress);
+    await setDeedNFTInRegistryTx.wait();
+    console.log("DeedNFT set in ValidatorRegistry");
+    console.log("Transaction hash:", setDeedNFTInRegistryTx.hash);
+
     // Update Validator with DeedNFT address
     console.log("\nUpdating Validator with DeedNFT address...");
     const setDeedNFTTx = await validator.setDeedNFT(deedNFTAddress);
@@ -186,9 +194,8 @@ async function main() {
     console.log("\n5. Deploying FundManager...");
     const FundManager = await hre.ethers.getContractFactory("FundManager");
     const fundManager = await hre.upgrades.deployProxy(FundManager, [
-      deedNFTAddress,
       validatorRegistryAddress,
-      500, // 5% initial commission percentage (500 basis points)
+      500, // 5% initial commission percentage (500 basis points) - within 10% max limit
       deployer.address // Fee receiver address
     ], {
       initializer: "initialize",
@@ -202,6 +209,13 @@ async function main() {
     // Save FundManager deployment
     const fundManagerAbi = fundManager.interface.formatJson();
     saveDeployment(network.name, "FundManager", fundManagerAddress, fundManagerAbi);
+
+    // Set FundManager in ValidatorRegistry for role management
+    console.log("\nSetting FundManager in ValidatorRegistry for role management...");
+    const setFundManagerInRegistryTx = await validatorRegistry.setFundManager(fundManagerAddress);
+    await setFundManagerInRegistryTx.wait();
+    console.log("FundManager set in ValidatorRegistry");
+    console.log("Transaction hash:", setFundManagerInRegistryTx.hash);
 
     // 6. Setup Validator in Registry
     console.log("\n6. Setting up Validator in Registry...");
@@ -217,7 +231,9 @@ async function main() {
     // Register validator with name
     const registerTx = await validatorRegistry.registerValidator(
       validatorAddress,
-      "Default Validator"
+      "Default Validator",
+      "A default validator for deployment",
+      [0, 1, 2, 3]
     );
     console.log("Registering Validator in Registry...");
     const registerReceipt = await registerTx.wait();
@@ -232,6 +248,15 @@ async function main() {
     // Get validator name
     const validatorName = await validatorRegistry.getValidatorName(validatorAddress);
     console.log("Validator name:", validatorName);
+
+    // Explicitly activate validator after registration
+    if (isRegisteredAfterRegistration) {
+      console.log("Activating Validator in Registry after registration...");
+      const activateTx = await validatorRegistry.updateValidatorStatus(validatorAddress, true);
+      await activateTx.wait();
+      console.log("Validator activated in Registry after registration");
+      console.log("Transaction hash:", activateTx.hash);
+    }
 
     // Set all asset types as supported in Validator
     console.log("\nSetting up asset types in Validator...");
