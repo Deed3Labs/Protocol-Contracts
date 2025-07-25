@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import { useAccount, useChainId } from 'wagmi';
+import { useAccount } from 'wagmi';
 import DeedNFTJson from "@/contracts/DeedNFT.json";
 import { useNetworkValidation } from './useNetworkValidation';
 import { getContractAddressForNetwork, getRpcUrlForNetwork } from '@/config/networks';
