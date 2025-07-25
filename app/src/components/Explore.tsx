@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, Filter, Eye, RefreshCw } from "lucide-react";
+import { Search, Eye, RefreshCw } from "lucide-react";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { useState } from "react";
 

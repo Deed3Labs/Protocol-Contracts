@@ -30,9 +30,8 @@ export interface DeedNFTStats {
 const DEEDNFT_ABI = JSON.parse(DeedNFTJson.abi);
 
 export const useDeedNFTData = () => {
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
-  const { isCorrectNetwork, currentNetwork } = useNetworkValidation();
+  const { address, chainId, isConnected } = useAccount();
+  const { isCorrectNetwork } = useNetworkValidation();
   const [deedNFTs, setDeedNFTs] = useState<DeedNFT[]>([]);
   const [userDeedNFTs, setUserDeedNFTs] = useState<DeedNFT[]>([]);
   const [stats, setStats] = useState<DeedNFTStats>({
@@ -46,34 +45,27 @@ export const useDeedNFTData = () => {
   const [error, setError] = useState<string | null>(null);
 
   const getContractAddress = () => {
+    if (!chainId) return null;
     return getContractAddressForNetwork(chainId);
   };
 
   const getProvider = () => {
-    // Try to use wallet provider first (for user interactions)
+    // Try to use wallet provider first
     if (window.ethereum) {
-      console.log("Using wallet provider (window.ethereum)");
       return new ethers.BrowserProvider(window.ethereum as unknown as ethers.Eip1193Provider);
     }
     
-    // Fallback to dedicated RPC provider (for read-only operations)
-    const rpcUrl = getRpcUrlForNetwork(chainId, true); // Prefer Alchemy
-    console.log("Trying RPC URL:", rpcUrl);
-    
-    if (rpcUrl && rpcUrl !== 'https://mainnet.infura.io/v3/your-project-id' && 
-        rpcUrl !== 'https://sepolia.infura.io/v3/your-project-id') {
-      console.log("Using dedicated RPC provider");
-      return new ethers.JsonRpcProvider(rpcUrl);
+    // Fallback to RPC provider
+    if (!chainId) {
+      throw new Error("No chain ID available");
     }
     
-    // Final fallback to public RPC
-    const publicRpcUrl = getRpcUrlForNetwork(chainId, false);
-    console.log("Using public RPC URL:", publicRpcUrl);
-    if (publicRpcUrl) {
-      return new ethers.JsonRpcProvider(publicRpcUrl);
+    const rpcUrl = getRpcUrlForNetwork(chainId);
+    if (!rpcUrl) {
+      throw new Error(`No RPC URL available for chain ${chainId}`);
     }
     
-    throw new Error("No provider available for this network");
+    return new ethers.JsonRpcProvider(rpcUrl);
   };
 
   // Function to get DeedNFT data using available contract functions

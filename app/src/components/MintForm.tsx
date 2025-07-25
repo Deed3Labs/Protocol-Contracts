@@ -17,7 +17,7 @@ import DeedNFTJson from "@/contracts/DeedNFT.json";
 import type { Eip1193Provider } from 'ethers';
 import { NetworkWarning } from "@/components/NetworkWarning";
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";
-import { ChevronRight, ChevronLeft, CheckCircle, Circle, AlertCircle, Wallet, FileText, Settings, CreditCard } from "lucide-react";
+import { ChevronRight, ChevronLeft, CheckCircle, AlertCircle, Wallet, FileText, Settings, CreditCard } from "lucide-react";
 
 const DEEDNFT_ADDRESS = "0x1a4e89225015200f70e5a06f766399a3de6e21E6";
 const DEEDNFT_ABI = DeedNFTJson.abi;
