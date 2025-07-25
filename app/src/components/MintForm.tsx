@@ -114,13 +114,13 @@ function MintForm() {
           {!wallet ? (
             /* Wallet Connection Section */
             <div className="max-w-md mx-auto">
-              <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-border text-center">
+              <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200 dark:border-gray-700 text-center">
                 <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mx-auto mb-6">
                   <Wallet className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                 </div>
                 
-                <h2 className="text-2xl font-semibold mb-4 text-foreground">Connect Your Wallet</h2>
-                <p className="text-muted-foreground mb-6">
+                <h2 className="text-2xl font-semibold mb-4 text-gray-900 dark:text-white">Connect Your Wallet</h2>
+                <p className="text-gray-600 dark:text-gray-300 mb-6">
                   Connect your wallet to start minting DeedNFTs and managing your digital assets.
                 </p>
                 
@@ -139,15 +139,15 @@ function MintForm() {
               {/* Progress Steps */}
               <div className="flex items-center justify-center mb-8">
                 <div className="flex items-center space-x-4">
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground'} transition-colors duration-200`}>
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-full ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'} transition-colors duration-200`}>
                     {step > 1 ? <CheckCircle className="w-4 h-4" /> : '1'}
                   </div>
-                  <div className={`w-12 h-0.5 ${step > 1 ? 'bg-blue-600' : 'bg-border'} transition-colors duration-200`}></div>
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full ${step >= 2 ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground'} transition-colors duration-200`}>
+                  <div className={`w-12 h-0.5 ${step > 1 ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'} transition-colors duration-200`}></div>
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-full ${step >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'} transition-colors duration-200`}>
                     {step > 2 ? <CheckCircle className="w-4 h-4" /> : '2'}
                   </div>
-                  <div className={`w-12 h-0.5 ${step > 2 ? 'bg-blue-600' : 'bg-border'} transition-colors duration-200`}></div>
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full ${step >= 3 ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground'} transition-colors duration-200`}>
+                  <div className={`w-12 h-0.5 ${step > 2 ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'} transition-colors duration-200`}></div>
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-full ${step >= 3 ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'} transition-colors duration-200`}>
                     {step > 3 ? <CheckCircle className="w-4 h-4" /> : '3'}
                   </div>
                 </div>
@@ -166,34 +166,34 @@ function MintForm() {
               
               <form onSubmit={handleMint} className="space-y-8">
                 {/* Asset Information Section */}
-                <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-border">
+                <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200 dark:border-gray-700">
                   <div className="flex items-center mb-6">
                     <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center mr-4">
                       <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold text-foreground">Asset Information</h3>
-                      <p className="text-sm text-muted-foreground">Define your asset type and basic details</p>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Asset Information</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-300">Define your asset type and basic details</p>
                     </div>
                   </div>
                   
                   <div className="grid md:grid-cols-2 gap-6">
                     <div>
-                      <Label htmlFor="owner" className="text-sm font-medium text-foreground">Owner Address</Label>
+                      <Label htmlFor="owner" className="text-sm font-medium text-gray-700 dark:text-gray-300">Owner Address</Label>
                       <Input 
                         name="owner" 
                         value={form.owner} 
                         onChange={handleChange} 
                         required 
                         disabled 
-                        className="mt-2 bg-muted" 
+                        className="mt-2 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700" 
                       />
                     </div>
                     
                     <div>
-                      <Label htmlFor="assetType" className="text-sm font-medium text-foreground">Asset Type</Label>
+                      <Label htmlFor="assetType" className="text-sm font-medium text-gray-700 dark:text-gray-300">Asset Type</Label>
                       <Select value={form.assetType} onValueChange={handleAssetType}>
-                        <SelectTrigger className="mt-2">
+                        <SelectTrigger className="mt-2 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                           <SelectValue placeholder="Select asset type" />
                         </SelectTrigger>
                         <SelectContent>
@@ -205,99 +205,99 @@ function MintForm() {
                     </div>
                     
                     <div className="md:col-span-2">
-                      <Label htmlFor="uri" className="text-sm font-medium text-foreground">Metadata URI (optional)</Label>
+                      <Label htmlFor="uri" className="text-sm font-medium text-gray-700 dark:text-gray-300">Metadata URI (optional)</Label>
                       <Input 
                         name="uri" 
                         value={form.uri} 
                         onChange={handleChange} 
                         placeholder="ipfs://..." 
-                        className="mt-2" 
+                        className="mt-2 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700" 
                       />
                     </div>
                   </div>
                 </div>
                 
                 {/* Asset Details Section */}
-                <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-border">
+                <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200 dark:border-gray-700">
                   <div className="flex items-center mb-6">
                     <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center mr-4">
                       <Settings className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold text-foreground">Asset Details</h3>
-                      <p className="text-sm text-muted-foreground">Provide detailed information about your asset</p>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Asset Details</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-300">Provide detailed information about your asset</p>
                     </div>
                   </div>
                   
                   <div className="space-y-6">
                     <div>
-                      <Label htmlFor="definition" className="text-sm font-medium text-foreground">Definition</Label>
+                      <Label htmlFor="definition" className="text-sm font-medium text-gray-700 dark:text-gray-300">Definition</Label>
                       <Textarea 
                         name="definition" 
                         value={form.definition} 
                         onChange={handleChange} 
                         required 
                         placeholder="Provide a detailed description of your asset..."
-                        className="mt-2 min-h-[120px]" 
+                        className="mt-2 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 min-h-[120px]" 
                       />
                     </div>
                     
                     <div>
-                      <Label htmlFor="configuration" className="text-sm font-medium text-foreground">Configuration (optional)</Label>
+                      <Label htmlFor="configuration" className="text-sm font-medium text-gray-700 dark:text-gray-300">Configuration (optional)</Label>
                       <Textarea 
                         name="configuration" 
                         value={form.configuration} 
                         onChange={handleChange} 
                         placeholder="Additional configuration details..."
-                        className="mt-2" 
+                        className="mt-2 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700" 
                       />
                     </div>
                   </div>
                 </div>
                 
                 {/* Advanced Settings Section */}
-                <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-border">
+                <div className="p-8 rounded-2xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200 dark:border-gray-700">
                   <div className="flex items-center mb-6">
                     <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-xl flex items-center justify-center mr-4">
                       <Zap className="w-5 h-5 text-orange-600 dark:text-orange-400" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold text-foreground">Advanced Settings</h3>
-                      <p className="text-sm text-muted-foreground">Optional validator and payment configuration</p>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Advanced Settings</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-300">Optional validator and payment configuration</p>
                     </div>
                   </div>
                   
                   <div className="grid md:grid-cols-2 gap-6">
                     <div>
-                      <Label htmlFor="validatorAddress" className="text-sm font-medium text-foreground">Validator Address (optional)</Label>
+                      <Label htmlFor="validatorAddress" className="text-sm font-medium text-gray-700 dark:text-gray-300">Validator Address (optional)</Label>
                       <Input 
                         name="validatorAddress" 
                         value={form.validatorAddress} 
                         onChange={handleChange} 
                         placeholder="0x..." 
-                        className="mt-2" 
+                        className="mt-2 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700" 
                       />
                     </div>
                     
                     <div>
-                      <Label htmlFor="token" className="text-sm font-medium text-foreground">Payment Token Address (optional)</Label>
+                      <Label htmlFor="token" className="text-sm font-medium text-gray-700 dark:text-gray-300">Payment Token Address (optional)</Label>
                       <Input 
                         name="token" 
                         value={form.token} 
                         onChange={handleChange} 
                         placeholder="0x... or leave blank" 
-                        className="mt-2" 
+                        className="mt-2 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700" 
                       />
                     </div>
                     
                     <div className="md:col-span-2">
-                      <Label htmlFor="salt" className="text-sm font-medium text-foreground">Salt (for custom tokenId, optional)</Label>
+                      <Label htmlFor="salt" className="text-sm font-medium text-gray-700 dark:text-gray-300">Salt (for custom tokenId, optional)</Label>
                       <Input 
                         name="salt" 
                         value={form.salt} 
                         onChange={handleChange} 
                         placeholder="0 for auto" 
-                        className="mt-2" 
+                        className="mt-2 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700" 
                         type="number" 
                         min="0" 
                       />
@@ -366,4 +366,4 @@ function MintForm() {
   );
 }
 
-export default MintForm;
+export default MintForm; 

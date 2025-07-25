@@ -1,3 +1,4 @@
+
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
@@ -157,11 +158,11 @@ html {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100;
   }
   
   /* Focus styles */
   *:focus-visible {
-    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    @apply outline-none ring-2 ring-blue-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-950;
   }
 }
