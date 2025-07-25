@@ -13,16 +13,16 @@ const Header = ({ children }: HeaderProps) => {
   };
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-card/80 dark:bg-background/80 backdrop-blur border-b border-border shadow-sm">
-      <nav className="max-w-4xl mx-auto flex items-center justify-between px-6 py-4">
+    <header className="sticky top-0 z-30 w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur border-b border-gray-200 dark:border-gray-800 shadow-md rounded-b-xl">
+      <nav className="container flex items-center justify-between py-4">
         <div className="flex items-center space-x-6">
-          <span className="text-xl font-bold tracking-tight text-primary">DeedNFT Protocol</span>
+          <span className="text-2xl font-bold tracking-tight text-blue-600">DeedNFT Protocol</span>
           <Link 
             to="/" 
             className={`font-medium transition-colors ${
               isActive("/") 
-                ? "text-primary underline" 
-                : "hover:underline"
+                ? "text-blue-600 underline" 
+                : "hover:underline text-gray-700 dark:text-gray-200"
             }`}
           >
             Home
@@ -31,8 +31,8 @@ const Header = ({ children }: HeaderProps) => {
             to="/mint" 
             className={`font-medium transition-colors ${
               isActive("/mint") 
-                ? "text-primary underline" 
-                : "hover:underline"
+                ? "text-blue-600 underline" 
+                : "hover:underline text-gray-700 dark:text-gray-200"
             }`}
           >
             Mint
@@ -41,8 +41,8 @@ const Header = ({ children }: HeaderProps) => {
             to="/page-one" 
             className={`font-medium transition-colors ${
               isActive("/page-one") 
-                ? "text-primary underline" 
-                : "hover:underline"
+                ? "text-blue-600 underline" 
+                : "hover:underline text-gray-700 dark:text-gray-200"
             }`}
           >
             Page One
@@ -51,8 +51,8 @@ const Header = ({ children }: HeaderProps) => {
             to="/page-two" 
             className={`font-medium transition-colors ${
               isActive("/page-two") 
-                ? "text-primary underline" 
-                : "hover:underline"
+                ? "text-blue-600 underline" 
+                : "hover:underline text-gray-700 dark:text-gray-200"
             }`}
           >
             Page Two
