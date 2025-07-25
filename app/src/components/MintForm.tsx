@@ -13,6 +13,8 @@ import { Separator } from "@/components/ui/separator";
 import { useAccount } from 'wagmi';
 import DeedNFTJson from "@/contracts/DeedNFT.json";
 import type { Eip1193Provider } from 'ethers';
+import { NetworkWarning } from "@/components/NetworkWarning";
+import { useNetworkValidation } from "@/hooks/useNetworkValidation";
 
 const DEEDNFT_ADDRESS = DeedNFTJson.address;
 const DEEDNFT_ABI = DeedNFTJson.abi;
@@ -26,6 +28,7 @@ const assetTypes = [
 
 const MintForm = () => {
   const { address, isConnected } = useAccount();
+  const { isCorrectNetwork } = useNetworkValidation();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -120,6 +123,7 @@ const MintForm = () => {
 
   return (
     <main className="container mx-auto py-12 px-4">
+      <NetworkWarning />
       <Card className="max-w-2xl mx-auto shadow-xl border border-border bg-card/90 animate-fade-in">
         <CardHeader className="pb-2">
           <CardTitle className="text-3xl font-bold text-center">Mint Your DeedNFT</CardTitle>
@@ -133,6 +137,10 @@ const MintForm = () => {
           {!isConnected ? (
             <div className="text-center text-muted-foreground text-lg py-12">
               Please connect your wallet using the button in the header to mint.
+            </div>
+          ) : !isCorrectNetwork ? (
+            <div className="text-center text-muted-foreground text-lg py-12">
+              Please switch to a supported network to mint.
             </div>
           ) : (
             <form className="space-y-8" onSubmit={e => { e.preventDefault(); handleMint(); }}>
@@ -297,7 +305,7 @@ const MintForm = () => {
               {/* Mint Button */}
               <Button
                 onClick={handleMint}
-                disabled={isLoading || !form.definition.trim()}
+                disabled={isLoading || !form.definition.trim() || !isCorrectNetwork}
                 className="w-full text-lg font-semibold py-6 rounded-lg shadow-md bg-primary text-primary-foreground hover:bg-primary/90 transition"
                 size="lg"
               >

@@ -13,7 +13,7 @@ const Header = ({ children }: HeaderProps) => {
   };
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur border-b border-gray-200 dark:border-gray-800 shadow-md rounded-b-xl">
+    <header className="sticky top-0 z-30 w-full bg-[#0E0E0E] dark:bg-[#0E0E0E] border-b border-border">
       <nav className="container flex items-center justify-between py-4">
         <div className="flex items-center space-x-6">
           <span className="text-2xl font-bold tracking-tight text-blue-600">DeedNFT Protocol</span>

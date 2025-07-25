@@ -1,6 +1,6 @@
 import { createAppKit } from '@reown/appkit/react';
 import { WagmiProvider } from 'wagmi';
-import { mainnet, arbitrum, base, sepolia, arbitrumSepolia, baseSepolia, polygon, optimism, avalanche, bsc } from '@reown/appkit/networks';
+import { mainnet, base, sepolia, baseSepolia } from '@reown/appkit/networks';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
 import React from 'react';
@@ -8,23 +8,24 @@ import React from 'react';
 const queryClient = new QueryClient();
 const projectId = '2a15f8a7329ae7eae3e6bbadc527457f';
 const metadata = {
-  name: 'DeedNFT Protocol',
-  description: 'DeedNFT Protocol App',
+  name: 'The Deed Protocol by Deed3Labs',
+  description: 'Tokenize your real estate, vehicles, and more.',
   url: 'http://localhost:5173',
   icons: ['https://avatars.githubusercontent.com/u/179229932']
 };
 
-const evmNetworks = [mainnet, arbitrum, base, sepolia, arbitrumSepolia, baseSepolia, polygon, optimism, avalanche, bsc];
+// Only include supported networks
+const supportedNetworks = [mainnet, base, sepolia, baseSepolia];
 
 const wagmiAdapter = new WagmiAdapter({
-  networks: evmNetworks,
+  networks: supportedNetworks,
   projectId,
   ssr: true
 });
 
 createAppKit({
   adapters: [wagmiAdapter],
-  networks: evmNetworks as [typeof mainnet, ...typeof evmNetworks],
+  networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
   projectId,
   metadata,
   features: {
