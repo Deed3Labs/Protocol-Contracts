@@ -1,5 +1,3 @@
-import { mainnet, base, sepolia, baseSepolia } from '@reown/appkit/networks';
-
 export interface NetworkConfig {
   id: number;
   name: string;
