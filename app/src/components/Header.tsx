@@ -1,7 +1,5 @@
-import React from "react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 
 interface HeaderProps {
   children?: ReactNode;
