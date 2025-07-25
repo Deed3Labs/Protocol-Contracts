@@ -3,8 +3,8 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Home from "@/components/Home";
 import MintForm from "@/components/MintForm";
-import PageOne from "@/components/PageOne";
-import PageTwo from "@/components/PageTwo";
+import Explore from "@/components/Explore";
+import Dashboard from "@/components/Dashboard";
 import { ThemeToggle } from "./components/ThemeToggle";
 
 function App() {
@@ -20,8 +20,8 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/mint" element={<MintForm />} />
-            <Route path="/page-one" element={<PageOne />} />
-            <Route path="/page-two" element={<PageTwo />} />
+            <Route path="/explore" element={<Explore />} />
+            <Route path="/dashboard" element={<Dashboard />} />
           </Routes>
         </main>
         <Footer />

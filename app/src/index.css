@@ -29,7 +29,7 @@
   --card-foreground: 15 23 42;
   --popover: 255 255 255;
   --popover-foreground: 15 23 42;
-  --primary: 37 99 235;
+  --primary: 75 85 99;
   --primary-foreground: 255 255 255;
   --secondary: 241 245 249;
   --secondary-foreground: 15 23 42;
@@ -41,7 +41,7 @@
   --destructive-foreground: 255 255 255;
   --border: 226 232 240;
   --input: 226 232 240;
-  --ring: 37 99 235;
+  --ring: 75 85 99;
 }
 
 .dark {
@@ -56,7 +56,7 @@
   --card-foreground: 248 250 252;
   --popover: 30 41 59;
   --popover-foreground: 248 250 252;
-  --primary: 59 130 246;
+  --primary: 156 163 175;
   --primary-foreground: 15 23 42;
   --secondary: 51 65 85;
   --secondary-foreground: 248 250 252;
@@ -68,7 +68,7 @@
   --destructive-foreground: 248 250 252;
   --border: 51 65 85;
   --input: 51 65 85;
-  --ring: 59 130 246;
+  --ring: 156 163 175;
 }
 
 html {
@@ -159,7 +159,7 @@ body {
   
   /* Focus styles */
   *:focus-visible {
-    @apply outline-none ring-2 ring-blue-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-950;
+    @apply outline-none ring-2 ring-gray-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-950;
   }
 }
 
