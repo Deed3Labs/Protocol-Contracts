@@ -39,10 +39,18 @@
     "@limitbreak/creator-token-standards": "^4.0.1",
     "@openzeppelin/contracts": "^4.9.3",
     "@openzeppelin/contracts-upgradeable": "^4.9.3",
+    "@reown/appkit": "^1.7.16",
+    "@reown/appkit-adapter-wagmi": "^1.7.16",
+    "@tailwindcss/forms": "^0.5.10",
+    "@tailwindcss/typography": "^0.5.16",
+    "@tanstack/react-query": "^5.83.0",
     "debug": "^4.4.0",
     "qs": "^6.14.0",
     "side-channel-weakmap": "^1.0.2",
-    "solady": "^0.1.16"
+    "solady": "^0.1.16",
+    "tailwindcss-animate": "^1.0.7",
+    "viem": "^2.33.0",
+    "wagmi": "^2.16.0"
   },
   "devDependencies": {
     "@ethersproject/bignumber": "^5.8.0",

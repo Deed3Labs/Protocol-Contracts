@@ -10,16 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import { useAccount } from 'wagmi';
 import DeedNFTJson from "@/contracts/DeedNFT.json";
-
-// Extend Window interface for ethereum
-declare global {
-  interface Window {
-    ethereum?: {
-      request: (args: { method: string; params?: any[] }) => Promise<any>;
-    };
-  }
-}
+import type { Eip1193Provider } from 'ethers';
 
 const DEEDNFT_ADDRESS = DeedNFTJson.address;
 const DEEDNFT_ABI = DeedNFTJson.abi;
@@ -32,12 +25,12 @@ const assetTypes = [
 ];
 
 const MintForm = () => {
-  const [wallet, setWallet] = useState<string | null>(null);
+  const { address, isConnected } = useAccount();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  
+
   // Form state
   const [form, setForm] = useState({
     owner: "",
@@ -49,28 +42,19 @@ const MintForm = () => {
     token: "",
     salt: ""
   });
-  
+
   // Optional fields
   const [useCustomValidator, setUseCustomValidator] = useState(false);
   const [usePaymentToken, setUsePaymentToken] = useState(false);
   const [useCustomSalt, setUseCustomSalt] = useState(false);
   const [useMetadataURI, setUseMetadataURI] = useState(false);
 
-  // Wallet connection
-  const connectWallet = async () => {
-    if (window.ethereum) {
-      try {
-        const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-        setWallet(accounts[0]);
-        setForm((f) => ({ ...f, owner: accounts[0] }));
-        setError(null);
-      } catch (err) {
-        setError("Wallet connection failed");
-      }
-    } else {
-      setError("MetaMask not detected");
+  // Autofill owner when address changes
+  React.useEffect(() => {
+    if (address) {
+      setForm((f) => ({ ...f, owner: address }));
     }
-  };
+  }, [address]);
 
   // Handle form input
   const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -89,13 +73,13 @@ const MintForm = () => {
     setError(null);
     setTxHash(null);
     setSuccess(false);
-    
+
     try {
       if (!window.ethereum) throw new Error("No wallet detected");
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(DEEDNFT_ADDRESS, DEEDNFT_ABI, signer);
-      
+
       const tx = await contract.mintAsset(
         form.owner,
         parseInt(form.assetType),
@@ -106,11 +90,11 @@ const MintForm = () => {
         usePaymentToken ? form.token : ethers.ZeroAddress,
         useCustomSalt ? ethers.toBigInt(form.salt) : 0n
       );
-      
+
       const receipt = await tx.wait();
       setTxHash(receipt.hash);
       setSuccess(true);
-      
+
       // Reset form
       setForm({
         owner: form.owner, // Keep owner
@@ -126,7 +110,7 @@ const MintForm = () => {
       setUsePaymentToken(false);
       setUseCustomSalt(false);
       setUseMetadataURI(false);
-      
+
     } catch (err: any) {
       setError(err.message || "Minting failed");
     } finally {
@@ -136,38 +120,34 @@ const MintForm = () => {
 
   return (
     <main className="container mx-auto py-12 px-4">
-      <Card className="max-w-4xl mx-auto">
-        <CardHeader>
+      <Card className="max-w-2xl mx-auto shadow-xl border border-border bg-card/90 animate-fade-in">
+        <CardHeader className="pb-2">
           <CardTitle className="text-3xl font-bold text-center">Mint Your DeedNFT</CardTitle>
-          <CardDescription className="text-center text-lg">
+          <CardDescription className="text-center text-lg text-muted-foreground">
             Create a new DeedNFT with customizable metadata and validation options.
           </CardDescription>
         </CardHeader>
-        
-        <CardContent className="space-y-6">
+        <Separator />
+        <CardContent className="space-y-8 py-8">
           {/* Wallet Connection */}
-          {!wallet ? (
-            <div className="text-center">
-              <Button onClick={connectWallet} size="lg" className="px-8">
-                Connect Wallet
-              </Button>
+          {!isConnected ? (
+            <div className="text-center text-muted-foreground text-lg py-12">
+              Please connect your wallet using the button in the header to mint.
             </div>
           ) : (
-            <>
+            <form className="space-y-8" onSubmit={e => { e.preventDefault(); handleMint(); }}>
               {/* Owner Address */}
               <div className="space-y-2">
                 <Label htmlFor="owner">Owner Address</Label>
-                <Input 
+                <Input
                   id="owner"
-                  name="owner" 
-                  value={form.owner} 
-                  onChange={handleChange} 
-                  disabled 
-                  className="font-mono"
+                  name="owner"
+                  value={form.owner}
+                  onChange={handleChange}
+                  disabled
+                  className="font-mono bg-muted/50"
                 />
               </div>
-
-              <Separator />
 
               {/* Asset Type */}
               <div className="space-y-2">
@@ -200,6 +180,7 @@ const MintForm = () => {
                   placeholder="Describe the asset in detail..."
                   rows={3}
                   required
+                  className="bg-muted/50"
                 />
               </div>
 
@@ -213,6 +194,7 @@ const MintForm = () => {
                   onChange={handleChange}
                   placeholder="Additional configuration details..."
                   rows={2}
+                  className="bg-muted/50"
                 />
               </div>
 
@@ -220,88 +202,93 @@ const MintForm = () => {
 
               {/* Optional Fields */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Optional Settings</h3>
-                
-                {/* Metadata URI */}
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="useMetadataURI"
-                      checked={useMetadataURI}
-                      onCheckedChange={(checked: boolean) => setUseMetadataURI(checked)}
-                    />
-                    <Label htmlFor="useMetadataURI">Add metadata URI</Label>
+                <h3 className="text-lg font-semibold mb-2">Optional Settings</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Metadata URI */}
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="useMetadataURI"
+                        checked={useMetadataURI}
+                        onCheckedChange={(checked: boolean) => setUseMetadataURI(checked)}
+                      />
+                      <Label htmlFor="useMetadataURI">Add metadata URI</Label>
+                    </div>
+                    {useMetadataURI && (
+                      <Input
+                        name="uri"
+                        value={form.uri}
+                        onChange={handleChange}
+                        placeholder="ipfs://... or https://..."
+                        className="bg-muted/50"
+                      />
+                    )}
                   </div>
-                  {useMetadataURI && (
-                    <Input
-                      name="uri"
-                      value={form.uri}
-                      onChange={handleChange}
-                      placeholder="ipfs://... or https://..."
-                    />
-                  )}
-                </div>
 
-                {/* Custom Validator */}
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="useCustomValidator"
-                      checked={useCustomValidator}
-                      onCheckedChange={(checked: boolean) => setUseCustomValidator(checked)}
-                    />
-                    <Label htmlFor="useCustomValidator">Use custom validator</Label>
+                  {/* Custom Validator */}
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="useCustomValidator"
+                        checked={useCustomValidator}
+                        onCheckedChange={(checked: boolean) => setUseCustomValidator(checked)}
+                      />
+                      <Label htmlFor="useCustomValidator">Use custom validator</Label>
+                    </div>
+                    {useCustomValidator && (
+                      <Input
+                        name="validatorAddress"
+                        value={form.validatorAddress}
+                        onChange={handleChange}
+                        placeholder="0x..."
+                        className="bg-muted/50"
+                      />
+                    )}
                   </div>
-                  {useCustomValidator && (
-                    <Input
-                      name="validatorAddress"
-                      value={form.validatorAddress}
-                      onChange={handleChange}
-                      placeholder="0x..."
-                    />
-                  )}
-                </div>
 
-                {/* Payment Token */}
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="usePaymentToken"
-                      checked={usePaymentToken}
-                      onCheckedChange={(checked: boolean) => setUsePaymentToken(checked)}
-                    />
-                    <Label htmlFor="usePaymentToken">Specify payment token</Label>
+                  {/* Payment Token */}
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="usePaymentToken"
+                        checked={usePaymentToken}
+                        onCheckedChange={(checked: boolean) => setUsePaymentToken(checked)}
+                      />
+                      <Label htmlFor="usePaymentToken">Specify payment token</Label>
+                    </div>
+                    {usePaymentToken && (
+                      <Input
+                        name="token"
+                        value={form.token}
+                        onChange={handleChange}
+                        placeholder="0x..."
+                        className="bg-muted/50"
+                      />
+                    )}
                   </div>
-                  {usePaymentToken && (
-                    <Input
-                      name="token"
-                      value={form.token}
-                      onChange={handleChange}
-                      placeholder="0x..."
-                    />
-                  )}
-                </div>
 
-                {/* Custom Salt */}
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="useCustomSalt"
-                      checked={useCustomSalt}
-                      onCheckedChange={(checked: boolean) => setUseCustomSalt(checked)}
-                    />
-                    <Label htmlFor="useCustomSalt">Use custom salt for token ID</Label>
+                  {/* Custom Salt */}
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="useCustomSalt"
+                        checked={useCustomSalt}
+                        onCheckedChange={(checked: boolean) => setUseCustomSalt(checked)}
+                      />
+                      <Label htmlFor="useCustomSalt">Use custom salt for token ID</Label>
+                    </div>
+                    {useCustomSalt && (
+                      <Input
+                        name="salt"
+                        value={form.salt}
+                        onChange={handleChange}
+                        placeholder="0"
+                        type="number"
+                        min="0"
+                        className="bg-muted/50"
+                      />
+                    )}
                   </div>
-                  {useCustomSalt && (
-                    <Input
-                      name="salt"
-                      value={form.salt}
-                      onChange={handleChange}
-                      placeholder="0"
-                      type="number"
-                      min="0"
-                    />
-                  )}
                 </div>
               </div>
 
@@ -311,7 +298,7 @@ const MintForm = () => {
               <Button
                 onClick={handleMint}
                 disabled={isLoading || !form.definition.trim()}
-                className="w-full"
+                className="w-full text-lg font-semibold py-6 rounded-lg shadow-md bg-primary text-primary-foreground hover:bg-primary/90 transition"
                 size="lg"
               >
                 {isLoading ? 'Minting...' : 'Mint DeedNFT'}
@@ -319,13 +306,13 @@ const MintForm = () => {
 
               {/* Success Message */}
               {success && txHash && (
-                <Alert>
+                <Alert className="mt-6">
                   <AlertDescription className="text-center">
-                    Successfully minted! Transaction:{" "}
-                    <a 
-                      href={`https://sepolia.basescan.org/tx/${txHash}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
+                    Successfully minted! Transaction: {" "}
+                    <a
+                      href={`https://sepolia.basescan.org/tx/${txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="underline font-mono"
                     >
                       {txHash.slice(0, 10)}...{txHash.slice(-8)}
@@ -336,11 +323,11 @@ const MintForm = () => {
 
               {/* Error Message */}
               {error && (
-                <Alert variant="destructive">
+                <Alert variant="destructive" className="mt-6">
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-            </>
+            </form>
           )}
         </CardContent>
       </Card>

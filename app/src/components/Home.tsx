@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 const Home = () => {
   return (
     <div className="w-full flex items-center justify-center px-4">
-      <div className="w-full max-w-4xl bg-white dark:bg-card rounded-2xl shadow-xl p-10 flex flex-col items-center">
+      <div className="w-full max-w-4xl bg-card rounded-2xl shadow-xl p-10 flex flex-col items-center">
         <h1 className="text-4xl font-extrabold mb-6 text-center tracking-tight">
           Welcome to DeedNFT Protocol
         </h1>

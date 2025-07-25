@@ -1,21 +1,21 @@
-import React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
 
 const PageTwo = () => {
   return (
-    <div className="container mx-auto py-12 px-4">
+    <div className="container mx-auto py-12 px-4 animate-fade-in">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-4">Protocol Statistics</h1>
+          <h1 className="text-4xl font-bold mb-4 text-primary">Protocol Statistics</h1>
           <p className="text-xl text-muted-foreground">
             Track the performance and usage metrics of the DeedNFT Protocol
           </p>
         </div>
-
+        <Separator className="mb-8" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Total DeedNFTs Minted</CardTitle>
               <CardDescription>All time statistics</CardDescription>
@@ -28,8 +28,7 @@ const PageTwo = () => {
               <Progress value={75} className="w-full" />
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Active Validators</CardTitle>
               <CardDescription>Currently active validator count</CardDescription>
@@ -42,8 +41,7 @@ const PageTwo = () => {
               <Progress value={60} className="w-full" />
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Total Volume</CardTitle>
               <CardDescription>Transaction volume in ETH</CardDescription>
@@ -56,8 +54,7 @@ const PageTwo = () => {
               <Progress value={85} className="w-full" />
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Average Gas Used</CardTitle>
               <CardDescription>Per transaction average</CardDescription>
@@ -71,9 +68,8 @@ const PageTwo = () => {
             </CardContent>
           </Card>
         </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Asset Type Distribution</CardTitle>
               <CardDescription>Breakdown by asset type</CardDescription>
@@ -84,19 +80,16 @@ const PageTwo = () => {
                 <span className="font-medium">45%</span>
               </div>
               <Progress value={45} className="w-full" />
-              
               <div className="flex justify-between items-center">
                 <span>Vehicle</span>
                 <span className="font-medium">28%</span>
               </div>
               <Progress value={28} className="w-full" />
-              
               <div className="flex justify-between items-center">
                 <span>Estate</span>
                 <span className="font-medium">18%</span>
               </div>
               <Progress value={18} className="w-full" />
-              
               <div className="flex justify-between items-center">
                 <span>Commercial Equipment</span>
                 <span className="font-medium">9%</span>
@@ -104,8 +97,7 @@ const PageTwo = () => {
               <Progress value={9} className="w-full" />
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Recent Activity</CardTitle>
               <CardDescription>Latest protocol events</CardDescription>
@@ -118,7 +110,6 @@ const PageTwo = () => {
                 </div>
                 <div className="text-sm text-muted-foreground">2 min ago</div>
               </div>
-              
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <div>
                   <div className="font-medium">Validator Added</div>
@@ -126,7 +117,6 @@ const PageTwo = () => {
                 </div>
                 <div className="text-sm text-muted-foreground">15 min ago</div>
               </div>
-              
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <div>
                   <div className="font-medium">Metadata Updated</div>
@@ -134,7 +124,6 @@ const PageTwo = () => {
                 </div>
                 <div className="text-sm text-muted-foreground">1 hour ago</div>
               </div>
-              
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <div>
                   <div className="font-medium">Royalty Payment</div>
@@ -145,9 +134,8 @@ const PageTwo = () => {
             </CardContent>
           </Card>
         </div>
-
         <div className="mt-8 text-center">
-          <Card className="max-w-2xl mx-auto">
+          <Card className="max-w-2xl mx-auto shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Export Data</CardTitle>
               <CardDescription>

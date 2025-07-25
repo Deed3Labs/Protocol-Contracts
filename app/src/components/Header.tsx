@@ -1,8 +1,13 @@
 import React from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
-const Header = () => {
+interface HeaderProps {
+  children?: ReactNode;
+}
+
+const Header = ({ children }: HeaderProps) => {
   const location = useLocation();
 
   const isActive = (path: string) => {
@@ -10,7 +15,7 @@ const Header = () => {
   };
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-white/80 dark:bg-background/80 backdrop-blur border-b border-gray-200 dark:border-muted shadow-sm">
+    <header className="sticky top-0 z-30 w-full bg-card/80 dark:bg-background/80 backdrop-blur border-b border-border shadow-sm">
       <nav className="max-w-4xl mx-auto flex items-center justify-between px-6 py-4">
         <div className="flex items-center space-x-6">
           <span className="text-xl font-bold tracking-tight text-primary">DeedNFT Protocol</span>
@@ -54,6 +59,11 @@ const Header = () => {
           >
             Page Two
           </Link>
+        </div>
+        {/* Wallet Connect/Disconnect Button and Theme Toggle */}
+        <div className="flex items-center space-x-2">
+          <appkit-button />
+          {children}
         </div>
       </nav>
     </header>

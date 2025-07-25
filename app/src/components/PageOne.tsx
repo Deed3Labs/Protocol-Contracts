@@ -1,21 +1,21 @@
-import React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
 const PageOne = () => {
   return (
-    <div className="container mx-auto py-12 px-4">
+    <div className="container mx-auto py-12 px-4 animate-fade-in">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-4">Protocol Features</h1>
+          <h1 className="text-4xl font-bold mb-4 text-primary">Protocol Features</h1>
           <p className="text-xl text-muted-foreground">
             Explore the advanced features and capabilities of the DeedNFT Protocol
           </p>
         </div>
-
+        <Separator className="mb-8" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Badge variant="secondary">New</Badge>
@@ -35,8 +35,7 @@ const PageOne = () => {
               </Button>
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Metadata Management</CardTitle>
               <CardDescription>
@@ -52,8 +51,7 @@ const PageOne = () => {
               </Button>
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Royalty Enforcement</CardTitle>
               <CardDescription>
@@ -69,8 +67,7 @@ const PageOne = () => {
               </Button>
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Validator Network</CardTitle>
               <CardDescription>
@@ -86,8 +83,7 @@ const PageOne = () => {
               </Button>
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Fund Management</CardTitle>
               <CardDescription>
@@ -103,8 +99,7 @@ const PageOne = () => {
               </Button>
             </CardContent>
           </Card>
-
-          <Card>
+          <Card className="shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Analytics Dashboard</CardTitle>
               <CardDescription>
@@ -121,9 +116,8 @@ const PageOne = () => {
             </CardContent>
           </Card>
         </div>
-
         <div className="mt-12 text-center">
-          <Card className="max-w-2xl mx-auto">
+          <Card className="max-w-2xl mx-auto shadow-md border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Coming Soon</CardTitle>
               <CardDescription>
