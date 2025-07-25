@@ -91,20 +91,43 @@ body {
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 0px;
+  height: 0px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgb(var(--muted));
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--border));
-  border-radius: 3px;
+  background: transparent;
+  border-radius: 0px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--ring));
+  background: transparent;
+}
+
+/* Hide scrollbars for Firefox */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Ensure scrolling still works */
+html, body {
+  overflow-x: hidden;
+}
+
+/* Allow scrolling in containers */
+.overflow-y-auto, .overflow-y-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.overflow-y-auto::-webkit-scrollbar, .overflow-y-scroll::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
 }
 
 @theme inline {

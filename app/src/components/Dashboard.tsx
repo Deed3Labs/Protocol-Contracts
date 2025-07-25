@@ -5,6 +5,9 @@ import { Progress } from "@/components/ui/progress";
 import { BarChart3, Wallet, FileText, Settings, TrendingUp, Activity, RefreshCw } from "lucide-react";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { Link } from "react-router-dom";
+import DeedNFTViewer from "./DeedNFTViewer";
+import type { DeedNFT } from "@/hooks/useDeedNFTData";
+import { useState } from "react";
 
 const Dashboard = () => {
   const {
@@ -18,6 +21,16 @@ const Dashboard = () => {
     isConnected,
     isCorrectNetwork
   } = useDeedNFTData();
+
+  const [selectedDeedNFT, setSelectedDeedNFT] = useState<DeedNFT | null>(null);
+
+  const handleViewDeedNFT = (deedNFT: DeedNFT) => {
+    setSelectedDeedNFT(deedNFT);
+  };
+
+  const handleCloseDeedNFTViewer = () => {
+    setSelectedDeedNFT(null);
+  };
 
   return (
     <main className="container mx-auto py-12 px-4">
@@ -218,7 +231,7 @@ const Dashboard = () => {
                       />
                     </div>
                     <div className="flex space-x-2">
-                      <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]">
+                      <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]" onClick={() => handleViewDeedNFT(deedNFT)}>
                         View
                       </Button>
                       <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]">
@@ -283,6 +296,17 @@ const Dashboard = () => {
           </Card>
         </div>
       </div>
+
+      {/* DeedNFT Viewer Modal */}
+      {selectedDeedNFT && (
+        <DeedNFTViewer 
+          deedNFT={selectedDeedNFT} 
+          isOpen={!!selectedDeedNFT}
+          onClose={handleCloseDeedNFTViewer}
+          getAssetTypeLabel={getAssetTypeLabel}
+          getValidationStatus={getValidationStatus}
+        />
+      )}
     </main>
   );
 };

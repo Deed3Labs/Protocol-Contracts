@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Search, Eye, RefreshCw } from "lucide-react";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { useState } from "react";
+import DeedNFTViewer from "./DeedNFTViewer";
+import type { DeedNFT } from "@/hooks/useDeedNFTData";
 
 const Explore = () => {
   const {
@@ -21,6 +23,7 @@ const Explore = () => {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
+  const [selectedDeedNFT, setSelectedDeedNFT] = useState<DeedNFT | null>(null);
 
   const filteredDeedNFTs = deedNFTs.filter(deedNFT => {
     const matchesSearch = deedNFT.definition.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -37,6 +40,10 @@ const Explore = () => {
 
     return matchesSearch && matchesFilter;
   });
+
+  const handleViewDetails = (deedNFT: DeedNFT) => {
+    setSelectedDeedNFT(deedNFT);
+  };
 
   return (
     <main className="container mx-auto py-12 px-4">
@@ -203,7 +210,7 @@ const Explore = () => {
                       </div>
                     )}
                   </div>
-                  <Button variant="outline" className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]">
+                  <Button variant="outline" className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]" onClick={() => handleViewDetails(deedNFT)}>
                     <Eye className="w-4 h-4 mr-2" />
                     View Details
                   </Button>
@@ -221,6 +228,17 @@ const Explore = () => {
             Showing {filteredDeedNFTs.length} of {deedNFTs.length} DeedNFTs
           </p>
         </div>
+      )}
+
+      {/* DeedNFT Viewer Modal */}
+      {selectedDeedNFT && (
+        <DeedNFTViewer 
+          deedNFT={selectedDeedNFT} 
+          isOpen={!!selectedDeedNFT}
+          onClose={() => setSelectedDeedNFT(null)}
+          getAssetTypeLabel={getAssetTypeLabel}
+          getValidationStatus={getValidationStatus}
+        />
       )}
     </main>
   );
