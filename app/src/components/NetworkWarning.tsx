@@ -1,9 +1,10 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Construction } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useNetworkValidation } from '@/hooks/useNetworkValidation';
+import { isNetworkSupported, isDeedNFTDeployed } from '@/config/networks';
 
 export function NetworkWarning() {
   const {
@@ -45,15 +46,37 @@ export function NetworkWarning() {
     );
   }
 
+  // Check if network is supported but contracts are not deployed
+  const isSupportedButNotDeployed = isNetworkSupported(chainId) && !isDeedNFTDeployed(chainId);
+
   return (
-    <Card className="mb-4 border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950">
+    <Card className={`mb-4 ${
+      isSupportedButNotDeployed 
+        ? 'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950'
+        : 'border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950'
+    }`}>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-orange-800 dark:text-orange-200">
-          <AlertTriangle className="h-5 w-5" />
-          Wrong Network
+        <CardTitle className={`flex items-center gap-2 ${
+          isSupportedButNotDeployed
+            ? 'text-yellow-800 dark:text-yellow-200'
+            : 'text-orange-800 dark:text-orange-200'
+        }`}>
+          {isSupportedButNotDeployed ? (
+            <Construction className="h-5 w-5" />
+          ) : (
+            <AlertTriangle className="h-5 w-5" />
+          )}
+          {isSupportedButNotDeployed ? 'Contracts Not Deployed' : 'Wrong Network'}
         </CardTitle>
-        <CardDescription className="text-orange-700 dark:text-orange-300">
-          You are connected to {getNetworkDisplayName(chainId)}, but this app only supports the following networks:
+        <CardDescription className={
+          isSupportedButNotDeployed
+            ? 'text-yellow-700 dark:text-yellow-300'
+            : 'text-orange-700 dark:text-orange-300'
+        }>
+          {isSupportedButNotDeployed 
+            ? `You are connected to ${getNetworkDisplayName(chainId)}, but the DeedNFT contracts are not deployed yet. Please switch to a network with deployed contracts:`
+            : `You are connected to ${getNetworkDisplayName(chainId)}, but this app only supports the following networks:`
+          }
         </CardDescription>
       </CardHeader>
       <CardContent>
