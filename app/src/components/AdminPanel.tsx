@@ -806,7 +806,7 @@ const AdminPanel = () => {
               <div className="flex flex-col md:flex-row gap-4 w-full">
                 {/* Contract Selector */}
                 <div className="w-full md:w-1/4 space-y-2">
-                  <Label>Contract</Label>
+                  <Label className="text-sm font-medium">Contract</Label>
                   <Select
                     value={roleForm.selectedContract}
                     onValueChange={(value) => setRoleForm((prev: RoleFormState) => ({ ...prev, selectedContract: value, role: contractRoles[value as keyof typeof contractRoles][0].value }))}
@@ -824,7 +824,7 @@ const AdminPanel = () => {
                 </div>
                 {/* Target Address */}
                 <div className="w-full md:w-1/4 space-y-2">
-                  <Label>Target Address</Label>
+                  <Label className="text-sm font-medium">Target Address</Label>
                   <Input
                     placeholder="0x..."
                     value={roleForm.targetAddress}
@@ -834,7 +834,7 @@ const AdminPanel = () => {
                 </div>
                 {/* Role Dropdown */}
                 <div className="w-full md:w-1/4 space-y-2">
-                  <Label>Role</Label>
+                  <Label className="text-sm font-medium">Role</Label>
                   <Select
                     value={roleForm.role}
                     onValueChange={(value) => setRoleForm((prev: RoleFormState) => ({ ...prev, role: value }))}
@@ -851,7 +851,7 @@ const AdminPanel = () => {
                 </div>
                 {/* Action Dropdown */}
                 <div className="w-full md:w-1/4 space-y-2">
-                  <Label>Action</Label>
+                  <Label className="text-sm font-medium">Action</Label>
                   <Select
                     value={roleForm.action}
                     onValueChange={(value) => setRoleForm((prev: RoleFormState) => ({ ...prev, action: value }))}
@@ -1155,7 +1155,7 @@ const AdminPanel = () => {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Validator Address</Label>
+                  <Label className="text-sm font-medium">Validator Address</Label>
                   <Input
                     placeholder="0x..."
                     value={validatorRegistryForm.validatorAddress}
@@ -1164,7 +1164,7 @@ const AdminPanel = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Validator Name</Label>
+                  <Label className="text-sm font-medium">Validator Name</Label>
                   <Input
                     placeholder="Validator name"
                     value={validatorRegistryForm.validatorName}
@@ -1173,7 +1173,7 @@ const AdminPanel = () => {
                   />
                 </div>
                 <div className="md:col-span-2 space-y-2">
-                  <Label>Description</Label>
+                  <Label className="text-sm font-medium">Description</Label>
                   <Textarea
                     placeholder="Validator description"
                     value={validatorRegistryForm.validatorDescription}
@@ -1182,7 +1182,7 @@ const AdminPanel = () => {
                   />
                 </div>
                 <div className="md:col-span-2 space-y-2">
-                  <Label>Supported Asset Types (comma-separated)</Label>
+                  <Label className="text-sm font-medium">Supported Asset Types (comma-separated)</Label>
                   <Input
                     placeholder="0,1,2,3"
                     value={validatorRegistryForm.supportedAssetTypes}
