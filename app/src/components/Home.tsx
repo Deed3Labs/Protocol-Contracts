@@ -7,10 +7,10 @@ const Home = () => {
     <main className="container mx-auto py-16 px-4">
       <div className="text-center mb-16">
         <h1 className="text-5xl font-bold tracking-tight text-gray-900 dark:text-white mb-6">
-          Welcome to DeedNFT Protocol
+          Do more than just <br /> "NFTing" your Property
         </h1>
         <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed">
-          A modern platform for digital asset management and deed tokenization on Base Sepolia.
+          A Modern Platform for Deed Tokenization, Validation, and Management.
         </p>
       </div>
 
@@ -18,10 +18,10 @@ const Home = () => {
         <Card className="group hover:border-black/20 dark:hover:border-white/20 transition-all duration-300 border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/90 backdrop-blur-sm">
           <CardHeader className="pb-4">
             <CardTitle className="text-2xl font-semibold text-gray-900 dark:text-white">
-              Mint DeedNFT
+              Mint T-Deed
             </CardTitle>
             <CardDescription className="text-gray-600 dark:text-gray-300">
-              Create and mint your digital deeds with customizable metadata and validation options.
+              Create and mint your digital trust deed with customizable metadata and on-chain validation.
             </CardDescription>
           </CardHeader>
           <CardContent>
