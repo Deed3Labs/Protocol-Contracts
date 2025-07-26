@@ -238,15 +238,15 @@ const MintForm = () => {
       case 1:
         return (
           <div className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="owner" className="text-gray-700 dark:text-gray-200 font-medium">Owner Address</Label>
+            <div className="space-y-3">
+              <Label htmlFor="owner" className="text-gray-700 dark:text-gray-200 font-medium text-sm">Owner Address</Label>
               <Input
                 id="owner"
                 name="owner"
                 value={form.owner}
                 onChange={handleInputChange}
                 placeholder="0x..."
-                className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white font-mono"
+                className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white font-mono h-11"
               />
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -271,18 +271,27 @@ const MintForm = () => {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="assetType" className="text-gray-700 dark:text-gray-200 font-medium">Asset Type</Label>
+            <div className="space-y-3">
+              <Label htmlFor="assetType" className="text-gray-700 dark:text-gray-200 font-medium text-sm">Asset Type</Label>
               <Select value={form.assetType} onValueChange={handleSelectChange}>
-                <SelectTrigger className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
-                  <SelectValue placeholder="Select asset type" />
+                <SelectTrigger className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11">
+                  <SelectValue placeholder="Select asset type">
+                    {form.assetType && (
+                      <div className="flex items-center justify-between w-full">
+                        <span className="font-medium">{assetTypes.find(t => t.value === form.assetType)?.label}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                          {assetTypes.find(t => t.value === form.assetType)?.description}
+                        </span>
+                      </div>
+                    )}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-[#141414] border-black/10 dark:border-white/10">
                   {assetTypes.map((type) => (
-                    <SelectItem key={type.value} value={type.value} className="text-gray-900 dark:text-white">
-                      <div>
-                        <div className="font-medium">{type.label}</div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400">{type.description}</div>
+                    <SelectItem key={type.value} value={type.value} className="text-gray-900 dark:text-white py-3">
+                      <div className="flex items-center justify-between w-full">
+                        <div className="font-medium text-sm">{type.label}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 ml-2">{type.description}</div>
                       </div>
                     </SelectItem>
                   ))}
@@ -290,8 +299,8 @@ const MintForm = () => {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="definition" className="text-gray-700 dark:text-gray-200 font-medium">Definition *</Label>
+            <div className="space-y-3">
+              <Label htmlFor="definition" className="text-gray-700 dark:text-gray-200 font-medium text-sm">Definition *</Label>
               <Textarea
                 id="definition"
                 name="definition"
@@ -299,7 +308,7 @@ const MintForm = () => {
                 onChange={handleInputChange}
                 placeholder="Describe the asset in detail..."
                 rows={4}
-                className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white"
+                className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white min-h-[120px]"
                 required
               />
               <p className="text-sm text-gray-500 dark:text-gray-400">Required field for minting</p>
@@ -311,30 +320,33 @@ const MintForm = () => {
         return (
           <div className="space-y-6">
             <div className="space-y-4">
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 <Checkbox
                   id="useMetadataURI"
                   checked={form.useMetadataURI}
                   onCheckedChange={(checked) => handleCheckboxChange("useMetadataURI", checked)}
                   className="border-black/10 dark:border-white/10"
                 />
-                <Label htmlFor="useMetadataURI" className="text-gray-700 dark:text-gray-200 font-medium">
+                <Label htmlFor="useMetadataURI" className="text-gray-700 dark:text-gray-200 font-medium text-sm">
                   Add metadata URI
                 </Label>
               </div>
               {form.useMetadataURI && (
-                <Input
-                  name="uri"
-                  value={form.uri}
-                  onChange={handleInputChange}
-                  placeholder="ipfs://... or https://..."
-                  className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white"
-                />
+                <div className="space-y-3">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Metadata URI</Label>
+                  <Input
+                    name="uri"
+                    value={form.uri}
+                    onChange={handleInputChange}
+                    placeholder="ipfs://... or https://..."
+                    className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11"
+                  />
+                </div>
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="configuration" className="text-gray-700 dark:text-gray-200 font-medium">Configuration</Label>
+            <div className="space-y-3">
+              <Label htmlFor="configuration" className="text-gray-700 dark:text-gray-200 font-medium text-sm">Configuration</Label>
               <Textarea
                 id="configuration"
                 name="configuration"
@@ -342,55 +354,61 @@ const MintForm = () => {
                 onChange={handleInputChange}
                 placeholder="Additional configuration details..."
                 rows={3}
-                className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white"
+                className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white min-h-[100px]"
               />
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 <Checkbox
                   id="useCustomValidator"
                   checked={form.useCustomValidator}
                   onCheckedChange={(checked) => handleCheckboxChange("useCustomValidator", checked)}
                   className="border-black/10 dark:border-white/10"
                 />
-                <Label htmlFor="useCustomValidator" className="text-gray-700 dark:text-gray-200 font-medium">
+                <Label htmlFor="useCustomValidator" className="text-gray-700 dark:text-gray-200 font-medium text-sm">
                   Use custom validator
                 </Label>
               </div>
               {form.useCustomValidator && (
-                <Input
-                  name="validatorAddress"
-                  value={form.validatorAddress}
-                  onChange={handleInputChange}
-                  placeholder="0x..."
-                  className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white"
-                />
+                <div className="space-y-3">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Validator Address</Label>
+                  <Input
+                    name="validatorAddress"
+                    value={form.validatorAddress}
+                    onChange={handleInputChange}
+                    placeholder="0x..."
+                    className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11"
+                  />
+                </div>
               )}
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 <Checkbox
                   id="useCustomSalt"
                   checked={form.useCustomSalt}
                   onCheckedChange={(checked) => handleCheckboxChange("useCustomSalt", checked)}
                   className="border-black/10 dark:border-white/10"
                 />
-                <Label htmlFor="useCustomSalt" className="text-gray-700 dark:text-gray-200 font-medium">
+                <Label htmlFor="useCustomSalt" className="text-gray-700 dark:text-gray-200 font-medium text-sm">
                   Use custom salt for token ID
                 </Label>
               </div>
               {form.useCustomSalt && (
-                <Input
-                  name="salt"
-                  value={form.salt}
-                  onChange={handleInputChange}
-                  placeholder="0"
-                  type="number"
-                  min="0"
-                  className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white"
-                />
+                <div className="space-y-3">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Custom Salt</Label>
+                  <Input
+                    name="salt"
+                    value={form.salt}
+                    onChange={handleInputChange}
+                    placeholder="0"
+                    type="number"
+                    min="0"
+                    className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11"
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -400,25 +418,28 @@ const MintForm = () => {
         return (
           <div className="space-y-6">
             <div className="space-y-4">
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 <Checkbox
                   id="usePaymentToken"
                   checked={form.usePaymentToken}
                   onCheckedChange={(checked) => handleCheckboxChange("usePaymentToken", checked)}
                   className="border-black/10 dark:border-white/10"
                 />
-                <Label htmlFor="usePaymentToken" className="text-gray-700 dark:text-gray-200 font-medium">
+                <Label htmlFor="usePaymentToken" className="text-gray-700 dark:text-gray-200 font-medium text-sm">
                   Specify payment token (FundManager integration)
                 </Label>
               </div>
               {form.usePaymentToken && (
-                <Input
-                  name="token"
-                  value={form.token}
-                  onChange={handleInputChange}
-                  placeholder="0x..."
-                  className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white"
-                />
+                <div className="space-y-3">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Payment Token Address</Label>
+                  <Input
+                    name="token"
+                    value={form.token}
+                    onChange={handleInputChange}
+                    placeholder="0x..."
+                    className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11"
+                  />
+                </div>
               )}
             </div>
 

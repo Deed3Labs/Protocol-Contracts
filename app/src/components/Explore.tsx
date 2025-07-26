@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Eye, RefreshCw } from "lucide-react";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { useState } from "react";
@@ -97,40 +98,50 @@ const Explore = () => {
       )}
 
       {/* Search and Filter Bar */}
-      <div className="max-w-4xl mx-auto mb-8">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 relative">
+      <div className="w-full mb-8">
+        <div className="flex flex-col lg:flex-row gap-3">
+          {/* Search Input - Takes up 2/3 of the space */}
+          <div className="flex-1 lg:flex-[2] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
               placeholder="Search DeedNFTs..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-[#141414] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-3 border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-[#141414] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent h-11"
             />
           </div>
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="px-4 py-3 border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-[#141414] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent"
-          >
-            <option value="all">All Types</option>
-            <option value="validated">Validated</option>
-            <option value="pending">Pending</option>
-            <option value="land">Land</option>
-            <option value="vehicle">Vehicle</option>
-            <option value="estate">Estate</option>
-            <option value="equipment">Equipment</option>
-          </select>
-          <Button 
-            onClick={fetchDeedNFTs}
-            disabled={loading}
-            variant="outline" 
-            className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          
+          {/* Filter Dropdown - Takes up remaining space */}
+          <div className="w-full lg:w-32">
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="w-full border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="validated">Validated</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="land">Land</SelectItem>
+                <SelectItem value="vehicle">Vehicle</SelectItem>
+                <SelectItem value="estate">Estate</SelectItem>
+                <SelectItem value="equipment">Equipment</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Refresh Button - Fixed width */}
+          <div className="w-full lg:w-32">
+            <Button 
+              onClick={fetchDeedNFTs}
+              disabled={loading}
+              variant="outline" 
+              className="w-full h-11 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
       </div>
 

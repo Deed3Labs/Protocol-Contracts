@@ -872,23 +872,25 @@ const Validation: React.FC<ValidationPageProps> = () => {
       {/* Filters */}
       <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm mb-8">
         <CardContent className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <Label htmlFor="search">Search</Label>
+          <div className="flex flex-col lg:flex-row gap-3">
+            {/* Search - Takes up 2/3 of the space */}
+            <div className="flex-1 lg:flex-[2] space-y-2">
+              <Label htmlFor="search" className="text-sm font-medium">Search</Label>
               <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   id="search"
                   placeholder="Search by token ID or definition..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 border-black/10 dark:border-white/10"
+                  className="pl-10 border-black/10 dark:border-white/10 h-11"
                 />
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="status">Status</Label>
+            {/* Status Filter - Equal width with others */}
+            <div className="w-full lg:w-32 space-y-2">
+              <Label htmlFor="status" className="text-sm font-medium">Status</Label>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="border-black/10 dark:border-white/10">
                   <SelectValue placeholder="Filter by status" />
@@ -901,10 +903,11 @@ const Validation: React.FC<ValidationPageProps> = () => {
               </Select>
             </div>
 
-            <div>
-              <Label htmlFor="assetType">Asset Type</Label>
+            {/* Asset Type Filter - Equal width with others */}
+            <div className="w-full lg:w-32 space-y-2">
+              <Label htmlFor="assetType" className="text-sm font-medium">Asset Type</Label>
               <Select value={filterAssetType} onValueChange={setFilterAssetType}>
-                <SelectTrigger className="border-black/10 dark:border-white/10">
+                <SelectTrigger className="border-black/10 dark:border-white/10 h-11">
                   <SelectValue placeholder="Filter by asset type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -917,7 +920,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
               </Select>
             </div>
 
-            <div className="flex items-end">
+            {/* Clear Filters Button - Equal width with others */}
+            <div className="w-full lg:w-32 space-y-2">
+              <Label className="text-sm font-medium opacity-0">Action</Label>
               <Button 
                 onClick={() => {
                   setSearchTerm("");
@@ -925,7 +930,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                   setFilterAssetType("all");
                 }}
                 variant="outline"
-                className="w-full border-black/10 dark:border-white/10"
+                className="w-full border-black/10 dark:border-white/10 h-11"
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Clear Filters
@@ -1052,38 +1057,38 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <CardTitle className="text-gray-900 dark:text-white">Add Trait to DeedNFT</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="tokenId">Token ID</Label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-3">
+                  <Label htmlFor="tokenId" className="text-sm font-medium">Token ID</Label>
                   <Input
                     id="tokenId"
                     placeholder="Enter token ID (e.g., 1, 2, 3...)"
                     value={traitForm.tokenId}
                     onChange={(e) => setTraitForm(prev => ({ ...prev, tokenId: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
                 
-                <div>
-                  <Label htmlFor="traitName">Trait Name</Label>
+                <div className="space-y-3">
+                  <Label htmlFor="traitName" className="text-sm font-medium">Trait Name</Label>
                   <Input
                     id="traitName"
                     placeholder="e.g., color, size, year"
                     value={traitForm.traitName}
                     onChange={(e) => setTraitForm(prev => ({ ...prev, traitName: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="valueType">Value Type</Label>
+                <div className="space-y-3">
+                  <Label htmlFor="valueType" className="text-sm font-medium">Value Type</Label>
                   <Select 
                     value={traitForm.valueType} 
                     onValueChange={(value: "string" | "number" | "boolean") => 
                       setTraitForm(prev => ({ ...prev, valueType: value }))
                     }
                   >
-                    <SelectTrigger className="border-black/10 dark:border-white/10">
+                    <SelectTrigger className="border-black/10 dark:border-white/10 h-11">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1095,21 +1100,21 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 </div>
               </div>
 
-              <div>
-                <Label htmlFor="traitValue">Trait Value</Label>
+              <div className="space-y-3">
+                <Label htmlFor="traitValue" className="text-sm font-medium">Trait Value</Label>
                 <Input
                   id="traitValue"
                   placeholder="Enter trait value"
                   value={traitForm.traitValue}
                   onChange={(e) => setTraitForm(prev => ({ ...prev, traitValue: e.target.value }))}
-                  className="border-black/10 dark:border-white/10"
+                  className="border-black/10 dark:border-white/10 h-11"
                 />
               </div>
 
               <Button 
                 onClick={() => handleAddTrait(traitForm.tokenId)}
                 disabled={isLoading || !traitForm.tokenId || !traitForm.traitName || !traitForm.traitValue}
-                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white"
+                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Trait
@@ -1129,26 +1134,26 @@ const Validation: React.FC<ValidationPageProps> = () => {
                   Set custom metadata for a DeedNFT
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="metadataTokenId">Token ID</Label>
+              <CardContent className="space-y-6">
+                <div className="space-y-3">
+                  <Label htmlFor="metadataTokenId" className="text-sm font-medium">Token ID</Label>
                   <Input
                     id="metadataTokenId"
                     placeholder="Enter token ID"
                     value={customMetadataForm.tokenId}
                     onChange={(e) => setCustomMetadataForm(prev => ({ ...prev, tokenId: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="customMetadata">Custom Metadata (JSON)</Label>
+                <div className="space-y-3">
+                  <Label htmlFor="customMetadata" className="text-sm font-medium">Custom Metadata (JSON)</Label>
                   <Textarea
                     id="customMetadata"
                     placeholder="Enter custom metadata as JSON..."
                     value={customMetadataForm.customMetadata}
                     onChange={(e) => setCustomMetadataForm(prev => ({ ...prev, customMetadata: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 min-h-[120px]"
                     rows={4}
                   />
                 </div>
@@ -1156,7 +1161,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetCustomMetadata}
                   disabled={isLoading || !customMetadataForm.tokenId || !customMetadataForm.customMetadata}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
                 >
                   <Save className="w-4 h-4 mr-2" />
                   Set Custom Metadata
@@ -1172,33 +1177,33 @@ const Validation: React.FC<ValidationPageProps> = () => {
                   Set animation URL for a DeedNFT
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="animationTokenId">Token ID</Label>
+              <CardContent className="space-y-6">
+                <div className="space-y-3">
+                  <Label htmlFor="animationTokenId" className="text-sm font-medium">Token ID</Label>
                   <Input
                     id="animationTokenId"
                     placeholder="Enter token ID"
                     value={animationURLForm.tokenId}
                     onChange={(e) => setAnimationURLForm(prev => ({ ...prev, tokenId: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="animationURL">Animation URL</Label>
+                <div className="space-y-3">
+                  <Label htmlFor="animationURL" className="text-sm font-medium">Animation URL</Label>
                   <Input
                     id="animationURL"
                     placeholder="https://example.com/animation.mp4"
                     value={animationURLForm.animationURL}
                     onChange={(e) => setAnimationURLForm(prev => ({ ...prev, animationURL: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
                 <Button 
                   onClick={handleSetAnimationURL}
                   disabled={isLoading || !animationURLForm.tokenId || !animationURLForm.animationURL}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
                 >
                   <Save className="w-4 h-4 mr-2" />
                   Set Animation URL
@@ -1214,33 +1219,33 @@ const Validation: React.FC<ValidationPageProps> = () => {
                   Set external link for a DeedNFT
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="externalTokenId">Token ID</Label>
+              <CardContent className="space-y-6">
+                <div className="space-y-3">
+                  <Label htmlFor="externalTokenId" className="text-sm font-medium">Token ID</Label>
                   <Input
                     id="externalTokenId"
                     placeholder="Enter token ID"
                     value={externalLinkForm.tokenId}
                     onChange={(e) => setExternalLinkForm(prev => ({ ...prev, tokenId: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="externalLink">External Link</Label>
+                <div className="space-y-3">
+                  <Label htmlFor="externalLink" className="text-sm font-medium">External Link</Label>
                   <Input
                     id="externalLink"
                     placeholder="https://example.com"
                     value={externalLinkForm.externalLink}
                     onChange={(e) => setExternalLinkForm(prev => ({ ...prev, externalLink: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
                 <Button 
                   onClick={handleSetExternalLink}
                   disabled={isLoading || !externalLinkForm.tokenId || !externalLinkForm.externalLink}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
                 >
                   <Save className="w-4 h-4 mr-2" />
                   Set External Link
