@@ -559,613 +559,649 @@ const AdminPanel = () => {
     <div className="container mx-auto py-12 px-4">
       <NetworkWarning />
       
-      <div className="w-full">
-        <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Shield className="w-6 h-6" />
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
               Admin Panel
-            </CardTitle>
-            <CardDescription className="text-gray-600 dark:text-gray-300">
+            </h1>
+            <p className="text-gray-600 dark:text-gray-300">
               Manage contract configurations and roles. You have the following roles: {userRoles.join(', ')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {error && (
-              <Alert className="mb-4 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-                <AlertDescription className="text-red-700 dark:text-red-300">{error}</AlertDescription>
-              </Alert>
-            )}
-
-            {success && (
-              <Alert className="mb-4 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
-                <AlertDescription className="text-green-700 dark:text-green-300">{success}</AlertDescription>
-              </Alert>
-            )}
-
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-5 bg-gray-100 dark:bg-gray-800">
-                <TabsTrigger value="deednft" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
-                  <Database className="w-4 h-4" />
-                  DeedNFT
-                </TabsTrigger>
-                <TabsTrigger value="roles" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
-                  <Users className="w-4 h-4" />
-                  Roles
-                </TabsTrigger>
-                <TabsTrigger value="validator" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
-                  <Shield className="w-4 h-4" />
-                  Validator
-                </TabsTrigger>
-                <TabsTrigger value="fundmanager" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
-                  <DollarSign className="w-4 h-4" />
-                  FundManager
-                </TabsTrigger>
-                <TabsTrigger value="registry" className="flex items-center gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
-                  <FileText className="w-4 h-4" />
-                  Registry
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="deednft" className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Pause/Unpause */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Contract State</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={() => handleDeedNFTAction("pause")}
-                          disabled={isLoading}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          <Lock className="w-4 h-4 mr-2" />
-                          Pause
-                        </Button>
-                        <Button
-                          onClick={() => handleDeedNFTAction("unpause")}
-                          disabled={isLoading}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          <Unlock className="w-4 h-4 mr-2" />
-                          Unpause
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Contract URI */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Contract URI</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="ipfs://..."
-                        value={deedNFTForm.contractURI}
-                        onChange={(e) => setDeedNFTForm((prev: typeof deedNFTForm) => ({ ...prev, contractURI: e.target.value }))}
-                      />
-                      <Button
-                        onClick={() => handleDeedNFTAction("setContractURI")}
-                        disabled={isLoading || !deedNFTForm.contractURI}
-                      >
-                        Update URI
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Trait Names */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Trait Names</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Trait key"
-                        value={deedNFTForm.traitKey}
-                        onChange={(e) => setDeedNFTForm((prev: typeof deedNFTForm) => ({ ...prev, traitKey: e.target.value }))}
-                      />
-                      <Input
-                        placeholder="Trait name"
-                        value={deedNFTForm.traitName}
-                        onChange={(e) => setDeedNFTForm((prev: typeof deedNFTForm) => ({ ...prev, traitName: e.target.value }))}
-                      />
-                      <Button
-                        onClick={() => handleDeedNFTAction("setTraitName")}
-                        disabled={isLoading || !deedNFTForm.traitKey || !deedNFTForm.traitName}
-                      >
-                        Set Trait Name
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Marketplace Management */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Marketplace</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Marketplace address"
-                        value={deedNFTForm.marketplace}
-                        onChange={(e) => setDeedNFTForm((prev: typeof deedNFTForm) => ({ ...prev, marketplace: e.target.value }))}
-                      />
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="marketplaceApproved"
-                          checked={deedNFTForm.marketplaceApproved}
-                          onCheckedChange={(checked) => setDeedNFTForm(prev => ({ ...prev, marketplaceApproved: Boolean(checked) }))}
-                        />
-                        <Label htmlFor="marketplaceApproved">Approved</Label>
-                      </div>
-                      <Button
-                        onClick={() => handleDeedNFTAction("setApprovedMarketplace")}
-                        disabled={isLoading || !deedNFTForm.marketplace}
-                      >
-                        Update Marketplace
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Royalty Enforcement */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Royalty Enforcement</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="enforceRoyalties"
-                          checked={deedNFTForm.enforceRoyalties}
-                          onCheckedChange={(checked) => setDeedNFTForm(prev => ({ ...prev, enforceRoyalties: Boolean(checked) }))}
-                        />
-                        <Label htmlFor="enforceRoyalties">Enforce Royalties</Label>
-                      </div>
-                      <Button
-                        onClick={() => handleDeedNFTAction("setRoyaltyEnforcement")}
-                        disabled={isLoading}
-                      >
-                        Update Royalty Enforcement
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Transfer Validator */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Transfer Validator</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Validator address"
-                        value={deedNFTForm.transferValidator}
-                        onChange={(e) => setDeedNFTForm(prev => ({ ...prev, transferValidator: e.target.value }))}
-                      />
-                      <Button
-                        onClick={() => handleDeedNFTAction("setTransferValidator")}
-                        disabled={isLoading || !deedNFTForm.transferValidator}
-                      >
-                        Set Transfer Validator
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Fund Manager */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Fund Manager</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Fund manager address"
-                        value={deedNFTForm.fundManager}
-                        onChange={(e) => setDeedNFTForm(prev => ({ ...prev, fundManager: e.target.value }))}
-                      />
-                      <Button
-                        onClick={() => handleDeedNFTAction("setFundManager")}
-                        disabled={isLoading || !deedNFTForm.fundManager}
-                      >
-                        Set Fund Manager
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="roles" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Role Management</CardTitle>
-                    <CardDescription>Grant or revoke roles for addresses</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex flex-col md:flex-row gap-4 w-full">
-                      {/* Contract Selector */}
-                      <div className="w-full md:w-1/4">
-                        <Label>Contract</Label>
-                        <Select
-                          value={roleForm.selectedContract}
-                          onValueChange={(value) => setRoleForm((prev: RoleFormState) => ({ ...prev, selectedContract: value, role: contractRoles[value as keyof typeof contractRoles][0].value }))}
-                        >
-                          <SelectTrigger className="w-full border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="deedNFT">DeedNFT</SelectItem>
-                            <SelectItem value="validator">Validator</SelectItem>
-                            <SelectItem value="fundManager">FundManager</SelectItem>
-                            <SelectItem value="validatorRegistry">ValidatorRegistry</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {/* Target Address */}
-                      <div className="w-full md:w-1/4">
-                        <Label>Target Address</Label>
-                        <Input
-                          placeholder="0x..."
-                          value={roleForm.targetAddress}
-                          onChange={(e) => setRoleForm((prev: RoleFormState) => ({ ...prev, targetAddress: e.target.value }))}
-                          className="w-full border-black/10 dark:border-white/10 h-11"
-                        />
-                      </div>
-                      {/* Role Dropdown */}
-                      <div className="w-full md:w-1/4">
-                        <Label>Role</Label>
-                        <Select
-                          value={roleForm.role}
-                          onValueChange={(value) => setRoleForm((prev: RoleFormState) => ({ ...prev, role: value }))}
-                        >
-                          <SelectTrigger className="w-full border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {contractRoles[roleForm.selectedContract as keyof typeof contractRoles].map((role) => (
-                              <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {/* Action Dropdown */}
-                      <div className="w-full md:w-1/4">
-                        <Label>Action</Label>
-                        <Select
-                          value={roleForm.action}
-                          onValueChange={(value) => setRoleForm((prev: RoleFormState) => ({ ...prev, action: value }))}
-                        >
-                          <SelectTrigger className="w-full border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="grant">
-                              <UserPlus className="w-4 h-4 mr-2" />
-                              Grant
-                            </SelectItem>
-                            <SelectItem value="revoke">
-                              <UserMinus className="w-4 h-4 mr-2" />
-                              Revoke
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <Button
-                      onClick={handleRoleAction}
-                      disabled={isLoading || !roleForm.targetAddress}
-                      className="w-full mt-4"
-                    >
-                      {isLoading ? 'Processing...' : `${roleForm.action === 'grant' ? 'Grant' : 'Revoke'} Role`}
-                    </Button>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="validator" className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Service Fees */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Service Fees</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Token address"
-                        value={validatorForm.tokenAddress}
-                        onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, tokenAddress: e.target.value }))}
-                      />
-                      <Input
-                        placeholder="Service fee (ETH)"
-                        value={validatorForm.serviceFee}
-                        onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, serviceFee: e.target.value }))}
-                      />
-                      <Button
-                        onClick={() => handleValidatorAction("setServiceFee")}
-                        disabled={isLoading || !validatorForm.tokenAddress || !validatorForm.serviceFee}
-                      >
-                        Set Service Fee
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Token Whitelist */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Token Whitelist</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Token address"
-                        value={validatorForm.tokenAddress}
-                        onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, tokenAddress: e.target.value }))}
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={() => handleValidatorAction("addWhitelistedToken")}
-                          disabled={isLoading || !validatorForm.tokenAddress}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Add Token
-                        </Button>
-                        <Button
-                          onClick={() => handleValidatorAction("removeWhitelistedToken")}
-                          disabled={isLoading || !validatorForm.tokenAddress}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Remove Token
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Operating Agreements */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Operating Agreements</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Agreement URI"
-                        value={validatorForm.operatingAgreementUri}
-                        onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, operatingAgreementUri: e.target.value }))}
-                      />
-                      <Input
-                        placeholder="Agreement name"
-                        value={validatorForm.agreementName}
-                        onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, agreementName: e.target.value }))}
-                      />
-                      <Button
-                        onClick={() => handleValidatorAction("registerOperatingAgreement")}
-                        disabled={isLoading || !validatorForm.operatingAgreementUri || !validatorForm.agreementName}
-                      >
-                        Register Agreement
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Royalty Settings */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Royalty Settings</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Royalty percentage (basis points)"
-                        value={validatorForm.royaltyPercentage}
-                        onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, royaltyPercentage: e.target.value }))}
-                      />
-                      <Input
-                        placeholder="Royalty receiver address"
-                        value={validatorForm.royaltyReceiver}
-                        onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, royaltyReceiver: e.target.value }))}
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={() => handleValidatorAction("setRoyaltyFeePercentage")}
-                          disabled={isLoading || !validatorForm.royaltyPercentage}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Set Percentage
-                        </Button>
-                        <Button
-                          onClick={() => handleValidatorAction("setRoyaltyReceiver")}
-                          disabled={isLoading || !validatorForm.royaltyReceiver}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Set Receiver
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="fundmanager" className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Commission Settings */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Commission Settings</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Commission percentage (basis points)"
-                        value={fundManagerForm.commissionPercentage}
-                        onChange={(e) => setFundManagerForm((prev: typeof fundManagerForm) => ({ ...prev, commissionPercentage: e.target.value }))}
-                      />
-                      <Input
-                        placeholder="Fee receiver address"
-                        value={fundManagerForm.feeReceiver}
-                        onChange={(e) => setFundManagerForm((prev: typeof fundManagerForm) => ({ ...prev, feeReceiver: e.target.value }))}
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={() => handleFundManagerAction("setCommissionPercentage")}
-                          disabled={isLoading || !fundManagerForm.commissionPercentage}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Set Commission
-                        </Button>
-                        <Button
-                          onClick={() => handleFundManagerAction("setFeeReceiver")}
-                          disabled={isLoading || !fundManagerForm.feeReceiver}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Set Receiver
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Validator Registry */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Validator Registry</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Validator registry address"
-                        value={fundManagerForm.validatorRegistry}
-                        onChange={(e) => setFundManagerForm((prev: typeof fundManagerForm) => ({ ...prev, validatorRegistry: e.target.value }))}
-                      />
-                      <Button
-                        onClick={() => handleFundManagerAction("setValidatorRegistry")}
-                        disabled={isLoading || !fundManagerForm.validatorRegistry}
-                      >
-                        Set Registry
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* Compatible DeedNFTs */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Compatible DeedNFTs</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="DeedNFT address"
-                        value={fundManagerForm.deedNFTAddress}
-                        onChange={(e) => setFundManagerForm((prev: typeof fundManagerForm) => ({ ...prev, deedNFTAddress: e.target.value }))}
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={() => handleFundManagerAction("addCompatibleDeedNFT")}
-                          disabled={isLoading || !fundManagerForm.deedNFTAddress}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Add DeedNFT
-                        </Button>
-                        <Button
-                          onClick={() => handleFundManagerAction("removeCompatibleDeedNFT")}
-                          disabled={isLoading || !fundManagerForm.deedNFTAddress}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Remove DeedNFT
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Token Whitelist */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Token Whitelist</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Token address"
-                        value={fundManagerForm.tokenAddress}
-                        onChange={(e) => setFundManagerForm((prev: typeof fundManagerForm) => ({ ...prev, tokenAddress: e.target.value }))}
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={() => handleFundManagerAction("addWhitelistedToken")}
-                          disabled={isLoading || !fundManagerForm.tokenAddress}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Add Token
-                        </Button>
-                        <Button
-                          onClick={() => handleFundManagerAction("removeWhitelistedToken")}
-                          disabled={isLoading || !fundManagerForm.tokenAddress}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          Remove Token
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="registry" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Validator Registry</CardTitle>
-                    <CardDescription>Register new validators in the registry</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label>Validator Address</Label>
-                        <Input
-                          placeholder="0x..."
-                          value={validatorRegistryForm.validatorAddress}
-                          onChange={(e) => setValidatorRegistryForm((prev: typeof validatorRegistryForm) => ({ ...prev, validatorAddress: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <Label>Validator Name</Label>
-                        <Input
-                          placeholder="Validator name"
-                          value={validatorRegistryForm.validatorName}
-                          onChange={(e) => setValidatorRegistryForm((prev: typeof validatorRegistryForm) => ({ ...prev, validatorName: e.target.value }))}
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label>Description</Label>
-                        <Textarea
-                          placeholder="Validator description"
-                          value={validatorRegistryForm.validatorDescription}
-                          onChange={(e) => setValidatorRegistryForm((prev: typeof validatorRegistryForm) => ({ ...prev, validatorDescription: e.target.value }))}
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label>Supported Asset Types (comma-separated)</Label>
-                        <Input
-                          placeholder="0,1,2,3"
-                          value={validatorRegistryForm.supportedAssetTypes}
-                          onChange={(e) => setValidatorRegistryForm((prev: typeof validatorRegistryForm) => ({ ...prev, supportedAssetTypes: e.target.value }))}
-                        />
-                      </div>
-                    </div>
-                    <Button
-                      onClick={() => handleValidatorRegistryAction("registerValidator")}
-                      disabled={isLoading || !validatorRegistryForm.validatorAddress || !validatorRegistryForm.validatorName}
-                      className="w-full"
-                    >
-                      Register Validator
-                    </Button>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
+            </p>
+          </div>
+        </div>
       </div>
+
+      {/* Error and Success Messages */}
+      {error && (
+        <div className="mb-6">
+          <Alert className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+            <AlertDescription className="text-red-700 dark:text-red-300">{error}</AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      {success && (
+        <div className="mb-6">
+          <Alert className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
+            <AlertDescription className="text-green-700 dark:text-green-300">{success}</AlertDescription>
+          </Alert>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-5 bg-gray-100 dark:bg-gray-800 mb-8">
+          <TabsTrigger value="deednft" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+            <Database className="w-4 h-4 mr-2" />
+            DeedNFT
+          </TabsTrigger>
+          <TabsTrigger value="roles" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+            <Users className="w-4 h-4 mr-2" />
+            Roles
+          </TabsTrigger>
+          <TabsTrigger value="validator" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+            <Shield className="w-4 h-4 mr-2" />
+            Validator
+          </TabsTrigger>
+          <TabsTrigger value="fundmanager" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+            <DollarSign className="w-4 h-4 mr-2" />
+            FundManager
+          </TabsTrigger>
+          <TabsTrigger value="registry" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+            <FileText className="w-4 h-4 mr-2" />
+            Registry
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="deednft" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Pause/Unpause */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Contract State</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleDeedNFTAction("pause")}
+                    disabled={isLoading}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    <Lock className="w-4 h-4 mr-2" />
+                    Pause
+                  </Button>
+                  <Button
+                    onClick={() => handleDeedNFTAction("unpause")}
+                    disabled={isLoading}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    <Unlock className="w-4 h-4 mr-2" />
+                    Unpause
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Contract URI */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Contract URI</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="ipfs://..."
+                  value={deedNFTForm.contractURI}
+                  onChange={(e) => setDeedNFTForm((prev: typeof deedNFTForm) => ({ ...prev, contractURI: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Button
+                  onClick={() => handleDeedNFTAction("setContractURI")}
+                  disabled={isLoading || !deedNFTForm.contractURI}
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                >
+                  Update URI
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Trait Names */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Trait Names</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Trait key"
+                  value={deedNFTForm.traitKey}
+                  onChange={(e) => setDeedNFTForm((prev: typeof deedNFTForm) => ({ ...prev, traitKey: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Input
+                  placeholder="Trait name"
+                  value={deedNFTForm.traitName}
+                  onChange={(e) => setDeedNFTForm((prev: typeof deedNFTForm) => ({ ...prev, traitName: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Button
+                  onClick={() => handleDeedNFTAction("setTraitName")}
+                  disabled={isLoading || !deedNFTForm.traitKey || !deedNFTForm.traitName}
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                >
+                  Set Trait Name
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Marketplace Management */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Marketplace</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Marketplace address"
+                  value={deedNFTForm.marketplace}
+                  onChange={(e) => setDeedNFTForm((prev: typeof deedNFTForm) => ({ ...prev, marketplace: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="marketplaceApproved"
+                    checked={deedNFTForm.marketplaceApproved}
+                    onCheckedChange={(checked) => setDeedNFTForm(prev => ({ ...prev, marketplaceApproved: Boolean(checked) }))}
+                  />
+                  <Label htmlFor="marketplaceApproved">Approved</Label>
+                </div>
+                <Button
+                  onClick={() => handleDeedNFTAction("setApprovedMarketplace")}
+                  disabled={isLoading || !deedNFTForm.marketplace}
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                >
+                  Update Marketplace
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Royalty Enforcement */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Royalty Enforcement</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="enforceRoyalties"
+                    checked={deedNFTForm.enforceRoyalties}
+                    onCheckedChange={(checked) => setDeedNFTForm(prev => ({ ...prev, enforceRoyalties: Boolean(checked) }))}
+                  />
+                  <Label htmlFor="enforceRoyalties">Enforce Royalties</Label>
+                </div>
+                <Button
+                  onClick={() => handleDeedNFTAction("setRoyaltyEnforcement")}
+                  disabled={isLoading}
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                >
+                  Update Royalty Enforcement
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Transfer Validator */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Transfer Validator</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Validator address"
+                  value={deedNFTForm.transferValidator}
+                  onChange={(e) => setDeedNFTForm(prev => ({ ...prev, transferValidator: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Button
+                  onClick={() => handleDeedNFTAction("setTransferValidator")}
+                  disabled={isLoading || !deedNFTForm.transferValidator}
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                >
+                  Set Transfer Validator
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Fund Manager */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Fund Manager</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Fund manager address"
+                  value={deedNFTForm.fundManager}
+                  onChange={(e) => setDeedNFTForm(prev => ({ ...prev, fundManager: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Button
+                  onClick={() => handleDeedNFTAction("setFundManager")}
+                  disabled={isLoading || !deedNFTForm.fundManager}
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                >
+                  Set Fund Manager
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="roles" className="space-y-6">
+          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Role Management</CardTitle>
+              <CardDescription className="text-gray-600 dark:text-gray-300">Grant or revoke roles for addresses</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col md:flex-row gap-4 w-full">
+                {/* Contract Selector */}
+                <div className="w-full md:w-1/4">
+                  <Label>Contract</Label>
+                  <Select
+                    value={roleForm.selectedContract}
+                    onValueChange={(value) => setRoleForm((prev: RoleFormState) => ({ ...prev, selectedContract: value, role: contractRoles[value as keyof typeof contractRoles][0].value }))}
+                  >
+                    <SelectTrigger className="w-full border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="deedNFT">DeedNFT</SelectItem>
+                      <SelectItem value="validator">Validator</SelectItem>
+                      <SelectItem value="fundManager">FundManager</SelectItem>
+                      <SelectItem value="validatorRegistry">ValidatorRegistry</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Target Address */}
+                <div className="w-full md:w-1/4">
+                  <Label>Target Address</Label>
+                  <Input
+                    placeholder="0x..."
+                    value={roleForm.targetAddress}
+                    onChange={(e) => setRoleForm((prev: RoleFormState) => ({ ...prev, targetAddress: e.target.value }))}
+                    className="w-full border-black/10 dark:border-white/10 h-11"
+                  />
+                </div>
+                {/* Role Dropdown */}
+                <div className="w-full md:w-1/4">
+                  <Label>Role</Label>
+                  <Select
+                    value={roleForm.role}
+                    onValueChange={(value) => setRoleForm((prev: RoleFormState) => ({ ...prev, role: value }))}
+                  >
+                    <SelectTrigger className="w-full border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contractRoles[roleForm.selectedContract as keyof typeof contractRoles].map((role) => (
+                        <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Action Dropdown */}
+                <div className="w-full md:w-1/4">
+                  <Label>Action</Label>
+                  <Select
+                    value={roleForm.action}
+                    onValueChange={(value) => setRoleForm((prev: RoleFormState) => ({ ...prev, action: value }))}
+                  >
+                    <SelectTrigger className="w-full border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="grant">
+                        <UserPlus className="w-4 h-4 mr-2" />
+                        Grant
+                      </SelectItem>
+                      <SelectItem value="revoke">
+                        <UserMinus className="w-4 h-4 mr-2" />
+                        Revoke
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button
+                onClick={handleRoleAction}
+                disabled={isLoading || !roleForm.targetAddress}
+                className="w-full mt-4 bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+              >
+                {isLoading ? 'Processing...' : `${roleForm.action === 'grant' ? 'Grant' : 'Revoke'} Role`}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="validator" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Service Fees */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Service Fees</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Token address"
+                  value={validatorForm.tokenAddress}
+                  onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, tokenAddress: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Input
+                  placeholder="Service fee (ETH)"
+                  value={validatorForm.serviceFee}
+                  onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, serviceFee: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Button
+                  onClick={() => handleValidatorAction("setServiceFee")}
+                  disabled={isLoading || !validatorForm.tokenAddress || !validatorForm.serviceFee}
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                >
+                  Set Service Fee
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Token Whitelist */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Token Whitelist</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Token address"
+                  value={validatorForm.tokenAddress}
+                  onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, tokenAddress: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleValidatorAction("addWhitelistedToken")}
+                    disabled={isLoading || !validatorForm.tokenAddress}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    Add Token
+                  </Button>
+                  <Button
+                    onClick={() => handleValidatorAction("removeWhitelistedToken")}
+                    disabled={isLoading || !validatorForm.tokenAddress}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    Remove Token
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Operating Agreements */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Operating Agreements</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Agreement URI"
+                  value={validatorForm.operatingAgreementUri}
+                  onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, operatingAgreementUri: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Input
+                  placeholder="Agreement name"
+                  value={validatorForm.agreementName}
+                  onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, agreementName: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Button
+                  onClick={() => handleValidatorAction("registerOperatingAgreement")}
+                  disabled={isLoading || !validatorForm.operatingAgreementUri || !validatorForm.agreementName}
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                >
+                  Register Agreement
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Royalty Settings */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Royalty Settings</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Royalty percentage (basis points)"
+                  value={validatorForm.royaltyPercentage}
+                  onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, royaltyPercentage: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Input
+                  placeholder="Royalty receiver address"
+                  value={validatorForm.royaltyReceiver}
+                  onChange={(e) => setValidatorForm((prev: typeof validatorForm) => ({ ...prev, royaltyReceiver: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleValidatorAction("setRoyaltyFeePercentage")}
+                    disabled={isLoading || !validatorForm.royaltyPercentage}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    Set Percentage
+                  </Button>
+                  <Button
+                    onClick={() => handleValidatorAction("setRoyaltyReceiver")}
+                    disabled={isLoading || !validatorForm.royaltyReceiver}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    Set Receiver
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="fundmanager" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Commission Settings */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Commission Settings</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Commission percentage (basis points)"
+                  value={fundManagerForm.commissionPercentage}
+                  onChange={(e) => setFundManagerForm((prev: typeof fundManagerForm) => ({ ...prev, commissionPercentage: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Input
+                  placeholder="Fee receiver address"
+                  value={fundManagerForm.feeReceiver}
+                  onChange={(e) => setFundManagerForm((prev: typeof fundManagerForm) => ({ ...prev, feeReceiver: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleFundManagerAction("setCommissionPercentage")}
+                    disabled={isLoading || !fundManagerForm.commissionPercentage}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    Set Commission
+                  </Button>
+                  <Button
+                    onClick={() => handleFundManagerAction("setFeeReceiver")}
+                    disabled={isLoading || !fundManagerForm.feeReceiver}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    Set Receiver
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Validator Registry */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Validator Registry</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Validator registry address"
+                  value={fundManagerForm.validatorRegistry}
+                  onChange={(e) => setFundManagerForm((prev: typeof fundManagerForm) => ({ ...prev, validatorRegistry: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <Button
+                  onClick={() => handleFundManagerAction("setValidatorRegistry")}
+                  disabled={isLoading || !fundManagerForm.validatorRegistry}
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                >
+                  Set Registry
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Compatible DeedNFTs */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Compatible DeedNFTs</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="DeedNFT address"
+                  value={fundManagerForm.deedNFTAddress}
+                  onChange={(e) => setFundManagerForm((prev: typeof fundManagerForm) => ({ ...prev, deedNFTAddress: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleFundManagerAction("addCompatibleDeedNFT")}
+                    disabled={isLoading || !fundManagerForm.deedNFTAddress}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    Add DeedNFT
+                  </Button>
+                  <Button
+                    onClick={() => handleFundManagerAction("removeCompatibleDeedNFT")}
+                    disabled={isLoading || !fundManagerForm.deedNFTAddress}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    Remove DeedNFT
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Token Whitelist */}
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Token Whitelist</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  placeholder="Token address"
+                  value={fundManagerForm.tokenAddress}
+                  onChange={(e) => setFundManagerForm((prev: typeof fundManagerForm) => ({ ...prev, tokenAddress: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleFundManagerAction("addWhitelistedToken")}
+                    disabled={isLoading || !fundManagerForm.tokenAddress}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    Add Token
+                  </Button>
+                  <Button
+                    onClick={() => handleFundManagerAction("removeWhitelistedToken")}
+                    disabled={isLoading || !fundManagerForm.tokenAddress}
+                    variant="outline"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                  >
+                    Remove Token
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="registry" className="space-y-6">
+          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">Validator Registry</CardTitle>
+              <CardDescription className="text-gray-600 dark:text-gray-300">Register new validators in the registry</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Validator Address</Label>
+                  <Input
+                    placeholder="0x..."
+                    value={validatorRegistryForm.validatorAddress}
+                    onChange={(e) => setValidatorRegistryForm((prev: typeof validatorRegistryForm) => ({ ...prev, validatorAddress: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 h-11"
+                  />
+                </div>
+                <div>
+                  <Label>Validator Name</Label>
+                  <Input
+                    placeholder="Validator name"
+                    value={validatorRegistryForm.validatorName}
+                    onChange={(e) => setValidatorRegistryForm((prev: typeof validatorRegistryForm) => ({ ...prev, validatorName: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 h-11"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Description</Label>
+                  <Textarea
+                    placeholder="Validator description"
+                    value={validatorRegistryForm.validatorDescription}
+                    onChange={(e) => setValidatorRegistryForm((prev: typeof validatorRegistryForm) => ({ ...prev, validatorDescription: e.target.value }))}
+                    className="border-black/10 dark:border-white/10"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Supported Asset Types (comma-separated)</Label>
+                  <Input
+                    placeholder="0,1,2,3"
+                    value={validatorRegistryForm.supportedAssetTypes}
+                    onChange={(e) => setValidatorRegistryForm((prev: typeof validatorRegistryForm) => ({ ...prev, supportedAssetTypes: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 h-11"
+                  />
+                </div>
+              </div>
+              <Button
+                onClick={() => handleValidatorRegistryAction("registerValidator")}
+                disabled={isLoading || !validatorRegistryForm.validatorAddress || !validatorRegistryForm.validatorName}
+                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+              >
+                Register Validator
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
