@@ -1,8 +1,11 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Menu, X, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAccount, useChainId } from 'wagmi';
+import { ethers } from "ethers";
+import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
 
 interface HeaderProps {
   children?: ReactNode;
@@ -11,6 +14,9 @@ interface HeaderProps {
 const Header = ({ children }: HeaderProps) => {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const [hasAdminRole, setHasAdminRole] = useState(false);
 
   const isActive = (path: string) => {
     return location.pathname === path;
@@ -24,12 +30,47 @@ const Header = ({ children }: HeaderProps) => {
     setIsMobileMenuOpen(false);
   };
 
+  // Check if user has admin role
+  useEffect(() => {
+    const checkAdminRole = async () => {
+      if (!isConnected || !address || !chainId) {
+        setHasAdminRole(false);
+        return;
+      }
+
+      try {
+        const deedNFTAddress = getContractAddressForNetwork(chainId);
+        if (!deedNFTAddress) return;
+
+        const abiPath = getAbiPathForNetwork(chainId, 'DeedNFT');
+        const abiModule = await import(abiPath);
+        const abi = JSON.parse(abiModule.default.abi);
+
+        if (!window.ethereum) return;
+        const provider = new ethers.BrowserProvider(window.ethereum as any);
+        const contract = new ethers.Contract(deedNFTAddress, abi, provider);
+
+        // Check for DEFAULT_ADMIN_ROLE
+        const DEFAULT_ADMIN_ROLE = "0x0000000000000000000000000000000000000000000000000000000000000000";
+        const hasRole = await contract.hasRole(DEFAULT_ADMIN_ROLE, address);
+        console.log('Header: Admin role check for', address, '=', hasRole);
+        setHasAdminRole(hasRole);
+      } catch (error) {
+        console.error('Error checking admin role:', error);
+        setHasAdminRole(false);
+      }
+    };
+
+    checkAdminRole();
+  }, [isConnected, address, chainId]);
+
   const navLinks = [
     { to: "/", label: "Home" },
     { to: "/mint", label: "Mint" },
     { to: "/explore", label: "Explore" },
     { to: "/dashboard", label: "Dashboard" },
     { to: "/validation", label: "Validation" },
+    ...(hasAdminRole ? [{ to: "/admin", label: "Admin", icon: Shield }] : []),
   ];
 
   return (
@@ -47,12 +88,13 @@ const Header = ({ children }: HeaderProps) => {
               <Link 
                 key={link.to}
                 to={link.to} 
-                className={`font-medium transition-colors duration-200 ${
+                className={`font-medium transition-colors duration-200 flex items-center gap-1 ${
                   isActive(link.to) 
                     ? "text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white pb-1" 
                     : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
                 }`}
               >
+                {link.icon && <link.icon className="w-4 h-4" />}
                 {link.label}
               </Link>
             ))}
@@ -93,12 +135,13 @@ const Header = ({ children }: HeaderProps) => {
                 key={link.to}
                 to={link.to} 
                 onClick={closeMobileMenu}
-                className={`block py-2 px-4 rounded-lg font-medium transition-colors duration-200 ${
+                className={`block py-2 px-4 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2 ${
                   isActive(link.to) 
                     ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800" 
                     : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800"
                 }`}
               >
+                {link.icon && <link.icon className="w-4 h-4" />}
                 {link.label}
               </Link>
             ))}

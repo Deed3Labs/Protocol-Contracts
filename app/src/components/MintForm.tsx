@@ -816,7 +816,7 @@ const MintForm = () => {
                 ) : !isCorrectNetwork ? (
                   <div className="text-center text-gray-600 dark:text-gray-300 text-lg py-12">
                     <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                    <p>Please switch to a supported network to mint.</p>
+                    <p>Please switch to a network with deployed contracts to mint.</p>
                   </div>
                 ) : (
                   <>

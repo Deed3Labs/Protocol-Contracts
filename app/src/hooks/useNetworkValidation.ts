@@ -1,6 +1,10 @@
 import { useAccount, useChainId, useSwitchChain } from 'wagmi';
 import { useCallback, useEffect, useState } from 'react';
-import { isNetworkSupported, getNetworkByChainId, SUPPORTED_NETWORKS } from '@/config/networks';
+import { 
+  getNetworkByChainId, 
+  SUPPORTED_NETWORKS,
+  isNetworkSupportedAndDeployed
+} from '@/config/networks';
 
 export function useNetworkValidation() {
   const { isConnected } = useAccount();
@@ -13,7 +17,8 @@ export function useNetworkValidation() {
     if (isConnected && chainId) {
       const network = getNetworkByChainId(chainId);
       setCurrentNetwork(network);
-      setIsCorrectNetwork(isNetworkSupported(chainId));
+      // Check if network is supported AND has deployed contracts
+      setIsCorrectNetwork(isNetworkSupportedAndDeployed(chainId));
     } else {
       setIsCorrectNetwork(false);
       setCurrentNetwork(undefined);
@@ -39,7 +44,9 @@ export function useNetworkValidation() {
     chainId,
     isCorrectNetwork,
     currentNetwork,
-    supportedNetworks: SUPPORTED_NETWORKS,
+    supportedNetworks: SUPPORTED_NETWORKS.filter(network => 
+      isNetworkSupportedAndDeployed(network.chainId)
+    ),
     switchToSupportedNetwork,
     getNetworkDisplayName,
   };

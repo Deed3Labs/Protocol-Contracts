@@ -108,11 +108,11 @@ export const networks = {
       decimals: 18,
     },
     contracts: {
-      DeedNFT: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      Validator: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      ValidatorRegistry: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      FundManager: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      MetadataRenderer: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      DeedNFT: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      Validator: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
     },
   },
   // Base Mainnet
@@ -127,11 +127,11 @@ export const networks = {
       decimals: 18,
     },
     contracts: {
-      DeedNFT: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      Validator: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      ValidatorRegistry: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      FundManager: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      MetadataRenderer: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      DeedNFT: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      Validator: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
     },
   },
   // Ethereum Mainnet
@@ -146,11 +146,11 @@ export const networks = {
       decimals: 18,
     },
     contracts: {
-      DeedNFT: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      Validator: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      ValidatorRegistry: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      FundManager: '0x1234567890123456789012345678901234567890', // Replace with actual address
-      MetadataRenderer: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      DeedNFT: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      Validator: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
     },
   },
 };
@@ -221,4 +221,27 @@ export const getAbiPathForNetwork = (chainId: number, contractName: string): str
   }
 
   return `@/contracts/${dirName}/${contractName}.json`;
+};
+
+// Check if a contract is deployed (non-zero address)
+export const isContractDeployed = (address: string): boolean => {
+  return address !== '0x0000000000000000000000000000000000000000' && address !== '';
+};
+
+// Check if DeedNFT contract is deployed for a specific network
+export const isDeedNFTDeployed = (chainId: number): boolean => {
+  const address = getContractAddressForNetwork(chainId);
+  return address !== null && isContractDeployed(address);
+};
+
+// Get networks with deployed contracts
+export const getDeployedNetworks = (): number[] => {
+  return Object.keys(networks)
+    .map(Number)
+    .filter(chainId => isDeedNFTDeployed(chainId));
+};
+
+// Check if a network is supported and has deployed contracts
+export const isNetworkSupportedAndDeployed = (chainId: number): boolean => {
+  return isNetworkSupported(chainId) && isDeedNFTDeployed(chainId);
 }; 
