@@ -75,6 +75,86 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
   },
 ];
 
+// Network configuration with additional contract addresses
+export const networks = {
+  // Base Sepolia
+  84532: {
+    name: 'Base Sepolia',
+    chainId: 84532,
+    rpcUrl: 'https://sepolia.base.org',
+    blockExplorer: 'https://sepolia.basescan.org',
+    nativeCurrency: {
+      name: 'ETH',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x1a4e89225015200f70e5a06f766399a3de6e21E6',
+      Validator: '0x18C53C0D046f98322954f971c21125E4443c79b9',
+      ValidatorRegistry: '0x979E6cC741A8481f96739A996D06EcFb9BA2bc91',
+      FundManager: '0x73ea6B404E6B81E7Fe6B112605dD8661B52d401e',
+      MetadataRenderer: '0x1234567890123456789012345678901234567890', // Replace with actual address
+    },
+  },
+  // Sepolia
+  11155111: {
+    name: 'Sepolia',
+    chainId: 11155111,
+    rpcUrl: 'https://rpc.sepolia.org',
+    blockExplorer: 'https://sepolia.etherscan.io',
+    nativeCurrency: {
+      name: 'ETH',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      Validator: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      ValidatorRegistry: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      FundManager: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      MetadataRenderer: '0x1234567890123456789012345678901234567890', // Replace with actual address
+    },
+  },
+  // Base Mainnet
+  8453: {
+    name: 'Base',
+    chainId: 8453,
+    rpcUrl: 'https://mainnet.base.org',
+    blockExplorer: 'https://basescan.org',
+    nativeCurrency: {
+      name: 'ETH',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      Validator: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      ValidatorRegistry: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      FundManager: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      MetadataRenderer: '0x1234567890123456789012345678901234567890', // Replace with actual address
+    },
+  },
+  // Ethereum Mainnet
+  1: {
+    name: 'Ethereum',
+    chainId: 1,
+    rpcUrl: 'https://eth.llamarpc.com',
+    blockExplorer: 'https://etherscan.io',
+    nativeCurrency: {
+      name: 'ETH',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      Validator: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      ValidatorRegistry: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      FundManager: '0x1234567890123456789012345678901234567890', // Replace with actual address
+      MetadataRenderer: '0x1234567890123456789012345678901234567890', // Replace with actual address
+    },
+  },
+};
+
 export const getNetworkByChainId = (chainId: number): NetworkConfig | undefined => {
   return SUPPORTED_NETWORKS.find(network => network.chainId === chainId);
 };
@@ -87,16 +167,27 @@ export const getSupportedChainIds = (): number[] => {
   return SUPPORTED_NETWORKS.map(network => network.chainId);
 };
 
+// Get contract address for a specific network
 export const getContractAddressForNetwork = (chainId: number): string | null => {
-  const network = getNetworkByChainId(chainId);
-  return network?.contractAddress || null;
+  const network = networks[chainId as keyof typeof networks];
+  return network?.contracts?.DeedNFT || null;
+};
+
+// Get all supported network IDs
+export const getSupportedNetworkIds = (): number[] => {
+  return Object.keys(networks).map(Number);
+};
+
+// Get network info by chain ID
+export const getNetworkInfo = (chainId: number) => {
+  return networks[chainId as keyof typeof networks] || null;
 };
 
 // Get the best available RPC URL for a network
 export const getRpcUrlForNetwork = (chainId: number, preferAlchemy = false): string | null => {
   const network = getNetworkByChainId(chainId);
   if (!network) return null;
-  
+
   // Priority: Alchemy > Infura > Public RPC
   if (preferAlchemy && network.alchemyUrl) {
     return network.alchemyUrl;
@@ -107,22 +198,27 @@ export const getRpcUrlForNetwork = (chainId: number, preferAlchemy = false): str
   return network.rpcUrl;
 };
 
-// Get the correct ABI path for a network
+// Get ABI path for a specific network and contract
 export const getAbiPathForNetwork = (chainId: number, contractName: string): string => {
-  const network = getNetworkByChainId(chainId);
+  const network = networks[chainId as keyof typeof networks];
   if (!network) {
     // Fallback to base-sepolia if network not found
     return `@/contracts/base-sepolia/${contractName}.json`;
   }
-  
-  // Map chain IDs to folder names
-  const networkFolders: { [key: number]: string } = {
-    1: 'ethereum', // Ethereum Mainnet
-    8453: 'base', // Base
-    11155111: 'sepolia', // Sepolia
-    84532: 'base-sepolia', // Base Sepolia
+
+  // Map chain IDs to directory names
+  const chainIdToDir: { [key: number]: string } = {
+    84532: 'base-sepolia',
+    11155111: 'sepolia',
+    8453: 'base',
+    1: 'ethereum',
   };
-  
-  const folder = networkFolders[chainId] || 'base-sepolia';
-  return `@/contracts/${folder}/${contractName}.json`;
+
+  const dirName = chainIdToDir[chainId];
+  if (!dirName) {
+    // Fallback to base-sepolia if no mapping found
+    return `@/contracts/base-sepolia/${contractName}.json`;
+  }
+
+  return `@/contracts/${dirName}/${contractName}.json`;
 }; 

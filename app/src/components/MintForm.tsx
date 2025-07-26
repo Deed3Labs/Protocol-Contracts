@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { ChangeEvent } from "react";
 import { ethers } from "ethers";
 import { Button } from "@/components/ui/button";
@@ -17,9 +17,9 @@ import type { Eip1193Provider } from 'ethers';
 import { NetworkWarning } from "@/components/NetworkWarning";
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
-import { ChevronRight, ChevronLeft, CheckCircle, AlertCircle, Wallet, FileText, Settings, CreditCard } from "lucide-react";
+import { ChevronRight, ChevronLeft, CheckCircle, AlertCircle, Wallet, FileText, Settings, CreditCard, Coins, DollarSign } from "lucide-react";
 
-// Dynamic ABI loading function
+// Dynamic ABI loading functions
 const getDeedNFTAbi = async (chainId: number) => {
   try {
     const abiPath = getAbiPathForNetwork(chainId, 'DeedNFT');
@@ -27,8 +27,31 @@ const getDeedNFTAbi = async (chainId: number) => {
     return JSON.parse(abiModule.default.abi);
   } catch (error) {
     console.error('Error loading DeedNFT ABI:', error);
-    // Fallback to base-sepolia
     const fallbackModule = await import('@/contracts/base-sepolia/DeedNFT.json');
+    return JSON.parse(fallbackModule.default.abi);
+  }
+};
+
+const getValidatorAbi = async (chainId: number) => {
+  try {
+    const abiPath = getAbiPathForNetwork(chainId, 'Validator');
+    const abiModule = await import(abiPath);
+    return JSON.parse(abiModule.default.abi);
+  } catch (error) {
+    console.error('Error loading Validator ABI:', error);
+    const fallbackModule = await import('@/contracts/base-sepolia/Validator.json');
+    return JSON.parse(fallbackModule.default.abi);
+  }
+};
+
+const getFundManagerAbi = async (chainId: number) => {
+  try {
+    const abiPath = getAbiPathForNetwork(chainId, 'FundManager');
+    const abiModule = await import(abiPath);
+    return JSON.parse(abiModule.default.abi);
+  } catch (error) {
+    console.error('Error loading FundManager ABI:', error);
+    const fallbackModule = await import('@/contracts/base-sepolia/FundManager.json');
     return JSON.parse(fallbackModule.default.abi);
   }
 };
@@ -49,6 +72,14 @@ const STEPS = [
   { id: 4, title: "Review & Mint", icon: CheckCircle, description: "Final review and minting" }
 ];
 
+// Token icons mapping
+const TOKEN_ICONS: { [key: string]: string } = {
+  "0x0000000000000000000000000000000000000000": "https://cryptologos.cc/logos/ethereum-eth-logo.png",
+  "0x4200000000000000000000000000000000000006": "https://cryptologos.cc/logos/ethereum-eth-logo.png", // WETH
+  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913": "https://cryptologos.cc/logos/usd-coin-usdc-logo.png", // USDC
+  "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb": "https://cryptologos.cc/logos/dai-new-logo.png", // DAI
+};
+
 const MintForm = () => {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
@@ -58,6 +89,16 @@ const MintForm = () => {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Fee calculation state
+  const [whitelistedTokens, setWhitelistedTokens] = useState<Array<{ address: string; symbol: string; decimals: number; icon: string }>>([]);
+  const [selectedToken, setSelectedToken] = useState<string>("");
+  const [serviceFee, setServiceFee] = useState<string>("0");
+  const [commissionPercentage, setCommissionPercentage] = useState<string>("0");
+  const [totalFee, setTotalFee] = useState<string>("0");
+  const [isLoadingFees, setIsLoadingFees] = useState(false);
+  const [fundManagerAddress, setFundManagerAddress] = useState<string>("");
+  const [hasFundManager, setHasFundManager] = useState(false);
 
   // Form state matching DeedNFT.sol parameters
   const [form, setForm] = useState({
@@ -97,6 +138,123 @@ const MintForm = () => {
 
   const handleCheckboxChange = (name: string, checked: boolean | string) => {
     setForm(prev => ({ ...prev, [name]: Boolean(checked) }));
+  };
+
+  // Load FundManager and fee data
+  useEffect(() => {
+    if (isConnected && chainId) {
+      loadFundManagerData();
+    }
+  }, [isConnected, chainId]);
+
+  // Load fee data when validator changes
+  useEffect(() => {
+    if (selectedToken && (form.useCustomValidator ? form.validatorAddress : fundManagerAddress)) {
+      loadFeeData();
+    }
+  }, [selectedToken, form.validatorAddress, form.useCustomValidator, fundManagerAddress]);
+
+  const loadFundManagerData = async () => {
+    try {
+      if (!window.ethereum) return;
+
+      const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
+      
+      // Get DeedNFT contract to check if FundManager is set
+      const deedNFTAddress = getContractAddressForNetwork(chainId);
+      if (!deedNFTAddress) return;
+
+      const deedNFTAbi = await getDeedNFTAbi(chainId);
+      const deedNFTContract = new ethers.Contract(deedNFTAddress, deedNFTAbi, provider);
+      
+      // Check if FundManager is set
+      const fundManagerAddr = await deedNFTContract.fundManager();
+      setFundManagerAddress(fundManagerAddr);
+      setHasFundManager(fundManagerAddr !== ethers.ZeroAddress);
+
+      if (fundManagerAddr !== ethers.ZeroAddress) {
+        // Load whitelisted tokens from FundManager
+        const fundManagerAbi = await getFundManagerAbi(chainId);
+        const fundManagerContract = new ethers.Contract(fundManagerAddr, fundManagerAbi, provider);
+        
+        const whitelistedTokenAddresses = await fundManagerContract.getWhitelistedTokens();
+        const commissionPct = await fundManagerContract.getCommissionPercentage();
+        setCommissionPercentage(commissionPct.toString());
+
+        // Load token details
+        const tokenDetails = await Promise.all(
+          whitelistedTokenAddresses.map(async (tokenAddr: string) => {
+            try {
+              // Try to get token symbol and decimals
+              const tokenContract = new ethers.Contract(tokenAddr, [
+                "function symbol() view returns (string)",
+                "function decimals() view returns (uint8)"
+              ], provider);
+              
+              const [symbol, decimals] = await Promise.all([
+                tokenContract.symbol(),
+                tokenContract.decimals()
+              ]);
+
+              return {
+                address: tokenAddr,
+                symbol,
+                decimals: Number(decimals),
+                icon: TOKEN_ICONS[tokenAddr] || "https://cryptologos.cc/logos/ethereum-eth-logo.png"
+              };
+            } catch (error) {
+              // Fallback for tokens without standard interface
+              return {
+                address: tokenAddr,
+                symbol: "Unknown",
+                decimals: 18,
+                icon: "https://cryptologos.cc/logos/ethereum-eth-logo.png"
+              };
+            }
+          })
+        );
+
+        setWhitelistedTokens(tokenDetails);
+        if (tokenDetails.length > 0) {
+          setSelectedToken(tokenDetails[0].address);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading FundManager data:', error);
+    }
+  };
+
+  const loadFeeData = async () => {
+    if (!selectedToken || !window.ethereum) return;
+
+    setIsLoadingFees(true);
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
+      
+      // Determine which validator to use
+      const validatorAddress = form.useCustomValidator ? form.validatorAddress : fundManagerAddress;
+      if (!validatorAddress || validatorAddress === ethers.ZeroAddress) return;
+
+      // Get service fee from validator
+      const validatorAbi = await getValidatorAbi(chainId);
+      const validatorContract = new ethers.Contract(validatorAddress, validatorAbi, provider);
+      
+      const fee = await validatorContract.getServiceFee(selectedToken);
+      setServiceFee(fee.toString());
+
+      // Calculate total fee including commission
+      const feeAmount = BigInt(fee);
+      const commissionAmount = (feeAmount * BigInt(commissionPercentage)) / 10000n;
+      const total = feeAmount + commissionAmount;
+      setTotalFee(total.toString());
+
+    } catch (error) {
+      console.error('Error loading fee data:', error);
+      setServiceFee("0");
+      setTotalFee("0");
+    } finally {
+      setIsLoadingFees(false);
+    }
   };
 
   React.useEffect(() => {
@@ -167,7 +325,7 @@ const MintForm = () => {
       const definition = form.definition;
       const configuration = form.configuration;
       const validatorAddress = form.useCustomValidator ? form.validatorAddress : ethers.ZeroAddress;
-      const token = form.usePaymentToken ? form.token : ethers.ZeroAddress;
+      const token = form.usePaymentToken && hasFundManager ? selectedToken : ethers.ZeroAddress;
       const salt = form.useCustomSalt ? ethers.toBigInt(form.salt) : 0n;
 
       console.log("Minting DeedNFT with parameters:", {
@@ -231,6 +389,15 @@ const MintForm = () => {
     if (stepId < currentStep) return "completed";
     if (stepId === currentStep) return "current";
     return "pending";
+  };
+
+  const formatTokenAmount = (amount: string, decimals: number) => {
+    try {
+      const value = ethers.parseUnits(amount, decimals);
+      return ethers.formatUnits(value, decimals);
+    } catch {
+      return "0";
+    }
   };
 
   const renderStepContent = () => {
@@ -417,52 +584,93 @@ const MintForm = () => {
       case 3:
         return (
           <div className="space-y-6">
-            <div className="space-y-4">
-              <div className="flex items-center space-x-3">
-                <Checkbox
-                  id="usePaymentToken"
-                  checked={form.usePaymentToken}
-                  onCheckedChange={(checked) => handleCheckboxChange("usePaymentToken", checked)}
-                  className="border-black/10 dark:border-white/10"
-                />
-                <Label htmlFor="usePaymentToken" className="text-gray-700 dark:text-gray-200 font-medium text-sm">
-                  Specify payment token (FundManager integration)
-                </Label>
-              </div>
-              {form.usePaymentToken && (
-                <div className="space-y-3">
-                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Payment Token Address</Label>
-                  <Input
-                    name="token"
-                    value={form.token}
-                    onChange={handleInputChange}
-                    placeholder="0x..."
-                    className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11"
-                  />
-                </div>
-              )}
-            </div>
+            {hasFundManager ? (
+              <>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-3">
+                    <Checkbox
+                      id="usePaymentToken"
+                      checked={form.usePaymentToken}
+                      onCheckedChange={(checked) => handleCheckboxChange("usePaymentToken", checked)}
+                      className="border-black/10 dark:border-white/10"
+                    />
+                    <Label htmlFor="usePaymentToken" className="text-gray-700 dark:text-gray-200 font-medium text-sm">
+                      Use FundManager payment (Optional)
+                    </Label>
+                  </div>
+                  {form.usePaymentToken && (
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Payment Token</Label>
+                        <Select value={selectedToken} onValueChange={setSelectedToken}>
+                          <SelectTrigger className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
+                            <SelectValue placeholder="Select payment token" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-[#141414] border-black/10 dark:border-white/10">
+                            {whitelistedTokens.map((token) => (
+                              <SelectItem key={token.address} value={token.address} className="text-gray-900 dark:text-white py-3">
+                                <div className="flex items-center space-x-3">
+                                  <img src={token.icon} alt={token.symbol} className="w-6 h-6 rounded-full" />
+                                  <div>
+                                    <div className="font-medium text-sm">{token.symbol}</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">{token.address.slice(0, 8)}...{token.address.slice(-6)}</div>
+                                  </div>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-            <Card className="border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg text-gray-900 dark:text-white">Fee Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-300">Service Fee:</span>
-                  <span className="text-gray-900 dark:text-white font-medium">0.01 ETH</span>
+                      {isLoadingFees ? (
+                        <div className="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                          <span className="text-sm">Loading fee information...</span>
+                        </div>
+                      ) : (
+                        <Card className="border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-lg text-gray-900 dark:text-white flex items-center space-x-2">
+                              <Coins className="w-5 h-5" />
+                              <span>Fee Information</span>
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-300">Service Fee:</span>
+                              <span className="text-gray-900 dark:text-white font-medium">
+                                {formatTokenAmount(serviceFee, 18)} {whitelistedTokens.find(t => t.address === selectedToken)?.symbol || "ETH"}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-300">Commission ({Number(commissionPercentage) / 100}%):</span>
+                              <span className="text-gray-900 dark:text-white font-medium">
+                                {formatTokenAmount((BigInt(serviceFee) * BigInt(commissionPercentage) / 10000n).toString(), 18)} {whitelistedTokens.find(t => t.address === selectedToken)?.symbol || "ETH"}
+                              </span>
+                            </div>
+                            <Separator className="bg-gray-200 dark:bg-gray-700" />
+                            <div className="flex justify-between">
+                              <span className="text-gray-900 dark:text-white font-semibold">Total:</span>
+                              <span className="text-gray-900 dark:text-white font-semibold">
+                                {formatTokenAmount(totalFee, 18)} {whitelistedTokens.find(t => t.address === selectedToken)?.symbol || "ETH"}
+                              </span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-300">Commission:</span>
-                  <span className="text-gray-900 dark:text-white font-medium">0.001 ETH</span>
-                </div>
-                <Separator className="bg-gray-200 dark:bg-gray-700" />
-                <div className="flex justify-between">
-                  <span className="text-gray-900 dark:text-white font-semibold">Total:</span>
-                  <span className="text-gray-900 dark:text-white font-semibold">0.011 ETH</span>
-                </div>
-              </CardContent>
-            </Card>
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <DollarSign className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No FundManager Configured</h3>
+                <p className="text-gray-600 dark:text-gray-400">
+                  This DeedNFT contract is not configured with a FundManager. Minting will proceed without payment processing.
+                </p>
+              </div>
+            )}
           </div>
         );
 
@@ -507,6 +715,17 @@ const MintForm = () => {
                       <p className="text-gray-900 dark:text-white">{form.configuration}</p>
                     </div>
                   )}
+                  {form.usePaymentToken && hasFundManager && (
+                    <div className="col-span-2">
+                      <Label className="text-sm text-gray-600 dark:text-gray-300">Payment</Label>
+                      <div className="flex items-center space-x-2">
+                        <img src={whitelistedTokens.find(t => t.address === selectedToken)?.icon} alt="Token" className="w-5 h-5 rounded-full" />
+                        <span className="text-gray-900 dark:text-white font-medium">
+                          {formatTokenAmount(totalFee, 18)} {whitelistedTokens.find(t => t.address === selectedToken)?.symbol}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -514,7 +733,7 @@ const MintForm = () => {
             <Button
               onClick={handleMint}
               disabled={isLoading || !form.definition.trim() || !isCorrectNetwork}
-                              className="w-full text-lg font-semibold py-6 rounded-lg bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white transition-colors duration-200"
+              className="w-full text-lg font-semibold py-6 rounded-lg bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white transition-colors duration-200"
               size="lg"
             >
               {isLoading ? 'Minting...' : 'Mint DeedNFT'}
