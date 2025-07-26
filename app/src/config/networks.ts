@@ -105,4 +105,24 @@ export const getRpcUrlForNetwork = (chainId: number, preferAlchemy = false): str
     return network.infuraUrl;
   }
   return network.rpcUrl;
+};
+
+// Get the correct ABI path for a network
+export const getAbiPathForNetwork = (chainId: number, contractName: string): string => {
+  const network = getNetworkByChainId(chainId);
+  if (!network) {
+    // Fallback to base-sepolia if network not found
+    return `@/contracts/base-sepolia/${contractName}.json`;
+  }
+  
+  // Map chain IDs to folder names
+  const networkFolders: { [key: number]: string } = {
+    1: 'ethereum', // Ethereum Mainnet
+    8453: 'base', // Base
+    11155111: 'sepolia', // Sepolia
+    84532: 'base-sepolia', // Base Sepolia
+  };
+  
+  const folder = networkFolders[chainId] || 'base-sepolia';
+  return `@/contracts/${folder}/${contractName}.json`;
 }; 

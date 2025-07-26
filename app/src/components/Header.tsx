@@ -29,6 +29,7 @@ const Header = ({ children }: HeaderProps) => {
     { to: "/mint", label: "Mint" },
     { to: "/explore", label: "Explore" },
     { to: "/dashboard", label: "Dashboard" },
+    { to: "/validation", label: "Validation" },
   ];
 
   return (

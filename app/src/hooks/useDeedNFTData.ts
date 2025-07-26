@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { useAccount } from 'wagmi';
-import DeedNFTJson from "@/contracts/DeedNFT.json";
 import { useNetworkValidation } from './useNetworkValidation';
-import { getContractAddressForNetwork, getRpcUrlForNetwork } from '@/config/networks';
+import { getContractAddressForNetwork, getRpcUrlForNetwork, getAbiPathForNetwork } from '@/config/networks';
 
 export interface DeedNFT {
   tokenId: string;
@@ -26,8 +25,19 @@ export interface DeedNFTStats {
   totalValue: string;
 }
 
-// Parse the ABI from the JSON string
-const DEEDNFT_ABI = JSON.parse(DeedNFTJson.abi);
+// Dynamic ABI loading function
+const getDeedNFTAbi = async (chainId: number) => {
+  try {
+    const abiPath = getAbiPathForNetwork(chainId, 'DeedNFT');
+    const abiModule = await import(abiPath);
+    return JSON.parse(abiModule.default.abi);
+  } catch (error) {
+    console.error('Error loading DeedNFT ABI:', error);
+    // Fallback to base-sepolia
+    const fallbackModule = await import('@/contracts/base-sepolia/DeedNFT.json');
+    return JSON.parse(fallbackModule.default.abi);
+  }
+};
 
 export const useDeedNFTData = () => {
   const { address, chainId, isConnected } = useAccount();
@@ -245,7 +255,8 @@ export const useDeedNFTData = () => {
       console.log(`🚀 Fetching DeedNFTs from contract ${contractAddress} on chain ${chainId}...`);
       
       const provider = getProvider();
-      const contract = new ethers.Contract(contractAddress, DEEDNFT_ABI, provider);
+      const abi = await getDeedNFTAbi(chainId!);
+      const contract = new ethers.Contract(contractAddress, abi, provider);
       
       // Get total supply
       const totalSupply = await contract.totalSupply();

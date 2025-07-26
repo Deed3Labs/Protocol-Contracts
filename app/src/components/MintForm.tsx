@@ -12,15 +12,26 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { useAccount } from 'wagmi';
-import DeedNFTJson from "@/contracts/DeedNFT.json";
+import { useAccount, useChainId } from 'wagmi';
 import type { Eip1193Provider } from 'ethers';
 import { NetworkWarning } from "@/components/NetworkWarning";
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";
+import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
 import { ChevronRight, ChevronLeft, CheckCircle, AlertCircle, Wallet, FileText, Settings, CreditCard } from "lucide-react";
 
-const DEEDNFT_ADDRESS = "0x1a4e89225015200f70e5a06f766399a3de6e21E6";
-const DEEDNFT_ABI = DeedNFTJson.abi;
+// Dynamic ABI loading function
+const getDeedNFTAbi = async (chainId: number) => {
+  try {
+    const abiPath = getAbiPathForNetwork(chainId, 'DeedNFT');
+    const abiModule = await import(abiPath);
+    return JSON.parse(abiModule.default.abi);
+  } catch (error) {
+    console.error('Error loading DeedNFT ABI:', error);
+    // Fallback to base-sepolia
+    const fallbackModule = await import('@/contracts/base-sepolia/DeedNFT.json');
+    return JSON.parse(fallbackModule.default.abi);
+  }
+};
 
 // Asset types matching the contract enum
 const assetTypes = [
@@ -40,6 +51,7 @@ const STEPS = [
 
 const MintForm = () => {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
   const { isCorrectNetwork } = useNetworkValidation();
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -137,7 +149,16 @@ const MintForm = () => {
 
       const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
       const signer = await provider.getSigner();
-      const contract = new ethers.Contract(DEEDNFT_ADDRESS, DEEDNFT_ABI, signer);
+      
+      // Get contract address for current network
+      const contractAddress = getContractAddressForNetwork(chainId);
+      if (!contractAddress) {
+        throw new Error("No contract address found for current network");
+      }
+      
+      // Get ABI for current network
+      const abi = await getDeedNFTAbi(chainId);
+      const contract = new ethers.Contract(contractAddress, abi, signer);
 
       // Prepare parameters matching DeedNFT.sol mintAsset function
       const owner = form.owner;

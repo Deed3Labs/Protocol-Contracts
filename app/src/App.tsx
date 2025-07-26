@@ -5,6 +5,7 @@ import Home from "@/components/Home";
 import MintForm from "@/components/MintForm";
 import Explore from "@/components/Explore";
 import Dashboard from "@/components/Dashboard";
+import Validation from "@/components/Validation";
 import { ThemeToggle } from "./components/ThemeToggle";
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
             <Route path="/mint" element={<MintForm />} />
             <Route path="/explore" element={<Explore />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/validation" element={<Validation />} />
           </Routes>
         </main>
         <Footer />
