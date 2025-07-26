@@ -282,12 +282,12 @@ const MintForm = () => {
     }
 
     if (!form.definition.trim()) {
-      setError("Please provide a definition for your DeedNFT.");
+      setError("Please provide a definition for your T-Deed.");
       return;
     }
 
     if (!form.owner.trim()) {
-      setError("Please provide an owner address for the DeedNFT.");
+      setError("Please provide an owner address for the T-Deed.");
       return;
     }
 
@@ -328,7 +328,7 @@ const MintForm = () => {
       const token = form.usePaymentToken && hasFundManager ? selectedToken : ethers.ZeroAddress;
       const salt = form.useCustomSalt ? ethers.toBigInt(form.salt) : 0n;
 
-      console.log("Minting DeedNFT with parameters:", {
+      console.log("Minting T-Deed with parameters:", {
         owner,
         assetType,
         uri,
@@ -375,7 +375,7 @@ const MintForm = () => {
 
     } catch (err) {
       console.error("Minting error:", err);
-      setError(err instanceof Error ? err.message : "Failed to mint DeedNFT. Please try again.");
+      setError(err instanceof Error ? err.message : "Failed to mint T-Deed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -736,7 +736,7 @@ const MintForm = () => {
               className="w-full text-lg font-semibold bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white transition-colors duration-200 h-11"
               size="lg"
             >
-              {isLoading ? 'Minting...' : 'Mint DeedNFT'}
+              {isLoading ? 'Minting...' : 'Mint T-Deed'}
             </Button>
           </div>
         );
@@ -831,7 +831,7 @@ const MintForm = () => {
                     {success && (
                       <Alert className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
                         <AlertDescription className="text-green-700 dark:text-green-300">
-                          DeedNFT minted successfully! Transaction hash: {txHash}
+                          T-Deed minted successfully! Transaction hash: {txHash}
                         </AlertDescription>
                       </Alert>
                     )}

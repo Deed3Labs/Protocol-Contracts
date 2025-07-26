@@ -50,10 +50,10 @@ const Explore = () => {
     <main className="container mx-auto py-12 px-4">
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-white mb-4">
-          Explore DeedNFTs
+          Explore T-Deeds
         </h1>
         <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-          Discover and browse existing DeedNFTs on the protocol.
+          Discover and browse existing T-Deeds on the protocol.
         </p>
       </div>
 
@@ -62,7 +62,7 @@ const Explore = () => {
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <p className="text-blue-800 dark:text-blue-200 text-sm">
             <strong>Debug Info:</strong> Chain ID: {currentChainId}, Contract: {contractAddress}, 
-            Total DeedNFTs: {deedNFTs.length}, Filtered: {filteredDeedNFTs.length}
+            Total T-Deeds: {deedNFTs.length}, Filtered: {filteredDeedNFTs.length}
           </p>
         </div>
       )}
@@ -72,7 +72,7 @@ const Explore = () => {
         <div className="text-center mb-8">
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
             <p className="text-yellow-800 dark:text-yellow-200">
-              Please connect your wallet to explore DeedNFTs
+              Please connect your wallet to explore T-Deeds
             </p>
           </div>
         </div>
@@ -82,7 +82,7 @@ const Explore = () => {
         <div className="text-center mb-8">
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
             <p className="text-red-800 dark:text-red-200">
-              Please switch to a supported network to explore DeedNFTs
+              Please switch to a supported network to explore T-Deeds
             </p>
           </div>
         </div>
@@ -105,7 +105,7 @@ const Explore = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search DeedNFTs..."
+              placeholder="Search T-Deeds..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-3 border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-[#141414] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent h-11"
@@ -136,9 +136,9 @@ const Explore = () => {
               onClick={fetchDeedNFTs}
               disabled={loading}
               variant="outline" 
-              className="w-full h-11 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]"
+              className="w-full h-11 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] px-4"
             >
-              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
           </div>
@@ -149,7 +149,7 @@ const Explore = () => {
       {loading && (
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto"></div>
-          <p className="text-gray-600 dark:text-gray-300 mt-4">Loading DeedNFTs from blockchain...</p>
+          <p className="text-gray-600 dark:text-gray-300 mt-4">Loading T-Deeds from blockchain...</p>
         </div>
       )}
 
@@ -158,15 +158,15 @@ const Explore = () => {
         <div className="text-center py-12">
           <Eye className="w-12 h-12 mx-auto mb-4 text-gray-400" />
           <p className="text-gray-600 dark:text-gray-300 text-lg">
-            {deedNFTs.length === 0 ? "No DeedNFTs found on this network" : "No DeedNFTs match your search"}
+            {deedNFTs.length === 0 ? "No T-Deeds found on this network" : "No T-Deeds match your search"}
           </p>
           <p className="text-gray-500 dark:text-gray-400 mt-2">
-            {deedNFTs.length === 0 ? "Be the first to mint a DeedNFT!" : "Try adjusting your search or filter criteria"}
+            {deedNFTs.length === 0 ? "Be the first to mint a T-Deed!" : "Try adjusting your search or filter criteria"}
           </p>
         </div>
       )}
 
-      {/* DeedNFTs Grid */}
+      {/* T-Deeds Grid */}
       {!loading && filteredDeedNFTs.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
           {filteredDeedNFTs.map((deedNFT) => {
@@ -221,8 +221,8 @@ const Explore = () => {
                       </div>
                     )}
                   </div>
-                  <Button variant="outline" className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]" onClick={() => handleViewDetails(deedNFT)}>
-                    <Eye className="w-4 h-4 mr-2" />
+                  <Button variant="outline" className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11" onClick={() => handleViewDetails(deedNFT)}>
+                    <Eye className="w-4 h-4 mr-1" />
                     View Details
                   </Button>
                 </CardContent>
@@ -236,7 +236,7 @@ const Explore = () => {
       {!loading && filteredDeedNFTs.length > 0 && (
         <div className="text-center mt-8">
           <p className="text-gray-500 dark:text-gray-400">
-            Showing {filteredDeedNFTs.length} of {deedNFTs.length} DeedNFTs
+            Showing {filteredDeedNFTs.length} of {deedNFTs.length} T-Deeds
           </p>
         </div>
       )}

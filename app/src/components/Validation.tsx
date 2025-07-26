@@ -778,7 +778,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               Validation Dashboard
             </h1>
             <p className="text-gray-600 dark:text-gray-300">
-              Manage DeedNFT validation, traits, and metadata
+              Manage T-Deed validation, traits, and metadata
             </p>
           </div>
           <Button
@@ -798,7 +798,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <p className="text-blue-800 dark:text-blue-200 text-sm">
             <strong>Debug Info:</strong> Chain ID: {currentChainId}, Contract: {contractAddress}, 
-            Total DeedNFTs: {deedNFTs.length}, Filtered: {filteredDeedNFTs.length}
+            Total T-Deeds: {deedNFTs.length}, Filtered: {filteredDeedNFTs.length}
           </p>
         </div>
       )}
@@ -819,7 +819,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Hash className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Total DeedNFTs</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Total T-Deeds</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalDeedNFTs}</p>
               </div>
             </div>
@@ -861,7 +861,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <User className="w-5 h-5 text-purple-600 dark:text-purple-400" />
               </div>
               <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Your DeedNFTs</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Your T-Deeds</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">{userDeedNFTs.length}</p>
               </div>
             </div>
@@ -944,7 +944,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       <Tabs defaultValue="deednfts" className="w-full">
         <TabsList className="grid w-full grid-cols-4 bg-gray-100 dark:bg-gray-800">
           <TabsTrigger value="deednfts" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
-            DeedNFTs ({filteredDeedNFTs.length})
+            T-Deeds ({filteredDeedNFTs.length})
           </TabsTrigger>
           <TabsTrigger value="traits" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
             Add Traits
@@ -957,25 +957,25 @@ const Validation: React.FC<ValidationPageProps> = () => {
           </TabsTrigger>
         </TabsList>
 
-                        <TabsContent value="deednfts" className="space-y-6 mt-6">
-                  {loading ? (
-                    <div className="text-center py-12">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto"></div>
-                      <p className="text-gray-600 dark:text-gray-300 mt-4">Loading DeedNFTs from blockchain...</p>
-                    </div>
-                  ) : filteredDeedNFTs.length === 0 ? (
-                    <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
-                      <CardContent className="p-8 text-center">
-                        <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                          No DeedNFTs Found
-                        </h3>
-                        <p className="text-gray-600 dark:text-gray-300">
-                          {deedNFTs.length === 0 ? "No DeedNFTs found on this network" : "No DeedNFTs match your current filters"}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  ) : (
+        <TabsContent value="deednfts" className="space-y-6 mt-6">
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto"></div>
+              <p className="text-gray-600 dark:text-gray-300 mt-4">Loading T-Deeds from blockchain...</p>
+            </div>
+          ) : filteredDeedNFTs.length === 0 ? (
+            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+              <CardContent className="p-8 text-center">
+                <AlertCircle className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                  No T-Deeds Found
+                </h3>
+                <p className="text-gray-600 dark:text-gray-300">
+                  {deedNFTs.length === 0 ? "No T-Deeds found on this network" : "No T-Deeds match your current filters"}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredDeedNFTs.map((deedNFT) => {
                 const validationStatus = getValidationStatus(deedNFT);
@@ -1045,7 +1045,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               {!loading && filteredDeedNFTs.length > 0 && (
                 <div className="text-center mt-8">
                   <p className="text-gray-500 dark:text-gray-400">
-                    Showing {filteredDeedNFTs.length} of {deedNFTs.length} DeedNFTs
+                    Showing {filteredDeedNFTs.length} of {deedNFTs.length} T-Deeds
                   </p>
                 </div>
               )}
@@ -1054,7 +1054,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
         <TabsContent value="traits" className="space-y-6 mt-6">
           <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
             <CardHeader>
-              <CardTitle className="text-gray-900 dark:text-white">Add Trait to DeedNFT</CardTitle>
+              <CardTitle className="text-gray-900 dark:text-white">Add Trait to T-Deed</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

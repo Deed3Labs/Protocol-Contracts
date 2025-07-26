@@ -34,15 +34,15 @@ const Home = () => {
         <Card className="group hover:border-black/20 dark:hover:border-white/20 transition-all duration-300 border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/90 backdrop-blur-sm">
           <CardHeader className="pb-4">
             <CardTitle className="text-2xl font-semibold text-gray-900 dark:text-white">
-              Explore Deeds
+              Explore T-Deeds
             </CardTitle>
             <CardDescription className="text-gray-600 dark:text-gray-300">
-              Browse and discover existing DeedNFTs and their metadata.
+              Browse and discover existing T-Deeds and their metadata.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" asChild className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] font-semibold py-3 rounded-lg transition-colors duration-200 h-11">
-              <Link to="/explore">Explore Deeds</Link>
+              <Link to="/explore">Explore T-Deeds</Link>
             </Button>
           </CardContent>
         </Card>
