@@ -222,44 +222,68 @@ const Validation: React.FC<ValidationPageProps> = () => {
   // Initialize contracts
   useEffect(() => {
     if (chainId && isConnected) {
+      console.log("Chain ID:", chainId);
       const contractAddress = getContractAddressForNetwork(chainId);
+      console.log("Contract address:", contractAddress);
       if (contractAddress && contractAddress !== "0x0000000000000000000000000000000000000000") {
         initializeContracts(contractAddress);
+      } else {
+        console.error("No valid contract address found for chainId:", chainId);
+        setValidationError(`No valid contract address found for network ${chainId}. Please switch to a supported network.`);
       }
     }
   }, [chainId, isConnected]);
 
   const initializeContracts = async (contractAddress: string) => {
     try {
+      console.log("Initializing contracts for address:", contractAddress);
       const provider = new ethers.BrowserProvider(window.ethereum as any);
       const signer = await provider.getSigner();
       
       // Initialize DeedNFT contract
+      console.log("Loading DeedNFT ABI for chainId:", chainId);
       const deedNFTAbi = await getDeedNFTAbi(chainId);
       const deedNFTContract = new ethers.Contract(contractAddress, deedNFTAbi, signer);
       setContract(deedNFTContract);
+      console.log("DeedNFT contract initialized");
 
       // Get validator address from the contract
-      const validatorAddress = await deedNFTContract.defaultValidator();
+      console.log("Getting validator address from DeedNFT contract");
+      const validatorAddress = await deedNFTContract.getTransferValidator();
+      console.log("Validator address:", validatorAddress);
+      
       if (validatorAddress && validatorAddress !== ethers.ZeroAddress) {
         // Initialize Validator contract
+        console.log("Loading Validator ABI for chainId:", chainId);
         const validatorAbi = await getValidatorAbi(chainId);
         const validatorContract = new ethers.Contract(validatorAddress, validatorAbi, signer);
         setValidatorContract(validatorContract);
+        console.log("Validator contract initialized");
+      } else {
+        console.warn("No validator address found or address is zero");
       }
 
       // Get MetadataRenderer address from the contract
+      console.log("Getting MetadataRenderer address from DeedNFT contract");
       const metadataRendererAddress = await deedNFTContract.metadataRenderer();
+      console.log("MetadataRenderer address:", metadataRendererAddress);
+      
       if (metadataRendererAddress && metadataRendererAddress !== ethers.ZeroAddress) {
         // Initialize MetadataRenderer contract
+        console.log("Loading MetadataRenderer ABI for chainId:", chainId);
         const metadataRendererAbi = await getMetadataRendererAbi(chainId);
         const metadataRendererContract = new ethers.Contract(metadataRendererAddress, metadataRendererAbi, signer);
         setMetadataRendererContract(metadataRendererContract);
+        console.log("MetadataRenderer contract initialized");
+      } else {
+        console.warn("No MetadataRenderer address found or address is zero");
       }
-          } catch (error) {
-        console.error("Error initializing contracts:", error);
-        setValidationError("Failed to initialize contracts");
-      }
+      
+      console.log("All contracts initialized successfully");
+    } catch (error) {
+      console.error("Error initializing contracts:", error);
+      setValidationError(`Failed to initialize contracts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   // Filter DeedNFTs
@@ -1114,7 +1138,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <Button 
                 onClick={() => handleAddTrait(traitForm.tokenId)}
                 disabled={isLoading || !traitForm.tokenId || !traitForm.traitName || !traitForm.traitValue}
-                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
+                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
               >
                 <Plus className="w-4 h-4 mr-1" />
                 Add Trait
@@ -1161,7 +1185,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetCustomMetadata}
                   disabled={isLoading || !customMetadataForm.tokenId || !customMetadataForm.customMetadata}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Custom Metadata
@@ -1203,7 +1227,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetAnimationURL}
                   disabled={isLoading || !animationURLForm.tokenId || !animationURLForm.animationURL}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Animation URL
@@ -1245,7 +1269,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetExternalLink}
                   disabled={isLoading || !externalLinkForm.tokenId || !externalLinkForm.externalLink}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set External Link
@@ -1309,7 +1333,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleManageDocument}
                   disabled={isLoading || !documentForm.tokenId || !documentForm.docType}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   {documentForm.isRemove ? "Remove Document" : "Add Document"}
@@ -1381,7 +1405,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetAssetCondition}
                   disabled={isLoading || !assetConditionForm.tokenId || !assetConditionForm.generalCondition}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Asset Condition
@@ -1457,7 +1481,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetLegalInfo}
                   disabled={isLoading || !legalInfoForm.tokenId || !legalInfoForm.jurisdiction}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Legal Info
@@ -1503,7 +1527,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetFeatures}
                   disabled={isLoading || !featuresForm.tokenId || featuresForm.features.length === 0}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Features
@@ -1549,7 +1573,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetGallery}
                   disabled={isLoading || !galleryForm.tokenId || galleryForm.imageUrls.length === 0}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Gallery
@@ -1566,18 +1590,18 @@ const Validation: React.FC<ValidationPageProps> = () => {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+                <div className="space-y-3">
                   <Label htmlFor="validationTokenId">Token ID</Label>
                   <Input
                     id="validationTokenId"
                     placeholder="Enter token ID"
                     value={validationForm.tokenId}
                     onChange={(e) => setValidationForm(prev => ({ ...prev, tokenId: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
+                <div className="space-y-3">
                   <Label htmlFor="validationStatus">Validation Status</Label>
                   <Select 
                     value={validationForm.isValid.toString()} 
@@ -1585,7 +1609,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                       setValidationForm(prev => ({ ...prev, isValid: value === "true" }))
                     }
                   >
-                    <SelectTrigger className="border-black/10 dark:border-white/10">
+                    <SelectTrigger className="border-black/10 dark:border-white/10 h-11">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1596,7 +1620,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 </div>
               </div>
 
-              <div>
+              <div className="space-y-3">
                 <Label htmlFor="validationNotes">Notes</Label>
                 <Textarea
                   id="validationNotes"
@@ -1611,7 +1635,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <Button 
                 onClick={() => handleUpdateValidation(validationForm.tokenId)}
                 disabled={isLoading || !validationForm.tokenId}
-                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
+                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
               >
                 <Save className="w-4 h-4 mr-1" />
                 Update Validation
