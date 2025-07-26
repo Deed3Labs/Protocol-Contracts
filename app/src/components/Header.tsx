@@ -42,19 +42,65 @@ const Header = ({ children }: HeaderProps) => {
         const deedNFTAddress = getContractAddressForNetwork(chainId);
         if (!deedNFTAddress) return;
 
-        const abiPath = getAbiPathForNetwork(chainId, 'DeedNFT');
-        const abiModule = await import(abiPath);
-        const abi = JSON.parse(abiModule.default.abi);
+        // Dynamic ABI loading with fallback (same as AdminPanel)
+        let abi;
+        try {
+          const abiPath = getAbiPathForNetwork(chainId, 'DeedNFT');
+          const abiModule = await import(abiPath);
+          abi = JSON.parse(abiModule.default.abi);
+        } catch (error) {
+          console.error('Error loading DeedNFT ABI:', error);
+          // Fallback to base-sepolia
+          const fallbackModule = await import('@/contracts/base-sepolia/DeedNFT.json');
+          abi = JSON.parse(fallbackModule.default.abi);
+        }
 
         if (!window.ethereum) return;
         const provider = new ethers.BrowserProvider(window.ethereum as any);
         const contract = new ethers.Contract(deedNFTAddress, abi, provider);
 
-        // Check for DEFAULT_ADMIN_ROLE
-        const DEFAULT_ADMIN_ROLE = "0x0000000000000000000000000000000000000000000000000000000000000000";
-        const hasRole = await contract.hasRole(DEFAULT_ADMIN_ROLE, address);
-        console.log('Header: Admin role check for', address, '=', hasRole);
-        setHasAdminRole(hasRole);
+        // Check for various admin roles (same as AdminPanel)
+        const ROLES = {
+          DEFAULT_ADMIN_ROLE: "0x0000000000000000000000000000000000000000000000000000000000000000",
+          VALIDATOR_ROLE: "0x2172861495e7b85edac73e3cd5fbb42dd675baadf627720e687bcfdaca025096",
+          MINTER_ROLE: "0x9f2df0fed2c77648de5860a4cc508cd0818c85b8b8a1ab4ceeef8d981c8956a6",
+          METADATA_ROLE: "0x4f51faf6c4561ff95f067657e43439f0f856d97c04d9f6df31a2a355e4bd87e",
+          CRITERIA_MANAGER_ROLE: "0x8f4fcdda5e994d0bb1a6cfa8577caa70b3eab9bef0a2c4d4b9b8b0d5b0f8c8c8",
+          FEE_MANAGER_ROLE: "0x8f4fcdda5e994d0bb1a6cfa8577caa70b3eab9bef0a2c4d4b9b8b0d5b0f8c8c9",
+          ADMIN_ROLE: "0x8f4fcdda5e994d0bb1a6cfa8577caa70b3eab9bef0a2c4d4b9b8b0d5b0f8c8ca",
+          REGISTRY_ADMIN_ROLE: "0x8f4fcdda5e994d0bb1a6cfa8577caa70b3eab9bef0a2c4d4b9b8b0d5b0f8c8cb"
+        };
+
+        // Check if user has any admin role
+        let hasAnyAdminRole = false;
+        console.log('Header: Starting role checks for address:', address);
+        for (const [roleKey, roleValue] of Object.entries(ROLES)) {
+          try {
+            const hasRole = await contract.hasRole(roleValue, address);
+            console.log(`Header: Role ${roleKey} check for ${address} = ${hasRole}`);
+            if (hasRole) {
+              console.log(`Header: Found admin role: ${roleKey}`);
+              hasAnyAdminRole = true;
+              break;
+            }
+          } catch (error) {
+            console.log(`Header: Error checking role ${roleKey}:`, error);
+          }
+        }
+
+        // Also check if user is the owner (for contracts that use Ownable)
+        try {
+          const owner = await contract.owner();
+          console.log(`Header: Contract owner: ${owner}`);
+          if (owner.toLowerCase() === address.toLowerCase()) {
+            hasAnyAdminRole = true;
+          }
+        } catch (error) {
+          console.log('Header: Contract does not have owner() function or error occurred:', error);
+        }
+
+        console.log('Header: Final admin role check for', address, '=', hasAnyAdminRole);
+        setHasAdminRole(hasAnyAdminRole);
       } catch (error) {
         console.error('Error checking admin role:', error);
         setHasAdminRole(false);
@@ -72,6 +118,12 @@ const Header = ({ children }: HeaderProps) => {
     { to: "/validation", label: "Validation" },
     ...(hasAdminRole ? [{ to: "/admin", label: "Admin", icon: Shield }] : []),
   ];
+
+  // Debug logging
+  console.log('Header: hasAdminRole =', hasAdminRole);
+  console.log('Header: navLinks =', navLinks);
+  console.log('Header: isConnected =', isConnected);
+  console.log('Header: address =', address);
 
   return (
     <header className="sticky top-0 z-30 w-full bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm border-b border-black/10 dark:border-white/10">
