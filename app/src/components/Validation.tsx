@@ -78,6 +78,18 @@ interface TraitFormData {
   valueType: "string" | "number" | "boolean";
 }
 
+interface RemoveTraitFormData {
+  tokenId: string;
+  traitName: string;
+}
+
+interface UpdateTraitFormData {
+  tokenId: string;
+  traitName: string;
+  traitValue: string;
+  valueType: "string" | "number" | "boolean";
+}
+
 interface ValidationFormData {
   tokenId: string;
   isValid: boolean;
@@ -122,6 +134,11 @@ interface GalleryFormData {
   imageUrls: string[];
 }
 
+interface TraitNameFormData {
+  traitKey: string;
+  traitName: string;
+}
+
 const Validation: React.FC<ValidationPageProps> = () => {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
@@ -148,9 +165,23 @@ const Validation: React.FC<ValidationPageProps> = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0); // Add refresh key for forcing re-renders
+  const [isRefreshing, setIsRefreshing] = useState(false); // Add refreshing state
 
   // Form states
   const [traitForm, setTraitForm] = useState<TraitFormData>({
+    tokenId: "",
+    traitName: "",
+    traitValue: "",
+    valueType: "string"
+  });
+
+  const [removeTraitForm, setRemoveTraitForm] = useState<RemoveTraitFormData>({
+    tokenId: "",
+    traitName: ""
+  });
+
+  const [updateTraitForm, setUpdateTraitForm] = useState<UpdateTraitFormData>({
     tokenId: "",
     traitName: "",
     traitValue: "",
@@ -214,10 +245,73 @@ const Validation: React.FC<ValidationPageProps> = () => {
     imageUrls: []
   });
 
+  const [traitNameForm, setTraitNameForm] = useState<TraitNameFormData>({
+    traitKey: "",
+    traitName: ""
+  });
+
   // Contract interaction
   const [contract, setContract] = useState<ethers.Contract | null>(null);
-  const [validatorContract, setValidatorContract] = useState<ethers.Contract | null>(null);
   const [metadataRendererContract, setMetadataRendererContract] = useState<ethers.Contract | null>(null);
+
+  // Function to get validator address from token traits
+  const getValidatorAddressFromToken = async (tokenId: string): Promise<string | null> => {
+    if (!contract) return null;
+    
+    try {
+      // Get validator trait value using the trait key
+      const validatorTraitKey = ethers.keccak256(ethers.toUtf8Bytes("validator"));
+      const validatorBytes = await contract.getTraitValue(tokenId, validatorTraitKey);
+      
+      if (validatorBytes.length > 0) {
+        // Decode the address from bytes
+        const validatorAddress = ethers.AbiCoder.defaultAbiCoder().decode(['address'], validatorBytes)[0];
+        console.log(`Validator address for token ${tokenId}:`, validatorAddress);
+        return validatorAddress;
+      }
+      
+      console.log(`No validator trait found for token ${tokenId}`);
+      return null;
+    } catch (error) {
+      console.error(`Error getting validator address for token ${tokenId}:`, error);
+      return null;
+    }
+  };
+
+  // Function to initialize validator contract for a specific token
+  const initializeValidatorContractForToken = async (tokenId: string): Promise<ethers.Contract | null> => {
+    try {
+      const validatorAddress = await getValidatorAddressFromToken(tokenId);
+      
+      if (!validatorAddress || validatorAddress === ethers.ZeroAddress) {
+        console.warn(`No validator address found for token ${tokenId}`);
+        return null;
+      }
+
+      // Initialize Validator contract
+      console.log(`Loading Validator ABI for chainId: ${chainId}`);
+      const validatorAbi = await getValidatorAbi(chainId);
+      const provider = new ethers.BrowserProvider(window.ethereum as any);
+      const signer = await provider.getSigner();
+      const validatorContract = new ethers.Contract(validatorAddress, validatorAbi, signer);
+      console.log(`Validator contract initialized for token ${tokenId} at address:`, validatorAddress);
+      
+      return validatorContract;
+    } catch (error) {
+      console.error(`Error initializing validator contract for token ${tokenId}:`, error);
+      return null;
+    }
+  };
+
+  // Clear success message after 5 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   // Initialize contracts
   useEffect(() => {
@@ -246,22 +340,6 @@ const Validation: React.FC<ValidationPageProps> = () => {
       const deedNFTContract = new ethers.Contract(contractAddress, deedNFTAbi, signer);
       setContract(deedNFTContract);
       console.log("DeedNFT contract initialized");
-
-      // Get validator address from the contract
-      console.log("Getting validator address from DeedNFT contract");
-      const validatorAddress = await deedNFTContract.getTransferValidator();
-      console.log("Validator address:", validatorAddress);
-      
-      if (validatorAddress && validatorAddress !== ethers.ZeroAddress) {
-        // Initialize Validator contract
-        console.log("Loading Validator ABI for chainId:", chainId);
-        const validatorAbi = await getValidatorAbi(chainId);
-        const validatorContract = new ethers.Contract(validatorAddress, validatorAbi, signer);
-        setValidatorContract(validatorContract);
-        console.log("Validator contract initialized");
-      } else {
-        console.warn("No validator address found or address is zero");
-      }
 
       // Get MetadataRenderer address from the contract
       console.log("Getting MetadataRenderer address from DeedNFT contract");
@@ -301,13 +379,66 @@ const Validation: React.FC<ValidationPageProps> = () => {
     return matchesSearch && matchesStatus && matchesAssetType;
   });
 
-  // Check if user has validator permissions
-  const checkValidatorPermissions = async () => {
-    if (!validatorContract || !address) return false;
+  // Check if user has validator permissions or is deed owner
+  const checkValidatorPermissions = async (validatorContractToCheck?: ethers.Contract, tokenId?: string) => {
+    if (!address) {
+      console.log("No address available");
+      return false;
+    }
+    
+    // First check if user is the deed owner
+    if (tokenId && contract) {
+      try {
+        const owner = await contract.ownerOf(tokenId);
+        if (owner.toLowerCase() === address.toLowerCase()) {
+          console.log("User is the deed owner");
+          return true;
+        }
+      } catch (error) {
+        console.error("Error checking deed ownership:", error);
+      }
+    }
+    
+    // Check if user has VALIDATOR_ROLE on DeedNFT contract
+    if (contract) {
+      try {
+        const deedNFTValidatorRole = await contract.VALIDATOR_ROLE();
+        const hasDeedNFTRole = await contract.hasRole(deedNFTValidatorRole, address);
+        if (hasDeedNFTRole) {
+          console.log("User has VALIDATOR_ROLE on DeedNFT contract");
+          return true;
+        }
+      } catch (error) {
+        console.error("Error checking DeedNFT validator role:", error);
+      }
+    }
+    
+    // Then check validator contract permissions
+    if (!validatorContractToCheck) {
+      console.log("No validator contract available");
+      return false;
+    }
+    
+    const contractToCheck = validatorContractToCheck;
     
     try {
-      const VALIDATOR_ROLE = await validatorContract.VALIDATOR_ROLE();
-      const hasRole = await validatorContract.hasRole(VALIDATOR_ROLE, address);
+      console.log("Checking validator permissions for address:", address);
+      const VALIDATOR_ROLE = await contractToCheck.VALIDATOR_ROLE();
+      console.log("VALIDATOR_ROLE:", VALIDATOR_ROLE);
+      
+      const hasRole = await contractToCheck.hasRole(VALIDATOR_ROLE, address);
+      console.log("Has VALIDATOR_ROLE:", hasRole);
+      
+      // Also check if the user has the role on the MetadataRenderer contract
+      if (metadataRendererContract) {
+        const metadataRendererRole = await metadataRendererContract.VALIDATOR_ROLE();
+        const hasMetadataRole = await metadataRendererContract.hasRole(metadataRendererRole, address);
+        console.log("Has VALIDATOR_ROLE on MetadataRenderer:", hasMetadataRole);
+        
+        // User needs role on either contract
+        return hasRole || hasMetadataRole;
+      }
+      
       return hasRole;
     } catch (error) {
       console.error("Error checking validator permissions:", error);
@@ -324,9 +455,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     setIsLoading(true);
     setValidationError(null);
+    setSuccess(null); // Clear previous success message
 
     try {
-      const hasPermission = await checkValidatorPermissions();
+      // Get the validator contract for this specific token
+      const tokenValidatorContract = await initializeValidatorContractForToken(tokenId);
+      if (!tokenValidatorContract) {
+        setValidationError("No validator found for this token");
+        return;
+      }
+
+      const hasPermission = await checkValidatorPermissions(tokenValidatorContract, tokenId);
       if (!hasPermission) {
         setValidationError("You don't have permission to add traits");
         return;
@@ -353,8 +492,14 @@ const Validation: React.FC<ValidationPageProps> = () => {
       setSuccess("Trait added successfully");
       setTraitForm({ tokenId: "", traitName: "", traitValue: "", valueType: "string" });
       
-      // Refresh data
-      window.location.reload();
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
     } catch (error) {
       console.error("Error adding trait:", error);
       setValidationError("Failed to add trait");
@@ -363,35 +508,260 @@ const Validation: React.FC<ValidationPageProps> = () => {
     }
   };
 
-  // Update validation status
-  const handleUpdateValidation = async (tokenId: string) => {
-    if (!validatorContract) {
-      setValidationError("Validator contract not initialized");
+  // Remove trait from DeedNFT
+  const handleRemoveTrait = async (tokenId: string) => {
+    if (!contract || !removeTraitForm.traitName) {
+      setValidationError("Please fill in all trait fields");
       return;
     }
 
     setIsLoading(true);
     setValidationError(null);
+    setSuccess(null); // Clear previous success message
 
     try {
-      const hasPermission = await checkValidatorPermissions();
-      if (!hasPermission) {
-        setValidationError("You don't have permission to update validation status");
+      // Get the validator contract for this specific token
+      const tokenValidatorContract = await initializeValidatorContractForToken(tokenId);
+      if (!tokenValidatorContract) {
+        setValidationError("No validator found for this token");
         return;
       }
 
-      const tx = await validatorContract.updateValidationStatus(
+      const hasPermission = await checkValidatorPermissions(tokenValidatorContract, tokenId);
+      if (!hasPermission) {
+        setValidationError("You don't have permission to remove traits");
+        return;
+      }
+
+      console.log("Removing trait from token:", tokenId);
+      console.log("Trait name:", removeTraitForm.traitName);
+
+      const tx = await contract.removeTrait(
         parseInt(tokenId),
-        validationForm.isValid,
-        address
+        removeTraitForm.traitName
       );
 
       await tx.wait();
-      setSuccess("Validation status updated successfully");
-      setValidationForm({ tokenId: "", isValid: false, notes: "" });
+      setSuccess("Trait removed successfully");
+      setRemoveTraitForm({ tokenId: "", traitName: "" });
       
-      // Refresh data
-      window.location.reload();
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
+    } catch (error) {
+      console.error("Error removing trait:", error);
+      setValidationError("Failed to remove trait");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Update trait value in DeedNFT
+  const handleUpdateTrait = async (tokenId: string) => {
+    if (!contract || !updateTraitForm.traitName || !updateTraitForm.traitValue) {
+      setValidationError("Please fill in all trait fields");
+      return;
+    }
+
+    setIsLoading(true);
+    setValidationError(null);
+    setSuccess(null); // Clear previous success message
+
+    try {
+      // Get the validator contract for this specific token
+      const tokenValidatorContract = await initializeValidatorContractForToken(tokenId);
+      if (!tokenValidatorContract) {
+        setValidationError("No validator found for this token");
+        return;
+      }
+
+      const hasPermission = await checkValidatorPermissions(tokenValidatorContract, tokenId);
+      if (!hasPermission) {
+        setValidationError("You don't have permission to update traits");
+        return;
+      }
+
+      // Convert trait value based on type
+      let encodedValue: string;
+      if (updateTraitForm.valueType === "number") {
+        encodedValue = ethers.zeroPadValue(ethers.toBeHex(parseInt(updateTraitForm.traitValue)), 32);
+      } else if (updateTraitForm.valueType === "boolean") {
+        encodedValue = ethers.zeroPadValue(ethers.toBeHex(updateTraitForm.traitValue === "true" ? 1 : 0), 32);
+      } else {
+        encodedValue = ethers.toUtf8Bytes(updateTraitForm.traitValue) as any;
+      }
+
+      console.log("Updating trait for token:", tokenId);
+      console.log("Trait name:", updateTraitForm.traitName);
+      console.log("New value:", updateTraitForm.traitValue);
+
+      const tx = await contract.setTrait(
+        parseInt(tokenId),
+        ethers.toUtf8Bytes(updateTraitForm.traitName),
+        encodedValue,
+        updateTraitForm.valueType === "string" ? 1 : updateTraitForm.valueType === "number" ? 2 : 3
+      );
+
+      await tx.wait();
+      setSuccess("Trait updated successfully");
+      setUpdateTraitForm({ tokenId: "", traitName: "", traitValue: "", valueType: "string" });
+      
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
+    } catch (error) {
+      console.error("Error updating trait:", error);
+      setValidationError("Failed to update trait");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Set trait name (Admin function)
+  const handleSetTraitName = async () => {
+    if (!contract || !traitNameForm.traitKey || !traitNameForm.traitName) {
+      setValidationError("Please fill in all trait name fields");
+      return;
+    }
+
+    setIsLoading(true);
+    setValidationError(null);
+    setSuccess(null);
+
+    try {
+      // Check if user has DEFAULT_ADMIN_ROLE
+      const hasAdminRole = await contract.hasRole(await contract.DEFAULT_ADMIN_ROLE(), address);
+      if (!hasAdminRole) {
+        setValidationError("You don't have admin permissions to set trait names");
+        return;
+      }
+
+      // Convert trait key to bytes32
+      const traitKeyBytes32 = ethers.keccak256(ethers.toUtf8Bytes(traitNameForm.traitKey));
+
+      const tx = await contract.setTraitName(
+        traitKeyBytes32,
+        traitNameForm.traitName
+      );
+
+      await tx.wait();
+      setSuccess("Trait name set successfully");
+      setTraitNameForm({ traitKey: "", traitName: "" });
+      
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1);
+      }, 2000);
+    } catch (error) {
+      console.error("Error setting trait name:", error);
+      setValidationError("Failed to set trait name");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Get trait name
+  const handleGetTraitName = async (traitKey: string) => {
+    if (!contract) {
+      setValidationError("DeedNFT contract not initialized");
+      return "";
+    }
+
+    try {
+      const traitKeyBytes32 = ethers.keccak256(ethers.toUtf8Bytes(traitKey));
+      const traitName = await contract.getTraitName(traitKeyBytes32);
+      console.log(`Trait name for key ${traitKey}:`, traitName);
+      return traitName;
+    } catch (error) {
+      console.error("Error getting trait name:", error);
+      return "";
+    }
+  };
+
+  // Test trait name lookup (for debugging)
+  const handleTestTraitName = async () => {
+    if (!traitNameForm.traitKey) {
+      setValidationError("Please enter a trait key to test");
+      return;
+    }
+
+    const traitName = await handleGetTraitName(traitNameForm.traitKey);
+    if (traitName) {
+      setSuccess(`Trait name for "${traitNameForm.traitKey}": ${traitName}`);
+    } else {
+      setValidationError(`No trait name found for "${traitNameForm.traitKey}"`);
+    }
+  };
+
+  // Update validation status
+  const handleUpdateValidation = async (tokenId: string) => {
+    if (!contract) {
+      setValidationError("DeedNFT contract not initialized");
+      return;
+    }
+
+    setIsLoading(true);
+    setValidationError(null);
+    setSuccess(null); // Clear previous success message
+
+    try {
+      // Check if user has VALIDATOR_ROLE on DeedNFT contract directly
+      const hasDeedNFTRole = await contract.hasRole(await contract.VALIDATOR_ROLE(), address);
+      
+      if (hasDeedNFTRole) {
+        // User has VALIDATOR_ROLE on DeedNFT, can call updateValidationStatus directly
+        const tx = await contract.updateValidationStatus(
+          parseInt(tokenId),
+          validationForm.isValid,
+          address
+        );
+        await tx.wait();
+        setSuccess("Validation status updated successfully");
+        setValidationForm({ tokenId: "", isValid: false, notes: "" });
+      } else {
+        // User doesn't have VALIDATOR_ROLE on DeedNFT, try using validator contract
+        const tokenValidatorContract = await initializeValidatorContractForToken(tokenId);
+        if (!tokenValidatorContract) {
+          setValidationError("No validator found for this token and you don't have VALIDATOR_ROLE on DeedNFT");
+          return;
+        }
+
+        // Check if user has VALIDATOR_ROLE on the validator contract
+        const hasValidatorRole = await tokenValidatorContract.hasRole(await tokenValidatorContract.VALIDATOR_ROLE(), address);
+        if (!hasValidatorRole) {
+          setValidationError("You don't have VALIDATOR_ROLE on either the DeedNFT or the validator contract");
+          return;
+        }
+
+        // Call validateDeed on the validator contract, which will update the status
+        const tx = await tokenValidatorContract.validateDeed(parseInt(tokenId));
+        await tx.wait();
+        setSuccess("Deed validated successfully");
+        setValidationForm({ tokenId: "", isValid: false, notes: "" });
+      }
+      
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
     } catch (error) {
       console.error("Error updating validation:", error);
       setValidationError("Failed to update validation status");
@@ -402,27 +772,57 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
   // Validate deed using validator contract
   const handleValidateDeed = async (tokenId: string) => {
-    if (!validatorContract) {
-      setValidationError("Validator contract not initialized");
+    if (!contract) {
+      setValidationError("DeedNFT contract not initialized");
       return;
     }
 
     setIsLoading(true);
     setValidationError(null);
+    setSuccess(null); // Clear previous success message
 
     try {
-      const hasPermission = await checkValidatorPermissions();
-      if (!hasPermission) {
-        setValidationError("You don't have permission to validate deeds");
-        return;
-      }
-
-      const tx = await validatorContract.validateDeed(parseInt(tokenId));
-      await tx.wait();
-      setSuccess("Deed validated successfully");
+      // Check if user has VALIDATOR_ROLE on DeedNFT contract directly
+      const hasDeedNFTRole = await contract.hasRole(await contract.VALIDATOR_ROLE(), address);
       
-      // Refresh data
-      window.location.reload();
+      if (hasDeedNFTRole) {
+        // User has VALIDATOR_ROLE on DeedNFT, can call updateValidationStatus directly
+        const tx = await contract.updateValidationStatus(
+          parseInt(tokenId),
+          true, // Set as validated
+          address
+        );
+        await tx.wait();
+        setSuccess("Deed validated successfully");
+      } else {
+        // User doesn't have VALIDATOR_ROLE on DeedNFT, try using validator contract
+        const tokenValidatorContract = await initializeValidatorContractForToken(tokenId);
+        if (!tokenValidatorContract) {
+          setValidationError("No validator found for this token and you don't have VALIDATOR_ROLE on DeedNFT");
+          return;
+        }
+
+        // Check if user has VALIDATOR_ROLE on the validator contract
+        const hasValidatorRole = await tokenValidatorContract.hasRole(await tokenValidatorContract.VALIDATOR_ROLE(), address);
+        if (!hasValidatorRole) {
+          setValidationError("You don't have VALIDATOR_ROLE on either the DeedNFT or the validator contract");
+          return;
+        }
+
+        // Call validateDeed on the validator contract, which will update the status
+        const tx = await tokenValidatorContract.validateDeed(parseInt(tokenId));
+        await tx.wait();
+        setSuccess("Deed validated successfully");
+      }
+      
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
     } catch (error) {
       console.error("Error validating deed:", error);
       setValidationError("Failed to validate deed");
@@ -440,13 +840,24 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     setIsLoading(true);
     setValidationError(null);
+    setSuccess(null); // Clear previous success message
 
     try {
-      const hasPermission = await checkValidatorPermissions();
-      if (!hasPermission) {
-        setValidationError("You don't have permission to update metadata");
+      // Get the validator contract for this specific token
+      const tokenValidatorContract = await initializeValidatorContractForToken(customMetadataForm.tokenId);
+      if (!tokenValidatorContract) {
+        setValidationError("No validator found for this token");
         return;
       }
+
+      const hasPermission = await checkValidatorPermissions(tokenValidatorContract, customMetadataForm.tokenId);
+      if (!hasPermission) {
+        setValidationError("You don't have permission to update metadata. You need VALIDATOR_ROLE or be the deed owner.");
+        return;
+      }
+
+      console.log("Setting custom metadata for token:", customMetadataForm.tokenId);
+      console.log("Metadata:", customMetadataForm.customMetadata);
 
       // Call the specific function: setTokenCustomMetadata(uint256 tokenId, string metadata)
       const tx = await metadataRendererContract.setTokenCustomMetadata(
@@ -454,15 +865,24 @@ const Validation: React.FC<ValidationPageProps> = () => {
         customMetadataForm.customMetadata
       );
 
+      console.log("Transaction sent:", tx.hash);
       await tx.wait();
+      console.log("Transaction confirmed");
+      
       setSuccess("Custom metadata updated successfully");
       setCustomMetadataForm({ tokenId: "", customMetadata: "" });
       
-      // Refresh data
-      window.location.reload();
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
     } catch (error) {
       console.error("Error updating custom metadata:", error);
-      setValidationError("Failed to update custom metadata");
+      setValidationError(`Failed to update custom metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -476,13 +896,24 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     setIsLoading(true);
     setValidationError(null);
+    setSuccess(null); // Clear previous success message
 
     try {
-      const hasPermission = await checkValidatorPermissions();
-      if (!hasPermission) {
-        setValidationError("You don't have permission to update metadata");
+      // Get the validator contract for this specific token
+      const tokenValidatorContract = await initializeValidatorContractForToken(animationURLForm.tokenId);
+      if (!tokenValidatorContract) {
+        setValidationError("No validator found for this token");
         return;
       }
+
+      const hasPermission = await checkValidatorPermissions(tokenValidatorContract, animationURLForm.tokenId);
+      if (!hasPermission) {
+        setValidationError("You don't have permission to update metadata. You need VALIDATOR_ROLE or be the deed owner.");
+        return;
+      }
+
+      console.log("Setting animation URL for token:", animationURLForm.tokenId);
+      console.log("Animation URL:", animationURLForm.animationURL);
 
       // Call the specific function: setTokenAnimationURL(uint256 tokenId, string animationURL)
       const tx = await metadataRendererContract.setTokenAnimationURL(
@@ -490,15 +921,24 @@ const Validation: React.FC<ValidationPageProps> = () => {
         animationURLForm.animationURL
       );
 
+      console.log("Transaction sent:", tx.hash);
       await tx.wait();
+      console.log("Transaction confirmed");
+      
       setSuccess("Animation URL updated successfully");
       setAnimationURLForm({ tokenId: "", animationURL: "" });
       
-      // Refresh data
-      window.location.reload();
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
     } catch (error) {
       console.error("Error updating animation URL:", error);
-      setValidationError("Failed to update animation URL");
+      setValidationError(`Failed to update animation URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -512,13 +952,24 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     setIsLoading(true);
     setValidationError(null);
+    setSuccess(null); // Clear previous success message
 
     try {
-      const hasPermission = await checkValidatorPermissions();
-      if (!hasPermission) {
-        setValidationError("You don't have permission to update metadata");
+      // Get the validator contract for this specific token
+      const tokenValidatorContract = await initializeValidatorContractForToken(externalLinkForm.tokenId);
+      if (!tokenValidatorContract) {
+        setValidationError("No validator found for this token");
         return;
       }
+
+      const hasPermission = await checkValidatorPermissions(tokenValidatorContract, externalLinkForm.tokenId);
+      if (!hasPermission) {
+        setValidationError("You don't have permission to update metadata. You need VALIDATOR_ROLE or be the deed owner.");
+        return;
+      }
+
+      console.log("Setting external link for token:", externalLinkForm.tokenId);
+      console.log("External link:", externalLinkForm.externalLink);
 
       // Call the specific function: setTokenExternalLink(uint256 tokenId, string externalLink)
       const tx = await metadataRendererContract.setTokenExternalLink(
@@ -526,15 +977,24 @@ const Validation: React.FC<ValidationPageProps> = () => {
         externalLinkForm.externalLink
       );
 
+      console.log("Transaction sent:", tx.hash);
       await tx.wait();
+      console.log("Transaction confirmed");
+      
       setSuccess("External link updated successfully");
       setExternalLinkForm({ tokenId: "", externalLink: "" });
       
-      // Refresh data
-      window.location.reload();
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
     } catch (error) {
       console.error("Error updating external link:", error);
-      setValidationError("Failed to update external link");
+      setValidationError(`Failed to update external link: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -549,9 +1009,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     setIsLoading(true);
     setValidationError(null);
+    setSuccess(null); // Clear previous success message
 
     try {
-      const hasPermission = await checkValidatorPermissions();
+      // Get the validator contract for this specific token
+      const tokenValidatorContract = await initializeValidatorContractForToken(documentForm.tokenId);
+      if (!tokenValidatorContract) {
+        setValidationError("No validator found for this token");
+        return;
+      }
+
+      const hasPermission = await checkValidatorPermissions(tokenValidatorContract, documentForm.tokenId);
       if (!hasPermission) {
         setValidationError("You don't have permission to manage documents");
         return;
@@ -569,8 +1037,14 @@ const Validation: React.FC<ValidationPageProps> = () => {
       setSuccess(documentForm.isRemove ? "Document removed successfully" : "Document added successfully");
       setDocumentForm({ tokenId: "", docType: "", documentURI: "", isRemove: false });
       
-      // Refresh data
-      window.location.reload();
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
     } catch (error) {
       console.error("Error managing document:", error);
       setValidationError("Failed to manage document");
@@ -588,9 +1062,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     setIsLoading(true);
     setValidationError(null);
+    setSuccess(null); // Clear previous success message
 
     try {
-      const hasPermission = await checkValidatorPermissions();
+      // Get the validator contract for this specific token
+      const tokenValidatorContract = await initializeValidatorContractForToken(assetConditionForm.tokenId);
+      if (!tokenValidatorContract) {
+        setValidationError("No validator found for this token");
+        return;
+      }
+
+      const hasPermission = await checkValidatorPermissions(tokenValidatorContract, assetConditionForm.tokenId);
       if (!hasPermission) {
         setValidationError("You don't have permission to update asset condition");
         return;
@@ -617,8 +1099,14 @@ const Validation: React.FC<ValidationPageProps> = () => {
         additionalNotes: ""
       });
       
-      // Refresh data
-      window.location.reload();
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
     } catch (error) {
       console.error("Error updating asset condition:", error);
       setValidationError("Failed to update asset condition");
@@ -636,9 +1124,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     setIsLoading(true);
     setValidationError(null);
+    setSuccess(null); // Clear previous success message
 
     try {
-      const hasPermission = await checkValidatorPermissions();
+      // Get the validator contract for this specific token
+      const tokenValidatorContract = await initializeValidatorContractForToken(legalInfoForm.tokenId);
+      if (!tokenValidatorContract) {
+        setValidationError("No validator found for this token");
+        return;
+      }
+
+      const hasPermission = await checkValidatorPermissions(tokenValidatorContract, legalInfoForm.tokenId);
       if (!hasPermission) {
         setValidationError("You don't have permission to update legal info");
         return;
@@ -667,8 +1163,14 @@ const Validation: React.FC<ValidationPageProps> = () => {
         additionalInfo: ""
       });
       
-      // Refresh data
-      window.location.reload();
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
     } catch (error) {
       console.error("Error updating legal info:", error);
       setValidationError("Failed to update legal info");
@@ -686,9 +1188,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     setIsLoading(true);
     setValidationError(null);
+    setSuccess(null); // Clear previous success message
 
     try {
-      const hasPermission = await checkValidatorPermissions();
+      // Get the validator contract for this specific token
+      const tokenValidatorContract = await initializeValidatorContractForToken(featuresForm.tokenId);
+      if (!tokenValidatorContract) {
+        setValidationError("No validator found for this token");
+        return;
+      }
+
+      const hasPermission = await checkValidatorPermissions(tokenValidatorContract, featuresForm.tokenId);
       if (!hasPermission) {
         setValidationError("You don't have permission to update features");
         return;
@@ -704,8 +1214,14 @@ const Validation: React.FC<ValidationPageProps> = () => {
       setSuccess("Features updated successfully");
       setFeaturesForm({ tokenId: "", features: [] });
       
-      // Refresh data
-      window.location.reload();
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
     } catch (error) {
       console.error("Error updating features:", error);
       setValidationError("Failed to update features");
@@ -723,9 +1239,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     setIsLoading(true);
     setValidationError(null);
+    setSuccess(null); // Clear previous success message
 
     try {
-      const hasPermission = await checkValidatorPermissions();
+      // Get the validator contract for this specific token
+      const tokenValidatorContract = await initializeValidatorContractForToken(galleryForm.tokenId);
+      if (!tokenValidatorContract) {
+        setValidationError("No validator found for this token");
+        return;
+      }
+
+      const hasPermission = await checkValidatorPermissions(tokenValidatorContract, galleryForm.tokenId);
       if (!hasPermission) {
         setValidationError("You don't have permission to update gallery");
         return;
@@ -741,8 +1265,14 @@ const Validation: React.FC<ValidationPageProps> = () => {
       setSuccess("Gallery updated successfully");
       setGalleryForm({ tokenId: "", imageUrls: [] });
       
-      // Refresh data
-      window.location.reload();
+      // Wait a moment for blockchain state to update, then refresh data
+      setTimeout(() => {
+        setIsRefreshing(true);
+        fetchDeedNFTs().finally(() => {
+          setIsRefreshing(false);
+        });
+        setRefreshKey(prev => prev + 1); // Increment refresh key
+      }, 2000);
     } catch (error) {
       console.error("Error updating gallery:", error);
       setValidationError("Failed to update gallery");
@@ -1143,6 +1673,182 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Plus className="w-4 h-4 mr-1" />
                 Add Trait
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Remove Trait Card */}
+          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-gray-900 dark:text-white">Remove Trait from T-Deed</CardTitle>
+              <CardDescription className="text-gray-600 dark:text-gray-300">
+                Remove a trait from a T-Deed using the trait name
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <Label htmlFor="removeTokenId" className="text-sm font-medium">Token ID</Label>
+                  <Input
+                    id="removeTokenId"
+                    placeholder="Enter token ID (e.g., 1, 2, 3...)"
+                    value={removeTraitForm.tokenId}
+                    onChange={(e) => setRemoveTraitForm(prev => ({ ...prev, tokenId: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 h-11"
+                  />
+                </div>
+                
+                <div className="space-y-3">
+                  <Label htmlFor="removeTraitName" className="text-sm font-medium">Trait Name</Label>
+                  <Input
+                    id="removeTraitName"
+                    placeholder="e.g., color, size, year"
+                    value={removeTraitForm.traitName}
+                    onChange={(e) => setRemoveTraitForm(prev => ({ ...prev, traitName: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 h-11"
+                  />
+                </div>
+              </div>
+
+              <Button 
+                onClick={() => handleRemoveTrait(removeTraitForm.tokenId)}
+                disabled={isLoading || !removeTraitForm.tokenId || !removeTraitForm.traitName}
+                className="w-full bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 dark:text-white border border-red-600 h-11"
+              >
+                <XCircle className="w-4 h-4 mr-1" />
+                Remove Trait
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Update Trait Card */}
+          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-gray-900 dark:text-white">Update Trait Value</CardTitle>
+              <CardDescription className="text-gray-600 dark:text-gray-300">
+                Update the value of an existing trait on a T-Deed
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <Label htmlFor="updateTokenId" className="text-sm font-medium">Token ID</Label>
+                  <Input
+                    id="updateTokenId"
+                    placeholder="Enter token ID (e.g., 1, 2, 3...)"
+                    value={updateTraitForm.tokenId}
+                    onChange={(e) => setUpdateTraitForm(prev => ({ ...prev, tokenId: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 h-11"
+                  />
+                </div>
+                
+                <div className="space-y-3">
+                  <Label htmlFor="updateTraitName" className="text-sm font-medium">Trait Name</Label>
+                  <Input
+                    id="updateTraitName"
+                    placeholder="e.g., color, size, year"
+                    value={updateTraitForm.traitName}
+                    onChange={(e) => setUpdateTraitForm(prev => ({ ...prev, traitName: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 h-11"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <Label htmlFor="updateValueType" className="text-sm font-medium">Value Type</Label>
+                  <Select 
+                    value={updateTraitForm.valueType} 
+                    onValueChange={(value: "string" | "number" | "boolean") => 
+                      setUpdateTraitForm(prev => ({ ...prev, valueType: value }))
+                    }
+                  >
+                    <SelectTrigger className="border-black/10 dark:border-white/10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="string">String</SelectItem>
+                      <SelectItem value="number">Number</SelectItem>
+                      <SelectItem value="boolean">Boolean</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-3">
+                  <Label htmlFor="updateTraitValue" className="text-sm font-medium">New Trait Value</Label>
+                  <Input
+                    id="updateTraitValue"
+                    placeholder="Enter new trait value"
+                    value={updateTraitForm.traitValue}
+                    onChange={(e) => setUpdateTraitForm(prev => ({ ...prev, traitValue: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 h-11"
+                  />
+                </div>
+              </div>
+
+              <Button 
+                onClick={() => handleUpdateTrait(updateTraitForm.tokenId)}
+                disabled={isLoading || !updateTraitForm.tokenId || !updateTraitForm.traitName || !updateTraitForm.traitValue}
+                className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white border border-blue-600 h-11"
+              >
+                <Save className="w-4 h-4 mr-1" />
+                Update Trait
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Set Trait Name Card (Admin Only) */}
+          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-gray-900 dark:text-white">Set Trait Name (Admin Only)</CardTitle>
+              <CardDescription className="text-gray-600 dark:text-gray-300">
+                Set a human-readable name for a trait key. This is useful for traits whose keys are not derived from their string names.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <Label htmlFor="traitKey" className="text-sm font-medium">Trait Key</Label>
+                  <Input
+                    id="traitKey"
+                    placeholder="e.g., color, size, year (will be hashed to bytes32)"
+                    value={traitNameForm.traitKey}
+                    onChange={(e) => setTraitNameForm(prev => ({ ...prev, traitKey: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 h-11"
+                  />
+                </div>
+                
+                <div className="space-y-3">
+                  <Label htmlFor="traitName" className="text-sm font-medium">Human-Readable Name</Label>
+                  <Input
+                    id="traitName"
+                    placeholder="e.g., Color, Size, Year"
+                    value={traitNameForm.traitName}
+                    onChange={(e) => setTraitNameForm(prev => ({ ...prev, traitName: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 h-11"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Button 
+                  onClick={handleSetTraitName}
+                  disabled={isLoading || !traitNameForm.traitKey || !traitNameForm.traitName}
+                  className="w-full bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700 dark:text-white border border-purple-600 h-11"
+                >
+                  <Hash className="w-4 h-4 mr-1" />
+                  Set Trait Name
+                </Button>
+                
+                <Button 
+                  onClick={handleTestTraitName}
+                  disabled={isLoading || !traitNameForm.traitKey}
+                  variant="outline"
+                  className="w-full border-purple-600 text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-900/20 h-11"
+                >
+                  <Search className="w-4 h-4 mr-1" />
+                  Test Lookup
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1657,12 +2363,19 @@ const Validation: React.FC<ValidationPageProps> = () => {
         </Card>
       )}
 
+      {/* Success Messages */}
       {success && (
         <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 mt-6">
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
               <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
               <p className="text-green-700 dark:text-green-300">{success}</p>
+              {isRefreshing && (
+                <div className="flex items-center space-x-2 ml-4">
+                  <RefreshCw className="w-4 h-4 text-green-600 dark:text-green-400 animate-spin" />
+                  <span className="text-green-700 dark:text-green-300 text-sm">Refreshing data...</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1673,6 +2386,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       {/* DeedNFT Viewer Modal */}
       {selectedDeedNFT && (
         <DeedNFTViewer 
+          key={`${selectedDeedNFT.tokenId}-${refreshKey}`} // Add key to force re-render
           deedNFT={selectedDeedNFT} 
           isOpen={isViewerOpen}
           onClose={() => {

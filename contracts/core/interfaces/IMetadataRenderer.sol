@@ -23,22 +23,17 @@ interface IMetadataRenderer {
     // ============ Events ============
 
     /**
-     * @dev Emitted when token metadata is updated
+     * @dev Emitted when token metadata is updated (standard NFT event)
      * @param tokenId ID of the token
      */
-    event TokenMetadataUpdated(uint256 indexed tokenId);
+    event MetadataUpdate(uint256 indexed tokenId);
 
     /**
-     * @dev Emitted when token gallery is updated
-     * @param tokenId ID of the token
+     * @dev Emitted when batch metadata is updated (standard NFT event)
+     * @param _fromTokenId Start token ID
+     * @param _toTokenId End token ID
      */
-    event TokenGalleryUpdated(uint256 indexed tokenId);
-
-    /**
-     * @dev Emitted when token custom metadata is updated
-     * @param tokenId ID of the token
-     */
-    event TokenCustomMetadataUpdated(uint256 indexed tokenId);
+    event BatchMetadataUpdate(uint256 indexed _fromTokenId, uint256 indexed _toTokenId);
 
     /**
      * @dev Emitted when a compatible deed contract is added

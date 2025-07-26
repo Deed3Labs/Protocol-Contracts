@@ -180,6 +180,19 @@ export const useDeedNFTData = () => {
       };
       
       console.log(`✅ Final DeedNFT data for token ${tokenId}:`, deedNFTData);
+      
+      // Debug: Try to fetch metadata from the URI to see if it's working
+      if (uri && uri.startsWith('data:application/json;base64,')) {
+        try {
+          const base64Data = uri.replace('data:application/json;base64,', '');
+          const jsonData = atob(base64Data);
+          const metadata = JSON.parse(jsonData);
+          console.log(`📄 Metadata from URI for token ${tokenId}:`, metadata);
+        } catch (metadataErr) {
+          console.log(`❌ Could not parse metadata from URI for token ${tokenId}:`, metadataErr);
+        }
+      }
+      
       return deedNFTData;
     } catch (err) {
       console.error(`❌ Error getting DeedNFT data for ${tokenId}:`, err);

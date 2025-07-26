@@ -93,7 +93,7 @@ export const networks = {
       Validator: '0x18C53C0D046f98322954f971c21125E4443c79b9',
       ValidatorRegistry: '0x979E6cC741A8481f96739A996D06EcFb9BA2bc91',
       FundManager: '0x73ea6B404E6B81E7Fe6B112605dD8661B52d401e',
-      MetadataRenderer: '0x849e13500658a789311923b86b0eB60a87C870E5',
+      MetadataRenderer: '0xAc50869E89004aa25A8c1044195AC760A7FC48BE',
     },
   },
   // Sepolia

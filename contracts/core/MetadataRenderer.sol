@@ -323,22 +323,22 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                 string memory traitName = deedNFT.getTraitName(traitKeys[i]);
                 
                 // Handle different trait types
+                string memory traitValue;
                 if (traitKeys[i] == TRAIT_ASSET_TYPE) {
                     uint8 decodedAssetType = abi.decode(traitValues[i], (uint8));
-                    json = abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', _escapeJSON(_assetTypeToString(decodedAssetType)), '"}');
+                    traitValue = _assetTypeToString(decodedAssetType);
                 } else if (traitKeys[i] == TRAIT_IS_VALIDATED) {
                     bool decodedIsValidated = abi.decode(traitValues[i], (bool));
-                    json = abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', decodedIsValidated ? "Valid" : "Invalid", '"}');
+                    traitValue = decodedIsValidated ? "Valid" : "Invalid";
                 } else if (traitKeys[i] == TRAIT_VALIDATOR || traitKeys[i] == TRAIT_BENEFICIARY) {
                     address addr = abi.decode(traitValues[i], (address));
-                    if (addr != address(0)) {
-                        json = abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', addr.toHexString(), '"}');
-                    }
+                    if (addr == address(0)) continue;
+                    traitValue = addr.toHexString();
                 } else {
                     // Handle string traits
-                    string memory value = abi.decode(traitValues[i], (string));
-                    json = abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', _escapeJSON(value), '"}');
+                    traitValue = abi.decode(traitValues[i], (string));
                 }
+                json = abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', _escapeJSON(traitValue), '"}');
             }
             
             json = abi.encodePacked(json, "]");
@@ -368,10 +368,10 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             // Clear any stored metadata that might exist for this trait
             if (traitKey == TRAIT_GALLERY) {
                 delete tokenMetadata[tokenId].galleryImages;
-                emit TokenGalleryUpdated(tokenId);
+                emit MetadataUpdate(tokenId);
             } else if (traitKey == TRAIT_CUSTOM_METADATA) {
                 delete tokenMetadata[tokenId].customMetadata;
-                emit TokenCustomMetadataUpdated(tokenId);
+                emit MetadataUpdate(tokenId);
             }
             return;
         }
@@ -398,11 +398,11 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             tokenMetadata[tokenId].animation_url = strValue;
         } else if (traitKey == TRAIT_CUSTOM_METADATA) {
             tokenMetadata[tokenId].customMetadata = strValue;
-            emit TokenCustomMetadataUpdated(tokenId);
+            emit MetadataUpdate(tokenId);
             return;
         }
         
-        emit TokenMetadataUpdated(tokenId);
+        emit MetadataUpdate(tokenId);
     }
     
     /**
@@ -410,7 +410,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
      */
     function setTokenCustomMetadata(uint256 tokenId, string memory metadata) external onlyOwnerOrValidator(tokenId) {
         tokenMetadata[tokenId].customMetadata = metadata;
-        emit TokenCustomMetadataUpdated(tokenId);
+        emit MetadataUpdate(tokenId);
         
         // Sync with DeedNFT if needed
         if (address(deedNFT) != address(0)) {
@@ -442,7 +442,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             tokenFeatures[tokenId].features.push(features[i]);
         }
         
-        emit TokenCustomMetadataUpdated(tokenId);
+        emit MetadataUpdate(tokenId);
     }
     
     /**
@@ -493,7 +493,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             assetConditions[tokenId].improvements.push(improvements[i]);
         }
         
-        emit TokenCustomMetadataUpdated(tokenId);
+        emit MetadataUpdate(tokenId);
     }
 
     /**
@@ -564,7 +564,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             legalInfo[tokenId].restrictions.push(restrictions[i]);
         }
         
-        emit TokenCustomMetadataUpdated(tokenId);
+        emit MetadataUpdate(tokenId);
     }
 
     /**
@@ -631,7 +631,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             }
         }
         
-        emit TokenMetadataUpdated(tokenId);
+        emit MetadataUpdate(tokenId);
     }
 
     function getTokenDocument(uint256 tokenId, string memory docType) external view returns (string memory) {
@@ -690,13 +690,13 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     function setTokenAnimationURL(uint256 tokenId, string memory animationURL) external onlyOwnerOrValidator(tokenId) {
         if (!_exists(tokenId)) revert Invalid();
         tokenMetadata[tokenId].animation_url = animationURL;
-        emit TokenMetadataUpdated(tokenId);
+        emit MetadataUpdate(tokenId);
     }
 
     function setTokenExternalLink(uint256 tokenId, string memory externalLink) external onlyOwnerOrValidator(tokenId) {
         if (!_exists(tokenId)) revert Invalid();
         tokenMetadata[tokenId].external_link = externalLink;
-        emit TokenMetadataUpdated(tokenId);
+        emit MetadataUpdate(tokenId);
     }
 
     function getTokenAnimationURL(uint256 tokenId) external view returns (string memory) {
@@ -725,7 +725,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             }
         }
         
-        emit TokenGalleryUpdated(tokenId);
+        emit MetadataUpdate(tokenId);
     }
     
     // ============ Metadata Generation Functions ============
@@ -839,8 +839,9 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                 return string(abi.encodePacked(abi.decode(manufacturer, (string)), " Equipment"));
         }
         
-        // Fallback: return generic asset name with token ID
-        return string(abi.encodePacked("Asset #", tokenId.toString()));
+        // Fallback: return asset type-specific name with token ID
+        string memory n = assetType == 0 ? "Land" : assetType == 1 ? "Vehicle" : assetType == 2 ? "Estate" : assetType == 3 ? "Equipment" : "Asset";
+        return string(abi.encodePacked(n, " #", tokenId.toString()));
     }
     
     function _getImageURI(uint256 tokenId, uint8 assetType, bool isValidated) internal view returns (string memory) {
