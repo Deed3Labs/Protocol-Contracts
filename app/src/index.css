@@ -1,4 +1,4 @@
-
+@import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
@@ -29,7 +29,7 @@
   --card-foreground: 15 23 42;
   --popover: 255 255 255;
   --popover-foreground: 15 23 42;
-  --primary: 37 99 235;
+  --primary: 75 85 99;
   --primary-foreground: 255 255 255;
   --secondary: 241 245 249;
   --secondary-foreground: 15 23 42;
@@ -41,22 +41,22 @@
   --destructive-foreground: 255 255 255;
   --border: 226 232 240;
   --input: 226 232 240;
-  --ring: 37 99 235;
+  --ring: 75 85 99;
 }
 
 .dark {
   color-scheme: dark;
   color: #f8fafc;
-  background-color: #0f172a;
+  background-color: #0E0E0E;
   
   /* Dark mode variables */
-  --background: 15 23 42;
+  --background: 14 14 14;
   --foreground: 248 250 252;
   --card: 30 41 59;
   --card-foreground: 248 250 252;
   --popover: 30 41 59;
   --popover-foreground: 248 250 252;
-  --primary: 59 130 246;
+  --primary: 156 163 175;
   --primary-foreground: 15 23 42;
   --secondary: 51 65 85;
   --secondary-foreground: 248 250 252;
@@ -68,7 +68,11 @@
   --destructive-foreground: 248 250 252;
   --border: 51 65 85;
   --input: 51 65 85;
-  --ring: 59 130 246;
+  --ring: 156 163 175;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
@@ -85,27 +89,45 @@ body {
   box-sizing: border-box;
 }
 
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
-}
-
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 0px;
+  height: 0px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgb(var(--muted));
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--border));
-  border-radius: 3px;
+  background: transparent;
+  border-radius: 0px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--ring));
+  background: transparent;
+}
+
+/* Hide scrollbars for Firefox */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Ensure scrolling still works */
+html, body {
+  overflow-x: hidden;
+}
+
+/* Allow scrolling in containers */
+.overflow-y-auto, .overflow-y-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.overflow-y-auto::-webkit-scrollbar, .overflow-y-scroll::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
 }
 
 @theme inline {
@@ -157,12 +179,15 @@ html {
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100;
-  }
   
   /* Focus styles */
   *:focus-visible {
-    @apply outline-none ring-2 ring-blue-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-950;
+    @apply outline-none ring-2 ring-gray-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-950;
+  }
+}
+
+@layer components {
+  .container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
   }
 }

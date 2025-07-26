@@ -611,6 +611,21 @@ contract DeedNFT is
      */
     function _setTraitValue(uint256 tokenId, bytes32 traitKey, bytes memory traitValue) internal {
         require(_exists(tokenId), "Token does not exist");
+        
+        // Check if this is a new trait key and add it to _allTraitKeys if it doesn't exist
+        bool traitExists = false;
+        for (uint i = 0; i < _allTraitKeys.length; i++) {
+            if (_allTraitKeys[i] == traitKey) {
+                traitExists = true;
+                break;
+            }
+        }
+        
+        // Add new trait key to the array if it doesn't exist
+        if (!traitExists) {
+            _allTraitKeys.push(traitKey);
+        }
+        
         _tokenTraits[tokenId][traitKey] = traitValue;
         emit TraitUpdated(traitKey, tokenId, traitValue);
 
@@ -662,6 +677,7 @@ contract DeedNFT is
         
         // Convert string trait name to bytes32 key if provided as string
         bytes32 key;
+        bool isStringKey = false;
         if (traitKey.length == 32) {
             assembly {
                 key := mload(add(traitKey, 32))
@@ -669,6 +685,7 @@ contract DeedNFT is
         } else {
             // Assume it's a string and hash it
             key = keccak256(traitKey);
+            isStringKey = true;
         }
 
         // Handle different value types
@@ -690,6 +707,11 @@ contract DeedNFT is
         }
         
         _setTraitValue(tokenId, key, value);
+        
+        // If trait was provided as string, set the trait name automatically
+        if (isStringKey) {
+            _traitNames[key] = string(traitKey);
+        }
     }
 
     /**
@@ -757,6 +779,16 @@ contract DeedNFT is
      */
     function getTraitName(bytes32 traitKey) external view returns (string memory) {
         return _traitNames[traitKey];
+    }
+    
+    /**
+     * @dev Sets the name for a trait key
+     * @param traitKey Key of the trait
+     * @param traitName Name of the trait
+     * @notice Only callable by admin or validator
+     */
+    function setTraitName(bytes32 traitKey, string memory traitName) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _traitNames[traitKey] = traitName;
     }
     
     /**

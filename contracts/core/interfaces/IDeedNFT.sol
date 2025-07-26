@@ -67,6 +67,8 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      */
     event ContractURIUpdated(string newURI);
 
+
+
     /**
      * @dev Emitted when the transfer validator is updated
      * @param oldValidator The previous validator address
@@ -158,6 +160,14 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      * @return Name of the trait
      */
     function getTraitName(bytes32 traitKey) external view returns (string memory);
+
+    /**
+     * @dev Sets the name for a trait key
+     * @param traitKey Key of the trait
+     * @param traitName Name of the trait
+     * @notice Only callable by admin
+     */
+    function setTraitName(bytes32 traitKey, string memory traitName) external;
 
     /**
      * @dev Gets the trait metadata URI

@@ -1,24 +1,34 @@
-import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 import Home from "@/components/Home";
 import MintForm from "@/components/MintForm";
-import PageOne from "@/components/PageOne";
-import PageTwo from "@/components/PageTwo";
+import Explore from "@/components/Explore";
+import Dashboard from "@/components/Dashboard";
+import Validation from "@/components/Validation";
+import AdminPanel from "@/components/AdminPanel";
+import { ThemeToggle } from "./components/ThemeToggle";
 
 function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-background dark:to-muted">
-        <Header />
-        <main className="flex-1 flex items-center justify-center w-full">
+      <div className="min-h-screen flex flex-col bg-background text-foreground">
+        <Header>
+          <div className="ml-auto flex items-center space-x-2">
+            <ThemeToggle />
+          </div>
+        </Header>
+        <main className="flex-1 w-full">
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/mint" element={<MintForm />} />
-            <Route path="/page-one" element={<PageOne />} />
-            <Route path="/page-two" element={<PageTwo />} />
+            <Route path="/explore" element={<Explore />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/validation" element={<Validation />} />
+            <Route path="/admin" element={<AdminPanel />} />
           </Routes>
         </main>
+        <Footer />
       </div>
     </BrowserRouter>
   );
