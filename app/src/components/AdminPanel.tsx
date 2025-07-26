@@ -805,7 +805,7 @@ const AdminPanel = () => {
             <CardContent className="space-y-4">
               <div className="flex flex-col md:flex-row gap-4 w-full">
                 {/* Contract Selector */}
-                <div className="w-full md:w-1/4">
+                <div className="w-full md:w-1/4 space-y-2">
                   <Label>Contract</Label>
                   <Select
                     value={roleForm.selectedContract}
@@ -823,7 +823,7 @@ const AdminPanel = () => {
                   </Select>
                 </div>
                 {/* Target Address */}
-                <div className="w-full md:w-1/4">
+                <div className="w-full md:w-1/4 space-y-2">
                   <Label>Target Address</Label>
                   <Input
                     placeholder="0x..."
@@ -833,7 +833,7 @@ const AdminPanel = () => {
                   />
                 </div>
                 {/* Role Dropdown */}
-                <div className="w-full md:w-1/4">
+                <div className="w-full md:w-1/4 space-y-2">
                   <Label>Role</Label>
                   <Select
                     value={roleForm.role}
@@ -850,7 +850,7 @@ const AdminPanel = () => {
                   </Select>
                 </div>
                 {/* Action Dropdown */}
-                <div className="w-full md:w-1/4">
+                <div className="w-full md:w-1/4 space-y-2">
                   <Label>Action</Label>
                   <Select
                     value={roleForm.action}
@@ -1154,7 +1154,7 @@ const AdminPanel = () => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+                <div className="space-y-2">
                   <Label>Validator Address</Label>
                   <Input
                     placeholder="0x..."
@@ -1163,7 +1163,7 @@ const AdminPanel = () => {
                     className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
-                <div>
+                <div className="space-y-2">
                   <Label>Validator Name</Label>
                   <Input
                     placeholder="Validator name"
@@ -1172,7 +1172,7 @@ const AdminPanel = () => {
                     className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
-                <div className="md:col-span-2">
+                <div className="md:col-span-2 space-y-2">
                   <Label>Description</Label>
                   <Textarea
                     placeholder="Validator description"
@@ -1181,7 +1181,7 @@ const AdminPanel = () => {
                     className="border-black/10 dark:border-white/10"
                   />
                 </div>
-                <div className="md:col-span-2">
+                <div className="md:col-span-2 space-y-2">
                   <Label>Supported Asset Types (comma-separated)</Label>
                   <Input
                     placeholder="0,1,2,3"
