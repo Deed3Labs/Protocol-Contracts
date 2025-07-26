@@ -274,7 +274,7 @@ const MintForm = () => {
             <div className="space-y-3">
               <Label htmlFor="assetType" className="text-gray-700 dark:text-gray-200 font-medium text-sm">Asset Type</Label>
               <Select value={form.assetType} onValueChange={handleSelectChange}>
-                <SelectTrigger className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11">
+                <SelectTrigger className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
                   <SelectValue placeholder="Select asset type">
                     {form.assetType && (
                       <div className="flex items-center justify-between w-full">

@@ -907,7 +907,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
             <div className="w-full lg:w-32 space-y-2">
               <Label htmlFor="assetType" className="text-sm font-medium">Asset Type</Label>
               <Select value={filterAssetType} onValueChange={setFilterAssetType}>
-                <SelectTrigger className="border-black/10 dark:border-white/10 h-11">
+                <SelectTrigger className="border-black/10 dark:border-white/10">
                   <SelectValue placeholder="Filter by asset type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1088,9 +1088,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
                       setTraitForm(prev => ({ ...prev, valueType: value }))
                     }
                   >
-                    <SelectTrigger className="border-black/10 dark:border-white/10 h-11">
-                      <SelectValue />
-                    </SelectTrigger>
+                                    <SelectTrigger className="border-black/10 dark:border-white/10">
+                  <SelectValue />
+                </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="string">String</SelectItem>
                       <SelectItem value="number">Number</SelectItem>
