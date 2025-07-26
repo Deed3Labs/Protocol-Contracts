@@ -125,7 +125,19 @@ interface GalleryFormData {
 const Validation: React.FC<ValidationPageProps> = () => {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const { deedNFTs, userDeedNFTs, stats, getAssetTypeLabel, getValidationStatus } = useDeedNFTData();
+  const { 
+    deedNFTs, 
+    userDeedNFTs, 
+    stats, 
+    loading,
+    error,
+    fetchDeedNFTs,
+    getAssetTypeLabel, 
+    getValidationStatus,
+    isCorrectNetwork,
+    currentChainId,
+    contractAddress
+  } = useDeedNFTData();
   
   // State management
   const [searchTerm, setSearchTerm] = useState("");
@@ -134,7 +146,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
   const [selectedDeedNFT, setSelectedDeedNFT] = useState<any>(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   // Form states
@@ -244,10 +256,10 @@ const Validation: React.FC<ValidationPageProps> = () => {
         const metadataRendererContract = new ethers.Contract(metadataRendererAddress, metadataRendererAbi, signer);
         setMetadataRendererContract(metadataRendererContract);
       }
-    } catch (error) {
-      console.error("Error initializing contracts:", error);
-      setError("Failed to initialize contracts");
-    }
+          } catch (error) {
+        console.error("Error initializing contracts:", error);
+        setValidationError("Failed to initialize contracts");
+      }
   };
 
   // Filter DeedNFTs
@@ -282,17 +294,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
   // Add trait to DeedNFT
   const handleAddTrait = async (tokenId: string) => {
     if (!contract || !traitForm.traitName || !traitForm.traitValue) {
-      setError("Please fill in all trait fields");
+      setValidationError("Please fill in all trait fields");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setValidationError(null);
 
     try {
       const hasPermission = await checkValidatorPermissions();
       if (!hasPermission) {
-        setError("You don't have permission to add traits");
+        setValidationError("You don't have permission to add traits");
         return;
       }
 
@@ -321,7 +333,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error adding trait:", error);
-      setError("Failed to add trait");
+      setValidationError("Failed to add trait");
     } finally {
       setIsLoading(false);
     }
@@ -330,17 +342,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
   // Update validation status
   const handleUpdateValidation = async (tokenId: string) => {
     if (!validatorContract) {
-      setError("Validator contract not initialized");
+      setValidationError("Validator contract not initialized");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setValidationError(null);
 
     try {
       const hasPermission = await checkValidatorPermissions();
       if (!hasPermission) {
-        setError("You don't have permission to update validation status");
+        setValidationError("You don't have permission to update validation status");
         return;
       }
 
@@ -358,7 +370,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error updating validation:", error);
-      setError("Failed to update validation status");
+      setValidationError("Failed to update validation status");
     } finally {
       setIsLoading(false);
     }
@@ -367,17 +379,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
   // Validate deed using validator contract
   const handleValidateDeed = async (tokenId: string) => {
     if (!validatorContract) {
-      setError("Validator contract not initialized");
+      setValidationError("Validator contract not initialized");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setValidationError(null);
 
     try {
       const hasPermission = await checkValidatorPermissions();
       if (!hasPermission) {
-        setError("You don't have permission to validate deeds");
+        setValidationError("You don't have permission to validate deeds");
         return;
       }
 
@@ -389,7 +401,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error validating deed:", error);
-      setError("Failed to validate deed");
+      setValidationError("Failed to validate deed");
     } finally {
       setIsLoading(false);
     }
@@ -398,17 +410,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
   // Metadata management functions - each calls its own specific function
   const handleSetCustomMetadata = async () => {
     if (!metadataRendererContract || !customMetadataForm.tokenId || !customMetadataForm.customMetadata) {
-      setError("Please fill in all required fields");
+      setValidationError("Please fill in all required fields");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setValidationError(null);
 
     try {
       const hasPermission = await checkValidatorPermissions();
       if (!hasPermission) {
-        setError("You don't have permission to update metadata");
+        setValidationError("You don't have permission to update metadata");
         return;
       }
 
@@ -426,7 +438,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error updating custom metadata:", error);
-      setError("Failed to update custom metadata");
+      setValidationError("Failed to update custom metadata");
     } finally {
       setIsLoading(false);
     }
@@ -434,17 +446,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
   const handleSetAnimationURL = async () => {
     if (!metadataRendererContract || !animationURLForm.tokenId || !animationURLForm.animationURL) {
-      setError("Please fill in all required fields");
+      setValidationError("Please fill in all required fields");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setValidationError(null);
 
     try {
       const hasPermission = await checkValidatorPermissions();
       if (!hasPermission) {
-        setError("You don't have permission to update metadata");
+        setValidationError("You don't have permission to update metadata");
         return;
       }
 
@@ -462,7 +474,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error updating animation URL:", error);
-      setError("Failed to update animation URL");
+      setValidationError("Failed to update animation URL");
     } finally {
       setIsLoading(false);
     }
@@ -470,17 +482,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
   const handleSetExternalLink = async () => {
     if (!metadataRendererContract || !externalLinkForm.tokenId || !externalLinkForm.externalLink) {
-      setError("Please fill in all required fields");
+      setValidationError("Please fill in all required fields");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setValidationError(null);
 
     try {
       const hasPermission = await checkValidatorPermissions();
       if (!hasPermission) {
-        setError("You don't have permission to update metadata");
+        setValidationError("You don't have permission to update metadata");
         return;
       }
 
@@ -498,7 +510,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error updating external link:", error);
-      setError("Failed to update external link");
+      setValidationError("Failed to update external link");
     } finally {
       setIsLoading(false);
     }
@@ -507,17 +519,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
   // Document management
   const handleManageDocument = async () => {
     if (!metadataRendererContract || !documentForm.tokenId || !documentForm.docType) {
-      setError("Please fill in all required fields");
+      setValidationError("Please fill in all required fields");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setValidationError(null);
 
     try {
       const hasPermission = await checkValidatorPermissions();
       if (!hasPermission) {
-        setError("You don't have permission to manage documents");
+        setValidationError("You don't have permission to manage documents");
         return;
       }
 
@@ -537,7 +549,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error managing document:", error);
-      setError("Failed to manage document");
+      setValidationError("Failed to manage document");
     } finally {
       setIsLoading(false);
     }
@@ -546,17 +558,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
   // Asset condition management
   const handleSetAssetCondition = async () => {
     if (!metadataRendererContract || !assetConditionForm.tokenId || !assetConditionForm.generalCondition) {
-      setError("Please fill in all required fields");
+      setValidationError("Please fill in all required fields");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setValidationError(null);
 
     try {
       const hasPermission = await checkValidatorPermissions();
       if (!hasPermission) {
-        setError("You don't have permission to update asset condition");
+        setValidationError("You don't have permission to update asset condition");
         return;
       }
 
@@ -585,7 +597,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error updating asset condition:", error);
-      setError("Failed to update asset condition");
+      setValidationError("Failed to update asset condition");
     } finally {
       setIsLoading(false);
     }
@@ -594,17 +606,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
   // Legal info management
   const handleSetLegalInfo = async () => {
     if (!metadataRendererContract || !legalInfoForm.tokenId || !legalInfoForm.jurisdiction) {
-      setError("Please fill in all required fields");
+      setValidationError("Please fill in all required fields");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setValidationError(null);
 
     try {
       const hasPermission = await checkValidatorPermissions();
       if (!hasPermission) {
-        setError("You don't have permission to update legal info");
+        setValidationError("You don't have permission to update legal info");
         return;
       }
 
@@ -635,7 +647,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error updating legal info:", error);
-      setError("Failed to update legal info");
+      setValidationError("Failed to update legal info");
     } finally {
       setIsLoading(false);
     }
@@ -644,17 +656,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
   // Features management
   const handleSetFeatures = async () => {
     if (!metadataRendererContract || !featuresForm.tokenId || featuresForm.features.length === 0) {
-      setError("Please fill in all required fields");
+      setValidationError("Please fill in all required fields");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setValidationError(null);
 
     try {
       const hasPermission = await checkValidatorPermissions();
       if (!hasPermission) {
-        setError("You don't have permission to update features");
+        setValidationError("You don't have permission to update features");
         return;
       }
 
@@ -672,7 +684,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error updating features:", error);
-      setError("Failed to update features");
+      setValidationError("Failed to update features");
     } finally {
       setIsLoading(false);
     }
@@ -681,17 +693,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
   // Gallery management
   const handleSetGallery = async () => {
     if (!metadataRendererContract || !galleryForm.tokenId || galleryForm.imageUrls.length === 0) {
-      setError("Please fill in all required fields");
+      setValidationError("Please fill in all required fields");
       return;
     }
 
     setIsLoading(true);
-    setError(null);
+    setValidationError(null);
 
     try {
       const hasPermission = await checkValidatorPermissions();
       if (!hasPermission) {
-        setError("You don't have permission to update gallery");
+        setValidationError("You don't have permission to update gallery");
         return;
       }
 
@@ -709,7 +721,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       window.location.reload();
     } catch (error) {
       console.error("Error updating gallery:", error);
-      setError("Failed to update gallery");
+      setValidationError("Failed to update gallery");
     } finally {
       setIsLoading(false);
     }
@@ -738,17 +750,65 @@ const Validation: React.FC<ValidationPageProps> = () => {
     );
   }
 
+  if (!isCorrectNetwork && isConnected) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              Wrong Network
+            </h2>
+            <p className="text-gray-600 dark:text-gray-300">
+              Please switch to a supported network to access the validation page.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Validation Dashboard
-        </h1>
-        <p className="text-gray-600 dark:text-gray-300">
-          Manage DeedNFT validation, traits, and metadata
-        </p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              Validation Dashboard
+            </h1>
+            <p className="text-gray-600 dark:text-gray-300">
+              Manage DeedNFT validation, traits, and metadata
+            </p>
+          </div>
+          <Button
+            onClick={fetchDeedNFTs}
+            disabled={loading}
+            variant="outline"
+            className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      {/* Debug Information */}
+      {isConnected && isCorrectNetwork && (
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <p className="text-blue-800 dark:text-blue-200 text-sm">
+            <strong>Debug Info:</strong> Chain ID: {currentChainId}, Contract: {contractAddress}, 
+            Total DeedNFTs: {deedNFTs.length}, Filtered: {filteredDeedNFTs.length}
+          </p>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <p className="text-red-800 dark:text-red-200">{error}</p>
+        </div>
+      )}
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -892,20 +952,25 @@ const Validation: React.FC<ValidationPageProps> = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="deednfts" className="space-y-6 mt-6">
-          {filteredDeedNFTs.length === 0 ? (
-            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
-              <CardContent className="p-8 text-center">
-                <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                  No DeedNFTs Found
-                </h3>
-                <p className="text-gray-600 dark:text-gray-300">
-                  No DeedNFTs match your current filters.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
+                        <TabsContent value="deednfts" className="space-y-6 mt-6">
+                  {loading ? (
+                    <div className="text-center py-12">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto"></div>
+                      <p className="text-gray-600 dark:text-gray-300 mt-4">Loading DeedNFTs from blockchain...</p>
+                    </div>
+                  ) : filteredDeedNFTs.length === 0 ? (
+                    <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+                      <CardContent className="p-8 text-center">
+                        <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                          No DeedNFTs Found
+                        </h3>
+                        <p className="text-gray-600 dark:text-gray-300">
+                          {deedNFTs.length === 0 ? "No DeedNFTs found on this network" : "No DeedNFTs match your current filters"}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredDeedNFTs.map((deedNFT) => {
                 const validationStatus = getValidationStatus(deedNFT);
@@ -967,10 +1032,19 @@ const Validation: React.FC<ValidationPageProps> = () => {
                     </CardContent>
                   </Card>
                 );
-              })}
-            </div>
-          )}
-        </TabsContent>
+              }                  )}
+                </div>
+              )}
+
+              {/* Results Count */}
+              {!loading && filteredDeedNFTs.length > 0 && (
+                <div className="text-center mt-8">
+                  <p className="text-gray-500 dark:text-gray-400">
+                    Showing {filteredDeedNFTs.length} of {deedNFTs.length} DeedNFTs
+                  </p>
+                </div>
+              )}
+            </TabsContent>
 
         <TabsContent value="traits" className="space-y-6 mt-6">
           <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
@@ -1543,12 +1617,12 @@ const Validation: React.FC<ValidationPageProps> = () => {
       </Tabs>
 
       {/* Error/Success Messages */}
-      {error && (
+      {validationError && (
         <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 mt-6">
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
               <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-              <p className="text-red-700 dark:text-red-300">{error}</p>
+              <p className="text-red-700 dark:text-red-300">{validationError}</p>
             </div>
           </CardContent>
         </Card>
@@ -1564,6 +1638,8 @@ const Validation: React.FC<ValidationPageProps> = () => {
           </CardContent>
         </Card>
       )}
+
+
 
       {/* DeedNFT Viewer Modal */}
       {selectedDeedNFT && (
