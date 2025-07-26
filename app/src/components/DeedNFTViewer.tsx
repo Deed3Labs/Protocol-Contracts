@@ -137,7 +137,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
 
   const contentClass = isFullPage
     ? "min-h-screen"
-    : "bg-white dark:bg-[#141414] rounded-xl shadow-2xl max-w-6xl w-full max-h-[95vh] overflow-y-auto";
+            : "bg-white dark:bg-[#141414] rounded-xl max-w-6xl w-full max-h-[95vh] overflow-y-auto";
 
   return (
     <div className={containerClass}>
@@ -248,7 +248,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
                         onClick={() => setSelectedImage(index)}
                         className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all ${
                           selectedImage === index 
-                            ? "border-gray-900 dark:border-white shadow-lg" 
+                            ? "border-gray-900 dark:border-white" 
                             : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                         }`}
                       >

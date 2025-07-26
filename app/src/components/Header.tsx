@@ -29,6 +29,7 @@ const Header = ({ children }: HeaderProps) => {
     { to: "/mint", label: "Mint" },
     { to: "/explore", label: "Explore" },
     { to: "/dashboard", label: "Dashboard" },
+    { to: "/validation", label: "Validation" },
   ];
 
   return (
@@ -37,7 +38,7 @@ const Header = ({ children }: HeaderProps) => {
         {/* Logo and Desktop Navigation */}
         <div className="flex items-center space-x-4 lg:space-x-8">
           <span className="text-xl lg:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-            DeedNFT Protocol
+            Deed Protocol
           </span>
           
           {/* Desktop Navigation */}
