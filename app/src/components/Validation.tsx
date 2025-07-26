@@ -785,9 +785,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
             onClick={fetchDeedNFTs}
             disabled={loading}
             variant="outline"
-            className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]"
+            className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11 px-4"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
@@ -888,12 +888,12 @@ const Validation: React.FC<ValidationPageProps> = () => {
               </div>
             </div>
 
-            {/* Status Filter - Equal width with others */}
-            <div className="w-full lg:w-32 space-y-2">
+            {/* Status Filter - Flexible width */}
+            <div className="flex-1 space-y-2">
               <Label htmlFor="status" className="text-sm font-medium">Status</Label>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="border-black/10 dark:border-white/10">
-                  <SelectValue placeholder="Filter by status" />
+                <SelectTrigger className="border-black/10 dark:border-white/10 w-full">
+                  <SelectValue placeholder="Filter by status" className="truncate" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
@@ -903,12 +903,12 @@ const Validation: React.FC<ValidationPageProps> = () => {
               </Select>
             </div>
 
-            {/* Asset Type Filter - Equal width with others */}
-            <div className="w-full lg:w-32 space-y-2">
+            {/* Asset Type Filter - Flexible width */}
+            <div className="flex-1 space-y-2">
               <Label htmlFor="assetType" className="text-sm font-medium">Asset Type</Label>
               <Select value={filterAssetType} onValueChange={setFilterAssetType}>
-                <SelectTrigger className="border-black/10 dark:border-white/10">
-                  <SelectValue placeholder="Filter by asset type" />
+                <SelectTrigger className="border-black/10 dark:border-white/10 w-full">
+                  <SelectValue placeholder="Filter by asset type" className="truncate" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
@@ -920,7 +920,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               </Select>
             </div>
 
-            {/* Clear Filters Button - Equal width with others */}
+            {/* Clear Filters Button - Fixed width */}
             <div className="w-full lg:w-32 space-y-2">
               <Label className="text-sm font-medium opacity-0">Action</Label>
               <Button 
@@ -930,9 +930,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
                   setFilterAssetType("all");
                 }}
                 variant="outline"
-                className="w-full border-black/10 dark:border-white/10 h-11"
+                className="w-full border-black/10 dark:border-white/10 h-11 px-4"
               >
-                <RefreshCw className="w-4 h-4 mr-2" />
+                <RefreshCw className="w-4 h-4 mr-1" />
                 Clear Filters
               </Button>
             </div>
@@ -1018,9 +1018,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
                           variant="outline"
                           size="sm"
                           onClick={() => handleViewDetails(deedNFT)}
-                          className="flex-1 border-black/10 dark:border-white/10"
+                          className="flex-1 border-black/10 dark:border-white/10 h-11"
                         >
-                          <Eye className="w-4 h-4 mr-2" />
+                          <Eye className="w-4 h-4 mr-1" />
                           View
                         </Button>
                         <Button
@@ -1028,9 +1028,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
                           size="sm"
                           onClick={() => handleValidateDeed(deedNFT.tokenId)}
                           disabled={isLoading}
-                          className="flex-1 border-black/10 dark:border-white/10"
+                          className="flex-1 border-black/10 dark:border-white/10 h-11"
                         >
-                          <Shield className="w-4 h-4 mr-2" />
+                          <Shield className="w-4 h-4 mr-1" />
                           Validate
                         </Button>
                       </div>
@@ -1116,7 +1116,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 disabled={isLoading || !traitForm.tokenId || !traitForm.traitName || !traitForm.traitValue}
                 className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
               >
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="w-4 h-4 mr-1" />
                 Add Trait
               </Button>
             </CardContent>
@@ -1163,7 +1163,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                   disabled={isLoading || !customMetadataForm.tokenId || !customMetadataForm.customMetadata}
                   className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
                 >
-                  <Save className="w-4 h-4 mr-2" />
+                  <Save className="w-4 h-4 mr-1" />
                   Set Custom Metadata
                 </Button>
               </CardContent>
@@ -1205,7 +1205,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                   disabled={isLoading || !animationURLForm.tokenId || !animationURLForm.animationURL}
                   className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
                 >
-                  <Save className="w-4 h-4 mr-2" />
+                  <Save className="w-4 h-4 mr-1" />
                   Set Animation URL
                 </Button>
               </CardContent>
@@ -1247,7 +1247,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                   disabled={isLoading || !externalLinkForm.tokenId || !externalLinkForm.externalLink}
                   className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
                 >
-                  <Save className="w-4 h-4 mr-2" />
+                  <Save className="w-4 h-4 mr-1" />
                   Set External Link
                 </Button>
               </CardContent>
@@ -1309,9 +1309,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleManageDocument}
                   disabled={isLoading || !documentForm.tokenId || !documentForm.docType}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
                 >
-                  <Save className="w-4 h-4 mr-2" />
+                  <Save className="w-4 h-4 mr-1" />
                   {documentForm.isRemove ? "Remove Document" : "Add Document"}
                 </Button>
               </CardContent>
@@ -1381,9 +1381,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetAssetCondition}
                   disabled={isLoading || !assetConditionForm.tokenId || !assetConditionForm.generalCondition}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
                 >
-                  <Save className="w-4 h-4 mr-2" />
+                  <Save className="w-4 h-4 mr-1" />
                   Set Asset Condition
                 </Button>
               </CardContent>
@@ -1457,9 +1457,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetLegalInfo}
                   disabled={isLoading || !legalInfoForm.tokenId || !legalInfoForm.jurisdiction}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
                 >
-                  <Save className="w-4 h-4 mr-2" />
+                  <Save className="w-4 h-4 mr-1" />
                   Set Legal Info
                 </Button>
               </CardContent>
@@ -1503,9 +1503,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetFeatures}
                   disabled={isLoading || !featuresForm.tokenId || featuresForm.features.length === 0}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
                 >
-                  <Save className="w-4 h-4 mr-2" />
+                  <Save className="w-4 h-4 mr-1" />
                   Set Features
                 </Button>
               </CardContent>
@@ -1549,9 +1549,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetGallery}
                   disabled={isLoading || !galleryForm.tokenId || galleryForm.imageUrls.length === 0}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
                 >
-                  <Save className="w-4 h-4 mr-2" />
+                  <Save className="w-4 h-4 mr-1" />
                   Set Gallery
                 </Button>
               </CardContent>
@@ -1611,9 +1611,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <Button 
                 onClick={() => handleUpdateValidation(validationForm.tokenId)}
                 disabled={isLoading || !validationForm.tokenId}
-                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white"
+                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
               >
-                <Save className="w-4 h-4 mr-2" />
+                <Save className="w-4 h-4 mr-1" />
                 Update Validation
               </Button>
             </CardContent>

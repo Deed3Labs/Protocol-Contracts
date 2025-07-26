@@ -25,7 +25,7 @@ const Home = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10">
+            <Button asChild className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11">
               <Link to="/mint">Start Minting</Link>
             </Button>
           </CardContent>
@@ -41,7 +41,7 @@ const Home = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="outline" asChild className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] font-semibold py-3 rounded-lg transition-colors duration-200">
+            <Button variant="outline" asChild className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] font-semibold py-3 rounded-lg transition-colors duration-200 h-11">
               <Link to="/explore">Explore Deeds</Link>
             </Button>
           </CardContent>

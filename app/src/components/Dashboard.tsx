@@ -149,9 +149,9 @@ const Dashboard = () => {
             disabled={loading}
             variant="outline"
             size="sm"
-            className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]"
+            className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11 px-4"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
@@ -166,7 +166,7 @@ const Dashboard = () => {
             <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
             <p className="text-gray-600 dark:text-gray-300 text-lg">No DeedNFTs found</p>
             <p className="text-gray-500 dark:text-gray-400 mt-2">Mint your first DeedNFT to get started</p>
-            <Button asChild className="mt-4 bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white">
+            <Button asChild className="mt-4 bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11">
               <Link to="/mint">Mint DeedNFT</Link>
             </Button>
           </div>
@@ -231,10 +231,10 @@ const Dashboard = () => {
                       />
                     </div>
                     <div className="flex space-x-2">
-                      <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]" onClick={() => handleViewDeedNFT(deedNFT)}>
+                      <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11" onClick={() => handleViewDeedNFT(deedNFT)}>
                         View
                       </Button>
-                      <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]">
+                      <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11">
                         Transfer
                       </Button>
                     </div>
@@ -257,8 +257,8 @@ const Dashboard = () => {
                   <FileText className="w-8 h-8 text-gray-600 dark:text-gray-300" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Mint New DeedNFT</h3>
-                <p className="text-gray-600 dark:text-gray-300 mb-4">Create a new digital deed with customizable metadata</p>
-                <Button asChild className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white">
+                <p className="text-gray-600 dark:text-gray-300 mb-4">Create a new digital deed with custom metadata</p>
+                <Button asChild className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white border border-white/10 h-11">
                   <Link to="/mint">Start Minting</Link>
                 </Button>
               </div>
@@ -273,7 +273,7 @@ const Dashboard = () => {
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">View Analytics</h3>
                 <p className="text-gray-600 dark:text-gray-300 mb-4">Track your DeedNFT performance and statistics</p>
-                <Button variant="outline" className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]">
+                <Button variant="outline" className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11">
                   View Analytics
                 </Button>
               </div>
@@ -288,7 +288,7 @@ const Dashboard = () => {
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Settings</h3>
                 <p className="text-gray-600 dark:text-gray-300 mb-4">Manage your account preferences and settings</p>
-                <Button variant="outline" className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]">
+                <Button variant="outline" className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11">
                   Open Settings
                 </Button>
               </div>
