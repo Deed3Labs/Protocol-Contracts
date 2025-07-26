@@ -74,7 +74,7 @@ export function NetworkWarning() {
             : 'text-orange-700 dark:text-orange-300'
         }>
           {isSupportedButNotDeployed 
-            ? `You are connected to ${getNetworkDisplayName(chainId)}, but the DeedNFT contracts are not deployed yet. Please switch to a network with deployed contracts:`
+            ? `You are connected to ${getNetworkDisplayName(chainId)}, but the T-Deed contracts are not deployed yet. Please switch to a network with deployed contracts:`
             : `You are connected to ${getNetworkDisplayName(chainId)}, but this app only supports the following networks:`
           }
         </CardDescription>
