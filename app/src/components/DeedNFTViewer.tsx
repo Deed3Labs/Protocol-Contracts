@@ -28,7 +28,8 @@ import {
   Heart,
   Image as ImageIcon,
   AlertCircle,
-  MessageCircle
+  MessageCircle,
+  RefreshCw
 } from "lucide-react";
 import { ethers } from "ethers";
 import type { DeedNFT } from "@/hooks/useDeedNFTData";
@@ -81,10 +82,12 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
 
       try {
         setIsLoadingMetadata(true);
+        console.log('Fetching metadata from URI:', deedNFT.uri);
         const response = await fetch(deedNFT.uri);
         if (!response.ok) throw new Error('Failed to fetch metadata');
         
         const data: TokenMetadata = await response.json();
+        console.log('Fetched metadata:', data);
         setMetadata(data);
         
         // Extract images from metadata
@@ -104,7 +107,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
     };
 
     fetchMetadata();
-  }, [deedNFT.uri]);
+  }, [deedNFT.uri, deedNFT.tokenId]); // Add tokenId as dependency to force refresh when token changes
 
   const getAssetTypeIcon = (assetType: number) => {
     switch (assetType) {
@@ -140,6 +143,43 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
     setIsMessageModalOpen(false);
   };
 
+  const handleRefreshMetadata = () => {
+    // Force re-fetch metadata
+    setIsLoadingMetadata(true);
+    const fetchMetadata = async () => {
+      if (!deedNFT.uri) {
+        setIsLoadingMetadata(false);
+        return;
+      }
+
+      try {
+        console.log('Refreshing metadata from URI:', deedNFT.uri);
+        const response = await fetch(deedNFT.uri);
+        if (!response.ok) throw new Error('Failed to fetch metadata');
+        
+        const data: TokenMetadata = await response.json();
+        console.log('Refreshed metadata:', data);
+        setMetadata(data);
+        
+        // Extract images from metadata
+        const imageArray: string[] = [];
+        if (data.image) imageArray.push(data.image);
+        if (data.images && Array.isArray(data.images)) {
+          imageArray.push(...data.images);
+        }
+        setImages(imageArray);
+      } catch (error) {
+        console.error('Error refreshing metadata:', error);
+        setMetadata(null);
+        setImages([]);
+      } finally {
+        setIsLoadingMetadata(false);
+      }
+    };
+
+    fetchMetadata();
+  };
+
   if (!isOpen) return null;
 
   const containerClass = isFullPage 
@@ -169,6 +209,16 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
             </div>
           </div>
           <div className="flex items-center space-x-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRefreshMetadata}
+              disabled={isLoadingMetadata}
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              title="Refresh metadata"
+            >
+              <RefreshCw className={`w-5 h-5 ${isLoadingMetadata ? 'animate-spin' : ''}`} />
+            </Button>
             <Button
               variant="ghost"
               size="sm"

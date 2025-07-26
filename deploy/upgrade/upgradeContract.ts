@@ -22,16 +22,12 @@ async function main() {
 
   // Validate the upgrade
   console.log("Validating upgrade...");
-  await hre.upgrades.validateUpgrade(proxyAddress, ContractFactory, {
-    kind: "uups"
-  });
+  await hre.upgrades.validateUpgrade(proxyAddress, ContractFactory);
   console.log("Upgrade validation passed");
 
   // Prepare the upgrade
   console.log("Preparing upgrade...");
-  const upgraded = await hre.upgrades.upgradeProxy(proxyAddress, ContractFactory, {
-    kind: "uups"
-  });
+  const upgraded = await hre.upgrades.upgradeProxy(proxyAddress, ContractFactory);
   
   await upgraded.waitForDeployment();
   const upgradedAddress = await upgraded.getAddress();

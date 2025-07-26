@@ -30,9 +30,7 @@ async function main() {
   // Check if the contract can be upgraded
   console.log("\nChecking upgrade safety...");
   try {
-    await hre.upgrades.validateUpgrade(proxyAddress, ContractFactory, {
-      kind: "uups"
-    });
+    await hre.upgrades.validateUpgrade(proxyAddress, ContractFactory);
     console.log("✅ Contract can be safely upgraded");
   } catch (error) {
     console.log("❌ Upgrade validation failed:");

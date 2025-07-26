@@ -24,7 +24,7 @@ async function main() {
   // Deploy MetadataRenderer as an upgradeable contract
   console.log("Deploying MetadataRenderer...");
   const MetadataRenderer = await hre.ethers.getContractFactory("MetadataRenderer");
-  const metadataRenderer = await hre.upgrades.deployProxy(MetadataRenderer, ["https://api.example.com/metadata/"], {
+  const metadataRenderer = await hre.upgrades.deployProxy(MetadataRenderer, [], {
     initializer: "initialize",
     kind: "uups"
   });
