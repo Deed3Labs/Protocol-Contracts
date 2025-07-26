@@ -27,10 +27,12 @@ import {
   Share2,
   Heart,
   Image as ImageIcon,
-  AlertCircle
+  AlertCircle,
+  MessageCircle
 } from "lucide-react";
 import { ethers } from "ethers";
 import type { DeedNFT } from "@/hooks/useDeedNFTData";
+import MessageOwnerModal from "./MessageOwnerModal";
 
 interface DeedNFTViewerProps {
   deedNFT: DeedNFT;
@@ -56,8 +58,9 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
   isOpen,
   onClose,
   getAssetTypeLabel,
-  getValidationStatus
+  getValidationStatus,
 }) => {
+  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [isFullPage, setIsFullPage] = useState(false);
   const [selectedImage, setSelectedImage] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
@@ -129,6 +132,14 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
     setIsFullPage(!isFullPage);
   };
 
+  const handleMessageOwner = () => {
+    setIsMessageModalOpen(true);
+  };
+
+  const handleCloseMessageModal = () => {
+    setIsMessageModalOpen(false);
+  };
+
   if (!isOpen) return null;
 
   const containerClass = isFullPage 
@@ -153,7 +164,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
                 {metadata?.name || `${assetTypeLabel} #${deedNFT.tokenId}`}
               </h2>
               <p className="text-gray-600 dark:text-gray-300">
-                DeedNFT Details
+                T-Deed Details
               </p>
             </div>
           </div>
@@ -173,6 +184,14 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
               className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             >
               <X className="w-5 h-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleMessageOwner}
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            >
+              <MessageCircle className="w-5 h-5" />
             </Button>
           </div>
         </div>
@@ -213,7 +232,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
                     <div className="text-center">
                       <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                       <p className="text-gray-500 dark:text-gray-400">No images found</p>
-                      <p className="text-sm text-gray-400 dark:text-gray-500">This DeedNFT doesn't have any associated images</p>
+                      <p className="text-sm text-gray-400 dark:text-gray-500">This T-Deed doesn't have any associated images</p>
                     </div>
                   </div>
                 )}
@@ -466,7 +485,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
                           {formatAddress(deedNFT.owner)}
                         </span>
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
                           onClick={() => copyToClipboard(deedNFT.owner)}
                           className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex-shrink-0"
@@ -580,6 +599,15 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Message Owner Modal */}
+      <MessageOwnerModal
+        isOpen={isMessageModalOpen}
+        onClose={handleCloseMessageModal}
+        ownerAddress={deedNFT.owner}
+        tokenId={deedNFT.tokenId}
+        assetType={assetTypeLabel}
+      />
     </div>
   );
 };
