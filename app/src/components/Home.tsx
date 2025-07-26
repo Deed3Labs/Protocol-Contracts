@@ -15,7 +15,7 @@ const Home = () => {
       </div>
 
       <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-        <Card className="group hover:shadow-xl transition-all duration-300 border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/90 backdrop-blur-sm">
+        <Card className="group hover:border-black/20 dark:hover:border-white/20 transition-all duration-300 border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/90 backdrop-blur-sm">
           <CardHeader className="pb-4">
             <CardTitle className="text-2xl font-semibold text-gray-900 dark:text-white">
               Mint DeedNFT
@@ -31,7 +31,7 @@ const Home = () => {
           </CardContent>
         </Card>
 
-        <Card className="group hover:shadow-xl transition-all duration-300 border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/90 backdrop-blur-sm">
+        <Card className="group hover:border-black/20 dark:hover:border-white/20 transition-all duration-300 border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/90 backdrop-blur-sm">
           <CardHeader className="pb-4">
             <CardTitle className="text-2xl font-semibold text-gray-900 dark:text-white">
               Explore Deeds

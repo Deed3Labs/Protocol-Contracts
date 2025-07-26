@@ -15,7 +15,7 @@ const PageOne = () => {
         </div>
         <Separator className="mb-8" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Card className="shadow-md border border-border bg-card/80">
+          <Card className="border border-border bg-card/80">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Badge variant="secondary">New</Badge>
@@ -35,7 +35,7 @@ const PageOne = () => {
               </Button>
             </CardContent>
           </Card>
-          <Card className="shadow-md border border-border bg-card/80">
+          <Card className="border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Metadata Management</CardTitle>
               <CardDescription>
@@ -51,7 +51,7 @@ const PageOne = () => {
               </Button>
             </CardContent>
           </Card>
-          <Card className="shadow-md border border-border bg-card/80">
+          <Card className="border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Royalty Enforcement</CardTitle>
               <CardDescription>
@@ -67,7 +67,7 @@ const PageOne = () => {
               </Button>
             </CardContent>
           </Card>
-          <Card className="shadow-md border border-border bg-card/80">
+          <Card className="border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Validator Network</CardTitle>
               <CardDescription>
@@ -83,7 +83,7 @@ const PageOne = () => {
               </Button>
             </CardContent>
           </Card>
-          <Card className="shadow-md border border-border bg-card/80">
+          <Card className="border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Fund Management</CardTitle>
               <CardDescription>
@@ -99,7 +99,7 @@ const PageOne = () => {
               </Button>
             </CardContent>
           </Card>
-          <Card className="shadow-md border border-border bg-card/80">
+          <Card className="border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Analytics Dashboard</CardTitle>
               <CardDescription>
@@ -117,7 +117,7 @@ const PageOne = () => {
           </Card>
         </div>
         <div className="mt-12 text-center">
-          <Card className="max-w-2xl mx-auto shadow-md border border-border bg-card/80">
+          <Card className="max-w-2xl mx-auto border border-border bg-card/80">
             <CardHeader>
               <CardTitle>Coming Soon</CardTitle>
               <CardDescription>

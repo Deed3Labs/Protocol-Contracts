@@ -1,6 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 
 const PageTwo = () => {
@@ -8,145 +7,133 @@ const PageTwo = () => {
     <div className="container mx-auto py-12 px-4 animate-fade-in">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-4 text-primary">Protocol Statistics</h1>
+          <h1 className="text-4xl font-bold mb-4 text-primary">Technical Specifications</h1>
           <p className="text-xl text-muted-foreground">
-            Track the performance and usage metrics of the DeedNFT Protocol
+            Detailed technical information about the DeedNFT Protocol implementation
           </p>
         </div>
         <Separator className="mb-8" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <Card className="shadow-md border border-border bg-card/80">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <Card className="border border-border bg-card/80">
             <CardHeader>
-              <CardTitle>Total DeedNFTs Minted</CardTitle>
-              <CardDescription>All time statistics</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold mb-2">1,247</div>
-              <div className="text-sm text-muted-foreground mb-4">
-                +12% from last month
-              </div>
-              <Progress value={75} className="w-full" />
-            </CardContent>
-          </Card>
-          <Card className="shadow-md border border-border bg-card/80">
-            <CardHeader>
-              <CardTitle>Active Validators</CardTitle>
-              <CardDescription>Currently active validator count</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold mb-2">23</div>
-              <div className="text-sm text-muted-foreground mb-4">
-                +3 new this week
-              </div>
-              <Progress value={60} className="w-full" />
-            </CardContent>
-          </Card>
-          <Card className="shadow-md border border-border bg-card/80">
-            <CardHeader>
-              <CardTitle>Total Volume</CardTitle>
-              <CardDescription>Transaction volume in ETH</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold mb-2">1,847.32 ETH</div>
-              <div className="text-sm text-muted-foreground mb-4">
-                +8% from last week
-              </div>
-              <Progress value={85} className="w-full" />
-            </CardContent>
-          </Card>
-          <Card className="shadow-md border border-border bg-card/80">
-            <CardHeader>
-              <CardTitle>Average Gas Used</CardTitle>
-              <CardDescription>Per transaction average</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold mb-2">0.0024 ETH</div>
-              <div className="text-sm text-muted-foreground mb-4">
-                -5% from last month
-              </div>
-              <Progress value={45} className="w-full" />
-            </CardContent>
-          </Card>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="shadow-md border border-border bg-card/80">
-            <CardHeader>
-              <CardTitle>Asset Type Distribution</CardTitle>
-              <CardDescription>Breakdown by asset type</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span>Land</span>
-                <span className="font-medium">45%</span>
-              </div>
-              <Progress value={45} className="w-full" />
-              <div className="flex justify-between items-center">
-                <span>Vehicle</span>
-                <span className="font-medium">28%</span>
-              </div>
-              <Progress value={28} className="w-full" />
-              <div className="flex justify-between items-center">
-                <span>Estate</span>
-                <span className="font-medium">18%</span>
-              </div>
-              <Progress value={18} className="w-full" />
-              <div className="flex justify-between items-center">
-                <span>Commercial Equipment</span>
-                <span className="font-medium">9%</span>
-              </div>
-              <Progress value={9} className="w-full" />
-            </CardContent>
-          </Card>
-          <Card className="shadow-md border border-border bg-card/80">
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>Latest protocol events</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <div>
-                  <div className="font-medium">New DeedNFT Minted</div>
-                  <div className="text-sm text-muted-foreground">Land parcel #1247</div>
-                </div>
-                <div className="text-sm text-muted-foreground">2 min ago</div>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <div>
-                  <div className="font-medium">Validator Added</div>
-                  <div className="text-sm text-muted-foreground">Real Estate Validator v2.1</div>
-                </div>
-                <div className="text-sm text-muted-foreground">15 min ago</div>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <div>
-                  <div className="font-medium">Metadata Updated</div>
-                  <div className="text-sm text-muted-foreground">Vehicle #892 traits</div>
-                </div>
-                <div className="text-sm text-muted-foreground">1 hour ago</div>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <div>
-                  <div className="font-medium">Royalty Payment</div>
-                  <div className="text-sm text-muted-foreground">0.05 ETH to validator</div>
-                </div>
-                <div className="text-sm text-muted-foreground">3 hours ago</div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        <div className="mt-8 text-center">
-          <Card className="max-w-2xl mx-auto shadow-md border border-border bg-card/80">
-            <CardHeader>
-              <CardTitle>Export Data</CardTitle>
+              <CardTitle>Smart Contracts</CardTitle>
               <CardDescription>
-                Download protocol statistics and analytics
+                Core contract architecture and deployment
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button variant="outline">Export CSV</Button>
-                <Button variant="outline">Export JSON</Button>
-                <Button variant="outline">Generate Report</Button>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                ERC-721 compliant DeedNFT contracts with advanced metadata management
+                and validation capabilities.
+              </p>
+              <Button variant="outline" className="w-full">
+                View Contracts
+              </Button>
+            </CardContent>
+          </Card>
+          <Card className="border border-border bg-card/80">
+            <CardHeader>
+              <CardTitle>Validation System</CardTitle>
+              <CardDescription>
+                Multi-layer validation and verification
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Comprehensive validation system with support for multiple validator types
+                and automated verification processes.
+              </p>
+              <Button variant="outline" className="w-full">
+                Learn More
+              </Button>
+            </CardContent>
+          </Card>
+          <Card className="border border-border bg-card/80">
+            <CardHeader>
+              <CardTitle>Metadata Standards</CardTitle>
+              <CardDescription>
+                ERC-7496 compliant metadata handling
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Dynamic metadata updates with support for custom traits, validation status,
+                and extensible metadata structures.
+              </p>
+              <Button variant="outline" className="w-full">
+                View Standards
+              </Button>
+            </CardContent>
+          </Card>
+          <Card className="border border-border bg-card/80">
+            <CardHeader>
+              <CardTitle>Network Integration</CardTitle>
+              <CardDescription>
+                Multi-chain deployment and compatibility
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Deployed on Base Sepolia with support for multiple EVM-compatible networks
+                and cross-chain functionality.
+              </p>
+              <Button variant="outline" className="w-full">
+                Network Info
+              </Button>
+            </CardContent>
+          </Card>
+          <Card className="border border-border bg-card/80">
+            <CardHeader>
+              <CardTitle>Security Features</CardTitle>
+              <CardDescription>
+                Advanced security and access control
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Role-based access control, upgradeable contracts, and comprehensive
+                security audits for production deployment.
+              </p>
+              <Button variant="outline" className="w-full">
+                Security Details
+              </Button>
+            </CardContent>
+          </Card>
+          <Card className="border border-border bg-card/80">
+            <CardHeader>
+              <CardTitle>API Integration</CardTitle>
+              <CardDescription>
+                RESTful API and SDK support
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Comprehensive API for metadata management, validation queries, and
+                integration with external systems.
+              </p>
+              <Button variant="outline" className="w-full">
+                API Docs
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="mt-12 text-center">
+          <Card className="max-w-2xl mx-auto border border-border bg-card/80">
+            <CardHeader>
+              <CardTitle>Development Resources</CardTitle>
+              <CardDescription>
+                Tools and resources for developers
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Access our comprehensive developer documentation, SDK, and integration guides
+                to build on top of the DeedNFT Protocol.
+              </p>
+              <div className="flex gap-4 justify-center">
+                <Button variant="outline">Documentation</Button>
+                <Button variant="outline">GitHub</Button>
+                <Button variant="outline">Discord</Button>
               </div>
             </CardContent>
           </Card>

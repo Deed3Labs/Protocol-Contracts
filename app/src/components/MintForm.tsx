@@ -514,7 +514,7 @@ const MintForm = () => {
             <Button
               onClick={handleMint}
               disabled={isLoading || !form.definition.trim() || !isCorrectNetwork}
-              className="w-full text-lg font-semibold py-6 rounded-lg shadow-md bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white transition-colors duration-200"
+                              className="w-full text-lg font-semibold py-6 rounded-lg bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white transition-colors duration-200"
               size="lg"
             >
               {isLoading ? 'Minting...' : 'Mint DeedNFT'}

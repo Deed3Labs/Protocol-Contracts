@@ -177,7 +177,7 @@ const Dashboard = () => {
               const assetTypeLabel = getAssetTypeLabel(deedNFT.assetType);
               
               return (
-                <Card key={deedNFT.tokenId} className="group hover:shadow-xl transition-all duration-300 border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+                <Card key={deedNFT.tokenId} className="group hover:border-black/20 dark:hover:border-white/20 transition-all duration-300 border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start">
                       <CardTitle className="text-lg text-gray-900 dark:text-white">
@@ -250,7 +250,7 @@ const Dashboard = () => {
       <div>
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Quick Actions</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm hover:border-black/20 dark:hover:border-white/20 transition-all duration-300">
             <CardContent className="p-6">
               <div className="text-center">
                 <div className="p-3 bg-gray-100 dark:bg-[#141414] rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
@@ -265,7 +265,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
 
-          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm hover:border-black/20 dark:hover:border-white/20 transition-all duration-300">
             <CardContent className="p-6">
               <div className="text-center">
                 <div className="p-3 bg-gray-100 dark:bg-[#141414] rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
@@ -280,7 +280,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
 
-          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm hover:border-black/20 dark:hover:border-white/20 transition-all duration-300">
             <CardContent className="p-6">
               <div className="text-center">
                 <div className="p-3 bg-gray-100 dark:bg-[#141414] rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
