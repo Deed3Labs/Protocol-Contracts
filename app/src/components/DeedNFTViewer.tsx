@@ -394,7 +394,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
                 </CardHeader>
                 <CardContent>
                   <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-                    {metadata?.description || deedNFT.definition || "No description available for this DeedNFT."}
+                    {metadata?.description || deedNFT.definition || "No description available for this T-Deed."}
                   </p>
                 </CardContent>
               </Card>
