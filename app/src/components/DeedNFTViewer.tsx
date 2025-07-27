@@ -655,7 +655,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
             </Button>
             <Button
               onClick={onClose}
-              className="flex-1 bg-white hover:bg-gray-100 dark:bg-white dark:hover:bg-gray-100 text-black dark:text-black"
+              className="flex-1 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-black"
             >
               Close
             </Button>
