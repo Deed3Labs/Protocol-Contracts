@@ -18,7 +18,7 @@ function App() {
             <ThemeToggle />
           </div>
         </Header>
-        <main className="flex-1 w-full">
+        <main className="flex-1 w-full pb-20 md:pb-0">
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/mint" element={<MintForm />} />

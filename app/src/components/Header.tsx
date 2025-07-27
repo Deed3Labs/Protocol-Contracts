@@ -207,7 +207,7 @@ const Header = ({ children }: HeaderProps) => {
             <appkit-button />
             {hasAdminRole && (
               <Link to="/admin">
-                <Button variant="outline" size="sm" className="border-black/10 dark:border-white/10">
+                <Button variant="outline" size="icon" className="border-black/10 dark:border-white/10">
                   <Shield className="w-4 h-4" />
                 </Button>
               </Link>
