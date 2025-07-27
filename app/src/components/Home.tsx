@@ -25,7 +25,7 @@ const Home = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11">
+            <Button asChild className="w-full bg-white hover:bg-gray-100 dark:bg-white dark:hover:bg-gray-100 text-black dark:text-black font-semibold py-3 rounded-lg transition-colors duration-200 border border-gray-300 dark:border-gray-300 h-11">
               <Link to="/mint">Start Minting</Link>
             </Button>
           </CardContent>
