@@ -1861,7 +1861,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <CardHeader>
                 <CardTitle className="text-gray-900 dark:text-white">Custom Metadata</CardTitle>
                 <CardDescription className="text-gray-600 dark:text-gray-300">
-                  Set custom metadata for a DeedNFT
+                  Set custom metadata for a T-Deed
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -1904,7 +1904,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <CardHeader>
                 <CardTitle className="text-gray-900 dark:text-white">Animation URL</CardTitle>
                 <CardDescription className="text-gray-600 dark:text-gray-300">
-                  Set animation URL for a DeedNFT
+                  Set animation URL for a T-Deed
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -1946,7 +1946,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <CardHeader>
                 <CardTitle className="text-gray-900 dark:text-white">External Link</CardTitle>
                 <CardDescription className="text-gray-600 dark:text-gray-300">
-                  Set external link for a DeedNFT
+                  Set external link for a T-Deed
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -1988,40 +1988,40 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <CardHeader>
                 <CardTitle className="text-gray-900 dark:text-white">Document Management</CardTitle>
                 <CardDescription className="text-gray-600 dark:text-gray-300">
-                  Add or remove documents for a DeedNFT
+                  Add or remove documents for a T-Deed
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="documentTokenId">Token ID</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="documentTokenId" className="text-sm font-medium">Token ID</Label>
                   <Input
                     id="documentTokenId"
                     placeholder="Enter token ID"
                     value={documentForm.tokenId}
                     onChange={(e) => setDocumentForm(prev => ({ ...prev, tokenId: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="docType">Document Type</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="docType" className="text-sm font-medium">Document Type</Label>
                   <Input
                     id="docType"
                     placeholder="e.g., deed, title, inspection"
                     value={documentForm.docType}
                     onChange={(e) => setDocumentForm(prev => ({ ...prev, docType: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="documentURI">Document URI</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="documentURI" className="text-sm font-medium">Document URI</Label>
                   <Input
                     id="documentURI"
                     placeholder="https://example.com/document.pdf"
                     value={documentForm.documentURI}
                     onChange={(e) => setDocumentForm(prev => ({ ...prev, documentURI: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
@@ -2033,7 +2033,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                     onChange={(e) => setDocumentForm(prev => ({ ...prev, isRemove: e.target.checked }))}
                     className="rounded border-black/10 dark:border-white/10"
                   />
-                  <Label htmlFor="isRemove">Remove Document</Label>
+                  <Label htmlFor="isRemove" className="text-sm font-medium">Remove Document</Label>
                 </div>
 
                 <Button 
@@ -2056,24 +2056,24 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="conditionTokenId">Token ID</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="conditionTokenId" className="text-sm font-medium">Token ID</Label>
                   <Input
                     id="conditionTokenId"
                     placeholder="Enter token ID"
                     value={assetConditionForm.tokenId}
                     onChange={(e) => setAssetConditionForm(prev => ({ ...prev, tokenId: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="generalCondition">General Condition</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="generalCondition" className="text-sm font-medium">General Condition</Label>
                   <Select 
                     value={assetConditionForm.generalCondition} 
                     onValueChange={(value) => setAssetConditionForm(prev => ({ ...prev, generalCondition: value }))}
                   >
-                    <SelectTrigger className="border-black/10 dark:border-white/10">
+                    <SelectTrigger className="border-black/10 dark:border-white/10 h-11">
                       <SelectValue placeholder="Select condition" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2085,19 +2085,19 @@ const Validation: React.FC<ValidationPageProps> = () => {
                   </Select>
                 </div>
 
-                <div>
-                  <Label htmlFor="lastInspectionDate">Last Inspection Date</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="lastInspectionDate" className="text-sm font-medium">Last Inspection Date</Label>
                   <Input
                     id="lastInspectionDate"
                     type="date"
                     value={assetConditionForm.lastInspectionDate}
                     onChange={(e) => setAssetConditionForm(prev => ({ ...prev, lastInspectionDate: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="additionalNotes">Additional Notes</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="additionalNotes" className="text-sm font-medium">Additional Notes</Label>
                   <Textarea
                     id="additionalNotes"
                     placeholder="Additional notes about the asset condition..."
@@ -2128,52 +2128,52 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="legalTokenId">Token ID</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="legalTokenId" className="text-sm font-medium">Token ID</Label>
                   <Input
                     id="legalTokenId"
                     placeholder="Enter token ID"
                     value={legalInfoForm.tokenId}
                     onChange={(e) => setLegalInfoForm(prev => ({ ...prev, tokenId: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="jurisdiction">Jurisdiction</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="jurisdiction" className="text-sm font-medium">Jurisdiction</Label>
                   <Input
                     id="jurisdiction"
                     placeholder="e.g., California, USA"
                     value={legalInfoForm.jurisdiction}
                     onChange={(e) => setLegalInfoForm(prev => ({ ...prev, jurisdiction: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="registrationNumber">Registration Number</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="registrationNumber" className="text-sm font-medium">Registration Number</Label>
                   <Input
                     id="registrationNumber"
                     placeholder="Official registration number"
                     value={legalInfoForm.registrationNumber}
                     onChange={(e) => setLegalInfoForm(prev => ({ ...prev, registrationNumber: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="registrationDate">Registration Date</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="registrationDate" className="text-sm font-medium">Registration Date</Label>
                   <Input
                     id="registrationDate"
                     type="date"
                     value={legalInfoForm.registrationDate}
                     onChange={(e) => setLegalInfoForm(prev => ({ ...prev, registrationDate: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="additionalInfo">Additional Legal Info</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="additionalInfo" className="text-sm font-medium">Additional Legal Info</Label>
                   <Textarea
                     id="additionalInfo"
                     placeholder="Additional legal information..."
@@ -2200,23 +2200,23 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <CardHeader>
                 <CardTitle className="text-gray-900 dark:text-white">Features</CardTitle>
                 <CardDescription className="text-gray-600 dark:text-gray-300">
-                  Set features for a DeedNFT
+                  Set features for a T-Deed
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="featuresTokenId">Token ID</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="featuresTokenId" className="text-sm font-medium">Token ID</Label>
                   <Input
                     id="featuresTokenId"
                     placeholder="Enter token ID"
                     value={featuresForm.tokenId}
                     onChange={(e) => setFeaturesForm(prev => ({ ...prev, tokenId: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="features">Features (comma-separated)</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="features" className="text-sm font-medium">Features (comma-separated)</Label>
                   <Textarea
                     id="features"
                     placeholder="e.g., pool, garage, garden, security system"
@@ -2246,23 +2246,23 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <CardHeader>
                 <CardTitle className="text-gray-900 dark:text-white">Gallery</CardTitle>
                 <CardDescription className="text-gray-600 dark:text-gray-300">
-                  Set gallery images for a DeedNFT
+                  Set gallery images for a T-Deed
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="galleryTokenId">Token ID</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="galleryTokenId" className="text-sm font-medium">Token ID</Label>
                   <Input
                     id="galleryTokenId"
                     placeholder="Enter token ID"
                     value={galleryForm.tokenId}
                     onChange={(e) => setGalleryForm(prev => ({ ...prev, tokenId: e.target.value }))}
-                    className="border-black/10 dark:border-white/10"
+                    className="border-black/10 dark:border-white/10 h-11"
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="imageUrls">Image URLs (one per line)</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="imageUrls" className="text-sm font-medium">Image URLs (one per line)</Label>
                   <Textarea
                     id="imageUrls"
                     placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg&#10;https://example.com/image3.jpg"
