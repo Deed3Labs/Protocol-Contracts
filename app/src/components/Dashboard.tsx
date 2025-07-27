@@ -166,7 +166,7 @@ const Dashboard = () => {
             <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
             <p className="text-gray-600 dark:text-gray-300 text-lg">No T-Deeds found</p>
             <p className="text-gray-500 dark:text-gray-400 mt-2">Mint your first T-Deed to get started</p>
-            <Button asChild className="mt-4 bg-white hover:bg-gray-100 dark:bg-white dark:hover:bg-gray-100 text-black dark:text-black border border-gray-300 dark:border-gray-300 h-11">
+            <Button asChild className="mt-4 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-black border border-gray-300 dark:border-gray-300 h-11">
               <Link to="/mint">Mint T-Deed</Link>
             </Button>
           </div>
@@ -258,7 +258,7 @@ const Dashboard = () => {
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Mint New T-Deed</h3>
                 <p className="text-gray-600 dark:text-gray-300 mb-4">Create a new digital deed with custom metadata</p>
-                <Button asChild className="w-full bg-white hover:bg-gray-100 dark:bg-white dark:hover:bg-gray-100 text-black dark:text-black border border-gray-300 dark:border-gray-300 h-11">
+                <Button asChild className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-black border border-gray-300 dark:border-gray-300 h-11">
                   <Link to="/mint">Start Minting</Link>
                 </Button>
               </div>
