@@ -35,7 +35,7 @@ const MobileDialogContent = React.forwardRef<
       className={cn(
         "fixed z-50 grid w-full gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         // Mobile: slide up from bottom, Desktop: centered with zoom
-        "left-0 bottom-0 md:left-[50%] md:top-[50%] md:translate-x-[-50%] md:translate-y-[-50%] md:max-w-lg",
+        "left-0 bottom-0 md:left-[50%] md:top-[50%] md:translate-x-[-50%] md:translate-y-[-50%] md:max-w-6xl",
         // Mobile animations
         "data-[state=closed]:slide-out-to-bottom-full data-[state=open]:slide-in-from-bottom-full",
         // Desktop animations
@@ -91,7 +91,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <MobileDialogContent className="max-w-6xl w-full h-full md:h-auto md:max-h-[90vh] border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm overflow-hidden">
+      <MobileDialogContent className="max-w-6xl w-full h-full md:max-h-[90vh] border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm overflow-hidden">
         <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-gray-200 dark:border-gray-700">
           <div>
             <DialogTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center space-x-2">
