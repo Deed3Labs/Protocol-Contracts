@@ -106,7 +106,7 @@ const Footer = () => {
             
             {/* Farcaster */}
             <a
-              href="https://warpcast.com/Deed3Labs"
+              href="https://farcaster.xyz/Deed3Labs"
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 text-muted-foreground hover:text-foreground transition-colors"
