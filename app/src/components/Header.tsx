@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Menu, X, Shield } from "lucide-react";
+import { Shield, Home, Plus, Search, BarChart3, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAccount, useChainId } from 'wagmi';
 import { ethers } from "ethers";
@@ -13,21 +13,12 @@ interface HeaderProps {
 
 const Header = ({ children }: HeaderProps) => {
   const location = useLocation();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const [hasAdminRole, setHasAdminRole] = useState(false);
 
   const isActive = (path: string) => {
     return location.pathname === path;
-  };
-
-  const toggleMobileMenu = () => {
-    setIsMobileMenuOpen(!isMobileMenuOpen);
-  };
-
-  const closeMobileMenu = () => {
-    setIsMobileMenuOpen(false);
   };
 
   // Check if user has admin role
@@ -111,12 +102,10 @@ const Header = ({ children }: HeaderProps) => {
   }, [isConnected, address, chainId]);
 
   const navLinks = [
-    { to: "/", label: "Home" },
-    { to: "/mint", label: "Mint" },
-    { to: "/explore", label: "Explore" },
-    { to: "/dashboard", label: "Dashboard" },
-    { to: "/validation", label: "Validation" },
-    ...(hasAdminRole ? [{ to: "/admin", label: "Admin", icon: Shield }] : []),
+    { to: "/", label: "Home", icon: Home },
+    { to: "/explore", label: "Explore", icon: Search },
+    { to: "/dashboard", label: "Dashboard", icon: BarChart3 },
+    { to: "/validation", label: "Validation", icon: ShieldCheck },
   ];
 
   // Debug logging
@@ -126,81 +115,181 @@ const Header = ({ children }: HeaderProps) => {
   console.log('Header: address =', address);
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm border-b border-black/10 dark:border-white/10">
-      <nav className="container flex items-center justify-between py-4">
-        {/* Logo and Desktop Navigation */}
-        <div className="flex items-center space-x-4 lg:space-x-8">
-          <span className="text-xl lg:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-            Deed Protocol
-          </span>
-          
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-4 lg:space-x-6">
-            {navLinks.map((link) => (
+    <>
+      <header className="sticky top-0 z-30 w-full bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm border-b border-black/10 dark:border-white/10">
+        <nav className="container flex items-center justify-between py-4">
+          {/* Logo and Desktop Navigation */}
+          <div className="flex items-center space-x-4 lg:space-x-8">
+            <span className="text-xl lg:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+              Deed Protocol
+            </span>
+            
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex items-center space-x-4 lg:space-x-6">
+              {/* Home */}
               <Link 
-                key={link.to}
-                to={link.to} 
-                className={`font-medium transition-colors duration-200 flex items-center gap-1 ${
-                  isActive(link.to) 
+                to="/"
+                className={`font-medium transition-colors duration-200 ${
+                  isActive("/") 
                     ? "text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white pb-1" 
                     : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
                 }`}
               >
-                {link.icon && <link.icon className="w-4 h-4" />}
-                {link.label}
+                Home
               </Link>
-            ))}
-          </div>
-        </div>
 
-        {/* Desktop Actions */}
-        <div className="hidden md:flex items-center space-x-3">
-          <appkit-button />
-          {children}
-        </div>
-
-        {/* Mobile Menu Button */}
-        <div className="md:hidden flex items-center space-x-3">
-          <appkit-button />
-          {children}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleMobileMenu}
-            className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
-          >
-            {isMobileMenuOpen ? (
-              <X className="w-5 h-5" />
-            ) : (
-              <Menu className="w-5 h-5" />
-            )}
-          </Button>
-        </div>
-      </nav>
-
-      {/* Mobile Navigation Menu */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden border-t border-black/10 dark:border-white/10 bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm">
-          <div className="container py-4 space-y-3">
-            {navLinks.map((link) => (
+              {/* Explore */}
               <Link 
-                key={link.to}
-                to={link.to} 
-                onClick={closeMobileMenu}
-                className={`block py-2 px-4 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2 ${
-                  isActive(link.to) 
-                    ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800" 
-                    : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800"
+                to="/explore"
+                className={`font-medium transition-colors duration-200 ${
+                  isActive("/explore") 
+                    ? "text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white pb-1" 
+                    : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
                 }`}
               >
-                {link.icon && <link.icon className="w-4 h-4" />}
-                {link.label}
+                Explore
               </Link>
-            ))}
+
+              {/* Mint - 3rd position */}
+              <Link 
+                to="/mint"
+                className={`font-medium transition-colors duration-200 ${
+                  isActive("/mint") 
+                    ? "text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white pb-1" 
+                    : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+                }`}
+              >
+                Mint
+              </Link>
+
+              {/* Dashboard */}
+              <Link 
+                to="/dashboard"
+                className={`font-medium transition-colors duration-200 ${
+                  isActive("/dashboard") 
+                    ? "text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white pb-1" 
+                    : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+                }`}
+              >
+                Dashboard
+              </Link>
+
+              {/* Validation */}
+              <Link 
+                to="/validation"
+                className={`font-medium transition-colors duration-200 ${
+                  isActive("/validation") 
+                    ? "text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white pb-1" 
+                    : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+                }`}
+              >
+                Validation
+              </Link>
+            </div>
           </div>
+
+          {/* Desktop Actions */}
+          <div className="hidden md:flex items-center space-x-2">
+            <appkit-button />
+            {hasAdminRole && (
+              <Link to="/admin">
+                <Button variant="outline" size="sm" className="h-9 px-3 border-black/10 dark:border-white/10">
+                  <Shield className="w-4 h-4 mr-1" />
+                  Admin
+                </Button>
+              </Link>
+            )}
+            {children}
+          </div>
+
+          {/* Mobile Actions */}
+          <div className="md:hidden flex items-center space-x-3">
+            <appkit-button />
+            {hasAdminRole && (
+              <Link to="/admin">
+                <Button variant="outline" size="sm" className="border-black/10 dark:border-white/10">
+                  <Shield className="w-4 h-4" />
+                </Button>
+              </Link>
+            )}
+            {children}
+          </div>
+        </nav>
+      </header>
+
+      {/* Mobile Bottom Tab Navigation */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm border-t border-black/10 dark:border-white/10">
+        <div className="flex items-center justify-around py-2">
+          {/* Home */}
+          <Link 
+            to="/"
+            className={`flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-all duration-200 min-w-0 flex-1 ${
+              isActive("/") 
+                ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800" 
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800"
+            }`}
+          >
+            <Home className="w-5 h-5 mb-1" />
+            <span className="text-xs font-medium truncate">Home</span>
+          </Link>
+
+          {/* Explore */}
+          <Link 
+            to="/explore"
+            className={`flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-all duration-200 min-w-0 flex-1 ${
+              isActive("/explore") 
+                ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800" 
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800"
+            }`}
+          >
+            <Search className="w-5 h-5 mb-1" />
+            <span className="text-xs font-medium truncate">Explore</span>
+          </Link>
+
+          {/* Mint Button - 3rd position */}
+          <Link 
+            to="/mint"
+            className={`flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-all duration-200 min-w-0 flex-1 ${
+              isActive("/mint") 
+                ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800" 
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800"
+            }`}
+          >
+            <Plus className="w-5 h-5 mb-1" />
+            <span className="text-xs font-medium truncate">Mint</span>
+          </Link>
+
+          {/* Dashboard */}
+          <Link 
+            to="/dashboard"
+            className={`flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-all duration-200 min-w-0 flex-1 ${
+              isActive("/dashboard") 
+                ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800" 
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800"
+            }`}
+          >
+            <BarChart3 className="w-5 h-5 mb-1" />
+            <span className="text-xs font-medium truncate">Dashboard</span>
+          </Link>
+
+          {/* Validation */}
+          <Link 
+            to="/validation"
+            className={`flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-all duration-200 min-w-0 flex-1 ${
+              isActive("/validation") 
+                ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800" 
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800"
+            }`}
+          >
+            <ShieldCheck className="w-5 h-5 mb-1" />
+            <span className="text-xs font-medium truncate">Validation</span>
+          </Link>
         </div>
-      )}
-    </header>
+      </div>
+
+      {/* Add bottom padding to prevent content from being hidden behind the bottom nav */}
+      <div className="md:hidden h-20"></div>
+    </>
   );
 };
 
