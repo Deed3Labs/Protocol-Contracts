@@ -116,7 +116,7 @@ const Header = ({ children }: HeaderProps) => {
 
   return (
     <>
-      <header className="sticky top-0 z-30 w-full bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm border-b border-black/10 dark:border-white/10">
+      <header className="fixed top-0 left-0 right-0 z-50 w-full bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm border-b border-black/10 dark:border-white/10">
         <nav className="container flex items-center justify-between py-4">
           {/* Logo and Desktop Navigation */}
           <div className="flex items-center space-x-4 lg:space-x-8">
@@ -216,6 +216,9 @@ const Header = ({ children }: HeaderProps) => {
           </div>
         </nav>
       </header>
+
+      {/* Spacer to prevent content from being hidden behind fixed header */}
+      <div className="h-2 md:h-20"></div>
 
       {/* Mobile Bottom Tab Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm border-t border-black/10 dark:border-white/10">
