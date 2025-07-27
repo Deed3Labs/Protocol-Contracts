@@ -594,23 +594,24 @@ const AdminPanel = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-5 bg-gray-100 dark:bg-gray-800 mb-8">
           <TabsTrigger value="deednft" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
-            <Database className="w-4 h-4 mr-2" />
+            <Database className="w-4 h-4 mr-2 hidden md:inline" />
             DeedNFT
           </TabsTrigger>
           <TabsTrigger value="roles" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
-            <Users className="w-4 h-4 mr-2" />
+            <Users className="w-4 h-4 mr-2 hidden md:inline" />
             Roles
           </TabsTrigger>
           <TabsTrigger value="validator" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
-            <Shield className="w-4 h-4 mr-2" />
+            <Shield className="w-4 h-4 mr-2 hidden md:inline" />
             Validator
           </TabsTrigger>
           <TabsTrigger value="fundmanager" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
-            <DollarSign className="w-4 h-4 mr-2" />
-            FundManager
+            <DollarSign className="w-4 h-4 mr-2 hidden md:inline" />
+            <span className="md:hidden">Funds</span>
+            <span className="hidden md:inline">FundManager</span>
           </TabsTrigger>
           <TabsTrigger value="registry" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
-            <FileText className="w-4 h-4 mr-2" />
+            <FileText className="w-4 h-4 mr-2 hidden md:inline" />
             Registry
           </TabsTrigger>
         </TabsList>
