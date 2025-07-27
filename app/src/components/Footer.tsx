@@ -74,7 +74,7 @@ const Footer = () => {
 
   return (
     <>
-      <footer className="w-full py-6 text-muted-foreground border-t border-black/10 dark:border-white/10 bg-white dark:bg-[#0E0E0E] animate-fade-in">
+      <footer className="hidden md:block w-full py-6 text-muted-foreground border-t border-black/10 dark:border-white/10 bg-white dark:bg-[#0E0E0E] animate-fade-in">
         <div className="container flex items-center justify-between">
           {/* Left Side - Social Media Icons */}
           <div className="flex items-center space-x-3">
