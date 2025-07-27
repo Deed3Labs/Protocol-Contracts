@@ -218,7 +218,7 @@ const Header = ({ children }: HeaderProps) => {
       </header>
 
       {/* Spacer to prevent content from being hidden behind fixed header */}
-      <div className="h-2 md:h-16"></div>
+      <div className="h-0.5 md:h-20"></div>
 
       {/* Mobile Bottom Tab Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm border-t border-black/10 dark:border-white/10">
