@@ -24,6 +24,7 @@ import {
 import { useAccount, useChainId } from "wagmi";
 import { ethers } from "ethers";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
+import { useAppKitAuth } from "@/hooks/useAppKitAuth";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
 import DeedNFTViewer from "./DeedNFTViewer";
 
@@ -142,6 +143,18 @@ interface TraitNameFormData {
 const Validation: React.FC<ValidationPageProps> = () => {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
+  const { 
+    isConnected: isAppKitConnected, 
+    isAuthenticated: isAppKitAuthenticated,
+    address: appKitAddress,
+    openModal,
+    checkAuthentication
+  } = useAppKitAuth();
+  
+  // Combine wagmi and AppKit connection states
+  const isWalletConnected = isConnected || isAppKitConnected || isAppKitAuthenticated;
+  const walletAddress = address || appKitAddress;
+  
   const { 
     deedNFTs, 
     userDeedNFTs, 
@@ -313,9 +326,22 @@ const Validation: React.FC<ValidationPageProps> = () => {
     }
   }, [success]);
 
+  // Check AppKit authentication on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        await checkAuthentication();
+      } catch (error) {
+        console.log("AppKit authentication check failed:", error);
+      }
+    };
+    
+    checkAuth();
+  }, [checkAuthentication]);
+
   // Initialize contracts
   useEffect(() => {
-    if (chainId && isConnected) {
+    if (chainId && isWalletConnected) {
       console.log("Chain ID:", chainId);
       const contractAddress = getContractAddressForNetwork(chainId);
       console.log("Contract address:", contractAddress);
@@ -326,7 +352,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
         setValidationError(`No valid contract address found for network ${chainId}. Please switch to a supported network.`);
       }
     }
-  }, [chainId, isConnected]);
+  }, [chainId, isWalletConnected]);
 
   const initializeContracts = async (contractAddress: string) => {
     try {
@@ -381,8 +407,8 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
   // Check if user has validator permissions or is deed owner
   const checkValidatorPermissions = async (validatorContractToCheck?: ethers.Contract, tokenId?: string) => {
-    if (!address) {
-      console.log("No address available");
+    if (!walletAddress) {
+      console.log("No wallet address available");
       return false;
     }
     
@@ -390,7 +416,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
     if (tokenId && contract) {
       try {
         const owner = await contract.ownerOf(tokenId);
-        if (owner.toLowerCase() === address.toLowerCase()) {
+        if (owner.toLowerCase() === walletAddress.toLowerCase()) {
           console.log("User is the deed owner");
           return true;
         }
@@ -403,7 +429,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
     if (contract) {
       try {
         const deedNFTValidatorRole = await contract.VALIDATOR_ROLE();
-        const hasDeedNFTRole = await contract.hasRole(deedNFTValidatorRole, address);
+        const hasDeedNFTRole = await contract.hasRole(deedNFTValidatorRole, walletAddress);
         if (hasDeedNFTRole) {
           console.log("User has VALIDATOR_ROLE on DeedNFT contract");
           return true;
@@ -422,17 +448,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
     const contractToCheck = validatorContractToCheck;
     
     try {
-      console.log("Checking validator permissions for address:", address);
+      console.log("Checking validator permissions for address:", walletAddress);
       const VALIDATOR_ROLE = await contractToCheck.VALIDATOR_ROLE();
       console.log("VALIDATOR_ROLE:", VALIDATOR_ROLE);
       
-      const hasRole = await contractToCheck.hasRole(VALIDATOR_ROLE, address);
+      const hasRole = await contractToCheck.hasRole(VALIDATOR_ROLE, walletAddress);
       console.log("Has VALIDATOR_ROLE:", hasRole);
       
       // Also check if the user has the role on the MetadataRenderer contract
       if (metadataRendererContract) {
         const metadataRendererRole = await metadataRendererContract.VALIDATOR_ROLE();
-        const hasMetadataRole = await metadataRendererContract.hasRole(metadataRendererRole, address);
+        const hasMetadataRole = await metadataRendererContract.hasRole(metadataRendererRole, walletAddress);
         console.log("Has VALIDATOR_ROLE on MetadataRenderer:", hasMetadataRole);
         
         // User needs role on either contract
@@ -640,7 +666,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     try {
       // Check if user has DEFAULT_ADMIN_ROLE
-      const hasAdminRole = await contract.hasRole(await contract.DEFAULT_ADMIN_ROLE(), address);
+      const hasAdminRole = await contract.hasRole(await contract.DEFAULT_ADMIN_ROLE(), walletAddress);
       if (!hasAdminRole) {
         setValidationError("You don't have admin permissions to set trait names");
         return;
@@ -720,14 +746,14 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     try {
       // Check if user has VALIDATOR_ROLE on DeedNFT contract directly
-      const hasDeedNFTRole = await contract.hasRole(await contract.VALIDATOR_ROLE(), address);
+      const hasDeedNFTRole = await contract.hasRole(await contract.VALIDATOR_ROLE(), walletAddress);
       
       if (hasDeedNFTRole) {
         // User has VALIDATOR_ROLE on DeedNFT, can call updateValidationStatus directly
         const tx = await contract.updateValidationStatus(
           parseInt(tokenId),
           validationForm.isValid,
-          address
+          walletAddress
         );
         await tx.wait();
         setSuccess("Validation status updated successfully");
@@ -783,14 +809,14 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     try {
       // Check if user has VALIDATOR_ROLE on DeedNFT contract directly
-      const hasDeedNFTRole = await contract.hasRole(await contract.VALIDATOR_ROLE(), address);
+      const hasDeedNFTRole = await contract.hasRole(await contract.VALIDATOR_ROLE(), walletAddress);
       
       if (hasDeedNFTRole) {
         // User has VALIDATOR_ROLE on DeedNFT, can call updateValidationStatus directly
         const tx = await contract.updateValidationStatus(
           parseInt(tokenId),
           true, // Set as validated
-          address
+          walletAddress
         );
         await tx.wait();
         setSuccess("Deed validated successfully");
@@ -1286,7 +1312,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
     setIsViewerOpen(true);
   };
 
-  if (!isConnected) {
+  if (!isWalletConnected) {
     return (
       <div className="container mx-auto px-4 py-8">
         <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
@@ -1295,16 +1321,22 @@ const Validation: React.FC<ValidationPageProps> = () => {
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
               Wallet Not Connected
             </h2>
-            <p className="text-gray-600 dark:text-gray-300">
-              Please connect your wallet to access the validation page.
+            <p className="text-gray-600 dark:text-gray-300 mb-4">
+              Please connect your wallet or sign in to access the validation page.
             </p>
+            <Button 
+              onClick={() => openModal()}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Connect Wallet / Sign In
+            </Button>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  if (!isCorrectNetwork && isConnected) {
+  if (!isCorrectNetwork && isWalletConnected) {
     return (
       <div className="container mx-auto px-4 py-8">
         <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
@@ -1348,7 +1380,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
       </div>
 
       {/* Debug Information */}
-      {isConnected && isCorrectNetwork && (
+      {isWalletConnected && isCorrectNetwork && (
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <p className="text-blue-800 dark:text-blue-200 text-sm">
             <strong>Debug Info:</strong> Chain ID: {currentChainId}, Contract: {contractAddress}, 
