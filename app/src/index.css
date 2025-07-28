@@ -7,6 +7,70 @@
 @tailwind components;
 @tailwind utilities;
 
+/* AppKit Modal Icon Fixes */
+@layer utilities {
+  /* Ensure AppKit modal icons are visible */
+  w3m-modal {
+    --w3m-accent-color: #3b82f6;
+    --w3m-background-color: #1f2937;
+    --w3m-overlay-background-color: rgba(0, 0, 0, 0.4);
+  }
+
+  /* Fallback for missing icons */
+  w3m-modal img[src*="icon"],
+  w3m-modal svg {
+    min-width: 24px;
+    min-height: 24px;
+    max-width: 32px;
+    max-height: 32px;
+  }
+
+  /* Ensure wallet icons are properly sized */
+  w3m-modal w3m-wallet-button img,
+  w3m-modal w3m-wallet-button svg {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+  }
+
+  /* Social login icons */
+  w3m-modal w3m-social-login img,
+  w3m-modal w3m-social-login svg {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+  }
+
+  /* Action button icons */
+  w3m-modal w3m-action-button img,
+  w3m-modal w3m-action-button svg {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+  }
+
+  /* Fallback for failed icon loads */
+  w3m-modal img[src*="icon"]:not([src*="data:"]):not([src*="blob:"]):before {
+    content: "🔗";
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    background: #6b7280;
+    border-radius: 4px;
+    text-align: center;
+    line-height: 24px;
+    font-size: 12px;
+  }
+}
+
+/* Dark mode support for AppKit modal */
+@media (prefers-color-scheme: dark) {
+  w3m-modal {
+    --w3m-background-color: #111827;
+    --w3m-overlay-background-color: rgba(0, 0, 0, 0.6);
+  }
+}
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
