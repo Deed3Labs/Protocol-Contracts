@@ -184,7 +184,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
                     <div className="space-y-3">
                       <Button
                         onClick={handleOpenBlockscanMessaging}
-                        className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11"
+                        className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-black h-11"
                       >
                         <MessageCircle className="w-4 h-4 mr-2" />
                         Open Blockscan Chat
