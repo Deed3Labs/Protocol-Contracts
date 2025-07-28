@@ -3,6 +3,7 @@ import { WagmiProvider } from 'wagmi';
 import { mainnet, base, sepolia, baseSepolia } from '@reown/appkit/networks';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
+import { ReownAuthentication } from '@reown/appkit-siwx';
 import React from 'react';
 
 const queryClient = new QueryClient();
@@ -29,8 +30,13 @@ createAppKit({
   projectId,
   metadata,
   features: {
-    analytics: true
-  }
+    analytics: true,
+    email: true,
+    socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
+    emailShowWallets: true,
+  },
+  siwx: new ReownAuthentication(),
+  allWallets: 'SHOW'
 });
 
 export function AppKitProvider({ children }: { children: React.ReactNode }) {
