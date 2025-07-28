@@ -41,12 +41,33 @@
 
       // Ensure AppKit modal icons load properly
       window.addEventListener('load', () => {
-        // Preload critical icon resources
+        // Preload critical icon resources for AppKit modal
         const iconUrls = [
+          // Chain icons
           'https://api.web3modal.com/v2/chain/1/icon',
           'https://api.web3modal.com/v2/chain/8453/icon',
           'https://api.web3modal.com/v2/chain/11155111/icon',
-          'https://api.web3modal.com/v2/chain/84532/icon'
+          'https://api.web3modal.com/v2/chain/84532/icon',
+          // Wallet icons
+          'https://api.web3modal.com/v2/connector/metamask/icon',
+          'https://api.web3modal.com/v2/connector/trust/icon',
+          'https://api.web3modal.com/v2/connector/coinbase/icon',
+          'https://api.web3modal.com/v2/connector/rainbow/icon',
+          'https://api.web3modal.com/v2/connector/walletconnect/icon',
+          // Social icons
+          'https://api.web3modal.com/v2/connector/google/icon',
+          'https://api.web3modal.com/v2/connector/apple/icon',
+          'https://api.web3modal.com/v2/connector/facebook/icon',
+          'https://api.web3modal.com/v2/connector/x/icon',
+          'https://api.web3modal.com/v2/connector/github/icon',
+          'https://api.web3modal.com/v2/connector/discord/icon',
+          'https://api.web3modal.com/v2/connector/farcaster/icon',
+          // Action icons
+          'https://api.web3modal.com/v2/connector/buy/icon',
+          'https://api.web3modal.com/v2/connector/swap/icon',
+          'https://api.web3modal.com/v2/connector/send/icon',
+          'https://api.web3modal.com/v2/connector/activity/icon',
+          'https://api.web3modal.com/v2/connector/disconnect/icon'
         ];
 
         iconUrls.forEach(url => {
@@ -66,6 +87,23 @@
             console.warn('AppKit modal not found, icons may not load properly');
           }
         }, 1000);
+
+        // Force modal refresh after icons are preloaded
+        setTimeout(() => {
+          const modal = window.appKitModal;
+          if (modal && modal.open) {
+            console.log('Forcing AppKit modal refresh to load icons');
+            // Trigger a modal refresh to ensure icons load
+            try {
+              modal.open();
+              setTimeout(() => {
+                modal.close();
+              }, 100);
+            } catch (error) {
+              console.log('Modal refresh failed:', error);
+            }
+          }
+        }, 2000);
       });
     </script>
   </body>
