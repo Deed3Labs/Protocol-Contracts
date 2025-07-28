@@ -1,4 +1,4 @@
-import { useAccount, useChainId, useSwitchChain } from 'wagmi';
+import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { useCallback, useEffect, useState } from 'react';
 import { 
   getNetworkByChainId, 
@@ -7,14 +7,20 @@ import {
 } from '@/config/networks';
 
 export function useNetworkValidation() {
-  const { isConnected } = useAccount();
-  const chainId = useChainId();
-  const { switchChain } = useSwitchChain();
+  const { isConnected, embeddedWalletInfo } = useAppKitAccount();
+  const { caipNetworkId } = useAppKitNetwork();
+  
+  // Derive chainId from caipNetworkId
+  const chainId = caipNetworkId ? parseInt(caipNetworkId.split(':')[1]) : undefined;
+  
   const [isCorrectNetwork, setIsCorrectNetwork] = useState(false);
-  const [currentNetwork, setCurrentNetwork] = useState(getNetworkByChainId(chainId));
+  const [currentNetwork, setCurrentNetwork] = useState(chainId ? getNetworkByChainId(chainId) : undefined);
 
   useEffect(() => {
-    if (isConnected && chainId) {
+    // Check if connected (either regular wallet or embedded wallet)
+    const isWalletConnected = isConnected || (embeddedWalletInfo !== null);
+    
+    if (isWalletConnected && chainId) {
       const network = getNetworkByChainId(chainId);
       setCurrentNetwork(network);
       // Check if network is supported AND has deployed contracts
@@ -23,24 +29,25 @@ export function useNetworkValidation() {
       setIsCorrectNetwork(false);
       setCurrentNetwork(undefined);
     }
-  }, [isConnected, chainId]);
+  }, [isConnected, embeddedWalletInfo, chainId]);
 
-  const switchToSupportedNetwork = useCallback(async (targetChainId: number) => {
-    try {
-      await switchChain({ chainId: targetChainId });
-    } catch (error) {
-      console.error('Failed to switch network:', error);
-      throw error;
-    }
-  }, [switchChain]);
+  // Note: AppKit doesn't have a direct switchChain equivalent
+  // Users will need to switch networks through their wallet or AppKit modal
+  const switchToSupportedNetwork = useCallback(async () => {
+    console.warn('Network switching is not directly supported by AppKit. Please switch networks through your wallet or AppKit modal.');
+    throw new Error('Network switching not supported in AppKit mode. Please switch networks through your wallet.');
+  }, []);
 
   const getNetworkDisplayName = useCallback((chainId: number) => {
     const network = getNetworkByChainId(chainId);
     return network?.name || `Chain ID: ${chainId}`;
   }, []);
 
+  // Check if connected (either regular wallet or embedded wallet)
+  const isWalletConnected = isConnected || (embeddedWalletInfo !== null);
+  
   return {
-    isConnected,
+    isConnected: isWalletConnected,
     chainId,
     isCorrectNetwork,
     currentNetwork,

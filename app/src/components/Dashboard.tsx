@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { BarChart3, Wallet, FileText, Settings, TrendingUp, Activity, RefreshCw } from "lucide-react";
-import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
+import { useAppKitAccount } from '@reown/appkit/react';
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { Link } from "react-router-dom";
 import DeedNFTViewer from "./DeedNFTViewer";
@@ -12,12 +12,10 @@ import { useState } from "react";
 
 const Dashboard = () => {
   const {
-    address,
     isConnected: isAppKitConnected,
     embeddedWalletInfo,
     status
   } = useAppKitAccount();
-  const { caipNetworkId } = useAppKitNetwork();
   
   // Use AppKit connection state - handle both regular wallets and embedded wallets
   const isWalletConnected = isAppKitConnected || (embeddedWalletInfo && status === 'connected');

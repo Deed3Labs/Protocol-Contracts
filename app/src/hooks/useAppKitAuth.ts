@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useAccount, useChainId } from 'wagmi';
+import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { useAppKitSIWX } from '@reown/appkit-siwx/react';
 import type { ReownAuthentication } from '@reown/appkit-siwx';
 
@@ -19,9 +19,12 @@ export interface AuthState {
 }
 
 export function useAppKitAuth() {
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  const { address, isConnected } = useAppKitAccount();
+  const { caipNetworkId } = useAppKitNetwork();
   const siwx = useAppKitSIWX<ReownAuthentication>();
+  
+  // Derive chainId from caipNetworkId
+  const chainId = caipNetworkId ? parseInt(caipNetworkId.split(':')[1]) : undefined;
   const [authState, setAuthState] = useState<AuthState>({
     isConnected: false,
     isAuthenticated: false,

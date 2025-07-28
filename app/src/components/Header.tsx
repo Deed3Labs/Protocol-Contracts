@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Shield, Home, Plus, Search, BarChart3, ShieldCheck, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAccount, useChainId } from 'wagmi';
+import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
 import { ethers } from "ethers";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
 
@@ -13,9 +13,44 @@ interface HeaderProps {
 
 const Header = ({ children }: HeaderProps) => {
   const location = useLocation();
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  const { address, isConnected, embeddedWalletInfo } = useAppKitAccount();
+  const { caipNetworkId } = useAppKitNetwork();
+  const { walletProvider } = useAppKitProvider("eip155");
+  
+  // Derive chainId from caipNetworkId
+  const chainId = caipNetworkId ? parseInt(caipNetworkId.split(':')[1]) : undefined;
+  
   const [hasAdminRole, setHasAdminRole] = useState(false);
+
+  // Helper function to handle AppKit read operations
+  const executeAppKitCall = async (
+    contractAddress: string,
+    abi: any,
+    functionName: string,
+    params: any[]
+  ) => {
+    if (!walletProvider || !embeddedWalletInfo) {
+      throw new Error("AppKit provider not available");
+    }
+
+    console.log(`Executing AppKit call: ${functionName}`, {
+      contractAddress,
+      params
+    });
+
+    const data = new ethers.Interface(abi).encodeFunctionData(functionName, params);
+    
+    const result = await (walletProvider as any).request({
+      method: 'eth_call',
+      params: [{
+        to: contractAddress,
+        data
+      }, 'latest']
+    });
+
+    console.log("AppKit call result:", result);
+    return result;
+  };
 
   const isActive = (path: string) => {
     return location.pathname === path;
@@ -24,7 +59,10 @@ const Header = ({ children }: HeaderProps) => {
   // Check if user has admin role
   useEffect(() => {
     const checkAdminRole = async () => {
-      if (!isConnected || !address || !chainId) {
+      // Check if connected (either regular wallet or embedded wallet)
+      const isWalletConnected = isConnected || (embeddedWalletInfo !== null);
+      
+      if (!isWalletConnected || !address || !chainId) {
         setHasAdminRole(false);
         return;
       }
@@ -46,10 +84,6 @@ const Header = ({ children }: HeaderProps) => {
           abi = JSON.parse(fallbackModule.default.abi);
         }
 
-        if (!window.ethereum) return;
-        const provider = new ethers.BrowserProvider(window.ethereum as any);
-        const contract = new ethers.Contract(deedNFTAddress, abi, provider);
-
         // Check for various admin roles (same as AdminPanel)
         const ROLES = {
           DEFAULT_ADMIN_ROLE: "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -65,29 +99,77 @@ const Header = ({ children }: HeaderProps) => {
         // Check if user has any admin role
         let hasAnyAdminRole = false;
         console.log('Header: Starting role checks for address:', address);
-        for (const [roleKey, roleValue] of Object.entries(ROLES)) {
+        
+        if (walletProvider && embeddedWalletInfo) {
+          // Use AppKit calls for embedded wallets
+          console.log('Header: Using AppKit calls for role checks');
+          for (const [roleKey, roleValue] of Object.entries(ROLES)) {
+            try {
+              const result = await executeAppKitCall(
+                deedNFTAddress,
+                abi,
+                'hasRole',
+                [roleValue, address]
+              );
+              const hasRole = new ethers.Interface(abi).decodeFunctionResult('hasRole', result)[0];
+              console.log(`Header: Role ${roleKey} check for ${address} = ${hasRole}`);
+              if (hasRole) {
+                console.log(`Header: Found admin role: ${roleKey}`);
+                hasAnyAdminRole = true;
+                break;
+              }
+            } catch (error) {
+              console.log(`Header: Error checking role ${roleKey}:`, error);
+            }
+          }
+
+          // Also check if user is the owner (for contracts that use Ownable)
           try {
-            const hasRole = await contract.hasRole(roleValue, address);
-            console.log(`Header: Role ${roleKey} check for ${address} = ${hasRole}`);
-            if (hasRole) {
-              console.log(`Header: Found admin role: ${roleKey}`);
+            const ownerResult = await executeAppKitCall(
+              deedNFTAddress,
+              abi,
+              'owner',
+              []
+            );
+            const owner = new ethers.Interface(abi).decodeFunctionResult('owner', ownerResult)[0];
+            console.log(`Header: Contract owner: ${owner}`);
+            if (owner.toLowerCase() === address.toLowerCase()) {
               hasAnyAdminRole = true;
-              break;
             }
           } catch (error) {
-            console.log(`Header: Error checking role ${roleKey}:`, error);
+            console.log('Header: Contract does not have owner() function or error occurred:', error);
           }
-        }
+        } else {
+          // Use traditional ethers.js for MetaMask
+          console.log('Header: Using MetaMask for role checks');
+          if (!window.ethereum) return;
+          const provider = new ethers.BrowserProvider(window.ethereum as any);
+          const contract = new ethers.Contract(deedNFTAddress, abi, provider);
+          
+          for (const [roleKey, roleValue] of Object.entries(ROLES)) {
+            try {
+              const hasRole = await contract.hasRole(roleValue, address);
+              console.log(`Header: Role ${roleKey} check for ${address} = ${hasRole}`);
+              if (hasRole) {
+                console.log(`Header: Found admin role: ${roleKey}`);
+                hasAnyAdminRole = true;
+                break;
+              }
+            } catch (error) {
+              console.log(`Header: Error checking role ${roleKey}:`, error);
+            }
+          }
 
-        // Also check if user is the owner (for contracts that use Ownable)
-        try {
-          const owner = await contract.owner();
-          console.log(`Header: Contract owner: ${owner}`);
-          if (owner.toLowerCase() === address.toLowerCase()) {
-            hasAnyAdminRole = true;
+          // Also check if user is the owner (for contracts that use Ownable)
+          try {
+            const owner = await contract.owner();
+            console.log(`Header: Contract owner: ${owner}`);
+            if (owner.toLowerCase() === address.toLowerCase()) {
+              hasAnyAdminRole = true;
+            }
+          } catch (error) {
+            console.log('Header: Contract does not have owner() function or error occurred:', error);
           }
-        } catch (error) {
-          console.log('Header: Contract does not have owner() function or error occurred:', error);
         }
 
         console.log('Header: Final admin role check for', address, '=', hasAnyAdminRole);
@@ -99,7 +181,7 @@ const Header = ({ children }: HeaderProps) => {
     };
 
     checkAdminRole();
-  }, [isConnected, address, chainId]);
+  }, [isConnected, embeddedWalletInfo, address, chainId]);
 
   const navLinks = [
     { to: "/", label: "Home", icon: Home },
