@@ -11,6 +11,7 @@ import InstallPrompt from "@/components/InstallPrompt";
 import { SWIXAuth } from "@/components/SWIXAuth";
 import { SWIXDemo } from "@/components/SWIXDemo";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { DeedNFTProvider } from "@/context/DeedNFTContext";
 
 function App() {
   return (
@@ -22,16 +23,18 @@ function App() {
           </div>
         </Header>
         <main className="flex-1 w-full pb-20 md:pb-0">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/mint" element={<MintForm />} />
-            <Route path="/explore" element={<Explore />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/validation" element={<Validation />} />
-            <Route path="/admin" element={<AdminPanel />} />
-            <Route path="/auth" element={<SWIXAuth />} />
-            <Route path="/profile" element={<SWIXDemo />} />
-          </Routes>
+          <DeedNFTProvider>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/mint" element={<MintForm />} />
+              <Route path="/explore" element={<Explore />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/validation" element={<Validation />} />
+              <Route path="/admin" element={<AdminPanel />} />
+              <Route path="/auth" element={<SWIXAuth />} />
+              <Route path="/profile" element={<SWIXDemo />} />
+            </Routes>
+          </DeedNFTProvider>
         </main>
         <Footer />
         <InstallPrompt />

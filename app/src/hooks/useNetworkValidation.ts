@@ -7,7 +7,7 @@ import {
 } from '@/config/networks';
 
 export function useNetworkValidation() {
-  const { isConnected, embeddedWalletInfo } = useAppKitAccount();
+  const { isConnected, embeddedWalletInfo, address, status } = useAppKitAccount();
   const { caipNetworkId } = useAppKitNetwork();
   
   // Derive chainId from caipNetworkId
@@ -15,21 +15,54 @@ export function useNetworkValidation() {
   
   const [isCorrectNetwork, setIsCorrectNetwork] = useState(false);
   const [currentNetwork, setCurrentNetwork] = useState(chainId ? getNetworkByChainId(chainId) : undefined);
+  const [isSmartAccountDeployed, setIsSmartAccountDeployed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Check if connected (either regular wallet or embedded wallet)
-    const isWalletConnected = isConnected || (embeddedWalletInfo !== null);
+    // More accurate connection detection
+    // For embedded wallets: check if embeddedWalletInfo exists and has user data
+    // For regular wallets: check if isConnected is true AND we have an address
+    const isEmbeddedWalletConnected = Boolean(embeddedWalletInfo && embeddedWalletInfo.user && embeddedWalletInfo.user.email);
+    const isRegularWalletConnected = Boolean(isConnected && address && status === 'connected');
+    const isWalletConnected = isEmbeddedWalletConnected || isRegularWalletConnected;
+    
+    console.log("Connection Debug:", {
+      isConnected,
+      address,
+      status,
+      embeddedWalletInfo: embeddedWalletInfo ? {
+        user: embeddedWalletInfo.user,
+        accountType: embeddedWalletInfo.accountType,
+        authProvider: embeddedWalletInfo.authProvider
+      } : null,
+      isEmbeddedWalletConnected,
+      isRegularWalletConnected,
+      isWalletConnected
+    });
     
     if (isWalletConnected && chainId) {
       const network = getNetworkByChainId(chainId);
       setCurrentNetwork(network);
       // Check if network is supported AND has deployed contracts
       setIsCorrectNetwork(isNetworkSupportedAndDeployed(chainId));
+      
+      // Check smart account deployment status for embedded wallets
+      if (embeddedWalletInfo) {
+        setIsSmartAccountDeployed(embeddedWalletInfo.isSmartAccountDeployed);
+        console.log("Smart Account Status:", {
+          isDeployed: embeddedWalletInfo.isSmartAccountDeployed,
+          accountType: embeddedWalletInfo.accountType,
+          authProvider: embeddedWalletInfo.authProvider
+        });
+      } else {
+        // For regular wallets, assume deployed
+        setIsSmartAccountDeployed(true);
+      }
     } else {
       setIsCorrectNetwork(false);
       setCurrentNetwork(undefined);
+      setIsSmartAccountDeployed(null);
     }
-  }, [isConnected, embeddedWalletInfo, chainId]);
+  }, [isConnected, embeddedWalletInfo, address, status, chainId]);
 
   // Note: AppKit doesn't have a direct switchChain equivalent
   // Users will need to switch networks through their wallet or AppKit modal
@@ -43,14 +76,24 @@ export function useNetworkValidation() {
     return network?.name || `Chain ID: ${chainId}`;
   }, []);
 
-  // Check if connected (either regular wallet or embedded wallet)
-  const isWalletConnected = isConnected || (embeddedWalletInfo !== null);
+  // More accurate connection detection
+  const isEmbeddedWalletConnected = Boolean(embeddedWalletInfo && embeddedWalletInfo.user && embeddedWalletInfo.user.email);
+  const isRegularWalletConnected = Boolean(isConnected && address && status === 'connected');
+  const isWalletConnected = isEmbeddedWalletConnected || isRegularWalletConnected;
+  
+  // Check if smart account needs deployment
+  const needsSmartAccountDeployment = embeddedWalletInfo && !embeddedWalletInfo.isSmartAccountDeployed;
   
   return {
     isConnected: isWalletConnected,
     chainId,
     isCorrectNetwork,
     currentNetwork,
+    isSmartAccountDeployed,
+    needsSmartAccountDeployment,
+    embeddedWalletInfo,
+    address,
+    status,
     supportedNetworks: SUPPORTED_NETWORKS.filter(network => 
       isNetworkSupportedAndDeployed(network.chainId)
     ),

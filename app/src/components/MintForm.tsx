@@ -16,6 +16,7 @@ import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/ap
 import type { Eip1193Provider } from 'ethers';
 import { NetworkWarning } from "@/components/NetworkWarning";
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";
+import { useSmartAccountDeployment } from "@/hooks/useSmartAccountDeployment";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
 import { ChevronRight, ChevronLeft, CheckCircle, AlertCircle, Wallet, FileText, Settings, CreditCard, Coins, DollarSign } from "lucide-react";
 
@@ -90,6 +91,13 @@ const MintForm = () => {
   const { caipNetworkId } = useAppKitNetwork();
   const { walletProvider } = useAppKitProvider("eip155");
   const { isCorrectNetwork } = useNetworkValidation();
+  const {
+    isEmbeddedWallet,
+    isSmartAccountDeployed,
+    needsDeployment,
+    deploySmartAccount,
+    prepareTransaction
+  } = useSmartAccountDeployment();
   
   // Derive chainId from caipNetworkId
   const chainId = caipNetworkId ? parseInt(caipNetworkId.split(':')[1]) : undefined;
@@ -328,19 +336,20 @@ const MintForm = () => {
     // Debug smart account deployment status
     console.log("Smart Account Debug Info:", {
       embeddedWalletInfo,
-      isSmartAccountDeployed: embeddedWalletInfo?.isSmartAccountDeployed,
+      isSmartAccountDeployed,
+      isEmbeddedWallet,
+      needsDeployment,
       authProvider: embeddedWalletInfo?.authProvider,
       accountType: embeddedWalletInfo?.accountType,
       status
     });
 
     // If smart account is not deployed, try to deploy it first
-    if (embeddedWalletInfo && !embeddedWalletInfo.isSmartAccountDeployed) {
+    if (needsDeployment) {
       console.log("Smart account not deployed, attempting to deploy...");
       try {
-        // Try to trigger deployment by making a simple transaction
-        // This should trigger AppKit's automatic deployment
-        console.log("Attempting to trigger smart account deployment...");
+        await deploySmartAccount();
+        console.log("Smart account deployment triggered successfully");
       } catch (deployError) {
         console.error("Failed to trigger smart account deployment:", deployError);
         setError("Failed to deploy smart account. Please try again.");
@@ -401,22 +410,30 @@ const MintForm = () => {
           salt
         });
 
+        // Prepare transaction data
+        const transactionData = {
+          to: contractAddress,
+          data: new ethers.Interface(abi).encodeFunctionData('mintAsset', [
+            owner,
+            assetType,
+            uri,
+            definition,
+            configuration,
+            validatorAddress,
+            token,
+            salt
+          ])
+        };
+
+        // Use prepareTransaction to handle smart account deployment
+        const preparedTransaction = await prepareTransaction(transactionData);
+        
+        console.log("Prepared transaction:", preparedTransaction);
+
         // Use AppKit's transaction system
         const tx = await (walletProvider as any).request({
           method: 'eth_sendTransaction',
-          params: [{
-            to: contractAddress,
-            data: new ethers.Interface(abi).encodeFunctionData('mintAsset', [
-              owner,
-              assetType,
-              uri,
-              definition,
-              configuration,
-              validatorAddress,
-              token,
-              salt
-            ])
-          }]
+          params: [preparedTransaction]
         });
 
         console.log("Transaction executed successfully:", tx);
