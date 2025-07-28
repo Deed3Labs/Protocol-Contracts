@@ -11,27 +11,59 @@ const projectId = '2a15f8a7329ae7eae3e6bbadc527457f';
 
 // Determine the current environment and set the appropriate URL
 const getCurrentUrl = () => {
+  // Check if we're in a browser environment
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
+    const port = window.location.port;
+    
+    console.log('Current location:', {
+      hostname,
+      protocol,
+      port,
+      href: window.location.href
+    });
+    
+    // For development, always use localhost
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `${protocol}//${hostname}${port ? `:${port}` : ''}`;
+    }
+    
+    // For production domains, use HTTPS
     if (hostname === 'demo.deed3.io') {
       return 'https://demo.deed3.io';
     } else if (hostname === 'app.deed3.io') {
       return 'https://app.deed3.io';
-    } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      // Only use localhost for actual local development
-      return 'http://localhost:5173';
     } else {
       // Fallback to production for any other environment
       return 'https://app.deed3.io';
     }
   }
+  
+  // For SSR or when window is not available, we need to detect the environment differently
+  // Check if we're in a production build
+  if (typeof process !== 'undefined' && process.env.NODE_ENV === 'production') {
+    // In production, default to app.deed3.io
+    return 'https://app.deed3.io';
+  }
+  
+  // For development builds, default to localhost
   return 'https://app.deed3.io';
 };
+
+const currentUrl = getCurrentUrl();
+console.log('AppKit Configuration:', {
+  projectId,
+  currentUrl,
+  hostname: typeof window !== 'undefined' ? window.location.hostname : 'server',
+  protocol: typeof window !== 'undefined' ? window.location.protocol : 'server',
+  port: typeof window !== 'undefined' ? window.location.port : 'server'
+});
 
 const metadata = {
   name: 'The Deed Protocol by Deed3Labs',
   description: 'Tokenize your real estate, vehicles, and more.',
-  url: getCurrentUrl(),
+  url: currentUrl,
   icons: ['https://avatars.githubusercontent.com/u/179229932']
 };
 
@@ -44,22 +76,36 @@ const wagmiAdapter = new WagmiAdapter({
   ssr: true
 });
 
-createAppKit({
-  adapters: [wagmiAdapter],
-  networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
-  projectId,
-  metadata,
-  features: {
-    analytics: true,
-    email: true,
-    socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
-    emailShowWallets: true,
-  },
-  siwx: new ReownAuthentication(),
-  allWallets: 'SHOW'
-});
+// Initialize AppKit only after component mounts to avoid SSR issues
+const initializeAppKit = () => {
+  const currentUrl = getCurrentUrl();
+  console.log('Initializing AppKit with URL:', currentUrl);
+  
+  createAppKit({
+    adapters: [wagmiAdapter],
+    networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
+    projectId,
+    metadata: {
+      ...metadata,
+      url: currentUrl
+    },
+    features: {
+      analytics: true,
+      email: true,
+      socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
+      emailShowWallets: true,
+    },
+    siwx: new ReownAuthentication(),
+    allWallets: 'SHOW'
+  });
+};
 
 export function AppKitProvider({ children }: { children: React.ReactNode }) {
+  // Initialize AppKit after component mounts to avoid SSR issues
+  React.useEffect(() => {
+    initializeAppKit();
+  }, []);
+
   // Ensure AppKit modal icons load properly
   React.useEffect(() => {
     // Monitor for AppKit modal and ensure icons load
