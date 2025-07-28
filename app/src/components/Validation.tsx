@@ -21,10 +21,9 @@ import {
   AlertCircle,
   RefreshCw
 } from "lucide-react";
-import { useAccount, useChainId } from "wagmi";
+import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from "@reown/appkit/react";
 import { ethers } from "ethers";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
-import { useAppKitAuth } from "@/hooks/useAppKitAuth";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
 import DeedNFTViewer from "./DeedNFTViewer";
 
@@ -141,19 +140,19 @@ interface TraitNameFormData {
 }
 
 const Validation: React.FC<ValidationPageProps> = () => {
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
   const { 
-    isConnected: isAppKitConnected, 
-    isAuthenticated: isAppKitAuthenticated,
-    address: appKitAddress,
-    openModal,
-    checkAuthentication
-  } = useAppKitAuth();
+    address, 
+    isConnected, 
+    embeddedWalletInfo,
+    status 
+  } = useAppKitAccount();
+  const { caipNetworkId } = useAppKitNetwork();
+  const { walletProvider } = useAppKitProvider("eip155");
   
-  // Combine wagmi and AppKit connection states
-  const isWalletConnected = isConnected || isAppKitConnected || isAppKitAuthenticated;
-  const walletAddress = address || appKitAddress;
+  // Use AppKit connection state - handle both regular wallets and embedded wallets
+  const isWalletConnected = isConnected || (embeddedWalletInfo && status === 'connected');
+  const walletAddress = address;
+  const chainId = caipNetworkId ? parseInt(caipNetworkId.split(':')[1]) : undefined;
   
   const { 
     deedNFTs, 
@@ -165,7 +164,6 @@ const Validation: React.FC<ValidationPageProps> = () => {
     getAssetTypeLabel, 
     getValidationStatus,
     isCorrectNetwork,
-    currentChainId,
     contractAddress
   } = useDeedNFTData();
   
@@ -269,12 +267,35 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
   // Function to get validator address from token traits
   const getValidatorAddressFromToken = async (tokenId: string): Promise<string | null> => {
-    if (!contract) return null;
+    if (!chainId) return null;
     
     try {
+      const contractAddress = getContractAddressForNetwork(chainId);
+      if (!contractAddress) return null;
+      
+      const abi = await getDeedNFTAbi(chainId);
+      
       // Get validator trait value using the trait key
       const validatorTraitKey = ethers.keccak256(ethers.toUtf8Bytes("validator"));
-      const validatorBytes = await contract.getTraitValue(tokenId, validatorTraitKey);
+      let validatorBytes: string;
+      
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit call for getTraitValue");
+        const result = await executeAppKitCall(
+          contractAddress,
+          abi,
+          'getTraitValue',
+          [tokenId, validatorTraitKey]
+        );
+        // Decode the result (getTraitValue returns bytes)
+        validatorBytes = new ethers.Interface(abi).decodeFunctionResult('getTraitValue', result)[0];
+      } else {
+        // Use traditional ethers.js for MetaMask
+        if (!contract) {
+          throw new Error("Contract not initialized");
+        }
+        validatorBytes = await contract.getTraitValue(tokenId, validatorTraitKey);
+      }
       
       if (validatorBytes.length > 0) {
         // Decode the address from bytes
@@ -302,10 +323,23 @@ const Validation: React.FC<ValidationPageProps> = () => {
       }
 
       // Initialize Validator contract
+      if (!chainId) {
+        console.error("Chain ID not available");
+        return null;
+      }
       console.log(`Loading Validator ABI for chainId: ${chainId}`);
       const validatorAbi = await getValidatorAbi(chainId);
-      const provider = new ethers.BrowserProvider(window.ethereum as any);
-      const signer = await provider.getSigner();
+      
+      let signer;
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit provider for validator contract");
+        signer = walletProvider as any;
+      } else {
+        console.log("Using MetaMask provider for validator contract");
+        const provider = new ethers.BrowserProvider(window.ethereum as any);
+        signer = await provider.getSigner();
+      }
+      
       const validatorContract = new ethers.Contract(validatorAddress, validatorAbi, signer);
       console.log(`Validator contract initialized for token ${tokenId} at address:`, validatorAddress);
       
@@ -326,18 +360,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
     }
   }, [success]);
 
-  // Check AppKit authentication on mount
+  // Debug connection state
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        await checkAuthentication();
-      } catch (error) {
-        console.log("AppKit authentication check failed:", error);
-      }
-    };
-    
-    checkAuth();
-  }, [checkAuthentication]);
+    console.log('AppKit Connection State:', {
+      isConnected,
+      status,
+      address,
+      embeddedWalletInfo,
+      isWalletConnected,
+      isSmartAccountDeployed: embeddedWalletInfo?.isSmartAccountDeployed
+    });
+  }, [isConnected, status, address, embeddedWalletInfo, isWalletConnected]);
 
   // Initialize contracts
   useEffect(() => {
@@ -354,13 +387,98 @@ const Validation: React.FC<ValidationPageProps> = () => {
     }
   }, [chainId, isWalletConnected]);
 
+  // Helper function to handle AppKit read operations
+  const executeAppKitCall = async (
+    contractAddress: string,
+    abi: any,
+    functionName: string,
+    params: any[]
+  ) => {
+    if (!walletProvider || !embeddedWalletInfo) {
+      throw new Error("AppKit provider not available");
+    }
+
+    console.log(`Executing AppKit call: ${functionName}`, {
+      contractAddress,
+      params
+    });
+
+    const data = new ethers.Interface(abi).encodeFunctionData(functionName, params);
+    
+    const result = await (walletProvider as any).request({
+      method: 'eth_call',
+      params: [{
+        to: contractAddress,
+        data
+      }, 'latest']
+    });
+
+    console.log("AppKit call result:", result);
+    return result;
+  };
+
+  // Helper function to handle AppKit transactions
+  const executeAppKitTransaction = async (
+    contractAddress: string,
+    abi: any,
+    functionName: string,
+    params: any[]
+  ) => {
+    if (!walletProvider || !embeddedWalletInfo) {
+      throw new Error("AppKit provider not available");
+    }
+
+    console.log(`Executing AppKit transaction: ${functionName}`, {
+      contractAddress,
+      params
+    });
+
+    const data = new ethers.Interface(abi).encodeFunctionData(functionName, params);
+    
+    const tx = await (walletProvider as any).request({
+      method: 'eth_sendTransaction',
+      params: [{
+        to: contractAddress,
+        data
+      }]
+    });
+
+    console.log("AppKit transaction executed successfully:", tx);
+    return tx;
+  };
+
   const initializeContracts = async (contractAddress: string) => {
     try {
       console.log("Initializing contracts for address:", contractAddress);
-      const provider = new ethers.BrowserProvider(window.ethereum as any);
-      const signer = await provider.getSigner();
+      
+      // Use AppKit provider if available (for embedded wallets), otherwise fallback to MetaMask
+      let signer;
+      
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit provider for embedded wallet");
+        console.log("Smart account deployment status:", embeddedWalletInfo.isSmartAccountDeployed);
+        console.log("Wallet provider:", walletProvider);
+        
+        // For embedded wallets, we need to use AppKit's transaction system
+        // The walletProvider doesn't support direct ethers.js transactions
+        // We'll use a different approach for read operations
+        console.log("Using AppKit provider for read operations");
+        
+        // For read operations, we can use the provider directly
+        // For write operations, we'll need to use AppKit's transaction system
+        const provider = walletProvider as any;
+        signer = provider;
+      } else {
+        console.log("Using MetaMask provider");
+        const provider = new ethers.BrowserProvider(window.ethereum as any);
+        signer = await provider.getSigner();
+      }
       
       // Initialize DeedNFT contract
+      if (!chainId) {
+        console.error("Chain ID not available");
+        return;
+      }
       console.log("Loading DeedNFT ABI for chainId:", chainId);
       const deedNFTAbi = await getDeedNFTAbi(chainId);
       const deedNFTContract = new ethers.Contract(contractAddress, deedNFTAbi, signer);
@@ -369,7 +487,23 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
       // Get MetadataRenderer address from the contract
       console.log("Getting MetadataRenderer address from DeedNFT contract");
-      const metadataRendererAddress = await deedNFTContract.metadataRenderer();
+      let metadataRendererAddress: string;
+      
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit call for metadataRenderer");
+        const result = await executeAppKitCall(
+          contractAddress,
+          deedNFTAbi,
+          'metadataRenderer',
+          []
+        );
+        // Decode the result (metadataRenderer returns an address)
+        metadataRendererAddress = new ethers.Interface(deedNFTAbi).decodeFunctionResult('metadataRenderer', result)[0];
+      } else {
+        // Use traditional ethers.js for MetaMask
+        metadataRendererAddress = await deedNFTContract.metadataRenderer();
+      }
+      
       console.log("MetadataRenderer address:", metadataRendererAddress);
       
       if (metadataRendererAddress && metadataRendererAddress !== ethers.ZeroAddress) {
@@ -412,10 +546,41 @@ const Validation: React.FC<ValidationPageProps> = () => {
       return false;
     }
     
+    if (!chainId) {
+      console.log("No chain ID available");
+      return false;
+    }
+    
+    const contractAddress = getContractAddressForNetwork(chainId);
+    if (!contractAddress) {
+      console.log("No contract address available");
+      return false;
+    }
+    
     // First check if user is the deed owner
-    if (tokenId && contract) {
+    if (tokenId) {
       try {
-        const owner = await contract.ownerOf(tokenId);
+        let owner: string;
+        
+        if (walletProvider && embeddedWalletInfo) {
+          console.log("Using AppKit call for ownerOf");
+          const abi = await getDeedNFTAbi(chainId);
+          const result = await executeAppKitCall(
+            contractAddress,
+            abi,
+            'ownerOf',
+            [tokenId]
+          );
+          // Decode the result (ownerOf returns an address)
+          owner = new ethers.Interface(abi).decodeFunctionResult('ownerOf', result)[0];
+        } else {
+          // Use traditional ethers.js for MetaMask
+          if (!contract) {
+            throw new Error("Contract not initialized");
+          }
+          owner = await contract.ownerOf(tokenId);
+        }
+        
         if (owner.toLowerCase() === walletAddress.toLowerCase()) {
           console.log("User is the deed owner");
           return true;
@@ -426,17 +591,46 @@ const Validation: React.FC<ValidationPageProps> = () => {
     }
     
     // Check if user has VALIDATOR_ROLE on DeedNFT contract
-    if (contract) {
-      try {
-        const deedNFTValidatorRole = await contract.VALIDATOR_ROLE();
-        const hasDeedNFTRole = await contract.hasRole(deedNFTValidatorRole, walletAddress);
-        if (hasDeedNFTRole) {
-          console.log("User has VALIDATOR_ROLE on DeedNFT contract");
-          return true;
+    try {
+      let deedNFTValidatorRole: string;
+      let hasDeedNFTRole: boolean;
+      
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit call for VALIDATOR_ROLE and hasRole");
+        const abi = await getDeedNFTAbi(chainId);
+        
+        // Get VALIDATOR_ROLE
+        const roleResult = await executeAppKitCall(
+          contractAddress,
+          abi,
+          'VALIDATOR_ROLE',
+          []
+        );
+        deedNFTValidatorRole = new ethers.Interface(abi).decodeFunctionResult('VALIDATOR_ROLE', roleResult)[0];
+        
+        // Check hasRole
+        const hasRoleResult = await executeAppKitCall(
+          contractAddress,
+          abi,
+          'hasRole',
+          [deedNFTValidatorRole, walletAddress]
+        );
+        hasDeedNFTRole = new ethers.Interface(abi).decodeFunctionResult('hasRole', hasRoleResult)[0];
+      } else {
+        // Use traditional ethers.js for MetaMask
+        if (!contract) {
+          throw new Error("Contract not initialized");
         }
-      } catch (error) {
-        console.error("Error checking DeedNFT validator role:", error);
+        deedNFTValidatorRole = await contract.VALIDATOR_ROLE();
+        hasDeedNFTRole = await contract.hasRole(deedNFTValidatorRole, walletAddress);
       }
+      
+      if (hasDeedNFTRole) {
+        console.log("User has VALIDATOR_ROLE on DeedNFT contract");
+        return true;
+      }
+    } catch (error) {
+      console.error("Error checking DeedNFT validator role:", error);
     }
     
     // Then check validator contract permissions
@@ -507,14 +701,45 @@ const Validation: React.FC<ValidationPageProps> = () => {
         encodedValue = ethers.toUtf8Bytes(traitForm.traitValue) as any;
       }
 
-      const tx = await contract.setTrait(
-        parseInt(tokenId),
-        ethers.toUtf8Bytes(traitForm.traitName),
-        encodedValue,
-        traitForm.valueType === "string" ? 1 : traitForm.valueType === "number" ? 2 : 3
-      );
+      // Use AppKit transaction system for embedded wallets
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit transaction system for setTrait");
+        
+        if (!chainId) {
+          throw new Error("Chain ID not available");
+        }
+        
+        const contractAddress = getContractAddressForNetwork(chainId);
+        if (!contractAddress) {
+          throw new Error("No contract address found for current network");
+        }
+        
+        const abi = await getDeedNFTAbi(chainId);
+        
+        const tx = await executeAppKitTransaction(
+          contractAddress,
+          abi,
+          'setTrait',
+          [
+            parseInt(tokenId),
+            ethers.toUtf8Bytes(traitForm.traitName),
+            encodedValue,
+            traitForm.valueType === "string" ? 1 : traitForm.valueType === "number" ? 2 : 3
+          ]
+        );
+        
+        console.log("AppKit setTrait transaction executed:", tx);
+      } else {
+        // Use traditional ethers.js for MetaMask
+        const tx = await contract.setTrait(
+          parseInt(tokenId),
+          ethers.toUtf8Bytes(traitForm.traitName),
+          encodedValue,
+          traitForm.valueType === "string" ? 1 : traitForm.valueType === "number" ? 2 : 3
+        );
 
-      await tx.wait();
+        await tx.wait();
+      }
       setSuccess("Trait added successfully");
       setTraitForm({ tokenId: "", traitName: "", traitValue: "", valueType: "string" });
       
@@ -562,12 +787,41 @@ const Validation: React.FC<ValidationPageProps> = () => {
       console.log("Removing trait from token:", tokenId);
       console.log("Trait name:", removeTraitForm.traitName);
 
-      const tx = await contract.removeTrait(
-        parseInt(tokenId),
-        removeTraitForm.traitName
-      );
+      // Use AppKit transaction system for embedded wallets
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit transaction system for removeTrait");
+        
+        if (!chainId) {
+          throw new Error("Chain ID not available");
+        }
+        
+        const contractAddress = getContractAddressForNetwork(chainId);
+        if (!contractAddress) {
+          throw new Error("No contract address found for current network");
+        }
+        
+        const abi = await getDeedNFTAbi(chainId);
+        
+        const tx = await executeAppKitTransaction(
+          contractAddress,
+          abi,
+          'removeTrait',
+          [
+            parseInt(tokenId),
+            removeTraitForm.traitName
+          ]
+        );
+        
+        console.log("AppKit removeTrait transaction executed:", tx);
+      } else {
+        // Use traditional ethers.js for MetaMask
+        const tx = await contract.removeTrait(
+          parseInt(tokenId),
+          removeTraitForm.traitName
+        );
 
-      await tx.wait();
+        await tx.wait();
+      }
       setSuccess("Trait removed successfully");
       setRemoveTraitForm({ tokenId: "", traitName: "" });
       
@@ -626,14 +880,45 @@ const Validation: React.FC<ValidationPageProps> = () => {
       console.log("Trait name:", updateTraitForm.traitName);
       console.log("New value:", updateTraitForm.traitValue);
 
-      const tx = await contract.setTrait(
-        parseInt(tokenId),
-        ethers.toUtf8Bytes(updateTraitForm.traitName),
-        encodedValue,
-        updateTraitForm.valueType === "string" ? 1 : updateTraitForm.valueType === "number" ? 2 : 3
-      );
+      // Use AppKit transaction system for embedded wallets
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit transaction system for updateTrait");
+        
+        if (!chainId) {
+          throw new Error("Chain ID not available");
+        }
+        
+        const contractAddress = getContractAddressForNetwork(chainId);
+        if (!contractAddress) {
+          throw new Error("No contract address found for current network");
+        }
+        
+        const abi = await getDeedNFTAbi(chainId);
+        
+        const tx = await executeAppKitTransaction(
+          contractAddress,
+          abi,
+          'setTrait',
+          [
+            parseInt(tokenId),
+            ethers.toUtf8Bytes(updateTraitForm.traitName),
+            encodedValue,
+            updateTraitForm.valueType === "string" ? 1 : updateTraitForm.valueType === "number" ? 2 : 3
+          ]
+        );
+        
+        console.log("AppKit updateTrait transaction executed:", tx);
+      } else {
+        // Use traditional ethers.js for MetaMask
+        const tx = await contract.setTrait(
+          parseInt(tokenId),
+          ethers.toUtf8Bytes(updateTraitForm.traitName),
+          encodedValue,
+          updateTraitForm.valueType === "string" ? 1 : updateTraitForm.valueType === "number" ? 2 : 3
+        );
 
-      await tx.wait();
+        await tx.wait();
+      }
       setSuccess("Trait updated successfully");
       setUpdateTraitForm({ tokenId: "", traitName: "", traitValue: "", valueType: "string" });
       
@@ -675,12 +960,41 @@ const Validation: React.FC<ValidationPageProps> = () => {
       // Convert trait key to bytes32
       const traitKeyBytes32 = ethers.keccak256(ethers.toUtf8Bytes(traitNameForm.traitKey));
 
-      const tx = await contract.setTraitName(
-        traitKeyBytes32,
-        traitNameForm.traitName
-      );
+      // Use AppKit transaction system for embedded wallets
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit transaction system for setTraitName");
+        
+        if (!chainId) {
+          throw new Error("Chain ID not available");
+        }
+        
+        const contractAddress = getContractAddressForNetwork(chainId);
+        if (!contractAddress) {
+          throw new Error("No contract address found for current network");
+        }
+        
+        const abi = await getDeedNFTAbi(chainId);
+        
+        const tx = await executeAppKitTransaction(
+          contractAddress,
+          abi,
+          'setTraitName',
+          [
+            traitKeyBytes32,
+            traitNameForm.traitName
+          ]
+        );
+        
+        console.log("AppKit setTraitName transaction executed:", tx);
+      } else {
+        // Use traditional ethers.js for MetaMask
+        const tx = await contract.setTraitName(
+          traitKeyBytes32,
+          traitNameForm.traitName
+        );
 
-      await tx.wait();
+        await tx.wait();
+      }
       setSuccess("Trait name set successfully");
       setTraitNameForm({ traitKey: "", traitName: "" });
       
@@ -750,12 +1064,41 @@ const Validation: React.FC<ValidationPageProps> = () => {
       
       if (hasDeedNFTRole) {
         // User has VALIDATOR_ROLE on DeedNFT, can call updateValidationStatus directly
-        const tx = await contract.updateValidationStatus(
-          parseInt(tokenId),
-          validationForm.isValid,
-          walletAddress
-        );
-        await tx.wait();
+        if (walletProvider && embeddedWalletInfo) {
+          console.log("Using AppKit transaction system for updateValidationStatus");
+          
+          if (!chainId) {
+            throw new Error("Chain ID not available");
+          }
+          
+          const contractAddress = getContractAddressForNetwork(chainId);
+          if (!contractAddress) {
+            throw new Error("No contract address found for current network");
+          }
+          
+          const abi = await getDeedNFTAbi(chainId);
+          
+          const tx = await executeAppKitTransaction(
+            contractAddress,
+            abi,
+            'updateValidationStatus',
+            [
+              parseInt(tokenId),
+              validationForm.isValid,
+              walletAddress
+            ]
+          );
+          
+          console.log("AppKit updateValidationStatus transaction executed:", tx);
+        } else {
+          // Use traditional ethers.js for MetaMask
+          const tx = await contract.updateValidationStatus(
+            parseInt(tokenId),
+            validationForm.isValid,
+            walletAddress
+          );
+          await tx.wait();
+        }
         setSuccess("Validation status updated successfully");
         setValidationForm({ tokenId: "", isValid: false, notes: "" });
       } else {
@@ -774,8 +1117,30 @@ const Validation: React.FC<ValidationPageProps> = () => {
         }
 
         // Call validateDeed on the validator contract, which will update the status
-        const tx = await tokenValidatorContract.validateDeed(parseInt(tokenId));
-        await tx.wait();
+        if (walletProvider && embeddedWalletInfo) {
+          console.log("Using AppKit transaction system for validateDeed");
+          
+          // Get validator contract address
+          const validatorAddress = await getValidatorAddressFromToken(tokenId);
+          if (!validatorAddress) {
+            throw new Error("No validator address found for token");
+          }
+          
+          const validatorAbi = await getValidatorAbi(chainId!);
+          
+          const tx = await executeAppKitTransaction(
+            validatorAddress,
+            validatorAbi,
+            'validateDeed',
+            [parseInt(tokenId)]
+          );
+          
+          console.log("AppKit validateDeed transaction executed:", tx);
+        } else {
+          // Use traditional ethers.js for MetaMask
+          const tx = await tokenValidatorContract.validateDeed(parseInt(tokenId));
+          await tx.wait();
+        }
         setSuccess("Deed validated successfully");
         setValidationForm({ tokenId: "", isValid: false, notes: "" });
       }
@@ -813,12 +1178,41 @@ const Validation: React.FC<ValidationPageProps> = () => {
       
       if (hasDeedNFTRole) {
         // User has VALIDATOR_ROLE on DeedNFT, can call updateValidationStatus directly
-        const tx = await contract.updateValidationStatus(
-          parseInt(tokenId),
-          true, // Set as validated
-          walletAddress
-        );
-        await tx.wait();
+        if (walletProvider && embeddedWalletInfo) {
+          console.log("Using AppKit transaction system for updateValidationStatus (validate)");
+          
+          if (!chainId) {
+            throw new Error("Chain ID not available");
+          }
+          
+          const contractAddress = getContractAddressForNetwork(chainId);
+          if (!contractAddress) {
+            throw new Error("No contract address found for current network");
+          }
+          
+          const abi = await getDeedNFTAbi(chainId);
+          
+          const tx = await executeAppKitTransaction(
+            contractAddress,
+            abi,
+            'updateValidationStatus',
+            [
+              parseInt(tokenId),
+              true, // Set as validated
+              walletAddress
+            ]
+          );
+          
+          console.log("AppKit updateValidationStatus (validate) transaction executed:", tx);
+        } else {
+          // Use traditional ethers.js for MetaMask
+          const tx = await contract.updateValidationStatus(
+            parseInt(tokenId),
+            true, // Set as validated
+            walletAddress
+          );
+          await tx.wait();
+        }
         setSuccess("Deed validated successfully");
       } else {
         // User doesn't have VALIDATOR_ROLE on DeedNFT, try using validator contract
@@ -836,8 +1230,30 @@ const Validation: React.FC<ValidationPageProps> = () => {
         }
 
         // Call validateDeed on the validator contract, which will update the status
-        const tx = await tokenValidatorContract.validateDeed(parseInt(tokenId));
-        await tx.wait();
+        if (walletProvider && embeddedWalletInfo) {
+          console.log("Using AppKit transaction system for validateDeed (validate)");
+          
+          // Get validator contract address
+          const validatorAddress = await getValidatorAddressFromToken(tokenId);
+          if (!validatorAddress) {
+            throw new Error("No validator address found for token");
+          }
+          
+          const validatorAbi = await getValidatorAbi(chainId!);
+          
+          const tx = await executeAppKitTransaction(
+            validatorAddress,
+            validatorAbi,
+            'validateDeed',
+            [parseInt(tokenId)]
+          );
+          
+          console.log("AppKit validateDeed (validate) transaction executed:", tx);
+        } else {
+          // Use traditional ethers.js for MetaMask
+          const tx = await tokenValidatorContract.validateDeed(parseInt(tokenId));
+          await tx.wait();
+        }
         setSuccess("Deed validated successfully");
       }
       
@@ -886,14 +1302,43 @@ const Validation: React.FC<ValidationPageProps> = () => {
       console.log("Metadata:", customMetadataForm.customMetadata);
 
       // Call the specific function: setTokenCustomMetadata(uint256 tokenId, string metadata)
-      const tx = await metadataRendererContract.setTokenCustomMetadata(
-        parseInt(customMetadataForm.tokenId),
-        customMetadataForm.customMetadata
-      );
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit transaction system for setTokenCustomMetadata");
+        
+        if (!chainId) {
+          throw new Error("Chain ID not available");
+        }
+        
+        // Get MetadataRenderer contract address
+        const metadataRendererAddress = await contract!.metadataRenderer();
+        if (!metadataRendererAddress || metadataRendererAddress === ethers.ZeroAddress) {
+          throw new Error("No MetadataRenderer address found");
+        }
+        
+        const metadataRendererAbi = await getMetadataRendererAbi(chainId);
+        
+        const tx = await executeAppKitTransaction(
+          metadataRendererAddress,
+          metadataRendererAbi,
+          'setTokenCustomMetadata',
+          [
+            parseInt(customMetadataForm.tokenId),
+            customMetadataForm.customMetadata
+          ]
+        );
+        
+        console.log("AppKit setTokenCustomMetadata transaction executed:", tx);
+      } else {
+        // Use traditional ethers.js for MetaMask
+        const tx = await metadataRendererContract.setTokenCustomMetadata(
+          parseInt(customMetadataForm.tokenId),
+          customMetadataForm.customMetadata
+        );
 
-      console.log("Transaction sent:", tx.hash);
-      await tx.wait();
-      console.log("Transaction confirmed");
+        console.log("Transaction sent:", tx.hash);
+        await tx.wait();
+        console.log("Transaction confirmed");
+      }
       
       setSuccess("Custom metadata updated successfully");
       setCustomMetadataForm({ tokenId: "", customMetadata: "" });
@@ -1321,15 +1766,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
               Wallet Not Connected
             </h2>
-            <p className="text-gray-600 dark:text-gray-300 mb-4">
-              Please connect your wallet or sign in to access the validation page.
+            <p className="text-gray-600 dark:text-gray-300">
+              Please connect your wallet to access the validation page.
             </p>
-            <Button 
-              onClick={() => openModal()}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              Connect Wallet / Sign In
-            </Button>
           </CardContent>
         </Card>
       </div>
@@ -1383,8 +1822,13 @@ const Validation: React.FC<ValidationPageProps> = () => {
       {isWalletConnected && isCorrectNetwork && (
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <p className="text-blue-800 dark:text-blue-200 text-sm">
-            <strong>Debug Info:</strong> Chain ID: {currentChainId}, Contract: {contractAddress}, 
+            <strong>Debug Info:</strong> Chain ID: {chainId}, Contract: {contractAddress}, 
             Total T-Deeds: {deedNFTs.length}, Filtered: {filteredDeedNFTs.length}
+            {embeddedWalletInfo && (
+              <span className="ml-2">
+                | Embedded Wallet: {embeddedWalletInfo.authProvider} ({embeddedWalletInfo.accountType})
+              </span>
+            )}
           </p>
         </div>
       )}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import { useAccount } from 'wagmi';
+import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
 import { useNetworkValidation } from './useNetworkValidation';
 import { getContractAddressForNetwork, getRpcUrlForNetwork, getAbiPathForNetwork } from '@/config/networks';
 
@@ -40,8 +40,13 @@ const getDeedNFTAbi = async (chainId: number) => {
 };
 
 export const useDeedNFTData = () => {
-  const { address, chainId, isConnected } = useAccount();
+  const { address, isConnected, embeddedWalletInfo } = useAppKitAccount();
+  const { caipNetworkId } = useAppKitNetwork();
+  const { walletProvider } = useAppKitProvider("eip155");
   const { isCorrectNetwork } = useNetworkValidation();
+  
+  // Derive chainId from caipNetworkId
+  const chainId = caipNetworkId ? parseInt(caipNetworkId.split(':')[1]) : undefined;
   const [deedNFTs, setDeedNFTs] = useState<DeedNFT[]>([]);
   const [userDeedNFTs, setUserDeedNFTs] = useState<DeedNFT[]>([]);
   const [stats, setStats] = useState<DeedNFTStats>({
@@ -59,7 +64,43 @@ export const useDeedNFTData = () => {
     return getContractAddressForNetwork(chainId);
   };
 
+  // Helper function to handle AppKit read operations
+  const executeAppKitCall = async (
+    contractAddress: string,
+    abi: any,
+    functionName: string,
+    params: any[]
+  ) => {
+    if (!walletProvider || !embeddedWalletInfo) {
+      throw new Error("AppKit provider not available");
+    }
+
+    console.log(`Executing AppKit call: ${functionName}`, {
+      contractAddress,
+      params
+    });
+
+    const data = new ethers.Interface(abi).encodeFunctionData(functionName, params);
+    
+    const result = await (walletProvider as any).request({
+      method: 'eth_call',
+      params: [{
+        to: contractAddress,
+        data
+      }, 'latest']
+    });
+
+    console.log("AppKit call result:", result);
+    return result;
+  };
+
   const getProvider = () => {
+    // Use AppKit provider if available
+    if (walletProvider && embeddedWalletInfo) {
+      console.log("Using AppKit provider for read operations");
+      return walletProvider as any;
+    }
+    
     // Try to use wallet provider first
     if (window.ethereum) {
       return new ethers.BrowserProvider(window.ethereum as unknown as ethers.Eip1193Provider);
@@ -83,18 +124,69 @@ export const useDeedNFTData = () => {
     try {
       console.log(`🔍 Fetching data for token ${tokenId}...`);
       
-      // Get owner
-      const owner = await contract.ownerOf(tokenId);
-      console.log(`👤 Owner for token ${tokenId}: ${owner}`);
+      const contractAddress = getContractAddress();
+      if (!contractAddress) {
+        throw new Error("No contract address available");
+      }
       
-      // Get token URI for metadata
-      const uri = await contract.tokenURI(tokenId);
+      const abi = await getDeedNFTAbi(chainId!);
+      
+      // Get owner
+      let owner: string;
+      let uri: string;
+      
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit calls for read operations");
+        
+        // Get owner
+        const ownerResult = await executeAppKitCall(
+          contractAddress,
+          abi,
+          'ownerOf',
+          [tokenId]
+        );
+        owner = new ethers.Interface(abi).decodeFunctionResult('ownerOf', ownerResult)[0];
+        
+        // Get token URI
+        const uriResult = await executeAppKitCall(
+          contractAddress,
+          abi,
+          'tokenURI',
+          [tokenId]
+        );
+        uri = new ethers.Interface(abi).decodeFunctionResult('tokenURI', uriResult)[0];
+      } else {
+        // Use traditional ethers.js for MetaMask
+        owner = await contract.ownerOf(tokenId);
+        uri = await contract.tokenURI(tokenId);
+      }
+      
+      console.log(`👤 Owner for token ${tokenId}: ${owner}`);
       console.log(`🔗 URI for token ${tokenId}: ${uri}`);
       
       // Try to get validation status
       let validatorAddress = ethers.ZeroAddress;
       try {
-        const [isValidated, validator] = await contract.getValidationStatus(tokenId);
+        let isValidated: boolean;
+        let validator: string;
+        
+        if (walletProvider && embeddedWalletInfo) {
+          const validationResult = await executeAppKitCall(
+            contractAddress,
+            abi,
+            'getValidationStatus',
+            [tokenId]
+          );
+          const decoded = new ethers.Interface(abi).decodeFunctionResult('getValidationStatus', validationResult);
+          isValidated = decoded[0];
+          validator = decoded[1];
+        } else {
+          // Use traditional ethers.js for MetaMask
+          const [validationIsValidated, validationValidator] = await contract.getValidationStatus(tokenId);
+          isValidated = validationIsValidated;
+          validator = validationValidator;
+        }
+        
         if (isValidated) {
           validatorAddress = validator;
         }
@@ -110,7 +202,21 @@ export const useDeedNFTData = () => {
         const assetTypeKey = ethers.keccak256(ethers.toUtf8Bytes("assetType"));
         console.log(`🔑 Asset type key for token ${tokenId}: ${assetTypeKey}`);
         
-        const assetTypeBytes = await contract.getTraitValue(tokenId, assetTypeKey);
+        let assetTypeBytes: string;
+        
+        if (walletProvider && embeddedWalletInfo) {
+          const traitResult = await executeAppKitCall(
+            contractAddress,
+            abi,
+            'getTraitValue',
+            [tokenId, assetTypeKey]
+          );
+          assetTypeBytes = new ethers.Interface(abi).decodeFunctionResult('getTraitValue', traitResult)[0];
+        } else {
+          // Use traditional ethers.js for MetaMask
+          assetTypeBytes = await contract.getTraitValue(tokenId, assetTypeKey);
+        }
+        
         console.log(`📦 Asset type bytes for token ${tokenId}: ${assetTypeBytes}`);
         
         if (assetTypeBytes && assetTypeBytes.length > 0) {
@@ -145,7 +251,21 @@ export const useDeedNFTData = () => {
       // Get definition from contract traits
       let definition = `DeedNFT #${tokenId}`;
       try {
-        const definitionBytes = await contract.getTraitValue(tokenId, ethers.keccak256(ethers.toUtf8Bytes("definition")));
+        let definitionBytes: string;
+        
+        if (walletProvider && embeddedWalletInfo) {
+          const definitionResult = await executeAppKitCall(
+            contractAddress,
+            abi,
+            'getTraitValue',
+            [tokenId, ethers.keccak256(ethers.toUtf8Bytes("definition"))]
+          );
+          definitionBytes = new ethers.Interface(abi).decodeFunctionResult('getTraitValue', definitionResult)[0];
+        } else {
+          // Use traditional ethers.js for MetaMask
+          definitionBytes = await contract.getTraitValue(tokenId, ethers.keccak256(ethers.toUtf8Bytes("definition")));
+        }
+        
         if (definitionBytes && definitionBytes.length > 0) {
           definition = ethers.AbiCoder.defaultAbiCoder().decode(["string"], definitionBytes)[0];
           console.log(`📝 Found definition for token ${tokenId}: ${definition}`);
