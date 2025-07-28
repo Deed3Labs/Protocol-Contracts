@@ -8,10 +8,30 @@ import React from 'react';
 
 const queryClient = new QueryClient();
 const projectId = '2a15f8a7329ae7eae3e6bbadc527457f';
+
+// Determine the current environment and set the appropriate URL
+const getCurrentUrl = () => {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'demo.deed3.io') {
+      return 'https://demo.deed3.io';
+    } else if (hostname === 'app.deed3.io') {
+      return 'https://app.deed3.io';
+    } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      // Only use localhost for actual local development
+      return 'http://localhost:5173';
+    } else {
+      // Fallback to production for any other environment
+      return 'https://app.deed3.io';
+    }
+  }
+  return 'https://app.deed3.io';
+};
+
 const metadata = {
   name: 'The Deed Protocol by Deed3Labs',
   description: 'Tokenize your real estate, vehicles, and more.',
-  url: 'http://localhost:5173',
+  url: getCurrentUrl(),
   icons: ['https://avatars.githubusercontent.com/u/179229932']
 };
 
