@@ -19,7 +19,8 @@ const Explore = () => {
     isConnected,
     isCorrectNetwork,
     currentChainId,
-    contractAddress
+    contractAddress,
+    address
   } = useDeedNFTData();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -63,6 +64,11 @@ const Explore = () => {
           <p className="text-blue-800 dark:text-blue-200 text-sm">
             <strong>Debug Info:</strong> Chain ID: {currentChainId}, Contract: {contractAddress}, 
             Total T-Deeds: {deedNFTs.length}, Filtered: {filteredDeedNFTs.length}
+          </p>
+          <p className="text-blue-700 dark:text-blue-300 text-xs mt-1">
+            Connection Status: {isConnected ? 'Connected' : 'Disconnected'} | 
+            Network: {isCorrectNetwork ? 'Correct' : 'Incorrect'} | 
+            Address: {address ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}` : 'None'}
           </p>
         </div>
       )}
