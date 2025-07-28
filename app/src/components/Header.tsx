@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Shield, Home, Plus, Search, BarChart3, ShieldCheck } from "lucide-react";
+import { Shield, Home, Plus, Search, BarChart3, ShieldCheck, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAccount, useChainId } from 'wagmi';
 import { ethers } from "ethers";
@@ -191,6 +191,12 @@ const Header = ({ children }: HeaderProps) => {
           {/* Desktop Actions */}
           <div className="hidden md:flex items-center space-x-2">
             <appkit-button />
+            <Link to="/profile">
+              <Button variant="outline" size="sm" className="h-9 px-3 border-black/10 dark:border-white/10">
+                <User className="w-4 h-4 mr-1" />
+                Profile
+              </Button>
+            </Link>
             {hasAdminRole && (
               <Link to="/admin">
                 <Button variant="outline" size="sm" className="h-9 px-3 border-black/10 dark:border-white/10">
@@ -205,6 +211,11 @@ const Header = ({ children }: HeaderProps) => {
           {/* Mobile Actions */}
           <div className="md:hidden flex items-center space-x-2">
             <appkit-button />
+            <Link to="/profile">
+              <Button variant="outline" size="icon" className="border-black/10 dark:border-white/10">
+                <User className="w-4 h-4" />
+              </Button>
+            </Link>
             {hasAdminRole && (
               <Link to="/admin">
                 <Button variant="outline" size="icon" className="border-black/10 dark:border-white/10">
