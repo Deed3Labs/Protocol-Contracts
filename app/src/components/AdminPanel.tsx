@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useAccount, useChainId } from 'wagmi';
+import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
 import type { Eip1193Provider } from 'ethers';
 import { NetworkWarning } from "@/components/NetworkWarning";
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";
@@ -114,9 +114,21 @@ const contractRoles = {
 };
 
 const AdminPanel = () => {
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  const {
+    address,
+    isConnected,
+    embeddedWalletInfo
+  } = useAppKitAccount();
+  const { caipNetworkId } = useAppKitNetwork();
+  const { walletProvider } = useAppKitProvider("eip155");
   const { isCorrectNetwork } = useNetworkValidation();
+  
+  // Derive chainId from caipNetworkId
+  const chainId = caipNetworkId ? parseInt(caipNetworkId.split(':')[1]) : undefined;
+  
+  // Create a combined connection state that recognizes both traditional and embedded wallets
+  // For embedded wallets, we recognize them even when not deployed (lazy deployment)
+  const isWalletConnected = isConnected || (embeddedWalletInfo !== null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -177,10 +189,10 @@ const AdminPanel = () => {
 
   // Load contracts and user roles
   useEffect(() => {
-    if (isConnected && chainId && isCorrectNetwork) {
+    if (isWalletConnected && chainId && isCorrectNetwork) {
       loadContracts();
     }
-  }, [isConnected, chainId, isCorrectNetwork]);
+  }, [isWalletConnected, chainId, isCorrectNetwork]);
 
   // Load user roles after contracts are loaded
   useEffect(() => {
@@ -189,12 +201,84 @@ const AdminPanel = () => {
     }
   }, [contracts.deedNFT, address]);
 
-  const loadContracts = async () => {
-    try {
-      if (!window.ethereum) return;
+  // Helper function to handle AppKit read operations
+  const executeAppKitCall = async (
+    contractAddress: string,
+    abi: any,
+    functionName: string,
+    params: any[]
+  ) => {
+    if (!walletProvider || !embeddedWalletInfo) {
+      throw new Error("AppKit provider not available");
+    }
 
-      const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
-      const signer = await provider.getSigner();
+    console.log(`Executing AppKit call: ${functionName}`, {
+      contractAddress,
+      params
+    });
+
+    const data = new ethers.Interface(abi).encodeFunctionData(functionName, params);
+    
+    const result = await (walletProvider as any).request({
+      method: 'eth_call',
+      params: [{
+        to: contractAddress,
+        data
+      }, 'latest']
+    });
+
+    console.log("AppKit call result:", result);
+    return result;
+  };
+
+  // Helper function to handle AppKit transactions
+  const executeAppKitTransaction = async (
+    contractAddress: string,
+    abi: any,
+    functionName: string,
+    params: any[]
+  ) => {
+    if (!walletProvider || !embeddedWalletInfo) {
+      throw new Error("AppKit provider not available");
+    }
+
+    console.log(`Executing AppKit transaction: ${functionName}`, {
+      contractAddress,
+      params
+    });
+
+    const data = new ethers.Interface(abi).encodeFunctionData(functionName, params);
+    
+    const tx = await (walletProvider as any).request({
+      method: 'eth_sendTransaction',
+      params: [{
+        to: contractAddress,
+        data
+      }]
+    });
+
+    console.log("AppKit transaction executed successfully:", tx);
+    return tx;
+  };
+
+  const loadContracts = async () => {
+    if (!isWalletConnected || !chainId) return;
+
+    try {
+      // Use AppKit provider for embedded wallets, otherwise fallback to MetaMask
+      let signer;
+      
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit provider for embedded wallet");
+        signer = walletProvider as any;
+      } else {
+        console.log("Using MetaMask provider");
+        if (!window.ethereum) {
+          throw new Error("No wallet detected. Please install MetaMask or another wallet.");
+        }
+        const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
+        signer = await provider.getSigner();
+      }
 
       // Load DeedNFT contract
       const deedNFTAddress = getContractAddressForNetwork(chainId);
@@ -232,17 +316,44 @@ const AdminPanel = () => {
   };
 
   const loadUserRoles = async () => {
-    if (!address || !contracts.deedNFT) return;
+    if (!address) return;
 
     setIsLoadingRoles(true);
     try {
       console.log('Loading user roles for address:', address);
       const userRolesList: string[] = [];
       
+      if (!chainId) {
+        throw new Error("Chain ID not available");
+      }
+      
+      const contractAddress = getContractAddressForNetwork(chainId);
+      if (!contractAddress) {
+        throw new Error("No contract address found for current network");
+      }
+      
+      const abi = await getDeedNFTAbi(chainId);
+      
       // Check each role
       for (const [roleKey, roleValue] of Object.entries(ROLES)) {
         try {
-          const hasRole = await contracts.deedNFT.hasRole(roleValue, address);
+          let hasRole: boolean;
+          
+          if (walletProvider && embeddedWalletInfo) {
+            console.log(`Using AppKit call for hasRole: ${roleKey}`);
+            const result = await executeAppKitCall(
+              contractAddress,
+              abi,
+              'hasRole',
+              [roleValue, address]
+            );
+            // Decode the result (hasRole returns a boolean)
+            hasRole = new ethers.Interface(abi).decodeFunctionResult('hasRole', result)[0];
+          } else {
+            // Use traditional ethers.js for MetaMask
+            hasRole = await contracts.deedNFT.hasRole(roleValue, address);
+          }
+          
           console.log(`Role ${roleKey}: ${hasRole}`);
           if (hasRole) {
             userRolesList.push(roleKey);
@@ -254,7 +365,23 @@ const AdminPanel = () => {
 
       // Also check if user is the owner (for contracts that use Ownable)
       try {
-        const owner = await contracts.deedNFT.owner();
+        let owner: string;
+        
+        if (walletProvider && embeddedWalletInfo) {
+          console.log("Using AppKit call for owner");
+          const result = await executeAppKitCall(
+            contractAddress,
+            abi,
+            'owner',
+            []
+          );
+          // Decode the result (owner returns an address)
+          owner = new ethers.Interface(abi).decodeFunctionResult('owner', result)[0];
+        } else {
+          // Use traditional ethers.js for MetaMask
+          owner = await contracts.deedNFT.owner();
+        }
+        
         console.log(`Contract owner: ${owner}`);
         if (owner.toLowerCase() === address.toLowerCase()) {
           userRolesList.push('OWNER');
@@ -379,34 +506,103 @@ const AdminPanel = () => {
       }
 
       const validatorAddress = validators[0]; // Use first validator for now
+      if (!chainId) {
+        throw new Error("No network detected");
+      }
       const validatorAbi = await getValidatorAbi(chainId);
       const validatorContract = new ethers.Contract(validatorAddress, validatorAbi, await contracts.deedNFT.runner);
 
       switch (action) {
         case "setServiceFee":
           const fee = ethers.parseEther(validatorForm.serviceFee);
-          await validatorContract.setServiceFee(validatorForm.tokenAddress, fee);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for setServiceFee");
+            const tx = await executeAppKitTransaction(
+              validatorAddress,
+              validatorAbi,
+              'setServiceFee',
+              [validatorForm.tokenAddress, fee]
+            );
+            console.log("AppKit setServiceFee transaction executed:", tx);
+          } else {
+            await validatorContract.setServiceFee(validatorForm.tokenAddress, fee);
+          }
           setSuccess("Service fee set successfully");
           break;
         case "addWhitelistedToken":
-          await validatorContract.addWhitelistedToken(validatorForm.tokenAddress);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for addWhitelistedToken");
+            const tx = await executeAppKitTransaction(
+              validatorAddress,
+              validatorAbi,
+              'addWhitelistedToken',
+              [validatorForm.tokenAddress]
+            );
+            console.log("AppKit addWhitelistedToken transaction executed:", tx);
+          } else {
+            await validatorContract.addWhitelistedToken(validatorForm.tokenAddress);
+          }
           setSuccess("Token whitelisted successfully");
           break;
         case "removeWhitelistedToken":
-          await validatorContract.removeWhitelistedToken(validatorForm.tokenAddress);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for removeWhitelistedToken");
+            const tx = await executeAppKitTransaction(
+              validatorAddress,
+              validatorAbi,
+              'removeWhitelistedToken',
+              [validatorForm.tokenAddress]
+            );
+            console.log("AppKit removeWhitelistedToken transaction executed:", tx);
+          } else {
+            await validatorContract.removeWhitelistedToken(validatorForm.tokenAddress);
+          }
           setSuccess("Token removed from whitelist successfully");
           break;
         case "registerOperatingAgreement":
-          await validatorContract.registerOperatingAgreement(validatorForm.operatingAgreementUri, validatorForm.agreementName);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for registerOperatingAgreement");
+            const tx = await executeAppKitTransaction(
+              validatorAddress,
+              validatorAbi,
+              'registerOperatingAgreement',
+              [validatorForm.operatingAgreementUri, validatorForm.agreementName]
+            );
+            console.log("AppKit registerOperatingAgreement transaction executed:", tx);
+          } else {
+            await validatorContract.registerOperatingAgreement(validatorForm.operatingAgreementUri, validatorForm.agreementName);
+          }
           setSuccess("Operating agreement registered successfully");
           break;
         case "setRoyaltyFeePercentage":
           const percentage = parseInt(validatorForm.royaltyPercentage);
-          await validatorContract.setRoyaltyFeePercentage(percentage);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for setRoyaltyFeePercentage");
+            const tx = await executeAppKitTransaction(
+              validatorAddress,
+              validatorAbi,
+              'setRoyaltyFeePercentage',
+              [percentage]
+            );
+            console.log("AppKit setRoyaltyFeePercentage transaction executed:", tx);
+          } else {
+            await validatorContract.setRoyaltyFeePercentage(percentage);
+          }
           setSuccess("Royalty fee percentage set successfully");
           break;
         case "setRoyaltyReceiver":
-          await validatorContract.setRoyaltyReceiver(validatorForm.royaltyReceiver);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for setRoyaltyReceiver");
+            const tx = await executeAppKitTransaction(
+              validatorAddress,
+              validatorAbi,
+              'setRoyaltyReceiver',
+              [validatorForm.royaltyReceiver]
+            );
+            console.log("AppKit setRoyaltyReceiver transaction executed:", tx);
+          } else {
+            await validatorContract.setRoyaltyReceiver(validatorForm.royaltyReceiver);
+          }
           setSuccess("Royalty receiver set successfully");
           break;
         default:
@@ -431,31 +627,122 @@ const AdminPanel = () => {
       switch (action) {
         case "setCommissionPercentage":
           const percentage = parseInt(fundManagerForm.commissionPercentage);
-          await contracts.fundManager.setCommissionPercentage(percentage);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for setCommissionPercentage");
+            const fundManagerAddress = await contracts.deedNFT.fundManager();
+            const fundManagerAbi = await getFundManagerAbi(chainId!);
+            const tx = await executeAppKitTransaction(
+              fundManagerAddress,
+              fundManagerAbi,
+              'setCommissionPercentage',
+              [percentage]
+            );
+            console.log("AppKit setCommissionPercentage transaction executed:", tx);
+          } else {
+            await contracts.fundManager.setCommissionPercentage(percentage);
+          }
           setSuccess("Commission percentage set successfully");
           break;
         case "setFeeReceiver":
-          await contracts.fundManager.setFeeReceiver(fundManagerForm.feeReceiver);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for setFeeReceiver");
+            const fundManagerAddress = await contracts.deedNFT.fundManager();
+            const fundManagerAbi = await getFundManagerAbi(chainId!);
+            const tx = await executeAppKitTransaction(
+              fundManagerAddress,
+              fundManagerAbi,
+              'setFeeReceiver',
+              [fundManagerForm.feeReceiver]
+            );
+            console.log("AppKit setFeeReceiver transaction executed:", tx);
+          } else {
+            await contracts.fundManager.setFeeReceiver(fundManagerForm.feeReceiver);
+          }
           setSuccess("Fee receiver set successfully");
           break;
         case "setValidatorRegistry":
-          await contracts.fundManager.setValidatorRegistry(fundManagerForm.validatorRegistry);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for setValidatorRegistry");
+            const fundManagerAddress = await contracts.deedNFT.fundManager();
+            const fundManagerAbi = await getFundManagerAbi(chainId!);
+            const tx = await executeAppKitTransaction(
+              fundManagerAddress,
+              fundManagerAbi,
+              'setValidatorRegistry',
+              [fundManagerForm.validatorRegistry]
+            );
+            console.log("AppKit setValidatorRegistry transaction executed:", tx);
+          } else {
+            await contracts.fundManager.setValidatorRegistry(fundManagerForm.validatorRegistry);
+          }
           setSuccess("Validator registry set successfully");
           break;
         case "addCompatibleDeedNFT":
-          await contracts.fundManager.addCompatibleDeedNFT(fundManagerForm.deedNFTAddress);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for addCompatibleDeedNFT");
+            const fundManagerAddress = await contracts.deedNFT.fundManager();
+            const fundManagerAbi = await getFundManagerAbi(chainId!);
+            const tx = await executeAppKitTransaction(
+              fundManagerAddress,
+              fundManagerAbi,
+              'addCompatibleDeedNFT',
+              [fundManagerForm.deedNFTAddress]
+            );
+            console.log("AppKit addCompatibleDeedNFT transaction executed:", tx);
+          } else {
+            await contracts.fundManager.addCompatibleDeedNFT(fundManagerForm.deedNFTAddress);
+          }
           setSuccess("Compatible DeedNFT added successfully");
           break;
         case "removeCompatibleDeedNFT":
-          await contracts.fundManager.removeCompatibleDeedNFT(fundManagerForm.deedNFTAddress);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for removeCompatibleDeedNFT");
+            const fundManagerAddress = await contracts.deedNFT.fundManager();
+            const fundManagerAbi = await getFundManagerAbi(chainId!);
+            const tx = await executeAppKitTransaction(
+              fundManagerAddress,
+              fundManagerAbi,
+              'removeCompatibleDeedNFT',
+              [fundManagerForm.deedNFTAddress]
+            );
+            console.log("AppKit removeCompatibleDeedNFT transaction executed:", tx);
+          } else {
+            await contracts.fundManager.removeCompatibleDeedNFT(fundManagerForm.deedNFTAddress);
+          }
           setSuccess("Compatible DeedNFT removed successfully");
           break;
         case "addWhitelistedToken":
-          await contracts.fundManager.addWhitelistedToken(fundManagerForm.tokenAddress);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for addWhitelistedToken (FundManager)");
+            const fundManagerAddress = await contracts.deedNFT.fundManager();
+            const fundManagerAbi = await getFundManagerAbi(chainId!);
+            const tx = await executeAppKitTransaction(
+              fundManagerAddress,
+              fundManagerAbi,
+              'addWhitelistedToken',
+              [fundManagerForm.tokenAddress]
+            );
+            console.log("AppKit addWhitelistedToken (FundManager) transaction executed:", tx);
+          } else {
+            await contracts.fundManager.addWhitelistedToken(fundManagerForm.tokenAddress);
+          }
           setSuccess("Token whitelisted successfully");
           break;
         case "removeWhitelistedToken":
-          await contracts.fundManager.removeWhitelistedToken(fundManagerForm.tokenAddress);
+          if (walletProvider && embeddedWalletInfo) {
+            console.log("Using AppKit transaction system for removeWhitelistedToken (FundManager)");
+            const fundManagerAddress = await contracts.deedNFT.fundManager();
+            const fundManagerAbi = await getFundManagerAbi(chainId!);
+            const tx = await executeAppKitTransaction(
+              fundManagerAddress,
+              fundManagerAbi,
+              'removeWhitelistedToken',
+              [fundManagerForm.tokenAddress]
+            );
+            console.log("AppKit removeWhitelistedToken (FundManager) transaction executed:", tx);
+          } else {
+            await contracts.fundManager.removeWhitelistedToken(fundManagerForm.tokenAddress);
+          }
           setSuccess("Token removed from whitelist successfully");
           break;
         default:
@@ -506,7 +793,7 @@ const AdminPanel = () => {
 
   const hasAdminRole = userRoles.length > 0;
 
-  if (!isConnected) {
+  if (!isWalletConnected) {
     return (
       <div className="container mx-auto py-12 px-4">
         <div className="text-center text-gray-600 dark:text-gray-300 text-lg py-12">

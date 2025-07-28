@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { BarChart3, Wallet, FileText, Settings, TrendingUp, Activity, RefreshCw } from "lucide-react";
+import { useAppKitAccount } from '@reown/appkit/react';
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { Link } from "react-router-dom";
 import DeedNFTViewer from "./DeedNFTViewer";
@@ -11,6 +12,15 @@ import { useState } from "react";
 
 const Dashboard = () => {
   const {
+    isConnected: isAppKitConnected,
+    embeddedWalletInfo,
+    status
+  } = useAppKitAccount();
+  
+  // Use AppKit connection state - handle both regular wallets and embedded wallets
+  const isWalletConnected = isAppKitConnected || (embeddedWalletInfo && status === 'connected');
+  
+  const {
     userDeedNFTs,
     stats,
     loading,
@@ -18,7 +28,6 @@ const Dashboard = () => {
     fetchDeedNFTs,
     getAssetTypeLabel,
     getValidationStatus,
-    isConnected,
     isCorrectNetwork
   } = useDeedNFTData();
 
@@ -44,7 +53,7 @@ const Dashboard = () => {
       </div>
 
       {/* Connection Status */}
-      {!isConnected && (
+      {!isWalletConnected && (
         <div className="text-center mb-8">
           <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
             <p className="text-yellow-800 dark:text-yellow-200">
@@ -54,7 +63,7 @@ const Dashboard = () => {
         </div>
       )}
 
-      {!isCorrectNetwork && isConnected && (
+      {!isCorrectNetwork && isWalletConnected && (
         <div className="text-center mb-8">
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
             <p className="text-red-800 dark:text-red-200">

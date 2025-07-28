@@ -19,10 +19,10 @@ export function NetworkWarning() {
 
   const [isSwitching, setIsSwitching] = React.useState(false);
 
-  const handleSwitchNetwork = async (targetChainId: number) => {
+  const handleSwitchNetwork = async () => {
     setIsSwitching(true);
     try {
-      await switchToSupportedNetwork(targetChainId);
+      await switchToSupportedNetwork();
     } catch (error) {
       console.error('Failed to switch network:', error);
     } finally {
@@ -47,7 +47,7 @@ export function NetworkWarning() {
   }
 
   // Check if network is supported but contracts are not deployed
-  const isSupportedButNotDeployed = isNetworkSupported(chainId) && !isDeedNFTDeployed(chainId);
+  const isSupportedButNotDeployed = chainId ? (isNetworkSupported(chainId) && !isDeedNFTDeployed(chainId)) : false;
 
   return (
     <Card className={`mb-4 ${
@@ -74,8 +74,8 @@ export function NetworkWarning() {
             : 'text-orange-700 dark:text-orange-300'
         }>
           {isSupportedButNotDeployed 
-            ? `You are connected to ${getNetworkDisplayName(chainId)}, but the T-Deed contracts are not deployed yet. Please switch to a network with deployed contracts:`
-            : `You are connected to ${getNetworkDisplayName(chainId)}, but this app only supports the following networks:`
+            ? `You are connected to ${chainId ? getNetworkDisplayName(chainId) : 'unknown network'}, but the T-Deed contracts are not deployed yet. Please switch to a network with deployed contracts:`
+            : `You are connected to ${chainId ? getNetworkDisplayName(chainId) : 'unknown network'}, but this app only supports the following networks:`
           }
         </CardDescription>
       </CardHeader>
@@ -86,7 +86,7 @@ export function NetworkWarning() {
               key={network.chainId}
               variant="outline"
               size="sm"
-              onClick={() => handleSwitchNetwork(network.chainId)}
+              onClick={handleSwitchNetwork}
               disabled={isSwitching}
               className="w-full justify-start"
             >

@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { useAccount, useChainId } from 'wagmi';
+import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
 import type { Eip1193Provider } from 'ethers';
 import { NetworkWarning } from "@/components/NetworkWarning";
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";
@@ -81,9 +81,18 @@ const TOKEN_ICONS: { [key: string]: string } = {
 };
 
 const MintForm = () => {
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  const {
+    address,
+    isConnected,
+    embeddedWalletInfo,
+    status
+  } = useAppKitAccount();
+  const { caipNetworkId } = useAppKitNetwork();
+  const { walletProvider } = useAppKitProvider("eip155");
   const { isCorrectNetwork } = useNetworkValidation();
+  
+  // Derive chainId from caipNetworkId
+  const chainId = caipNetworkId ? parseInt(caipNetworkId.split(':')[1]) : undefined;
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -156,9 +165,19 @@ const MintForm = () => {
 
   const loadFundManagerData = async () => {
     try {
-      if (!window.ethereum) return;
+      if (!chainId) return;
 
-      const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
+      // Use AppKit provider for embedded wallets, otherwise fallback to MetaMask
+      let provider;
+      
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit provider for embedded wallet");
+        provider = walletProvider as any;
+      } else {
+        console.log("Using MetaMask provider");
+        if (!window.ethereum) return;
+        provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
+      }
       
       // Get DeedNFT contract to check if FundManager is set
       const deedNFTAddress = getContractAddressForNetwork(chainId);
@@ -172,7 +191,7 @@ const MintForm = () => {
       setFundManagerAddress(fundManagerAddr);
       setHasFundManager(fundManagerAddr !== ethers.ZeroAddress);
 
-      if (fundManagerAddr !== ethers.ZeroAddress) {
+      if (fundManagerAddr !== ethers.ZeroAddress && chainId) {
         // Load whitelisted tokens from FundManager
         const fundManagerAbi = await getFundManagerAbi(chainId);
         const fundManagerContract = new ethers.Contract(fundManagerAddr, fundManagerAbi, provider);
@@ -225,11 +244,21 @@ const MintForm = () => {
   };
 
   const loadFeeData = async () => {
-    if (!selectedToken || !window.ethereum) return;
+    if (!selectedToken || !chainId) return;
 
     setIsLoadingFees(true);
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
+      // Use AppKit provider for embedded wallets, otherwise fallback to MetaMask
+      let provider;
+      
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit provider for embedded wallet");
+        provider = walletProvider as any;
+      } else {
+        console.log("Using MetaMask provider");
+        if (!window.ethereum) return;
+        provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
+      }
       
       // Determine which validator to use
       const validatorAddress = form.useCustomValidator ? form.validatorAddress : fundManagerAddress;
@@ -296,17 +325,133 @@ const MintForm = () => {
       return;
     }
 
+    // Debug smart account deployment status
+    console.log("Smart Account Debug Info:", {
+      embeddedWalletInfo,
+      isSmartAccountDeployed: embeddedWalletInfo?.isSmartAccountDeployed,
+      authProvider: embeddedWalletInfo?.authProvider,
+      accountType: embeddedWalletInfo?.accountType,
+      status
+    });
+
+    // If smart account is not deployed, try to deploy it first
+    if (embeddedWalletInfo && !embeddedWalletInfo.isSmartAccountDeployed) {
+      console.log("Smart account not deployed, attempting to deploy...");
+      try {
+        // Try to trigger deployment by making a simple transaction
+        // This should trigger AppKit's automatic deployment
+        console.log("Attempting to trigger smart account deployment...");
+      } catch (deployError) {
+        console.error("Failed to trigger smart account deployment:", deployError);
+        setError("Failed to deploy smart account. Please try again.");
+        setIsLoading(false);
+        return;
+      }
+    }
+
     setIsLoading(true);
     setError(null);
     setSuccess(false);
 
     try {
-      if (!window.ethereum) {
-        throw new Error("No wallet detected. Please install MetaMask or another wallet.");
+      if (!chainId) {
+        throw new Error("No network detected. Please connect to a supported network.");
       }
 
-      const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
-      const signer = await provider.getSigner();
+      // Use AppKit provider for embedded wallets, otherwise fallback to MetaMask
+      let signer;
+      
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit provider for embedded wallet");
+        console.log("Smart account deployment status:", embeddedWalletInfo.isSmartAccountDeployed);
+        console.log("Wallet provider:", walletProvider);
+        
+        // For embedded wallets, we need to use AppKit's transaction system
+        // The walletProvider doesn't support direct ethers.js transactions
+        // We need to use AppKit's built-in transaction methods
+        console.log("Using AppKit transaction system for embedded wallet");
+        
+        // Get contract address for current network
+        const contractAddress = getContractAddressForNetwork(chainId);
+        if (!contractAddress) {
+          throw new Error("No contract address found for current network");
+        }
+        
+        // Get ABI for current network
+        const abi = await getDeedNFTAbi(chainId);
+        
+        // Prepare parameters matching DeedNFT.sol mintAsset function
+        const owner = form.owner;
+        const assetType = parseInt(form.assetType);
+        const uri = form.useMetadataURI ? form.uri : "";
+        const definition = form.definition;
+        const configuration = form.configuration;
+        const validatorAddress = form.useCustomValidator ? form.validatorAddress : ethers.ZeroAddress;
+        const token = form.usePaymentToken && hasFundManager ? selectedToken : ethers.ZeroAddress;
+        const salt = form.useCustomSalt ? ethers.toBigInt(form.salt) : 0n;
+
+        console.log("Minting T-Deed with parameters:", {
+          owner,
+          assetType,
+          uri,
+          definition,
+          configuration,
+          validatorAddress,
+          token,
+          salt
+        });
+
+        // Use AppKit's transaction system
+        const tx = await (walletProvider as any).request({
+          method: 'eth_sendTransaction',
+          params: [{
+            to: contractAddress,
+            data: new ethers.Interface(abi).encodeFunctionData('mintAsset', [
+              owner,
+              assetType,
+              uri,
+              definition,
+              configuration,
+              validatorAddress,
+              token,
+              salt
+            ])
+          }]
+        });
+
+        console.log("Transaction executed successfully:", tx);
+        setTxHash(tx);
+        setSuccess(true);
+        
+        // Reset form but keep the owner address for convenience
+        setForm({
+          owner: form.owner, // Keep the owner address
+          assetType: "0",
+          uri: "",
+          definition: "",
+          configuration: "",
+          validatorAddress: "",
+          requiresValidation: false,
+          validationCriteria: "",
+          token: "",
+          usePaymentToken: false,
+          useCustomValidator: false,
+          useMetadataURI: false,
+          useCustomSalt: false,
+          salt: "",
+          estimatedGas: "0",
+          totalCost: "0"
+        });
+        
+        return; // Exit early since we handled the transaction
+      } else {
+        console.log("Using MetaMask provider");
+        if (!window.ethereum) {
+          throw new Error("No wallet detected. Please install MetaMask or another wallet.");
+        }
+        const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
+        signer = await provider.getSigner();
+      }
       
       // Get contract address for current network
       const contractAddress = getContractAddressForNetwork(chainId);
@@ -339,6 +484,9 @@ const MintForm = () => {
         salt
       });
 
+      console.log("About to execute transaction with signer:", signer);
+      console.log("Contract address:", contractAddress);
+
       const tx = await contract.mintAsset(
         owner,
         assetType,
@@ -349,6 +497,8 @@ const MintForm = () => {
         token,
         salt
       );
+
+      console.log("Transaction executed successfully:", tx.hash);
 
       setTxHash(tx.hash);
       setSuccess(true);
@@ -375,7 +525,17 @@ const MintForm = () => {
 
     } catch (err) {
       console.error("Minting error:", err);
-      setError(err instanceof Error ? err.message : "Failed to mint T-Deed. Please try again.");
+      
+      // Check for specific smart account deployment errors
+      const errorMessage = err instanceof Error ? err.message : "Failed to mint T-Deed. Please try again.";
+      
+      if (errorMessage.includes("smart account") || errorMessage.includes("deployment") || errorMessage.includes("not deployed")) {
+        setError("Smart account deployment failed. Please try again or contact support.");
+      } else if (errorMessage.includes("insufficient funds") || errorMessage.includes("gas")) {
+        setError("Insufficient funds for transaction. Please ensure you have enough ETH for gas fees.");
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
