@@ -7,6 +7,7 @@ import Explore from "@/components/Explore";
 import Dashboard from "@/components/Dashboard";
 import Validation from "@/components/Validation";
 import AdminPanel from "@/components/AdminPanel";
+import InstallPrompt from "@/components/InstallPrompt";
 import { ThemeToggle } from "./components/ThemeToggle";
 
 function App() {
@@ -29,6 +30,7 @@ function App() {
           </Routes>
         </main>
         <Footer />
+        <InstallPrompt />
       </div>
     </BrowserRouter>
   );
