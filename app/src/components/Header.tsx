@@ -203,7 +203,7 @@ const Header = ({ children }: HeaderProps) => {
           </div>
 
           {/* Mobile Actions */}
-          <div className="md:hidden flex items-center space-x-3">
+          <div className="md:hidden flex items-center space-x-2">
             <appkit-button />
             {hasAdminRole && (
               <Link to="/admin">
