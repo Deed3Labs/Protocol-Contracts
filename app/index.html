@@ -23,6 +23,15 @@
           navigator.serviceWorker.register('/sw.js')
             .then((registration) => {
               console.log('SW registered: ', registration);
+              
+              // Check if wallet connection is working after a delay
+              setTimeout(() => {
+                const appkitButton = document.querySelector('appkit-button');
+                if (!appkitButton || !appkitButton.shadowRoot) {
+                  console.warn('AppKit button not found, unregistering service worker');
+                  registration.unregister();
+                }
+              }, 3000);
             })
             .catch((registrationError) => {
               console.log('SW registration failed: ', registrationError);
