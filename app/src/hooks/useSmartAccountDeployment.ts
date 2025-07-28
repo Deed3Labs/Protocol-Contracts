@@ -1,6 +1,5 @@
 import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { useCallback, useState } from 'react';
-import { ethers } from 'ethers';
 
 export function useSmartAccountDeployment() {
   const { embeddedWalletInfo, status } = useAppKitAccount();
@@ -61,7 +60,7 @@ export function useSmartAccountDeployment() {
   }, [isEmbeddedWallet, isSmartAccountDeployed, walletProvider]);
 
   // Function to check if a transaction will trigger deployment
-  const willTriggerDeployment = useCallback((transactionData: any) => {
+  const willTriggerDeployment = useCallback(() => {
     if (!isEmbeddedWallet || isSmartAccountDeployed) {
       return false;
     }
