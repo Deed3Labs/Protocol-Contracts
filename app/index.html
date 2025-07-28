@@ -38,6 +38,35 @@
             });
         });
       }
+
+      // Ensure AppKit modal icons load properly
+      window.addEventListener('load', () => {
+        // Preload critical icon resources
+        const iconUrls = [
+          'https://api.web3modal.com/v2/chain/1/icon',
+          'https://api.web3modal.com/v2/chain/8453/icon',
+          'https://api.web3modal.com/v2/chain/11155111/icon',
+          'https://api.web3modal.com/v2/chain/84532/icon'
+        ];
+
+        iconUrls.forEach(url => {
+          const link = document.createElement('link');
+          link.rel = 'preload';
+          link.as = 'image';
+          link.href = url;
+          document.head.appendChild(link);
+        });
+
+        // Monitor for icon loading issues
+        setTimeout(() => {
+          const modal = window.appKitModal;
+          if (modal) {
+            console.log('AppKit modal loaded successfully');
+          } else {
+            console.warn('AppKit modal not found, icons may not load properly');
+          }
+        }, 1000);
+      });
     </script>
   </body>
 </html>

@@ -8,6 +8,8 @@ import Dashboard from "@/components/Dashboard";
 import Validation from "@/components/Validation";
 import AdminPanel from "@/components/AdminPanel";
 import InstallPrompt from "@/components/InstallPrompt";
+import { SWIXAuth } from "@/components/SWIXAuth";
+import { SWIXDemo } from "@/components/SWIXDemo";
 import { ThemeToggle } from "./components/ThemeToggle";
 
 function App() {
@@ -27,6 +29,8 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/validation" element={<Validation />} />
             <Route path="/admin" element={<AdminPanel />} />
+            <Route path="/auth" element={<SWIXAuth />} />
+            <Route path="/profile" element={<SWIXDemo />} />
           </Routes>
         </main>
         <Footer />
