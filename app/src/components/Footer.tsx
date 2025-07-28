@@ -19,9 +19,9 @@ const Modal = ({ isOpen, onClose, title, url }: ModalProps) => {
       />
       
       {/* Modal */}
-      <div className="relative w-full max-w-5xl h-[85vh] bg-white dark:bg-gray-900 rounded-lg shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-5xl h-[85vh] bg-white dark:bg-[#141414] rounded-lg shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#141414]">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
             {title}
           </h2>
