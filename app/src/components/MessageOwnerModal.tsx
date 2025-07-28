@@ -92,7 +92,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <MobileDialogContent className="max-w-6xl w-full h-full md:max-h-[90vh] border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm overflow-hidden">
-        <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-gray-200 dark:border-gray-700">
+        <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-0 border-b-0">
           <div>
             <DialogTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center space-x-2">
               <MessageCircle className="w-5 h-5" />
@@ -113,11 +113,12 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
         </DialogHeader>
 
         <div className="overflow-y-auto h-full max-h-[calc(100vh-120px)] md:max-h-[calc(90vh-120px)]">
-          <div className="space-y-4 p-0 md:p-6">
+          <div className="space-y-4 p-0 md:p-3
+          ">
             {/* Two Column Layout for Desktop/Landscape */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-3">
               {/* Left Column - T-Deed and Owner Information */}
-              <div className="space-y-3 md:space-y-6">
+              <div className="space-y-3 md:space-y-3">
                 {/* T-Deed Information */}
                 <Card className="border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/50 backdrop-blur-sm">
                   <CardHeader className="pb-0">
@@ -168,7 +169,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
               </div>
 
               {/* Right Column - Messaging Options and Template */}
-              <div className="space-y-3 md:space-y-6">
+              <div className="space-y-3 md:space-y-3">
                 {/* Messaging Options */}
                 <Card className="border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/50 backdrop-blur-sm">
                   <CardHeader className="pb-3">
