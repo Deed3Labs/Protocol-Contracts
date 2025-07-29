@@ -12,6 +12,7 @@ import { SWIXAuth } from "@/components/SWIXAuth";
 import { SWIXDemo } from "@/components/SWIXDemo";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { DeedNFTProvider } from "@/context/DeedNFTContext";
+import Faucet from "@/components/Faucet";
 
 function App() {
   return (
@@ -33,6 +34,7 @@ function App() {
               <Route path="/admin" element={<AdminPanel />} />
               <Route path="/auth" element={<SWIXAuth />} />
               <Route path="/profile" element={<SWIXDemo />} />
+              <Route path="/faucet" element={<Faucet />} />
             </Routes>
           </DeedNFTProvider>
         </main>
