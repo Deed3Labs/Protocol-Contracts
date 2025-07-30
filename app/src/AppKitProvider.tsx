@@ -81,23 +81,6 @@ const initializeAppKit = () => {
   const currentUrl = getCurrentUrl();
   console.log('Initializing AppKit with URL:', currentUrl);
   
-  // Detect mobile environment
-  const isMobile = typeof window !== 'undefined' && (
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-    (navigator.maxTouchPoints && navigator.maxTouchPoints > 2)
-  );
-  
-  const isIOS = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isSafari = typeof window !== 'undefined' && /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
-  
-  console.log('Mobile detection:', {
-    isMobile,
-    isIOS,
-    isSafari,
-    userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'server',
-    maxTouchPoints: typeof window !== 'undefined' ? navigator.maxTouchPoints : 'server'
-  });
-  
   createAppKit({
     adapters: [wagmiAdapter],
     networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
@@ -123,32 +106,33 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
     initializeAppKit();
   }, []);
 
-  // Add mobile-specific event listeners for better wallet connection handling
+  // Handle deep links for mobile wallet connections
   React.useEffect(() => {
-    // Handle mobile deep linking and wallet connection events
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('App became visible, checking for wallet connection state');
-        // This helps with mobile wallet connections that return to the app
+    const handleDeepLink = () => {
+      // Check if we're returning from a mobile wallet
+      const urlParams = new URLSearchParams(window.location.search);
+      const walletReturn = urlParams.get('wallet');
+      
+      if (walletReturn) {
+        console.log('Deep link return from wallet:', walletReturn);
+        // Clear the URL parameters
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
     };
 
-    const handleFocus = () => {
-      console.log('App gained focus, checking wallet connection');
-      // This helps with mobile wallet connections
+    // Handle deep link on mount
+    handleDeepLink();
+
+    // Listen for URL changes (for SPA navigation)
+    const handleUrlChange = () => {
+      handleDeepLink();
     };
 
-    // Add event listeners for mobile wallet connection handling
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-    };
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
   }, []);
 
-  // Ensure AppKit modal icons load properly and handle mobile connections
+  // Ensure AppKit modal icons load properly
   React.useEffect(() => {
     // Monitor for AppKit modal and ensure icons load
     const checkModal = () => {
@@ -156,18 +140,11 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
       if (modal) {
         console.log('AppKit modal found, ensuring icons load properly');
         
-        // Override the open method to ensure icons are loaded and handle mobile
+        // Override the open method to ensure icons are loaded
         const originalOpen = modal.open;
         if (originalOpen) {
           modal.open = function(...args: any[]) {
             console.log('AppKit modal opening, ensuring icons load');
-            
-            // Detect mobile environment
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
-            
-            console.log('Mobile detection in modal:', { isMobile, isIOS, isSafari });
             
             // Force icon preloading before opening
             const iconUrls = [
@@ -190,42 +167,8 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
               img.src = url;
             });
             
-            // For mobile devices, add a small delay to ensure proper initialization
-            if (isMobile) {
-              console.log('Mobile device detected, adding delay for proper modal initialization');
-              setTimeout(() => {
-                return originalOpen.apply(this, args);
-              }, 100);
-            } else {
-              // Call original open method immediately for desktop
-              return originalOpen.apply(this, args);
-            }
-          };
-        }
-        
-        // Also override the modal's wallet selection to handle mobile deep linking
-        if (modal.selectWallet) {
-          const originalSelectWallet = modal.selectWallet;
-          modal.selectWallet = function(walletId: string, ...args: any[]) {
-            console.log('Wallet selected:', walletId);
-            
-            // Detect mobile environment within this scope
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            
-            // For MetaMask on mobile, ensure proper deep linking
-            if (walletId === 'metamask' && isMobile) {
-              console.log('MetaMask selected on mobile, ensuring deep link handling');
-              
-              // Check if MetaMask is installed
-              const isMetaMaskInstalled = typeof window !== 'undefined' && 
-                (window as any).ethereum?.isMetaMask;
-              
-              if (!isMetaMaskInstalled) {
-                console.log('MetaMask not installed, will redirect to App Store');
-              }
-            }
-            
-            return originalSelectWallet.apply(this, [walletId, ...args]);
+            // Call original open method
+            return originalOpen.apply(this, args);
           };
         }
       } else {
