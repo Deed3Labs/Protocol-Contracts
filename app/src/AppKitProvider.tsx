@@ -82,22 +82,22 @@ const initializeAppKit = () => {
   console.log('Initializing AppKit with URL:', currentUrl);
   
   createAppKit({
-    adapters: [wagmiAdapter],
-    networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
-    projectId,
-    metadata: {
-      ...metadata,
-      url: currentUrl
-    },
-    features: {
-      analytics: true,
-      email: true,
-      socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
-      emailShowWallets: true,
-    },
-    siwx: new ReownAuthentication(),
-    allWallets: 'SHOW'
-  });
+  adapters: [wagmiAdapter],
+  networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
+  projectId,
+  metadata: {
+    ...metadata,
+    url: currentUrl
+  },
+  features: {
+    analytics: true,
+    email: true,
+    socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
+    emailShowWallets: true,
+  },
+  siwx: new ReownAuthentication(),
+  allWallets: 'SHOW'
+});
 };
 
 export function AppKitProvider({ children }: { children: React.ReactNode }) {
@@ -106,13 +106,17 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
     initializeAppKit();
   }, []);
 
-  // Ensure AppKit modal icons load properly
+  // Ensure AppKit modal icons load properly and handle mobile MetaMask
   React.useEffect(() => {
     // Monitor for AppKit modal and ensure icons load
     const checkModal = () => {
       const modal = (window as any).appKitModal;
       if (modal) {
         console.log('AppKit modal found, ensuring icons load properly');
+        
+        // Check if we're on mobile
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        console.log('Is mobile device:', isMobile);
         
         // Override the open method to ensure icons are loaded
         const originalOpen = modal.open;
@@ -140,6 +144,38 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
               const img = new Image();
               img.src = url;
             });
+            
+            // Mobile-specific MetaMask handling
+            if (isMobile) {
+              console.log('Mobile device detected, adding MetaMask mobile handling');
+              
+              // Add event listener for MetaMask mobile deep linking
+              const handleMetaMaskClick = (event: any) => {
+                const target = event.target;
+                if (target && target.textContent && target.textContent.toLowerCase().includes('metamask')) {
+                  console.log('MetaMask clicked on mobile, attempting deep link');
+                  
+                  // Try to open MetaMask app
+                  const metamaskUrl = 'metamask://';
+                  window.location.href = metamaskUrl;
+                  
+                  // Fallback after a delay
+                  setTimeout(() => {
+                    console.log('MetaMask deep link attempted, continuing with modal');
+                  }, 1000);
+                }
+              };
+              
+              // Add click listener to modal
+              setTimeout(() => {
+                const modalElement = document.querySelector('[data-testid="appkit-modal"]') || 
+                                   document.querySelector('.appkit-modal') ||
+                                   document.querySelector('[role="dialog"]');
+                if (modalElement) {
+                  modalElement.addEventListener('click', handleMetaMaskClick);
+                }
+              }, 1000);
+            }
             
             // Call original open method
             return originalOpen.apply(this, args);
