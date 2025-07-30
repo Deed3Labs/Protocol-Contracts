@@ -106,6 +106,32 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
     initializeAppKit();
   }, []);
 
+  // Handle deep links for mobile wallet connections
+  React.useEffect(() => {
+    const handleDeepLink = () => {
+      // Check if we're returning from a mobile wallet
+      const urlParams = new URLSearchParams(window.location.search);
+      const walletReturn = urlParams.get('wallet');
+      
+      if (walletReturn) {
+        console.log('Deep link return from wallet:', walletReturn);
+        // Clear the URL parameters
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    };
+
+    // Handle deep link on mount
+    handleDeepLink();
+
+    // Listen for URL changes (for SPA navigation)
+    const handleUrlChange = () => {
+      handleDeepLink();
+    };
+
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
+  }, []);
+
   // Ensure AppKit modal icons load properly
   React.useEffect(() => {
     // Monitor for AppKit modal and ensure icons load

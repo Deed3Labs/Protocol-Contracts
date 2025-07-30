@@ -273,7 +273,7 @@ const Header = ({ children }: HeaderProps) => {
           {/* Desktop Actions */}
           <div className="hidden md:flex items-center space-x-2">
             <div className="border border-black/10 dark:border-transparent rounded-full">
-              <appkit-button />
+            <appkit-button />
             </div>
             <Link to="/profile">
               <Button variant="outline" size="sm" className="h-9 px-3 border-black/10 dark:border-white/10">
@@ -295,7 +295,7 @@ const Header = ({ children }: HeaderProps) => {
           {/* Mobile Actions */}
           <div className="md:hidden flex items-center space-x-2">
             <div className="border border-black/10 dark:border-transparent rounded-full">
-              <appkit-button />
+            <appkit-button />
             </div>
             <Link to="/profile">
               <Button variant="outline" size="icon" className="border-black/10 dark:border-white/10">

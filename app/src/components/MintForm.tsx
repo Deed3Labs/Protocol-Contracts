@@ -910,7 +910,7 @@ const MintForm = () => {
             <Button
               onClick={handleMint}
               disabled={isLoading || !form.definition.trim() || !isCorrectNetwork}
-              className="w-full text-lg font-semibold bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white transition-colors duration-200 h-11"
+              className="w-full text-lg font-semibold bg-black hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-black border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 h-11"
               size="lg"
             >
               {isLoading ? 'Minting...' : 'Mint T-Deed'}
@@ -1029,7 +1029,7 @@ const MintForm = () => {
                         <Button
                           onClick={nextStep}
                           disabled={!form.definition.trim()}
-                          className="bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white h-11 px-4"
+                          className="bg-black hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-black border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed h-11 px-4"
                         >
                           Next
                           <ChevronRight className="w-4 h-4 ml-1" />
