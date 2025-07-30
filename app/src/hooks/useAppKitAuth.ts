@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { useAppKitSIWX } from '@reown/appkit-siwx/react';
 import type { ReownAuthentication } from '@reown/appkit-siwx';
-import React from 'react'; // Added missing import for React
 
 export interface AuthState {
   isConnected: boolean;
@@ -30,31 +29,6 @@ export function useAppKitAuth() {
     isConnected: false,
     isAuthenticated: false,
   });
-
-  // Mobile detection and debugging
-  const isMobile = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  
-  React.useEffect(() => {
-    if (isMobile) {
-      console.log('Mobile device detected in useAppKitAuth');
-      console.log('User agent:', navigator.userAgent);
-      console.log('Window location:', window.location.href);
-      console.log('Is Safari:', isSafari);
-      
-      // Check if MetaMask is available on mobile
-      if (typeof window.ethereum !== 'undefined') {
-        console.log('MetaMask detected on mobile');
-      } else {
-        console.log('MetaMask not detected on mobile');
-      }
-      
-      // Safari-specific warnings
-      if (isSafari) {
-        console.warn('⚠️ Safari on mobile has limited wallet support. Consider using MetaMask browser app or Chrome/Firefox mobile.');
-      }
-    }
-  }, [isMobile, isSafari]);
 
   // Get the AppKit modal instance
   const getAppKitModal = useCallback(() => {

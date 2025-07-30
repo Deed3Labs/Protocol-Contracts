@@ -82,22 +82,22 @@ const initializeAppKit = () => {
   console.log('Initializing AppKit with URL:', currentUrl);
   
   createAppKit({
-  adapters: [wagmiAdapter],
-  networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
-  projectId,
-  metadata: {
-    ...metadata,
-    url: currentUrl
-  },
-  features: {
-    analytics: true,
-    email: true,
-    socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
-    emailShowWallets: true,
-  },
-  siwx: new ReownAuthentication(),
-  allWallets: 'SHOW'
-});
+    adapters: [wagmiAdapter],
+    networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
+    projectId,
+    metadata: {
+      ...metadata,
+      url: currentUrl
+    },
+    features: {
+      analytics: true,
+      email: true,
+      socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
+      emailShowWallets: true,
+    },
+    siwx: new ReownAuthentication(),
+    allWallets: 'SHOW'
+  });
 };
 
 export function AppKitProvider({ children }: { children: React.ReactNode }) {
@@ -106,17 +106,39 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
     initializeAppKit();
   }, []);
 
-  // Ensure AppKit modal icons load properly and handle mobile MetaMask
+  // Handle deep links for mobile wallet connections
+  React.useEffect(() => {
+    const handleDeepLink = () => {
+      // Check if we're returning from a mobile wallet
+      const urlParams = new URLSearchParams(window.location.search);
+      const walletReturn = urlParams.get('wallet');
+      
+      if (walletReturn) {
+        console.log('Deep link return from wallet:', walletReturn);
+        // Clear the URL parameters
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    };
+
+    // Handle deep link on mount
+    handleDeepLink();
+
+    // Listen for URL changes (for SPA navigation)
+    const handleUrlChange = () => {
+      handleDeepLink();
+    };
+
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
+  }, []);
+
+  // Ensure AppKit modal icons load properly
   React.useEffect(() => {
     // Monitor for AppKit modal and ensure icons load
     const checkModal = () => {
       const modal = (window as any).appKitModal;
       if (modal) {
         console.log('AppKit modal found, ensuring icons load properly');
-        
-        // Check if we're on mobile
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        console.log('Is mobile device:', isMobile);
         
         // Override the open method to ensure icons are loaded
         const originalOpen = modal.open;
@@ -144,76 +166,6 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
               const img = new Image();
               img.src = url;
             });
-            
-            // Mobile-specific MetaMask handling
-            if (isMobile) {
-              console.log('Mobile device detected, adding MetaMask mobile handling');
-              
-              // Check if it's Safari
-              const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-              console.log('Is Safari:', isSafari);
-              
-              if (isSafari) {
-                console.log('Safari detected - using alternative connection methods');
-                
-                // For Safari, we need to use different connection methods
-                // Safari doesn't support the same wallet connection protocols
-                const handleSafariMetaMaskClick = (event: any) => {
-                  const target = event.target;
-                  if (target && target.textContent && target.textContent.toLowerCase().includes('metamask')) {
-                    console.log('MetaMask clicked on Safari mobile');
-                    
-                    // Show user-friendly message for Safari
-                    const message = 'Safari on mobile has limited wallet support. Please try:\n\n1. Use the MetaMask browser app\n2. Use Chrome or Firefox mobile\n3. Use WalletConnect instead';
-                    alert(message);
-                    
-                    // Try to open MetaMask app with fallback
-                    try {
-                      window.location.href = 'metamask://';
-                    } catch (error) {
-                      console.log('MetaMask deep link failed on Safari');
-                    }
-                  }
-                };
-                
-                // Add Safari-specific click listener
-                setTimeout(() => {
-                  const modalElement = document.querySelector('[data-testid="appkit-modal"]') || 
-                                     document.querySelector('.appkit-modal') ||
-                                     document.querySelector('[role="dialog"]');
-                  if (modalElement) {
-                    modalElement.addEventListener('click', handleSafariMetaMaskClick);
-                  }
-                }, 1000);
-              } else {
-                // For other mobile browsers, use standard deep linking
-                const handleMetaMaskClick = (event: any) => {
-                  const target = event.target;
-                  if (target && target.textContent && target.textContent.toLowerCase().includes('metamask')) {
-                    console.log('MetaMask clicked on mobile, attempting deep link');
-                    
-                    // Try to open MetaMask app
-                    const metamaskUrl = 'metamask://';
-                    window.location.href = metamaskUrl;
-                    
-                    // Fallback after a delay
-                    setTimeout(() => {
-                      console.log('MetaMask deep link attempted, continuing with modal');
-                    }, 1000);
-                  }
-                };
-                
-                // Add click listener to modal
-                setTimeout(() => {
-                  const modalElement = document.querySelector('[data-testid="appkit-modal"]') || 
-                                     document.querySelector('.appkit-modal') ||
-                                     document.querySelector('[role="dialog"]');
-                  if (modalElement) {
-                    modalElement.addEventListener('click', handleMetaMaskClick);
-                  }
-                }, 1000);
-              }
-            }
             
             // Call original open method
             return originalOpen.apply(this, args);
