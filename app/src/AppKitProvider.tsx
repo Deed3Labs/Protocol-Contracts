@@ -149,32 +149,70 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
             if (isMobile) {
               console.log('Mobile device detected, adding MetaMask mobile handling');
               
-              // Add event listener for MetaMask mobile deep linking
-              const handleMetaMaskClick = (event: any) => {
-                const target = event.target;
-                if (target && target.textContent && target.textContent.toLowerCase().includes('metamask')) {
-                  console.log('MetaMask clicked on mobile, attempting deep link');
-                  
-                  // Try to open MetaMask app
-                  const metamaskUrl = 'metamask://';
-                  window.location.href = metamaskUrl;
-                  
-                  // Fallback after a delay
-                  setTimeout(() => {
-                    console.log('MetaMask deep link attempted, continuing with modal');
-                  }, 1000);
-                }
-              };
+              // Check if it's Safari
+              const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+              console.log('Is Safari:', isSafari);
               
-              // Add click listener to modal
-              setTimeout(() => {
-                const modalElement = document.querySelector('[data-testid="appkit-modal"]') || 
-                                   document.querySelector('.appkit-modal') ||
-                                   document.querySelector('[role="dialog"]');
-                if (modalElement) {
-                  modalElement.addEventListener('click', handleMetaMaskClick);
-                }
-              }, 1000);
+              if (isSafari) {
+                console.log('Safari detected - using alternative connection methods');
+                
+                // For Safari, we need to use different connection methods
+                // Safari doesn't support the same wallet connection protocols
+                const handleSafariMetaMaskClick = (event: any) => {
+                  const target = event.target;
+                  if (target && target.textContent && target.textContent.toLowerCase().includes('metamask')) {
+                    console.log('MetaMask clicked on Safari mobile');
+                    
+                    // Show user-friendly message for Safari
+                    const message = 'Safari on mobile has limited wallet support. Please try:\n\n1. Use the MetaMask browser app\n2. Use Chrome or Firefox mobile\n3. Use WalletConnect instead';
+                    alert(message);
+                    
+                    // Try to open MetaMask app with fallback
+                    try {
+                      window.location.href = 'metamask://';
+                    } catch (error) {
+                      console.log('MetaMask deep link failed on Safari');
+                    }
+                  }
+                };
+                
+                // Add Safari-specific click listener
+                setTimeout(() => {
+                  const modalElement = document.querySelector('[data-testid="appkit-modal"]') || 
+                                     document.querySelector('.appkit-modal') ||
+                                     document.querySelector('[role="dialog"]');
+                  if (modalElement) {
+                    modalElement.addEventListener('click', handleSafariMetaMaskClick);
+                  }
+                }, 1000);
+              } else {
+                // For other mobile browsers, use standard deep linking
+                const handleMetaMaskClick = (event: any) => {
+                  const target = event.target;
+                  if (target && target.textContent && target.textContent.toLowerCase().includes('metamask')) {
+                    console.log('MetaMask clicked on mobile, attempting deep link');
+                    
+                    // Try to open MetaMask app
+                    const metamaskUrl = 'metamask://';
+                    window.location.href = metamaskUrl;
+                    
+                    // Fallback after a delay
+                    setTimeout(() => {
+                      console.log('MetaMask deep link attempted, continuing with modal');
+                    }, 1000);
+                  }
+                };
+                
+                // Add click listener to modal
+                setTimeout(() => {
+                  const modalElement = document.querySelector('[data-testid="appkit-modal"]') || 
+                                     document.querySelector('.appkit-modal') ||
+                                     document.querySelector('[role="dialog"]');
+                  if (modalElement) {
+                    modalElement.addEventListener('click', handleMetaMaskClick);
+                  }
+                }, 1000);
+              }
             }
             
             // Call original open method

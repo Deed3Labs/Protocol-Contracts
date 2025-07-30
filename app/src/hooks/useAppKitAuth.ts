@@ -33,12 +33,14 @@ export function useAppKitAuth() {
 
   // Mobile detection and debugging
   const isMobile = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const isSafari = typeof window !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   
   React.useEffect(() => {
     if (isMobile) {
       console.log('Mobile device detected in useAppKitAuth');
       console.log('User agent:', navigator.userAgent);
       console.log('Window location:', window.location.href);
+      console.log('Is Safari:', isSafari);
       
       // Check if MetaMask is available on mobile
       if (typeof window.ethereum !== 'undefined') {
@@ -46,8 +48,13 @@ export function useAppKitAuth() {
       } else {
         console.log('MetaMask not detected on mobile');
       }
+      
+      // Safari-specific warnings
+      if (isSafari) {
+        console.warn('⚠️ Safari on mobile has limited wallet support. Consider using MetaMask browser app or Chrome/Firefox mobile.');
+      }
     }
-  }, [isMobile]);
+  }, [isMobile, isSafari]);
 
   // Get the AppKit modal instance
   const getAppKitModal = useCallback(() => {
