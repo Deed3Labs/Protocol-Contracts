@@ -7,6 +7,7 @@ import { useAppKitAccount } from '@reown/appkit/react';
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { Link } from "react-router-dom";
 import DeedNFTViewer from "./DeedNFTViewer";
+import TransferModal from "./TransferModal";
 import type { DeedNFT } from "@/hooks/useDeedNFTData";
 import { useState } from "react";
 
@@ -32,6 +33,7 @@ const Dashboard = () => {
   } = useDeedNFTData();
 
   const [selectedDeedNFT, setSelectedDeedNFT] = useState<DeedNFT | null>(null);
+  const [transferDeedNFT, setTransferDeedNFT] = useState<DeedNFT | null>(null);
 
   const handleViewDeedNFT = (deedNFT: DeedNFT) => {
     setSelectedDeedNFT(deedNFT);
@@ -39,6 +41,19 @@ const Dashboard = () => {
 
   const handleCloseDeedNFTViewer = () => {
     setSelectedDeedNFT(null);
+  };
+
+  const handleTransferDeedNFT = (deedNFT: DeedNFT) => {
+    setTransferDeedNFT(deedNFT);
+  };
+
+  const handleCloseTransferModal = () => {
+    setTransferDeedNFT(null);
+  };
+
+  const handleTransferSuccess = () => {
+    // Refresh the deed NFTs after successful transfer
+    fetchDeedNFTs();
   };
 
   return (
@@ -243,7 +258,7 @@ const Dashboard = () => {
                       <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11" onClick={() => handleViewDeedNFT(deedNFT)}>
                         View
                       </Button>
-                      <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11">
+                      <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11" onClick={() => handleTransferDeedNFT(deedNFT)}>
                         Transfer
                       </Button>
                     </div>
@@ -314,6 +329,17 @@ const Dashboard = () => {
           onClose={handleCloseDeedNFTViewer}
           getAssetTypeLabel={getAssetTypeLabel}
           getValidationStatus={getValidationStatus}
+        />
+      )}
+
+      {/* Transfer Modal */}
+      {transferDeedNFT && (
+        <TransferModal
+          deedNFT={transferDeedNFT}
+          isOpen={!!transferDeedNFT}
+          onClose={handleCloseTransferModal}
+          getAssetTypeLabel={getAssetTypeLabel}
+          onTransferSuccess={handleTransferSuccess}
         />
       )}
     </main>
