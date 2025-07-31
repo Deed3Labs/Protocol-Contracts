@@ -140,6 +140,12 @@ interface TraitNameFormData {
   traitName: string;
 }
 
+interface DefinitionUpdateFormData {
+  tokenId: string;
+  definition: string;
+  configuration: string;
+}
+
 const Validation: React.FC<ValidationPageProps> = () => {
   const { 
     address, 
@@ -260,6 +266,12 @@ const Validation: React.FC<ValidationPageProps> = () => {
   const [traitNameForm, setTraitNameForm] = useState<TraitNameFormData>({
     traitKey: "",
     traitName: ""
+  });
+
+  const [definitionUpdateForm, setDefinitionUpdateForm] = useState<DefinitionUpdateFormData>({
+    tokenId: "",
+    definition: "",
+    configuration: ""
   });
 
   // Contract interaction
@@ -1768,6 +1780,75 @@ const Validation: React.FC<ValidationPageProps> = () => {
     }
   };
 
+  const handleUpdateDefinition = async () => {
+    if (!chainId || !contract) {
+      setValidationError("Contract not initialized");
+      return;
+    }
+
+    setIsLoading(true);
+    setValidationError(null);
+
+    try {
+      const tokenId = parseInt(definitionUpdateForm.tokenId);
+      if (isNaN(tokenId)) {
+        throw new Error("Invalid token ID");
+      }
+
+      if (!definitionUpdateForm.definition.trim()) {
+        throw new Error("Definition cannot be empty");
+      }
+
+      console.log(`Updating definition for token ${tokenId}:`, {
+        definition: definitionUpdateForm.definition,
+        configuration: definitionUpdateForm.configuration
+      });
+
+      // Get the contract address and ABI for the current chain
+      const contractAddress = getContractAddressForNetwork(chainId);
+      if (!contractAddress) {
+        throw new Error("No contract address found for current network");
+      }
+      const deedNFTAbi = await getDeedNFTAbi(chainId);
+
+      // Use the updateMetadata function from DeedNFT contract
+      // This function requires: tokenId, uri, operatingAgreement, definition, configuration
+      // We'll use empty strings for uri and operatingAgreement since we're only updating definition
+      const uri = ""; // Empty URI since we're not updating it
+      const operatingAgreement = ""; // Empty since we're not updating it
+
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit transaction for updateMetadata");
+        const result = await executeAppKitTransaction(
+          contractAddress,
+          deedNFTAbi,
+          'updateMetadata',
+          [tokenId, uri, operatingAgreement, definitionUpdateForm.definition, definitionUpdateForm.configuration]
+        );
+        console.log("Definition updated successfully:", result);
+      } else {
+        console.log("Using MetaMask transaction for updateMetadata");
+        const tx = await contract.updateMetadata(
+          tokenId, 
+          uri, 
+          operatingAgreement, 
+          definitionUpdateForm.definition, 
+          definitionUpdateForm.configuration
+        );
+        const receipt = await tx.wait();
+        console.log("Definition updated successfully:", receipt);
+      }
+
+      setSuccess("Definition updated successfully!");
+      setDefinitionUpdateForm({ tokenId: "", definition: "", configuration: "" });
+    } catch (error) {
+      console.error("Error updating definition:", error);
+      setValidationError(error instanceof Error ? error.message : "Failed to update definition");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleViewDetails = (deedNFT: any) => {
     setSelectedDeedNFT(deedNFT);
     setIsViewerOpen(true);
@@ -2779,6 +2860,63 @@ const Validation: React.FC<ValidationPageProps> = () => {
               </CardContent>
             </Card>
           </div>
+
+          {/* Definition Update */}
+          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-gray-900 dark:text-white">Update Definition</CardTitle>
+              <CardDescription className="text-gray-600 dark:text-gray-300">
+                Update the definition and configuration of a T-Deed
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-3">
+                <Label htmlFor="definitionTokenId" className="text-sm font-medium">Token ID</Label>
+                <Input
+                  id="definitionTokenId"
+                  placeholder="Enter token ID"
+                  value={definitionUpdateForm.tokenId}
+                  onChange={(e) => setDefinitionUpdateForm(prev => ({ ...prev, tokenId: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 h-11"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="definition" className="text-sm font-medium">Definition *</Label>
+                <Textarea
+                  id="definition"
+                  placeholder="Describe the asset in detail..."
+                  value={definitionUpdateForm.definition}
+                  onChange={(e) => setDefinitionUpdateForm(prev => ({ ...prev, definition: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 min-h-[120px]"
+                  rows={4}
+                  required
+                />
+                <p className="text-sm text-gray-500 dark:text-gray-400">Required field for updating definition</p>
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="configuration" className="text-sm font-medium">Configuration (Optional)</Label>
+                <Textarea
+                  id="configuration"
+                  placeholder="Additional configuration details..."
+                  value={definitionUpdateForm.configuration}
+                  onChange={(e) => setDefinitionUpdateForm(prev => ({ ...prev, configuration: e.target.value }))}
+                  className="border-black/10 dark:border-white/10 min-h-[100px]"
+                  rows={3}
+                />
+              </div>
+
+              <Button 
+                onClick={handleUpdateDefinition}
+                disabled={isLoading || !definitionUpdateForm.tokenId || !definitionUpdateForm.definition.trim()}
+                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+              >
+                <Save className="w-4 h-4 mr-1" />
+                Update Definition
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="validation" className="space-y-6 mt-6">
