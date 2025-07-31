@@ -14,6 +14,7 @@ import type { Eip1193Provider } from 'ethers';
 import { NetworkWarning } from "@/components/NetworkWarning";
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
+import { EIP5792Utils } from "@/utils/EIP5792Utils";
 import { 
   Shield, 
   Users, 
@@ -201,7 +202,7 @@ const AdminPanel = () => {
     }
   }, [contracts.deedNFT, address]);
 
-  // Helper function to handle AppKit read operations
+  // Helper function to handle AppKit read operations with EIP-5792 support
   const executeAppKitCall = async (
     contractAddress: string,
     abi: any,
@@ -219,16 +220,31 @@ const AdminPanel = () => {
 
     const data = new ethers.Interface(abi).encodeFunctionData(functionName, params);
     
-    const result = await (walletProvider as any).request({
-      method: 'eth_call',
-      params: [{
-        to: contractAddress,
+    try {
+      // Try EIP-5792 first if supported
+      const result = await EIP5792Utils.executeCall(
+        walletProvider as any,
+        contractAddress,
         data
-      }, 'latest']
-    });
+      );
+      
+      console.log("AppKit call result (EIP-5792):", result);
+      return result;
+    } catch (error) {
+      console.warn('EIP-5792 call failed, falling back to eth_call:', error);
+      
+      // Fallback to standard eth_call
+      const result = await (walletProvider as any).request({
+        method: 'eth_call',
+        params: [{
+          to: contractAddress,
+          data
+        }, 'latest']
+      });
 
-    console.log("AppKit call result:", result);
-    return result;
+      console.log("AppKit call result (fallback):", result);
+      return result;
+    }
   };
 
   // Helper function to handle AppKit transactions
