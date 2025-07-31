@@ -26,6 +26,7 @@ import { ethers } from "ethers";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
 import DeedNFTViewer from "./DeedNFTViewer";
+import { EIP5792Utils } from "@/utils/EIP5792Utils";
 
 // Dynamic ABI loading functions
 const getDeedNFTAbi = async (chainId: number) => {
@@ -387,7 +388,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
     }
   }, [chainId, isWalletConnected]);
 
-  // Helper function to handle AppKit read operations
+  // Helper function to handle AppKit read operations with EIP-5792 support
   const executeAppKitCall = async (
     contractAddress: string,
     abi: any,
@@ -405,16 +406,31 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
     const data = new ethers.Interface(abi).encodeFunctionData(functionName, params);
     
-    const result = await (walletProvider as any).request({
-      method: 'eth_call',
-      params: [{
-        to: contractAddress,
+    try {
+      // Try EIP-5792 first if supported
+      const result = await EIP5792Utils.executeCall(
+        walletProvider as any,
+        contractAddress,
         data
-      }, 'latest']
-    });
+      );
+      
+      console.log("AppKit call result (EIP-5792):", result);
+      return result;
+    } catch (error) {
+      console.warn('EIP-5792 call failed, falling back to eth_call:', error);
+      
+      // Fallback to standard eth_call
+      const result = await (walletProvider as any).request({
+        method: 'eth_call',
+        params: [{
+          to: contractAddress,
+          data
+        }, 'latest']
+      });
 
-    console.log("AppKit call result:", result);
-    return result;
+      console.log("AppKit call result (fallback):", result);
+      return result;
+    }
   };
 
   // Helper function to handle AppKit transactions
