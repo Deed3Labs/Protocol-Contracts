@@ -1824,7 +1824,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
           contractAddress,
           deedNFTAbi,
           'setTrait',
-          [tokenId, definitionTraitKey, definitionValue, 0] // 0 = bytes type
+          [tokenId, definitionTraitKey, definitionValue, 1] // 1 = string type
         );
         console.log("Definition updated successfully:", result);
       } else {
@@ -1833,7 +1833,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
           tokenId, 
           definitionTraitKey, 
           definitionValue, 
-          0 // 0 = bytes type
+          1 // 1 = string type
         );
         const receipt = await tx.wait();
         console.log("Definition updated successfully:", receipt);
@@ -1850,7 +1850,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
             contractAddress,
             deedNFTAbi,
             'setTrait',
-            [tokenId, configTraitKey, configValue, 0] // 0 = bytes type
+            [tokenId, configTraitKey, configValue, 1] // 1 = string type
           );
         } else {
           console.log("Using MetaMask transaction for setTrait (configuration)");
@@ -1858,7 +1858,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
             tokenId, 
             configTraitKey, 
             configValue, 
-            0 // 0 = bytes type
+            1 // 1 = string type
           );
           await tx.wait();
         }
