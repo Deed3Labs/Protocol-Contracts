@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,7 +44,8 @@ const SmartWalletTest = () => {
     try {
       // Example: Call a simple view function (like balanceOf)
       const testAddress = '0x0000000000000000000000000000000000000000';
-      const data = ethers.Interface.encodeFunctionData('balanceOf', [address]);
+      const iface = new ethers.Interface(['function balanceOf(address owner) view returns (uint256)']);
+      const data = iface.encodeFunctionData('balanceOf', [address]);
 
       const result = await EIP5792Utils.executeCall(
         walletProvider as any,
@@ -80,14 +81,16 @@ const SmartWalletTest = () => {
     try {
       // Example: Multiple calls in a batch
       const testAddress = '0x0000000000000000000000000000000000000000';
+      const balanceIface = new ethers.Interface(['function balanceOf(address owner) view returns (uint256)']);
+      const nameIface = new ethers.Interface(['function name() view returns (string)']);
       const calls = [
         {
           to: testAddress,
-          data: ethers.Interface.encodeFunctionData('balanceOf', [address])
+          data: balanceIface.encodeFunctionData('balanceOf', [address])
         },
         {
           to: testAddress,
-          data: ethers.Interface.encodeFunctionData('name', [])
+          data: nameIface.encodeFunctionData('name', [])
         }
       ];
 
