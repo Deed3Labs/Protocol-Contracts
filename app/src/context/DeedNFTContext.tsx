@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";
 import { getContractAddressForNetwork, getRpcUrlForNetwork, getAbiPathForNetwork } from '@/config/networks';
+import { EIP5792Utils } from '@/utils/EIP5792Utils';
 
 export interface DeedNFT {
   tokenId: string;
@@ -83,7 +84,7 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return getContractAddressForNetwork(chainId);
   }, [chainId]);
 
-  // Helper function to handle AppKit read operations
+  // Helper function to handle AppKit read operations with EIP-5792 support
   const executeAppKitCall = useCallback(async (
     contractAddress: string,
     abi: any,
@@ -101,16 +102,31 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const data = new ethers.Interface(abi).encodeFunctionData(functionName, params);
     
-    const result = await (walletProvider as any).request({
-      method: 'eth_call',
-      params: [{
-        to: contractAddress,
+    try {
+      // Try EIP-5792 first if supported
+      const result = await EIP5792Utils.executeCall(
+        walletProvider as any,
+        contractAddress,
         data
-      }, 'latest']
-    });
+      );
+      
+      console.log("AppKit call result (EIP-5792):", result);
+      return result;
+    } catch (error) {
+      console.warn('EIP-5792 call failed, falling back to eth_call:', error);
+      
+      // Fallback to standard eth_call
+      const result = await (walletProvider as any).request({
+        method: 'eth_call',
+        params: [{
+          to: contractAddress,
+          data
+        }, 'latest']
+      });
 
-    console.log("AppKit call result:", result);
-    return result;
+      console.log("AppKit call result (fallback):", result);
+      return result;
+    }
   }, [walletProvider, embeddedWalletInfo]);
 
   const getProvider = useCallback(() => {
@@ -139,16 +155,13 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [walletProvider, embeddedWalletInfo, chainId]);
 
   // Function to get DeedNFT data using available contract functions
-  const getDeedNFTData = useCallback(async (contract: ethers.Contract, tokenId: string): Promise<DeedNFT | null> => {
+  const getDeedNFTData = useCallback(async (contractAddress: string, abi: any, tokenId: string): Promise<DeedNFT | null> => {
     try {
       console.log(`🔍 Fetching data for token ${tokenId}...`);
       
-      const contractAddress = getContractAddress();
       if (!contractAddress) {
         throw new Error("No contract address available");
       }
-      
-      const abi = await getDeedNFTAbi(chainId!);
       
       // Get owner
       let owner: string;
@@ -176,6 +189,8 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
         uri = new ethers.Interface(abi).decodeFunctionResult('tokenURI', uriResult)[0];
       } else {
         // Use traditional ethers.js for MetaMask
+        const provider = getProvider();
+        const contract = new ethers.Contract(contractAddress, abi, provider);
         owner = await contract.ownerOf(tokenId);
         uri = await contract.tokenURI(tokenId);
       }
@@ -201,6 +216,8 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
           validator = decoded[1];
         } else {
           // Use traditional ethers.js for MetaMask
+          const provider = getProvider();
+          const contract = new ethers.Contract(contractAddress, abi, provider);
           const [validationIsValidated, validationValidator] = await contract.getValidationStatus(tokenId);
           isValidated = validationIsValidated;
           validator = validationValidator;
@@ -233,6 +250,8 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
           assetTypeBytes = new ethers.Interface(abi).decodeFunctionResult('getTraitValue', traitResult)[0];
         } else {
           // Use traditional ethers.js for MetaMask
+          const provider = getProvider();
+          const contract = new ethers.Contract(contractAddress, abi, provider);
           assetTypeBytes = await contract.getTraitValue(tokenId, assetTypeKey);
         }
         
@@ -243,25 +262,7 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
           assetType = Number(ethers.AbiCoder.defaultAbiCoder().decode(["uint8"], assetTypeBytes)[0]);
           console.log(`🎯 Found asset type ${assetType} for token ${tokenId} from traits`);
         } else {
-          console.log(`⚠️ No asset type trait found for token ${tokenId}, trying event fallback...`);
-          
-          // Try to get from DeedNFTMinted event as fallback
-          try {
-            const filter = contract.filters.DeedNFTMinted(tokenId);
-            const events = await contract.queryFilter(filter);
-            
-            if (events.length > 0) {
-              const event = events[0];
-              if ('args' in event && event.args) {
-                assetType = Number(event.args.assetType || 0);
-                console.log(`🎯 Found asset type ${assetType} for token ${tokenId} from event`);
-              }
-            } else {
-              console.log(`⚠️ No DeedNFTMinted event found for token ${tokenId}, using default asset type 0`);
-            }
-          } catch (eventErr) {
-            console.log(`❌ Could not get asset type from event for token ${tokenId}:`, eventErr);
-          }
+          console.log(`⚠️ No asset type trait found for token ${tokenId}, using default asset type 0`);
         }
       } catch (err) {
         console.log(`❌ Could not get asset type for token ${tokenId}:`, err);
@@ -282,6 +283,8 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
           definitionBytes = new ethers.Interface(abi).decodeFunctionResult('getTraitValue', definitionResult)[0];
         } else {
           // Use traditional ethers.js for MetaMask
+          const provider = getProvider();
+          const contract = new ethers.Contract(contractAddress, abi, provider);
           definitionBytes = await contract.getTraitValue(tokenId, ethers.keccak256(ethers.toUtf8Bytes("definition")));
         }
         
@@ -296,10 +299,27 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // Get configuration from contract traits
       let configuration = "";
       try {
-        const configurationBytes = await contract.getTraitValue(tokenId, ethers.keccak256(ethers.toUtf8Bytes("configuration")));
-        if (configurationBytes && configurationBytes.length > 0) {
-          configuration = ethers.AbiCoder.defaultAbiCoder().decode(["string"], configurationBytes)[0];
-          console.log(`⚙️ Found configuration for token ${tokenId}: ${configuration}`);
+        if (walletProvider && embeddedWalletInfo) {
+          const configurationResult = await executeAppKitCall(
+            contractAddress,
+            abi,
+            'getTraitValue',
+            [tokenId, ethers.keccak256(ethers.toUtf8Bytes("configuration"))]
+          );
+          const configurationBytes = new ethers.Interface(abi).decodeFunctionResult('getTraitValue', configurationResult)[0];
+          if (configurationBytes && configurationBytes.length > 0) {
+            configuration = ethers.AbiCoder.defaultAbiCoder().decode(["string"], configurationBytes)[0];
+            console.log(`⚙️ Found configuration for token ${tokenId}: ${configuration}`);
+          }
+        } else {
+          // Use traditional ethers.js for MetaMask
+          const provider = getProvider();
+          const contract = new ethers.Contract(contractAddress, abi, provider);
+          const configurationBytes = await contract.getTraitValue(tokenId, ethers.keccak256(ethers.toUtf8Bytes("configuration")));
+          if (configurationBytes && configurationBytes.length > 0) {
+            configuration = ethers.AbiCoder.defaultAbiCoder().decode(["string"], configurationBytes)[0];
+            console.log(`⚙️ Found configuration for token ${tokenId}: ${configuration}`);
+          }
         }
       } catch (err) {
         console.log(`❌ Could not get configuration for token ${tokenId}:`, err);
@@ -345,12 +365,26 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
       
       console.log(`🚀 Fetching DeedNFTs from contract ${contractAddress} on chain ${chainId}...`);
       
-      const provider = getProvider();
       const abi = await getDeedNFTAbi(chainId!);
-      const contract = new ethers.Contract(contractAddress, abi, provider);
       
-      // Get total supply
-      const totalSupply = await contract.totalSupply();
+      // Get total supply using EIP-5792 or fallback
+      let totalSupply: bigint;
+      if (walletProvider && embeddedWalletInfo) {
+        console.log("Using AppKit calls for totalSupply");
+        const totalSupplyResult = await executeAppKitCall(
+          contractAddress,
+          abi,
+          'totalSupply',
+          []
+        );
+        totalSupply = new ethers.Interface(abi).decodeFunctionResult('totalSupply', totalSupplyResult)[0];
+      } else {
+        // Use traditional ethers.js for MetaMask
+        const provider = getProvider();
+        const contract = new ethers.Contract(contractAddress, abi, provider);
+        totalSupply = await contract.totalSupply();
+      }
+      
       console.log(`📊 Total supply: ${totalSupply}`);
       
       const deedNFTs: DeedNFT[] = [];
@@ -358,10 +392,27 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // Fetch each token
       for (let i = 0; i < totalSupply; i++) {
         try {
-          const tokenId = await contract.tokenByIndex(i);
+          let tokenId: bigint;
+          
+          if (walletProvider && embeddedWalletInfo) {
+            console.log(`Using AppKit calls for tokenByIndex(${i})`);
+            const tokenIdResult = await executeAppKitCall(
+              contractAddress,
+              abi,
+              'tokenByIndex',
+              [i]
+            );
+            tokenId = new ethers.Interface(abi).decodeFunctionResult('tokenByIndex', tokenIdResult)[0];
+          } else {
+            // Use traditional ethers.js for MetaMask
+            const provider = getProvider();
+            const contract = new ethers.Contract(contractAddress, abi, provider);
+            tokenId = await contract.tokenByIndex(i);
+          }
+          
           console.log(`🔍 Processing token ${tokenId} (index ${i})...`);
           
-          const deedNFTData = await getDeedNFTData(contract, tokenId.toString());
+          const deedNFTData = await getDeedNFTData(contractAddress, abi, tokenId.toString());
           if (deedNFTData) {
             deedNFTs.push(deedNFTData);
           }
@@ -397,7 +448,7 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } finally {
       setLoading(false);
     }
-  }, [isCorrectNetwork, getContractAddress, chainId, getProvider, getDeedNFTData, address]);
+  }, [isCorrectNetwork, getContractAddress, chainId, address, walletProvider, embeddedWalletInfo, executeAppKitCall]);
 
   const getAssetTypeLabel = useCallback((assetType: number): string => {
     const types = ["Land", "Vehicle", "Estate", "Commercial Equipment"];
@@ -454,7 +505,7 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
       setError(null);
     }
-  }, [isCorrectNetwork, isWalletConnected, address, chainId, fetchDeedNFTs, status, isEmbeddedWalletConnected, isRegularWalletConnected]);
+  }, [isCorrectNetwork, isWalletConnected, address, chainId, status]);
 
   const contextValue: DeedNFTContextType = {
     deedNFTs,

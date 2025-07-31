@@ -430,7 +430,7 @@ const MintForm = () => {
         
         console.log("Prepared transaction:", preparedTransaction);
 
-        // Use AppKit's transaction system
+        // Use AppKit's transaction system - avoid using ethers Contract directly
         const tx = await (walletProvider as any).request({
           method: 'eth_sendTransaction',
           params: [preparedTransaction]
@@ -550,6 +550,8 @@ const MintForm = () => {
         setError("Smart account deployment failed. Please try again or contact support.");
       } else if (errorMessage.includes("insufficient funds") || errorMessage.includes("gas")) {
         setError("Insufficient funds for transaction. Please ensure you have enough ETH for gas fees.");
+      } else if (errorMessage.includes("contract runner does not support calling")) {
+        setError("Wallet provider compatibility issue. Please try using a different wallet or contact support.");
       } else {
         setError(errorMessage);
       }
