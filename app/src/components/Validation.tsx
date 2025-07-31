@@ -1811,32 +1811,58 @@ const Validation: React.FC<ValidationPageProps> = () => {
       }
       const deedNFTAbi = await getDeedNFTAbi(chainId);
 
-      // Use the updateMetadata function from DeedNFT contract
-      // This function requires: tokenId, uri, operatingAgreement, definition, configuration
-      // We'll use empty strings for uri and operatingAgreement since we're only updating definition
-      const uri = ""; // Empty URI since we're not updating it
-      const operatingAgreement = ""; // Empty since we're not updating it
-
+      // Use the setTrait function to update individual traits
+      // This allows updating just the definition without requiring all metadata fields
+      
+      // Update definition trait
+      const definitionTraitKey = ethers.keccak256(ethers.toUtf8Bytes("definition"));
+      const definitionValue = ethers.toUtf8Bytes(definitionUpdateForm.definition);
+      
       if (walletProvider && embeddedWalletInfo) {
-        console.log("Using AppKit transaction for updateMetadata");
+        console.log("Using AppKit transaction for setTrait (definition)");
         const result = await executeAppKitTransaction(
           contractAddress,
           deedNFTAbi,
-          'updateMetadata',
-          [tokenId, uri, operatingAgreement, definitionUpdateForm.definition, definitionUpdateForm.configuration]
+          'setTrait',
+          [tokenId, definitionTraitKey, definitionValue, 0] // 0 = bytes type
         );
         console.log("Definition updated successfully:", result);
       } else {
-        console.log("Using MetaMask transaction for updateMetadata");
-        const tx = await contract.updateMetadata(
+        console.log("Using MetaMask transaction for setTrait (definition)");
+        const tx = await contract.setTrait(
           tokenId, 
-          uri, 
-          operatingAgreement, 
-          definitionUpdateForm.definition, 
-          definitionUpdateForm.configuration
+          definitionTraitKey, 
+          definitionValue, 
+          0 // 0 = bytes type
         );
         const receipt = await tx.wait();
         console.log("Definition updated successfully:", receipt);
+      }
+
+      // Update configuration trait if provided
+      if (definitionUpdateForm.configuration.trim()) {
+        const configTraitKey = ethers.keccak256(ethers.toUtf8Bytes("configuration"));
+        const configValue = ethers.toUtf8Bytes(definitionUpdateForm.configuration);
+        
+        if (walletProvider && embeddedWalletInfo) {
+          console.log("Using AppKit transaction for setTrait (configuration)");
+          await executeAppKitTransaction(
+            contractAddress,
+            deedNFTAbi,
+            'setTrait',
+            [tokenId, configTraitKey, configValue, 0] // 0 = bytes type
+          );
+        } else {
+          console.log("Using MetaMask transaction for setTrait (configuration)");
+          const tx = await contract.setTrait(
+            tokenId, 
+            configTraitKey, 
+            configValue, 
+            0 // 0 = bytes type
+          );
+          await tx.wait();
+        }
+        console.log("Configuration updated successfully");
       }
 
       setSuccess("Definition updated successfully!");
