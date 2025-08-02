@@ -12,8 +12,11 @@ import {
   ExternalLink, 
   Copy,
   CheckCircle,
-  Mail
+  Mail,
+  MessageSquare
 } from "lucide-react";
+import XMTPMessaging from "./XMTPMessaging";
+import { TDeedIdentityManager } from "./TDeedIdentityManager";
 
 interface MessageOwnerModalProps {
   isOpen: boolean;
@@ -59,6 +62,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
   assetType,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [showXMTPMessaging, setShowXMTPMessaging] = useState(false);
 
   const handleCopyAddress = () => {
     navigator.clipboard.writeText(ownerAddress);
@@ -170,6 +174,13 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
 
               {/* Right Column - Messaging Options and Template */}
               <div className="space-y-3 md:space-y-3">
+                {/* T-Deed Identity Manager */}
+                <TDeedIdentityManager 
+                  ownerAddress={ownerAddress}
+                  tokenId={tokenId}
+                  assetType={assetType}
+                />
+
                 {/* Messaging Options */}
                 <Card className="border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/50 backdrop-blur-sm">
                   <CardHeader className="pb-3">
@@ -182,6 +193,17 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-3">
+                      <Button
+                        onClick={() => {
+                          setShowXMTPMessaging(true);
+                          onClose(); // Close the MessageOwnerModal
+                        }}
+                        className="w-full bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700 text-white h-11"
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        XMTP Direct Message
+                      </Button>
+                      
                       <Button
                         onClick={handleOpenBlockscanMessaging}
                         className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-black h-11"
@@ -210,7 +232,8 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
                     
                     <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                       <p className="text-blue-800 dark:text-blue-200 text-sm">
-                        <strong>Note:</strong> Blockscan Chat allows you to send encrypted messages to the T-Deed owner. 
+                        <strong>Note:</strong> XMTP provides end-to-end encrypted messaging directly in the app. 
+                        Blockscan Chat allows you to send encrypted messages to the T-Deed owner. 
                         You'll need to connect your wallet and sign in to start messaging. Email option opens your default email client.
                       </p>
                     </div>
@@ -256,6 +279,15 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
           </div>
         </div>
       </MobileDialogContent>
+      
+      {/* XMTP Messaging Modal */}
+      <XMTPMessaging
+        isOpen={showXMTPMessaging}
+        onClose={() => setShowXMTPMessaging(false)}
+        ownerAddress={ownerAddress}
+        tokenId={tokenId}
+        assetType={assetType}
+      />
     </Dialog>
   );
 };

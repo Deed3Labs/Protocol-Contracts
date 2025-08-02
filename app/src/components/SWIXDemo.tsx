@@ -9,6 +9,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SWIXAuth } from './SWIXAuth';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
+import XMTPMessaging from './XMTPMessaging';
+import { useXMTP } from '@/context/XMTPContext';
+import { useXMTPConnection } from '@/hooks/useXMTPConnection';
 import { 
   Shield, 
   Wallet, 
@@ -24,7 +27,9 @@ import {
   Key,
   Lock,
   Eye,
-  EyeOff
+  EyeOff,
+  MessageCircle,
+  Mail
 } from 'lucide-react';
 
 interface UserProfile {
@@ -47,6 +52,8 @@ interface UserProfile {
 
 export function SWIXDemo() {
   const { isConnected, isAuthenticated, user, setSessionMetadata, siwx } = useAppKitAuth();
+  const { isConnected: isXMTPConnected, conversations } = useXMTP();
+  const { handleConnect: handleXMTPConnect } = useXMTPConnection();
   
   const [profile, setProfile] = useState<UserProfile>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -55,6 +62,7 @@ export function SWIXDemo() {
   const [showPassword, setShowPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showInbox, setShowInbox] = useState(false);
 
   // Load user profile from session metadata
   useEffect(() => {
@@ -66,8 +74,8 @@ export function SWIXDemo() {
           console.log('Session account:', sessionAccount);
           console.log('User object:', user);
           
-          if (sessionAccount?.appKitAccount?.metadata) {
-            const metadata = sessionAccount.appKitAccount.metadata as any;
+          if (sessionAccount) {
+            const metadata = (sessionAccount as any).metadata;
             console.log('Session metadata:', metadata);
             
             // Detect social accounts from SWIX session
@@ -142,8 +150,8 @@ export function SWIXDemo() {
       const handleSessionChange = async () => {
         try {
           const sessionAccount = await siwx.getSessionAccount();
-          if (sessionAccount?.appKitAccount?.metadata) {
-            const metadata = sessionAccount.appKitAccount.metadata as any;
+          if (sessionAccount) {
+            const metadata = (sessionAccount as any).metadata;
             
             // Update social accounts if new ones are detected
             if (metadata.social && !profile.socialAccounts?.some(acc => 
@@ -347,11 +355,41 @@ export function SWIXDemo() {
             </Badge>
           </CardContent>
         </Card>
+
+        <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Mail className="h-4 w-4" />
+              Messages
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Badge variant={isXMTPConnected ? "default" : "secondary"}>
+              {isXMTPConnected ? (
+                <CheckCircle className="h-3 w-3 mr-1" />
+              ) : (
+                <AlertCircle className="h-3 w-3 mr-1" />
+              )}
+              {isXMTPConnected ? `${conversations.length} Conversations` : "Not Connected"}
+            </Badge>
+            {isConnected && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowInbox(true)}
+                className="w-full mt-2"
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Open Inbox
+              </Button>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Main Content */}
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 bg-gray-100 dark:bg-gray-800">
+        <TabsList className="grid w-full grid-cols-5 bg-gray-100 dark:bg-gray-800">
           <TabsTrigger value="profile" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
             Profile
           </TabsTrigger>
@@ -363,6 +401,9 @@ export function SWIXDemo() {
           </TabsTrigger>
           <TabsTrigger value="security" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
             Security
+          </TabsTrigger>
+          <TabsTrigger value="messages" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+            Messages
           </TabsTrigger>
         </TabsList>
 
@@ -612,6 +653,90 @@ export function SWIXDemo() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Messages Tab */}
+        <TabsContent value="messages" className="space-y-6 mt-6">
+          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5" />
+                XMTP Messages
+              </CardTitle>
+              <CardDescription>
+                View and manage your XMTP conversations and messages
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6 pb-6">
+              {!isXMTPConnected ? (
+                <div className="text-center space-y-4">
+                  <MessageCircle className="w-12 h-12 text-gray-400 mx-auto" />
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                      Connect to XMTP
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                      Connect your wallet to XMTP to view your messages and conversations
+                    </p>
+                    <Button onClick={handleXMTPConnect}>
+                      <MessageCircle className="w-4 h-4 mr-2" />
+                      Connect XMTP
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                        Your Conversations
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {conversations.length} conversation{conversations.length !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    <Button onClick={() => setShowInbox(true)}>
+                      <Mail className="w-4 h-4 mr-2" />
+                      Open Inbox
+                    </Button>
+                  </div>
+                  
+                  {conversations.length === 0 ? (
+                    <div className="text-center py-8">
+                      <MessageCircle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        No conversations yet. Start messaging T-Deed owners to see them here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {conversations.map((conversation) => (
+                        <div
+                          key={conversation.id}
+                          className="p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                          onClick={() => setShowInbox(true)}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                              <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                Conversation {conversation.id.slice(0, 8)}...
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Click to view messages
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* Save Button */}
@@ -645,6 +770,12 @@ export function SWIXDemo() {
           <AlertDescription>{success}</AlertDescription>
         </Alert>
       )}
+
+      {/* XMTP Inbox Modal */}
+      <XMTPMessaging
+        isOpen={showInbox}
+        onClose={() => setShowInbox(false)}
+      />
     </div>
   );
 } 

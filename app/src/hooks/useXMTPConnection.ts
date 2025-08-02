@@ -1,0 +1,120 @@
+import { useState, useEffect, useRef } from 'react';
+import { useAccount } from 'wagmi';
+import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { useXMTP } from '@/context/XMTPContext';
+
+export const useXMTPConnection = () => {
+  const { connect, isConnected, resetConnection } = useXMTP();
+  const { address, isConnected: isWalletConnected } = useAccount();
+  const { address: appkitAddress, isConnected: isAppKitConnected, embeddedWalletInfo } = useAppKitAccount();
+  const { walletProvider } = useAppKitProvider("eip155");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const connectionAttempted = useRef(false);
+
+  // Determine which wallet is active
+  const activeAddress = appkitAddress || address;
+  const isActiveWalletConnected = isAppKitConnected || isWalletConnected;
+
+  // Remove auto-connection - only connect when user explicitly requests it
+  // useEffect(() => {
+  //   if (isActiveWalletConnected && activeAddress && !isConnected && !isConnecting && !connectionAttempted.current) {
+  //     connectionAttempted.current = true;
+  //     handleConnect().catch(console.error);
+  //   }
+  // }, [isActiveWalletConnected, activeAddress, isConnected, isConnecting]);
+
+  // Track previous address to detect changes
+  const prevAddressRef = useRef<string | undefined>(activeAddress);
+
+  // Reset connection attempt when wallet disconnects or address changes
+  useEffect(() => {
+    const prevAddress = prevAddressRef.current;
+    const currentAddress = activeAddress;
+
+    // If address changed and we were connected, reset the connection
+    if (prevAddress && currentAddress && prevAddress !== currentAddress && isConnected) {
+      console.log('XMTP Connection Hook: Address changed, resetting XMTP connection', {
+        prevAddress,
+        currentAddress
+      });
+      connectionAttempted.current = false;
+      resetConnection().catch(console.error);
+    }
+
+    // If wallet disconnected, reset connection
+    if (!isActiveWalletConnected) {
+      connectionAttempted.current = false;
+      resetConnection().catch(console.error); // Reset XMTP connection state when wallet disconnects
+    }
+
+    // Update the previous address reference
+    prevAddressRef.current = currentAddress;
+  }, [isActiveWalletConnected, activeAddress, isConnected, resetConnection]);
+
+  const handleConnect = async () => {
+    console.log('XMTP Connection Hook: Starting connection...', {
+      activeAddress,
+      isActiveWalletConnected,
+      isConnected,
+      isConnecting,
+      embeddedWalletInfo: !!embeddedWalletInfo
+    });
+    
+    if (!activeAddress || !isActiveWalletConnected || isConnected || isConnecting) {
+      console.log('XMTP Connection Hook: Connection conditions not met, skipping');
+      return;
+    }
+    
+    setIsConnecting(true);
+    try {
+      let signer;
+
+      if (embeddedWalletInfo) {
+        // For AppKit embedded wallets (smart accounts)
+        console.log('XMTP Connection Hook: Using AppKit embedded wallet');
+        
+        if (!walletProvider) {
+          throw new Error('No AppKit wallet provider available');
+        }
+
+        // Use AppKit's wallet provider to create a signer
+        // AppKit provides a compatible signer interface for smart accounts
+        signer = await (walletProvider as any).getSigner();
+        console.log('XMTP Connection Hook: AppKit signer created');
+      } else {
+        // For regular wallets (MetaMask, etc.)
+        console.log('XMTP Connection Hook: Using regular wallet');
+        
+        if (!(window as any).ethereum) {
+          throw new Error('No Ethereum provider available');
+        }
+
+        // Create ethers provider and signer
+        const { BrowserProvider } = await import('ethers');
+        const provider = new BrowserProvider((window as any).ethereum);
+        signer = await provider.getSigner();
+        console.log('XMTP Connection Hook: Regular wallet signer created');
+      }
+      
+      console.log('XMTP Connection Hook: Calling XMTP connect...');
+      await connect(signer);
+      console.log('XMTP Connection Hook: Connection successful');
+    } catch (err) {
+      console.error('XMTP Connection Hook: Failed to connect to XMTP:', err);
+      connectionAttempted.current = false; // Allow retry on error
+      throw err;
+    } finally {
+      setIsConnecting(false);
+      console.log('XMTP Connection Hook: Connection attempt finished');
+    }
+  };
+
+  return {
+    handleConnect,
+    isConnecting,
+    isConnected,
+    isWalletConnected: isActiveWalletConnected,
+    address: activeAddress,
+    isEmbeddedWallet: !!embeddedWalletInfo
+  };
+}; 
