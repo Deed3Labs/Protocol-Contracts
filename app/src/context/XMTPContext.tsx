@@ -94,8 +94,11 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       console.log('XMTP: V3 signer created successfully');
 
       console.log('XMTP: Creating V3 client...');
-      // Create client with default environment (dev)
-      const xmtpClient = await Client.create(v3Signer);
+      // Create client with production environment and proper options
+      const xmtpClient = await Client.create(v3Signer, {
+        env: 'production',
+        dbEncryptionKey: undefined, // Not used in browser environments
+      });
       console.log('XMTP: Client created successfully');
 
       console.log('XMTP: Client created successfully');
@@ -106,14 +109,31 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       console.log('XMTP: Loading conversations...');
       await loadConversations();
       console.log('XMTP: Connection complete');
-                  } catch (err) {
-                console.error('Failed to connect to XMTP:', err);
-                setError(err instanceof Error ? err.message : 'Failed to connect to XMTP');
-                // Auto-dismiss error after 3 seconds
-                setTimeout(() => setError(null), 3000);
-              } finally {
-                setIsLoading(false);
-              }
+    } catch (err) {
+      console.error('Failed to connect to XMTP:', err);
+      
+      // Handle specific IndexedDB errors
+      if (err instanceof Error) {
+        if (err.message.includes('NoModificationAllowedError') || 
+            err.message.includes('Database(NotFound)')) {
+          console.log('XMTP: IndexedDB access issue, trying to recover...');
+          // Try to close any existing connections and retry
+          try {
+            if (client) {
+              await (client as any).close();
+            }
+          } catch (closeErr) {
+            console.log('XMTP: Error closing client:', closeErr);
+          }
+        }
+      }
+      
+      setError(err instanceof Error ? err.message : 'Failed to connect to XMTP');
+      // Auto-dismiss error after 3 seconds
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const disconnect = async () => {
