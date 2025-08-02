@@ -13,7 +13,10 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ["@xmtp/wasm-bindings", "@xmtp/browser-sdk"],
-    include: ["@xmtp/proto"],
+    include: ["@xmtp/proto", "buffer"],
+  },
+  define: {
+    global: 'globalThis',
   },
   build: {
     rollupOptions: {
