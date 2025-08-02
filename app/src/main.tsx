@@ -4,6 +4,10 @@ import './index.css'
 import App from './App.tsx'
 import { AppKitProvider } from './AppKitProvider'
 
+// Buffer polyfill for XMTP
+import { Buffer } from 'buffer'
+globalThis.Buffer = Buffer
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AppKitProvider>
