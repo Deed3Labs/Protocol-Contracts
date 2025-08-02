@@ -1946,12 +1946,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <p className="text-blue-800 dark:text-blue-200 text-sm">
             <strong>Debug Info:</strong> Chain ID: {chainId}, Contract: {contractAddress}, 
-            Total T-Deeds: {deedNFTs.length}, Filtered: {filteredDeedNFTs.length}
+            Address: {address ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}` : 'None'}
             {embeddedWalletInfo && (
               <span className="ml-2">
                 | Embedded Wallet: {embeddedWalletInfo.authProvider} ({embeddedWalletInfo.accountType})
               </span>
             )}
+          </p>
+          <p className="text-blue-700 dark:text-blue-300 text-xs mt-1">
+            Connection Status: {isConnected ? 'Connected' : 'Disconnected'} | 
+            Network: {isCorrectNetwork ? 'Correct' : 'Incorrect'} | 
+            Total T-Deeds: {deedNFTs.length}, Filtered: {filteredDeedNFTs.length}
           </p>
         </div>
       )}
