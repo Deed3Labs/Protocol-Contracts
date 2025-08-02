@@ -629,6 +629,76 @@ function SmartAccountSetup() {
 }
 ```
 
+### 5. XMTP Messaging Hooks
+
+#### useXMTP.ts (Context Hook)
+Provides XMTP messaging functionality throughout the application.
+
+#### Key Features
+- **Client Management**: XMTP client connection and lifecycle
+- **Conversation Management**: Create, load, and manage conversations
+- **Message Handling**: Send, receive, and sync messages
+- **Identity Management**: Check and create XMTP identities
+- **Real-time Streaming**: Live message updates
+
+#### Usage Example
+```tsx
+import { useXMTP } from '@/context/XMTPContext';
+
+function MessagingComponent() {
+  const { 
+    isConnected, 
+    conversations, 
+    sendMessage, 
+    createConversation,
+    checkIdentityStatus 
+  } = useXMTP();
+
+  return (
+    <div>
+      {isConnected ? (
+        <div>Connected to XMTP</div>
+      ) : (
+        <button>Connect XMTP</button>
+      )}
+    </div>
+  );
+}
+```
+
+#### useXMTPConnection.ts (Connection Hook)
+Manages XMTP connection and wallet integration.
+
+#### Key Features
+- **Wallet Integration**: Connect XMTP with various wallet types
+- **Smart Account Support**: Support for Reown AppKit smart accounts
+- **Connection State**: Track connection status and loading states
+- **Auto-reconnection**: Handle connection failures gracefully
+
+#### Usage Example
+```tsx
+import { useXMTPConnection } from '@/hooks/useXMTPConnection';
+
+function ConnectionManager() {
+  const { 
+    handleConnect, 
+    isConnecting, 
+    isConnected,
+    address 
+  } = useXMTPConnection();
+
+  return (
+    <div>
+      {!isConnected && (
+        <button onClick={handleConnect} disabled={isConnecting}>
+          {isConnecting ? 'Connecting...' : 'Connect XMTP'}
+        </button>
+      )}
+    </div>
+  );
+}
+```
+
 ## 🎨 UI Components
 
 ### Shadcn/ui Integration
@@ -652,6 +722,9 @@ The application uses shadcn/ui components for consistent styling:
 - **ThemeToggle**: Dark/light mode toggle
 - **TransferModal**: Asset transfer interface
 - **MessageOwnerModal**: Owner communication interface
+- **XMTPMessaging**: End-to-end encrypted messaging interface
+- **TDeedIdentityManager**: XMTP identity management for T-Deed owners
+- **XMTPMessageButton**: Quick messaging button component
 
 ## 🔧 Component Development Guidelines
 

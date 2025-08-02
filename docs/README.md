@@ -28,6 +28,7 @@ Welcome to the comprehensive documentation for **The Deed Protocol** - a decentr
 ### 🎯 User Experience
 - **[Minting Process](./ux/minting-process.md)** - Step-by-step minting guide
 - **[Validation Workflow](./ux/validation-workflow.md)** - Asset validation process
+- **[Messaging Guide](./ux/messaging.md)** - XMTP messaging instructions
 - **[Admin Operations](./ux/admin-operations.md)** - Administrative functions
 - **[Troubleshooting](./ux/troubleshooting.md)** - Common issues and solutions
 

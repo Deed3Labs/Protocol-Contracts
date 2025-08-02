@@ -13,6 +13,7 @@ The Deed Protocol is a decentralized platform that enables the tokenization of r
 - **Easy Transfer**: Simple asset transfer and sale processes
 - **Comprehensive Documentation**: All asset documents stored securely
 - **Multi-Network Support**: Works on Ethereum and Base networks
+- **Secure Messaging**: End-to-end encrypted communication between users and asset owners
 
 ## 👥 Who is this Guide For?
 
@@ -254,17 +255,46 @@ Protocol managers who oversee system operations and governance.
 - **Requirements**: Equipment registration, maintenance records
 - **Validation**: Condition assessment, safety verification
 
+## 💬 Messaging and Communication
+
+### XMTP Messaging (v0.2.0)
+The Deed Protocol now includes **end-to-end encrypted messaging** between users and T-Deed owners.
+
+#### Key Features
+- **Secure Communication**: End-to-end encrypted messages
+- **Real-time Messaging**: Instant message delivery
+- **Conversation History**: Automatic message persistence
+- **Mobile Responsive**: Works on all devices
+- **Wallet Integration**: Seamless wallet-based authentication
+
+#### How to Use
+1. **Find a T-Deed** you're interested in
+2. **Click "Message Owner"** on the T-Deed card
+3. **Choose XMTP Direct Message** (recommended)
+4. **Connect your wallet** if not already connected
+5. **Start messaging** the T-Deed owner
+
+#### For T-Deed Owners
+- **Receive messages** automatically when you connect
+- **Respond directly** through the messaging interface
+- **View all conversations** in your inbox
+- **Message history** is preserved across sessions
+
+For detailed messaging instructions, see **[XMTP Messaging Guide](../ux/messaging.md)**.
+
 ## 🔒 Security and Privacy
 
 ### Data Protection
 - **Encrypted Storage**: All documents are encrypted
 - **Selective Disclosure**: Control what information is shared
 - **Audit Trail**: Complete history of all transactions
+- **Message Encryption**: End-to-end encrypted messaging
 
 ### Access Control
 - **Role-Based Permissions**: Different access levels for different users
 - **Multi-Signature Support**: Enhanced security for high-value assets
 - **Time-Locked Operations**: Protection against unauthorized changes
+- **Wallet-Based Authentication**: Secure messaging access
 
 ### Compliance
 - **Regulatory Compliance**: Adherence to local regulations

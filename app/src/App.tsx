@@ -12,6 +12,7 @@ import { SWIXAuth } from "@/components/SWIXAuth";
 import { SWIXDemo } from "@/components/SWIXDemo";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { DeedNFTProvider } from "@/context/DeedNFTContext";
+import { XMTPProvider } from "@/context/XMTPContext";
 import Faucet from "@/components/Faucet";
 
 function App() {
@@ -25,17 +26,19 @@ function App() {
         </Header>
         <main className="flex-1 w-full pb-20 md:pb-0">
           <DeedNFTProvider>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/mint" element={<MintForm />} />
-              <Route path="/explore" element={<Explore />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/validation" element={<Validation />} />
-              <Route path="/admin" element={<AdminPanel />} />
-              <Route path="/auth" element={<SWIXAuth />} />
-              <Route path="/profile" element={<SWIXDemo />} />
-              <Route path="/faucet" element={<Faucet />} />
-            </Routes>
+            <XMTPProvider>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/mint" element={<MintForm />} />
+                <Route path="/explore" element={<Explore />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/validation" element={<Validation />} />
+                <Route path="/admin" element={<AdminPanel />} />
+                <Route path="/auth" element={<SWIXAuth />} />
+                <Route path="/profile" element={<SWIXDemo />} />
+                <Route path="/faucet" element={<Faucet />} />
+              </Routes>
+            </XMTPProvider>
           </DeedNFTProvider>
         </main>
         <Footer />
