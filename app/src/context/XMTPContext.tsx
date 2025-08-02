@@ -481,7 +481,8 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
 
     streamMessages();
     
-    // Set up periodic sync every 30 seconds
+    // Perform initial sync immediately, then set up periodic sync every 30 seconds
+    periodicSync(); // Immediate first sync
     const syncInterval = setInterval(periodicSync, 30000);
 
     // Cleanup function to stop streaming when component unmounts
