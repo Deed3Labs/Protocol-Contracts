@@ -172,13 +172,16 @@ export function useAppKitAuth() {
     if (siwx) {
       try {
         const sessionAccount = await siwx.getSessionAccount();
-        if (sessionAccount?.appKitAccount?.metadata) {
-          const metadata = sessionAccount.appKitAccount.metadata as any;
-          return {
-            id: sessionAccount.appKitAccount.uuid,
-            email: metadata.email,
-            social: metadata.social,
-          };
+        if (sessionAccount && 'appKitAccount' in sessionAccount) {
+          const appKitAccount = (sessionAccount as any).appKitAccount;
+          if (appKitAccount?.metadata) {
+            const metadata = appKitAccount.metadata as any;
+            return {
+              id: appKitAccount.uuid,
+              email: metadata.email,
+              social: metadata.social,
+            };
+          }
         }
         return null;
       } catch (error) {

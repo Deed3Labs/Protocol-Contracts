@@ -1,12 +1,13 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle, Construction } from 'lucide-react';
+import { AlertTriangle, Construction } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useNetworkValidation } from '@/hooks/useNetworkValidation';
-import { isNetworkSupported, isDeedNFTDeployed } from '@/config/networks';
+import { isNetworkSupported, isDeedNFTDeployed, getContractAddressForNetwork } from '@/config/networks';
+import { useAppKitAccount } from '@reown/appkit/react';
 
 export function NetworkWarning() {
+  const { address } = useAppKitAccount();
   const {
     isConnected,
     chainId,
@@ -35,14 +36,19 @@ export function NetworkWarning() {
   }
 
   if (isCorrectNetwork) {
+    const contractAddress = chainId ? getContractAddressForNetwork(chainId) : null;
     return (
-      <Alert className="mb-4 border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-        <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-        <AlertTitle className="text-green-800 dark:text-green-200">Connected to supported network</AlertTitle>
-        <AlertDescription className="text-green-700 dark:text-green-300">
-          You are connected to {currentNetwork?.name}. You can now mint NFTs.
-        </AlertDescription>
-      </Alert>
+      <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+        <p className="text-blue-800 dark:text-blue-200 text-sm">
+          <strong>Debug Info:</strong> Chain ID: {chainId}, Contract: {contractAddress || 'Not found'}, 
+          Address: {address ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}` : 'None'}
+        </p>
+        <p className="text-blue-700 dark:text-blue-300 text-xs mt-1">
+          Connection Status: {isConnected ? 'Connected' : 'Disconnected'} | 
+          Network: {isCorrectNetwork ? 'Correct' : 'Incorrect'} | 
+          Network Name: {currentNetwork?.name || 'Unknown'}
+        </p>
+      </div>
     );
   }
 

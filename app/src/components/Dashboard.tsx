@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { BarChart3, Wallet, FileText, Settings, TrendingUp, Activity, RefreshCw } from "lucide-react";
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { Link } from "react-router-dom";
 import DeedNFTViewer from "./DeedNFTViewer";
@@ -11,15 +11,19 @@ import TransferModal from "./TransferModal";
 import type { DeedNFT } from "@/hooks/useDeedNFTData";
 import { useState } from "react";
 
+
 const Dashboard = () => {
   const {
+    address,
     isConnected: isAppKitConnected,
     embeddedWalletInfo,
     status
   } = useAppKitAccount();
+  const { caipNetworkId } = useAppKitNetwork();
   
   // Use AppKit connection state - handle both regular wallets and embedded wallets
   const isWalletConnected = isAppKitConnected || (embeddedWalletInfo && status === 'connected');
+  const chainId = caipNetworkId ? parseInt(caipNetworkId.split(':')[1]) : undefined;
   
   const {
     userDeedNFTs,
@@ -29,7 +33,8 @@ const Dashboard = () => {
     fetchDeedNFTs,
     getAssetTypeLabel,
     getValidationStatus,
-    isCorrectNetwork
+    isCorrectNetwork,
+    contractAddress
   } = useDeedNFTData();
 
   const [selectedDeedNFT, setSelectedDeedNFT] = useState<DeedNFT | null>(null);
@@ -66,6 +71,26 @@ const Dashboard = () => {
           Manage your T-Deeds and track your activity on the protocol.
         </p>
       </div>
+
+      {/* Debug Information */}
+      {isWalletConnected && isCorrectNetwork && (
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <p className="text-blue-800 dark:text-blue-200 text-sm">
+            <strong>Debug Info:</strong> Chain ID: {chainId}, Contract: {contractAddress}, 
+            Address: {address ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}` : 'None'}
+            {embeddedWalletInfo && (
+              <span className="ml-2">
+                | Embedded Wallet: {embeddedWalletInfo.authProvider} ({embeddedWalletInfo.accountType})
+              </span>
+            )}
+          </p>
+          <p className="text-blue-700 dark:text-blue-300 text-xs mt-1">
+            Connection Status: {isAppKitConnected ? 'Connected' : 'Disconnected'} | 
+            Network: {isCorrectNetwork ? 'Correct' : 'Incorrect'} | 
+            Total T-Deeds: {stats.totalDeedNFTs}, User T-Deeds: {userDeedNFTs.length}
+          </p>
+        </div>
+      )}
 
       {/* Connection Status */}
       {!isWalletConnected && (
