@@ -824,7 +824,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                     </div>
                   ) : (
                     <div>
-                      <div className="text-xs text-gray-500 px-2 py-1 mb-2">
+                      <div className="text-xs text-gray-500 px-2 py-2 mb-0 border-b border-gray-200 dark:border-gray-700 pb-2">
                         {filteredConversations.length} conversation{filteredConversations.length !== 1 ? 's' : ''}
                       </div>
                       {filteredConversations.map((conversation) => (
@@ -1108,7 +1108,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                   isConversationListCollapsed ? "" : ""
                 )}>
                   {!isConversationListCollapsed && (
-                    <div className="text-xs text-gray-500 px-3 py-1 mb-2">
+                    <div className="text-xs text-gray-500 px-3 py-2 mb-0 border-b border-gray-200 dark:border-gray-700 pb-2">
                       {filteredConversations.length} {showHiddenConversations ? 'hidden' : ''} conversation{filteredConversations.length !== 1 ? 's' : ''}
                     </div>
                   )}
