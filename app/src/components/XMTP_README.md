@@ -1,242 +1,237 @@
-# XMTP Messaging Integration
+# XMTP Messaging Component
 
-This app now includes XMTP (Extensible Message Transport Protocol) messaging capabilities, allowing users and t-deed owners to communicate directly within the application.
+## Overview
 
-## Features
+The `XMTPMessaging` component provides a comprehensive messaging interface with XMTP (Extensible Message Transport Protocol) integration, supporting both direct messages and group conversations with end-to-end encryption.
 
-### 🔐 End-to-End Encrypted Messaging
-- All messages are encrypted using XMTP's secure protocol
-- Messages are stored locally and synced across devices
-- No central server can read your messages
+## 🚀 Key Features
 
-### 💬 Direct Communication
-- Users can message t-deed owners directly from the app
-- Real-time message streaming
-- Conversation history and search functionality
+### Core Messaging
+- **End-to-End Encryption**: All messages encrypted using XMTP protocol
+- **Direct Messaging**: One-on-one conversations with wallet addresses
+- **Group Messaging**: Multi-member group conversations with member management
+- **Real-time Streaming**: Live message updates and conversation sync
+- **Message Persistence**: Local storage with secure key management
 
-### 🎯 T-Deed Specific Context
-- Messages are automatically linked to specific t-deed assets
-- Asset information (type, token ID) is included in conversations
-- Easy identification of which asset the conversation is about
+### Group Conversation Features
+- **Optimistic Groups**: Groups created immediately, synced when members join XMTP
+- **Member Management**: Add/remove members from groups
+- **Network Sync**: Automatic syncing of optimistic groups to XMTP network
+- **Member Count Display**: Shows member count for all conversations
+- **Group Types**: Real XMTP Groups vs Optimistic Groups
 
-### 🎨 Modern UI/UX Design
-- **Two-Tier Header System**: Clean main header with title/description/status + action buttons subheader
-- **Mobile Two-View System**: Conversation list view and individual conversation view
-- **Square Send Buttons**: Perfectly centered icons in 44px square buttons
-- **Vertically Centered Text**: Text inputs with proper vertical alignment
-- **Responsive Design**: Optimized for both mobile and desktop experiences
-- **Touch Optimizations**: Larger touch targets and proper spacing for mobile
+### Conversation Management
+- **Hide/Archive Conversations**: Right-click or use hide button to archive conversations
+- **Hidden Conversations View**: Toggle to see archived conversations
+- **Conversation Persistence**: Hidden state persists across sessions
+- **Search Functionality**: Find conversations by address or name
 
-## How to Use
-
-### For Users Wanting to Message T-Deed Owners
-
-1. **Navigate to a T-Deed**: Go to the Explore page or view a specific t-deed
-2. **Click "Message Owner"**: Use the XMTP message button or the message modal
-3. **Connect Wallet**: If not already connected, connect your wallet
-4. **Start Messaging**: Begin your conversation with the t-deed owner
-
-### For T-Deed Owners
-
-1. **Receive Messages**: Messages from interested users will appear in your conversations
-2. **Respond**: Reply directly through the XMTP interface
-3. **Manage Conversations**: View all conversations in the messaging interface
-
-## Components
-
-### XMTPContext (`/context/XMTPContext.tsx`)
-- Manages XMTP client connections
-- Handles conversation and message state
-- Provides connection and messaging functions
-- Includes `getCurrentInboxId()` for message sender identification
-
-### XMTPMessaging (`/components/XMTPMessaging.tsx`)
-- Full-featured messaging interface with modern UI/UX
-- **Two-Tier Header**: Main header with title/description/status + action buttons subheader
-- **Mobile Two-View System**: Conversation list view and individual conversation view
-- **Square Send Buttons**: 44px × 44px square buttons with centered icons
-- **Vertically Centered Text**: Text inputs with proper vertical alignment
+### UI/UX Features
+- **Two-Tier Header**: Main header with title/status, subheader with action buttons
+- **Mobile Two-View System**: Separate list and conversation views on mobile
+- **Square Send Buttons**: Perfectly centered icons with consistent 44px height
+- **Vertically Centered Text**: Input text aligned to center line
 - **Collapsible Desktop Sidebar**: Expandable conversation list (80px collapsed, 320px expanded)
 - **Touch Optimizations**: Larger touch targets and proper spacing for mobile
-- **Clean Message Alignment**: Sent messages on right (blue), received on left (gray)
-- Real-time message display and conversation management
+- **Clean Message Alignment**: Sent messages on right, received on left
 
-### XMTPMessageButton (`/components/XMTPMessageButton.tsx`)
-- Simple button component for quick messaging
-- Opens XMTP messaging modal
-- Can be placed anywhere in the app
+## 📱 Mobile Experience
 
-### Updated MessageOwnerModal
-- Now includes XMTP messaging as the primary option
-- Maintains existing Blockscan and email options
-- Seamless integration with existing UI
-
-## UI/UX Improvements
-
-### Header Structure
-The messaging interface features a clean, two-tier header system:
-
-**Main Header**
-- **Icon and Title**: XMTP Inbox with messaging icon
-- **Description**: "Your conversations and messages"
-- **Connection Status**: Real-time connection badge (Connected/Connecting/Not Connected)
-
-**Action Buttons Subheader**
-- **New DM Button**: Create new direct messages with visible text on all screen sizes
-- **Sync Button**: Manually sync messages with visible text on all screen sizes
-- **Close Button**: Close the messaging interface
-
-### Mobile Experience
-The mobile interface uses a modern two-view approach:
-
-**Conversation List View**
-- **Clean header** with "XMTP Inbox" title
-- **Action buttons** (New DM, Sync) in header
-- **Search bar** for finding conversations
-- **Large conversation avatars** for better touch targets
-- **Conversation count** display
-
-**Individual Conversation View**
-- **Compact header** with back button and conversation details
-- **Full-width message area** for optimal reading
-- **Square send button** matching input height
-- **Back navigation** to conversation list
-
-### Desktop Experience
-- **Collapsible Sidebar**: Toggle between expanded (320px) and collapsed (80px) states
-- **Main Chat Area**: Full-height message display with conversation header
-- **Search Integration**: Built-in search functionality in sidebar
-- **Smooth Transitions**: Animated transitions between sidebar states
-
-### Message Input Features
-- **Square Send Button**: 44px × 44px square with centered icon
-- **Vertically Centered Text**: Text aligned to center line of input
-- **Auto-Resize**: Input expands up to 120px height for longer messages
-- **Enter to Send**: Press Enter to send messages quickly
-- **Loading States**: Visual feedback during message sending
+### Two-View System
+- **Conversation List View**: Clean header, search, action buttons, conversation count
+- **Individual Conversation View**: Compact header with back button, member count, full-width messages
+- **Responsive Design**: Optimized for touch interaction with proper spacing
+- **Navigation**: Smooth transitions between list and conversation views
 
 ### Touch Optimizations
-- **Larger touch targets** for better mobile usability
-- **Proper spacing** between interactive elements
-- **Consistent button sizing** across the interface
-- **Optimized text input** with centered text alignment
+- **Larger Touch Targets**: Better mobile usability
+- **Proper Spacing**: Consistent spacing between interactive elements
+- **Square Send Buttons**: 44px height matching input fields
+- **Optimized Text Input**: Centered text alignment
 
-## Technical Implementation
+## 🖥️ Desktop Experience
+
+### Collapsible Sidebar
+- **Expandable Conversation List**: 80px collapsed, 320px expanded
+- **Search Functionality**: Find conversations quickly
+- **Hover Effects**: Hide/unhide buttons appear on conversation hover
+- **Smooth Transitions**: Animated state changes
+
+### Main Chat Area
+- **Conversation Header**: Recipient details and member count
+- **Full-height Message Display**: Proper scrolling with message history
+- **Message Input**: Square send button with centered text
+- **Real-time Streaming**: Immediate message updates
+
+## 🔐 Security Features
+
+### Encryption & Privacy
+- **End-to-End Encryption**: All messages encrypted using XMTP protocol
+- **Wallet Authentication**: Secure access using wallet signatures
+- **Local Storage**: Messages stored locally with secure key management
+- **Network Validation**: Automatic validation of member reachability
+- **Privacy Protection**: No central server can read messages
+
+### Network Security
+- **Member Validation**: Check reachability before adding to groups
+- **Sync Error Recovery**: Retry mechanisms for failed syncs
+- **Stale Data Cleanup**: Automatic removal of orphaned localStorage entries
+
+## ⚡ Performance Optimizations
+
+### Loading & Caching
+- **Installation Reuse**: Automatically reuses existing XMTP installations for faster connections
+- **Lazy Loading**: Message history loaded on demand
+- **Background Sync**: Periodic syncing of optimistic groups (every 30 seconds)
+- **Efficient Caching**: Conversation and message caching
+- **Real-time Streaming**: Immediate message updates via XMTP streaming
+- **Installation Cleanup**: Automatic cleanup of expired installations (30-day expiry)
+
+### Error Handling
+- **Graceful Degradation**: Fallback for network issues
+- **User Feedback**: Clear error messages and status indicators
+- **Sync Recovery**: Automatic retry for failed operations
+
+## 🛠️ Technical Implementation
 
 ### Dependencies
 ```json
 {
-  "@xmtp/browser-sdk": "^4.0.0"
+  "@xmtp/browser-sdk": "^4.0.0",
+  "ethers": "^6.0.0",
+  "@reown/appkit/react": "^1.0.0"
 }
 ```
 
-### Key Features
-- **Automatic Connection**: Connects to XMTP when wallet is connected
-- **Conversation Management**: Creates and manages conversations automatically
-- **Message Streaming**: Real-time message updates
-- **Error Handling**: Comprehensive error handling and user feedback
-- **Responsive Design**: Works on mobile and desktop with optimized layouts
+### Key Functions
+```typescript
+// Group creation and management
+const handleCreateGroup = async () => { /* ... */ }
+const isGroupConversation = (conversationId: string) => { /* ... */ }
+const getConversationMembersCount = (conversationId: string) => { /* ... */ }
 
-### Security
-- Uses XMTP's end-to-end encryption
-- No message content stored on central servers
-- Wallet-based authentication
-- Secure key management
+// Conversation management
+const hideConversation = (conversationId: string) => { /* ... */ }
+const unhideConversation = (conversationId: string) => { /* ... */ }
 
-## Usage Examples
-
-### Basic Message Button
-```tsx
-import XMTPMessageButton from '@/components/XMTPMessageButton';
-
-<XMTPMessageButton
-  ownerAddress="0x1234..."
-  tokenId="123"
-  assetType="Land"
-  variant="default"
-  size="sm"
-/>
+// Network syncing
+const syncOptimisticGroups = async () => { /* ... */ }
 ```
 
-### Custom Messaging Interface
-```tsx
-import XMTPMessaging from '@/components/XMTPMessaging';
+### Props Interface
+```typescript
+interface XMTPMessagingProps {
+  ownerAddress?: string;    // Optional: Pre-select conversation with specific address
+  tokenId?: string;         // Optional: Associated token ID for context
+  assetType?: string;       // Optional: Asset type for display
+  isOpen: boolean;          // Required: Controls modal visibility
+  onClose: () => void;      // Required: Close handler
+}
+```
 
+## 📊 Conversation Types
+
+### Direct Messages (DMs)
+- **Type**: One-on-one conversations
+- **Members**: Always 2 (sender + recipient)
+- **Display**: "Direct Message • 2 members"
+- **Sync**: Immediate to XMTP network
+
+### Real XMTP Groups
+- **Type**: Fully synced group conversations
+- **Members**: Variable count (2+ members)
+- **Display**: "Group Chat • X members"
+- **Sync**: Already synced to XMTP network
+
+### Optimistic Groups
+- **Type**: Groups waiting for member sync
+- **Members**: Variable count (stored in localStorage)
+- **Display**: "Group Chat • X members"
+- **Sync**: Automatically synced when members join XMTP
+
+## 🔄 Network Sync Process
+
+### Optimistic Group Sync
+1. **Check Member Reachability**: Test if members can receive XMTP messages
+2. **Add Reachable Members**: Add members to optimistic groups
+3. **Publish Messages**: Send any prepared messages to network
+4. **Update Metadata**: Mark groups as synced
+5. **Reload Conversations**: Update UI to reflect changes
+
+### Background Sync
+- **Frequency**: Every 30 seconds
+- **Scope**: All optimistic groups
+- **Error Handling**: Graceful failure with retry
+- **User Feedback**: Console logging for debugging
+
+## 🎯 Usage Examples
+
+### Basic Usage
+```tsx
+import { XMTPMessaging } from '@/components/XMTPMessaging';
+
+function App() {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  return (
+    <XMTPMessaging
+      isOpen={isOpen}
+      onClose={() => setIsOpen(false)}
+    />
+  );
+}
+```
+
+### With Pre-selected Conversation
+```tsx
 <XMTPMessaging
-  isOpen={showMessaging}
-  onClose={() => setShowMessaging(false)}
+  isOpen={isOpen}
+  onClose={() => setIsOpen(false)}
   ownerAddress="0x1234..."
   tokenId="123"
   assetType="Land"
 />
 ```
 
-### Using XMTP Context
-```tsx
-import { useXMTP } from '@/context/XMTPContext';
-
-const { 
-  isConnected, 
-  conversations, 
-  sendMessage, 
-  createConversation,
-  getCurrentInboxId 
-} = useXMTP();
-```
-
-## Network Configuration
-
-The XMTP integration is configured for:
-- **Production**: Mainnet XMTP network
-- **Development**: Can be switched to testnet by changing `env: 'production'` to `env: 'dev'` in XMTPContext
-
-## Troubleshooting
+## 🚨 Troubleshooting
 
 ### Common Issues
+- **"Failed to Connect"**: Check wallet connection and network
+- **"No Messages"**: Verify XMTP connection and recipient status
+- **"Group Not Syncing"**: Wait for members to join XMTP network
+- **"Member Count Wrong"**: Refresh to update member counts
 
-1. **Connection Failed**
-   - Ensure wallet is connected
-   - Check network connectivity
-   - Verify wallet supports XMTP
+### Debug Information
+- **Console Logs**: Detailed logging for debugging
+- **Network Status**: Real-time connection status
+- **Sync Status**: Background sync progress
+- **Error Messages**: Clear error descriptions
 
-2. **Messages Not Sending**
-   - Check XMTP connection status
-   - Ensure recipient has XMTP enabled
-   - Verify message content is valid
+## 🔮 Future Enhancements
 
-3. **Conversations Not Loading**
-   - Refresh the page
-   - Reconnect wallet
-   - Check XMTP network status
+### Planned Features
+- [ ] **Message notifications** (push notifications)
+- [ ] **File attachments** (images, documents)
+- [ ] **Message reactions** (like, heart, etc.)
+- [ ] **Message search** functionality
+- [ ] **Message encryption** status indicators
+- [ ] **Read receipts** and typing indicators
+- [ ] **Message scheduling** for future delivery
+- [ ] **Message templates** for common inquiries
 
-### Error Messages
-- "Failed to connect to XMTP": Wallet connection issue
-- "Conversation not found": Invalid conversation ID
-- "Failed to send message": Network or permission issue
+### Advanced Features
+- [ ] **Message analytics** and insights
+- [ ] **Integration** with other messaging platforms
+- [ ] **Automated responses** for T-Deed owners
+- [ ] **Message encryption** status indicators
 
-## Future Enhancements
+## 📚 Resources
 
-- [ ] Group messaging for multiple t-deed owners
-- [ ] Message notifications
-- [ ] File attachments
-- [ ] Message reactions
-- [ ] Conversation archiving
-- [ ] Message search functionality
-- [ ] Push notifications
-- [ ] Message scheduling
-- [ ] Message templates
-- [ ] Read receipts and typing indicators
+- **[XMTP Documentation](https://docs.xmtp.org/)**
+- **[XMTP GitHub](https://github.com/xmtp)**
+- **[XMTP Chat App](https://xmtp.chat/)**
+- **[The Deed Protocol Documentation](../../docs/README.md)**
 
-## Resources
+---
 
-- [XMTP Documentation](https://docs.xmtp.org/)
-- [XMTP GitHub](https://github.com/xmtp)
-- [XMTP Chat App](https://xmtp.chat/)
-
-## Support
-
-For issues with XMTP integration:
-1. Check the browser console for error messages
-2. Verify wallet connection and network
-3. Ensure XMTP is enabled for your wallet
-4. Contact support with specific error details 
+*This component is part of The Deed Protocol v0.2.0. For technical questions about XMTP integration, please refer to the API documentation.* 
