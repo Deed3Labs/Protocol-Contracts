@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Client } from '@xmtp/browser-sdk';
-import type { Conversation, DecodedMessage } from '@xmtp/browser-sdk';
+import type { Conversation, DecodedMessage, Signer } from '@xmtp/browser-sdk';
 import { ethers } from 'ethers';
 
 interface XMTPContextType {
@@ -12,13 +12,13 @@ interface XMTPContextType {
   error: string | null;
   connect: (signer: ethers.Signer) => Promise<void>;
   disconnect: () => Promise<void>;
-  resetConnection: () => Promise<void>;
   sendMessage: (conversationId: string, content: string) => Promise<void>;
   loadConversations: () => Promise<void>;
   loadMessages: (conversationId: string) => Promise<void>;
-  loadMoreMessages: (conversationId: string) => Promise<void>;
-  createConversation: (inboxId: string) => Promise<Conversation>;
-  checkIdentityStatus: (address: string) => Promise<boolean>;
+  createConversation: (walletAddress: string) => Promise<Conversation>;
+  manualSync: () => Promise<void>;
+  canMessage: (walletAddress: string) => Promise<boolean>;
+  getCurrentInboxId: () => Promise<string | null>;
   isConnected: boolean;
 }
 
@@ -43,93 +43,49 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [identityCache, setIdentityCache] = useState<{ [address: string]: boolean }>({});
 
+  // Create XMTP signer from ethers signer
+  const createXMTPSigner = (ethersSigner: ethers.Signer): Signer => {
+    return {
+      type: "EOA",
+      getIdentifier: async () => {
+        const address = await ethersSigner.getAddress();
+        return {
+          identifier: address,
+          identifierKind: "Ethereum"
+        };
+      },
+      signMessage: async (message: string): Promise<Uint8Array> => {
+        const signature = await ethersSigner.signMessage(message);
+        // Convert hex string to Uint8Array
+        return new Uint8Array(Buffer.from(signature.slice(2), 'hex'));
+      }
+    };
+  };
+
+  // Create XMTP client following V4 patterns
   const connect = async (ethersSigner: ethers.Signer) => {
-    // Prevent multiple connection attempts
-    console.log('XMTP: Checking connection state:', { client: !!client, isConnected, isLoading });
-    
-    // If we're stuck in loading state, reset it
-    if (isLoading && !client) {
-      console.log('XMTP: Resetting stuck loading state');
-      setIsLoading(false);
-    }
-    
-    if (client || isConnected) {
-      console.log('XMTP: Already connected, skipping');
-      return;
-    }
-
     try {
-      console.log('XMTP: Starting connection process...');
+      console.log('XMTP: Creating client...');
       setIsLoading(true);
       setError(null);
 
-      // Check if the wallet is on the correct network
-      const network = await ethersSigner.provider?.getNetwork();
-      if (!network) {
-        throw new Error('Unable to get network information');
-      }
-      console.log('XMTP: Network detected:', network.chainId);
-
-      // Create V3 compatible signer
-      const address = await ethersSigner.getAddress();
-      console.log('XMTP: Getting identifier for address:', address);
+      // Create XMTP signer from ethers signer
+      const xmtpSigner = createXMTPSigner(ethersSigner);
       
-      const v3Signer = {
-        type: "EOA" as const,
-        getIdentifier: () => ({
-          identifierKind: "Ethereum" as const,
-          identifier: address,
-        }),
-        signMessage: async (message: string) => {
-          console.log('XMTP: Signing message:', message.substring(0, 50) + '...');
-          const signature = await ethersSigner.signMessage(message);
-          console.log('XMTP: Message signed successfully, signature length:', signature.length);
-          // Return the signature as a Uint8Array without encoding
-          return new Uint8Array(Buffer.from(signature.slice(2), 'hex'));
-        },
-      };
-
-      console.log('XMTP: V3 signer created successfully');
-
-      console.log('XMTP: Creating V3 client...');
-      // Create client with production environment and proper options
-      const xmtpClient = await Client.create(v3Signer, {
-        env: 'production',
-        dbEncryptionKey: undefined, // Not used in browser environments
-      });
+      // Create XMTP client with the signer
+      const xmtpClient = await Client.create(xmtpSigner);
       console.log('XMTP: Client created successfully');
 
-      console.log('XMTP: Client created successfully');
-      setClient(xmtpClient as Client);
+      setClient(xmtpClient);
       setIsConnected(true);
       
       // Load conversations after connecting
-      console.log('XMTP: Loading conversations...');
       await loadConversations();
       console.log('XMTP: Connection complete');
     } catch (err) {
       console.error('Failed to connect to XMTP:', err);
-      
-      // Handle specific IndexedDB errors
-      if (err instanceof Error) {
-        if (err.message.includes('NoModificationAllowedError') || 
-            err.message.includes('Database(NotFound)')) {
-          console.log('XMTP: IndexedDB access issue, trying to recover...');
-          // Try to close any existing connections and retry
-          try {
-            if (client) {
-              await (client as any).close();
-            }
-          } catch (closeErr) {
-            console.log('XMTP: Error closing client:', closeErr);
-          }
-        }
-      }
-      
       setError(err instanceof Error ? err.message : 'Failed to connect to XMTP');
-      // Auto-dismiss error after 3 seconds
       setTimeout(() => setError(null), 3000);
     } finally {
       setIsLoading(false);
@@ -137,14 +93,11 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
   };
 
   const disconnect = async () => {
-    console.log('XMTP: Disconnecting and clearing local storage...');
+    console.log('XMTP: Disconnecting...');
     
-    // Clear the client's local storage to remove cached conversations
     if (client) {
       try {
-        console.log('XMTP: Clearing client local storage...');
         await client.close();
-        console.log('XMTP: Client closed successfully');
       } catch (err) {
         console.error('XMTP: Error closing client:', err);
       }
@@ -156,291 +109,156 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     setIsConnected(false);
     setIsLoading(false);
     setError(null);
-    // Clear identity cache when disconnecting
-    setIdentityCache({});
   };
 
-  const resetConnection = async () => {
-    console.log('XMTP: Resetting connection state and clearing local storage...');
-    
-    // Clear the client's local storage to remove cached conversations
-    if (client) {
-      try {
-        console.log('XMTP: Clearing client local storage during reset...');
-        await client.close();
-        console.log('XMTP: Client closed successfully during reset');
-      } catch (err) {
-        console.error('XMTP: Error closing client during reset:', err);
-      }
+  // Create conversation following XMTP V4 patterns
+  const createConversation = async (walletAddress: string): Promise<Conversation> => {
+    if (!client) {
+      throw new Error('XMTP client not connected.');
     }
-    
-    setClient(null);
-    setConversations([]);
-    setMessages({});
-    setIsConnected(false);
-    setIsLoading(false);
-    setError(null);
-    // Clear identity cache when resetting
-    setIdentityCache({});
-  };
-
-  const checkIdentityStatus = async (address: string): Promise<boolean> => {
-    console.log('XMTP Context: Checking identity status for:', address);
-    
-    // Check cache first
-    if (identityCache.hasOwnProperty(address)) {
-      console.log('XMTP Context: Found cached result for:', address, '=', identityCache[address]);
-      return identityCache[address];
-    }
-
-    // Check if we already have conversations with this specific address
-    // Note: In V3, we need to determine if a conversation is with a specific address
-    // For now, we'll use the network check as the primary method
-    console.log('XMTP Context: No cached result, will check network for:', address);
 
     try {
-      console.log('XMTP Context: No cache found, checking network for:', address);
-      const identifiers = [{ identifier: address, identifierKind: "Ethereum" as const }];
-      const canMessage = await Client.canMessage(identifiers);
-      const isReachable = canMessage.get(address);
+      console.log('XMTP: Creating conversation with wallet:', walletAddress);
       
-      console.log('XMTP Context: Network check result for:', address, '=', isReachable);
+      // Check if wallet can receive messages
+      const canMessageResult = await Client.canMessage([{
+        identifier: walletAddress,
+        identifierKind: "Ethereum"
+      }]);
+      const isReachable = canMessageResult.get(walletAddress);
       
-      // Cache the result
-      setIdentityCache(prev => ({
-        ...prev,
-        [address]: isReachable || false
-      }));
-      
-      return isReachable || false;
-    } catch (err) {
-      console.error('Error checking identity status:', err);
-      return false;
-    }
-  };
-
-  const loadConversations = async () => {
-    if (!client) return;
-
-    try {
-      setIsLoading(true);
-      console.log('XMTP: Starting comprehensive sync...');
-      
-      // Use syncAll() for comprehensive initial sync to ensure all conversations are up-to-date
-      console.log('XMTP: Syncing all conversations...');
-      await client.conversations.syncAll();
-      console.log('XMTP: Sync completed successfully');
-      
-      // Additional sync to ensure we get all messages
-      console.log('XMTP: Performing additional sync to ensure message delivery...');
-      await client.conversations.syncAll();
-      console.log('XMTP: Additional sync completed');
-      
-      console.log('XMTP: Loading conversations...');
-      const conversationsList = await client.conversations.list();
-      console.log('XMTP: Found', conversationsList.length, 'conversations');
-      
-      // Remove duplicates by using a Map with conversation ID as key
-      const uniqueConversations = new Map();
-      conversationsList.forEach(conversation => {
-        uniqueConversations.set(conversation.id, conversation);
+      console.log('XMTP: Can message check result:', {
+        walletAddress,
+        isReachable
       });
       
-      console.log('XMTP: After deduplication, have', uniqueConversations.size, 'conversations');
+      if (!isReachable) {
+        console.warn('XMTP: Wallet is not reachable, but proceeding with conversation creation...');
+      }
       
-      // For now, accept all conversations without validation to avoid issues
-      const validConversations = Array.from(uniqueConversations.values());
+      // Create DM conversation using the wallet address as inbox ID
+      const conversation = await client.conversations.newDm(walletAddress);
       
-      console.log('XMTP: Setting', validConversations.length, 'conversations');
-      setConversations(validConversations);
+      console.log('XMTP: Created conversation:', {
+        conversationId: conversation.id,
+        walletAddress
+      });
       
-      // Auto-load messages for each conversation to ensure they're synced
-      console.log('XMTP: Auto-loading messages for all conversations...');
-      for (const conversation of validConversations) {
-        try {
-          console.log(`XMTP: Auto-syncing conversation ${conversation.id}...`);
-          await conversation.sync();
-          const messages = await conversation.messages({ limit: BigInt(10) });
-          console.log(`XMTP: Auto-loaded ${messages.length} messages for conversation ${conversation.id}`);
-          
-          if (messages.length > 0) {
-            setMessages(prev => ({
-              ...prev,
-              [conversation.id]: messages as any[]
-            }));
-          }
-        } catch (err) {
-          console.error(`XMTP: Error auto-syncing conversation ${conversation.id}:`, err);
+      // Add the new conversation to our list
+      setConversations(prev => {
+        const exists = prev.find(c => c.id === conversation.id);
+        if (!exists) {
+          return [...prev, conversation];
         }
-      }
-    } catch (err) {
-      console.error('Failed to load conversations:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load conversations');
-      // Auto-dismiss error after 3 seconds
-      setTimeout(() => setError(null), 3000);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadMessages = async (conversationId: string, limit: bigint = BigInt(50)) => {
-    if (!client) return;
-
-    try {
-      setIsLoading(true);
-      const conversation = conversations.find(c => c.id === conversationId);
-      if (!conversation) {
-        // Remove invalid conversation from state
-        setConversations(prev => prev.filter(c => c.id !== conversationId));
-        setError('Conversation not found - removed from list');
-        // Auto-dismiss error after 3 seconds
-        setTimeout(() => setError(null), 3000);
-        return;
-      }
-
-      // Sync this specific conversation first to ensure we have the latest messages
-      console.log(`XMTP: Syncing conversation ${conversationId}...`);
-      await conversation.sync();
-      console.log(`XMTP: Conversation sync completed for ${conversationId}`);
-
-      // Force an additional sync to ensure we get all messages
-      console.log(`XMTP: Performing additional sync for conversation ${conversationId}...`);
-      await conversation.sync();
-      console.log(`XMTP: Additional sync completed for ${conversationId}`);
-
-      // Load messages with pagination support
-      const messagesList = await conversation.messages({ limit });
-      console.log(`XMTP: Loaded ${messagesList.length} messages for conversation ${conversationId}`);
+        return prev;
+      });
       
-      setMessages(prev => ({
-        ...prev,
-        [conversationId]: messagesList as any[]
-      }));
+      return conversation;
     } catch (err) {
-      console.error('Failed to load messages:', err);
-      // Remove invalid conversation from state
-      setConversations(prev => prev.filter(c => c.id !== conversationId));
-      setError('Conversation not found - removed from list');
-      // Auto-dismiss error after 3 seconds
+      console.error('XMTP: Error creating conversation:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create conversation');
       setTimeout(() => setError(null), 3000);
-    } finally {
-      setIsLoading(false);
+      throw err;
     }
   };
 
-  const loadMoreMessages = async (conversationId: string, limit: bigint = BigInt(20)) => {
-    if (!client) return;
-
-    try {
-      const conversation = conversations.find(c => c.id === conversationId);
-      if (!conversation) {
-        console.error('Conversation not found for loading more messages');
-        return;
-      }
-
-      // Sync conversation before loading more messages to ensure we have the latest
-      console.log(`XMTP: Syncing conversation ${conversationId} before loading more messages...`);
-      await conversation.sync();
-
-      // Load more messages with specified limit
-      const allMessages = await conversation.messages({ limit });
-      console.log(`XMTP: Loaded ${allMessages.length} total messages for conversation ${conversationId}`);
-      
-      if (allMessages.length > 0) {
-        setMessages(prev => ({
-          ...prev,
-          [conversationId]: allMessages as any[]
-        }));
-      }
-    } catch (err) {
-      console.error('Failed to load more messages:', err);
-    }
-  };
-
+  // Send message following XMTP V4 patterns
   const sendMessage = async (conversationId: string, content: string) => {
     if (!client) return;
 
     try {
       setIsLoading(true);
-      console.log('XMTP: Attempting to send message to conversation:', conversationId);
-      console.log('XMTP: Available conversations:', conversations.map(c => c.id));
+      console.log('XMTP: Sending message to conversation:', conversationId);
       
       const conversation = conversations.find(c => c.id === conversationId);
       if (!conversation) {
-        console.error('XMTP: Conversation not found in state. Available conversations:', conversations.map(c => c.id));
         throw new Error('Conversation not found');
       }
-
-      console.log('XMTP: Found conversation, sending message...');
+      
+      // Send message using XMTP V4 pattern
       await conversation.send(content);
       console.log('XMTP: Message sent successfully');
       
       // Reload messages for this conversation
       await loadMessages(conversationId);
+      
+      console.log('XMTP: Message send completed');
     } catch (err) {
       console.error('Failed to send message:', err);
       setError(err instanceof Error ? err.message : 'Failed to send message');
-      // Auto-dismiss error after 3 seconds
       setTimeout(() => setError(null), 3000);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const createConversation = async (inboxId: string): Promise<Conversation> => {
-    if (!client) {
-      throw new Error('XMTP client not connected');
-    }
+  // Load conversations following XMTP V4 patterns
+  const loadConversations = async () => {
+    if (!client) return;
 
     try {
-      console.log('XMTP: Creating conversation with inbox ID:', inboxId);
+      setIsLoading(true);
+      console.log('XMTP: Loading conversations...');
       
-      // Check if we already have a conversation with this inbox ID
-      const existingConversation = conversations.find(() => {
-        // In V3, we need to check if this conversation is with the same inbox
-        // For now, we'll create a new conversation each time
-        return false;
+      // List all conversations
+      const allConversations = await client.conversations.list();
+      console.log('XMTP: Found', allConversations.length, 'conversations');
+      
+      // Log conversation details for debugging
+      allConversations.forEach((conv, index) => {
+        console.log(`XMTP: Conversation ${index + 1}:`, {
+          id: conv.id,
+          type: 'DM'
+        });
       });
       
-      if (existingConversation) {
-        console.log('XMTP: Found existing conversation:', existingConversation.id);
-        return existingConversation;
-      }
-      
-      // Create a new DM conversation
-      console.log('XMTP: Creating new DM conversation...');
-      const conversation = await client.conversations.newDm(inboxId);
-      console.log('XMTP: Conversation created successfully:', conversation.id);
-      
-      // Since conversation was created successfully, the identity exists
-      console.log('XMTP: Updating identity cache - identity exists for:', inboxId);
-      setIdentityCache(prev => ({
-        ...prev,
-        [inboxId]: true
-      }));
-      
-      // Add to conversations list if not already present
-      setConversations(prev => {
-        const exists = prev.find(c => c.id === conversation.id);
-        if (!exists) {
-          console.log('XMTP: Adding conversation to list:', conversation.id);
-          const newConversations = [...prev, conversation];
-          console.log('XMTP: Updated conversations list:', newConversations.map(c => c.id));
-          return newConversations;
-        } else {
-          console.log('XMTP: Conversation already exists in list:', conversation.id);
-          return prev;
-        }
-      });
-      
-      return conversation;
+      setConversations(allConversations);
     } catch (err) {
-      console.error('Failed to create conversation:', err);
-      throw err;
+      console.error('Failed to load conversations:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load conversations');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Set up message streaming with better error handling and reconnection
+  // Load messages following XMTP V4 patterns
+  const loadMessages = async (conversationId: string) => {
+    if (!client) return;
+
+    try {
+      setIsLoading(true);
+      const conversation = conversations.find(c => c.id === conversationId);
+      if (!conversation) {
+        setError('Conversation not found');
+        setTimeout(() => setError(null), 3000);
+        return;
+      }
+
+      const messagesList = await conversation.messages();
+      console.log(`XMTP: Loaded ${messagesList.length} messages for conversation ${conversationId}`);
+      
+      // Sort messages by timestamp
+      const sortedMessages = messagesList.sort((a: DecodedMessage, b: DecodedMessage) => {
+        const timeA = a.sentAtNs ? Number(a.sentAtNs) : 0;
+        const timeB = b.sentAtNs ? Number(b.sentAtNs) : 0;
+        return timeA - timeB;
+      });
+      
+      setMessages(prev => ({
+        ...prev,
+        [conversationId]: sortedMessages
+      }));
+    } catch (err) {
+      console.error('Failed to load messages:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load messages');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Stream messages following XMTP V4 patterns
   useEffect(() => {
     if (!client) return;
 
@@ -449,22 +267,42 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     const streamMessages = async () => {
       try {
         console.log('XMTP: Starting message stream...');
-        for await (const message of await client.conversations.streamAllMessages()) {
-          if (!isStreaming) break; // Stop streaming if component unmounted
-          
-          const conversationId = message.conversationId;
-          console.log('XMTP: Received new message for conversation:', conversationId);
-          
-          setMessages(prev => ({
-            ...prev,
-            [conversationId]: [...(prev[conversationId] || []), message as any]
-          }));
-        }
+        
+        // Stream all messages
+        const stream = await client.conversations.streamAllMessages({
+          onValue: (message) => {
+            if (!isStreaming) return;
+            
+            const conversationId = message.conversationId;
+            console.log('XMTP: Received new message for conversation:', conversationId);
+            
+            // Update messages state with the new message
+            setMessages(prev => {
+              const existingMessages = prev[conversationId] || [];
+              const messageExists = existingMessages.some(existing => existing.id === message.id);
+              
+              if (messageExists) {
+                console.log('XMTP: Message already exists, skipping duplicate');
+                return prev;
+              }
+              
+              console.log('XMTP: Adding new message to conversation:', conversationId);
+              return {
+                ...prev,
+                [conversationId]: [...existingMessages, message]
+              };
+            });
+          },
+          onError: (error) => {
+            console.error('XMTP: Stream error:', error);
+          }
+        });
+        
+        // Keep the stream alive
+        await stream;
       } catch (err) {
         console.error('Error streaming messages:', err);
-        // Auto-reconnect after a delay if streaming fails
         if (isStreaming) {
-          console.log('XMTP: Attempting to reconnect stream in 5 seconds...');
           setTimeout(() => {
             if (isStreaming && client) {
               streamMessages();
@@ -474,44 +312,68 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       }
     };
 
-    // Also set up a periodic sync to catch any missed messages
-    const periodicSync = async () => {
-      if (!isStreaming || !client) return;
-      
-      try {
-        console.log('XMTP: Performing periodic sync...');
-        await client.conversations.syncAll();
-        
-        // Reload conversations to catch any new ones
-        const conversationsList = await client.conversations.list();
-        setConversations(prev => {
-          const newConversations = conversationsList.filter(
-            newConv => !prev.find(existingConv => existingConv.id === newConv.id)
-          );
-          if (newConversations.length > 0) {
-            console.log('XMTP: Found', newConversations.length, 'new conversations during periodic sync');
-            return [...prev, ...newConversations];
-          }
-          return prev;
-        });
-      } catch (err) {
-        console.error('XMTP: Error during periodic sync:', err);
-      }
-    };
-
     streamMessages();
     
-    // Perform initial sync immediately, then set up periodic sync every 30 seconds
-    periodicSync(); // Immediate first sync
-    const syncInterval = setInterval(periodicSync, 30000);
-
-    // Cleanup function to stop streaming when component unmounts
     return () => {
-      console.log('XMTP: Stopping message stream and periodic sync...');
+      console.log('XMTP: Stopping message stream...');
       isStreaming = false;
-      clearInterval(syncInterval);
     };
   }, [client]);
+
+  const manualSync = async () => {
+    if (!client) {
+      console.error('XMTP client not connected.');
+      return;
+    }
+    try {
+      console.log('XMTP: Starting manual sync...');
+      await loadConversations(); // Reload conversations to reflect changes
+      console.log('XMTP: Manual sync completed.');
+    } catch (err) {
+      console.error('XMTP: Manual sync failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to perform manual sync');
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
+  const canMessage = async (walletAddress: string): Promise<boolean> => {
+    if (!client) {
+      console.error('XMTP client not connected.');
+      return false;
+    }
+    try {
+      console.log('XMTP: Checking if wallet is reachable:', walletAddress);
+      const response = await Client.canMessage([{
+        identifier: walletAddress,
+        identifierKind: "Ethereum"
+      }]);
+      const isReachable = response.get(walletAddress);
+      console.log('XMTP: Can message check result:', {
+        walletAddress,
+        isReachable
+      });
+      return isReachable || false;
+    } catch (err) {
+      console.error('XMTP: Error checking canMessage:', err);
+      return false;
+    }
+  };
+
+  const getCurrentInboxId = async (): Promise<string | null> => {
+    if (!client) {
+      console.error('XMTP client not connected.');
+      return null;
+    }
+    try {
+      // Get the current user's inbox ID from the client
+      const inboxId = client.inboxId;
+      console.log('XMTP: Current inbox ID:', inboxId);
+      return inboxId || null;
+    } catch (err) {
+      console.error('XMTP: Error getting current inbox ID:', err);
+      return null;
+    }
+  };
 
   const value: XMTPContextType = {
     client,
@@ -521,13 +383,13 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     error,
     connect,
     disconnect,
-    resetConnection,
     sendMessage,
     loadConversations,
     loadMessages,
-    loadMoreMessages,
     createConversation,
-    checkIdentityStatus,
+    manualSync,
+    canMessage,
+    getCurrentInboxId,
     isConnected,
   };
 
