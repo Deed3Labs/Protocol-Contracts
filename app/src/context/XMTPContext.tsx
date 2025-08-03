@@ -4,21 +4,42 @@ import { Client } from '@xmtp/browser-sdk';
 import type { Conversation, DecodedMessage, Signer } from '@xmtp/browser-sdk';
 import { ethers } from 'ethers';
 
+// Conversation state types
+export type ConversationState = 'active' | 'hidden' | 'archived';
+
+interface ConversationMetadata {
+  state: ConversationState;
+  hiddenAt?: Date;
+  archivedAt?: Date;
+}
+
 interface XMTPContextType {
   client: Client | null;
   conversations: Conversation[];
   messages: { [conversationId: string]: DecodedMessage[] };
+  conversationStates: { [conversationId: string]: ConversationMetadata };
   isLoading: boolean;
   error: string | null;
   connect: (signer: ethers.Signer) => Promise<void>;
   disconnect: () => Promise<void>;
   sendMessage: (conversationId: string, content: string) => Promise<void>;
+  deleteMessage: (conversationId: string, messageId: string) => Promise<void>;
+  deleteConversation: (conversationId: string) => Promise<void>;
+  hideConversation: (conversationId: string) => void;
+  unhideConversation: (conversationId: string) => void;
+  archiveConversation: (conversationId: string) => void;
+  unarchiveConversation: (conversationId: string) => void;
+  getConversationsByState: (state: ConversationState) => Conversation[];
   loadConversations: () => Promise<void>;
   loadMessages: (conversationId: string) => Promise<void>;
   createConversation: (walletAddress: string) => Promise<Conversation>;
+  createGroupConversation: (name: string, members: string[]) => Promise<Conversation>;
   manualSync: () => Promise<void>;
   canMessage: (walletAddress: string) => Promise<boolean>;
   getCurrentInboxId: () => Promise<string | null>;
+  syncOptimisticGroups: () => Promise<void>;
+  getInstallationStatus: (walletAddress: string) => { hasInstallation: boolean; createdAt?: string };
+  cleanupExpiredInstallations: () => void;
   isConnected: boolean;
 }
 
@@ -40,14 +61,15 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
   const [client, setClient] = useState<Client | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<{ [conversationId: string]: DecodedMessage[] }>({});
+  const [conversationStates, setConversationStates] = useState<{ [conversationId: string]: ConversationMetadata }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  // Create XMTP signer from ethers signer
+  // Create XMTP signer from ethers signer with smart account support
   const createXMTPSigner = (ethersSigner: ethers.Signer): Signer => {
     return {
-      type: "EOA",
+      type: "EOA", // XMTP V4 treats all signers as EOA for now
       getIdentifier: async () => {
         const address = await ethersSigner.getAddress();
         return {
@@ -56,26 +78,78 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
         };
       },
       signMessage: async (message: string): Promise<Uint8Array> => {
-        const signature = await ethersSigner.signMessage(message);
-        // Convert hex string to Uint8Array
-        return new Uint8Array(Buffer.from(signature.slice(2), 'hex'));
+        try {
+          const signature = await ethersSigner.signMessage(message);
+          // Convert hex string to Uint8Array
+          return new Uint8Array(Buffer.from(signature.slice(2), 'hex'));
+        } catch (error) {
+          console.error('XMTP: Failed to sign message:', error);
+          throw new Error('Failed to sign message. Please ensure your wallet is properly connected.');
+        }
       }
     };
   };
 
-  // Create XMTP client following V4 patterns
+  // Create XMTP client following V4 patterns with installation reuse
   const connect = async (ethersSigner: ethers.Signer) => {
     try {
-      console.log('XMTP: Creating client...');
+      console.log('XMTP: Starting connection...');
       setIsLoading(true);
       setError(null);
 
       // Create XMTP signer from ethers signer
       const xmtpSigner = createXMTPSigner(ethersSigner);
       
-      // Create XMTP client with the signer
-      const xmtpClient = await Client.create(xmtpSigner);
-      console.log('XMTP: Client created successfully');
+      // Get the wallet address for installation tracking
+      const walletAddress = await ethersSigner.getAddress();
+      console.log('XMTP: Wallet address:', walletAddress);
+      
+      // Check if we have a stored installation for this wallet
+      const installationKey = `xmtp-installation-${walletAddress.toLowerCase()}`;
+      const storedInstallation = localStorage.getItem(installationKey);
+      
+      let xmtpClient: Client;
+      
+      if (storedInstallation) {
+        try {
+          console.log('XMTP: Attempting to reuse existing installation...');
+          
+          // Try to create client with existing installation
+          xmtpClient = await Client.create(xmtpSigner, {
+            // XMTP V4 will automatically use existing installation if available
+            // The installation data is stored in IndexedDB by XMTP
+          });
+          
+          console.log('XMTP: Successfully reused existing installation');
+        } catch (reuseError) {
+          console.warn('XMTP: Failed to reuse existing installation, creating new one:', reuseError);
+          
+          // Clear the stored installation reference
+          localStorage.removeItem(installationKey);
+          
+          // Create new installation
+          xmtpClient = await Client.create(xmtpSigner);
+          console.log('XMTP: Created new installation');
+          
+          // Store reference to new installation
+          localStorage.setItem(installationKey, JSON.stringify({
+            createdAt: new Date().toISOString(),
+            walletAddress: walletAddress.toLowerCase()
+          }));
+        }
+      } else {
+        console.log('XMTP: No existing installation found, creating new one...');
+        
+        // Create new installation
+        xmtpClient = await Client.create(xmtpSigner);
+        console.log('XMTP: Created new installation');
+        
+        // Store reference to new installation
+        localStorage.setItem(installationKey, JSON.stringify({
+          createdAt: new Date().toISOString(),
+          walletAddress: walletAddress.toLowerCase()
+        }));
+      }
 
       setClient(xmtpClient);
       setIsConnected(true);
@@ -89,6 +163,34 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       setTimeout(() => setError(null), 3000);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Clean up expired installations
+  const cleanupExpiredInstallations = () => {
+    try {
+      const now = new Date();
+      const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+      
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('xmtp-installation-')) {
+          try {
+            const installation = JSON.parse(localStorage.getItem(key) || '{}');
+            const createdAt = new Date(installation.createdAt);
+            
+            if (now.getTime() - createdAt.getTime() > maxAge) {
+              console.log('XMTP: Removing expired installation:', key);
+              localStorage.removeItem(key);
+            }
+          } catch (err) {
+            console.warn('XMTP: Error parsing installation data:', key, err);
+            // Remove malformed installation data
+            localStorage.removeItem(key);
+          }
+        }
+      });
+    } catch (err) {
+      console.error('XMTP: Error cleaning up installations:', err);
     }
   };
 
@@ -109,6 +211,9 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     setIsConnected(false);
     setIsLoading(false);
     setError(null);
+    
+    // Clean up expired installations periodically
+    cleanupExpiredInstallations();
   };
 
   // Create conversation following XMTP V4 patterns
@@ -162,6 +267,128 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     }
   };
 
+  // Create group conversation following XMTP V4 patterns
+  const createGroupConversation = async (name: string, members: string[]): Promise<Conversation> => {
+    if (!client) {
+      throw new Error('XMTP client not connected.');
+    }
+
+    try {
+      console.log('XMTP: Creating group conversation:', { name, members });
+      
+      // Validate member addresses
+      const validMembers = members.filter(member => 
+        member.trim().startsWith('0x') && member.trim().length === 42
+      );
+      
+      if (validMembers.length === 0) {
+        throw new Error('No valid member addresses provided');
+      }
+
+      // Check if all members can receive messages
+      const canMessageResults = await Promise.all(
+        validMembers.map(async (member) => {
+          try {
+            const result = await Client.canMessage([{
+              identifier: member,
+              identifierKind: "Ethereum"
+            }]);
+            return { member, canMessage: result.get(member) };
+          } catch (err) {
+            console.warn('XMTP: Could not check message capability for:', member, err);
+            return { member, canMessage: false };
+          }
+        })
+      );
+
+      const reachableMembers = canMessageResults
+        .filter(result => result.canMessage)
+        .map(result => result.member);
+
+      console.log('XMTP: Group member reachability:', {
+        total: validMembers.length,
+        reachable: reachableMembers.length,
+        members: validMembers,
+        reachableMembers
+      });
+
+      // For groups, we need at least one reachable member
+      // If no members are reachable, we'll create an optimistic group instead
+      if (reachableMembers.length === 0) {
+        console.log('XMTP: No reachable members for group, creating optimistic group');
+        
+        // Create an optimistic group that can be synced later
+        const conversation = await client.conversations.newGroupOptimistic({
+          name: name,
+          description: `Group created by ${await client.accountIdentifier}`
+        });
+        
+        console.log('XMTP: Created optimistic group conversation:', conversation.id);
+        
+        // Store group metadata in localStorage for persistence
+        const groupMetadata = {
+          id: conversation.id,
+          name,
+          members: validMembers, // Store all members, even unreachable ones
+          type: 'group',
+          isOptimistic: true,
+          createdAt: new Date().toISOString()
+        };
+        
+        const existingGroups = JSON.parse(localStorage.getItem('xmtp-groups') || '[]');
+        existingGroups.push(groupMetadata);
+        localStorage.setItem('xmtp-groups', JSON.stringify(existingGroups));
+        
+        // Add the new conversation to our list
+        setConversations(prev => {
+          const exists = prev.find(c => c.id === conversation.id);
+          if (!exists) {
+            return [...prev, conversation];
+          }
+          return prev;
+        });
+        
+        return conversation;
+      }
+
+      // Create a real XMTP group conversation with reachable members
+      const conversation = await client.conversations.newGroup(reachableMembers, {
+        name: name,
+        description: `Group created by ${await client.accountIdentifier}`
+      });
+      console.log('XMTP: Created real group conversation:', conversation.id);
+      
+      // Store group metadata in localStorage for persistence
+      const groupMetadata = {
+        id: conversation.id,
+        name,
+        members: reachableMembers,
+        type: 'group',
+        createdAt: new Date().toISOString()
+      };
+      
+      const existingGroups = JSON.parse(localStorage.getItem('xmtp-groups') || '[]');
+      existingGroups.push(groupMetadata);
+      localStorage.setItem('xmtp-groups', JSON.stringify(existingGroups));
+      
+      // Add the new conversation to our list
+      setConversations(prev => {
+        const exists = prev.find(c => c.id === conversation.id);
+        if (!exists) {
+          return [...prev, conversation];
+        }
+        return prev;
+      });
+      
+      return conversation;
+    } catch (err) {
+      console.error('XMTP: Error creating group conversation:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create group conversation');
+      setTimeout(() => setError(null), 3000);
+      throw err;
+    }
+  };
+
   // Send message following XMTP V4 patterns
   const sendMessage = async (conversationId: string, content: string) => {
     if (!client) return;
@@ -192,6 +419,83 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     }
   };
 
+  // Delete message (local deletion - removes from user's view)
+  const deleteMessage = async (conversationId: string, messageId: string) => {
+    if (!client) return;
+
+    try {
+      setIsLoading(true);
+      console.log('XMTP: Removing message from view:', messageId, 'from conversation:', conversationId);
+      
+      // Check if conversation exists
+      const conversation = conversations.find(c => c.id === conversationId);
+      if (!conversation) {
+        throw new Error('Conversation not found');
+      }
+      
+      // Get the message to remove
+      const currentMessages = messages[conversationId] || [];
+      const messageToRemove = currentMessages.find(m => m.id === messageId);
+      if (!messageToRemove) {
+        throw new Error('Message not found');
+      }
+      
+      // Check if user can delete this message (only their own messages)
+      const currentUserInboxId = await getCurrentInboxId();
+      if (messageToRemove.senderInboxId !== currentUserInboxId) {
+        throw new Error('You can only delete your own messages');
+      }
+      
+      // Remove message from local state only
+      // Note: XMTP V4 doesn't support server-side message deletion
+      setMessages(prev => ({
+        ...prev,
+        [conversationId]: prev[conversationId]?.filter(m => m.id !== messageId) || []
+      }));
+      
+      console.log('XMTP: Message removed from view successfully');
+    } catch (err) {
+      console.error('Failed to remove message:', err);
+      setError(err instanceof Error ? err.message : 'Failed to remove message');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const deleteConversation = async (conversationId: string) => {
+    if (!client) return;
+
+    try {
+      setIsLoading(true);
+      console.log('XMTP: Removing conversation from view:', conversationId);
+      
+      // Check if conversation exists
+      const conversation = conversations.find(c => c.id === conversationId);
+      if (!conversation) {
+        throw new Error('Conversation not found');
+      }
+      
+      // Remove conversation from local state
+      setConversations(prev => prev.filter(c => c.id !== conversationId));
+      
+      // Remove messages for this conversation from local state
+      setMessages(prev => {
+        const newMessages = { ...prev };
+        delete newMessages[conversationId];
+        return newMessages;
+      });
+      
+      console.log('XMTP: Conversation removed from view successfully');
+    } catch (err) {
+      console.error('Failed to remove conversation:', err);
+      setError(err instanceof Error ? err.message : 'Failed to remove conversation');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Load conversations following XMTP V4 patterns
   const loadConversations = async () => {
     if (!client) return;
@@ -204,13 +508,24 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       const allConversations = await client.conversations.list();
       console.log('XMTP: Found', allConversations.length, 'conversations');
       
-      // Log conversation details for debugging
-      allConversations.forEach((conv, index) => {
-        console.log(`XMTP: Conversation ${index + 1}:`, {
-          id: conv.id,
-          type: 'DM'
+              // Log conversation details for debugging
+        allConversations.forEach((conv, index) => {
+          // Check if it's a real XMTP group
+          const isRealGroup = conv.constructor.name === 'Group';
+          
+          // Check localStorage for optimistic groups
+          const groups = JSON.parse(localStorage.getItem('xmtp-groups') || '[]');
+          const storedGroup = groups.find((group: any) => group.id === conv.id);
+          
+          console.log(`XMTP: Conversation ${index + 1}:`, {
+            id: conv.id,
+            type: isRealGroup ? 'Group' : (storedGroup ? 'Optimistic Group' : 'DM'),
+            isRealGroup,
+            hasStoredMetadata: !!storedGroup,
+            storedGroupType: storedGroup?.type,
+            constructor: conv.constructor.name
+          });
         });
-      });
       
       setConversations(allConversations);
     } catch (err) {
@@ -375,21 +690,194 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     }
   };
 
+  // Get installation status for a wallet
+  const getInstallationStatus = (walletAddress: string) => {
+    try {
+      const installationKey = `xmtp-installation-${walletAddress.toLowerCase()}`;
+      const storedInstallation = localStorage.getItem(installationKey);
+      
+      if (storedInstallation) {
+        const installation = JSON.parse(storedInstallation);
+        return {
+          hasInstallation: true,
+          createdAt: installation.createdAt
+        };
+      }
+      
+      return {
+        hasInstallation: false
+      };
+    } catch (err) {
+      console.error('XMTP: Error getting installation status:', err);
+      return {
+        hasInstallation: false
+      };
+    }
+  };
+
+  // Clean up stale localStorage entries
+  const cleanupStaleGroups = () => {
+    try {
+      const groups = JSON.parse(localStorage.getItem('xmtp-groups') || '[]');
+      const validConversationIds = conversations.map(c => c.id);
+      
+      // Remove groups that don't correspond to actual conversations
+      const cleanedGroups = groups.filter((group: any) => 
+        validConversationIds.includes(group.id)
+      );
+      
+      if (cleanedGroups.length !== groups.length) {
+        console.log('XMTP: Cleaned up stale group entries:', groups.length - cleanedGroups.length);
+        localStorage.setItem('xmtp-groups', JSON.stringify(cleanedGroups));
+      }
+    } catch (err) {
+      console.error('XMTP: Error cleaning up stale groups:', err);
+    }
+  };
+
+  // Sync optimistic groups when members become available
+  const syncOptimisticGroups = async () => {
+    if (!client) return;
+
+    try {
+      // First clean up stale entries
+      cleanupStaleGroups();
+      
+      const groups = JSON.parse(localStorage.getItem('xmtp-groups') || '[]');
+      const optimisticGroups = groups.filter((group: any) => group.isOptimistic);
+
+      for (const group of optimisticGroups) {
+        // Check if any members are now reachable
+        const canMessageResults = await Promise.all(
+          group.members.map(async (member: string) => {
+            try {
+              const result = await Client.canMessage([{
+                identifier: member,
+                identifierKind: "Ethereum"
+              }]);
+              return { member, canMessage: result.get(member) };
+            } catch (err) {
+              return { member, canMessage: false };
+            }
+          })
+        );
+
+        const reachableMembers = canMessageResults
+          .filter(result => result.canMessage)
+          .map(result => result.member);
+
+        if (reachableMembers.length > 0) {
+          console.log('XMTP: Syncing optimistic group:', group.id, 'with members:', reachableMembers);
+          
+          // Find the conversation and add members
+          const conversation = conversations.find(c => c.id === group.id);
+          if (conversation && conversation.constructor.name === 'Group') {
+            try {
+              // Add members to the group
+              await (conversation as any).addMembers(reachableMembers);
+              
+              // Publish any prepared messages to the network
+              await (conversation as any).publishMessages();
+              
+              // Update group metadata
+              group.isOptimistic = false;
+              group.members = reachableMembers;
+              localStorage.setItem('xmtp-groups', JSON.stringify(groups));
+              
+              console.log('XMTP: Successfully synced optimistic group to network:', group.id);
+              
+              // Reload conversations to reflect the changes
+              await loadConversations();
+            } catch (syncError) {
+              console.error('XMTP: Error syncing group to network:', syncError);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('XMTP: Error syncing optimistic groups:', err);
+    }
+  };
+
+  // Conversation management functions
+  const hideConversation = (conversationId: string) => {
+    setConversationStates(prev => ({
+      ...prev,
+      [conversationId]: {
+        state: 'hidden',
+        hiddenAt: new Date(),
+        archivedAt: prev[conversationId]?.archivedAt
+      }
+    }));
+  };
+
+  const unhideConversation = (conversationId: string) => {
+    setConversationStates(prev => ({
+      ...prev,
+      [conversationId]: {
+        state: 'active',
+        hiddenAt: undefined,
+        archivedAt: prev[conversationId]?.archivedAt
+      }
+    }));
+  };
+
+  const archiveConversation = (conversationId: string) => {
+    setConversationStates(prev => ({
+      ...prev,
+      [conversationId]: {
+        state: 'archived',
+        hiddenAt: prev[conversationId]?.hiddenAt,
+        archivedAt: new Date()
+      }
+    }));
+  };
+
+  const unarchiveConversation = (conversationId: string) => {
+    setConversationStates(prev => ({
+      ...prev,
+      [conversationId]: {
+        state: 'active',
+        hiddenAt: prev[conversationId]?.hiddenAt,
+        archivedAt: undefined
+      }
+    }));
+  };
+
+  const getConversationsByState = (state: ConversationState): Conversation[] => {
+    return conversations.filter(conversation => {
+      const metadata = conversationStates[conversation.id];
+      return metadata?.state === state;
+    });
+  };
+
   const value: XMTPContextType = {
     client,
     conversations,
     messages,
+    conversationStates,
     isLoading,
     error,
     connect,
     disconnect,
     sendMessage,
+    deleteMessage,
+    deleteConversation,
+    hideConversation,
+    unhideConversation,
+    archiveConversation,
+    unarchiveConversation,
+    getConversationsByState,
     loadConversations,
     loadMessages,
     createConversation,
+    createGroupConversation,
     manualSync,
     canMessage,
     getCurrentInboxId,
+    syncOptimisticGroups,
+    getInstallationStatus,
+    cleanupExpiredInstallations,
     isConnected,
   };
 

@@ -66,6 +66,27 @@ If the T-Deed owner hasn't used XMTP before:
 3. **Messages appear in real-time**
 4. **Conversation history** is automatically saved
 
+### For Group Conversations
+
+#### Creating Group Chats
+1. **Click "New Conversation"** in the messaging interface
+2. **Select "Group Chat" tab** in the dialog
+3. **Enter group name** (e.g., "Project Team")
+4. **Add member addresses** (Ethereum wallet addresses)
+5. **Click "Create Group"** to start the conversation
+
+#### Group Features
+- **Member Management**: Add/remove members from groups
+- **Member Count Display**: Shows number of members in group
+- **Optimistic Creation**: Groups created immediately, synced when members join XMTP
+- **Network Sync**: Groups automatically sync to XMTP network when members become available
+- **Message Broadcasting**: Send messages to all group members at once
+
+#### Group Types
+- **Real XMTP Groups**: Fully synced groups with active members
+- **Optimistic Groups**: Groups waiting for members to join XMTP
+- **Member Count**: Always shows current member count (e.g., "Group Chat • 5 members")
+
 ### For T-Deed Owners
 
 #### Receiving Messages
@@ -97,15 +118,25 @@ The messaging interface features a clean, two-tier header system:
 - **Connection Status**: Real-time connection badge (Connected/Connecting/Not Connected)
 
 **Action Buttons Subheader**
-- **New DM Button**: Create new direct messages
-- **Sync Button**: Manually sync messages
+- **New Conversation Button**: Create new direct messages or group chats
+- **Sync Button**: Manually sync messages and optimistic groups
+- **Hidden Conversations Toggle**: Show/hide archived conversations
 - **Close Button**: Close the messaging interface
+
+#### **Conversation Management**
+- **Hide/Archive Conversations**: Right-click or use hide button to archive conversations
+- **Hidden Conversations View**: Toggle to see archived conversations
+- **Conversation Persistence**: Hidden state persists across sessions
+- **Search Functionality**: Find conversations by address or name
 
 #### **Conversation List**
 - **Wallet addresses** displayed as conversation names
+- **Group names** displayed for group conversations
+- **Member counts** shown for all conversations (e.g., "Direct Message • 2 members")
 - **Real-time updates** for new messages
 - **Search functionality** to find conversations
 - **Mobile responsive** design with optimized touch targets
+- **Hide/Unhide buttons** for conversation management
 
 #### **Message Composition**
 - **Vertically centered text** in input fields
@@ -128,13 +159,15 @@ The mobile interface uses a modern two-view approach:
 
 **Conversation List View**
 - **Clean header** with "XMTP Inbox" title
-- **Action buttons** (New DM, Sync) in header
+- **Action buttons** (New Conversation, Sync, Hidden) in header
 - **Search bar** for finding conversations
 - **Large conversation avatars** for better touch targets
-- **Conversation count** display
+- **Conversation count** display with member counts
+- **Hide/Unhide buttons** for each conversation
 
 **Individual Conversation View**
 - **Compact header** with back button and conversation details
+- **Member count display** (e.g., "Group Chat • 5 members")
 - **Full-width message area** for optimal reading
 - **Square send button** matching input height
 - **Back navigation** to conversation list
@@ -223,6 +256,7 @@ The mobile interface uses a modern two-view approach:
 ## 🔄 Sync and Performance
 
 ### Sync Strategy
+- **Installation reuse** for faster subsequent connections
 - **Double sync** on initial load for reliability
 - **Periodic sync** every 30 seconds for updates
 - **Real-time streaming** for immediate updates
@@ -240,11 +274,13 @@ The mobile interface uses a modern two-view approach:
 - [ ] **Message notifications** (push notifications)
 - [ ] **File attachments** (images, documents)
 - [ ] **Message reactions** (like, heart, etc.)
-- [ ] **Group messaging** for multiple owners
+- [x] **Group messaging** for multiple owners (✅ Implemented)
+- [x] **Conversation archiving** (✅ Implemented)
 - [ ] **Message search** functionality
-- [ ] **Conversation archiving**
 - [ ] **Message encryption** status indicators
 - [ ] **Read receipts** and typing indicators
+- [ ] **Message scheduling** for future delivery
+- [ ] **Message templates** for common inquiries
 
 ### Advanced Features
 - [ ] **Message scheduling** for future delivery

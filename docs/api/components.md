@@ -23,7 +23,7 @@ The frontend application consists of several key component categories:
 - **TransferModal**: Asset transfer interface
 - **MessageOwnerModal**: Owner communication
 - **InstallPrompt**: Wallet installation prompts
-- **XMTPMessaging**: End-to-end encrypted messaging interface
+- **XMTPMessaging**: End-to-end encrypted messaging interface with group chat support
 
 ### Utility Components
 - **Faucet**: Testnet token distribution
@@ -76,7 +76,110 @@ function App() {
 - `handleQuickAction()`: Execute quick actions
 - `updateStatistics()`: Update dashboard statistics
 
-### 2. MintForm.tsx (1,052 lines)
+### 2. XMTPMessaging.tsx (1,342 lines)
+
+Advanced messaging interface with XMTP integration, supporting both direct messages and group conversations.
+
+#### Key Features
+- **End-to-End Encryption**: All messages encrypted using XMTP protocol
+- **Direct Messaging**: One-on-one conversations with wallet addresses
+- **Group Messaging**: Multi-member group conversations with member management
+- **Optimistic Groups**: Groups created immediately, synced when members join XMTP
+- **Conversation Management**: Hide/archive conversations with persistence
+- **Member Count Display**: Shows member count for all conversations
+- **Real-time Streaming**: Live message updates and conversation sync
+- **Mobile Responsive**: Two-view system for mobile devices
+- **Network Sync**: Automatic syncing of optimistic groups to XMTP network
+
+#### Props
+```typescript
+interface XMTPMessagingProps {
+  ownerAddress?: string;    // Optional: Pre-select conversation with specific address
+  tokenId?: string;         // Optional: Associated token ID for context
+  assetType?: string;       // Optional: Asset type for display
+  isOpen: boolean;          // Required: Controls modal visibility
+  onClose: () => void;      // Required: Close handler
+}
+```
+
+#### Usage Example
+```tsx
+import { XMTPMessaging } from '@/components/XMTPMessaging';
+
+function App() {
+  const [isMessagingOpen, setIsMessagingOpen] = useState(false);
+  
+  return (
+    <div>
+      <button onClick={() => setIsMessagingOpen(true)}>
+        Open Messaging
+      </button>
+      
+      <XMTPMessaging
+        isOpen={isMessagingOpen}
+        onClose={() => setIsMessagingOpen(false)}
+        ownerAddress="0x1234..." // Optional: Pre-select conversation
+        tokenId="123"            // Optional: Associated token
+        assetType="Land"         // Optional: Asset type
+      />
+    </div>
+  );
+}
+```
+
+#### Key Functions
+- `handleCreateGroup()`: Create new group conversations
+- `handleCreateNewDm()`: Create new direct messages
+- `handleSendMessage()`: Send messages to conversations
+- `isGroupConversation()`: Detect conversation type (DM vs Group)
+- `getConversationMembersCount()`: Get member count for any conversation
+- `getConversationType()`: Get detailed conversation type (Real Group, Optimistic Group, DM)
+- `hideConversation()` / `unhideConversation()`: Manage conversation visibility
+- `syncOptimisticGroups()`: Sync optimistic groups to XMTP network
+
+#### UI/UX Features
+- **Two-Tier Header**: Main header with title/status, subheader with action buttons
+- **Mobile Two-View System**: Separate list and conversation views on mobile
+- **Square Send Buttons**: Perfectly centered icons with consistent 44px height
+- **Vertically Centered Text**: Input text aligned to center line
+- **Collapsible Desktop Sidebar**: Expandable conversation list (80px collapsed, 320px expanded)
+- **Touch Optimizations**: Larger touch targets and proper spacing for mobile
+- **Clean Message Alignment**: Sent messages on right, received on left
+- **Member Count Display**: Shows "Direct Message • 2 members" or "Group Chat • 5 members"
+
+#### Mobile Experience
+- **Conversation List View**: Clean header, search, action buttons, conversation count
+- **Individual Conversation View**: Compact header with back button, member count, full-width messages
+- **Responsive Design**: Optimized for touch interaction with proper spacing
+- **Navigation**: Smooth transitions between list and conversation views
+
+#### Desktop Experience
+- **Collapsible Sidebar**: Expandable conversation list with search functionality
+- **Main Chat Area**: Full-height message display with conversation header
+- **Hover Effects**: Hide/unhide buttons appear on conversation hover
+- **Sync Integration**: Manual and automatic sync of conversations and groups
+
+#### Security Features
+- **End-to-End Encryption**: All messages encrypted using XMTP protocol
+- **Wallet Authentication**: Secure access using wallet signatures
+- **Local Storage**: Messages stored locally with secure key management
+- **Network Validation**: Automatic validation of member reachability
+- **Privacy Protection**: No central server can read messages
+
+#### Performance Optimizations
+- **Lazy Loading**: Message history loaded on demand
+- **Background Sync**: Periodic syncing of optimistic groups (every 30 seconds)
+- **Efficient Caching**: Conversation and message caching
+- **Real-time Streaming**: Immediate message updates via XMTP streaming
+- **Stale Data Cleanup**: Automatic removal of orphaned localStorage entries
+
+#### Error Handling
+- **Graceful Degradation**: Fallback for network issues
+- **Member Validation**: Check reachability before adding to groups
+- **Sync Error Recovery**: Retry mechanisms for failed syncs
+- **User Feedback**: Clear error messages and status indicators
+
+### 3. MintForm.tsx (1,052 lines)
 
 Comprehensive interface for minting new DeedNFT tokens.
 
