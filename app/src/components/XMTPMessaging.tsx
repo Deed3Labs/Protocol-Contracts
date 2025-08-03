@@ -1119,7 +1119,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                                   "transition-colors group",
                           isConversationListCollapsed 
                             ? "p-3 flex justify-center h-16" 
-                            : "p-3 flex h-16 border-b border-gray-200 dark:border-gray-700 last:border-b-0",
+                            : "p-3 h-16 content-center border-b border-gray-200 dark:border-gray-700 last:border-b-0",
                         selectedConversation === conversation.id
                           ? "bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500 dark:border-l-blue-400"
                           : "hover:bg-gray-50 dark:hover:bg-gray-800"
