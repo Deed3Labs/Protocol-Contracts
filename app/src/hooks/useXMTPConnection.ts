@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { useXMTP } from '@/context/XMTPContext';
+import type { Signer } from 'ethers';
 
 export const useXMTPConnection = () => {
-  const { connect, isConnected, resetConnection } = useXMTP();
+  const { connect, isConnected, disconnect } = useXMTP();
   const { address, isConnected: isWalletConnected } = useAccount();
   const { address: appkitAddress, isConnected: isAppKitConnected, embeddedWalletInfo } = useAppKitAccount();
   const { walletProvider } = useAppKitProvider("eip155");
@@ -14,14 +15,6 @@ export const useXMTPConnection = () => {
   // Determine which wallet is active
   const activeAddress = appkitAddress || address;
   const isActiveWalletConnected = isAppKitConnected || isWalletConnected;
-
-  // Remove auto-connection - only connect when user explicitly requests it
-  // useEffect(() => {
-  //   if (isActiveWalletConnected && activeAddress && !isConnected && !isConnecting && !connectionAttempted.current) {
-  //     connectionAttempted.current = true;
-  //     handleConnect().catch(console.error);
-  //   }
-  // }, [isActiveWalletConnected, activeAddress, isConnected, isConnecting]);
 
   // Track previous address to detect changes
   const prevAddressRef = useRef<string | undefined>(activeAddress);
@@ -38,18 +31,18 @@ export const useXMTPConnection = () => {
         currentAddress
       });
       connectionAttempted.current = false;
-      resetConnection().catch(console.error);
+      disconnect().catch(console.error);
     }
 
     // If wallet disconnected, reset connection
     if (!isActiveWalletConnected) {
       connectionAttempted.current = false;
-      resetConnection().catch(console.error); // Reset XMTP connection state when wallet disconnects
+      disconnect().catch(console.error);
     }
 
     // Update the previous address reference
     prevAddressRef.current = currentAddress;
-  }, [isActiveWalletConnected, activeAddress, isConnected, resetConnection]);
+  }, [isActiveWalletConnected, activeAddress, isConnected, disconnect]);
 
   const handleConnect = async () => {
     console.log('XMTP Connection Hook: Starting connection...', {
@@ -67,7 +60,7 @@ export const useXMTPConnection = () => {
     
     setIsConnecting(true);
     try {
-      let signer;
+      let signer: Signer;
 
       if (embeddedWalletInfo) {
         // For AppKit embedded wallets (smart accounts)
@@ -78,20 +71,19 @@ export const useXMTPConnection = () => {
         }
 
         // Use AppKit's wallet provider to create a signer
-        // AppKit provides a compatible signer interface for smart accounts
-        signer = await (walletProvider as any).getSigner();
+        signer = await (walletProvider as { getSigner(): Promise<Signer> }).getSigner();
         console.log('XMTP Connection Hook: AppKit signer created');
       } else {
         // For regular wallets (MetaMask, etc.)
         console.log('XMTP Connection Hook: Using regular wallet');
         
-        if (!(window as any).ethereum) {
+        if (!(window as { ethereum?: unknown }).ethereum) {
           throw new Error('No Ethereum provider available');
         }
 
         // Create ethers provider and signer
         const { BrowserProvider } = await import('ethers');
-        const provider = new BrowserProvider((window as any).ethereum);
+        const provider = new BrowserProvider((window as { ethereum: unknown }).ethereum as any);
         signer = await provider.getSigner();
         console.log('XMTP Connection Hook: Regular wallet signer created');
       }

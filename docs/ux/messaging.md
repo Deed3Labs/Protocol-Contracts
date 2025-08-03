@@ -88,29 +88,76 @@ If the T-Deed owner hasn't used XMTP before:
 
 ### Main Features
 
+#### **Header Structure**
+The messaging interface features a clean, two-tier header system:
+
+**Main Header**
+- **Icon and Title**: XMTP Inbox with messaging icon
+- **Description**: "Your conversations and messages"
+- **Connection Status**: Real-time connection badge (Connected/Connecting/Not Connected)
+
+**Action Buttons Subheader**
+- **New DM Button**: Create new direct messages
+- **Sync Button**: Manually sync messages
+- **Close Button**: Close the messaging interface
+
 #### **Conversation List**
 - **Wallet addresses** displayed as conversation names
 - **Real-time updates** for new messages
 - **Search functionality** to find conversations
-- **Mobile responsive** design
+- **Mobile responsive** design with optimized touch targets
 
 #### **Message Composition**
-- **Rich text support** for message content
+- **Vertically centered text** in input fields
+- **Square send buttons** with perfectly centered icons
 - **Enter to send** or click send button
 - **Auto-scroll** to latest messages
-- **Typing indicators** (future feature)
+- **Consistent 44px height** for inputs and buttons
 
 #### **Message Display**
 - **Timestamp** for each message
 - **Sender identification** (you vs. other person)
 - **Message content** with proper formatting
 - **Real-time updates** via streaming
+- **Proper message alignment** (sent on right, received on left)
 
 ### Mobile Experience
-- **Touch-optimized** interface
-- **Swipe gestures** for navigation
-- **Responsive design** for all screen sizes
-- **Keyboard-friendly** input
+
+#### **Two-View System**
+The mobile interface uses a modern two-view approach:
+
+**Conversation List View**
+- **Clean header** with "XMTP Inbox" title
+- **Action buttons** (New DM, Sync) in header
+- **Search bar** for finding conversations
+- **Large conversation avatars** for better touch targets
+- **Conversation count** display
+
+**Individual Conversation View**
+- **Compact header** with back button and conversation details
+- **Full-width message area** for optimal reading
+- **Square send button** matching input height
+- **Back navigation** to conversation list
+
+#### **Touch Optimizations**
+- **Larger touch targets** for better mobile usability
+- **Proper spacing** between interactive elements
+- **Consistent button sizing** across the interface
+- **Optimized text input** with centered text alignment
+
+### Desktop Experience
+
+#### **Collapsible Sidebar**
+- **Expandable conversation list** (80px collapsed, 320px expanded)
+- **Search functionality** in sidebar header
+- **Conversation avatars** and details
+- **Smooth transitions** between states
+
+#### **Main Chat Area**
+- **Conversation header** with recipient details
+- **Full-height message display** with proper scrolling
+- **Message input** with square send button
+- **Real-time message streaming**
 
 ## 🔧 Technical Details
 
