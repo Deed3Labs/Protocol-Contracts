@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useXMTP } from '@/context/XMTPContext';
 import { useXMTPConnection } from '@/hooks/useXMTPConnection';
 import { Button } from '@/components/ui/button';
@@ -75,7 +75,36 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   const [isConversationListCollapsed, setIsConversationListCollapsed] = useState(false);
   const [hiddenConversations, setHiddenConversations] = useState<Set<string>>(new Set());
   const [showHiddenConversations, setShowHiddenConversations] = useState(false);
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Manual sync handler
+  const handleManualSync = useCallback(() => {
+    console.log('XMTP: Manual sync triggered by user');
+    return manualSync();
+  }, [manualSync]);
+
+  // Dedicated auto-sync function with stable dependencies
+  const performAutoSync = useCallback(async () => {
+    if (!isConnected) return;
+    
+    console.log('XMTP: Auto sync triggered');
+    setIsAutoSyncing(true);
+    
+    try {
+      // Sync conversations
+      await loadConversations();
+      
+      // Sync optimistic groups
+      await syncOptimisticGroups();
+      
+      console.log('XMTP: Auto sync completed successfully');
+    } catch (error) {
+      console.error('XMTP: Auto sync failed:', error);
+    } finally {
+      setIsAutoSyncing(false);
+    }
+  }, [isConnected]); // Only depend on isConnected, not the functions themselves
 
   // Debug logging for current user address
   useEffect(() => {
@@ -161,16 +190,30 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     }
   }, []);
 
-  // Periodically sync optimistic groups
+  // Unified auto-sync system
   useEffect(() => {
-    if (isConnected) {
-      const syncInterval = setInterval(() => {
-        syncOptimisticGroups();
-      }, 30000); // Sync every 30 seconds
+    if (!isConnected) return;
 
-      return () => clearInterval(syncInterval);
-    }
-  }, [isConnected, syncOptimisticGroups]);
+    console.log('XMTP: Setting up auto-sync system...');
+    
+    // Initial sync after 250ms to ensure everything is loaded
+    const initialSyncTimer = setTimeout(() => {
+      console.log('XMTP: Performing initial auto-sync...');
+      performAutoSync();
+    }, 250);
+
+    // Periodic sync every 30 seconds
+    const syncInterval = setInterval(() => {
+      console.log('XMTP: Performing periodic auto-sync...');
+      performAutoSync();
+    }, 30000);
+
+    return () => {
+      console.log('XMTP: Cleaning up auto-sync timers...');
+      clearTimeout(initialSyncTimer);
+      clearInterval(syncInterval);
+    };
+  }, [isConnected, performAutoSync]);
 
   // Save hidden conversations to localStorage
   const saveHiddenConversations = (hidden: Set<string>) => {
@@ -727,12 +770,12 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={manualSync}
-                  disabled={isLoading}
+                  onClick={handleManualSync}
+                  disabled={isLoading || isAutoSyncing}
                   title="Sync messages"
                   className="px-3"
                 >
-                  <RefreshCw className="w-4 h-4 mr-2" />
+                  <RefreshCw className={cn("w-4 h-4 mr-2", (isAutoSyncing || isLoading) && "animate-spin")} />
                   <span>Sync</span>
                 </Button>
               )}
@@ -1216,12 +1259,12 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                         <Button 
                           variant="outline" 
                           size="sm" 
-                          onClick={manualSync}
-                          disabled={isLoading}
+                          onClick={handleManualSync}
+                          disabled={isLoading || isAutoSyncing}
                           title="Sync messages"
                           className="px-3"
                         >
-                          <RefreshCw className="w-4 h-4" />
+                          <RefreshCw className={cn("w-4 h-4", (isAutoSyncing || isLoading) && "animate-spin")} />
                         </Button>
                       )}
                     </div>
