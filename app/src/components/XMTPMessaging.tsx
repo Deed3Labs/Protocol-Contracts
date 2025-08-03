@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Plus,
   ChevronLeft,
+  ChevronRight,
   Eye,
   EyeOff,
   Archive,
@@ -535,7 +536,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
 
         {/* Action Buttons Subheader */}
         <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mx-0.75">
             <div className="flex items-center space-x-3">
               {/* New Conversation Button */}
               {isConnected && (
@@ -780,7 +781,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       placeholder="Search conversations..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 h-[44px]"
                     />
                   </div>
                 </div>
@@ -1035,7 +1036,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
             {/* Header with collapse toggle */}
             <div className={cn(
               "border-b border-gray-200 dark:border-gray-700 flex items-center transition-all duration-300",
-              isConversationListCollapsed ? "p-2 justify-center" : "p-4 justify-between"
+              isConversationListCollapsed ? "p-0 justify-center h-16" : "p-3 justify-between"
             )}>
               {!isConversationListCollapsed && (
                 <div className="relative flex-1">
@@ -1044,12 +1045,12 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                     placeholder="Search conversations..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 h-[44px]"
                   />
                 </div>
               )}
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => setIsConversationListCollapsed(!isConversationListCollapsed)}
                 className={cn(
@@ -1059,9 +1060,9 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 title={isConversationListCollapsed ? "Expand conversations" : "Collapse conversations"}
               >
                 {isConversationListCollapsed ? (
-                  <Search className="w-4 h-4" />
+                  <ChevronRight className="w-4 h-4" />
                 ) : (
-                  <X className="w-4 h-4" />
+                  <ChevronLeft className="w-4 h-4" />
                 )}
               </Button>
             </div>
@@ -1104,10 +1105,10 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
               ) : (
                 <div className={cn(
                   "transition-all duration-300",
-                  isConversationListCollapsed ? "p-2" : ""
+                  isConversationListCollapsed ? "" : ""
                 )}>
                   {!isConversationListCollapsed && (
-                    <div className="text-xs text-gray-500 px-3 py-1">
+                    <div className="text-xs text-gray-500 px-3 py-1 mb-2">
                       {filteredConversations.length} {showHiddenConversations ? 'hidden' : ''} conversation{filteredConversations.length !== 1 ? 's' : ''}
                     </div>
                   )}
@@ -1115,10 +1116,10 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                     <div
                       key={conversation.id}
                       className={cn(
-                        "transition-colors group",
-                        isConversationListCollapsed 
-                          ? "p-2 rounded-lg flex justify-center" 
-                          : "p-3 border-b border-gray-200 dark:border-gray-700 last:border-b-0",
+                                                  "transition-colors group",
+                          isConversationListCollapsed 
+                            ? "p-3 flex justify-center h-16" 
+                            : "p-3 flex h-16 border-b border-gray-200 dark:border-gray-700 last:border-b-0",
                         selectedConversation === conversation.id
                           ? "bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500 dark:border-l-blue-400"
                           : "hover:bg-gray-50 dark:hover:bg-gray-800"
