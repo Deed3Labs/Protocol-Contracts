@@ -19,6 +19,14 @@ This app now includes XMTP (Extensible Message Transport Protocol) messaging cap
 - Asset information (type, token ID) is included in conversations
 - Easy identification of which asset the conversation is about
 
+### 🎨 Modern UI/UX Design
+- **Two-Tier Header System**: Clean main header with title/description/status + action buttons subheader
+- **Mobile Two-View System**: Conversation list view and individual conversation view
+- **Square Send Buttons**: Perfectly centered icons in 44px square buttons
+- **Vertically Centered Text**: Text inputs with proper vertical alignment
+- **Responsive Design**: Optimized for both mobile and desktop experiences
+- **Touch Optimizations**: Larger touch targets and proper spacing for mobile
+
 ## How to Use
 
 ### For Users Wanting to Message T-Deed Owners
@@ -40,12 +48,18 @@ This app now includes XMTP (Extensible Message Transport Protocol) messaging cap
 - Manages XMTP client connections
 - Handles conversation and message state
 - Provides connection and messaging functions
+- Includes `getCurrentInboxId()` for message sender identification
 
 ### XMTPMessaging (`/components/XMTPMessaging.tsx`)
-- Full-featured messaging interface
-- Conversation list and search
-- Real-time message display
-- Message composition and sending
+- Full-featured messaging interface with modern UI/UX
+- **Two-Tier Header**: Main header with title/description/status + action buttons subheader
+- **Mobile Two-View System**: Conversation list view and individual conversation view
+- **Square Send Buttons**: 44px × 44px square buttons with centered icons
+- **Vertically Centered Text**: Text inputs with proper vertical alignment
+- **Collapsible Desktop Sidebar**: Expandable conversation list (80px collapsed, 320px expanded)
+- **Touch Optimizations**: Larger touch targets and proper spacing for mobile
+- **Clean Message Alignment**: Sent messages on right (blue), received on left (gray)
+- Real-time message display and conversation management
 
 ### XMTPMessageButton (`/components/XMTPMessageButton.tsx`)
 - Simple button component for quick messaging
@@ -57,12 +71,62 @@ This app now includes XMTP (Extensible Message Transport Protocol) messaging cap
 - Maintains existing Blockscan and email options
 - Seamless integration with existing UI
 
+## UI/UX Improvements
+
+### Header Structure
+The messaging interface features a clean, two-tier header system:
+
+**Main Header**
+- **Icon and Title**: XMTP Inbox with messaging icon
+- **Description**: "Your conversations and messages"
+- **Connection Status**: Real-time connection badge (Connected/Connecting/Not Connected)
+
+**Action Buttons Subheader**
+- **New DM Button**: Create new direct messages with visible text on all screen sizes
+- **Sync Button**: Manually sync messages with visible text on all screen sizes
+- **Close Button**: Close the messaging interface
+
+### Mobile Experience
+The mobile interface uses a modern two-view approach:
+
+**Conversation List View**
+- **Clean header** with "XMTP Inbox" title
+- **Action buttons** (New DM, Sync) in header
+- **Search bar** for finding conversations
+- **Large conversation avatars** for better touch targets
+- **Conversation count** display
+
+**Individual Conversation View**
+- **Compact header** with back button and conversation details
+- **Full-width message area** for optimal reading
+- **Square send button** matching input height
+- **Back navigation** to conversation list
+
+### Desktop Experience
+- **Collapsible Sidebar**: Toggle between expanded (320px) and collapsed (80px) states
+- **Main Chat Area**: Full-height message display with conversation header
+- **Search Integration**: Built-in search functionality in sidebar
+- **Smooth Transitions**: Animated transitions between sidebar states
+
+### Message Input Features
+- **Square Send Button**: 44px × 44px square with centered icon
+- **Vertically Centered Text**: Text aligned to center line of input
+- **Auto-Resize**: Input expands up to 120px height for longer messages
+- **Enter to Send**: Press Enter to send messages quickly
+- **Loading States**: Visual feedback during message sending
+
+### Touch Optimizations
+- **Larger touch targets** for better mobile usability
+- **Proper spacing** between interactive elements
+- **Consistent button sizing** across the interface
+- **Optimized text input** with centered text alignment
+
 ## Technical Implementation
 
 ### Dependencies
 ```json
 {
-  "@xmtp/xmtp-js": "^13.0.4"
+  "@xmtp/browser-sdk": "^4.0.0"
 }
 ```
 
@@ -71,7 +135,7 @@ This app now includes XMTP (Extensible Message Transport Protocol) messaging cap
 - **Conversation Management**: Creates and manages conversations automatically
 - **Message Streaming**: Real-time message updates
 - **Error Handling**: Comprehensive error handling and user feedback
-- **Responsive Design**: Works on mobile and desktop
+- **Responsive Design**: Works on mobile and desktop with optimized layouts
 
 ### Security
 - Uses XMTP's end-to-end encryption
@@ -115,7 +179,8 @@ const {
   isConnected, 
   conversations, 
   sendMessage, 
-  createConversation 
+  createConversation,
+  getCurrentInboxId 
 } = useXMTP();
 ```
 
@@ -158,6 +223,9 @@ The XMTP integration is configured for:
 - [ ] Conversation archiving
 - [ ] Message search functionality
 - [ ] Push notifications
+- [ ] Message scheduling
+- [ ] Message templates
+- [ ] Read receipts and typing indicators
 
 ## Resources
 

@@ -16,7 +16,6 @@ import {
   MessageSquare
 } from "lucide-react";
 import XMTPMessaging from "./XMTPMessaging";
-import { TDeedIdentityManager } from "./TDeedIdentityManager";
 
 interface MessageOwnerModalProps {
   isOpen: boolean;
@@ -174,13 +173,6 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
 
               {/* Right Column - Messaging Options and Template */}
               <div className="space-y-3 md:space-y-3">
-                {/* T-Deed Identity Manager */}
-                <TDeedIdentityManager 
-                  ownerAddress={ownerAddress}
-                  tokenId={tokenId}
-                  assetType={assetType}
-                />
-
                 {/* Messaging Options */}
                 <Card className="border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/50 backdrop-blur-sm">
                   <CardHeader className="pb-3">
