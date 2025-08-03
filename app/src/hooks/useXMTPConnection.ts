@@ -58,6 +58,9 @@ export const useXMTPConnection = () => {
       return;
     }
     
+    // Note: XMTP installation reuse is now handled in the XMTP context
+    // The connect function will automatically check for and reuse existing installations
+    
     setIsConnecting(true);
     try {
       let signer: Signer;

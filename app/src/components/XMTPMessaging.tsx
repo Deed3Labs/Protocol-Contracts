@@ -18,7 +18,12 @@ import {
   Search,
   RefreshCw,
   Plus,
-  ChevronLeft
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Archive,
+  Users
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -46,6 +51,8 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     loadMessages, 
     loadConversations,
     createConversation,
+    createGroupConversation,
+    syncOptimisticGroups,
     manualSync,
     canMessage,
     getCurrentInboxId,
@@ -59,9 +66,15 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [newDmAddress, setNewDmAddress] = useState('');
   const [isCreatingDm, setIsCreatingDm] = useState(false);
-  const [showNewDmDialog, setShowNewDmDialog] = useState(false);
+  const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
+  const [conversationType, setConversationType] = useState<'dm' | 'group'>('dm');
+  const [groupName, setGroupName] = useState('');
+  const [groupMembers, setGroupMembers] = useState<string[]>(['']);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [currentUserInboxId, setCurrentUserInboxId] = useState<string | null>(null);
   const [isConversationListCollapsed, setIsConversationListCollapsed] = useState(false);
+  const [hiddenConversations, setHiddenConversations] = useState<Set<string>>(new Set());
+  const [showHiddenConversations, setShowHiddenConversations] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Debug logging for current user address
@@ -135,6 +148,114 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     }
   }, [isOpen]);
 
+  // Load hidden conversations from localStorage
+  useEffect(() => {
+    const savedHidden = localStorage.getItem('xmtp-hidden-conversations');
+    if (savedHidden) {
+      try {
+        const hiddenArray = JSON.parse(savedHidden);
+        setHiddenConversations(new Set(hiddenArray));
+      } catch (err) {
+        console.error('Failed to load hidden conversations:', err);
+      }
+    }
+  }, []);
+
+  // Periodically sync optimistic groups
+  useEffect(() => {
+    if (isConnected) {
+      const syncInterval = setInterval(() => {
+        syncOptimisticGroups();
+      }, 30000); // Sync every 30 seconds
+
+      return () => clearInterval(syncInterval);
+    }
+  }, [isConnected, syncOptimisticGroups]);
+
+  // Save hidden conversations to localStorage
+  const saveHiddenConversations = (hidden: Set<string>) => {
+    try {
+      localStorage.setItem('xmtp-hidden-conversations', JSON.stringify([...hidden]));
+    } catch (err) {
+      console.error('Failed to save hidden conversations:', err);
+    }
+  };
+
+  // Hide a conversation
+  const hideConversation = (conversationId: string) => {
+    const newHidden = new Set(hiddenConversations);
+    newHidden.add(conversationId);
+    setHiddenConversations(newHidden);
+    saveHiddenConversations(newHidden);
+  };
+
+  // Unhide a conversation
+  const unhideConversation = (conversationId: string) => {
+    const newHidden = new Set(hiddenConversations);
+    newHidden.delete(conversationId);
+    setHiddenConversations(newHidden);
+    saveHiddenConversations(newHidden);
+  };
+
+  // Handle creating new group
+  const handleCreateGroup = async () => {
+    if (!groupName.trim() || groupMembers.length === 0) return;
+    
+    // Filter out empty addresses and validate
+    const validMembers = groupMembers.filter(member => member.trim().startsWith('0x') && member.trim().length === 42);
+    
+    if (validMembers.length === 0) {
+      alert('Please add at least one valid Ethereum address');
+      return;
+    }
+    
+    setIsCreatingGroup(true);
+    try {
+      console.log('XMTP: Creating new group:', { name: groupName, members: validMembers });
+      
+      // Use the real createGroupConversation function
+      const conversation = await createGroupConversation(groupName, validMembers);
+      console.log('XMTP: Created group conversation:', conversation.id);
+      
+      // Reload conversations to include the new one
+      await loadConversations();
+      
+      // Select the new conversation
+      setSelectedConversation(conversation.id);
+      await loadMessages(conversation.id);
+      
+      // Close dialog and reset
+      setShowNewConversationDialog(false);
+      setGroupName('');
+      setGroupMembers(['']);
+    } catch (err) {
+      console.error('XMTP: Failed to create new group:', err);
+      alert(err instanceof Error ? err.message : 'Failed to create group. Please check the addresses and try again.');
+    } finally {
+      setIsCreatingGroup(false);
+    }
+  };
+
+  // Add group member field
+  const addGroupMember = () => {
+    setGroupMembers([...groupMembers, '']);
+  };
+
+  // Remove group member field
+  const removeGroupMember = (index: number) => {
+    if (groupMembers.length > 1) {
+      const newMembers = groupMembers.filter((_, i) => i !== index);
+      setGroupMembers(newMembers);
+    }
+  };
+
+  // Update group member address
+  const updateGroupMember = (index: number, address: string) => {
+    const newMembers = [...groupMembers];
+    newMembers[index] = address;
+    setGroupMembers(newMembers);
+  };
+
   // Handle creating new DM
   const handleCreateNewDm = async () => {
     if (!newDmAddress.trim()) return;
@@ -167,7 +288,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
       await loadMessages(conversation.id);
       
       // Close dialog and reset
-      setShowNewDmDialog(false);
+      setShowNewConversationDialog(false);
       setNewDmAddress('');
     } catch (err) {
       console.error('XMTP: Failed to create new DM:', err);
@@ -232,6 +353,111 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
+  // Determine if a conversation is a group by checking localStorage metadata and conversation type
+  const isGroupConversation = (conversationId: string) => {
+    try {
+      // First check if it's a real XMTP group by looking at the conversation
+      const conversation = conversations.find(c => c.id === conversationId);
+      if (conversation) {
+        // Check if it's a Group instance (real XMTP group)
+        const isRealGroup = conversation.constructor.name === 'Group';
+        if (isRealGroup) {
+          console.log('XMTP: Found real XMTP group:', conversationId);
+          return true;
+        }
+      }
+      
+      // Then check localStorage for our stored group metadata (optimistic groups)
+      const groups = JSON.parse(localStorage.getItem('xmtp-groups') || '[]');
+      const isStoredGroup = groups.some((group: any) => group.id === conversationId && group.type === 'group');
+      
+      if (isStoredGroup) {
+        console.log('XMTP: Found optimistic group in localStorage:', conversationId);
+        return true;
+      }
+      
+      return false;
+    } catch (err) {
+      console.error('Error checking group conversation:', err);
+      return false;
+    }
+  };
+
+  // Get group metadata for display
+  const getGroupMetadata = (conversationId: string) => {
+    try {
+      const groups = JSON.parse(localStorage.getItem('xmtp-groups') || '[]');
+      return groups.find((group: any) => group.id === conversationId && group.type === 'group');
+    } catch (err) {
+      console.error('Error getting group metadata:', err);
+      return null;
+    }
+  };
+
+  // Get conversation members count for display (works for both DMs and groups)
+  const getConversationMembersCount = (conversationId: string) => {
+    try {
+      const conversation = conversations.find(c => c.id === conversationId);
+      if (!conversation) return 0;
+
+      // Debug logging
+      console.log('XMTP: Getting member count for conversation:', {
+        conversationId,
+        conversationType: conversation.constructor.name,
+        isGroup: isGroupConversation(conversationId),
+        conversationKeys: Object.keys(conversation)
+      });
+
+      // Check if it's a group conversation first
+      if (isGroupConversation(conversationId)) {
+        // For real XMTP groups, try to get actual member count
+        if (conversation.constructor.name === 'Group') {
+          try {
+            // Try to get members from the group object (this might not work in all cases)
+            const metadata = getGroupMetadata(conversationId);
+            if (metadata && metadata.members) {
+              return metadata.members.length;
+            }
+            // Fallback: assume at least 2 members for a group (creator + 1 member)
+            return 2;
+          } catch (err) {
+            console.warn('Could not get group members count:', err);
+            return 2; // Fallback
+          }
+        }
+
+        // For optimistic groups, use stored metadata
+        const metadata = getGroupMetadata(conversationId);
+        if (metadata && metadata.members) {
+          return metadata.members.length;
+        }
+
+        // Fallback for groups
+        return 2;
+      }
+
+      // If it's not a group, it's a DM - always 1 member (just the recipient, excluding sender)
+      console.log('XMTP: Conversation is a DM, returning 1 member');
+      return 1;
+    } catch (err) {
+      console.error('Error getting conversation members count:', err);
+      return 0;
+    }
+  };
+
+  // Get the actual conversation type for debugging
+  const getConversationType = (conversationId: string) => {
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (!conversation) return 'Unknown';
+    
+    const isRealGroup = conversation.constructor.name === 'Group';
+    const metadata = getGroupMetadata(conversationId);
+    
+    if (isRealGroup) return 'Real XMTP Group';
+    if (metadata) return 'Optimistic Group';
+    return 'Direct Message';
+  };
+
   const formatTimestamp = (timestamp: Date) => {
     const now = new Date();
     const diffInHours = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
@@ -248,9 +474,16 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     }
   };
 
-  const filteredConversations = conversations.filter(conversation =>
-    conversation.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredConversations = conversations.filter(conversation => {
+    const matchesSearch = conversation.id.toLowerCase().includes(searchQuery.toLowerCase());
+    const isHidden = hiddenConversations.has(conversation.id);
+    
+    if (showHiddenConversations) {
+      return matchesSearch && isHidden;
+    } else {
+      return matchesSearch && !isHidden;
+    }
+  });
   
   const currentMessages = selectedConversation ? messages[selectedConversation] || [] : [];
 
@@ -258,7 +491,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[95vh] flex flex-col">
+      <div className="bg-white dark:bg-[#141414] rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[95vh] flex flex-col">
         {/* Main Header */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
@@ -303,63 +536,187 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
 
         {/* Action Buttons Subheader */}
         <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mx-0.75">
             <div className="flex items-center space-x-3">
-              {/* New DM Button */}
+              {/* New Conversation Button */}
               {isConnected && (
-                <Dialog open={showNewDmDialog} onOpenChange={setShowNewDmDialog}>
+                <Dialog open={showNewConversationDialog} onOpenChange={setShowNewConversationDialog}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm" className="px-3">
                       <Plus className="w-4 h-4 mr-2" />
-                      <span>New DM</span>
+                      <span className="hidden sm:inline">New Conversation</span>
+                      <span className="sm:hidden">New</span>
                     </Button>
                   </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="w-[calc(100vw-2rem)] max-w-lg mx-auto rounded-lg">
                     <DialogHeader>
-                      <DialogTitle>Create New Direct Message</DialogTitle>
+                      <DialogTitle>Create New Conversation</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Wallet Address
-                        </label>
-                        <Input
-                          placeholder="0x..."
-                          value={newDmAddress}
-                          onChange={(e) => setNewDmAddress(e.target.value)}
-                          className="font-mono text-sm"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">
-                          Enter the Ethereum address of the person you want to message
-                        </p>
-                      </div>
-                      <div className="flex justify-end space-x-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            setShowNewDmDialog(false);
-                            setNewDmAddress('');
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={handleCreateNewDm}
-                          disabled={!newDmAddress.trim() || isCreatingDm}
-                        >
-                          {isCreatingDm ? (
-                            <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Creating...
-                            </>
-                          ) : (
-                            <>
-                              <MessageCircle className="w-4 h-4 mr-2" />
-                              Create DM
-                            </>
+                      {/* Tab Navigation */}
+                      <div className="flex border-b border-gray-200 dark:border-gray-700">
+                        <button
+                          onClick={() => setConversationType('dm')}
+                          className={cn(
+                            "flex-1 py-2 px-4 text-sm font-medium border-b-2 transition-colors",
+                            conversationType === 'dm'
+                              ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                              : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
                           )}
-                        </Button>
+                        >
+                          <div className="flex items-center justify-center space-x-2">
+                            <MessageCircle className="w-4 h-4" />
+                            <span>Direct Message</span>
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => setConversationType('group')}
+                          className={cn(
+                            "flex-1 py-2 px-4 text-sm font-medium border-b-2 transition-colors",
+                            conversationType === 'group'
+                              ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                              : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                          )}
+                        >
+                          <div className="flex items-center justify-center space-x-2">
+                            <Users className="w-4 h-4" />
+                            <span>Group Chat</span>
+                          </div>
+                        </button>
                       </div>
+
+                      {/* DM Tab Content */}
+                      {conversationType === 'dm' && (
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                              Wallet Address
+                            </label>
+                            <Input
+                              placeholder="0x..."
+                              value={newDmAddress}
+                              onChange={(e) => setNewDmAddress(e.target.value)}
+                              className="font-mono text-sm"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                              Enter the Ethereum address of the person you want to message
+                            </p>
+                          </div>
+                          <div className="flex justify-end space-x-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setShowNewConversationDialog(false);
+                                setNewDmAddress('');
+                                setConversationType('dm');
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              onClick={handleCreateNewDm}
+                              disabled={!newDmAddress.trim() || isCreatingDm}
+                            >
+                              {isCreatingDm ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  Creating...
+                                </>
+                              ) : (
+                                <>
+                                  <MessageCircle className="w-4 h-4 mr-2" />
+                                  Create DM
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Group Tab Content */}
+                      {conversationType === 'group' && (
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                              Group Name
+                            </label>
+                            <Input
+                              placeholder="Enter group name..."
+                              value={groupName}
+                              onChange={(e) => setGroupName(e.target.value)}
+                              className="text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                              Members
+                            </label>
+                            <div className="space-y-2">
+                              {groupMembers.map((member, index) => (
+                                <div key={index} className="flex items-center space-x-2">
+                                  <Input
+                                    placeholder="0x..."
+                                    value={member}
+                                    onChange={(e) => updateGroupMember(index, e.target.value)}
+                                    className="font-mono text-sm flex-1"
+                                  />
+                                  {groupMembers.length > 1 && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => removeGroupMember(index)}
+                                      className="px-2"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              ))}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={addGroupMember}
+                                className="w-full"
+                              >
+                                <Plus className="w-4 h-4 mr-2" />
+                                Add Member
+                              </Button>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Add Ethereum addresses of group members
+                            </p>
+                          </div>
+                          <div className="flex justify-end space-x-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setShowNewConversationDialog(false);
+                                setGroupName('');
+                                setGroupMembers(['']);
+                                setConversationType('dm');
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              onClick={handleCreateGroup}
+                              disabled={!groupName.trim() || isCreatingGroup}
+                            >
+                              {isCreatingGroup ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  Creating...
+                                </>
+                              ) : (
+                                <>
+                                  <Users className="w-4 h-4 mr-2" />
+                                  Create Group
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -377,6 +734,29 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 >
                   <RefreshCw className="w-4 h-4 mr-2" />
                   <span>Sync</span>
+                </Button>
+              )}
+
+              {/* Hidden Conversations Toggle */}
+              {isConnected && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowHiddenConversations(!showHiddenConversations)}
+                  className="px-3"
+                  title={showHiddenConversations ? "Show active conversations" : "Show hidden conversations"}
+                >
+                  {showHiddenConversations ? (
+                    <>
+                      <Eye className="w-4 h-4 mr-2" />
+                      <span>Active</span>
+                    </>
+                  ) : (
+                    <>
+                      <Archive className="w-4 h-4 mr-2" />
+                      <span>Hidden</span>
+                    </>
+                  )}
                 </Button>
               )}
             </div>
@@ -401,7 +781,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       placeholder="Search conversations..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 h-[44px]"
                     />
                   </div>
                 </div>
@@ -443,43 +823,70 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       </Card>
                     </div>
                   ) : (
-                    <div className="p-2">
+                    <div>
                       <div className="text-xs text-gray-500 px-2 py-1 mb-2">
                         {filteredConversations.length} conversation{filteredConversations.length !== 1 ? 's' : ''}
                       </div>
                       {filteredConversations.map((conversation) => (
                         <div
                           key={conversation.id}
-                          onClick={() => {
-                            setSelectedConversation(conversation.id);
-                            loadMessages(conversation.id);
-                          }}
                           className={cn(
-                            "p-3 rounded-lg cursor-pointer transition-colors mb-2",
+                            "p-3 transition-colors border-b border-gray-200 dark:border-gray-700 last:border-b-0",
                             selectedConversation === conversation.id
-                              ? "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
+                              ? "bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500 dark:border-l-blue-400"
                               : "hover:bg-gray-50 dark:hover:bg-gray-800"
                           )}
                         >
-                          <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0">
-                              <User className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                                      <div className="flex items-center justify-between">
+                              <div 
+                                className="flex-1 flex items-center space-x-3 cursor-pointer"
+                                onClick={() => {
+                                  setSelectedConversation(conversation.id);
+                                  loadMessages(conversation.id);
+                                }}
+                              >
+                                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <User className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                    {formatAddress(conversation.id)}
+                                  </p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    Direct Message
+                                  </p>
+                                </div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (showHiddenConversations) {
+                                    unhideConversation(conversation.id);
+                                  } else {
+                                    hideConversation(conversation.id);
+                                  }
+                                }}
+                                className="px-2 py-1 h-10"
+                                title={showHiddenConversations ? "Unhide conversation" : "Hide conversation"}
+                              >
+                                {showHiddenConversations ? (
+                                  <Eye className="w-4 h-4" />
+                                ) : (
+                                  <EyeOff className="w-4 h-4" />
+                                )}
+                              </Button>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                                {formatAddress(conversation.id)}
-                              </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Direct Message
-                              </p>
-                            </div>
-                          </div>
                         </div>
                       ))}
                       {filteredConversations.length === 0 && (
                         <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                           <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
-                            No conversations yet
+                            {showHiddenConversations 
+                              ? "No hidden conversations" 
+                              : "No conversations yet"
+                            }
                           </p>
                         </div>
                       )}
@@ -494,10 +901,16 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-                        {formatAddress(selectedConversation || '')}
+                        {isGroupConversation(selectedConversation || '') 
+                          ? (getGroupMetadata(selectedConversation || '')?.name || 'Group Chat')
+                          : formatAddress(selectedConversation || '')
+                        }
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Direct Message
+                        {getConversationType(selectedConversation || '') === 'Real XMTP Group' || getConversationType(selectedConversation || '') === 'Optimistic Group'
+                          ? `Group Chat • ${getConversationMembersCount(selectedConversation || '')} members`
+                          : `Direct Message • ${getConversationMembersCount(selectedConversation || '')} members`
+                        }
                       </p>
                     </div>
                     <div className="flex items-center space-x-3">
@@ -623,7 +1036,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
             {/* Header with collapse toggle */}
             <div className={cn(
               "border-b border-gray-200 dark:border-gray-700 flex items-center transition-all duration-300",
-              isConversationListCollapsed ? "p-2 justify-center" : "p-4 justify-between"
+              isConversationListCollapsed ? "p-0 justify-center h-16" : "p-3 justify-between"
             )}>
               {!isConversationListCollapsed && (
                 <div className="relative flex-1">
@@ -632,12 +1045,12 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                     placeholder="Search conversations..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 h-[44px]"
                   />
                 </div>
               )}
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => setIsConversationListCollapsed(!isConversationListCollapsed)}
                 className={cn(
@@ -647,9 +1060,9 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 title={isConversationListCollapsed ? "Expand conversations" : "Collapse conversations"}
               >
                 {isConversationListCollapsed ? (
-                  <Search className="w-4 h-4" />
+                  <ChevronRight className="w-4 h-4" />
                 ) : (
-                  <X className="w-4 h-4" />
+                  <ChevronLeft className="w-4 h-4" />
                 )}
               </Button>
             </div>
@@ -692,51 +1105,86 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
               ) : (
                 <div className={cn(
                   "transition-all duration-300",
-                  isConversationListCollapsed ? "p-2" : "space-y-1 p-2"
+                  isConversationListCollapsed ? "" : ""
                 )}>
                   {!isConversationListCollapsed && (
-                    <div className="text-xs text-gray-500 px-3 py-1">
-                      {filteredConversations.length} conversation{filteredConversations.length !== 1 ? 's' : ''}
+                    <div className="text-xs text-gray-500 px-3 py-1 mb-2">
+                      {filteredConversations.length} {showHiddenConversations ? 'hidden' : ''} conversation{filteredConversations.length !== 1 ? 's' : ''}
                     </div>
                   )}
                   {filteredConversations.map((conversation) => (
                     <div
                       key={conversation.id}
-                      onClick={() => {
-                        console.log('XMTP: Selected conversation:', conversation.id);
-                        setSelectedConversation(conversation.id);
-                        loadMessages(conversation.id);
-                      }}
-                       className={cn(
-                         "cursor-pointer transition-colors",
-                         isConversationListCollapsed 
-                           ? "p-2 rounded-lg flex justify-center" 
-                           : "p-3 rounded-lg",
-                         selectedConversation === conversation.id
-                           ? "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
-                           : "hover:bg-gray-50 dark:hover:bg-gray-800"
-                       )}
-                     >
-                       <div className={cn(
-                         "flex items-center",
-                         isConversationListCollapsed ? "justify-center" : "space-x-3"
-                       )}>
-                         <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0">
-                           <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                         </div>
-                         {!isConversationListCollapsed && (
-                           <div className="flex-1 min-w-0">
-                             <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                               {formatAddress(conversation.id)}
-                             </p>
-                             <p className="text-xs text-gray-500 dark:text-gray-400">
-                               Direct Message
-                             </p>
-                           </div>
-                         )}
-                       </div>
-                     </div>
-                   ))}
+                      className={cn(
+                                                  "transition-colors group",
+                          isConversationListCollapsed 
+                            ? "p-3 flex justify-center h-16" 
+                            : "p-3 flex h-16 border-b border-gray-200 dark:border-gray-700 last:border-b-0",
+                        selectedConversation === conversation.id
+                          ? "bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500 dark:border-l-blue-400"
+                          : "hover:bg-gray-50 dark:hover:bg-gray-800"
+                      )}
+                    >
+                                              <div className={cn(
+                          "flex items-center justify-between",
+                          isConversationListCollapsed ? "justify-center" : ""
+                        )}>
+                          <div 
+                            className={cn(
+                              "flex items-center",
+                              isConversationListCollapsed ? "justify-center" : "space-x-3"
+                            )}
+                            onClick={() => {
+                              console.log('XMTP: Selected conversation:', conversation.id);
+                              setSelectedConversation(conversation.id);
+                              loadMessages(conversation.id);
+                            }}
+                          >
+                            <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0">
+                              <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            </div>
+                            {!isConversationListCollapsed && (
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                  {isGroupConversation(conversation.id) 
+                                    ? (getGroupMetadata(conversation.id)?.name || 'Group Chat')
+                                    : formatAddress(conversation.id)
+                                  }
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  {getConversationType(conversation.id) === 'Real XMTP Group' || getConversationType(conversation.id) === 'Optimistic Group'
+                                    ? `Group Chat • ${getConversationMembersCount(conversation.id)} members`
+                                    : `Direct Message • ${getConversationMembersCount(conversation.id)} members`
+                                  }
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                          {!isConversationListCollapsed && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (showHiddenConversations) {
+                                  unhideConversation(conversation.id);
+                                } else {
+                                  hideConversation(conversation.id);
+                                }
+                              }}
+                              className="px-2 py-1 h-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title={showHiddenConversations ? "Unhide conversation" : "Hide conversation"}
+                            >
+                              {showHiddenConversations ? (
+                                <Eye className="w-3 h-3" />
+                              ) : (
+                                <EyeOff className="w-3 h-3" />
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -751,10 +1199,16 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-                        {formatAddress(selectedConversation || '')}
+                        {isGroupConversation(selectedConversation || '') 
+                          ? (getGroupMetadata(selectedConversation || '')?.name || 'Group Chat')
+                          : formatAddress(selectedConversation || '')
+                        }
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Direct Message
+                        {getConversationType(selectedConversation || '') === 'Real XMTP Group' || getConversationType(selectedConversation || '') === 'Optimistic Group'
+                          ? `Group Chat • ${getConversationMembersCount(selectedConversation || '')} members`
+                          : `Direct Message • ${getConversationMembersCount(selectedConversation || '')} members`
+                        }
                       </p>
                     </div>
                     <div className="flex items-center space-x-3">
