@@ -23,6 +23,7 @@ The frontend application consists of several key component categories:
 - **TransferModal**: Asset transfer interface
 - **MessageOwnerModal**: Owner communication
 - **InstallPrompt**: Wallet installation prompts
+- **XMTPMessaging**: End-to-end encrypted messaging interface
 
 ### Utility Components
 - **Faucet**: Testnet token distribution
@@ -97,6 +98,181 @@ interface MintFormProps {
 ```
 
 #### Asset Type Forms
+
+### 3. XMTPMessaging.tsx (917 lines)
+
+Advanced messaging interface with end-to-end encryption using XMTP protocol.
+
+#### Key Features
+- **End-to-End Encryption**: Secure messaging using XMTP protocol
+- **Real-Time Messaging**: Live message streaming and updates
+- **Responsive Design**: Optimized for both mobile and desktop
+- **Conversation Management**: Create, search, and manage conversations
+- **Message History**: Persistent conversation history with local storage
+- **Wallet Integration**: Seamless integration with Web3 wallets
+- **Smart Account Support**: Full support for Reown AppKit smart accounts
+
+#### UI/UX Features
+- **Two-Tier Header System**: Main header with title/description/status + action buttons subheader
+- **Mobile Two-View System**: Conversation list view and individual conversation view
+- **Square Send Buttons**: Perfectly centered icons in 44px square buttons
+- **Vertically Centered Text**: Text inputs with proper vertical alignment
+- **Collapsible Desktop Sidebar**: Expandable conversation list (80px collapsed, 320px expanded)
+- **Touch Optimizations**: Larger touch targets and proper spacing for mobile
+- **Clean Message Alignment**: Sent messages on right (blue), received on left (gray)
+
+#### Props
+```typescript
+interface XMTPMessagingProps {
+  ownerAddress?: string;        // T-Deed owner's wallet address
+  tokenId?: string;            // T-Deed token ID
+  assetType?: string;          // Type of asset (Land, Vehicle, etc.)
+  isOpen: boolean;             // Controls modal visibility
+  onClose: () => void;         // Callback when modal closes
+}
+```
+
+#### Usage Example
+```tsx
+import XMTPMessaging from '@/components/XMTPMessaging';
+
+function MessagingExample() {
+  const [isMessagingOpen, setIsMessagingOpen] = useState(false);
+
+  return (
+    <XMTPMessaging
+      isOpen={isMessagingOpen}
+      onClose={() => setIsMessagingOpen(false)}
+      ownerAddress="0x1234..."
+      tokenId="123"
+      assetType="Land"
+    />
+  );
+}
+```
+
+#### Key Functions
+- `handleSendMessage()`: Send messages to conversations
+- `handleCreateNewDm()`: Create new direct message conversations
+- `loadConversations()`: Load user's conversation list
+- `loadMessages()`: Load messages for specific conversation
+- `manualSync()`: Manually sync messages from XMTP network
+- `canMessage()`: Check if recipient can receive messages
+
+#### Mobile Experience
+- **Conversation List View**: Clean header with action buttons and search
+- **Individual Conversation View**: Compact header with back button and recipient details
+- **Touch Optimized**: Larger buttons and proper spacing for mobile interaction
+- **Full-Width Messages**: Optimal reading experience on mobile devices
+
+#### Desktop Experience
+- **Collapsible Sidebar**: Toggle between expanded (320px) and collapsed (80px) states
+- **Main Chat Area**: Full-height message display with conversation header
+- **Search Integration**: Built-in search functionality in sidebar
+- **Smooth Transitions**: Animated transitions between sidebar states
+
+#### Message Input Features
+- **Square Send Button**: 44px × 44px square with centered icon
+- **Vertically Centered Text**: Text aligned to center line of input
+- **Auto-Resize**: Input expands up to 120px height for longer messages
+- **Enter to Send**: Press Enter to send messages quickly
+- **Loading States**: Visual feedback during message sending
+
+#### Conversation Management
+- **Real-Time Updates**: Live streaming of new messages
+- **Search Functionality**: Find conversations by wallet address
+- **Message History**: Persistent storage with automatic sync
+- **Error Handling**: Comprehensive error states and user feedback
+- **Connection Status**: Real-time XMTP connection indicators
+
+#### Security Features
+- **End-to-End Encryption**: All messages encrypted using XMTP
+- **Wallet Authentication**: Secure access using wallet signatures
+- **Local Storage**: Messages stored locally with IndexedDB
+- **No Central Server**: Decentralized messaging architecture
+- **Automatic Cleanup**: Messages cleared when switching wallets
+
+#### Responsive Design
+- **Mobile-First**: Optimized for mobile devices with touch interactions
+- **Desktop Enhancement**: Full-featured desktop experience with sidebar
+- **Adaptive Layout**: Automatically adjusts to screen size
+- **Consistent Styling**: Unified design language across all screen sizes
+
+#### Performance Optimizations
+- **Lazy Loading**: Messages loaded on-demand
+- **Efficient Caching**: Conversation data cached locally
+- **Background Sync**: Automatic message synchronization
+- **Memory Management**: Proper cleanup of resources
+- **Smooth Animations**: Hardware-accelerated transitions
+
+### 4. MessageOwnerModal.tsx (Mobile Dialog Content)
+
+Modal component for initiating communication with T-Deed owners.
+
+#### Key Features
+- **Multiple Messaging Options**: XMTP, Email, and Blockscan Chat
+- **Responsive Design**: Mobile-optimized dialog content
+- **Asset Context**: Pre-filled with T-Deed information
+- **Wallet Integration**: Seamless wallet connection flow
+
+#### Props
+```typescript
+interface MessageOwnerModalProps {
+  ownerAddress: string;
+  tokenId: string;
+  assetType: string;
+  isOpen: boolean;
+  onClose: () => void;
+}
+```
+
+#### Usage Example
+```tsx
+import MessageOwnerModal from '@/components/MessageOwnerModal';
+
+<MessageOwnerModal
+  ownerAddress="0x1234..."
+  tokenId="123"
+  assetType="Land"
+  isOpen={showModal}
+  onClose={() => setShowModal(false)}
+/>
+```
+
+### 5. XMTPMessageButton.tsx
+
+Quick messaging button component for initiating XMTP conversations.
+
+#### Key Features
+- **Simple Integration**: Easy to add to any component
+- **Asset Context**: Automatically includes T-Deed information
+- **Responsive Design**: Adapts to different screen sizes
+- **Loading States**: Visual feedback during connection
+
+#### Props
+```typescript
+interface XMTPMessageButtonProps {
+  ownerAddress: string;
+  tokenId: string;
+  assetType: string;
+  variant?: "default" | "outline" | "ghost";
+  size?: "sm" | "md" | "lg";
+  className?: string;
+}
+```
+
+#### Usage Example
+```tsx
+import XMTPMessageButton from '@/components/XMTPMessageButton';
+
+<XMTPMessageButton
+  ownerAddress="0x1234..."
+  tokenId="123"
+  assetType="Land"
+  variant="outline"
+  size="sm"
+/>
+```
 
 **Land Assets**
 ```typescript
