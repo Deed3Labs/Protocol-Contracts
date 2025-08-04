@@ -202,9 +202,14 @@ const Header = ({ children }: HeaderProps) => {
         <nav className="container flex items-center justify-between py-4">
           {/* Logo and Desktop Navigation */}
           <div className="flex items-center space-x-4 lg:space-x-8">
-            <span className="text-[6.5vw] md:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white font-coolvetica">
-              DEED PROTOCOL
-            </span>
+            <div className="flex items-start space-x-1.5">
+              <span className="text-[6.5vw] md:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white font-coolvetica">
+                THE DEED PROTOCOL
+              </span>
+              <span className="text-[0.55rem] font-medium bg-yellow-500 text-black px-2 py-0.75 rounded-full mt-1 flex items-center justify-center">
+                BETA
+              </span>
+            </div>
             
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center space-x-4 lg:space-x-6">
