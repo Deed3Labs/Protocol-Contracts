@@ -88,23 +88,40 @@ const initializeAppKit = () => {
   const currentUrl = getCurrentUrl();
   console.log('Initializing AppKit with URL:', currentUrl);
   
-  createAppKit({
-    adapters: [wagmiAdapter],
-    networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
-    projectId,
-    metadata: {
-      ...metadata,
-      url: currentUrl
-    },
-    features: {
-      analytics: true,
-      email: true,
-      socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
-      emailShowWallets: true,
-    },
-    siwx: new ReownAuthentication(),
-    allWallets: 'SHOW'
-  });
+  try {
+    createAppKit({
+      adapters: [wagmiAdapter],
+      networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
+      projectId,
+      metadata: {
+        ...metadata,
+        url: currentUrl
+      },
+      features: {
+        analytics: true,
+        email: true,
+        socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
+        emailShowWallets: true,
+      },
+      siwx: new ReownAuthentication(),
+      allWallets: 'SHOW'
+    });
+    
+    console.log('AppKit initialized successfully');
+    
+    // Check if custom elements are registered
+    setTimeout(() => {
+      const appkitButton = customElements.get('appkit-button');
+      console.log('AppKit button element registered:', !!appkitButton);
+      
+      if (!appkitButton) {
+        console.warn('AppKit button element not found. This might cause issues.');
+      }
+    }, 1000);
+    
+  } catch (error) {
+    console.error('Failed to initialize AppKit:', error);
+  }
 };
 
 export function AppKitProvider({ children }: { children: React.ReactNode }) {
