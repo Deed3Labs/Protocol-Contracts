@@ -196,6 +196,26 @@ const Header = ({ children }: HeaderProps) => {
   console.log('Header: isConnected =', isConnected);
   console.log('Header: address =', address);
 
+  // Check if AppKit button is loaded and show fallback if not
+  useEffect(() => {
+    const checkAppKitButton = () => {
+      const appkitButton = document.querySelector('appkit-button');
+      const fallback = document.getElementById('appkit-fallback');
+      const fallbackMobile = document.getElementById('appkit-fallback-mobile');
+      
+      if (!appkitButton) {
+        console.warn('AppKit button not found, showing fallbacks');
+        if (fallback) fallback.classList.remove('hidden');
+        if (fallbackMobile) fallbackMobile.classList.remove('hidden');
+      }
+    };
+
+    // Check after a delay to allow AppKit to initialize
+    const timer = setTimeout(checkAppKitButton, 2000);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-50 w-full bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm border-b border-black/10 dark:border-white/10">
@@ -278,7 +298,13 @@ const Header = ({ children }: HeaderProps) => {
           {/* Desktop Actions */}
           <div className="hidden md:flex items-center space-x-2">
             <div className="border border-black/10 dark:border-transparent rounded-full">
-            <appkit-button />
+              <appkit-button />
+              {/* Fallback if AppKit button doesn't load */}
+              <div className="hidden" id="appkit-fallback">
+                <Button variant="outline" size="sm" className="h-9 px-3">
+                  Connect Wallet
+                </Button>
+              </div>
             </div>
             <Link to="/profile">
               <Button variant="outline" size="sm" className="h-9 px-3 border-black/10 dark:border-white/10">
@@ -300,7 +326,13 @@ const Header = ({ children }: HeaderProps) => {
           {/* Mobile Actions */}
           <div className="md:hidden flex items-center space-x-2">
             <div className="border border-black/10 dark:border-transparent rounded-full">
-            <appkit-button />
+              <appkit-button />
+              {/* Fallback if AppKit button doesn't load */}
+              <div className="hidden" id="appkit-fallback-mobile">
+                <Button variant="outline" size="icon" className="h-9 w-9">
+                  <User className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
             <Link to="/profile">
               <Button variant="outline" size="icon" className="border-black/10 dark:border-white/10">
