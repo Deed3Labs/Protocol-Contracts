@@ -7,7 +7,14 @@ import { ReownAuthentication } from '@reown/appkit-siwx';
 import React from 'react';
 
 const queryClient = new QueryClient();
-const projectId = '2a15f8a7329ae7eae3e6bbadc527457f';
+
+// Get project ID from environment variable
+const projectId = import.meta.env.VITE_APPKIT_PROJECT_ID;
+
+// Validate that we have a project ID
+if (!projectId) {
+  throw new Error('VITE_APPKIT_PROJECT_ID is required. Please create a .env file with your AppKit project ID.');
+}
 
 // Determine the current environment and set the appropriate URL
 const getCurrentUrl = () => {
@@ -31,12 +38,12 @@ const getCurrentUrl = () => {
     
     // For production domains, use HTTPS
     if (hostname === 'demo.deed3.io') {
-      return 'https://demo.deed3.io';
+      return import.meta.env.VITE_DEMO_URL || 'https://demo.deed3.io';
     } else if (hostname === 'app.deed3.io') {
-      return 'https://app.deed3.io';
+      return import.meta.env.VITE_APP_URL || 'https://app.deed3.io';
     } else {
       // Fallback to production for any other environment
-      return 'https://app.deed3.io';
+      return import.meta.env.VITE_APP_URL || 'https://app.deed3.io';
     }
   }
   
