@@ -202,8 +202,8 @@ const Header = ({ children }: HeaderProps) => {
         <nav className="container flex items-center justify-between py-4">
           {/* Logo and Desktop Navigation */}
           <div className="flex items-center space-x-4 lg:space-x-8">
-            <span className="text-xl lg:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-              Deed Protocol
+            <span className="text-[6.5vw] md:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white font-coolvetica">
+              DEED PROTOCOL
             </span>
             
             {/* Desktop Navigation */}

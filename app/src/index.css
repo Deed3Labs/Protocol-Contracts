@@ -7,6 +7,47 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom Fonts */
+@font-face {
+  font-family: 'Coolvetica Compressed';
+  src: url('/fonts/Coolvetica/coolvetica-compressed-hv.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans/GeneralSans-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans/GeneralSans-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans/GeneralSans-Semibold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans/GeneralSans-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* AppKit Modal Icon Fixes */
 @layer utilities {
   /* Ensure AppKit modal icons are visible */
@@ -143,7 +184,7 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: 'General Sans', system-ui, -apple-system, sans-serif;
   background-color: rgb(var(--background));
   color: rgb(var(--foreground));
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -253,5 +294,14 @@ html, body {
 @layer components {
   .container {
     @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  /* Font utility classes */
+  .font-coolvetica {
+    font-family: 'Coolvetica Compressed', system-ui, sans-serif;
+  }
+  
+  .font-general {
+    font-family: 'General Sans', system-ui, sans-serif;
   }
 }

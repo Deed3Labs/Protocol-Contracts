@@ -64,8 +64,8 @@ const Dashboard = () => {
   return (
     <main className="container mx-auto py-12 px-4">
       <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-white mb-4">
-          Dashboard
+        <h1 className="text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white mb-4 font-coolvetica">
+          T-DEED DASHBOARD
         </h1>
         <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
           Manage your T-Deeds and track your activity on the protocol.
