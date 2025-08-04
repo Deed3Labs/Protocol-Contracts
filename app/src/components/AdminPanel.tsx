@@ -865,9 +865,9 @@ const AdminPanel = () => {
       <div className="mb-8">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              Admin Panel
-            </h1>
+                    <h1 className="text-[8vw] lg:text-5xl font-bold text-gray-900 dark:text-white mb-2 font-coolvetica">
+          ADMIN PANEL
+        </h1>
             <p className="text-gray-600 dark:text-gray-300">
               Manage contract configurations and roles. You have the following roles: {userRoles.join(', ')}
             </p>

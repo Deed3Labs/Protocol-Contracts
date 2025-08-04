@@ -173,7 +173,7 @@ const Faucet: React.FC = () => {
       <div className="space-y-6">
         {/* Header */}
         <div className="text-center space-y-4">
-          <h1 className="text-4xl font-bold">Base Sepolia Faucet</h1>
+          <h1 className="text-5xl lg:text-6xl font-bold font-coolvetica">BASE SEPOLIA FAUCET</h1>
           <p className="text-lg text-muted-foreground">
             Get testnet ETH and USDC tokens for testing the Deed Protocol
           </p>

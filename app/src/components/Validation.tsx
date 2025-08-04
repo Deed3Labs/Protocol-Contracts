@@ -1922,9 +1922,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
       <div className="mb-8">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              Validation Dashboard
-            </h1>
+                    <h1 className="text-[8vw] lg:text-5xl font-bold text-gray-900 dark:text-white mb-1 font-coolvetica">
+          VALIDATION DASHBOARD
+        </h1>
             <p className="text-gray-600 dark:text-gray-300">
               Manage T-Deed validation, traits, and metadata
             </p>

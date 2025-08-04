@@ -6,8 +6,8 @@ const Home = () => {
   return (
     <main className="container mx-auto py-16 px-4">
       <div className="text-center mb-16">
-        <h1 className="text-5xl font-bold tracking-tight text-gray-900 dark:text-white mb-6">
-          Do more than just <br /> "NFTing" your Property
+        <h1 className="text-7xl lg:text-9xl font-bold text-gray-900 dark:text-white mb-6 font-coolvetica">
+          DO MORE THAN JUST <br /> "NFT-ING" YOUR PROPERTY
         </h1>
         <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed">
           A Modern Platform for Deed Tokenization, Validation, and Management.
@@ -37,7 +37,7 @@ const Home = () => {
               Explore T-Deeds
             </CardTitle>
             <CardDescription className="text-gray-600 dark:text-gray-300">
-              Browse and discover existing T-Deeds and their metadata.
+              Browse, discover and chat with existing T-Deeds holders and their metadata.
             </CardDescription>
           </CardHeader>
           <CardContent>
