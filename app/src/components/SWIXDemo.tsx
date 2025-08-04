@@ -273,7 +273,7 @@ export function SWIXDemo() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center space-y-4">
-          <h1 className="text-4xl font-bold tracking-tight">User Profile & Settings</h1>
+          <h1 className="text-5xl lg:text-6xl font-bold font-coolvetica">USER PROFILE & SETTINGS</h1>
           <p className="text-xl text-muted-foreground">
             Connect your wallet to access your profile and settings
           </p>
@@ -289,8 +289,8 @@ export function SWIXDemo() {
     <div className="container mx-auto px-4 py-8 space-y-8">
       {/* Header */}
       <div className="text-center space-y-4">
-        <h1 className="text-4xl font-bold tracking-tight">
-          User Profile & Settings
+                    <h1 className="text-5xl lg:text-6xl font-bold font-coolvetica">
+          USER PROFILE & SETTINGS
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
           Manage your SWIX authentication data, profile information, and preferences
