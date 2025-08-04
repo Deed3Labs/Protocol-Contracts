@@ -206,7 +206,7 @@ const Header = ({ children }: HeaderProps) => {
               <span className="text-[6.5vw] md:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white font-coolvetica">
                 THE DEED PROTOCOL
               </span>
-              <span className="text-[0.55rem] font-medium bg-yellow-500 text-black px-2 py-0.5 rounded-full mt-1 inline-flex items-center justify-center leading-none">
+              <span className="text-[0.55rem] font-medium bg-yellow-500 text-black px-2 py-1 rounded-full mt-1 flex items-center justify-center leading-none">
                 BETA
               </span>
             </div>
