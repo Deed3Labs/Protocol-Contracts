@@ -1051,7 +1051,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       onChange={(e) => setNewMessage(e.target.value)}
                       onKeyPress={handleKeyPress}
                       placeholder="Type your message..."
-                      className="flex-1 min-h-[44px] max-h-[120px] resize-none text-sm leading-[44px] py-0"
+                      className="flex-1 min-h-[44px] max-h-[120px] resize-none text-sm leading-relaxed py-2"
                       rows={1}
                     />
                     <Button 
@@ -1340,7 +1340,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       onChange={(e) => setNewMessage(e.target.value)}
                       onKeyPress={handleKeyPress}
                       placeholder="Type your message..."
-                      className="flex-1 min-h-[44px] max-h-[120px] resize-none text-sm leading-[44px] py-0"
+                      className="flex-1 min-h-[44px] max-h-[120px] resize-none text-sm leading-relaxed py-2"
                       rows={1}
                     />
                     <Button 
