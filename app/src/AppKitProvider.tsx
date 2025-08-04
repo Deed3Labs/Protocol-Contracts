@@ -8,8 +8,13 @@ import React from 'react';
 
 const queryClient = new QueryClient();
 
-// AppKit Project ID - safe to expose as it's a public identifier for wallet connections
-const projectId = '2a15f8a7329ae7eae3e6bbadc527457f';
+// Get project ID from environment variable
+const projectId = import.meta.env.VITE_APPKIT_PROJECT_ID;
+
+// Validate that we have a project ID
+if (!projectId) {
+  throw new Error('VITE_APPKIT_PROJECT_ID is required. Please create a .env file with your AppKit project ID.');
+}
 
 // Determine the current environment and set the appropriate URL
 const getCurrentUrl = () => {
