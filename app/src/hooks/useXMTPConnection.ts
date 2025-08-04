@@ -35,14 +35,21 @@ export const useXMTPConnection = () => {
     }
 
     // If wallet disconnected, reset connection
-    if (!isActiveWalletConnected) {
+    if (!isActiveWalletConnected && isConnected) {
+      console.log('XMTP Connection Hook: Wallet disconnected, resetting XMTP connection');
       connectionAttempted.current = false;
       disconnect().catch(console.error);
     }
 
+    // If wallet is not connected and we're not connected to XMTP, don't do anything
+    if (!isActiveWalletConnected && !isConnected) {
+      console.log('XMTP Connection Hook: Wallet not connected and XMTP not connected, skipping');
+      return;
+    }
+
     // Update the previous address reference
     prevAddressRef.current = currentAddress;
-  }, [isActiveWalletConnected, activeAddress, isConnected, disconnect]);
+  }, [isActiveWalletConnected, activeAddress, isConnected]); // Removed disconnect from dependencies
 
   const handleConnect = async () => {
     console.log('XMTP Connection Hook: Starting connection...', {
