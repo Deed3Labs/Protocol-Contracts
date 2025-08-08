@@ -118,6 +118,8 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
           xmtpClient = await Client.create(xmtpSigner, {
             // XMTP V4 will automatically use existing installation if available
             // The installation data is stored in IndexedDB by XMTP
+            // History sync is enabled by default
+            env: 'production' // This will set the default historySyncUrl automatically
           });
           
           console.log('XMTP: Successfully reused existing installation');
@@ -128,7 +130,9 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
           localStorage.removeItem(installationKey);
           
           // Create new installation
-          xmtpClient = await Client.create(xmtpSigner);
+          xmtpClient = await Client.create(xmtpSigner, {
+            env: 'production' // This will set the default historySyncUrl automatically
+          });
           console.log('XMTP: Created new installation');
           
           // Store reference to new installation
@@ -141,7 +145,9 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
         console.log('XMTP: No existing installation found, creating new one...');
         
         // Create new installation
-        xmtpClient = await Client.create(xmtpSigner);
+        xmtpClient = await Client.create(xmtpSigner, {
+          env: 'production' // This will set the default historySyncUrl automatically
+        });
         console.log('XMTP: Created new installation');
         
         // Store reference to new installation
@@ -643,6 +649,13 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     try {
       console.log('XMTP: Starting manual sync...');
       await loadConversations(); // Reload conversations to reflect changes
+      
+      // Trigger history sync if available (XMTP V4 feature)
+      if ('sync' in client && typeof client.sync === 'function') {
+        console.log('XMTP: Triggering history sync...');
+        await (client as any).sync();
+      }
+      
       console.log('XMTP: Manual sync completed.');
     } catch (err) {
       console.error('XMTP: Manual sync failed:', err);

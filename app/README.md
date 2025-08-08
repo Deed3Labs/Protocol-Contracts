@@ -1,21 +1,22 @@
-# DeedNFT Protocol Frontend
+# The Deed Protocol Frontend
 
-This repository contains the frontend application for **The Deed Protocol**, a modern React-based web interface for interacting with decentralized Real World Asset transactions via Smart Contracts. The frontend provides a comprehensive user experience for minting, viewing, and managing DeedNFT tokens representing real-world assets.
+This repository contains the frontend application for **The Deed Protocol**, a modern React-based web interface for interacting with decentralized Real World Asset transactions via Smart Contracts. The frontend provides a comprehensive user experience for minting, viewing, and managing T-Deed tokens representing real-world assets.
 
 > ⚠️ **BETA WARNING**: This frontend application is currently in beta. Use at your own risk. The application interfaces with smart contracts that have not been audited and may contain bugs or security vulnerabilities.
 
 ## Overview
 
-The DeedNFT Protocol Frontend is a modern, responsive web application built with React, TypeScript, and Vite. It provides a comprehensive interface for users to interact with the Deed Protocol smart contracts, enabling them to mint, view, transfer, and manage DeedNFT tokens representing real-world assets such as land, vehicles, estates, and commercial equipment.
+The Deed Protocol Frontend is a modern, responsive web application built with React, TypeScript, and Vite. It provides a comprehensive interface for users to interact with the Deed Protocol smart contracts, enabling them to mint, view, transfer, and manage T-Deed tokens representing real-world assets such as land, vehicles, estates, and commercial equipment.
 
 Key features of the frontend include:
 - **Wallet Integration**: Seamless integration with Reowns AppKit for secure wallet connections
-- **Smart Contract Interaction**: Direct interaction with DeedNFT, Validator, and FundManager contracts
+- **Smart Contract Interaction**: Direct interaction with T-Deed, Validator, and FundManager contracts
 - **Multi-Network Support**: Support for Ethereum Mainnet, Base, and their respective testnets
 - **Modern UI/UX**: Beautiful, responsive interface with dark/light mode support
 - **Real-time Updates**: Live data synchronization with blockchain state
 - **Admin Panel**: Comprehensive administrative tools for protocol management
 - **Validation System**: Integrated validation workflows for asset verification
+- **Interactive Map**: Mapbox-powered map interface for visualizing T-Deeds with location data
 
 ## Project Structure
 
@@ -36,7 +37,7 @@ src/
 ├── hooks/              # Custom React hooks
 │   ├── useAppKitAuth.ts # AppKit authentication
 │   ├── useCapabilities.ts # Wallet capability management
-│   ├── useDeedNFTData.ts # DeedNFT data fetching
+│   ├── useDeedNFTData.ts # T-Deed data fetching
 │   ├── useNetworkValidation.ts # Network validation
 │   └── ...            # Additional hooks
 ├── config/             # Configuration files
@@ -55,6 +56,30 @@ src/
 └── lib/               # Shared libraries and utilities
 ```
 
+## Environment Setup
+
+### Mapbox Integration
+
+To enable the interactive map feature, you'll need to set up a Mapbox access token:
+
+1. **Get a Mapbox Access Token**:
+   - Visit [https://account.mapbox.com](https://account.mapbox.com)
+   - Create a free account and get your access token
+
+2. **Configure Environment Variables**:
+   Create a `.env` file in the `app` directory with:
+   ```
+   # Development token (for localhost)
+   VITE_MAPBOX_PUBLIC_TOKEN=your_mapbox_public_token_here
+   
+   # Production token (for deployed app)
+   VITE_MAPBOX_PRIVATE_TOKEN=your_mapbox_private_token_here
+   ```
+   
+   **Note**: Use different tokens for development and production environments. The public token is used for localhost development, while the private token is used for production deployments.
+
+The map component will automatically detect T-Deeds with location data and display them as interactive markers on the map.
+
 ## Core Components
 
 ### 1. AppKitProvider
@@ -71,7 +96,7 @@ The main provider component that sets up the application's core infrastructure:
 
 The central dashboard component providing an overview of user assets and protocol status:
 
-- **Asset Overview**: Displays user's DeedNFT tokens and their status
+- **Asset Overview**: Displays user's T-Deed tokens and their status
 - **Network Status**: Shows current network and connection status
 - **Quick Actions**: Provides quick access to common operations
 - **Statistics**: Displays protocol statistics and user metrics
@@ -79,7 +104,7 @@ The central dashboard component providing an overview of user assets and protoco
 
 ### 3. MintForm
 
-A comprehensive interface for minting new DeedNFT tokens:
+A comprehensive interface for minting new T-Deed tokens:
 
 - **Asset Type Selection**: Choose between Land, Vehicle, Estate, or Commercial Equipment
 - **Metadata Input**: Structured input forms for asset-specific metadata
@@ -98,6 +123,17 @@ Advanced NFT viewing and management interface:
 - **Transfer Interface**: Secure transfer functionality with validation
 - **Metadata Editing**: Admin capabilities for metadata updates
 - **Royalty Information**: Display of royalty and fee information
+
+### 5. DeedNFTMap
+
+Interactive map interface for visualizing T-Deeds with location data:
+
+- **Mapbox GL JS v3**: Uses the latest Mapbox Standard style with 3D lighting
+- **Interactive Markers**: Color-coded markers for different asset types
+- **Location Data Support**: Extracts coordinates from T-Deed traits and configuration
+- **Navigation Controls**: Built-in zoom, pan, and geolocation controls
+- **Popup Information**: Click markers to see T-Deed details
+- **Responsive Design**: Works seamlessly on desktop and mobile devices
 
 ### 5. AdminPanel
 
@@ -144,7 +180,7 @@ Manages wallet capabilities and feature detection:
 
 ### 3. useDeedNFTData
 
-Manages DeedNFT data fetching and caching:
+Manages T-Deed data fetching and caching:
 
 - **Data Fetching**: Efficient data fetching from smart contracts
 - **Caching Strategy**: Intelligent caching for performance
