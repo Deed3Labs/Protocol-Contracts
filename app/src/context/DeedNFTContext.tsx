@@ -36,6 +36,7 @@ interface DeedNFTContextType {
   getAssetTypeLabel: (assetType: number) => string;
   getAssetTypeDescription: (assetType: number) => string;
   getValidationStatus: (deedNFT: DeedNFT) => { status: string; color: string };
+  getLocationData: (deedNFT: DeedNFT) => Promise<{ latitude?: number; longitude?: number; address?: string } | null>;
   isConnected: boolean;
   isCorrectNetwork: boolean;
   currentChainId: number | undefined;
@@ -472,6 +473,135 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return { status: "Pending", color: "yellow" };
   }, []);
 
+  const getLocationData = useCallback(async (deedNFT: DeedNFT): Promise<{ latitude?: number; longitude?: number; address?: string } | null> => {
+    const contractAddress = getContractAddress();
+    if (!contractAddress) {
+      console.log('❌ No contract address available for location data');
+      return null;
+    }
+
+    try {
+      const abi = await getDeedNFTAbi(chainId!);
+      
+      // Check for various location trait keys
+      const locationTraitKeys = [
+        "latitude", "lat", "lat_", "lat_trait",
+        "longitude", "lng", "lng_", "lng_trait", 
+        "address", "full_address", "fullAddress", "location", "address_trait"
+      ];
+
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+      let address: string | undefined;
+
+      // Get all trait keys for this token
+      let traitKeys: string[];
+      if (walletProvider && embeddedWalletInfo) {
+        const traitKeysResult = await executeAppKitCall(
+          contractAddress,
+          abi,
+          'getTraitKeys',
+          [deedNFT.tokenId]
+        );
+        const traitKeysBytes = new ethers.Interface(abi).decodeFunctionResult('getTraitKeys', traitKeysResult)[0];
+        traitKeys = traitKeysBytes.map((key: string) => key);
+      } else {
+        const provider = getProvider();
+        const contract = new ethers.Contract(contractAddress, abi, provider);
+        traitKeys = await contract.getTraitKeys(deedNFT.tokenId);
+      }
+
+      console.log(`🔍 Trait keys for token ${deedNFT.tokenId}:`, traitKeys);
+
+      // Check each location trait key
+      for (const traitName of locationTraitKeys) {
+        const traitKey = ethers.keccak256(ethers.toUtf8Bytes(traitName));
+        
+        // Check if this trait exists for the token
+        if (traitKeys.includes(traitKey)) {
+          let traitValue: string;
+          
+          if (walletProvider && embeddedWalletInfo) {
+            const traitResult = await executeAppKitCall(
+              contractAddress,
+              abi,
+              'getTraitValue',
+              [deedNFT.tokenId, traitKey]
+            );
+            traitValue = new ethers.Interface(abi).decodeFunctionResult('getTraitValue', traitResult)[0];
+          } else {
+            const provider = getProvider();
+            const contract = new ethers.Contract(contractAddress, abi, provider);
+            traitValue = await contract.getTraitValue(deedNFT.tokenId, traitKey);
+          }
+
+          if (traitValue && traitValue.length > 0) {
+            try {
+              const decodedValue = ethers.AbiCoder.defaultAbiCoder().decode(["string"], traitValue)[0];
+              console.log(`📍 Found location trait "${traitName}" for token ${deedNFT.tokenId}: ${decodedValue}`);
+
+              // Handle different trait types
+              if (traitName.includes('lat') || traitName.includes('latitude')) {
+                const lat = Number(decodedValue);
+                if (!isNaN(lat)) latitude = lat;
+              } else if (traitName.includes('lng') || traitName.includes('longitude')) {
+                const lng = Number(decodedValue);
+                if (!isNaN(lng)) longitude = lng;
+              } else if (traitName.includes('address') || traitName.includes('location')) {
+                address = decodedValue;
+              }
+            } catch (err) {
+              console.log(`❌ Failed to decode trait "${traitName}" for token ${deedNFT.tokenId}:`, err);
+            }
+          }
+        }
+      }
+
+      // If we have coordinates, return them
+      if (latitude !== undefined && longitude !== undefined) {
+        console.log(`✅ Found coordinates for token ${deedNFT.tokenId}: ${latitude}, ${longitude}`);
+        return { latitude, longitude, address };
+      }
+
+      // If we have an address but no coordinates, try to geocode it
+      if (address && !latitude && !longitude) {
+        console.log(`🌍 Geocoding address for token ${deedNFT.tokenId}: ${address}`);
+        try {
+          const mapboxToken = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN || import.meta.env.VITE_MAPBOX_PRIVATE_TOKEN;
+          if (!mapboxToken) {
+            console.warn('Mapbox token not available for geocoding');
+            return { address };
+          }
+
+          const response = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${mapboxToken}&limit=1`
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.features && data.features.length > 0) {
+              const [lng, lat] = data.features[0].center;
+              console.log(`✅ Geocoded address for token ${deedNFT.tokenId}: ${lat}, ${lng}`);
+              return { latitude: lat, longitude: lng, address };
+            }
+          }
+        } catch (err) {
+          console.warn(`❌ Geocoding failed for token ${deedNFT.tokenId}:`, err);
+        }
+      }
+
+      // Return address if we have one but no coordinates
+      if (address) {
+        return { address };
+      }
+
+      return null;
+    } catch (err) {
+      console.error(`❌ Error getting location data for token ${deedNFT.tokenId}:`, err);
+      return null;
+    }
+  }, [chainId, getContractAddress, executeAppKitCall, walletProvider, embeddedWalletInfo]);
+
   // More accurate connection detection
   const isEmbeddedWalletConnected = Boolean(embeddedWalletInfo && embeddedWalletInfo.user && embeddedWalletInfo.user.email);
   const isRegularWalletConnected = Boolean(isConnected && address && status === 'connected');
@@ -517,6 +647,7 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
     getAssetTypeLabel,
     getAssetTypeDescription,
     getValidationStatus,
+    getLocationData,
     isConnected: isWalletConnected,
     isCorrectNetwork,
     currentChainId: chainId,

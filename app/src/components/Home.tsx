@@ -7,7 +7,7 @@ const Home = () => {
     <main className="container mx-auto py-16 px-4">
       <div className="text-center mb-16">
         <h1 className="text-7xl lg:text-9xl font-bold text-gray-900 dark:text-white mb-6 font-coolvetica">
-          DO MORE THAN JUST <br /> "NFT-ING" YOUR PROPERTY
+          TOKENIZED DEEDS <br /> WITH BUILT IN TRUST
         </h1>
         <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed">
           A Modern Platform for Deed Tokenization, Validation, and Management.
