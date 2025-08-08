@@ -6,6 +6,7 @@ import { Search, Eye, RefreshCw } from "lucide-react";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { useState } from "react";
 import DeedNFTViewer from "./DeedNFTViewer";
+import DeedNFTMap from "./DeedNFTMap";
 import type { DeedNFT } from "@/hooks/useDeedNFTData";
 
 const Explore = () => {
@@ -23,6 +24,7 @@ const Explore = () => {
     address
   } = useDeedNFTData();
 
+  const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [selectedDeedNFT, setSelectedDeedNFT] = useState<DeedNFT | null>(null);
@@ -43,20 +45,22 @@ const Explore = () => {
     return matchesSearch && matchesFilter;
   });
 
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSearchTerm(searchInput);
+  };
+
+  const handleSearchClear = () => {
+    setSearchInput("");
+    setSearchTerm("");
+  };
+
   const handleViewDetails = (deedNFT: DeedNFT) => {
     setSelectedDeedNFT(deedNFT);
   };
 
   return (
     <main className="container mx-auto py-12 px-4">
-      <div className="text-center mb-12">
-        <h1 className="text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white mb-4 font-coolvetica">
-          EXPLORE T-DEEDS
-        </h1>
-        <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-          Discover and browse existing T-Deeds on the protocol.
-        </p>
-      </div>
 
       {/* Debug Information */}
       {isConnected && isCorrectNetwork && (
@@ -103,20 +107,41 @@ const Explore = () => {
         </div>
       )}
 
+      {/* Map Section - Only show if connected and on correct network */}
+      {isConnected && isCorrectNetwork && !loading && deedNFTs.length > 0 && (
+        <div className="mb-8">
+          <DeedNFTMap
+            deedNFTs={deedNFTs}
+            onDeedNFTSelect={handleViewDetails}
+            getAssetTypeLabel={getAssetTypeLabel}
+            getValidationStatus={getValidationStatus}
+          />
+        </div>
+      )}
+
       {/* Search and Filter Bar */}
       <div className="w-full mb-8">
         <div className="flex flex-col lg:flex-row gap-3">
           {/* Search Input - Takes up 2/3 of the space */}
-          <div className="flex-1 lg:flex-[2] relative">
+          <form onSubmit={handleSearchSubmit} className="flex-1 lg:flex-[2] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search T-Deeds..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search T-Deeds... (Press Enter to search)"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="w-full pl-10 pr-4 py-3 border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-[#141414] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent h-11"
             />
-          </div>
+            {(searchInput || searchTerm) && (
+              <button
+                type="button"
+                onClick={handleSearchClear}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                ✕
+              </button>
+            )}
+          </form>
           
           {/* Filter Dropdown - Takes up remaining space */}
           <div className="w-full lg:w-32">
