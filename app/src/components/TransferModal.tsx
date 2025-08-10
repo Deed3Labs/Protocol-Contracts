@@ -294,6 +294,15 @@ const TransferModal: React.FC<TransferModalProps> = ({
         if (!window.ethereum) {
           throw new Error("No wallet detected. Please install MetaMask or another wallet.");
         }
+        
+        // Add a small delay to ensure the provider is properly initialized on mobile
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Double-check that ethereum is still available after the delay
+        if (!window.ethereum) {
+          throw new Error("Ethereum provider not available after initialization delay.");
+        }
+        
         const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
         const signer = await provider.getSigner();
         

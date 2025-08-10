@@ -292,6 +292,15 @@ const AdminPanel = () => {
         if (!window.ethereum) {
           throw new Error("No wallet detected. Please install MetaMask or another wallet.");
         }
+        
+        // Add a small delay to ensure the provider is properly initialized on mobile
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Double-check that ethereum is still available after the delay
+        if (!window.ethereum) {
+          throw new Error("Ethereum provider not available after initialization delay.");
+        }
+        
         const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
         signer = await provider.getSigner();
       }
@@ -318,7 +327,7 @@ const AdminPanel = () => {
 
       // Load ValidatorRegistry (you might need to get this address from deployment)
       // For now, we'll try to get it from the network config
-      const validatorRegistryAddress = "0x979E6cC741A8481f96739A996D06EcFb9BA2bc91"; // Base Sepolia
+      const validatorRegistryAddress = "0x979E6cC741A8481f96739A996D06EcFb9BA2bc91";
       if (validatorRegistryAddress) {
         const validatorRegistryAbi = await getValidatorRegistryAbi(chainId);
         const validatorRegistryContract = new ethers.Contract(validatorRegistryAddress, validatorRegistryAbi, signer);
