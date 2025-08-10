@@ -141,6 +141,15 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
         console.log('Deep link return from wallet:', walletReturn);
         // Clear the URL parameters
         window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Add a longer delay for mobile wallet returns to ensure provider is ready
+        setTimeout(() => {
+          console.log('Mobile wallet return detected, ensuring provider is ready');
+          // Trigger a custom event that components can listen to
+          window.dispatchEvent(new CustomEvent('mobileWalletReturn', { 
+            detail: { wallet: walletReturn } 
+          }));
+        }, 1000);
       }
     };
 

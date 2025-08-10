@@ -349,6 +349,20 @@ const Validation: React.FC<ValidationPageProps> = () => {
         signer = walletProvider as any;
       } else {
         console.log("Using MetaMask provider for validator contract");
+        
+        // Check if window.ethereum is available
+        if (!window.ethereum) {
+          throw new Error("No Ethereum provider available. Please ensure MetaMask is installed and connected.");
+        }
+        
+        // Add a small delay to ensure the provider is properly initialized on mobile
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Double-check that ethereum is still available after the delay
+        if (!window.ethereum) {
+          throw new Error("Ethereum provider not available after initialization delay.");
+        }
+        
         const provider = new ethers.BrowserProvider(window.ethereum as any);
         signer = await provider.getSigner();
       }
@@ -498,6 +512,20 @@ const Validation: React.FC<ValidationPageProps> = () => {
         signer = provider;
       } else {
         console.log("Using MetaMask provider");
+        
+        // Check if window.ethereum is available
+        if (!window.ethereum) {
+          throw new Error("No Ethereum provider available. Please ensure MetaMask is installed and connected.");
+        }
+        
+        // Add a small delay to ensure the provider is properly initialized on mobile
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Double-check that ethereum is still available after the delay
+        if (!window.ethereum) {
+          throw new Error("Ethereum provider not available after initialization delay.");
+        }
+        
         const provider = new ethers.BrowserProvider(window.ethereum as any);
         signer = await provider.getSigner();
       }

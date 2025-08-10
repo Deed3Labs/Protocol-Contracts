@@ -91,6 +91,14 @@ export const useXMTPConnection = () => {
           throw new Error('No Ethereum provider available');
         }
 
+        // Add a small delay to ensure the provider is properly initialized on mobile
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Double-check that ethereum is still available after the delay
+        if (!(window as { ethereum?: unknown }).ethereum) {
+          throw new Error('Ethereum provider not available after initialization delay');
+        }
+
         // Create ethers provider and signer
         const { BrowserProvider } = await import('ethers');
         const provider = new BrowserProvider((window as { ethereum: unknown }).ethereum as any);

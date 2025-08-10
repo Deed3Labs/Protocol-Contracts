@@ -184,6 +184,16 @@ const MintForm = () => {
       } else {
         console.log("Using MetaMask provider");
         if (!window.ethereum) return;
+        
+        // Add a small delay to ensure the provider is properly initialized on mobile
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Double-check that ethereum is still available after the delay
+        if (!window.ethereum) {
+          console.error("Ethereum provider not available after initialization delay.");
+          return;
+        }
+        
         provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
       }
       
@@ -265,6 +275,16 @@ const MintForm = () => {
       } else {
         console.log("Using MetaMask provider");
         if (!window.ethereum) return;
+        
+        // Add a small delay to ensure the provider is properly initialized on mobile
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Double-check that ethereum is still available after the delay
+        if (!window.ethereum) {
+          console.error("Ethereum provider not available after initialization delay.");
+          return;
+        }
+        
         provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
       }
       
