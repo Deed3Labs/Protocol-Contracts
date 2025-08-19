@@ -9,16 +9,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
 import type { Eip1193Provider } from 'ethers';
 import { NetworkWarning } from "@/components/NetworkWarning";
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";
 import { useSmartAccountDeployment } from "@/hooks/useSmartAccountDeployment";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
-import { ChevronRight, ChevronLeft, CheckCircle, AlertCircle, Wallet, FileText, Settings, CreditCard, Coins, DollarSign } from "lucide-react";
+import { ChevronRight, ChevronLeft, CheckCircle, AlertCircle, Wallet, FileText, Settings, CreditCard, Tags, Plus, Trash2, Database, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 // Dynamic ABI loading functions
 const getDeedNFTAbi = async (chainId: number) => {
@@ -57,6 +58,18 @@ const getFundManagerAbi = async (chainId: number) => {
   }
 };
 
+const getMetadataRendererAbi = async (chainId: number) => {
+  try {
+    const abiPath = getAbiPathForNetwork(chainId, 'MetadataRenderer');
+    const abiModule = await import(abiPath);
+    return JSON.parse(abiModule.default.abi);
+  } catch (error) {
+    console.error('Error loading MetadataRenderer ABI:', error);
+    const fallbackModule = await import('@/contracts/base-sepolia/MetadataRenderer.json');
+    return JSON.parse(fallbackModule.default.abi);
+  }
+};
+
 // Asset types matching the contract enum
 const assetTypes = [
   { value: "0", label: "Land", description: "Real estate land parcels" },
@@ -65,12 +78,14 @@ const assetTypes = [
   { value: "3", label: "Commercial Equipment", description: "Business machinery and equipment" }
 ];
 
-// Form steps
+// Form steps (includes optional Traits and Advanced Metadata steps)
 const STEPS = [
   { id: 1, title: "Basic Information", icon: FileText, description: "Asset details and definition" },
   { id: 2, title: "Configuration", icon: Settings, description: "Advanced settings and validation" },
-  { id: 3, title: "Payment & Fees", icon: CreditCard, description: "Service fees and payment options" },
-  { id: 4, title: "Review & Mint", icon: CheckCircle, description: "Final review and minting" }
+  { id: 3, title: "Traits (Optional)", icon: Tags, description: "Add key traits to your T‑Deed" },
+  { id: 4, title: "Advanced Metadata (Optional)", icon: Database, description: "Add rich metadata to your T‑Deed" },
+  { id: 5, title: "Payment & Fees", icon: CreditCard, description: "Service fees and payment options" },
+  { id: 6, title: "Review & Mint", icon: CheckCircle, description: "Final review and minting" }
 ];
 
 // Token icons mapping
@@ -82,6 +97,7 @@ const TOKEN_ICONS: { [key: string]: string } = {
 };
 
 const MintForm = () => {
+  const navigate = useNavigate();
   const {
     address,
     isConnected,
@@ -106,6 +122,7 @@ const MintForm = () => {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [mintedTokenId, setMintedTokenId] = useState<string | null>(null);
 
   // Fee calculation state
   const [whitelistedTokens, setWhitelistedTokens] = useState<Array<{ address: string; symbol: string; decimals: number; icon: string }>>([]);
@@ -116,6 +133,580 @@ const MintForm = () => {
   const [isLoadingFees, setIsLoadingFees] = useState(false);
   const [fundManagerAddress, setFundManagerAddress] = useState<string>("");
   const [hasFundManager, setHasFundManager] = useState(false);
+  
+  // Traits (optional)
+  type TraitItem = { name: string; value: string };
+  const [traits, setTraits] = useState<TraitItem[]>([]);
+  const addTrait = () => setTraits(prev => ([...prev, { name: "", value: "" }]));
+  const removeTrait = (index: number) => setTraits(prev => prev.filter((_, i) => i !== index));
+  const updateTrait = (index: number, key: keyof TraitItem, value: string) => {
+    setTraits(prev => prev.map((t, i) => i === index ? { ...t, [key]: value } as TraitItem : t));
+  };
+  
+  // Document type for advanced metadata
+  type DocumentItem = { docType: string; documentURI: string };
+  
+  // Advanced Metadata (optional)
+  const [advancedMetadata, setAdvancedMetadata] = useState({
+    customMetadata: "",
+    animationURL: "",
+    externalLink: "",
+    documents: [] as DocumentItem[],
+    generalCondition: "",
+    lastInspectionDate: "",
+    knownIssues: "",
+    improvements: "",
+    additionalNotes: "",
+    jurisdiction: "",
+    registrationNumber: "",
+    registrationDate: "",
+    legalDocuments: "",
+    restrictions: "",
+    additionalLegalInfo: "",
+    features: "",
+    imageUrls: ""
+  });
+
+  // Batch approval state
+  const [showBatchApproval, setShowBatchApproval] = useState(false);
+  const [batchTransactions, setBatchTransactions] = useState<any[]>([]);
+  const [isProcessingBatch, setIsProcessingBatch] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+
+  // Add/remove document functions
+  const addDocument = () => setAdvancedMetadata(prev => ({ 
+    ...prev, 
+    documents: [...prev.documents, { docType: "", documentURI: "" }] 
+  }));
+  const removeDocument = (index: number) => setAdvancedMetadata(prev => ({ 
+    ...prev, 
+    documents: prev.documents.filter((_, i) => i !== index) 
+  }));
+  const updateDocument = (index: number, key: keyof DocumentItem, value: string) => {
+    setAdvancedMetadata(prev => ({
+      ...prev,
+      documents: prev.documents.map((doc, i) => i === index ? { ...doc, [key]: value } : doc)
+    }));
+  };
+
+  // Trait suggestions based on asset type
+  const getTraitSuggestions = (assetType: string) => {
+    switch (assetType) {
+      case "0": // Land
+        return [
+          { name: "streetNumber", label: "Street Number", placeholder: "e.g., 123" },
+          { name: "streetName", label: "Street Name", placeholder: "e.g., Main Street" },
+          { name: "city", label: "City", placeholder: "e.g., Los Angeles" },
+          { name: "state", label: "State", placeholder: "e.g., CA" },
+          { name: "zipCode", label: "ZIP Code", placeholder: "e.g., 90210" },
+          { name: "country", label: "Country", placeholder: "e.g., USA" },
+          { name: "parcelNumber", label: "Parcel Number", placeholder: "e.g., 123-456-789" },
+          { name: "acreage", label: "Acreage", placeholder: "e.g., 2.5" },
+          { name: "zoning", label: "Zoning", placeholder: "e.g., Residential" },
+          { name: "landUse", label: "Land Use", placeholder: "e.g., Single Family" }
+        ];
+      case "1": // Vehicle
+        return [
+          { name: "year", label: "Year", placeholder: "e.g., 2020" },
+          { name: "make", label: "Make", placeholder: "e.g., Toyota" },
+          { name: "model", label: "Model", placeholder: "e.g., Camry" },
+          { name: "vin", label: "VIN", placeholder: "e.g., 1HGBH41JXMN109186" },
+          { name: "color", label: "Color", placeholder: "e.g., Silver" },
+          { name: "mileage", label: "Mileage", placeholder: "e.g., 50000" },
+          { name: "engine", label: "Engine", placeholder: "e.g., 2.5L 4-Cylinder" },
+          { name: "transmission", label: "Transmission", placeholder: "e.g., Automatic" },
+          { name: "fuelType", label: "Fuel Type", placeholder: "e.g., Gasoline" },
+          { name: "licensePlate", label: "License Plate", placeholder: "e.g., ABC123" }
+        ];
+      case "2": // Estate
+        return [
+          { name: "streetNumber", label: "Street Number", placeholder: "e.g., 123" },
+          { name: "streetName", label: "Street Name", placeholder: "e.g., Main Street" },
+          { name: "city", label: "City", placeholder: "e.g., Los Angeles" },
+          { name: "state", label: "State", placeholder: "e.g., CA" },
+          { name: "zipCode", label: "ZIP Code", placeholder: "e.g., 90210" },
+          { name: "country", label: "Country", placeholder: "e.g., USA" },
+          { name: "parcelNumber", label: "Parcel Number", placeholder: "e.g., 123-456-789" },
+          { name: "squareFootage", label: "Square Footage", placeholder: "e.g., 2500" },
+          { name: "bedrooms", label: "Bedrooms", placeholder: "e.g., 3" },
+          { name: "bathrooms", label: "Bathrooms", placeholder: "e.g., 2.5" },
+          { name: "propertyType", label: "Property Type", placeholder: "e.g., Single Family" },
+          { name: "yearBuilt", label: "Year Built", placeholder: "e.g., 1995" }
+        ];
+      case "3": // Commercial Equipment
+        return [
+          { name: "manufacturer", label: "Manufacturer", placeholder: "e.g., Caterpillar" },
+          { name: "model", label: "Model", placeholder: "e.g., D6T" },
+          { name: "serialNumber", label: "Serial Number", placeholder: "e.g., CAT00D6T123456" },
+          { name: "equipmentType", label: "Equipment Type", placeholder: "e.g., Bulldozer" },
+          { name: "yearManufactured", label: "Year Manufactured", placeholder: "e.g., 2018" },
+          { name: "horsepower", label: "Horsepower", placeholder: "e.g., 200" },
+          { name: "weight", label: "Weight (tons)", placeholder: "e.g., 25" },
+          { name: "fuelType", label: "Fuel Type", placeholder: "e.g., Diesel" },
+          { name: "condition", label: "Condition", placeholder: "e.g., Excellent" },
+          { name: "location", label: "Location", placeholder: "e.g., Construction Site A" }
+        ];
+      default:
+        return [];
+    }
+  };
+
+  // Add suggested traits based on asset type
+  const addSuggestedTraits = () => {
+    const suggestions = getTraitSuggestions(form.assetType);
+    const newTraits = suggestions.map(suggestion => ({
+      name: suggestion.name,
+      value: ""
+    }));
+    setTraits(prev => [...prev, ...newTraits]);
+  };
+
+  // Batch Approval Modal Component
+  const BatchApprovalModal = () => {
+    const totalGas = batchTransactions.length * 100000; // Estimate 100k gas per transaction
+    const estimatedCost = ethers.formatEther(ethers.parseUnits(totalGas.toString(), 'wei'));
+    
+    const traitTransactions = batchTransactions.filter(t => t.type === 'trait');
+    const metadataTransactions = batchTransactions.filter(t => t.type === 'metadata');
+    
+    return (
+      <Dialog open={showBatchApproval} onOpenChange={setShowBatchApproval}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Batch Transaction Approval</DialogTitle>
+            <DialogDescription>
+              Approve multiple transactions to set traits and metadata on your T-Deed
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+              <div className="flex justify-between text-sm">
+                <span>Total Transactions:</span>
+                <span className="font-medium">{batchTransactions.length}</span>
+              </div>
+              {traitTransactions.length > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>Trait Transactions:</span>
+                  <span className="font-medium">{traitTransactions.length}</span>
+                </div>
+              )}
+              {metadataTransactions.length > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>Metadata Transactions:</span>
+                  <span className="font-medium">{metadataTransactions.length}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm">
+                <span>Estimated Gas:</span>
+                <span className="font-medium">{totalGas.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Estimated Cost:</span>
+                <span className="font-medium">~{estimatedCost} ETH</span>
+              </div>
+            </div>
+            
+            <div className="max-h-40 overflow-y-auto">
+              {traitTransactions.length > 0 && (
+                <div className="mb-3">
+                  <h4 className="font-medium mb-2">Traits to be set:</h4>
+                  {traits.map((trait, index) => (
+                    <div key={index} className="text-sm text-gray-600 dark:text-gray-400">
+                      • {trait.name}: {trait.value}
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {metadataTransactions.length > 0 && (
+                <div>
+                  <h4 className="font-medium mb-2">Metadata to be set:</h4>
+                  {advancedMetadata.customMetadata && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400">• Custom Metadata</div>
+                  )}
+                  {advancedMetadata.animationURL && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400">• Animation URL</div>
+                  )}
+                  {advancedMetadata.externalLink && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400">• External Link</div>
+                  )}
+                  {advancedMetadata.documents.length > 0 && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400">• {advancedMetadata.documents.length} Documents</div>
+                  )}
+                  {advancedMetadata.generalCondition && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400">• Asset Condition</div>
+                  )}
+                  {advancedMetadata.jurisdiction && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400">• Legal Information</div>
+                  )}
+                  {advancedMetadata.features && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400">• Features</div>
+                  )}
+                  {advancedMetadata.imageUrls && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400">• Gallery Images</div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {isProcessingBatch && (
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Processing transactions...</span>
+                </div>
+                <Progress value={batchProgress} className="h-2" />
+                <p className="text-xs text-gray-500">{batchProgress}% complete</p>
+              </div>
+            )}
+            
+            <div className="flex space-x-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowBatchApproval(false)} 
+                disabled={isProcessingBatch}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={executeBatchTraits}
+                disabled={isProcessingBatch}
+                className="flex-1"
+              >
+                {isProcessingBatch ? 'Processing...' : 'Approve All'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
+  // Waits for receipt using walletProvider (embedded wallets)
+  const waitForReceiptWalletProvider = async (txHash: string) => {
+    if (!walletProvider) throw new Error('No walletProvider available');
+    let attempts = 0;
+    while (attempts < 60) {
+      const receipt = await (walletProvider as any).request({
+        method: 'eth_getTransactionReceipt',
+        params: [txHash]
+      });
+      if (receipt && receipt.blockNumber) return receipt;
+      await new Promise(r => setTimeout(r, 1500));
+      attempts++;
+    }
+    throw new Error('Timed out waiting for transaction receipt');
+  };
+
+  // Extract tokenId from receipt logs by parsing DeedNFTMinted event
+  const extractTokenIdFromReceipt = async (receipt: any, deedNftAbi: any): Promise<bigint | null> => {
+    try {
+      const iface = new ethers.Interface(deedNftAbi);
+      const logs = receipt.logs || receipt.receipts || [];
+      for (const log of logs) {
+        try {
+          const parsed = iface.parseLog({ topics: log.topics, data: log.data });
+          if (parsed && parsed.name === 'DeedNFTMinted') {
+            const tokenId = parsed.args[0] as bigint;
+            return tokenId;
+          }
+        } catch (_) {}
+      }
+      return null;
+    } catch (e) {
+      console.error('Failed to parse receipt logs for tokenId:', e);
+      return null;
+    }
+  };
+
+  // Apply collected traits and metadata after mint using batch approval
+  const applyTraitsAfterMint = async (
+    tokenId: bigint,
+    contractAddress: string,
+    deedNftAbi: any
+  ) => {
+    try {
+      const allTransactions: any[] = [];
+      
+      // Add trait transactions
+      if (traits.length > 0) {
+        const traitTransactions = traits.map(trait => ({
+          to: contractAddress,
+          data: new ethers.Interface(deedNftAbi).encodeFunctionData('setTrait', [
+            Number(tokenId),
+            ethers.toUtf8Bytes(trait.name),
+            ethers.toUtf8Bytes(trait.value),
+            1 // string type
+          ]),
+          value: "0",
+          type: 'trait'
+        }));
+        allTransactions.push(...traitTransactions);
+      }
+      
+      // Add metadata transactions if any metadata exists
+      const hasMetadata = Object.values(advancedMetadata).some(value => {
+        if (Array.isArray(value)) {
+          return value.length > 0;
+        }
+        return typeof value === 'string' && value.trim();
+      });
+      
+      if (hasMetadata) {
+        // Get MetadataRenderer address
+        let metadataRendererAddress: string;
+        
+        if (walletProvider && embeddedWalletInfo) {
+          const result = await (walletProvider as any).request({
+            method: 'eth_call',
+            params: [{
+              to: contractAddress,
+              data: new ethers.Interface(deedNftAbi).encodeFunctionData('metadataRenderer', [])
+            }, 'latest']
+          });
+          metadataRendererAddress = new ethers.Interface(deedNftAbi).decodeFunctionResult('metadataRenderer', result)[0];
+        } else {
+          // For MetaMask, we'll get this in the execute function
+          metadataRendererAddress = "";
+        }
+        
+        if (metadataRendererAddress && metadataRendererAddress !== ethers.ZeroAddress) {
+          const metadataRendererAbi = await getMetadataRendererAbi(chainId!);
+          
+          // Add metadata transactions
+          if (advancedMetadata.customMetadata.trim()) {
+            allTransactions.push({
+              to: metadataRendererAddress,
+              data: new ethers.Interface(metadataRendererAbi).encodeFunctionData('setTokenCustomMetadata', [
+                Number(tokenId),
+                advancedMetadata.customMetadata
+              ]),
+              value: "0",
+              type: 'metadata'
+            });
+          }
+          
+          if (advancedMetadata.animationURL.trim()) {
+            allTransactions.push({
+              to: metadataRendererAddress,
+              data: new ethers.Interface(metadataRendererAbi).encodeFunctionData('setTokenAnimationURL', [
+                Number(tokenId),
+                advancedMetadata.animationURL
+              ]),
+              value: "0",
+              type: 'metadata'
+            });
+          }
+          
+          if (advancedMetadata.externalLink.trim()) {
+            allTransactions.push({
+              to: metadataRendererAddress,
+              data: new ethers.Interface(metadataRendererAbi).encodeFunctionData('setTokenExternalLink', [
+                Number(tokenId),
+                advancedMetadata.externalLink
+              ]),
+              value: "0",
+              type: 'metadata'
+            });
+          }
+          
+          // Add document transactions
+          for (const doc of advancedMetadata.documents) {
+            if (doc.docType.trim() && doc.documentURI.trim()) {
+              allTransactions.push({
+                to: metadataRendererAddress,
+                data: new ethers.Interface(metadataRendererAbi).encodeFunctionData('manageTokenDocument', [
+                  Number(tokenId),
+                  doc.docType,
+                  doc.documentURI,
+                  false // isRemove = false
+                ]),
+                value: "0",
+                type: 'metadata'
+              });
+            }
+          }
+          
+          // Add other metadata transactions (condition, legal info, features, gallery)
+          if (advancedMetadata.generalCondition.trim()) {
+            const knownIssues = advancedMetadata.knownIssues ? advancedMetadata.knownIssues.split(',').map(s => s.trim()).filter(s => s) : [];
+            const improvements = advancedMetadata.improvements ? advancedMetadata.improvements.split(',').map(s => s.trim()).filter(s => s) : [];
+            
+            allTransactions.push({
+              to: metadataRendererAddress,
+              data: new ethers.Interface(metadataRendererAbi).encodeFunctionData('setAssetCondition', [
+                Number(tokenId),
+                advancedMetadata.generalCondition,
+                advancedMetadata.lastInspectionDate || "",
+                knownIssues,
+                improvements,
+                advancedMetadata.additionalNotes || ""
+              ]),
+              value: "0",
+              type: 'metadata'
+            });
+          }
+          
+          if (advancedMetadata.jurisdiction.trim()) {
+            const documents = advancedMetadata.legalDocuments ? advancedMetadata.legalDocuments.split(',').map(s => s.trim()).filter(s => s) : [];
+            const restrictions = advancedMetadata.restrictions ? advancedMetadata.restrictions.split(',').map(s => s.trim()).filter(s => s) : [];
+            
+            allTransactions.push({
+              to: metadataRendererAddress,
+              data: new ethers.Interface(metadataRendererAbi).encodeFunctionData('setTokenLegalInfo', [
+                Number(tokenId),
+                advancedMetadata.jurisdiction,
+                advancedMetadata.registrationNumber || "",
+                advancedMetadata.registrationDate || "",
+                documents,
+                restrictions,
+                advancedMetadata.additionalLegalInfo || ""
+              ]),
+              value: "0",
+              type: 'metadata'
+            });
+          }
+          
+          if (advancedMetadata.features.trim()) {
+            const features = advancedMetadata.features.split(',').map(s => s.trim()).filter(s => s);
+            
+            allTransactions.push({
+              to: metadataRendererAddress,
+              data: new ethers.Interface(metadataRendererAbi).encodeFunctionData('setTokenFeatures', [
+                Number(tokenId),
+                features
+              ]),
+              value: "0",
+              type: 'metadata'
+            });
+          }
+          
+          if (advancedMetadata.imageUrls.trim()) {
+            const imageUrls = advancedMetadata.imageUrls.split('\n').map(s => s.trim()).filter(s => s);
+            
+            allTransactions.push({
+              to: metadataRendererAddress,
+              data: new ethers.Interface(metadataRendererAbi).encodeFunctionData('setTokenGallery', [
+                Number(tokenId),
+                imageUrls
+              ]),
+              value: "0",
+              type: 'metadata'
+            });
+          }
+        }
+      }
+      
+      if (allTransactions.length > 0) {
+        setBatchTransactions(allTransactions);
+        setShowBatchApproval(true);
+      }
+    } catch (e) {
+      console.error('Failed to prepare batch transactions:', e);
+      setError('Mint succeeded but preparing batch transactions failed. You can add them on the Validation page.');
+    }
+  };
+
+  // Execute batch trait transactions
+  const executeBatchTraits = async () => {
+    if (batchTransactions.length === 0) return;
+    
+    setIsProcessingBatch(true);
+    setBatchProgress(0);
+    
+    try {
+      if (walletProvider && embeddedWalletInfo) {
+        // For AppKit embedded wallets, execute transactions sequentially
+        for (let i = 0; i < batchTransactions.length; i++) {
+          const transaction = batchTransactions[i];
+          const prepared = await prepareTransaction(transaction);
+          await (walletProvider as any).request({ 
+            method: 'eth_sendTransaction', 
+            params: [prepared] 
+          });
+          
+          // Update progress
+          setBatchProgress(((i + 1) / batchTransactions.length) * 100);
+          
+          // Small delay between transactions
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } else {
+        // For MetaMask, we need to get the signer and execute transactions sequentially
+        if (!window.ethereum) {
+          throw new Error("No wallet detected");
+        }
+        
+        const provider = new ethers.BrowserProvider(window.ethereum as unknown as Eip1193Provider);
+        const signer = await provider.getSigner();
+        
+        // Get MetadataRenderer address for metadata transactions
+        const deedNFTContract = new ethers.Contract(batchTransactions[0].to, await getDeedNFTAbi(chainId!), signer);
+        const metadataRendererAddress = await deedNFTContract.metadataRenderer();
+        
+        for (let i = 0; i < batchTransactions.length; i++) {
+          const transaction = batchTransactions[i];
+          
+          if (transaction.type === 'trait') {
+            // Execute trait transaction
+            const tx = await deedNFTContract.setTrait(
+              Number(mintedTokenId),
+              ethers.toUtf8Bytes(traits[i].name),
+              ethers.toUtf8Bytes(traits[i].value),
+              1 // string type
+            );
+            await tx.wait();
+          } else if (transaction.type === 'metadata') {
+            // Execute metadata transaction using the encoded data
+            const tx = await signer.sendTransaction({
+              to: metadataRendererAddress,
+              data: transaction.data
+            });
+            await tx.wait();
+          }
+          
+          // Update progress
+          setBatchProgress(((i + 1) / batchTransactions.length) * 100);
+        }
+      }
+      
+      setShowBatchApproval(false);
+      setBatchTransactions([]);
+      setIsProcessingBatch(false);
+      setBatchProgress(0);
+      
+      // Reset both traits and advanced metadata after successful batch processing
+      setTraits([]);
+      setAdvancedMetadata({
+        customMetadata: "",
+        animationURL: "",
+        externalLink: "",
+        documents: [],
+        generalCondition: "",
+        lastInspectionDate: "",
+        knownIssues: "",
+        improvements: "",
+        additionalNotes: "",
+        jurisdiction: "",
+        registrationNumber: "",
+        registrationDate: "",
+        legalDocuments: "",
+        restrictions: "",
+        additionalLegalInfo: "",
+        features: "",
+        imageUrls: ""
+      });
+      
+    } catch (e) {
+      console.error('Failed to execute batch transactions:', e);
+      setError('Mint succeeded but applying traits and metadata failed. You can add them on the Validation page.');
+      setShowBatchApproval(false);
+      setIsProcessingBatch(false);
+      setBatchProgress(0);
+    }
+  };
 
   // Form state matching DeedNFT.sol parameters
   const [form, setForm] = useState({
@@ -131,7 +722,7 @@ const MintForm = () => {
     requiresValidation: false,
     validationCriteria: "",
     
-    // Payment & Fees (Step 3)
+    // Payment & Fees (Step 5)
     token: "",
     usePaymentToken: false,
     useCustomValidator: false,
@@ -139,7 +730,7 @@ const MintForm = () => {
     useCustomSalt: false,
     salt: "",
     
-    // Review (Step 4)
+    // Review (Step 6)
     estimatedGas: "0",
     totalCost: "0"
   });
@@ -381,6 +972,7 @@ const MintForm = () => {
     setIsLoading(true);
     setError(null);
     setSuccess(false);
+    setMintedTokenId(null);
 
     try {
       if (!chainId) {
@@ -458,6 +1050,23 @@ const MintForm = () => {
 
         console.log("Transaction executed successfully:", tx);
         setTxHash(tx);
+        // Wait for receipt and parse tokenId
+        const receipt = await waitForReceiptWalletProvider(tx);
+        const tokenIdFromLogs = await extractTokenIdFromReceipt(receipt, abi);
+        if (tokenIdFromLogs) {
+          setMintedTokenId(tokenIdFromLogs.toString());
+          if (traits.length > 0) {
+            await applyTraitsAfterMint(tokenIdFromLogs, contractAddress, abi);
+          }
+          if (Object.values(advancedMetadata).some(value => {
+            if (Array.isArray(value)) {
+              return value.length > 0;
+            }
+            return typeof value === 'string' && value.trim();
+          })) {
+            await applyTraitsAfterMint(tokenIdFromLogs, contractAddress, abi);
+          }
+        }
         setSuccess(true);
         
         // Reset form but keep the owner address for convenience
@@ -479,6 +1088,30 @@ const MintForm = () => {
           estimatedGas: "0",
           totalCost: "0"
         });
+        
+        // Reset advanced metadata state
+        setAdvancedMetadata({
+          customMetadata: "",
+          animationURL: "",
+          externalLink: "",
+          documents: [],
+          generalCondition: "",
+          lastInspectionDate: "",
+          knownIssues: "",
+          improvements: "",
+          additionalNotes: "",
+          jurisdiction: "",
+          registrationNumber: "",
+          registrationDate: "",
+          legalDocuments: "",
+          restrictions: "",
+          additionalLegalInfo: "",
+          features: "",
+          imageUrls: ""
+        });
+        
+        // Don't reset traits immediately - they will be reset after batch processing
+        // setTraits([]);
         
         return; // Exit early since we handled the transaction
       } else {
@@ -536,7 +1169,22 @@ const MintForm = () => {
       );
 
       console.log("Transaction executed successfully:", tx.hash);
-
+      const receipt = await tx.wait();
+      const tokenIdFromLogs = await extractTokenIdFromReceipt(receipt, abi);
+      if (tokenIdFromLogs) {
+        setMintedTokenId(tokenIdFromLogs.toString());
+        if (traits.length > 0) {
+          await applyTraitsAfterMint(tokenIdFromLogs, contractAddress, abi);
+        }
+        if (Object.values(advancedMetadata).some(value => {
+          if (Array.isArray(value)) {
+            return value.length > 0;
+          }
+          return typeof value === 'string' && value.trim();
+        })) {
+          await applyTraitsAfterMint(tokenIdFromLogs, contractAddress, abi);
+        }
+      }
       setTxHash(tx.hash);
       setSuccess(true);
 
@@ -559,6 +1207,30 @@ const MintForm = () => {
         estimatedGas: "0",
         totalCost: "0"
       });
+
+      // Reset advanced metadata state
+      setAdvancedMetadata({
+        customMetadata: "",
+        animationURL: "",
+        externalLink: "",
+        documents: [],
+        generalCondition: "",
+        lastInspectionDate: "",
+        knownIssues: "",
+        improvements: "",
+        additionalNotes: "",
+        jurisdiction: "",
+        registrationNumber: "",
+        registrationDate: "",
+        legalDocuments: "",
+        restrictions: "",
+        additionalLegalInfo: "",
+        features: "",
+        imageUrls: ""
+      });
+      
+      // Don't reset traits immediately - they will be reset after batch processing
+      // setTraits([]);
 
     } catch (err) {
       console.error("Minting error:", err);
@@ -783,6 +1455,345 @@ const MintForm = () => {
       case 3:
         return (
           <div className="space-y-6">
+            <div className="text-center mb-6">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Add Traits (Optional)</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Add key traits to your T-Deed. You can add custom traits or use suggested traits based on your asset type.
+              </p>
+            </div>
+
+            {/* Suggested Traits Section */}
+            {form.assetType && getTraitSuggestions(form.assetType).length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">
+                      Suggested Traits for {assetTypes.find(t => t.value === form.assetType)?.label}
+                    </Label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Common traits for this asset type
+                    </p>
+                  </div>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={addSuggestedTraits} 
+                    className="h-9 border-black/10 dark:border-white/10"
+                  >
+                    <Plus className="w-4 h-4 mr-1" /> Add Suggested
+                  </Button>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {getTraitSuggestions(form.assetType).map((suggestion, index) => (
+                    <div key={index} className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">{suggestion.label}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{suggestion.placeholder}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Custom Traits Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Custom Traits</Label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Add your own custom traits
+                  </p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={addTrait} className="h-9 border-black/10 dark:border-white/10">
+                  <Plus className="w-4 h-4 mr-1" /> Add Custom
+                </Button>
+              </div>
+              
+              {traits.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">No traits added yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {traits.map((t, i) => (
+                    <div key={i} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                      <div className="space-y-2 md:col-span-2">
+                        <Label className="text-xs text-gray-600 dark:text-gray-300">Trait Name</Label>
+                        <Input 
+                          value={t.name} 
+                          onChange={e => updateTrait(i, 'name', e.target.value)} 
+                          placeholder="e.g., color, size, year" 
+                          className="h-11 border-black/10 dark:border-white/10" 
+                        />
+                      </div>
+                      <div className="space-y-2 md:col-span-2">
+                        <Label className="text-xs text-gray-600 dark:text-gray-300">Value</Label>
+                        <div className="flex items-center gap-2">
+                          <Input 
+                            value={t.value} 
+                            onChange={e => updateTrait(i, 'value', e.target.value)} 
+                            placeholder="Enter value" 
+                            className="h-11 border-black/10 dark:border-white/10" 
+                          />
+                          <Button type="button" variant="outline" size="icon" onClick={() => removeTrait(i)} className="h-11 w-11 border-black/10 dark:border-white/10">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <p className="text-xs text-gray-500 dark:text-gray-400">You can also manage advanced metadata later in the Validation dashboard.</p>
+          </div>
+        );
+
+      case 4:
+        return (
+          <div className="space-y-8">
+            <div className="text-center mb-6">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Advanced Metadata (Optional)</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Add rich metadata to your T-Deed. All fields are optional and can be managed later in the Validation dashboard.
+              </p>
+            </div>
+
+            {/* Basic Metadata Section */}
+            <div className="space-y-6">
+              <div className="border-b border-gray-200 dark:border-gray-700 pb-2">
+                <h4 className="text-md font-medium text-gray-900 dark:text-white">Basic Metadata</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Core metadata for your T-Deed</p>
+              </div>
+
+              {/* Custom Metadata */}
+              <div className="space-y-3">
+                <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Custom Metadata (JSON)</Label>
+                <Textarea
+                  value={advancedMetadata.customMetadata}
+                  onChange={(e) => setAdvancedMetadata(prev => ({ ...prev, customMetadata: e.target.value }))}
+                  placeholder="Enter custom metadata as JSON..."
+                  className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white min-h-[100px]"
+                  rows={3}
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400">Add custom JSON metadata for advanced use cases</p>
+              </div>
+
+              {/* Animation URL */}
+              <div className="space-y-3">
+                <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Animation URL</Label>
+                <Input
+                  value={advancedMetadata.animationURL}
+                  onChange={(e) => setAdvancedMetadata(prev => ({ ...prev, animationURL: e.target.value }))}
+                  placeholder="https://example.com/animation.mp4"
+                  className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400">URL to animated content (GIF, MP4, etc.)</p>
+              </div>
+
+              {/* External Link */}
+              <div className="space-y-3">
+                <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">External Link</Label>
+                <Input
+                  value={advancedMetadata.externalLink}
+                  onChange={(e) => setAdvancedMetadata(prev => ({ ...prev, externalLink: e.target.value }))}
+                  placeholder="https://example.com"
+                  className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400">External website or marketplace listing</p>
+              </div>
+            </div>
+
+            {/* Document Management Section */}
+            <div className="space-y-6">
+              <div className="border-b border-gray-200 dark:border-gray-700 pb-2">
+                <h4 className="text-md font-medium text-gray-900 dark:text-white">Document Management</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Add official documents and certificates</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Documents</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addDocument} className="h-9 border-black/10 dark:border-white/10">
+                    <Plus className="w-4 h-4 mr-1" /> Add Document
+                  </Button>
+                </div>
+
+                {advancedMetadata.documents.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">No documents added yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {advancedMetadata.documents.map((doc, index) => (
+                      <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                        <div className="space-y-2">
+                          <Label className="text-xs text-gray-600 dark:text-gray-300">Document Type</Label>
+                          <Input
+                            value={doc.docType}
+                            onChange={(e) => updateDocument(index, 'docType', e.target.value)}
+                            placeholder="e.g., deed, title, inspection"
+                            className="h-11 border-black/10 dark:border-white/10"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs text-gray-600 dark:text-gray-300">Document URI</Label>
+                          <Input
+                            value={doc.documentURI}
+                            onChange={(e) => updateDocument(index, 'documentURI', e.target.value)}
+                            placeholder="https://example.com/document.pdf"
+                            className="h-11 border-black/10 dark:border-white/10"
+                          />
+                        </div>
+                        <div className="flex items-center">
+                          <Button type="button" variant="outline" size="icon" onClick={() => removeDocument(index)} className="h-11 w-11 border-black/10 dark:border-white/10">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Asset Condition Section */}
+            <div className="space-y-6">
+              <div className="border-b border-gray-200 dark:border-gray-700 pb-2">
+                <h4 className="text-md font-medium text-gray-900 dark:text-white">Asset Condition</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Track the condition and maintenance history</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">General Condition</Label>
+                  <Select 
+                    value={advancedMetadata.generalCondition} 
+                    onValueChange={(value) => setAdvancedMetadata(prev => ({ ...prev, generalCondition: value }))}
+                  >
+                    <SelectTrigger className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11">
+                      <SelectValue placeholder="Select condition" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white dark:bg-[#141414] border-black/10 dark:border-white/10">
+                      <SelectItem value="Excellent">Excellent</SelectItem>
+                      <SelectItem value="Good">Good</SelectItem>
+                      <SelectItem value="Fair">Fair</SelectItem>
+                      <SelectItem value="Poor">Poor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-3">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Last Inspection Date</Label>
+                  <Input
+                    type="date"
+                    value={advancedMetadata.lastInspectionDate}
+                    onChange={(e) => setAdvancedMetadata(prev => ({ ...prev, lastInspectionDate: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Additional Notes</Label>
+                <Textarea
+                  value={advancedMetadata.additionalNotes}
+                  onChange={(e) => setAdvancedMetadata(prev => ({ ...prev, additionalNotes: e.target.value }))}
+                  placeholder="Additional notes about the asset condition..."
+                  className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white"
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            {/* Legal Information Section */}
+            <div className="space-y-6">
+              <div className="border-b border-gray-200 dark:border-gray-700 pb-2">
+                <h4 className="text-md font-medium text-gray-900 dark:text-white">Legal Information</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Legal jurisdiction and registration details</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-3">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Jurisdiction</Label>
+                  <Input
+                    value={advancedMetadata.jurisdiction}
+                    onChange={(e) => setAdvancedMetadata(prev => ({ ...prev, jurisdiction: e.target.value }))}
+                    placeholder="e.g., California, USA"
+                    className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11"
+                  />
+                </div>
+                <div className="space-y-3">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Registration Number</Label>
+                  <Input
+                    value={advancedMetadata.registrationNumber}
+                    onChange={(e) => setAdvancedMetadata(prev => ({ ...prev, registrationNumber: e.target.value }))}
+                    placeholder="Official registration number"
+                    className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11"
+                  />
+                </div>
+                <div className="space-y-3">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Registration Date</Label>
+                  <Input
+                    type="date"
+                    value={advancedMetadata.registrationDate}
+                    onChange={(e) => setAdvancedMetadata(prev => ({ ...prev, registrationDate: e.target.value }))}
+                    className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white h-11"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Additional Legal Info</Label>
+                <Textarea
+                  value={advancedMetadata.additionalLegalInfo}
+                  onChange={(e) => setAdvancedMetadata(prev => ({ ...prev, additionalLegalInfo: e.target.value }))}
+                  placeholder="Additional legal information..."
+                  className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white"
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            {/* Features and Gallery Section */}
+            <div className="space-y-6">
+              <div className="border-b border-gray-200 dark:border-gray-700 pb-2">
+                <h4 className="text-md font-medium text-gray-900 dark:text-white">Features & Gallery</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Asset features and image gallery</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Features (comma-separated)</Label>
+                  <Textarea
+                    value={advancedMetadata.features}
+                    onChange={(e) => setAdvancedMetadata(prev => ({ ...prev, features: e.target.value }))}
+                    placeholder="e.g., pool, garage, garden, security system"
+                    className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white"
+                    rows={3}
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">List key features of the asset</p>
+                </div>
+                <div className="space-y-3">
+                  <Label className="text-gray-700 dark:text-gray-200 font-medium text-sm">Image URLs (one per line)</Label>
+                  <Textarea
+                    value={advancedMetadata.imageUrls}
+                    onChange={(e) => setAdvancedMetadata(prev => ({ ...prev, imageUrls: e.target.value }))}
+                    placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg"
+                    className="border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white"
+                    rows={3}
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Add multiple images for the gallery</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              All metadata will be applied after minting. You can also manage this metadata later in the Validation dashboard.
+            </p>
+          </div>
+        );
+
+      case 5:
+        return (
+          <div className="space-y-6">
             {hasFundManager ? (
               <>
                 <div className="space-y-4">
@@ -830,7 +1841,6 @@ const MintForm = () => {
                         <Card className="border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
                           <CardHeader className="pb-3">
                             <CardTitle className="text-lg text-gray-900 dark:text-white flex items-center space-x-2">
-                              <Coins className="w-5 h-5" />
                               <span>Fee Information</span>
                             </CardTitle>
                           </CardHeader>
@@ -847,12 +1857,13 @@ const MintForm = () => {
                                 {formatTokenAmount((BigInt(serviceFee) * BigInt(commissionPercentage) / 10000n).toString(), 18)} {whitelistedTokens.find(t => t.address === selectedToken)?.symbol || "ETH"}
                               </span>
                             </div>
-                            <Separator className="bg-gray-200 dark:bg-gray-700" />
-                            <div className="flex justify-between">
-                              <span className="text-gray-900 dark:text-white font-semibold">Total:</span>
-                              <span className="text-gray-900 dark:text-white font-semibold">
-                                {formatTokenAmount(totalFee, 18)} {whitelistedTokens.find(t => t.address === selectedToken)?.symbol || "ETH"}
-                              </span>
+                            <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
+                              <div className="flex justify-between">
+                                <span className="text-gray-900 dark:text-white font-semibold">Total:</span>
+                                <span className="text-gray-900 dark:text-white font-semibold">
+                                  {formatTokenAmount(totalFee, 18)} {whitelistedTokens.find(t => t.address === selectedToken)?.symbol || "ETH"}
+                                </span>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>
@@ -863,7 +1874,6 @@ const MintForm = () => {
               </>
             ) : (
               <div className="text-center py-8">
-                <DollarSign className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No FundManager Configured</h3>
                 <p className="text-gray-600 dark:text-gray-400">
                   This T-Deed contract is not configured with a FundManager. Minting will proceed without payment processing.
@@ -873,7 +1883,7 @@ const MintForm = () => {
           </div>
         );
 
-      case 4:
+      case 6:
         return (
           <div className="space-y-6">
             <Card className="border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
@@ -925,6 +1935,83 @@ const MintForm = () => {
                       </div>
                     </div>
                   )}
+                  
+                  {/* Traits Summary */}
+                  {traits.length > 0 && (
+                    <div className="col-span-2">
+                      <Label className="text-sm text-gray-600 dark:text-gray-300">Traits to Add ({traits.length})</Label>
+                      <div className="mt-2 space-y-1">
+                        {traits.map((trait, index) => (
+                          <div key={index} className="flex items-center space-x-2 text-sm">
+                            <span className="text-gray-900 dark:text-white font-medium">{trait.name}:</span>
+                            <span className="text-gray-700 dark:text-gray-300">{trait.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Advanced Metadata Summary */}
+                  {Object.values(advancedMetadata).some(value => {
+                    if (Array.isArray(value)) {
+                      return value.length > 0;
+                    }
+                    return typeof value === 'string' && value.trim();
+                  }) && (
+                    <div className="col-span-2">
+                      <Label className="text-sm text-gray-600 dark:text-gray-300">Advanced Metadata to Add</Label>
+                      <div className="mt-2 space-y-1 text-sm">
+                        {advancedMetadata.customMetadata && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-900 dark:text-white font-medium">Custom Metadata:</span>
+                            <span className="text-gray-700 dark:text-gray-300">✓</span>
+                          </div>
+                        )}
+                        {advancedMetadata.animationURL && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-900 dark:text-white font-medium">Animation URL:</span>
+                            <span className="text-gray-700 dark:text-gray-300">✓</span>
+                          </div>
+                        )}
+                        {advancedMetadata.externalLink && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-900 dark:text-white font-medium">External Link:</span>
+                            <span className="text-gray-700 dark:text-gray-300">✓</span>
+                          </div>
+                        )}
+                        {advancedMetadata.documents.length > 0 && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-900 dark:text-white font-medium">Documents:</span>
+                            <span className="text-gray-700 dark:text-gray-300">{advancedMetadata.documents.length} items</span>
+                          </div>
+                        )}
+                        {advancedMetadata.generalCondition && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-900 dark:text-white font-medium">Asset Condition:</span>
+                            <span className="text-gray-700 dark:text-gray-300">{advancedMetadata.generalCondition}</span>
+                          </div>
+                        )}
+                        {advancedMetadata.jurisdiction && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-900 dark:text-white font-medium">Legal Info:</span>
+                            <span className="text-gray-700 dark:text-gray-300">{advancedMetadata.jurisdiction}</span>
+                          </div>
+                        )}
+                        {advancedMetadata.features && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-900 dark:text-white font-medium">Features:</span>
+                            <span className="text-gray-700 dark:text-gray-300">{advancedMetadata.features.split(',').length} items</span>
+                          </div>
+                        )}
+                        {advancedMetadata.imageUrls && (
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-900 dark:text-white font-medium">Gallery:</span>
+                            <span className="text-gray-700 dark:text-gray-300">{advancedMetadata.imageUrls.split('\n').filter(s => s.trim()).length} images</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -937,6 +2024,14 @@ const MintForm = () => {
             >
               {isLoading ? 'Minting...' : 'Mint T-Deed'}
             </Button>
+            {success && mintedTokenId && (
+              <div className="text-center space-y-2">
+                <p className="text-sm text-gray-600 dark:text-gray-300">Token ID: <span className="font-mono text-gray-900 dark:text-white">{mintedTokenId}</span></p>
+                <Button type="button" variant="outline" onClick={() => navigate('/validation')} className="h-10 border-black/10 dark:border-white/10">
+                  Manage in Validation Dashboard
+                </Button>
+              </div>
+            )}
           </div>
         );
 
@@ -1065,6 +2160,9 @@ const MintForm = () => {
           </div>
         </div>
       </div>
+      
+      {/* Batch Approval Modal */}
+      <BatchApprovalModal />
     </main>
   );
 };
