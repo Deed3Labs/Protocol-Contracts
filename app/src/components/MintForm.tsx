@@ -2044,120 +2044,118 @@ const MintForm = () => {
     <main className="container mx-auto py-12 px-4">
       <NetworkWarning />
       
-      <div className="max-w-6xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Sidebar */}
-          <div className="lg:col-span-1">
-            <Card className="sticky top-24 border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-xl text-gray-900 dark:text-white">Minting Progress</CardTitle>
-                <Progress value={getStepProgress()} className="h-2" />
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {STEPS.map((step) => {
-                  const status = getStepStatus(step.id);
-                  const Icon = step.icon;
-                  
-                  return (
-                    <div key={step.id} className="flex items-center space-x-3">
-                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                        status === "completed" 
-                          ? "bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400"
-                          : status === "current"
-                          ? "bg-gray-100 dark:bg-[#141414] text-gray-600 dark:text-gray-300"
-                          : "bg-gray-100 dark:bg-[#141414] text-gray-400 dark:text-gray-500"
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        {/* Sidebar */}
+        <div className="lg:col-span-1">
+          <Card className="sticky top-24 border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-xl text-gray-900 dark:text-white">Minting Progress</CardTitle>
+              <Progress value={getStepProgress()} className="h-2" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {STEPS.map((step) => {
+                const status = getStepStatus(step.id);
+                const Icon = step.icon;
+                
+                return (
+                  <div key={step.id} className="flex items-center space-x-3">
+                    <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                      status === "completed" 
+                        ? "bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400"
+                        : status === "current"
+                        ? "bg-gray-100 dark:bg-[#141414] text-gray-600 dark:text-gray-300"
+                        : "bg-gray-100 dark:bg-[#141414] text-gray-400 dark:text-gray-500"
+                    }`}>
+                      {status === "completed" ? (
+                        <CheckCircle className="w-5 h-5" />
+                      ) : (
+                        <Icon className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${
+                        status === "completed" || status === "current"
+                          ? "text-gray-900 dark:text-white"
+                          : "text-gray-500 dark:text-gray-400"
                       }`}>
-                        {status === "completed" ? (
-                          <CheckCircle className="w-5 h-5" />
-                        ) : (
-                          <Icon className="w-5 h-5" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium ${
-                          status === "completed" || status === "current"
-                            ? "text-gray-900 dark:text-white"
-                            : "text-gray-500 dark:text-gray-400"
-                        }`}>
-                          {step.title}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{step.description}</p>
-                      </div>
+                        {step.title}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{step.description}</p>
                     </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Main Form */}
-          <div className="lg:col-span-3">
-            <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {STEPS[currentStep - 1].title}
-                </CardTitle>
-                <CardDescription className="text-gray-600 dark:text-gray-300">
-                  {STEPS[currentStep - 1].description}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {!isConnected ? (
-                  <div className="text-center text-gray-600 dark:text-gray-300 text-lg py-12">
-                    <Wallet className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                    <p>Please connect your wallet using the button in the header to mint.</p>
                   </div>
-                ) : !isCorrectNetwork ? (
-                  <div className="text-center text-gray-600 dark:text-gray-300 text-lg py-12">
-                    <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                    <p>Please switch to a network with deployed contracts to mint.</p>
-                  </div>
-                ) : (
-                  <>
-                    {renderStepContent()}
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
 
-                    {error && (
-                      <Alert className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
-                        <AlertDescription className="text-red-700 dark:text-red-300">{error}</AlertDescription>
-                      </Alert>
-                    )}
+        {/* Main Form */}
+        <div className="lg:col-span-3">
+          <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-2xl font-bold text-gray-900 dark:text-white">
+                {STEPS[currentStep - 1].title}
+              </CardTitle>
+              <CardDescription className="text-gray-600 dark:text-gray-300">
+                {STEPS[currentStep - 1].description}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {!isConnected ? (
+                <div className="text-center text-gray-600 dark:text-gray-300 text-lg py-12">
+                  <Wallet className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <p>Please connect your wallet using the button in the header to mint.</p>
+                </div>
+              ) : !isCorrectNetwork ? (
+                <div className="text-center text-gray-600 dark:text-gray-300 text-lg py-12">
+                  <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <p>Please switch to a network with deployed contracts to mint.</p>
+                </div>
+              ) : (
+                <>
+                  {renderStepContent()}
 
-                    {success && (
-                      <Alert className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
-                        <AlertDescription className="text-green-700 dark:text-green-300">
-                          T-Deed minted successfully! Transaction hash: {txHash}
-                        </AlertDescription>
-                      </Alert>
-                    )}
+                  {error && (
+                    <Alert className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20">
+                      <AlertDescription className="text-red-700 dark:text-red-300">{error}</AlertDescription>
+                    </Alert>
+                  )}
 
-                    {/* Navigation */}
-                    <div className="flex justify-between pt-6">
+                  {success && (
+                    <Alert className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
+                      <AlertDescription className="text-green-700 dark:text-green-300">
+                        T-Deed minted successfully! Transaction hash: {txHash}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Navigation */}
+                  <div className="flex justify-between pt-6">
+                    <Button
+                      onClick={prevStep}
+                      disabled={currentStep === 1}
+                      variant="outline"
+                      className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11 px-4"
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-1" />
+                      Previous
+                    </Button>
+                    
+                    {currentStep < STEPS.length ? (
                       <Button
-                        onClick={prevStep}
-                        disabled={currentStep === 1}
-                        variant="outline"
-                        className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11 px-4"
+                        onClick={nextStep}
+                        disabled={!form.definition.trim()}
+                        className="bg-black hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-black border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed h-11 px-4"
                       >
-                        <ChevronLeft className="w-4 h-4 mr-1" />
-                        Previous
+                        Next
+                        <ChevronRight className="w-4 h-4 ml-1" />
                       </Button>
-                      
-                      {currentStep < STEPS.length ? (
-                        <Button
-                          onClick={nextStep}
-                          disabled={!form.definition.trim()}
-                          className="bg-black hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-black border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed h-11 px-4"
-                        >
-                          Next
-                          <ChevronRight className="w-4 h-4 ml-1" />
-                        </Button>
-                      ) : null}
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                    ) : null}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
       
