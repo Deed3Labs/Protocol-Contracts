@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Shield, Home, Plus, Search, BarChart3, ShieldCheck, User } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Home, Plus, Search, BarChart3, ShieldCheck } from "lucide-react";
 import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
 import { ethers } from "ethers";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
+import UserMenu from "@/components/UserMenu";
 
 interface HeaderProps {
   children?: ReactNode;
@@ -196,25 +196,7 @@ const Header = ({ children }: HeaderProps) => {
   console.log('Header: isConnected =', isConnected);
   console.log('Header: address =', address);
 
-  // Check if AppKit button is loaded and show fallback if not
-  useEffect(() => {
-    const checkAppKitButton = () => {
-      const appkitButton = document.querySelector('appkit-button');
-      const fallback = document.getElementById('appkit-fallback');
-      const fallbackMobile = document.getElementById('appkit-fallback-mobile');
-      
-      if (!appkitButton) {
-        console.warn('AppKit button not found, showing fallbacks');
-        if (fallback) fallback.classList.remove('hidden');
-        if (fallbackMobile) fallbackMobile.classList.remove('hidden');
-      }
-    };
 
-    // Check after a delay to allow AppKit to initialize
-    const timer = setTimeout(checkAppKitButton, 2000);
-    
-    return () => clearTimeout(timer);
-  }, []);
 
   return (
     <>
@@ -297,55 +279,13 @@ const Header = ({ children }: HeaderProps) => {
 
           {/* Desktop Actions */}
           <div className="hidden md:flex items-center space-x-2">
-            <div className="border border-black/10 dark:border-transparent rounded-full">
-              <appkit-button />
-              {/* Fallback if AppKit button doesn't load */}
-              <div className="hidden" id="appkit-fallback">
-                <Button variant="outline" size="sm" className="h-9 px-3">
-                  Connect Wallet
-                </Button>
-              </div>
-            </div>
-            <Link to="/profile">
-              <Button variant="outline" size="sm" className="h-9 px-3 border-black/10 dark:border-white/10">
-                <User className="w-4 h-4 mr-1" />
-                Profile
-              </Button>
-            </Link>
-            {hasAdminRole && (
-              <Link to="/admin">
-                <Button variant="outline" size="sm" className="h-9 px-3 border-black/10 dark:border-white/10">
-                  <Shield className="w-4 h-4 mr-1" />
-                  Admin
-                </Button>
-              </Link>
-            )}
+            <UserMenu hasAdminRole={hasAdminRole} />
             {children}
           </div>
 
           {/* Mobile Actions */}
           <div className="md:hidden flex items-center space-x-2">
-            <div className="border border-black/10 dark:border-transparent rounded-full">
-              <appkit-button />
-              {/* Fallback if AppKit button doesn't load */}
-              <div className="hidden" id="appkit-fallback-mobile">
-                <Button variant="outline" size="icon" className="h-9 w-9">
-                  <User className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-            <Link to="/profile">
-              <Button variant="outline" size="icon" className="border-black/10 dark:border-white/10">
-                <User className="w-4 h-4" />
-              </Button>
-            </Link>
-            {hasAdminRole && (
-              <Link to="/admin">
-                <Button variant="outline" size="icon" className="border-black/10 dark:border-white/10">
-                  <Shield className="w-4 h-4" />
-                </Button>
-              </Link>
-            )}
+            <UserMenu hasAdminRole={hasAdminRole} />
             {children}
           </div>
         </nav>
