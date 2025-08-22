@@ -103,18 +103,11 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
     }
   };
 
-  const handleConnect = async () => {
-    try {
-      // Trigger AppKit modal for connection
-      const appkitButton = document.querySelector('appkit-button') as any;
-      if (appkitButton && appkitButton.click) {
-        appkitButton.click();
-      } else {
-        // Fallback: try to trigger connection programmatically
-        console.log('Attempting to connect wallet...');
-      }
-    } catch (error) {
-      console.error('Error connecting wallet:', error);
+  const handleConnect = () => {
+    // Trigger the AppKit button to open the modal
+    const appkitButton = document.querySelector('appkit-button') as any;
+    if (appkitButton) {
+      appkitButton.click();
     }
   };
 
