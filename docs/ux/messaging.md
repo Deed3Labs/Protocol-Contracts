@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Deed Protocol v0.2.0 introduces **XMTP (Extensible Message Transport Protocol)** messaging capabilities, enabling secure, end-to-end encrypted communication between users and T-Deed owners directly within the application.
+The Deed Protocol v0.2.0 introduces **XMTP (Extensible Message Transport Protocol)** messaging capabilities, enabling secure, end-to-end encrypted communication between users and DeedNFT owners directly within the application.
 
 ## 🔐 Security Features
 
@@ -20,15 +20,15 @@ The Deed Protocol v0.2.0 introduces **XMTP (Extensible Message Transport Protoco
 
 ## 💬 How to Use Messaging
 
-### For Users Wanting to Message T-Deed Owners
+### For Users Wanting to Message DeedNFT Owners
 
-#### Step 1: Find a T-Deed
+#### Step 1: Find a DeedNFT
 1. Navigate to the **Explore** page
-2. Browse available T-Deeds
-3. Click on a T-Deed to view details
+2. Browse available DeedNFTs
+3. Click on a DeedNFT to view details
 
 #### Step 2: Initiate Messaging
-1. Click the **"Message Owner"** button on the T-Deed card
+1. Click the **"Message Owner"** button on the DeedNFT card
 2. The **MessageOwnerModal** will open with messaging options
 
 #### Step 3: Choose Messaging Method
@@ -42,7 +42,7 @@ You have three options:
 **📧 Email**
 - Click **"Send Email"** button
 - Opens your default email client
-- Pre-filled with T-Deed information
+- Pre-filled with DeedNFT information
 
 **🔗 Blockscan Chat**
 - Click **"Open Blockscan Chat"** button
@@ -50,11 +50,11 @@ You have three options:
 - Requires separate wallet connection
 
 #### Step 4: XMTP Setup (First Time Only)
-If the T-Deed owner hasn't used XMTP before:
+If the DeedNFT owner hasn't used XMTP before:
 
 1. **Click "Set Up Secure Environment"**
    - This creates the owner's XMTP identity
-   - Only needed once per T-Deed owner
+   - Only needed once per DeedNFT owner
 
 2. **Wait for setup completion**
    - Status will show "Ready to Message"
@@ -87,7 +87,7 @@ If the T-Deed owner hasn't used XMTP before:
 - **Optimistic Groups**: Groups waiting for members to join XMTP
 - **Member Count**: Always shows current member count (e.g., "Group Chat • 5 members")
 
-### For T-Deed Owners
+### For DeedNFT Owners
 
 #### Receiving Messages
 - **Messages appear automatically** when you connect your wallet
@@ -251,7 +251,7 @@ The mobile interface uses a modern two-view approach:
 | "Failed to connect to XMTP" | Wallet connection issue | Check wallet connection |
 | "Conversation not found" | Invalid conversation ID | Refresh and reconnect |
 | "Failed to send message" | Network or permission issue | Check network and permissions |
-| "Setup required" | T-Deed owner needs XMTP setup | Click "Set Up Secure Environment" |
+| "Setup required" | DeedNFT owner needs XMTP setup | Click "Set Up Secure Environment" |
 
 ## 🔄 Sync and Performance
 
@@ -285,7 +285,7 @@ The mobile interface uses a modern two-view approach:
 ### Advanced Features
 - [ ] **Message scheduling** for future delivery
 - [ ] **Message templates** for common inquiries
-- [ ] **Automated responses** for T-Deed owners
+- [ ] **Automated responses** for DeedNFT owners
 - [ ] **Message analytics** and insights
 - [ ] **Integration** with other messaging platforms
 

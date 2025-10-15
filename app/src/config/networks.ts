@@ -94,6 +94,9 @@ export const networks = {
       ValidatorRegistry: '0x979E6cC741A8481f96739A996D06EcFb9BA2bc91',
       FundManager: '0x73ea6B404E6B81E7Fe6B112605dD8661B52d401e',
       MetadataRenderer: '0xAc50869E89004aa25A8c1044195AC760A7FC48BE',
+      Subdivide: '0x3c947D71cb1698dFd4D7551b87E17306865C923F',
+      Fractionalize: '0xeC464847C664Cc208478adbe377f7Db19e199823',
+      FractionTokenFactory: '0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc',
     },
   },
   // Sepolia
@@ -167,10 +170,10 @@ export const getSupportedChainIds = (): number[] => {
   return SUPPORTED_NETWORKS.map(network => network.chainId);
 };
 
-// Get contract address for a specific network
-export const getContractAddressForNetwork = (chainId: number): string | null => {
+// Get contract address for a specific network and contract
+export const getContractAddressForNetwork = (chainId: number, contractName: string = 'DeedNFT'): string | null => {
   const network = networks[chainId as keyof typeof networks];
-  return network?.contracts?.DeedNFT || null;
+  return network?.contracts?.[contractName as keyof typeof network.contracts] || null;
 };
 
 // Get all supported network IDs

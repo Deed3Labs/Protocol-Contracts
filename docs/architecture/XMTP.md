@@ -14,7 +14,7 @@ This app now includes XMTP (Extensible Message Transport Protocol) messaging cap
 - Real-time message streaming
 - Conversation history and search functionality
 
-### 🎯 T-Deed Specific Context
+### 🎯 DeedNFT Specific Context
 - Messages are automatically linked to specific t-deed assets
 - Asset information (type, token ID) is included in conversations
 - Easy identification of which asset the conversation is about
@@ -29,14 +29,14 @@ This app now includes XMTP (Extensible Message Transport Protocol) messaging cap
 
 ## How to Use
 
-### For Users Wanting to Message T-Deed Owners
+### For Users Wanting to Message DeedNFT Owners
 
-1. **Navigate to a T-Deed**: Go to the Explore page or view a specific t-deed
+1. **Navigate to a DeedNFT**: Go to the Explore page or view a specific DeedNFT
 2. **Click "Message Owner"**: Use the XMTP message button or the message modal
 3. **Connect Wallet**: If not already connected, connect your wallet
-4. **Start Messaging**: Begin your conversation with the t-deed owner
+4. **Start Messaging**: Begin your conversation with the DeedNFT owner
 
-### For T-Deed Owners
+### For DeedNFT Owners
 
 1. **Receive Messages**: Messages from interested users will appear in your conversations
 2. **Respond**: Reply directly through the XMTP interface

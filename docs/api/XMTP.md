@@ -222,7 +222,7 @@ function App() {
 ### Advanced Features
 - [ ] **Message analytics** and insights
 - [ ] **Integration** with other messaging platforms
-- [ ] **Automated responses** for T-Deed owners
+- [ ] **Automated responses** for DeedNFT owners
 - [ ] **Message encryption** status indicators
 
 ## 📚 Resources

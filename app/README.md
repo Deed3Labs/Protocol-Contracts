@@ -6,17 +6,19 @@ This repository contains the frontend application for **The Deed Protocol**, a m
 
 ## Overview
 
-The Deed Protocol Frontend is a modern, responsive web application built with React, TypeScript, and Vite. It provides a comprehensive interface for users to interact with the Deed Protocol smart contracts, enabling them to mint, view, transfer, and manage T-Deed tokens representing real-world assets such as land, vehicles, estates, and commercial equipment.
+The Deed Protocol Frontend is a modern, responsive web application built with React, TypeScript, and Vite. It provides a comprehensive interface for users to interact with the Deed Protocol smart contracts, enabling them to mint, view, transfer, and manage DeedNFTs representing real-world assets such as land, vehicles, estates, and commercial equipment.
 
 Key features of the frontend include:
 - **Wallet Integration**: Seamless integration with Reowns AppKit for secure wallet connections
-- **Smart Contract Interaction**: Direct interaction with T-Deed, Validator, and FundManager contracts
+- **Smart Contract Interaction**: Direct interaction with DeedNFT, Validator, FundManager, Subdivide, and Fractionalize contracts
 - **Multi-Network Support**: Support for Ethereum Mainnet, Base, and their respective testnets
 - **Modern UI/UX**: Beautiful, responsive interface with dark/light mode support
 - **Real-time Updates**: Live data synchronization with blockchain state
 - **Admin Panel**: Comprehensive administrative tools for protocol management
 - **Validation System**: Integrated validation workflows for asset verification
-- **Interactive Map**: Mapbox-powered map interface for visualizing T-Deeds with location data
+- **Interactive Map**: Mapbox-powered map interface for visualizing DeedNFTs with location data
+- **Asset Subdivision**: Interface for creating and managing subdivided asset units
+- **Fractionalization**: Tools for creating and managing fractional ownership shares
 
 ## Project Structure
 
@@ -33,11 +35,13 @@ src/
 │   ├── Home.tsx        # Landing page
 │   ├── MintForm.tsx    # NFT minting interface
 │   ├── Validation.tsx  # Asset validation workflow
+│   ├── SubdivideModal.tsx # Asset subdivision interface
+│   ├── FractionalizeModal.tsx # Asset fractionalization interface
 │   └── ...            # Additional components
 ├── hooks/              # Custom React hooks
 │   ├── useAppKitAuth.ts # AppKit authentication
 │   ├── useCapabilities.ts # Wallet capability management
-│   ├── useDeedNFTData.ts # T-Deed data fetching
+│   ├── useDeedNFTData.ts # DeedNFT data fetching
 │   ├── useNetworkValidation.ts # Network validation
 │   └── ...            # Additional hooks
 ├── config/             # Configuration files
@@ -48,7 +52,9 @@ src/
 │   ├── ethereum/      # Ethereum contracts
 │   └── sepolia/       # Sepolia testnet contracts
 ├── context/           # React context providers
-│   └── DeedNFTContext.tsx # Global state management
+│   ├── DeedNFTContext.tsx # Global state management
+│   ├── NotificationContext.tsx # Notification management
+│   └── ...           # Additional context providers
 ├── utils/             # Utility functions
 │   ├── EIP5792Utils.ts # EIP-5792 implementation
 │   └── ...           # Additional utilities
@@ -123,16 +129,18 @@ Advanced NFT viewing and management interface:
 - **Transfer Interface**: Secure transfer functionality with validation
 - **Metadata Editing**: Admin capabilities for metadata updates
 - **Royalty Information**: Display of royalty and fee information
+- **Subdivision Tools**: Interface for creating subdivided units
+- **Fractionalization Tools**: Interface for creating fractional shares
 
 ### 5. DeedNFTMap
 
-Interactive map interface for visualizing T-Deeds with location data:
+Interactive map interface for visualizing DeedNFTs with location data:
 
 - **Mapbox GL JS v3**: Uses the latest Mapbox Standard style with 3D lighting
 - **Interactive Markers**: Color-coded markers for different asset types
-- **Location Data Support**: Extracts coordinates from T-Deed traits and configuration
+- **Location Data Support**: Extracts coordinates from DeedNFT traits and configuration
 - **Navigation Controls**: Built-in zoom, pan, and geolocation controls
-- **Popup Information**: Click markers to see T-Deed details
+- **Popup Information**: Click markers to see DeedNFT details
 - **Responsive Design**: Works seamlessly on desktop and mobile devices
 
 ### 5. AdminPanel
@@ -146,7 +154,29 @@ Comprehensive administrative interface for protocol management:
 - **Analytics Dashboard**: Protocol analytics and metrics
 - **Emergency Controls**: Emergency pause and recovery functions
 
-### 6. Validation
+### 6. SubdivideModal
+
+Asset subdivision interface for creating ERC1155 units:
+
+- **Unit Creation**: Interface for creating subdivided asset units
+- **Unit Management**: Manage individual units and their properties
+- **Metadata Configuration**: Set up unit-specific metadata and traits
+- **Validation Integration**: Unit validation through the Validator contract
+- **Transfer Management**: Handle unit transfers and ownership changes
+- **Royalty Configuration**: Set up unit-level royalty information
+
+### 7. FractionalizeModal
+
+Asset fractionalization interface for creating ERC20 shares:
+
+- **Share Creation**: Interface for creating fractional ownership shares
+- **Share Management**: Manage fractional shares and their distribution
+- **Asset Locking**: Secure asset locking during fractionalization
+- **Approval System**: Handle approval requirements for asset unlocking
+- **Token Configuration**: Set up fraction token parameters and restrictions
+- **Factory Integration**: Deploy fraction tokens through FractionTokenFactory
+
+### 8. Validation
 
 Integrated validation workflow for asset verification:
 
@@ -254,6 +284,16 @@ The application uses a comprehensive set of reusable UI components built with sh
   - Image gallery support
   - Document viewing
   - Transfer functionality
+- **Asset Subdivision**:
+  - Create ERC1155 units from DeedNFTs
+  - Unit-specific metadata management
+  - Unit validation and transfer
+  - Royalty configuration per unit
+- **Asset Fractionalization**:
+  - Create ERC20 shares from DeedNFTs or units
+  - Fractional ownership management
+  - Share distribution and trading
+  - Asset locking and unlocking
 - **Asset Validation**:
   - Integrated validation workflow
   - Multi-validator support

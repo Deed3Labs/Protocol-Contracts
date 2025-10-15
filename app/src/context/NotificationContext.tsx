@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { useAppKitAccount } from '@reown/appkit/react';
+import { useDeedNFTData } from '@/hooks/useDeedNFTData';
 
 export interface Notification {
   id: string;
@@ -25,6 +27,7 @@ interface NotificationContextType {
   removeNotification: (id: string) => void;
   clearAllNotifications: () => void;
   clearArchive: () => void;
+  refreshValidationNotifications: () => void;
   unreadCount: number;
 }
 
@@ -48,6 +51,20 @@ const ARCHIVE_DAYS = 30; // Archive notifications older than 30 days
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [archivedNotifications, setArchivedNotifications] = useState<Notification[]>([]);
+  const { address, isConnected } = useAppKitAccount();
+  
+  // Get user's T-Deed data - simple and direct
+  let userDeedNFTs: any[] = [];
+  let getValidationStatus: any = null;
+  
+  try {
+    const deedData = useDeedNFTData();
+    userDeedNFTs = deedData.userDeedNFTs || [];
+    getValidationStatus = deedData.getValidationStatus;
+    console.log('✅ NotificationContext: Got T-Deed data:', userDeedNFTs.length, 'deeds');
+  } catch (error) {
+    console.log('⚠️ NotificationContext: No T-Deed data available yet');
+  }
 
   // Load notifications from localStorage on mount
   useEffect(() => {
@@ -66,52 +83,102 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
         
         setNotifications(loadedNotifications);
         setArchivedNotifications(loadedArchived);
-      } else {
-        // Initialize with sample notifications
-        const sampleNotifications: Notification[] = [
-          {
-            id: '1',
-            type: 'success',
-            title: 'T-Deed Minted Successfully',
-            message: 'Your Land T-Deed #123 has been successfully minted on Base Sepolia.',
-            timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-            read: false,
-            archived: false,
-            action: {
-              label: 'View T-Deed',
-              onClick: () => console.log('View T-Deed clicked')
-            }
-          },
-          {
-            id: '2',
-            type: 'info',
-            title: 'New Message Received',
-            message: 'You have a new message from 0x1234... regarding your Commercial Equipment T-Deed.',
-            timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-            read: false,
-            archived: false,
-            action: {
-              label: 'View Message',
-              onClick: () => console.log('View Message clicked')
-            }
-          },
-          {
-            id: '3',
-            type: 'warning',
-            title: 'Validation Required',
-            message: 'Your Vehicle T-Deed #456 requires validation. Please submit required documents.',
-            timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-            read: true,
-            archived: false
-          }
-        ];
-        setNotifications(sampleNotifications);
-        saveToStorage(sampleNotifications, []);
       }
     } catch (error) {
       console.error('Error loading notifications from localStorage:', error);
     }
   }, []);
+
+  // Check for unvalidated T-Deeds and create notifications
+  const checkValidationNotifications = useCallback(() => {
+    console.log('🔍 Checking validation notifications...', {
+      isConnected,
+      address: address?.slice(0, 10) + '...',
+      userDeedNFTsCount: userDeedNFTs.length,
+      hasValidationFunction: !!getValidationStatus
+    });
+
+    if (!isConnected || !address) {
+      console.log('❌ Skipping validation check - not connected');
+      return;
+    }
+
+    if (!userDeedNFTs.length || !getValidationStatus) {
+      console.log('❌ Skipping validation check - no DeedNFT data available');
+      return;
+    }
+
+    const unvalidatedDeeds = userDeedNFTs.filter((deed: any) => {
+      const validationStatus = getValidationStatus(deed);
+      console.log(`🔍 T-Deed #${deed.tokenId} validation status:`, validationStatus);
+      return validationStatus.status === "Pending";
+    });
+
+    console.log('🔍 Found unvalidated deeds:', unvalidatedDeeds.length);
+
+    // Remove existing validation notifications for deeds that are now validated
+    setNotifications(prev => {
+      const filteredNotifications = prev.filter(notification => {
+        if (notification.title.includes('Validation Required')) {
+          const deedId = notification.message.match(/T-Deed #(\d+)/)?.[1];
+          if (deedId) {
+            const deed = userDeedNFTs.find((d: any) => d.tokenId === deedId);
+            if (deed) {
+              const validationStatus = getValidationStatus(deed);
+              return validationStatus.status === "Pending"; // Keep only if still pending
+            }
+          }
+        }
+        return true; // Keep all other notifications
+      });
+
+      // Add new validation notifications for unvalidated deeds
+      const newNotifications = [...filteredNotifications];
+      unvalidatedDeeds.forEach((deed: any) => {
+        const existingNotification = newNotifications.find(n => 
+          n.title.includes('Validation Required') && 
+          n.message.includes(`T-Deed #${deed.tokenId}`)
+        );
+
+        if (!existingNotification) {
+          const assetTypeLabel = deed.assetType === 0 ? 'Land' : 
+                                deed.assetType === 1 ? 'Vehicle' : 
+                                deed.assetType === 2 ? 'Commercial Equipment' : 
+                                deed.assetType === 3 ? 'Estate' : 'Asset';
+          
+          const newNotification: Notification = {
+            id: Date.now().toString() + deed.tokenId,
+            type: 'warning',
+            title: 'Validation Required',
+            message: `Your ${assetTypeLabel} T-Deed #${deed.tokenId} requires validation. Please submit required documents.`,
+            timestamp: new Date(),
+            read: false,
+            archived: false,
+            action: {
+              label: 'View T-Deed',
+              onClick: () => {
+                // Navigate to validation page or deed details
+                window.location.href = `/validation`;
+              }
+            }
+          };
+          newNotifications.unshift(newNotification);
+        }
+      });
+
+      return newNotifications;
+    });
+  }, [isConnected, address, userDeedNFTs, getValidationStatus]);
+
+  // Single validation check when data becomes available
+  useEffect(() => {
+    if (isConnected && address && userDeedNFTs.length > 0 && getValidationStatus) {
+      console.log('🔍 NotificationContext: Data available, checking validation notifications...');
+      checkValidationNotifications();
+    }
+  }, [isConnected, address, userDeedNFTs.length, getValidationStatus, checkValidationNotifications]);
+
+
 
   // Save to localStorage whenever notifications change
   const saveToStorage = useCallback((notifs: Notification[], archived: Notification[]) => {
@@ -213,6 +280,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     removeNotification,
     clearAllNotifications,
     clearArchive,
+    refreshValidationNotifications: checkValidationNotifications,
     unreadCount,
   };
 

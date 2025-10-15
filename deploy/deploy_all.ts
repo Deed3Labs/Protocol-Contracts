@@ -12,11 +12,13 @@ const execAsync = promisify(exec);
  * 3. Validator (main validator contract)
  * 4. DeedNFT (NFT contract for deeds)
  * 5. FundManager (handles fund management)
+ * 6. Subdivide (subdivision contract for DeedNFTs)
  * 
  * Dependencies:
  * - DeedNFT needs Validator and MetadataRenderer
  * - Validator needs to be registered in ValidatorRegistry
  * - FundManager needs DeedNFT and ValidatorRegistry
+ * - Subdivide needs DeedNFT and ValidatorRegistry
  * - ValidatorRegistry and FundManager have bidirectional relationship for role management
  */
 async function main() {
@@ -303,6 +305,34 @@ async function main() {
     console.log("FundManager set in Validator");
     console.log("Transaction hash:", setFundManagerTx.hash);
 
+    // 6. Deploy Subdivide
+    console.log("\n6. Deploying Subdivide...");
+    const Subdivide = await hre.ethers.getContractFactory("Subdivide");
+    const subdivide = await hre.upgrades.deployProxy(Subdivide, [deedNFTAddress, validatorRegistryAddress], {
+      initializer: "initialize",
+      kind: "uups"
+    });
+    await subdivide.waitForDeployment();
+    const subdivideAddress = await subdivide.getAddress();
+    console.log("Subdivide deployed to:", subdivideAddress);
+    console.log("Transaction hash:", subdivide.deploymentTransaction()?.hash);
+
+    // Setup initial roles for Subdivide
+    const SUBDIVIDE_ADMIN_ROLE = await subdivide.ADMIN_ROLE();
+    const SUBDIVIDE_VALIDATOR_ROLE = await subdivide.VALIDATOR_ROLE();
+
+    // Grant roles to deployer
+    await subdivide.grantRole(SUBDIVIDE_ADMIN_ROLE, deployer.address);
+    console.log("Granted ADMIN_ROLE to deployer in Subdivide");
+
+    // Grant VALIDATOR_ROLE to validator
+    await subdivide.grantRole(SUBDIVIDE_VALIDATOR_ROLE, validatorAddress);
+    console.log("Granted VALIDATOR_ROLE to validator in Subdivide");
+
+    // Save Subdivide deployment
+    const subdivideAbi = subdivide.interface.formatJson();
+    saveDeployment(network.name, "Subdivide", subdivideAddress, subdivideAbi);
+
     console.log("\nAll contracts deployed and configured successfully!");
     console.log("\nDeployment Summary:");
     console.log("-------------------");
@@ -311,6 +341,7 @@ async function main() {
     console.log("Validator:", validatorAddress);
     console.log("DeedNFT:", deedNFTAddress);
     console.log("FundManager:", fundManagerAddress);
+    console.log("Subdivide:", subdivideAddress);
 
     // Final balance check
     const finalBalance = await hre.ethers.provider.getBalance(deployer.address);

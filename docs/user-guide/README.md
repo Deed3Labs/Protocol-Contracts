@@ -258,7 +258,7 @@ Protocol managers who oversee system operations and governance.
 ## 💬 Messaging and Communication
 
 ### XMTP Messaging (v0.2.0)
-The Deed Protocol now includes **end-to-end encrypted messaging** between users and T-Deed owners.
+The Deed Protocol now includes **end-to-end encrypted messaging** between users and DeedNFT owners.
 
 #### Key Features
 - **Secure Communication**: End-to-end encrypted messages
@@ -268,13 +268,13 @@ The Deed Protocol now includes **end-to-end encrypted messaging** between users 
 - **Wallet Integration**: Seamless wallet-based authentication
 
 #### How to Use
-1. **Find a T-Deed** you're interested in
-2. **Click "Message Owner"** on the T-Deed card
+1. **Find a DeedNFT** you're interested in
+2. **Click "Message Owner"** on the DeedNFT card
 3. **Choose XMTP Direct Message** (recommended)
 4. **Connect your wallet** if not already connected
-5. **Start messaging** the T-Deed owner
+5. **Start messaging** the DeedNFT owner
 
-#### For T-Deed Owners
+#### For DeedNFT Owners
 - **Receive messages** automatically when you connect
 - **Respond directly** through the messaging interface
 - **View all conversations** in your inbox
