@@ -2,12 +2,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { BarChart3, Wallet, FileText, Settings, TrendingUp, Activity, RefreshCw } from "lucide-react";
+import { BarChart3, Wallet, FileText, Settings, TrendingUp, Activity, RefreshCw, MapPin, PieChart } from "lucide-react";
 import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { Link } from "react-router-dom";
 import DeedNFTViewer from "./DeedNFTViewer";
 import TransferModal from "./TransferModal";
+import SubdivideModal from "./SubdivideModal";
+import FractionalizeModal from "./FractionalizeModal";
 import type { DeedNFT } from "@/hooks/useDeedNFTData";
 import { useState } from "react";
 
@@ -39,6 +41,8 @@ const Dashboard = () => {
 
   const [selectedDeedNFT, setSelectedDeedNFT] = useState<DeedNFT | null>(null);
   const [transferDeedNFT, setTransferDeedNFT] = useState<DeedNFT | null>(null);
+  const [subdivideDeedNFT, setSubdivideDeedNFT] = useState<DeedNFT | null>(null);
+  const [fractionalizeDeedNFT, setFractionalizeDeedNFT] = useState<DeedNFT | null>(null);
 
   const handleViewDeedNFT = (deedNFT: DeedNFT) => {
     setSelectedDeedNFT(deedNFT);
@@ -59,6 +63,22 @@ const Dashboard = () => {
   const handleTransferSuccess = () => {
     // Refresh the deed NFTs after successful transfer
     fetchDeedNFTs();
+  };
+
+  const handleSubdivideDeedNFT = (deedNFT: DeedNFT) => {
+    setSubdivideDeedNFT(deedNFT);
+  };
+
+  const handleCloseSubdivideModal = () => {
+    setSubdivideDeedNFT(null);
+  };
+
+  const handleFractionalizeDeedNFT = (deedNFT: DeedNFT) => {
+    setFractionalizeDeedNFT(deedNFT);
+  };
+
+  const handleCloseFractionalizeModal = () => {
+    setFractionalizeDeedNFT(null);
   };
 
   return (
@@ -279,12 +299,35 @@ const Dashboard = () => {
                         className="h-2" 
                       />
                     </div>
-                    <div className="flex space-x-2">
-                      <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11" onClick={() => handleViewDeedNFT(deedNFT)}>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button variant="outline" size="sm" className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11" onClick={() => handleViewDeedNFT(deedNFT)}>
                         View
                       </Button>
-                      <Button variant="outline" size="sm" className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11" onClick={() => handleTransferDeedNFT(deedNFT)}>
+                      <Button variant="outline" size="sm" className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11" onClick={() => handleTransferDeedNFT(deedNFT)}>
                         Transfer
+                      </Button>
+                    </div>
+                    <div className={`grid gap-2 mt-2 ${deedNFT.assetType === 0 || deedNFT.assetType === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                      {/* Only show Subdivide for Land (0) and Estate (2) */}
+                      {(deedNFT.assetType === 0 || deedNFT.assetType === 2) && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 h-11" 
+                          onClick={() => handleSubdivideDeedNFT(deedNFT)}
+                        >
+                          <MapPin className="w-4 h-4 mr-1" />
+                          Subdivide
+                        </Button>
+                      )}
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 h-11" 
+                        onClick={() => handleFractionalizeDeedNFT(deedNFT)}
+                      >
+                        <PieChart className="w-4 h-4 mr-1" />
+                        Fractionalize
                       </Button>
                     </div>
                   </CardContent>
@@ -365,6 +408,27 @@ const Dashboard = () => {
           onClose={handleCloseTransferModal}
           getAssetTypeLabel={getAssetTypeLabel}
           onTransferSuccess={handleTransferSuccess}
+        />
+      )}
+
+      {/* Subdivide Modal */}
+      {subdivideDeedNFT && (
+        <SubdivideModal
+          deedNFT={subdivideDeedNFT}
+          isOpen={!!subdivideDeedNFT}
+          onClose={handleCloseSubdivideModal}
+          getAssetTypeLabel={getAssetTypeLabel}
+        />
+      )}
+
+      {/* Fractionalize Modal */}
+      {fractionalizeDeedNFT && (
+        <FractionalizeModal
+          deedNFT={fractionalizeDeedNFT}
+          isOpen={!!fractionalizeDeedNFT}
+          onClose={handleCloseFractionalizeModal}
+          getAssetTypeLabel={getAssetTypeLabel}
+          getValidationStatus={getValidationStatus}
         />
       )}
     </main>

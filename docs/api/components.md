@@ -227,8 +227,8 @@ Advanced messaging interface with end-to-end encryption using XMTP protocol.
 #### Props
 ```typescript
 interface XMTPMessagingProps {
-  ownerAddress?: string;        // T-Deed owner's wallet address
-  tokenId?: string;            // T-Deed token ID
+  ownerAddress?: string;        // DeedNFT owner's wallet address
+  tokenId?: string;            // DeedNFT token ID
   assetType?: string;          // Type of asset (Land, Vehicle, etc.)
   isOpen: boolean;             // Controls modal visibility
   onClose: () => void;         // Callback when modal closes
@@ -310,12 +310,12 @@ function MessagingExample() {
 
 ### 4. MessageOwnerModal.tsx (Mobile Dialog Content)
 
-Modal component for initiating communication with T-Deed owners.
+Modal component for initiating communication with DeedNFT owners.
 
 #### Key Features
 - **Multiple Messaging Options**: XMTP, Email, and Blockscan Chat
 - **Responsive Design**: Mobile-optimized dialog content
-- **Asset Context**: Pre-filled with T-Deed information
+- **Asset Context**: Pre-filled with DeedNFT information
 - **Wallet Integration**: Seamless wallet connection flow
 
 #### Props
@@ -348,7 +348,7 @@ Quick messaging button component for initiating XMTP conversations.
 
 #### Key Features
 - **Simple Integration**: Easy to add to any component
-- **Asset Context**: Automatically includes T-Deed information
+- **Asset Context**: Automatically includes DeedNFT information
 - **Responsive Design**: Adapts to different screen sizes
 - **Loading States**: Visual feedback during connection
 
@@ -1002,7 +1002,7 @@ The application uses shadcn/ui components for consistent styling:
 - **TransferModal**: Asset transfer interface
 - **MessageOwnerModal**: Owner communication interface
 - **XMTPMessaging**: End-to-end encrypted messaging interface
-- **TDeedIdentityManager**: XMTP identity management for T-Deed owners
+- **TDeedIdentityManager**: XMTP identity management for DeedNFT owners
 - **XMTPMessageButton**: Quick messaging button component
 
 ## 🔧 Component Development Guidelines

@@ -2128,17 +2128,17 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
       {/* Main Content */}
       <Tabs defaultValue="deednfts" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 bg-gray-100 dark:bg-gray-800">
-          <TabsTrigger value="deednfts" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+        <TabsList className="grid w-full grid-cols-4 bg-gray-100 dark:bg-[#0e0e0e] border border-gray-200 dark:border-white/10">
+          <TabsTrigger value="deednfts" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             T-Deeds ({filteredDeedNFTs.length})
           </TabsTrigger>
-          <TabsTrigger value="traits" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+          <TabsTrigger value="traits" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             Add Traits
           </TabsTrigger>
-          <TabsTrigger value="metadata" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+          <TabsTrigger value="metadata" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             Metadata
           </TabsTrigger>
-          <TabsTrigger value="validation" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+          <TabsTrigger value="validation" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             Validation
           </TabsTrigger>
         </TabsList>

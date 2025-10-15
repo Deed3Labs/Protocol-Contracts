@@ -11,10 +11,13 @@ Contract interfaces define the standard function signatures and data structures 
 | Interface | Purpose | Size | Key Functions |
 |----------|---------|------|---------------|
 | **IDeedNFT.sol** | Main NFT contract interface | 377 lines | Minting, validation, metadata management |
-| **IValidator.sol** | Validator contract interface | 302 lines | Validation logic, criteria management |
+| **IValidator.sol** | Validator contract interface | 315 lines | Validation logic, subdivision validation, criteria management |
 | **IValidatorRegistry.sol** | Validator registry interface | 165 lines | Validator registration, discovery |
 | **IMetadataRenderer.sol** | Metadata renderer interface | 256 lines | Metadata rendering, trait management |
 | **IFundManager.sol** | Fund manager interface | 219 lines | Fee collection, distribution, escrow |
+| **ISubdivide.sol** | Subdivision contract interface | 285 lines | Subdivision management, unit validation, trait management |
+| **IFractionalize.sol** | Fractionalization interface | 346 lines | Asset fractionalization, share management, validation |
+| **IFractionTokenFactory.sol** | Token factory interface | 41 lines | Token creation, factory management |
 
 ## 🔧 Interface Details
 
@@ -297,69 +300,238 @@ event TokenGalleryUpdated(uint256 indexed tokenId, string[] imageUrls);
 
 Interface for the FundManager contract, defining fee collection and fund distribution.
 
+#### Payment Processing Functions
+
+```solidity
+// Payment processing
+function processPayment(
+    address payer,
+    address validatorAddress,
+    address token,
+    uint256 serviceFee
+) external returns (uint256 commissionAmount, uint256 validatorAmount);
+```
+
 #### Fee Management Functions
 
 ```solidity
-// Fee collection
-function collectFee(address token, uint256 amount) external;
-function distributeFees(address token, address[] memory recipients, uint256[] memory amounts) external;
-function getAccumulatedFees(address token) external view returns (uint256);
-
-// Fee configuration
-function setFeePercentage(address token, uint256 percentage) external;
-function getFeePercentage(address token) external view returns (uint256);
-function setFeeRecipient(address token, address recipient) external;
-function getFeeRecipient(address token) external view returns (address);
+// Fee management
+function withdrawValidatorFees(address validatorContract, address token) external;
+function getValidatorFeeBalance(address validatorContract, address token) external view returns (uint256);
+function withdrawRoyaltyCommission(address validatorContract, address token) external;
 ```
 
-#### Escrow Functions
+#### Commission Management Functions
 
 ```solidity
-// Escrow management
-function createEscrow(address token, uint256 amount, address beneficiary) external returns (uint256 escrowId);
-function releaseEscrow(uint256 escrowId) external;
-function getEscrowInfo(uint256 escrowId) external view returns (EscrowInfo memory);
-function getEscrowsByBeneficiary(address beneficiary) external view returns (uint256[] memory);
+// Commission management
+function setCommissionPercentage(uint256 _percentage) external;
+function getCommissionPercentage() external view returns (uint256);
+function setFeeReceiver(address _feeReceiver) external;
+function feeReceiver() external view returns (address);
 ```
 
-#### Withdrawal Functions
+#### Events
 
 ```solidity
-// Fund withdrawal
-function withdrawFunds(address token, address recipient, uint256 amount) external;
-function getAvailableFunds(address token) external view returns (uint256);
-function emergencyWithdraw(address token, address recipient) external;
+event CommissionPercentageUpdated(uint256 newCommissionPercentage);
+event FeeReceiverUpdated(address indexed newFeeReceiver);
+event ValidatorRegistryUpdated(address indexed newValidatorRegistry);
+event CompatibleDeedNFTUpdated(address indexed deedNFT, bool isCompatible);
+event ServiceFeeCollected(address indexed validator, address indexed token, uint256 amount, uint256 commission);
+event ValidatorFeesWithdrawn(address indexed validator, address indexed token, uint256 amount, address indexed recipient);
+event RoyaltyCommissionWithdrawn(address indexed validator, address indexed token, uint256 amount, uint256 commissionAmount);
+```
+
+### 6. ISubdivide.sol (285 lines)
+
+Interface for the Subdivide contract, defining subdivision management and unit validation.
+
+#### Subdivision Management Functions
+
+```solidity
+// Subdivision operations
+function subdivisionExists(uint256 deedId) external view returns (bool);
+function unitExists(uint256 deedId, uint256 unitId) external view returns (bool);
+function ownerOf(uint256 tokenId) external view returns (address);
+function uri(uint256 tokenId) external view returns (string memory);
+
+// Unit validation
+function updateUnitValidationStatus(uint256 deedId, uint256 unitId, bool isValid, address validatorAddress) external;
+function getUnitValidationStatus(uint256 deedId, uint256 unitId) external view returns (bool, address);
+function isUnitValidated(uint256 deedId, uint256 unitId) external view returns (bool);
+```
+
+#### Trait Management Functions
+
+```solidity
+// Trait operations
+function getUnitTraitValue(uint256 deedId, uint256 unitId, bytes32 traitKey) external view returns (bytes memory);
+function getUnitTraitValues(uint256 deedId, uint256 unitId, bytes32[] calldata traitKeys) external view returns (bytes[] memory);
+function getUnitTraitKeys(uint256 deedId, uint256 unitId) external view returns (bytes32[] memory);
+function setUnitTraitFlexible(uint256 deedId, uint256 unitId, bytes memory traitKey, bytes memory traitValue, uint8 valueType) external;
+function removeUnitTrait(uint256 deedId, uint256 unitId, string memory traitName) external;
+
+// Trait metadata
+function getUnitTraitName(bytes32 traitKey) external view returns (string memory);
+function setUnitTraitName(bytes32 traitKey, string memory traitName) external;
+function getUnitTraitMetadataURI() external pure returns (string memory);
+```
+
+#### Access Control Functions
+
+```solidity
+// Role management
+function hasRole(bytes32 role, address account) external view returns (bool);
+function grantRole(bytes32 role, address account) external;
+function addValidator(address validator) external;
+function removeValidator(address validator) external;
+
+// Marketplace management
+function setApprovedMarketplace(address marketplace, bool approved) external;
+function isApprovedMarketplace(address marketplace) external view returns (bool);
+function setRoyaltyEnforcement(bool enforced) external;
+function isRoyaltyEnforced() external view returns (bool);
+```
+
+#### Events
+
+```solidity
+event UnitValidated(uint256 indexed deedId, uint256 indexed unitId, bool isValid);
+event UnitTraitUpdated(uint256 indexed deedId, uint256 indexed unitId, bytes32 indexed traitKey, bytes traitValue);
+```
+
+### 7. IFractionalize.sol (346 lines)
+
+Interface for the Fractionalize contract, defining asset fractionalization and share management.
+
+#### Core Fractionalization Functions
+
+```solidity
+// Fractionalization
+function createFraction(FractionCreationParams calldata params) external;
+function mintShares(uint256 fractionId, uint256 amount, address to) external;
+function batchMintShares(BatchMintParams calldata params) external;
+function burnShares(uint256 fractionId, uint256 amount) external;
+function unlockAsset(UnlockParams calldata params) external;
+```
+
+#### Asset Validation Functions
+
+```solidity
+// Asset validation
+function validateDeedNFTAsset(uint256 fractionId) external view returns (bool, string memory);
+function validateSubdivisionAsset(uint256 fractionId) external view returns (bool, string memory);
+function validateAsset(uint256 fractionId) external view returns (bool, string memory);
+
+// Asset information
+function getDeedNFTAssetDetails(uint256 fractionId) external view returns (uint8, bool, address, string memory);
+function getSubdivisionAssetDetails(uint256 fractionId) external view returns (uint256, uint256, uint8, bool, address);
+function getAssetInformation(uint256 fractionId) external view returns (string memory, bool, address, string memory);
+```
+
+#### Trait Functions
+
+```solidity
+// DeedNFT traits
+function getDeedNFTAssetTrait(uint256 fractionId, bytes32 traitKey) external view returns (bytes memory);
+function getDeedNFTAssetTraitKeys(uint256 fractionId) external view returns (bytes32[] memory);
+
+// Subdivision traits
+function getSubdivisionAssetTrait(uint256 fractionId, bytes32 traitKey) external view returns (bytes memory);
+function getSubdivisionAssetTraitKeys(uint256 fractionId) external view returns (bytes32[] memory);
+```
+
+#### Fraction Information Functions
+
+```solidity
+// Fraction details
+function getFractionBasicInfo(uint256 fractionId) external view returns (FractionBasicInfo memory);
+function getFractionExtendedInfo(uint256 fractionId) external view returns (FractionExtendedInfo memory);
+function getFractionOwnershipInfo(uint256 fractionId) external view returns (FractionOwnershipInfo memory);
+function getFractionToken(uint256 fractionId) external view returns (address);
+
+// Voting and approvals
+function canReceiveShares(uint256 fractionId, address account) external view returns (bool);
+function getVotingPower(uint256 fractionId, address account) external view returns (uint256);
+function getApprovals(uint256 fractionId, address account) external view returns (bool, bool);
 ```
 
 #### Data Structures
 
 ```solidity
-struct EscrowInfo {
-    address token;
-    uint256 amount;
-    address beneficiary;
-    uint256 creationDate;
-    bool isReleased;
-    string releaseConditions;
+enum FractionAssetType { DeedNFT, SubdivisionNFT }
+
+struct FractionCreationParams {
+    FractionAssetType assetType;
+    uint256 originalTokenId;
+    string name;
+    string description;
+    string symbol;
+    string collectionUri;
+    uint256 totalShares;
+    bool burnable;
+    uint256 approvalPercentage;
 }
 
-struct FeeDistribution {
-    address recipient;
-    uint256 percentage;
-    uint256 amount;
+struct FractionBasicInfo {
+    string name;
+    string symbol;
+    uint256 totalShares;
+    uint256 activeShares;
+    uint256 maxSharesPerWallet;
+}
+
+struct FractionExtendedInfo {
+    string description;
+    string collectionUri;
+    uint256 requiredApprovalPercentage;
+    bool isActive;
+    bool burnable;
+}
+
+struct FractionOwnershipInfo {
+    FractionAssetType assetType;
+    uint256 originalTokenId;
+    address collectionAdmin;
 }
 ```
 
 #### Events
 
 ```solidity
-event FeeCollected(address indexed token, uint256 amount, address indexed payer);
-event FeesDistributed(address indexed token, address[] recipients, uint256[] amounts);
-event FeePercentageUpdated(address indexed token, uint256 percentage);
-event FeeRecipientUpdated(address indexed token, address recipient);
-event EscrowCreated(uint256 indexed escrowId, address indexed token, uint256 amount, address indexed beneficiary);
-event EscrowReleased(uint256 indexed escrowId, address indexed beneficiary, uint256 amount);
-event FundsWithdrawn(address indexed token, address indexed recipient, uint256 amount);
+event FractionCreated(uint256 indexed fractionId, FractionAssetType assetType, uint256 originalTokenId);
+event SharesMinted(uint256 indexed fractionId, uint256 amount, address to);
+event SharesBurned(uint256 indexed fractionId, uint256 amount);
+event AssetLocked(uint256 indexed fractionId, uint256 originalTokenId);
+event AssetUnlocked(uint256 indexed fractionId, uint256 originalTokenId, address to);
+event TransferApprovalSet(uint256 indexed fractionId, address indexed approver, bool approved);
+event AdminApprovalSet(uint256 indexed fractionId, address indexed approver, bool approved);
+```
+
+### 8. IFractionTokenFactory.sol (41 lines)
+
+Interface for the FractionTokenFactory contract, defining token creation and management.
+
+#### Token Creation Functions
+
+```solidity
+// Token creation
+function createFractionToken(
+    uint256 fractionId,
+    string memory name,
+    string memory symbol,
+    uint256 maxSharesPerWallet,
+    bool burnable
+) external returns (address tokenAddress);
+```
+
+#### Token Management Functions
+
+```solidity
+// Token management
+function getTokenByFractionId(uint256 fractionId) external view returns (address);
+function isToken(address tokenAddress) external view returns (bool);
 ```
 
 ## 🔄 Interface Relationships
@@ -370,11 +542,18 @@ event FundsWithdrawn(address indexed token, address indexed recipient, uint256 a
 graph TD
     A[IDeedNFT] --> B[IValidator]
     A --> C[IMetadataRenderer]
+    A --> G[ISubdivide]
+    G --> B
+    G --> H[IFractionalize]
+    A --> H
+    H --> I[IFractionTokenFactory]
     B --> D[IValidatorRegistry]
     B --> E[IFundManager]
     F[Frontend] --> A
     F --> B
     F --> C
+    F --> G
+    F --> H
     F --> D
     F --> E
 ```
@@ -403,9 +582,29 @@ validatorRegistry.updateValidatorReputation(validator, reputation);
 
 #### Validator → FundManager
 ```solidity
-// Validator collects fees through FundManager
-fundManager.collectFee(token, amount);
-fundManager.distributeFees(token, recipients, amounts);
+// Validator processes payments through FundManager
+fundManager.processPayment(payer, validatorAddress, token, serviceFee);
+fundManager.withdrawValidatorFees(validatorContract, token);
+```
+
+#### Subdivide → Validator
+```solidity
+// Subdivide calls Validator for unit validation
+validator.validateSubdivisionUnit(subdivideContract, deedId, unitId);
+validator.updateUnitValidationStatus(deedId, unitId, isValid, validator);
+```
+
+#### Fractionalize → Subdivide/DeedNFT
+```solidity
+// Fractionalize validates assets before locking
+subdivideNFT.validateSubdivisionAsset(fractionId);
+deedNFT.validateDeedNFTAsset(fractionId);
+```
+
+#### Fractionalize → FractionTokenFactory
+```solidity
+// Fractionalize creates tokens through factory
+fractionTokenFactory.createFractionToken(fractionId, name, symbol, maxShares, burnable);
 ```
 
 ## 🔧 Implementation Guidelines

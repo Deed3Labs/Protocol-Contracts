@@ -1,6 +1,6 @@
 # DeedNFTMap Component
 
-This component provides an interactive map view of T-Deeds using Mapbox GL JS v3 with the Mapbox Standard style.
+This component provides an interactive map view of DeedNFTs using Mapbox GL JS v3 with the Mapbox Standard style.
 
 ## Setup
 
@@ -24,13 +24,13 @@ This component provides an interactive map view of T-Deeds using Mapbox GL JS v3
 
 - **Mapbox Standard Style**: Uses the latest Mapbox Standard style with 3D lighting and realistic rendering
 - **Interactive Markers**: Color-coded markers for different asset types
-- **Popup Information**: Click markers to see T-Deed details
+- **Popup Information**: Click markers to see DeedNFT details
 - **Navigation Controls**: Built-in zoom, pan, and geolocation controls
 - **Responsive Design**: Works on desktop and mobile devices
 
 ## Location Data Support
 
-The map component looks for location data in T-Deed traits in the following order:
+The map component looks for location data in DeedNFT traits in the following order:
 
 1. **Configuration JSON**: Parses the `configuration` field for:
    - `latitude` / `lat` / `lat_` / `lat_trait`
@@ -51,15 +51,15 @@ The map component looks for location data in T-Deed traits in the following orde
 - **Navigation**: Zoom in/out, rotate, and tilt controls
 - **Geolocation**: Find user's current location
 - **Legend**: Shows color coding for different asset types
-- **Selected T-Deed Info**: Bottom panel shows details of selected T-Deed
+- **Selected DeedNFT Info**: Bottom panel shows details of selected DeedNFT
 
 ## Usage
 
 The component is automatically included in the Explore page when:
 - User is connected to wallet
 - User is on the correct network
-- T-Deeds are loaded
-- At least one T-Deed has location data
+- DeedNFTs are loaded
+- At least one DeedNFT has location data
 
 ## Customization
 

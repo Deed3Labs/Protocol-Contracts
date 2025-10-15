@@ -13,6 +13,9 @@ Welcome to the comprehensive documentation for **The Deed Protocol** - a decentr
 - **[Protocol Overview](./architecture/protocol-overview.md)** - High-level system design
 - **[Smart Contracts](./architecture/smart-contracts.md)** - Contract architecture and relationships
 - **[Validation System](./architecture/validation-system.md)** - How validation works
+- **[Asset Subdivision](./architecture/subdivision.md)** - Asset subdivision functionality and workflows
+- **[Asset Fractionalization](./architecture/fractionalization.md)** - Asset fractionalization functionality and workflows
+- **[Asset Workflows](./architecture/asset-workflows.md)** - Complete asset lifecycle from minting to fractionalization
 
 ### 💼 Asset Types & Requirements
 - **[Land Assets](./assets/land-assets.md)** - Land property validation requirements
@@ -58,7 +61,7 @@ Review **[Admin Operations](./ux/admin-operations.md)** and **[Security Model](.
 
 ## 📖 Documentation Status
 
-- ✅ **Complete**: User Guide, Quick Start, Asset Requirements
+- ✅ **Complete**: User Guide, Quick Start, Asset Requirements, Smart Contracts, Validation System, Subdivision, Fractionalization, Asset Workflows
 - 🔄 **In Progress**: API Reference, Security Documentation
 - 📋 **Planned**: Advanced Features, Integration Guides
 

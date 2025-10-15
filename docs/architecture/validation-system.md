@@ -23,6 +23,8 @@ The main validation contract that handles:
 - **Validation Criteria**: Asset-specific validation requirements
 - **Metadata Management**: Operating agreements and validation documents
 - **Fee Management**: Service fees and royalty distribution
+- **Subdivision Validation**: Individual validation for subdivision units
+- **Multi-Asset Support**: Validation for both DeedNFT and Subdivision assets
 
 #### 2. Validation Roles
 
@@ -132,6 +134,25 @@ struct ValidationCriteria {
 - **REJECTED**: Asset failed validation
 - **UNDER_REVIEW**: Asset currently being reviewed
 
+### 4. Subdivision Validation Workflow
+
+1. **Subdivision Creation**
+   - DeedNFT owner creates subdivision via Subdivide contract
+   - Subdivision units are minted as ERC1155 tokens
+   - Units inherit traits from parent DeedNFT
+
+2. **Unit Validation Process**
+   - Validator calls `validateSubdivisionUnit()` for each unit
+   - Individual validation criteria applied per unit
+   - Unit-specific traits validated against criteria
+   - Validation status updated in Subdivide contract
+
+3. **Subdivision Validation Statuses**
+   - **PENDING**: Unit awaiting validation
+   - **VALIDATED**: Unit successfully validated
+   - **REJECTED**: Unit failed validation
+   - **INHERITED**: Unit inherits validation from parent DeedNFT
+
 ## 🎨 User Experience Flow
 
 ### For Asset Owners
@@ -208,11 +229,26 @@ const handleManageDocument = async (tokenId, docType, documentURI)
 // Validate a deed
 function validateDeed(uint256 tokenId) external onlyRole(VALIDATOR_ROLE)
 
+// Validate a subdivision unit
+function validateSubdivisionUnit(
+    address subdivideContract,
+    uint256 deedId,
+    uint256 unitId
+) external onlyRole(VALIDATOR_ROLE)
+
 // Update validation status
 function updateValidationStatus(
     uint256 tokenId, 
     bool isValid, 
     address validator
+) external onlyRole(VALIDATOR_ROLE)
+
+// Update subdivision unit validation status
+function updateUnitValidationStatus(
+    uint256 deedId,
+    uint256 unitId,
+    bool isValid,
+    address validatorAddress
 ) external onlyRole(VALIDATOR_ROLE)
 
 // Set validation criteria
