@@ -25,7 +25,7 @@ Welcome to the comprehensive documentation for **The Deed Protocol** - a decentr
 
 ### 🔧 Technical Documentation
 - **[API Reference](./api/README.md)** - Complete API documentation
-- **[Contract Interfaces](./api/contracts.md)** - Smart contract interfaces
+- **[Contract Interfaces](./api/contract-interfaces.md)** - Smart contract interfaces
 - **[Frontend Components](./api/components.md)** - React component documentation
 
 ### 🎯 User Experience
