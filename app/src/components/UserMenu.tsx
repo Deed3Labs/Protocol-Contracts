@@ -159,7 +159,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
 
       {/* User Menu Modal */}
               <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogContent className="flex flex-col w-[calc(100vw-2rem)] max-w-md max-h-[90vh] overflow-hidden mx-auto rounded-xl px-0 border border-gray-200 dark:border-gray-700">
+          <DialogContent className="flex flex-col w-[calc(100vw-2rem)] max-w-md max-h-[90vh] overflow-hidden mx-auto rounded-xl py-4 pb-0 px-0 border border-gray-200 dark:border-gray-700">
                     <DialogHeader className="px-6 pb-0">
             <div className="flex items-center justify-between">
                              <DialogTitle className="text-left text-lg font-semibold">Notifications</DialogTitle>
