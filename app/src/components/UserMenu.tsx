@@ -135,21 +135,18 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
       {/* User Menu Button */}
       <div className="relative">
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={() => setIsOpen(true)}
-          className="h-9 px-3 border-black/10 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors rounded-full"
+          className="h-8 px-3 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 rounded-md border border-black/10 dark:border-white/10 focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-700"
         >
           <div className="flex items-center space-x-2">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-              <User className="w-3 h-3 text-white" />
-            </div>
-            <span className="hidden sm:block text-sm font-medium">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
               {address ? formatAddress(address) : 'Connect'}
             </span>
-            <ChevronDown className="w-3 h-3" />
+            <ChevronDown className="w-3 h-3 text-gray-500 dark:text-gray-400" />
             {unreadCount > 0 && (
-              <Badge variant="destructive" className="ml-1 h-5 w-5 rounded-full p-0 text-xs">
+              <Badge variant="destructive" className="ml-1 h-4 w-4 rounded-full p-0 text-xs flex items-center justify-center">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </Badge>
             )}
