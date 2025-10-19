@@ -1074,4 +1074,5 @@ contract DeedNFT is
         require(_fundManager != address(0), "Invalid FundManager address");
         fundManager = IFundManager(_fundManager);
     }
+
 }

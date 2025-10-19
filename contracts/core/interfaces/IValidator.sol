@@ -115,6 +115,19 @@ interface IValidator is IAccessControlUpgradeable {
     function validateDeed(uint256 tokenId) external returns (bool);
 
     /**
+     * @dev Validates a subdivision unit
+     * @param subdivideContract Address of the Subdivide contract
+     * @param deedId ID of the parent DeedNFT
+     * @param unitId ID of the unit to validate
+     * @return Whether the validation was successful
+     */
+    function validateSubdivisionUnit(
+        address subdivideContract,
+        uint256 deedId,
+        uint256 unitId
+    ) external returns (bool);
+
+    /**
      * @dev Validates a deed NFT's operating agreement
      * @param operatingAgreement URI of the operating agreement
      * @return Whether the operating agreement is valid

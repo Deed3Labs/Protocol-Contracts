@@ -389,20 +389,20 @@ export function SWIXDemo() {
 
       {/* Main Content */}
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-5 bg-gray-100 dark:bg-gray-800">
-          <TabsTrigger value="profile" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+        <TabsList className="grid w-full grid-cols-5 bg-gray-100 dark:bg-[#0e0e0e] border border-gray-200 dark:border-white/10">
+          <TabsTrigger value="profile" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             Profile
           </TabsTrigger>
-          <TabsTrigger value="authentication" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+          <TabsTrigger value="authentication" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             Auth
           </TabsTrigger>
-          <TabsTrigger value="preferences" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+          <TabsTrigger value="preferences" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             Preferences
           </TabsTrigger>
-          <TabsTrigger value="security" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+          <TabsTrigger value="security" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             Security
           </TabsTrigger>
-          <TabsTrigger value="messages" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+          <TabsTrigger value="messages" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             Messages
           </TabsTrigger>
         </TabsList>

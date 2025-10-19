@@ -21,6 +21,7 @@ import "../libraries/JSONUtils.sol";
 import "./interfaces/IValidator.sol";
 import "./interfaces/IDeedNFT.sol";
 import "./interfaces/IFundManager.sol";
+import "./interfaces/ISubdivide.sol";
 
 /**
  * @title Validator
@@ -432,6 +433,138 @@ contract Validator is
         emit DeedValidated(_tokenId, isValid);
         
         return isValid;
+    }
+
+    /**
+     * @dev Validates a subdivision unit
+     * @param subdivideContract Address of the Subdivide contract
+     * @param deedId ID of the parent DeedNFT
+     * @param unitId ID of the unit to validate
+     * @return Whether the validation was successful
+     * @notice Caller must have VALIDATOR_ROLE and the subdivision must be from a compatible contract
+     */
+    function validateSubdivisionUnit(
+        address subdivideContract,
+        uint256 deedId,
+        uint256 unitId
+    ) external returns (bool) {
+        // Check if caller has VALIDATOR_ROLE
+        require(hasRole(VALIDATOR_ROLE, msg.sender), "Validator: Caller must have VALIDATOR_ROLE");
+        
+        // Check if the Subdivide contract is compatible
+        require(compatibleDeedNFTs[subdivideContract], "Validator: Incompatible Subdivide contract");
+        
+        // Get the combined token ID for events
+        uint256 tokenId = (deedId << 128) | unitId;
+        
+        // Get the asset type from subdivision unit traits
+        bytes memory assetTypeBytes = ISubdivide(subdivideContract).getUnitTraitValue(deedId, unitId, keccak256("assetType"));
+        if (assetTypeBytes.length == 0) {
+            emit ValidationError(tokenId, "Failed to retrieve asset type");
+            return false;
+        }
+        uint256 assetTypeId = uint256(abi.decode(assetTypeBytes, (IDeedNFT.AssetType)));
+        
+        // Check if the asset type is supported
+        if (!supportedAssetTypes[assetTypeId]) {
+            emit ValidationError(tokenId, "Asset type not supported");
+            return false;
+        }
+        
+        // Get validation criteria for the asset type
+        ValidationCriteria memory criteria = validationCriteria[assetTypeId];
+        
+        // Check operating agreement if required
+        if (criteria.requireOperatingAgreement) {
+            bytes memory agreementBytes = ISubdivide(subdivideContract).getUnitTraitValue(deedId, unitId, keccak256("operatingAgreement"));
+            if (agreementBytes.length == 0) {
+                emit ValidationError(tokenId, "Operating agreement is required but not set");
+                return false;
+            }
+            string memory agreement = abi.decode(agreementBytes, (string));
+            if (bytes(agreement).length == 0 || !_validateOperatingAgreement(agreement)) {
+                emit ValidationError(tokenId, "Invalid operating agreement");
+                return false;
+            }
+        }
+        
+        // Check definition if required
+        if (criteria.requireDefinition) {
+            bytes memory definitionBytes = ISubdivide(subdivideContract).getUnitTraitValue(deedId, unitId, keccak256("definition"));
+            if (definitionBytes.length == 0) {
+                emit ValidationError(tokenId, "Definition is required but not set");
+                return false;
+            }
+            string memory definition = abi.decode(definitionBytes, (string));
+            if (bytes(definition).length == 0) {
+                emit ValidationError(tokenId, "Definition cannot be empty");
+                return false;
+            }
+        }
+        
+        // If no traits required, consider valid
+        if (criteria.requiredTraits.length == 0) {
+            ISubdivide(subdivideContract).updateUnitValidationStatus(deedId, unitId, true, address(this));
+            emit DeedValidated(tokenId, true);
+            return true;
+        }
+        
+        // Validate the definition against the criteria
+        bool isValid = _validateSubdivisionDefinition(deedId, unitId, subdivideContract);
+        
+        // Update validation status in Subdivide contract
+        ISubdivide(subdivideContract).updateUnitValidationStatus(deedId, unitId, isValid, address(this));
+        
+        // Emit validation result
+        emit DeedValidated(tokenId, isValid);
+        
+        return isValid;
+    }
+    
+    /**
+     * @dev Validates a subdivision unit definition against criteria
+     * @param deedId ID of the parent DeedNFT
+     * @param unitId ID of the unit
+     * @param subdivideContract Address of the Subdivide contract
+     * @return Whether the definition is valid
+     */
+    function _validateSubdivisionDefinition(uint256 deedId, uint256 unitId, address subdivideContract) internal view returns (bool) {
+        // Get the asset type from subdivision unit traits
+        bytes memory assetTypeBytes = ISubdivide(subdivideContract).getUnitTraitValue(deedId, unitId, keccak256("assetType"));
+        if (assetTypeBytes.length == 0) return false;
+        uint256 assetTypeId = uint256(abi.decode(assetTypeBytes, (IDeedNFT.AssetType)));
+        
+        // Get validation criteria for this asset type
+        ValidationCriteria memory criteria = validationCriteria[assetTypeId];
+        if (criteria.requiredTraits.length == 0) return true; // If no traits required, consider valid
+        
+        // Check each required trait directly from subdivision unit traits
+        for (uint i = 0; i < criteria.requiredTraits.length; i++) {
+            bytes memory traitValue = ISubdivide(subdivideContract).getUnitTraitValue(deedId, unitId, keccak256(bytes(criteria.requiredTraits[i])));
+            if (traitValue.length == 0) {
+                return false;
+            }
+            
+            // Check if the trait value is non-empty
+            if (traitValue.length > 0) {
+                string memory decodedValue = abi.decode(traitValue, (string));
+                if (bytes(decodedValue).length == 0) {
+                    return false;
+                }
+            }
+        }
+
+        // If additional criteria exist, apply them
+        if (bytes(criteria.additionalCriteria).length > 0) {
+            // TODO: Implement additional criteria validation logic
+            // This could include:
+            // - Value ranges (e.g., year must be between 1900 and current year)
+            // - Format requirements (e.g., VIN must be 17 characters)
+            // - Value relationships (e.g., model must be valid for the given make)
+            // - Custom validation logic
+        }
+        
+        return true;
     }
     
     /**

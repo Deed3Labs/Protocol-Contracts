@@ -9,13 +9,16 @@ This repository contains the smart contracts for **The Deed Protocol**, which fa
 The Deed Protocol uses legal engineering to merge technology with Real World Assets by tokenizing ownership, validation and administration. Each property deed or title is represented as a unique non-fungible token (NFT) on the blockchain, providing decentralized, secure, and transparent records of ownership.
 
 Key components of the protocol include:
-- **DeedNFT**: The core NFT representing property deeds.
-- **Validator**: A smart contract that verifies the integrity and authenticity of deed data.
-- **ValidatorRegistry**: A registry for managing and tracking validators responsible for validating deeds.
-- **FundManager**: A smart contract for managing, distributing and maintaining security over transaction funds.
-- **MetadataRenderer**: A contract for standardized metadata handling with optimized trait management.
-- **ValidatorFactory**: A factory contract for deploying new validator instances with standardized configurations.
-- **Extension Contracts**: Additional functionality for REIT-style fractional ownership and property subdivision.
+- **DeedNFT**: The core ERC721 NFT representing real-world assets with dynamic metadata support.
+- **Validator**: Asset validation and verification system with multi-asset support.
+- **ValidatorRegistry**: Registry for managing authorized validators and their capabilities.
+- **FundManager**: Financial operations including payment processing and commission management.
+- **MetadataRenderer**: Standardized metadata management with ERC-7496 dynamic traits.
+- **ValidatorFactory**: Factory for deploying standardized validator instances.
+- **Subdivide**: Asset subdivision into ERC1155 units for property division.
+- **Fractionalize**: Fractional ownership via ERC20 tokens for REIT functionality.
+- **FractionToken**: ERC20 tokens representing fractional asset shares.
+- **FractionTokenFactory**: Factory for deploying fraction token contracts.
 
 ## Project Structure
 
@@ -24,12 +27,14 @@ contracts/
 ├── core/              # Core protocol contracts
 │   ├── interfaces/    # Contract interfaces
 │   ├── factories/     # Factory contracts
-│   │   └── ValidatorFactory.sol
-│   ├── DeedNFT.sol    # Main NFT contract
-│   ├── Validator.sol  # Deed Validation logic
+│   │   ├── ValidatorFactory.sol
+│   │   └── FractionTokenFactory.sol
+│   ├── DeedNFT.sol    # Main ERC721 NFT contract
+│   ├── Validator.sol  # Asset validation logic
 │   ├── ValidatorRegistry.sol
 │   ├── FundManager.sol
-│   └── MetadataRenderer.sol
+│   ├── MetadataRenderer.sol
+│   └── FractionToken.sol
 ├── extensions/        # Extension contracts
 │   ├── Fractionalize.sol
 │   └── Subdivide.sol
@@ -111,16 +116,16 @@ The `ValidatorRegistry` contract manages a list of authorized validators, ensuri
 
 [View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/tree/main/src/core/FundManager.sol)
 
-The `FundManager` contract is dedicated to managing funds associated with property transactions and transfers within the protocol:
+The `FundManager` contract manages financial operations and fee distribution within the protocol:
 
-- **Transaction Fee Management:** Handles the collection and processing of fees or service charges related to deed transfers and validations.
-- **Funds Allocation and Distribution:** Implements mechanisms to distribute collected funds among various stakeholders (such as validators, platform operators, or other designated parties) based on predetermined rules.
-- **Secure Financial Operations:** Integrates with other core contracts (like DeedNFT and Validator) to ensure that all financial operations are carried out securely and transparently.
-- **Efficient Fund Handling:** Designed to facilitate both deposit and withdrawal operations, ensuring smooth financial transactions within the ecosystem.
-- **Commission System:** Manages platform commission fees with configurable percentages.
-- **Validator Fee Management:** Handles validator service fees and royalty distributions.
-- **Role-Based Access Control:** Implements comprehensive role management for fee operations.
-- **Token Whitelisting:** Supports whitelisting of payment tokens for enhanced security.
+- **Payment Processing:** Handles payment processing for validator services with automatic commission calculation.
+- **Commission Management:** Manages platform commission fees with configurable percentages and fee receiver addresses.
+- **Validator Fee Distribution:** Distributes validator fees and manages validator fee balances.
+- **Token Management:** Supports whitelisted payment tokens and compatible DeedNFT contracts.
+- **Role-Based Access Control:** Implements comprehensive role management for financial operations.
+- **Multi-Token Support:** Supports various payment tokens for flexible fee collection.
+- **Secure Operations:** Integrates with other core contracts to ensure secure financial transactions.
+- **Fee Tracking:** Provides detailed fee tracking and balance management for validators.
 
 ### 5. MetadataRenderer
 
@@ -183,33 +188,56 @@ Specifies the interface for fund management operations, including commission han
 
 ## Extension Contracts
 
-### 1. Fractionalize
+### 1. Subdivide
 
-[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/Fractionalize.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/blob/main/contracts/extensions/Subdivide.sol)
 
-The `Fractionalize` contract enables the creation of ERC1155 tokens representing fractional ownership of DeedNFTs, primarily designed for REIT (Real Estate Investment Trust) functionality:
+The `Subdivide` contract enables the creation of ERC1155 tokens representing subdivided units from a single DeedNFT:
 
-- **REIT Share Creation:** Converts DeedNFT tokens into tradeable ERC1155 shares, enabling REIT-like investment structures
-- **Asset Locking:** Securely locks the original DeedNFT while shares are active
-- **Transfer Restrictions:** Implements wallet limits and transfer restrictions for regulatory compliance
-- **Approval System:** Requires approval of configured majority of outstanding shares to unlock original DeedNFT
-- **Security Features:** Includes pausable functionality and role-based access control
-- **Dividend Distribution:** Supports automated dividend distribution to share holders
-- **Regulatory Compliance:** Built-in features to support REIT regulatory requirements
+- **Asset Subdivision:** Splits a single DeedNFT into multiple distinct ERC1155 units
+- **Unit Management:** Individual unit creation, transfer, and validation
+- **Dynamic Traits:** ERC-7496 implementation for unit-level trait management
+- **Royalty Support:** ERC-2981 royalty standard for unit-level royalties
+- **Validation Integration:** Unit-specific validation through the Validator contract
+- **Metadata Management:** Separate metadata for each subdivided unit
+- **Security Features:** Pausable functionality and role-based access control
 
-### 2. Subdivide
+### 2. Fractionalize
 
-[View Contract on GitHub](https://github.com/Deed3Labs/DeedNFT-Contracts/blob/contract-changes/src/Subdivide.sol)
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/blob/main/contracts/extensions/Fractionalize.sol)
 
-The `Subdivide` contract is designed for creating distinct units, parcels, or timeshares from a single DeedNFT:
+The `Fractionalize` contract enables the creation of ERC20 tokens representing fractional ownership of DeedNFTs or subdivision units:
 
-- **Unit Creation:** Splits a single DeedNFT into multiple distinct units or parcels
-- **Timeshare Support:** Enables creation of time-based ownership rights
-- **Unit-Specific Metadata:** Maintains separate metadata for each subdivided unit
-- **Independent Transfer:** Allows individual units to be transferred independently
-- **Unit Validation:** Supports separate validation for each subdivided unit
-- **Usage Rights:** Manages specific usage rights and restrictions per unit
-- **Common Area Management:** Handles shared spaces and common area rights
+- **Fractional Ownership:** Converts DeedNFTs or subdivision units into tradeable ERC20 shares
+- **Asset Locking:** Securely locks the original asset while shares are active
+- **Share Management:** Mint, burn, and transfer fractional shares
+- **Approval System:** Requires approval for asset unlocking
+- **Factory Integration:** Integrates with FractionTokenFactory for token deployment
+- **Security Features:** Pausable functionality and role-based access control
+- **Multi-Asset Support:** Supports both DeedNFTs and subdivision units
+
+### 3. FractionToken
+
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/blob/main/contracts/core/FractionToken.sol)
+
+The `FractionToken` contract represents ERC20 tokens for fractional asset ownership:
+
+- **ERC20 Standard:** Full ERC20 compliance for fractional shares
+- **Transfer Restrictions:** Configurable transfer limits and restrictions
+- **Burnable Tokens:** Optional burn functionality for share redemption
+- **Factory Deployed:** Created through FractionTokenFactory
+- **Security Features:** Role-based access control and pausable functionality
+
+### 4. FractionTokenFactory
+
+[View Contract on GitHub](https://github.com/Deed3Labs/Protocol-Contracts/blob/main/contracts/core/factories/FractionTokenFactory.sol)
+
+The `FractionTokenFactory` contract deploys and manages FractionToken instances:
+
+- **Token Deployment:** Creates new FractionToken contracts
+- **Configuration Management:** Sets up token parameters and restrictions
+- **Factory Pattern:** Standardized deployment of fraction tokens
+- **Integration:** Works with Fractionalize contract for token creation
 
 ## Proxy Contracts
 
