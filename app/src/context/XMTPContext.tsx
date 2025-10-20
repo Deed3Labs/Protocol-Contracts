@@ -35,10 +35,13 @@ interface XMTPContextType {
   createConversation: (walletAddress: string) => Promise<Conversation>;
   createGroupConversation: (name: string, members: string[]) => Promise<Conversation>;
   manualSync: () => Promise<void>;
+  syncConversationMessages: (conversationId: string) => Promise<void>;
+  syncAllMessages: () => Promise<void>;
   canMessage: (walletAddress: string) => Promise<boolean>;
   getCurrentInboxId: () => Promise<string | null>;
   syncOptimisticGroups: () => Promise<void>;
   syncConversationStates: () => void;
+  clearStaleInstallationData: (walletAddress: string) => Promise<void>;
   cleanupExpiredInstallations: () => void;
   isConnected: boolean;
 }
@@ -111,7 +114,46 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     }
   };
 
-  // Create XMTP client with automatic cross-browser installation detection and sync
+  // Validate if an existing installation is still active
+  const validateInstallation = async (xmtpClient: Client): Promise<boolean> => {
+    try {
+      // Try to access conversations to validate the installation
+      await xmtpClient.conversations.list();
+      console.log('XMTP: Installation validation successful');
+      return true;
+    } catch (error) {
+      console.log('XMTP: Installation validation failed - installation may be revoked:', error);
+      return false;
+    }
+  };
+
+  // Clear stale installation data when revocations are detected
+  const clearStaleInstallationData = async (walletAddress: string) => {
+    try {
+      console.log('XMTP: Clearing stale installation data for:', walletAddress);
+      
+      // Clear localStorage references
+      const installationKey = `xmtp-installation-${walletAddress.toLowerCase()}`;
+      localStorage.removeItem(installationKey);
+      
+      // Clear conversation states
+      const statesKey = `xmtp-conversation-states-${walletAddress.toLowerCase()}`;
+      localStorage.removeItem(statesKey);
+      
+      // Clear group metadata
+      const groups = JSON.parse(localStorage.getItem('xmtp-groups') || '[]');
+      const cleanedGroups = groups.filter((group: any) => 
+        !group.members?.includes(walletAddress.toLowerCase())
+      );
+      localStorage.setItem('xmtp-groups', JSON.stringify(cleanedGroups));
+      
+      console.log('XMTP: Cleared stale installation data');
+    } catch (err) {
+      console.error('XMTP: Error clearing stale installation data:', err);
+    }
+  };
+
+  // Create XMTP client with proper installation validation and revocation detection
   const connect = async (ethersSigner: ethers.Signer) => {
     try {
       console.log('XMTP: Starting connection...');
@@ -126,55 +168,108 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       console.log('XMTP: Wallet address:', walletAddress);
       
       let xmtpClient: Client;
+      let isNewInstallation = false;
       
-      // ALWAYS check for existing installations across browsers first
-      console.log('XMTP: Checking for existing installation across browsers...');
-      const hasExistingInstallation = await checkExistingInstallation(walletAddress);
-      
-      if (hasExistingInstallation) {
-        console.log('XMTP: Found existing installation, syncing with history...');
-        
-        // Always try to sync with existing installation using history sync
-        try {
-          xmtpClient = await Client.create(xmtpSigner, {
-            env: 'production',
-            historySyncUrl: 'https://history.xmtp.org'
-          });
-          console.log('XMTP: Successfully synced with existing installation');
-        } catch (syncError) {
-          console.log('XMTP: Failed to sync with existing installation, trying without history sync...');
-          
-          // Fallback: try without history sync
-          try {
-            xmtpClient = await Client.create(xmtpSigner, {
-              env: 'production'
-            });
-            console.log('XMTP: Created client without history sync');
-          } catch (fallbackError) {
-            console.log('XMTP: All sync attempts failed, creating new installation...');
-            
-            // Last resort: create new installation
-            xmtpClient = await Client.create(xmtpSigner, {
-              env: 'production'
-            });
-            console.log('XMTP: Created new installation');
-          }
-        }
-      } else {
-        console.log('XMTP: No existing installation found, creating new one...');
-        
-        // Create new installation
+      // First, try to create client with existing local data (IndexedDB)
+      // History sync is enabled by default when env='production'
+      // This automatically sets historySyncUrl to https://message-history.production.ephemera.network
+      try {
+        console.log('XMTP: Attempting to create client with existing local data...');
         xmtpClient = await Client.create(xmtpSigner, {
           env: 'production'
         });
-        console.log('XMTP: Created new installation');
+        
+        // Validate that the installation is still active
+        const isValid = await validateInstallation(xmtpClient);
+        
+        if (isValid) {
+          console.log('XMTP: Existing installation is valid and active');
+        } else {
+          console.log('XMTP: Existing installation is invalid/revoked, creating new one...');
+          isNewInstallation = true;
+          
+          // Clear any stale local data and create fresh installation
+          try {
+            // Try to close the invalid client
+            await xmtpClient.close();
+          } catch (closeError) {
+            console.log('XMTP: Error closing invalid client:', closeError);
+          }
+          
+          // Clear stale installation data
+          await clearStaleInstallationData(walletAddress);
+          
+          // Create new installation
+          xmtpClient = await Client.create(xmtpSigner, {
+            env: 'production'
+          });
+          console.log('XMTP: Created new installation after detecting revoked installation');
+        }
+        
+      } catch (createError) {
+        console.log('XMTP: No local installation found or creation failed, checking for network installation...');
+        
+        // Check if there's an existing installation on the network
+        const hasNetworkInstallation = await checkExistingInstallation(walletAddress);
+        
+        if (hasNetworkInstallation) {
+          console.log('XMTP: Found network installation, attempting to sync...');
+          
+          try {
+            xmtpClient = await Client.create(xmtpSigner, {
+              env: 'production'
+              // historySyncUrl is automatically set to https://message-history.production.ephemera.network
+              // when env is set to 'production' according to XMTP docs
+            });
+            
+            // Validate the synced installation
+            const isValid = await validateInstallation(xmtpClient);
+            if (!isValid) {
+              console.log('XMTP: Network installation is invalid/revoked, creating new one...');
+              isNewInstallation = true;
+              
+              try {
+                await xmtpClient.close();
+              } catch (closeError) {
+                console.log('XMTP: Error closing invalid synced client:', closeError);
+              }
+              
+              // Clear stale installation data
+              await clearStaleInstallationData(walletAddress);
+              
+              xmtpClient = await Client.create(xmtpSigner, {
+                env: 'production'
+              });
+              console.log('XMTP: Created new installation after detecting revoked network installation');
+            } else {
+              console.log('XMTP: Successfully synced with valid network installation');
+            }
+          } catch (syncError) {
+            console.log('XMTP: Failed to sync with network installation, creating new one...');
+            isNewInstallation = true;
+            
+            xmtpClient = await Client.create(xmtpSigner, {
+              env: 'production'
+            });
+            console.log('XMTP: Created new installation after sync failure');
+          }
+        } else {
+          console.log('XMTP: No network installation found, creating new one...');
+          isNewInstallation = true;
+          
+          xmtpClient = await Client.create(xmtpSigner, {
+            env: 'production'
+          });
+          console.log('XMTP: Created new installation');
+        }
       }
       
       // Store installation reference in localStorage for this browser
       const installationKey = `xmtp-installation-${walletAddress.toLowerCase()}`;
       localStorage.setItem(installationKey, JSON.stringify({
         createdAt: new Date().toISOString(),
-        walletAddress: walletAddress.toLowerCase()
+        walletAddress: walletAddress.toLowerCase(),
+        isNewInstallation
       }));
 
       setClient(xmtpClient);
@@ -185,6 +280,17 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       
       // Load conversation states for cross-browser sync
       loadConversationStates();
+      
+      // Trigger initial sync to get messages and conversations
+      // This addresses the FAQ issue: "A user logged into a new app installation and sees their conversations, but no messages"
+      try {
+        console.log('XMTP: Triggering initial sync for messages and conversations...');
+        await xmtpClient.conversations.syncAll(['allowed', 'unknown'] as any);
+        console.log('XMTP: Initial sync completed successfully');
+      } catch (syncError) {
+        console.warn('XMTP: Initial sync failed, but connection is still functional:', syncError);
+        // Don't throw here - connection should still work even if sync fails
+      }
       
       console.log('XMTP: Connection complete');
     } catch (err) {
@@ -681,21 +787,101 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     }
     try {
       console.log('XMTP: Starting manual sync...');
-      await loadConversations(); // Reload conversations to reflect changes
+      
+      // Use official XMTP sync methods according to docs:
+      // https://docs.xmtp.org/chat-apps/list-stream-sync/sync-and-syncall#sync-all-new-welcomes-conversations-messages-and-preferences
+      
+      try {
+        // Sync all new welcomes, conversations, messages, and preferences
+        // This addresses the FAQ issue: "A user logged into a new app installation and sees their conversations, but no messages"
+        console.log('XMTP: Syncing all conversations, messages, and preferences...');
+        await client.conversations.syncAll(['allowed', 'unknown'] as any);
+        
+        console.log('XMTP: Successfully synced conversations and messages');
+      } catch (syncError) {
+        console.warn('XMTP: SyncAll failed, trying individual sync methods:', syncError);
+        
+        try {
+          // Fallback: try individual sync methods
+          console.log('XMTP: Attempting individual sync methods...');
+          
+          // Sync new conversations
+          await client.conversations.sync();
+          
+          console.log('XMTP: Successfully synced conversations');
+        } catch (individualSyncError) {
+          console.error('XMTP: Individual sync also failed:', individualSyncError);
+          throw individualSyncError;
+        }
+      }
+      
+      // Reload conversations to reflect changes
+      await loadConversations();
       
       // Sync conversation states across browsers
       syncConversationStates();
-      
-      // Trigger history sync if available (XMTP V4 feature)
-      if ('sync' in client && typeof client.sync === 'function') {
-        console.log('XMTP: Triggering history sync...');
-        await (client as any).sync();
-      }
       
       console.log('XMTP: Manual sync completed.');
     } catch (err) {
       console.error('XMTP: Manual sync failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to perform manual sync');
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
+  // Sync messages for a specific conversation
+  const syncConversationMessages = async (conversationId: string) => {
+    if (!client) {
+      console.error('XMTP client not connected.');
+      return;
+    }
+    
+    try {
+      console.log('XMTP: Syncing messages for conversation:', conversationId);
+      
+      // Find the conversation
+      const conversation = conversations.find(c => c.id === conversationId);
+      if (!conversation) {
+        console.error('XMTP: Conversation not found:', conversationId);
+        return;
+      }
+      
+      // Sync messages for this specific conversation
+      // According to XMTP docs: https://docs.xmtp.org/chat-apps/list-stream-sync/sync-and-syncall#sync-a-specific-conversation
+      await conversation.sync();
+      
+      // Reload messages for this conversation to get the synced data
+      await loadMessages(conversationId);
+      
+      console.log('XMTP: Successfully synced messages for conversation:', conversationId);
+    } catch (err) {
+      console.error('XMTP: Failed to sync messages for conversation:', conversationId, err);
+      setError(err instanceof Error ? err.message : 'Failed to sync conversation messages');
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
+  // Sync all messages across all conversations
+  const syncAllMessages = async () => {
+    if (!client) {
+      console.error('XMTP client not connected.');
+      return;
+    }
+    
+    try {
+      console.log('XMTP: Syncing all messages...');
+      
+      // Sync all conversations, messages, and preferences
+      // This addresses the FAQ issue about missing messages
+      await client.conversations.syncAll(['allowed', 'unknown'] as any);
+      
+      // Reload conversations to get updated data
+      await loadConversations();
+      
+      console.log('XMTP: Successfully synced all messages');
+    } catch (err) {
+      console.error('XMTP: Failed to sync all messages:', err);
+      setError(err instanceof Error ? err.message : 'Failed to sync all messages');
       setTimeout(() => setError(null), 3000);
     }
   };
@@ -965,10 +1151,13 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     createConversation,
     createGroupConversation,
     manualSync,
+    syncConversationMessages,
+    syncAllMessages,
     canMessage,
     getCurrentInboxId,
     syncOptimisticGroups,
     syncConversationStates,
+    clearStaleInstallationData,
     cleanupExpiredInstallations,
     isConnected,
   };
