@@ -38,7 +38,7 @@ interface XMTPContextType {
   canMessage: (walletAddress: string) => Promise<boolean>;
   getCurrentInboxId: () => Promise<string | null>;
   syncOptimisticGroups: () => Promise<void>;
-  getInstallationStatus: (walletAddress: string) => { hasInstallation: boolean; createdAt?: string };
+  syncConversationStates: () => void;
   cleanupExpiredInstallations: () => void;
   isConnected: boolean;
 }
@@ -90,7 +90,28 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     };
   };
 
-  // Create XMTP client following V4 patterns with installation reuse
+  // Check if XMTP installation exists for an address across browsers
+  const checkExistingInstallation = async (walletAddress: string): Promise<boolean> => {
+    try {
+      console.log('XMTP: Checking for existing installation across browsers for:', walletAddress);
+      
+      // First check if we can message this address (indicates XMTP is installed)
+      const canMessageResult = await Client.canMessage([{
+        identifier: walletAddress,
+        identifierKind: "Ethereum"
+      }]);
+      
+      const canMessage = canMessageResult.get(walletAddress);
+      console.log('XMTP: Can message check result:', { walletAddress, canMessage });
+      
+      return canMessage || false;
+    } catch (err) {
+      console.error('XMTP: Error checking existing installation:', err);
+      return false;
+    }
+  };
+
+  // Create XMTP client with automatic cross-browser installation detection and sync
   const connect = async (ethersSigner: ethers.Signer) => {
     try {
       console.log('XMTP: Starting connection...');
@@ -104,64 +125,67 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       const walletAddress = await ethersSigner.getAddress();
       console.log('XMTP: Wallet address:', walletAddress);
       
-      // Check if we have a stored installation for this wallet
-      const installationKey = `xmtp-installation-${walletAddress.toLowerCase()}`;
-      const storedInstallation = localStorage.getItem(installationKey);
-      
       let xmtpClient: Client;
       
-      if (storedInstallation) {
+      // ALWAYS check for existing installations across browsers first
+      console.log('XMTP: Checking for existing installation across browsers...');
+      const hasExistingInstallation = await checkExistingInstallation(walletAddress);
+      
+      if (hasExistingInstallation) {
+        console.log('XMTP: Found existing installation, syncing with history...');
+        
+        // Always try to sync with existing installation using history sync
         try {
-          console.log('XMTP: Attempting to reuse existing installation...');
-          
-          // Try to create client with existing installation
           xmtpClient = await Client.create(xmtpSigner, {
-            // XMTP V4 will automatically use existing installation if available
-            // The installation data is stored in IndexedDB by XMTP
-            // History sync is enabled by default
-            env: 'production' // This will set the default historySyncUrl automatically
+            env: 'production',
+            historySyncUrl: 'https://history.xmtp.org'
           });
+          console.log('XMTP: Successfully synced with existing installation');
+        } catch (syncError) {
+          console.log('XMTP: Failed to sync with existing installation, trying without history sync...');
           
-          console.log('XMTP: Successfully reused existing installation');
-        } catch (reuseError) {
-          console.warn('XMTP: Failed to reuse existing installation, creating new one:', reuseError);
-          
-          // Clear the stored installation reference
-          localStorage.removeItem(installationKey);
-          
-          // Create new installation
-          xmtpClient = await Client.create(xmtpSigner, {
-            env: 'production' // This will set the default historySyncUrl automatically
-          });
-          console.log('XMTP: Created new installation');
-          
-          // Store reference to new installation
-          localStorage.setItem(installationKey, JSON.stringify({
-            createdAt: new Date().toISOString(),
-            walletAddress: walletAddress.toLowerCase()
-          }));
+          // Fallback: try without history sync
+          try {
+            xmtpClient = await Client.create(xmtpSigner, {
+              env: 'production'
+            });
+            console.log('XMTP: Created client without history sync');
+          } catch (fallbackError) {
+            console.log('XMTP: All sync attempts failed, creating new installation...');
+            
+            // Last resort: create new installation
+            xmtpClient = await Client.create(xmtpSigner, {
+              env: 'production'
+            });
+            console.log('XMTP: Created new installation');
+          }
         }
       } else {
         console.log('XMTP: No existing installation found, creating new one...');
         
         // Create new installation
         xmtpClient = await Client.create(xmtpSigner, {
-          env: 'production' // This will set the default historySyncUrl automatically
+          env: 'production'
         });
         console.log('XMTP: Created new installation');
-        
-        // Store reference to new installation
-        localStorage.setItem(installationKey, JSON.stringify({
-          createdAt: new Date().toISOString(),
-          walletAddress: walletAddress.toLowerCase()
-        }));
       }
+      
+      // Store installation reference in localStorage for this browser
+      const installationKey = `xmtp-installation-${walletAddress.toLowerCase()}`;
+      localStorage.setItem(installationKey, JSON.stringify({
+        createdAt: new Date().toISOString(),
+        walletAddress: walletAddress.toLowerCase()
+      }));
 
       setClient(xmtpClient);
       setIsConnected(true);
       
       // Load conversations after connecting
       await loadConversations();
+      
+      // Load conversation states for cross-browser sync
+      loadConversationStates();
+      
       console.log('XMTP: Connection complete');
     } catch (err) {
       console.error('Failed to connect to XMTP:', err);
@@ -171,6 +195,7 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       setIsLoading(false);
     }
   };
+
 
   // Clean up expired installations
   const cleanupExpiredInstallations = () => {
@@ -579,6 +604,14 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     }
   };
 
+  // Load conversation states when client becomes available
+  useEffect(() => {
+    if (client && isConnected) {
+      console.log('XMTP: Client connected, loading conversation states...');
+      loadConversationStates();
+    }
+  }, [client, isConnected]);
+
   // Stream messages following XMTP V4 patterns
   useEffect(() => {
     if (!client) return;
@@ -650,6 +683,9 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       console.log('XMTP: Starting manual sync...');
       await loadConversations(); // Reload conversations to reflect changes
       
+      // Sync conversation states across browsers
+      syncConversationStates();
+      
       // Trigger history sync if available (XMTP V4 feature)
       if ('sync' in client && typeof client.sync === 'function') {
         console.log('XMTP: Triggering history sync...');
@@ -703,30 +739,6 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     }
   };
 
-  // Get installation status for a wallet
-  const getInstallationStatus = (walletAddress: string) => {
-    try {
-      const installationKey = `xmtp-installation-${walletAddress.toLowerCase()}`;
-      const storedInstallation = localStorage.getItem(installationKey);
-      
-      if (storedInstallation) {
-        const installation = JSON.parse(storedInstallation);
-        return {
-          hasInstallation: true,
-          createdAt: installation.createdAt
-        };
-      }
-      
-      return {
-        hasInstallation: false
-      };
-    } catch (err) {
-      console.error('XMTP: Error getting installation status:', err);
-      return {
-        hasInstallation: false
-      };
-    }
-  };
 
   // Clean up stale localStorage entries
   const cleanupStaleGroups = () => {
@@ -812,49 +824,108 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     }
   };
 
-  // Conversation management functions
-  const hideConversation = (conversationId: string) => {
-    setConversationStates(prev => ({
-      ...prev,
-      [conversationId]: {
-        state: 'hidden',
-        hiddenAt: new Date(),
-        archivedAt: prev[conversationId]?.archivedAt
+  // Save conversation states to localStorage for cross-browser sync
+  const saveConversationStates = (states: { [conversationId: string]: ConversationMetadata }) => {
+    try {
+      const walletAddress = client?.accountIdentifier?.identifier;
+      if (walletAddress) {
+        const storageKey = `xmtp-conversation-states-${walletAddress.toLowerCase()}`;
+        localStorage.setItem(storageKey, JSON.stringify(states));
+        console.log('XMTP: Saved conversation states to localStorage');
       }
-    }));
+    } catch (err) {
+      console.error('XMTP: Error saving conversation states:', err);
+    }
+  };
+
+  // Load conversation states from localStorage for cross-browser sync
+  const loadConversationStates = () => {
+    try {
+      const walletAddress = client?.accountIdentifier?.identifier;
+      if (walletAddress) {
+        const storageKey = `xmtp-conversation-states-${walletAddress.toLowerCase()}`;
+        const stored = localStorage.getItem(storageKey);
+        if (stored) {
+          const states = JSON.parse(stored);
+          // Convert date strings back to Date objects
+          const convertedStates: { [conversationId: string]: ConversationMetadata } = {};
+          Object.entries(states).forEach(([id, metadata]: [string, any]) => {
+            convertedStates[id] = {
+              ...metadata,
+              hiddenAt: metadata.hiddenAt ? new Date(metadata.hiddenAt) : undefined,
+              archivedAt: metadata.archivedAt ? new Date(metadata.archivedAt) : undefined
+            };
+          });
+          setConversationStates(convertedStates);
+          console.log('XMTP: Loaded conversation states from localStorage');
+          return convertedStates;
+        }
+      }
+    } catch (err) {
+      console.error('XMTP: Error loading conversation states:', err);
+    }
+    return {};
+  };
+
+  // Conversation management functions with cross-browser sync
+  const hideConversation = (conversationId: string) => {
+    setConversationStates(prev => {
+      const newStates = {
+        ...prev,
+        [conversationId]: {
+          state: 'hidden' as ConversationState,
+          hiddenAt: new Date(),
+          archivedAt: prev[conversationId]?.archivedAt
+        }
+      };
+      saveConversationStates(newStates);
+      return newStates;
+    });
   };
 
   const unhideConversation = (conversationId: string) => {
-    setConversationStates(prev => ({
-      ...prev,
-      [conversationId]: {
-        state: 'active',
-        hiddenAt: undefined,
-        archivedAt: prev[conversationId]?.archivedAt
-      }
-    }));
+    setConversationStates(prev => {
+      const newStates = {
+        ...prev,
+        [conversationId]: {
+          state: 'active' as ConversationState,
+          hiddenAt: undefined,
+          archivedAt: prev[conversationId]?.archivedAt
+        }
+      };
+      saveConversationStates(newStates);
+      return newStates;
+    });
   };
 
   const archiveConversation = (conversationId: string) => {
-    setConversationStates(prev => ({
-      ...prev,
-      [conversationId]: {
-        state: 'archived',
-        hiddenAt: prev[conversationId]?.hiddenAt,
-        archivedAt: new Date()
-      }
-    }));
+    setConversationStates(prev => {
+      const newStates = {
+        ...prev,
+        [conversationId]: {
+          state: 'archived' as ConversationState,
+          hiddenAt: prev[conversationId]?.hiddenAt,
+          archivedAt: new Date()
+        }
+      };
+      saveConversationStates(newStates);
+      return newStates;
+    });
   };
 
   const unarchiveConversation = (conversationId: string) => {
-    setConversationStates(prev => ({
-      ...prev,
-      [conversationId]: {
-        state: 'active',
-        hiddenAt: prev[conversationId]?.hiddenAt,
-        archivedAt: undefined
-      }
-    }));
+    setConversationStates(prev => {
+      const newStates = {
+        ...prev,
+        [conversationId]: {
+          state: 'active' as ConversationState,
+          hiddenAt: prev[conversationId]?.hiddenAt,
+          archivedAt: undefined
+        }
+      };
+      saveConversationStates(newStates);
+      return newStates;
+    });
   };
 
   const getConversationsByState = (state: ConversationState): Conversation[] => {
@@ -862,6 +933,14 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       const metadata = conversationStates[conversation.id];
       return metadata?.state === state;
     });
+  };
+
+  // Sync conversation states across browsers
+  const syncConversationStates = () => {
+    if (client) {
+      console.log('XMTP: Syncing conversation states across browsers...');
+      loadConversationStates();
+    }
   };
 
   const value: XMTPContextType = {
@@ -889,7 +968,7 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     canMessage,
     getCurrentInboxId,
     syncOptimisticGroups,
-    getInstallationStatus,
+    syncConversationStates,
     cleanupExpiredInstallations,
     isConnected,
   };
