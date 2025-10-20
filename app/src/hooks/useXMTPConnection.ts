@@ -66,7 +66,8 @@ export const useXMTPConnection = () => {
     }
     
     // Note: XMTP installation reuse is now handled in the XMTP context
-    // The connect function will automatically check for and reuse existing installations
+    // The connect function will ALWAYS check for existing installations across browsers
+    // and sync them to ensure users have access to all their past messages
     
     setIsConnecting(true);
     try {
