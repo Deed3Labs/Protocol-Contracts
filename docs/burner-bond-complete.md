@@ -262,14 +262,14 @@ discount = maxDiscount * log(1 + normalizedTime * (base - 1)) / log(base)
 - **Admin-configurable** parameters
 
 ### **Mathematical Bounds:**
-All curve types are mathematically bounded to ensure they never exceed the maximum discount:
+All curve types are mathematically bounded to ensure they operate within the configured discount range:
 
-- **Linear:** Naturally bounded by `maxDiscount` (reaches exactly `maxDiscount` at `maxMaturity`)
-- **Exponential:** Uses `maxDiscount` as the scale factor, ensuring the result is bounded between 0 and `maxDiscount`
-- **Logarithmic:** Uses `maxDiscount` as the scale factor, ensuring the result is bounded between 0 and `maxDiscount`
-- **Custom:** Will be bounded by the same `maxDiscount` constraint
+- **Linear:** Naturally bounded between `minDiscount` and `maxDiscount` (reaches exactly `maxDiscount` at `maxMaturity` and `minDiscount` at `minMaturity`)
+- **Bonding:** Uses `minDiscount` and `maxDiscount` as the range bounds, ensuring the result is bounded between `minDiscount` and `maxDiscount`
+- **Logarithmic:** Uses `minDiscount` and `maxDiscount` as the range bounds, ensuring the result is bounded between `minDiscount` and `maxDiscount`
+- **Custom:** Will be bounded by the same `minDiscount` and `maxDiscount` constraints
 
-The key insight is that `maxDiscount` serves as the "100%" scale for all curve types, not just a cap. This ensures that regardless of the curve type or parameters, no bond can ever receive a discount greater than the configured maximum.
+The key insight is that `minDiscount` and `maxDiscount` define the complete range for all curve types, not just caps. This ensures that regardless of the curve type or parameters, all bonds receive discounts within the configured range, with `minDiscount` serving as the floor and `maxDiscount` as the ceiling.
 
 ### **Curve Configuration:**
 ```solidity
