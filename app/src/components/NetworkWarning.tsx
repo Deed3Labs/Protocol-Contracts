@@ -38,7 +38,7 @@ export function NetworkWarning() {
   if (isCorrectNetwork) {
     const contractAddress = chainId ? getContractAddressForNetwork(chainId) : null;
     return (
-      <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+      <div className="mb-0 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
         <p className="text-blue-800 dark:text-blue-200 text-sm">
           <strong>Debug Info:</strong> Chain ID: {chainId}, Contract: {contractAddress || 'Not found'}, 
           Address: {address ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}` : 'None'}
@@ -56,7 +56,7 @@ export function NetworkWarning() {
   const isSupportedButNotDeployed = chainId ? (isNetworkSupported(chainId) && !isDeedNFTDeployed(chainId)) : false;
 
   return (
-    <Card className={`mb-4 ${
+    <Card className={`mb-0 ${
       isSupportedButNotDeployed 
         ? 'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950'
         : 'border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950'

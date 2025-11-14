@@ -352,7 +352,7 @@ const TransferModal: React.FC<TransferModalProps> = ({
 
   return (
     <Dialog open={isOpen && !isTransactionInProgress} onOpenChange={handleClose}>
-      <MobileDialogContent className="max-w-2xl w-full h-full md:max-h-[90vh] border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm overflow-hidden">
+      <MobileDialogContent className="max-w-2xl px-6 py-4 w-full h-full md:max-h-[90vh] border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#0e0e0e]/90 backdrop-blur-sm overflow-hidden">
         <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-0 border-b-0">
           <div>
             <DialogTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center space-x-2">
@@ -368,14 +368,14 @@ const TransferModal: React.FC<TransferModalProps> = ({
             size="sm"
             onClick={handleClose}
             disabled={isLoading}
-            className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-10 w-10 p-0"
+            className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] h-10 w-10 p-0"
           >
             <X className="w-4 h-4" />
           </Button>
         </DialogHeader>
 
         <div className="overflow-y-auto h-full max-h-[calc(100vh-120px)] md:max-h-[calc(90vh-120px)]">
-          <div className="space-y-4 p-0 md:p-3">
+          <div className="space-y-4 p-0 md:p-0">
             {/* T-Deed Information */}
             <Card className="border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/50 backdrop-blur-sm">
               <CardHeader className="pb-3">

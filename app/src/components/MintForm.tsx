@@ -2041,10 +2041,10 @@ const MintForm = () => {
   };
 
   return (
-    <main className="container mx-auto py-12 px-4">
+    <main className="container mx-auto pt-4 pb-12 px-4">
       <NetworkWarning />
       
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mt-6">
         {/* Sidebar */}
         <div className="lg:col-span-1">
           <Card className="sticky top-24 border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">

@@ -868,22 +868,7 @@ const AdminPanel = () => {
   }
 
   return (
-    <div className="container mx-auto py-12 px-4">
-      
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center">
-          <div>
-                    <h1 className="text-[8vw] lg:text-5xl font-bold text-gray-900 dark:text-white mb-2 font-coolvetica">
-          ADMIN PANEL
-        </h1>
-            <p className="text-gray-600 dark:text-gray-300">
-              Manage contract configurations and roles. You have the following roles: {userRoles.join(', ')}
-            </p>
-          </div>
-        </div>
-      </div>
-
+    <div className="container mx-auto pt-4 pb-8 px-4">
       {/* Debug Information */}
       {isWalletConnected && isCorrectNetwork && (
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -923,25 +908,25 @@ const AdminPanel = () => {
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 bg-gray-100 dark:bg-gray-800 mb-8">
-          <TabsTrigger value="deednft" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+        <TabsList className="grid w-full grid-cols-5 bg-gray-100 dark:bg-[#0e0e0e] border border-black/10 dark:border-white/10 mb-8">
+          <TabsTrigger value="deednft" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             <Database className="w-4 h-4 mr-2 hidden md:inline" />
             DeedNFT
           </TabsTrigger>
-          <TabsTrigger value="roles" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+          <TabsTrigger value="roles" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             <Users className="w-4 h-4 mr-2 hidden md:inline" />
             Roles
           </TabsTrigger>
-          <TabsTrigger value="validator" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+          <TabsTrigger value="validator" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             <Shield className="w-4 h-4 mr-2 hidden md:inline" />
             Validator
           </TabsTrigger>
-          <TabsTrigger value="fundmanager" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+          <TabsTrigger value="fundmanager" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             <DollarSign className="w-4 h-4 mr-2 hidden md:inline" />
             <span className="md:hidden">Funds</span>
             <span className="hidden md:inline">FundManager</span>
           </TabsTrigger>
-          <TabsTrigger value="registry" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700">
+          <TabsTrigger value="registry" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             <FileText className="w-4 h-4 mr-2 hidden md:inline" />
             Registry
           </TabsTrigger>
@@ -960,7 +945,7 @@ const AdminPanel = () => {
                     onClick={() => handleDeedNFTAction("pause")}
                     disabled={isLoading}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     <Lock className="w-4 h-4 mr-2" />
                     Pause
@@ -969,7 +954,7 @@ const AdminPanel = () => {
                     onClick={() => handleDeedNFTAction("unpause")}
                     disabled={isLoading}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     <Unlock className="w-4 h-4 mr-2" />
                     Unpause
@@ -993,7 +978,7 @@ const AdminPanel = () => {
                 <Button
                   onClick={() => handleDeedNFTAction("setContractURI")}
                   disabled={isLoading || !deedNFTForm.contractURI}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   Update URI
                 </Button>
@@ -1021,7 +1006,7 @@ const AdminPanel = () => {
                 <Button
                   onClick={() => handleDeedNFTAction("setTraitName")}
                   disabled={isLoading || !deedNFTForm.traitKey || !deedNFTForm.traitName}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   Set Trait Name
                 </Button>
@@ -1051,7 +1036,7 @@ const AdminPanel = () => {
                 <Button
                   onClick={() => handleDeedNFTAction("setApprovedMarketplace")}
                   disabled={isLoading || !deedNFTForm.marketplace}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   Update Marketplace
                 </Button>
@@ -1075,7 +1060,7 @@ const AdminPanel = () => {
                 <Button
                   onClick={() => handleDeedNFTAction("setRoyaltyEnforcement")}
                   disabled={isLoading}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   Update Royalty Enforcement
                 </Button>
@@ -1097,7 +1082,7 @@ const AdminPanel = () => {
                 <Button
                   onClick={() => handleDeedNFTAction("setTransferValidator")}
                   disabled={isLoading || !deedNFTForm.transferValidator}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   Set Transfer Validator
                 </Button>
@@ -1119,7 +1104,7 @@ const AdminPanel = () => {
                 <Button
                   onClick={() => handleDeedNFTAction("setFundManager")}
                   disabled={isLoading || !deedNFTForm.fundManager}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   Set Fund Manager
                 </Button>
@@ -1207,7 +1192,7 @@ const AdminPanel = () => {
               <Button
                 onClick={handleRoleAction}
                 disabled={isLoading || !roleForm.targetAddress}
-                className="w-full mt-4 bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                className="w-full mt-4 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
               >
                 {isLoading ? 'Processing...' : `${roleForm.action === 'grant' ? 'Grant' : 'Revoke'} Role`}
               </Button>
@@ -1238,7 +1223,7 @@ const AdminPanel = () => {
                 <Button
                   onClick={() => handleValidatorAction("setServiceFee")}
                   disabled={isLoading || !validatorForm.tokenAddress || !validatorForm.serviceFee}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   Set Service Fee
                 </Button>
@@ -1262,7 +1247,7 @@ const AdminPanel = () => {
                     onClick={() => handleValidatorAction("addWhitelistedToken")}
                     disabled={isLoading || !validatorForm.tokenAddress}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     Add Token
                   </Button>
@@ -1270,7 +1255,7 @@ const AdminPanel = () => {
                     onClick={() => handleValidatorAction("removeWhitelistedToken")}
                     disabled={isLoading || !validatorForm.tokenAddress}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     Remove Token
                   </Button>
@@ -1299,7 +1284,7 @@ const AdminPanel = () => {
                 <Button
                   onClick={() => handleValidatorAction("registerOperatingAgreement")}
                   disabled={isLoading || !validatorForm.operatingAgreementUri || !validatorForm.agreementName}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   Register Agreement
                 </Button>
@@ -1329,7 +1314,7 @@ const AdminPanel = () => {
                     onClick={() => handleValidatorAction("setRoyaltyFeePercentage")}
                     disabled={isLoading || !validatorForm.royaltyPercentage}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     Set Percentage
                   </Button>
@@ -1337,7 +1322,7 @@ const AdminPanel = () => {
                     onClick={() => handleValidatorAction("setRoyaltyReceiver")}
                     disabled={isLoading || !validatorForm.royaltyReceiver}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     Set Receiver
                   </Button>
@@ -1372,7 +1357,7 @@ const AdminPanel = () => {
                     onClick={() => handleFundManagerAction("setCommissionPercentage")}
                     disabled={isLoading || !fundManagerForm.commissionPercentage}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     Set Commission
                   </Button>
@@ -1380,7 +1365,7 @@ const AdminPanel = () => {
                     onClick={() => handleFundManagerAction("setFeeReceiver")}
                     disabled={isLoading || !fundManagerForm.feeReceiver}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     Set Receiver
                   </Button>
@@ -1403,7 +1388,7 @@ const AdminPanel = () => {
                 <Button
                   onClick={() => handleFundManagerAction("setValidatorRegistry")}
                   disabled={isLoading || !fundManagerForm.validatorRegistry}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white font-semibold py-3 rounded-lg transition-colors duration-200 border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   Set Registry
                 </Button>
@@ -1427,7 +1412,7 @@ const AdminPanel = () => {
                     onClick={() => handleFundManagerAction("addCompatibleDeedNFT")}
                     disabled={isLoading || !fundManagerForm.deedNFTAddress}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     Add DeedNFT
                   </Button>
@@ -1435,7 +1420,7 @@ const AdminPanel = () => {
                     onClick={() => handleFundManagerAction("removeCompatibleDeedNFT")}
                     disabled={isLoading || !fundManagerForm.deedNFTAddress}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     Remove DeedNFT
                   </Button>
@@ -1460,7 +1445,7 @@ const AdminPanel = () => {
                     onClick={() => handleFundManagerAction("addWhitelistedToken")}
                     disabled={isLoading || !fundManagerForm.tokenAddress}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     Add Token
                   </Button>
@@ -1468,7 +1453,7 @@ const AdminPanel = () => {
                     onClick={() => handleFundManagerAction("removeWhitelistedToken")}
                     disabled={isLoading || !fundManagerForm.tokenAddress}
                     variant="outline"
-                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11"
+                    className="flex-1 border-black/10 dark:border-white/10 text-gray-700 dark:text-black hover:bg-gray-50 dark:hover:bg-gray-100 dark:bg-white disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                   >
                     Remove Token
                   </Button>

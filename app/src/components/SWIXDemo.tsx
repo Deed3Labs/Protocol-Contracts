@@ -9,6 +9,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SWIXAuth } from './SWIXAuth';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
+import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
+import { getContractAddressForNetwork } from '@/config/networks';
+import { useNetworkValidation } from '@/hooks/useNetworkValidation';
 import XMTPMessaging from './XMTPMessaging';
 import { useXMTP } from '@/context/XMTPContext';
 import { useXMTPConnection } from '@/hooks/useXMTPConnection';
@@ -54,6 +57,13 @@ export function SWIXDemo() {
   const { isConnected, isAuthenticated, user, setSessionMetadata, siwx } = useAppKitAuth();
   const { isConnected: isXMTPConnected, conversations } = useXMTP();
   const { handleConnect: handleXMTPConnect } = useXMTPConnection();
+  
+  const { address, isConnected: isAppKitConnected, embeddedWalletInfo, status } = useAppKitAccount();
+  const { caipNetworkId } = useAppKitNetwork();
+  const isWalletConnected = isAppKitConnected || (embeddedWalletInfo && status === 'connected');
+  const chainId = caipNetworkId ? parseInt(caipNetworkId.split(':')[1]) : undefined;
+  const { isCorrectNetwork } = useNetworkValidation();
+  const contractAddress = chainId ? getContractAddressForNetwork(chainId) : null;
   
   const [profile, setProfile] = useState<UserProfile>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -286,16 +296,25 @@ export function SWIXDemo() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-8">
-      {/* Header */}
-      <div className="text-center space-y-4">
-                    <h1 className="text-5xl lg:text-6xl font-bold font-coolvetica">
-          USER PROFILE & SETTINGS
-        </h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Manage your SWIX authentication data, profile information, and preferences
+    <div className="container mx-auto px-4 pt-4 pb-8 space-y-8">
+      {/* Debug Information */}
+      {isWalletConnected && isCorrectNetwork && (
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <p className="text-blue-800 dark:text-blue-200 text-sm">
+            <strong>Debug Info:</strong> Chain ID: {chainId}, Contract: {contractAddress || 'Not found'}, 
+            Address: {address ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}` : 'None'}
+            {embeddedWalletInfo && (
+              <span className="ml-2">
+                | Embedded Wallet: {embeddedWalletInfo.authProvider} ({embeddedWalletInfo.accountType})
+              </span>
+            )}
+          </p>
+          <p className="text-blue-700 dark:text-blue-300 text-xs mt-1">
+            Connection Status: {isAppKitConnected ? 'Connected' : 'Disconnected'} | 
+            Network: {isCorrectNetwork ? 'Correct' : 'Incorrect'}
         </p>
       </div>
+      )}
 
       {/* Status Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -389,7 +408,7 @@ export function SWIXDemo() {
 
       {/* Main Content */}
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-5 bg-gray-100 dark:bg-[#0e0e0e] border border-gray-200 dark:border-white/10">
+        <TabsList className="grid w-full grid-cols-5 bg-gray-100 dark:bg-[#0e0e0e] border border-black/10 dark:border-white/10">
           <TabsTrigger value="profile" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             Profile
           </TabsTrigger>

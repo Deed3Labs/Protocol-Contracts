@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Home, Plus, Search, BarChart3, ShieldCheck } from "lucide-react";
+import { Home, Plus, Search, BarChart3, ShieldCheck, DollarSign } from "lucide-react";
 import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
 import { ethers } from "ethers";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
@@ -275,6 +275,18 @@ const Header = ({ children }: HeaderProps) => {
                 Validation
               </Link>
 
+              {/* Bonds */}
+              <Link 
+                to="/bonds"
+                className={`font-medium transition-colors duration-200 ${
+                  isActive("/bonds") 
+                    ? "text-gray-900 dark:text-white border-b-2 border-gray-900 dark:border-white pb-1" 
+                    : "text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
+                }`}
+              >
+                Bonds
+              </Link>
+
             </div>
           </div>
 
@@ -296,8 +308,8 @@ const Header = ({ children }: HeaderProps) => {
       <div className="h-0.5 md:h-20"></div>
 
       {/* Mobile Bottom Tab Navigation */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm border-t border-black/10 dark:border-white/10">
-        <div className="flex items-center justify-around py-2">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#0E0E0E]/95 backdrop-blur-sm border-t border-black/10 dark:border-white/10 p-2">
+        <div className="flex items-center justify-around gap-1 pt-1 pb-2.5 px-0">
           {/* Home */}
           <Link 
             to="/"
@@ -361,6 +373,19 @@ const Header = ({ children }: HeaderProps) => {
           >
             <ShieldCheck className="w-5 h-5 mb-1" />
             <span className="text-xs font-medium truncate">Validation</span>
+          </Link>
+
+          {/* Bonds */}
+          <Link 
+            to="/bonds"
+            className={`flex flex-col items-center justify-center py-2 px-3 rounded-lg transition-all duration-200 min-w-0 flex-1 ${
+              isActive("/bonds") 
+                ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800" 
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800"
+            }`}
+          >
+            <DollarSign className="w-5 h-5 mb-1" />
+            <span className="text-xs font-medium truncate">Bonds</span>
           </Link>
 
         </div>
