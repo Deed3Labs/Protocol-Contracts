@@ -1,12 +1,12 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Eye, RefreshCw } from "lucide-react";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { useState } from "react";
 import DeedNFTViewer from "./DeedNFTViewer";
 import DeedNFTMap from "./DeedNFTMap";
+import MakeOfferModal from "./MakeOfferModal";
+import DeedCard from "./DeedCard";
 import type { DeedNFT } from "@/hooks/useDeedNFTData";
 
 const Explore = () => {
@@ -28,6 +28,8 @@ const Explore = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [selectedDeedNFT, setSelectedDeedNFT] = useState<DeedNFT | null>(null);
+  const [offerDeedNFT, setOfferDeedNFT] = useState<DeedNFT | null>(null);
+  const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
 
   const filteredDeedNFTs = deedNFTs.filter(deedNFT => {
     const matchesSearch = deedNFT.definition.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -59,8 +61,18 @@ const Explore = () => {
     setSelectedDeedNFT(deedNFT);
   };
 
+  const handleMakeOffer = (deedNFT: DeedNFT) => {
+    setOfferDeedNFT(deedNFT);
+    setIsOfferModalOpen(true);
+  };
+
+  const handleCloseOfferModal = () => {
+    setIsOfferModalOpen(false);
+    setOfferDeedNFT(null);
+  };
+
   return (
-    <main className="container mx-auto py-12 px-4">
+    <main className="container mx-auto pt-4 pb-12 px-4">
 
       {/* Debug Information */}
       {isConnected && isCorrectNetwork && (
@@ -121,9 +133,9 @@ const Explore = () => {
 
       {/* Search and Filter Bar */}
       <div className="w-full mb-8">
-        <div className="flex flex-col lg:flex-row gap-3">
+        <div className="flex flex-row gap-2">
           {/* Search Input - Takes up 2/3 of the space */}
-          <form onSubmit={handleSearchSubmit} className="flex-1 lg:flex-[2] relative">
+          <form onSubmit={handleSearchSubmit} className="flex-[2] min-w-0 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
@@ -143,10 +155,10 @@ const Explore = () => {
             )}
           </form>
           
-          {/* Filter Dropdown - Takes up remaining space */}
-          <div className="w-full lg:w-32">
+          {/* Filter Dropdown - Takes up 1/3 of the space */}
+          <div className="flex-1 min-w-0">
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-full border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
+              <SelectTrigger className="w-full h-11 border-black/10 dark:border-white/10 bg-white dark:bg-[#141414] text-gray-900 dark:text-white">
                 <SelectValue placeholder="All Types" />
               </SelectTrigger>
               <SelectContent>
@@ -161,16 +173,16 @@ const Explore = () => {
             </Select>
           </div>
           
-          {/* Refresh Button - Fixed width */}
-          <div className="w-full lg:w-32">
+          {/* Refresh Button */}
+          <div className="flex-shrink-0">
             <Button 
               onClick={fetchDeedNFTs}
               disabled={loading}
               variant="outline" 
-              className="w-full h-11 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] px-4"
+              className="h-11 w-11 md:w-auto md:px-4 border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] dark:bg-[#141414] flex-shrink-0"
             >
-              <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
+              <RefreshCw className={`w-4 h-4 md:mr-1 ${loading ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline">Refresh</span>
             </Button>
           </div>
         </div>
@@ -205,59 +217,14 @@ const Explore = () => {
             const assetTypeLabel = getAssetTypeLabel(deedNFT.assetType);
             
             return (
-              <Card key={deedNFT.tokenId} className="group hover:border-black/20 dark:hover:border-white/20 transition-all duration-300 border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
-                <CardHeader className="pb-3">
-                  <div className="flex justify-between items-start">
-                    <CardTitle className="text-lg text-gray-900 dark:text-white">
-                      {assetTypeLabel} #{deedNFT.tokenId}
-                    </CardTitle>
-                    <Badge 
-                      variant="secondary" 
-                      className={`${
-                        validationStatus.color === "green" 
-                          ? "bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300"
-                          : "bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300"
-                      }`}
-                    >
-                      {validationStatus.status}
-                    </Badge>
-                  </div>
-                  <CardDescription className="text-gray-600 dark:text-gray-300">
-                    {deedNFT.definition.length > 50 
-                      ? `${deedNFT.definition.substring(0, 50)}...` 
-                      : deedNFT.definition
-                    }
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500 dark:text-gray-400">Asset Type:</span>
-                      <span className="text-gray-900 dark:text-white font-medium">{assetTypeLabel}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500 dark:text-gray-400">Owner:</span>
-                      <span className="text-gray-900 dark:text-white font-mono text-xs">
-                        {deedNFT.owner.substring(0, 6)}...{deedNFT.owner.substring(deedNFT.owner.length - 4)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500 dark:text-gray-400">Token ID:</span>
-                      <span className="text-gray-900 dark:text-white font-medium">#{deedNFT.tokenId}</span>
-                    </div>
-                    {deedNFT.uri && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500 dark:text-gray-400">Metadata:</span>
-                        <span className="text-gray-900 dark:text-white font-medium">Available</span>
-                      </div>
-                    )}
-                  </div>
-                  <Button variant="outline" className="w-full border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11" onClick={() => handleViewDetails(deedNFT)}>
-                    <Eye className="w-4 h-4 mr-1" />
-                    View Details
-                  </Button>
-                </CardContent>
-              </Card>
+              <DeedCard
+                key={deedNFT.tokenId}
+                deedNFT={deedNFT}
+                validationStatus={validationStatus}
+                assetTypeLabel={assetTypeLabel}
+                onViewDetails={handleViewDetails}
+                onMakeOffer={handleMakeOffer}
+              />
             );
           })}
         </div>
@@ -280,6 +247,17 @@ const Explore = () => {
           onClose={() => setSelectedDeedNFT(null)}
           getAssetTypeLabel={getAssetTypeLabel}
           getValidationStatus={getValidationStatus}
+        />
+      )}
+
+      {/* Make Offer Modal */}
+      {offerDeedNFT && (
+        <MakeOfferModal
+          isOpen={isOfferModalOpen}
+          onClose={handleCloseOfferModal}
+          assetType="deed"
+          assetId={offerDeedNFT.tokenId}
+          assetName={getAssetTypeLabel(offerDeedNFT.assetType)}
         />
       )}
     </main>

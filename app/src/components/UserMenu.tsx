@@ -9,7 +9,6 @@ import {
   ChevronDown,
   HelpCircle,
   Github,
-  Twitter,
   Mail,
   CheckCircle,
   AlertCircle,
@@ -156,11 +155,11 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
 
       {/* User Menu Modal */}
               <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogContent className="flex flex-col w-[calc(100vw-2rem)] max-w-md max-h-[90vh] overflow-hidden mx-auto rounded-xl py-4 pb-0 px-0 border border-gray-200 dark:border-gray-700">
+          <DialogContent className="flex flex-col w-[calc(100vw-2rem)] max-w-md max-h-[90vh] overflow-hidden mx-auto rounded-xl py-4 pb-0 px-0 border border-black/10 dark:border-white/10 bg-white dark:bg-[#0e0e0e]">
                     <DialogHeader className="px-6 pb-0">
             <div className="flex items-center justify-between">
-                             <DialogTitle className="text-left text-lg font-semibold">Notifications</DialogTitle>
-              <div className="scale-75 origin-right border border-black/10 dark:border-transparent rounded-full">
+                             <DialogTitle className="text-left text-xl font-semibold">Notifications</DialogTitle>
+              <div className="scale-75 origin-right rounded-full">
                 <appkit-button />
               </div>
             </div>
@@ -170,7 +169,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
             {/* Mini Profile Section */}
             {isConnected && (
               <div className="px-6 pb-4">
-                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#141414] rounded-lg border border-black/10 dark:border-white/10">
                   <div className="flex items-center space-x-3">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
                       <User className="w-4 h-4 text-white" />
@@ -185,7 +184,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
                     </div>
                   </div>
                   <div className="flex items-center space-x-1">
-                    <Link to="/profile">
+                    <Link to="/profile" onClick={() => setIsOpen(false)}>
                       <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
                         Profile
                       </Button>
@@ -203,7 +202,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
                     variant={!showArchive ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setShowArchive(false)}
-                    className="text-xs"
+                    className={`text-xs ${!showArchive ? "bg-black hover:bg-[#141414] text-white dark:hover:text-white text-white dark:bg-white dark:hover:bg-[#141414] dark:text-black" : "dark:hover:bg-[#141414]"}`}
                   >
                     Active ({notifications.length})
                   </Button>
@@ -211,7 +210,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
                     variant={showArchive ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setShowArchive(true)}
-                    className="text-xs"
+                    className={`text-xs ${showArchive ? "bg-black hover:bg-[#141414] text-white dark:hover:text-white text-white dark:bg-white dark:hover:bg-[#141414] dark:text-black" : "dark:hover:bg-[#141414]"}`}
                   >
                     Archive ({archivedNotifications.length})
                   </Button>
@@ -269,8 +268,8 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
                           key={notification.id}
                           className={`p-4 rounded-lg border transition-colors ${
                             notification.read
-                              ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
-                              : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                              ? 'bg-gray-50 dark:bg-gray-800/50 border-black/10 dark:border-white/10'
+                              : 'bg-blue-50 dark:bg-blue-900/20 border-black/10 dark:border-white/10'
                           }`}
                         >
                           <div className="flex items-start space-x-3">
@@ -322,7 +321,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
                       archivedNotifications.map((notification) => (
                         <div
                           key={notification.id}
-                          className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 opacity-75"
+                          className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-800/50 border-black/10 dark:border-white/10 opacity-75"
                         >
                           <div className="flex items-start space-x-3">
                             {notification.type === 'success' ? (
@@ -363,9 +362,9 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
 
             {/* Settings Actions */}
             <div className="px-6 pb-4">
-              <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
-                 <div className="flex items-center space-x-3">
-                   <Button variant="outline" className="h-8 w-8 p-0" onClick={toggleTheme}>
+              <div className="flex items-center justify-between pt-2 border-t border-black/10 dark:border-white/10 pt-3">
+                 <div className="flex items-center space-x-2">
+                   <Button variant="outline" className="h-8 w-8 p-0 dark:bg-[#141414]" onClick={toggleTheme}>
                      {isDark ? (
                        <Sun className="w-3 h-3" />
                      ) : (
@@ -374,8 +373,9 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
                    </Button>
                    <Button 
                      variant="outline" 
-                     className="h-8 w-8 p-0"
+                     className="h-8 w-8 p-0 dark:bg-[#141414]"
                      onClick={() => {
+                       setIsOpen(false);
                        if (address) {
                          const network = 'base-sepolia';
                          const url = `https://${network}.etherscan.io/address/${address}`;
@@ -385,12 +385,12 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
                    >
                      <ExternalLink className="w-3 h-3" />
                    </Button>
-                   <Button variant="outline" className="h-8 w-8 p-0">
+                   <Button variant="outline" className="h-8 w-8 p-0 dark:bg-[#141414]">
                      <HelpCircle className="w-3 h-3" />
                    </Button>
                    {hasAdminRole && (
-                     <Link to="/admin">
-                       <Button variant="outline" className="h-8 w-8 p-0">
+                     <Link to="/admin" onClick={() => setIsOpen(false)}>
+                       <Button variant="outline" className="h-8 w-8 p-0 dark:bg-[#141414]">
                          <Shield className="w-3 h-3" />
                        </Button>
                      </Link>
@@ -402,7 +402,10 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
                    <Button
                      variant="ghost"
                      size="sm"
-                     onClick={() => window.open('https://github.com/Deed3Labs', '_blank')}
+                     onClick={() => {
+                       setIsOpen(false);
+                       window.open('https://github.com/Deed3Labs', '_blank');
+                     }}
                      className="h-6 w-6 p-0"
                    >
                      <Github className="w-3 h-3" />
@@ -410,15 +413,23 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
                    <Button
                      variant="ghost"
                      size="sm"
-                     onClick={() => window.open('https://x.com/Deed3Labs', '_blank')}
+                     onClick={() => {
+                       setIsOpen(false);
+                       window.open('https://x.com/Deed3Labs', '_blank');
+                     }}
                      className="h-6 w-6 p-0"
                    >
-                     <Twitter className="w-3 h-3" />
+                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                     </svg>
                    </Button>
                    <Button
                      variant="ghost"
                      size="sm"
-                     onClick={() => window.open('mailto:support@deed3labs.com', '_blank')}
+                     onClick={() => {
+                       setIsOpen(false);
+                       window.open('mailto:support@deed3.io', '_blank');
+                     }}
                      className="h-6 w-6 p-0"
                    >
                      <Mail className="w-3 h-3" />

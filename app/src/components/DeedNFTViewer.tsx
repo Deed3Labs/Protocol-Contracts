@@ -67,6 +67,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
   const [isLiked, setIsLiked] = useState(false);
   const [metadata, setMetadata] = useState<TokenMetadata | null>(null);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   
   const validationStatus = getValidationStatus(deedNFT);
@@ -157,11 +158,13 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
   };
 
   const handleRefreshMetadata = () => {
+    setIsRefreshing(true);
     // Force re-fetch metadata
     setIsLoadingMetadata(true);
     const fetchMetadata = async () => {
       if (!deedNFT.uri) {
         setIsLoadingMetadata(false);
+        setIsRefreshing(false);
         return;
       }
 
@@ -187,6 +190,10 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
         setImages([]);
       } finally {
         setIsLoadingMetadata(false);
+        // Keep spinner visible for at least 500ms for visual feedback
+        setTimeout(() => {
+          setIsRefreshing(false);
+        }, 500);
       }
     };
 
@@ -196,12 +203,12 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
   if (!isOpen) return null;
 
   const containerClass = isFullPage 
-    ? "fixed inset-0 bg-white dark:bg-[#141414] z-50 overflow-y-auto"
+    ? "fixed inset-0 bg-white dark:bg-[#0e0e0e] z-50 overflow-y-auto"
     : "fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4";
 
   const contentClass = isFullPage
     ? "min-h-screen"
-    : "bg-white dark:bg-[#141414] rounded-xl max-w-6xl w-full max-h-[95vh] overflow-y-auto";
+    : "bg-white dark:bg-[#0e0e0e] rounded-xl max-w-6xl w-full max-h-[95vh] overflow-y-auto";
 
   return (
     <div className={containerClass}>
@@ -226,11 +233,11 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
               variant="ghost"
               size="sm"
               onClick={handleRefreshMetadata}
-              disabled={isLoadingMetadata}
+              disabled={isRefreshing}
               className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               title="Refresh metadata"
             >
-              <RefreshCw className={`w-4 h-4 md:w-5 md:h-5 ${isLoadingMetadata ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 md:w-5 md:h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
             </Button>
             <Button
               variant="ghost"
@@ -331,7 +338,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
                         className={`flex-shrink-0 w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border-2 transition-all ${
                           selectedImage === index 
                             ? "border-gray-900 dark:border-white" 
-                            : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                            : "border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20"
                         }`}
                       >
                         <img
@@ -349,11 +356,11 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
 
           {/* Main Content Tabs */}
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 bg-gray-100 dark:bg-gray-800">
-              <TabsTrigger value="overview" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 text-xs md:text-sm">Overview</TabsTrigger>
-              <TabsTrigger value="attributes" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 text-xs md:text-sm">Attributes</TabsTrigger>
-              <TabsTrigger value="validation" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 text-xs md:text-sm">Validation</TabsTrigger>
-              <TabsTrigger value="details" className="data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700 text-xs md:text-sm">Details</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-4 bg-gray-100 dark:bg-[#0e0e0e] border border-black/10 dark:border-white/10">
+              <TabsTrigger value="overview" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414] text-xs md:text-sm">Overview</TabsTrigger>
+              <TabsTrigger value="attributes" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414] text-xs md:text-sm">Attributes</TabsTrigger>
+              <TabsTrigger value="validation" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414] text-xs md:text-sm">Validation</TabsTrigger>
+              <TabsTrigger value="details" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414] text-xs md:text-sm">Details</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-4 md:space-y-6 mt-4 md:mt-6">
@@ -432,7 +439,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
                       <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">Validation Status</p>
                       <Badge 
                         variant="secondary" 
-                        className={`${
+                        className={`border border-black/10 dark:border-white/10 ${
                           validationStatus.color === "green" 
                             ? "bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300"
                             : "bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300"
@@ -477,7 +484,7 @@ const DeedNFTViewer: React.FC<DeedNFTViewerProps> = ({
                     <span className="text-sm md:text-base text-gray-600 dark:text-gray-300">Status</span>
                     <Badge 
                       variant="secondary" 
-                      className={`${
+                      className={`border border-black/10 dark:border-white/10 ${
                         validationStatus.color === "green" 
                           ? "bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300"
                           : "bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300"

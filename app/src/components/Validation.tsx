@@ -1,21 +1,19 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import DeedCard from "./DeedCard";
 import { 
   Search, 
   Plus, 
   CheckCircle, 
   XCircle, 
   Clock, 
-  Eye, 
   Save,
-  Shield,
   User,
   Hash,
   AlertCircle,
@@ -1945,30 +1943,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center">
-          <div>
-                    <h1 className="text-[8vw] lg:text-5xl font-bold text-gray-900 dark:text-white mb-1 font-coolvetica">
-          VALIDATION DASHBOARD
-        </h1>
-            <p className="text-gray-600 dark:text-gray-300">
-              Manage T-Deed validation, traits, and metadata
-            </p>
-          </div>
-          <Button
-            onClick={fetchDeedNFTs}
-            disabled={loading}
-            variant="outline"
-            className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] h-11 px-4"
-          >
-            <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </div>
-      </div>
-
+    <div className="container mx-auto px-4 pt-4">
       {/* Debug Information */}
       {isWalletConnected && isCorrectNetwork && (
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -1997,58 +1972,58 @@ const Validation: React.FC<ValidationPageProps> = () => {
       )}
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <Card className="bg-white/80 dark:bg-[#141414]/90 backdrop-blur-sm border-black/10 dark:border-white/10">
           <CardContent className="p-6">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/20">
-                <Hash className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              </div>
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Total T-Deeds</p>
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total T-Deeds</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalDeedNFTs}</p>
               </div>
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                <Hash className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+        <Card className="bg-white/80 dark:bg-[#141414]/90 backdrop-blur-sm border-black/10 dark:border-white/10">
           <CardContent className="p-6">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/20">
-                <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-              </div>
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Validated</p>
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Validated</p>
                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.validatedDeedNFTs}</p>
               </div>
+              <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
+                <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+        <Card className="bg-white/80 dark:bg-[#141414]/90 backdrop-blur-sm border-black/10 dark:border-white/10">
           <CardContent className="p-6">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/20">
-                <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
-              </div>
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Pending</p>
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Pending</p>
                                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.pendingDeedNFTs}</p>
               </div>
+              <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-full">
+                <Clock className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
+        <Card className="bg-white/80 dark:bg-[#141414]/90 backdrop-blur-sm border-black/10 dark:border-white/10">
           <CardContent className="p-6">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/20">
-                <User className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              </div>
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Your T-Deeds</p>
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Your T-Deeds</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">{userDeedNFTs.length}</p>
+              </div>
+              <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-full">
+                <User className="w-6 h-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
           </CardContent>
@@ -2058,10 +2033,11 @@ const Validation: React.FC<ValidationPageProps> = () => {
       {/* Filters */}
       <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm mb-8">
         <CardContent className="p-6">
-          <div className="flex flex-col lg:flex-row gap-3">
-            {/* Search - Takes up 2/3 of the space */}
-            <div className="flex-1 lg:flex-[2] space-y-2">
-              <Label htmlFor="search" className="text-sm font-medium">Search</Label>
+          <div className="flex flex-col gap-3">
+            {/* Search - Top row with refresh button */}
+            <div className="flex items-end gap-2">
+              <div className="flex-[2] min-w-0">
+                <Label htmlFor="search" className="hidden sm:block text-sm font-medium mb-2">Search</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
@@ -2069,16 +2045,31 @@ const Validation: React.FC<ValidationPageProps> = () => {
                   placeholder="Search by token ID or definition..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 border-black/10 dark:border-white/10 h-11"
+                    className="pl-10 border-black/10 dark:border-white/10 h-11 md:h-12 dark:bg-[#141414]"
                 />
+                </div>
+              </div>
+              <div className="flex-shrink-0">
+                <Label className="hidden sm:block text-sm font-medium mb-2 opacity-0">Refresh</Label>
+                <Button
+                  onClick={fetchDeedNFTs}
+                  disabled={loading}
+                  variant="outline"
+                  className="border-black/10 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] dark:bg-[#141414] h-11 w-11 md:h-12 md:w-12 p-0 flex-shrink-0"
+                  title="Refresh"
+                >
+                  {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                </Button>
               </div>
             </div>
 
+            {/* Filters row - Bottom row */}
+            <div className="flex flex-row gap-2">
             {/* Status Filter - Flexible width */}
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="status" className="text-sm font-medium">Status</Label>
+              <div className="flex-1 min-w-0">
+                <Label htmlFor="status" className="hidden sm:block text-sm font-medium mb-2">Status</Label>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="border-black/10 dark:border-white/10 w-full">
+                  <SelectTrigger className="border-black/10 dark:border-white/10 w-full h-11 md:h-12 dark:bg-[#141414]">
                   <SelectValue placeholder="Filter by status" className="truncate" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2090,10 +2081,10 @@ const Validation: React.FC<ValidationPageProps> = () => {
             </div>
 
             {/* Asset Type Filter - Flexible width */}
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="assetType" className="text-sm font-medium">Asset Type</Label>
+              <div className="flex-1 min-w-0">
+                <Label htmlFor="assetType" className="hidden sm:block text-sm font-medium mb-2">Asset Type</Label>
               <Select value={filterAssetType} onValueChange={setFilterAssetType}>
-                <SelectTrigger className="border-black/10 dark:border-white/10 w-full">
+                  <SelectTrigger className="border-black/10 dark:border-white/10 w-full h-11 md:h-12 dark:bg-[#141414]">
                   <SelectValue placeholder="Filter by asset type" className="truncate" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2106,9 +2097,9 @@ const Validation: React.FC<ValidationPageProps> = () => {
               </Select>
             </div>
 
-            {/* Clear Filters Button - Fixed width */}
-            <div className="w-full lg:w-32 space-y-2">
-              <Label className="text-sm font-medium opacity-0">Action</Label>
+              {/* Clear Filters Button */}
+              <div className="flex-shrink-0">
+                <Label className="hidden sm:block text-sm font-medium mb-2 opacity-0">Action</Label>
               <Button 
                 onClick={() => {
                   setSearchTerm("");
@@ -2116,11 +2107,12 @@ const Validation: React.FC<ValidationPageProps> = () => {
                   setFilterAssetType("all");
                 }}
                 variant="outline"
-                className="w-full border-black/10 dark:border-white/10 h-11 px-4"
+                  className="border-black/10 dark:border-white/10 dark:bg-[#141414] h-11 w-11 md:h-11 md:w-auto md:px-4 flex-shrink-0"
               >
-                <RefreshCw className="w-4 h-4 mr-1" />
-                Clear Filters
+                  <RefreshCw className="w-4 h-4 md:mr-1" />
+                  <span className="hidden md:inline">Clear Filters</span>
               </Button>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -2128,7 +2120,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
       {/* Main Content */}
       <Tabs defaultValue="deednfts" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 bg-gray-100 dark:bg-[#0e0e0e] border border-gray-200 dark:border-white/10">
+        <TabsList className="grid w-full grid-cols-4 bg-gray-100 dark:bg-[#0e0e0e] border border-black/10 dark:border-white/10">
           <TabsTrigger value="deednfts" className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#141414]">
             T-Deeds ({filteredDeedNFTs.length})
           </TabsTrigger>
@@ -2165,65 +2157,19 @@ const Validation: React.FC<ValidationPageProps> = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredDeedNFTs.map((deedNFT) => {
                 const validationStatus = getValidationStatus(deedNFT);
+                const assetTypeLabel = getAssetTypeLabel(deedNFT.assetType);
                 return (
-                  <Card key={deedNFT.tokenId} className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg text-gray-900 dark:text-white">
-                          #{deedNFT.tokenId}
-                        </CardTitle>
-                        <Badge 
-                          variant="secondary" 
-                          className={`${
-                            validationStatus.color === "green" 
-                              ? "bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300"
-                              : "bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300"
-                          }`}
-                        >
-                          {validationStatus.status}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Asset Type</p>
-                        <p className="text-gray-900 dark:text-white font-medium">
-                          {getAssetTypeLabel(deedNFT.assetType)}
-                        </p>
-                      </div>
-                      
-                      <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Definition</p>
-                        <p className="text-gray-900 dark:text-white text-sm line-clamp-2">
-                          {deedNFT.definition}
-                        </p>
-                      </div>
-
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewDetails(deedNFT)}
-                          className="flex-1 border-black/10 dark:border-white/10 h-11"
-                        >
-                          <Eye className="w-4 h-4 mr-1" />
-                          View
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleValidateDeed(deedNFT.tokenId)}
-                          disabled={isLoading}
-                          className="flex-1 border-black/10 dark:border-white/10 h-11"
-                        >
-                          <Shield className="w-4 h-4 mr-1" />
-                          Validate
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <DeedCard
+                    key={deedNFT.tokenId}
+                    deedNFT={deedNFT}
+                    validationStatus={validationStatus}
+                    assetTypeLabel={assetTypeLabel}
+                    onViewDetails={handleViewDetails}
+                    onValidate={handleValidateDeed}
+                    showValidate={true}
+                  />
                 );
-              }                  )}
+              })}
                 </div>
               )}
 
@@ -2300,7 +2246,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <Button 
                 onClick={() => handleAddTrait(traitForm.tokenId)}
                 disabled={isLoading || !traitForm.tokenId || !traitForm.traitName || !traitForm.traitValue}
-                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
               >
                 <Plus className="w-4 h-4 mr-1" />
                 Add Trait
@@ -2344,7 +2290,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <Button 
                 onClick={() => handleRemoveTrait(removeTraitForm.tokenId)}
                 disabled={isLoading || !removeTraitForm.tokenId || !removeTraitForm.traitName}
-                className="w-full bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 dark:text-white border border-red-600 h-11"
+                className="w-full bg-red-600 hover:bg-red-700 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-red-600 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
               >
                 <XCircle className="w-4 h-4 mr-1" />
                 Remove Trait
@@ -2523,7 +2469,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetCustomMetadata}
                   disabled={isLoading || !customMetadataForm.tokenId || !customMetadataForm.customMetadata}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Custom Metadata
@@ -2565,7 +2511,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetAnimationURL}
                   disabled={isLoading || !animationURLForm.tokenId || !animationURLForm.animationURL}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Animation URL
@@ -2607,7 +2553,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetExternalLink}
                   disabled={isLoading || !externalLinkForm.tokenId || !externalLinkForm.externalLink}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set External Link
@@ -2671,7 +2617,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleManageDocument}
                   disabled={isLoading || !documentForm.tokenId || !documentForm.docType}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   {documentForm.isRemove ? "Remove Document" : "Add Document"}
@@ -2743,7 +2689,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetAssetCondition}
                   disabled={isLoading || !assetConditionForm.tokenId || !assetConditionForm.generalCondition}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Asset Condition
@@ -2819,7 +2765,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetLegalInfo}
                   disabled={isLoading || !legalInfoForm.tokenId || !legalInfoForm.jurisdiction}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Legal Info
@@ -2865,7 +2811,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetFeatures}
                   disabled={isLoading || !featuresForm.tokenId || featuresForm.features.length === 0}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Features
@@ -2911,7 +2857,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
                 <Button 
                   onClick={handleSetGallery}
                   disabled={isLoading || !galleryForm.tokenId || galleryForm.imageUrls.length === 0}
-                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+                  className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
                 >
                   <Save className="w-4 h-4 mr-1" />
                   Set Gallery
@@ -2969,7 +2915,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <Button 
                 onClick={handleUpdateDefinition}
                 disabled={isLoading || !definitionUpdateForm.tokenId || !definitionUpdateForm.definition.trim()}
-                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
               >
                 <Save className="w-4 h-4 mr-1" />
                 Update Definition
@@ -3030,7 +2976,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
               <Button 
                 onClick={() => handleUpdateValidation(validationForm.tokenId)}
                 disabled={isLoading || !validationForm.tokenId}
-                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-[#141414] dark:hover:bg-[#1a1a1a] dark:text-white border border-white/10 h-11"
+                className="w-full bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 dark:text-black border border-black/10 dark:border-black/10 disabled:bg-gray-300 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 h-11"
               >
                 <Save className="w-4 h-4 mr-1" />
                 Update Validation

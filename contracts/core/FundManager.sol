@@ -17,6 +17,7 @@ import "./interfaces/IValidatorRegistry.sol";
 import "./interfaces/IDeedNFT.sol";
 import "./interfaces/IValidator.sol";
 import "./interfaces/IFundManager.sol";
+import "./interfaces/ITokenRegistry.sol";
 
 /**
  * @title FundManager
@@ -59,6 +60,9 @@ contract FundManager is
     // Track whitelisted tokens
     address[] private whitelistedTokens;
     mapping(address => bool) private isWhitelistedToken;
+
+    // Centralized token registry (optional)
+    ITokenRegistry public tokenRegistry;
 
     /**
      * @dev Initializes the contract.
@@ -238,11 +242,10 @@ contract FundManager is
         require(token != address(0), "FundManager: Invalid token address");
         require(validatorAddress != address(0), "FundManager: Invalid validator address");
         
-        // Check if token is whitelisted by validator
-        require(
-            IValidator(validatorAddress).isTokenWhitelisted(token),
-            "FundManager: Token not whitelisted by validator"
-        );
+        // Check if token is whitelisted by validator or globally via registry
+        bool validatorOk = IValidator(validatorAddress).isTokenWhitelisted(token);
+        bool registryOk = address(tokenRegistry) != address(0) ? tokenRegistry.getIsWhitelisted(token) : false;
+        require(validatorOk || registryOk, "FundManager: Token not whitelisted");
         
         // Verify service fee matches validator's requirement
         uint256 requiredFee = IValidator(validatorAddress).getServiceFee(token);
@@ -389,5 +392,13 @@ contract FundManager is
      */
     function getWhitelistedTokens() external view returns (address[] memory) {
         return whitelistedTokens;
+    }
+
+    /**
+     * @dev Sets the TokenRegistry contract address
+     * @param _tokenRegistry New TokenRegistry contract address
+     */
+    function setTokenRegistry(address _tokenRegistry) external onlyRole(ADMIN_ROLE) {
+        tokenRegistry = ITokenRegistry(_tokenRegistry);
     }
 }

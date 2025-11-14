@@ -5,13 +5,13 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import "../core/interfaces/IBurnerBondFactory.sol";
-import "../core/interfaces/IBurnerBond.sol";
-import "../core/interfaces/IBurnerBondDeposit.sol";
-import "../core/interfaces/IAssurancePool.sol";
-import "../core/interfaces/IAssuranceOracle.sol";
-import "./BurnerBond.sol";
-import "./BurnerBondDeposit.sol";
+import "../interfaces/IBurnerBondFactory.sol";
+import "../interfaces/IBurnerBond.sol";
+import "../interfaces/IBurnerBondDeposit.sol";
+import "../interfaces/IAssurancePool.sol";
+import "../interfaces/IAssuranceOracle.sol";
+import "../../peripherals/BurnerBond.sol";
+import "../../peripherals/BurnerBondDeposit.sol";
 
 /// @title BurnerBondFactory
 /// @notice Factory contract that creates token-specific BurnerBond collections

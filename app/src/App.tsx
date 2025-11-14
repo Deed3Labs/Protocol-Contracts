@@ -14,6 +14,7 @@ import { DeedNFTProvider } from "@/context/DeedNFTContext";
 import { XMTPProvider } from "@/context/XMTPContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import Faucet from "@/components/Faucet";
+import BurnerBondPage from "@/components/BurnerBondPage";
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
                   <Route path="/explore" element={<Explore />} />
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/validation" element={<Validation />} />
+                  <Route path="/bonds" element={<BurnerBondPage />} />
                   <Route path="/admin" element={<AdminPanel />} />
                   <Route path="/auth" element={<SWIXAuth />} />
                   <Route path="/profile" element={<SWIXDemo />} />

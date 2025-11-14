@@ -3,6 +3,7 @@ pragma solidity ^0.8.29;
 
 import "../core/interfaces/IAssuranceOracle.sol";
 import "../core/interfaces/IAssurancePool.sol";
+import "../core/interfaces/ITokenRegistry.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
@@ -41,22 +42,16 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
     address public immutable USDC_ADDRESS;
     address public immutable USDT_ADDRESS;
     address public immutable DAI_ADDRESS;
-    
-    // Network whitelist system (for token acceptance across the protocol)
-    mapping(address => bool) public whitelistedTokens;
-    mapping(address => bool) public isStablecoin;
-    
-    // Fallback pricing system (emergency pricing when Uniswap fails)
-    mapping(address => uint256) public fallbackPrices; // Price in USD (18 decimals)
-    mapping(address => bool) public useFallbackPrice; // Force fallback price instead of Uniswap
+
+    // Centralized token registry
+    ITokenRegistry public tokenRegistry;
     
     // Uniswap V3 configuration
     uint24 public constant FEE_TIER = 3000; // 0.3% fee tier for stablecoin pairs
     
     // Events
-    event TokenWhitelisted(address indexed token, bool whitelisted);
-    event FallbackPriceUpdated(address indexed token, uint256 newPrice);
-    event FallbackPriceToggled(address indexed token, bool useFallback);
+    // Fallback pricing related events are emitted by TokenRegistry
+    event ForceRegistryFallbackSet(address indexed token, bool force);
     
     constructor(
         address _assurancePool, 
@@ -65,7 +60,8 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
         address _wethAddress,
         address _usdcAddress,
         address _usdtAddress,
-        address _daiAddress
+        address _daiAddress,
+        address _tokenRegistry
     ) {
         assurancePool = IAssurancePool(_assurancePool);
         targetRTD = _targetRTD;
@@ -74,21 +70,8 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
         USDC_ADDRESS = _usdcAddress;
         USDT_ADDRESS = _usdtAddress;
         DAI_ADDRESS = _daiAddress;
-        
-        // Initialize default stablecoins
-        isStablecoin[_usdcAddress] = true;
-        isStablecoin[_usdtAddress] = true;
-        isStablecoin[_daiAddress] = true;
-        
-        // Set stablecoin fallback prices to $1 USD
-        fallbackPrices[_usdcAddress] = 1e18;
-        fallbackPrices[_usdtAddress] = 1e18;
-        fallbackPrices[_daiAddress] = 1e18;
-        
-        // Stablecoins are always whitelisted
-        whitelistedTokens[_usdcAddress] = true;
-        whitelistedTokens[_usdtAddress] = true;
-        whitelistedTokens[_daiAddress] = true;
+
+        tokenRegistry = ITokenRegistry(_tokenRegistry);
     }
 
     /// @notice This function provides pricing quotes for token conversions.
@@ -134,19 +117,28 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
     /// @return Price in USD (18 decimals)
     function getTokenPriceInUSD(address token) public view returns (uint256) {
         // For stablecoins, always return $1 USD
-        if (isStablecoin[token]) {
+        if (_isStablecoin(token)) {
             return 1e18;
         }
         
+        // If force flag is enabled and registry has a price, prefer it over Uniswap
+        if (forceRegistryFallback[token] && address(tokenRegistry) != address(0)) {
+            uint256 forced = tokenRegistry.getFallbackPrice(token);
+            if (forced > 0) {
+                return forced;
+            }
+        }
+
         // Try Uniswap V3 pricing first (primary source of truth)
         uint256 uniswapPrice = getUniswapPrice(token);
         if (uniswapPrice > 0) {
             return uniswapPrice;
         }
         
-        // Fallback to manual price if Uniswap fails (available for any token)
-        if (fallbackPrices[token] > 0) {
-            return fallbackPrices[token];
+        // Fallback to registry price if Uniswap fails
+        if (address(tokenRegistry) != address(0)) {
+            uint256 fp = tokenRegistry.getFallbackPrice(token);
+            if (fp > 0) return fp;
         }
         
         // Default to $1 USD if no price available
@@ -222,75 +214,29 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
         }
     }
     
-    // ========== NETWORK WHITELIST MANAGEMENT ==========
-    
-    /// @notice Whitelist a token for network acceptance (owner only)
-    /// @param token Token address to whitelist
-    function whitelistToken(address token) external onlyOwner {
-        require(token != address(0), "Invalid token address");
-        whitelistedTokens[token] = true;
-        emit TokenWhitelisted(token, true);
+    // ========== TOKEN REGISTRY INTEGRATION ==========
+    function _isStablecoin(address token) internal view returns (bool) {
+        // Always treat constructor-stablecoins as stable
+        if (token == USDC_ADDRESS || token == USDT_ADDRESS || token == DAI_ADDRESS) return true;
+        if (address(tokenRegistry) == address(0)) return false;
+        return tokenRegistry.getIsStablecoin(token);
     }
     
-    /// @notice Remove a token from whitelist (owner only)
-    /// @param token Token address to remove
-    function removeTokenFromWhitelist(address token) external onlyOwner {
-        require(!isStablecoin[token], "Cannot remove stablecoin");
-        whitelistedTokens[token] = false;
-        emit TokenWhitelisted(token, false);
-    }
-    
-    /// @notice Batch whitelist multiple tokens (owner only)
-    /// @param tokens Array of token addresses to whitelist
-    function batchWhitelistTokens(address[] calldata tokens) external onlyOwner {
-        for (uint256 i = 0; i < tokens.length; i++) {
-            require(tokens[i] != address(0), "Invalid token address");
-            whitelistedTokens[tokens[i]] = true;
-            emit TokenWhitelisted(tokens[i], true);
+    // ========== FALLBACK PRICING SELECTION ==========
+    // The oracle can optionally force usage of registry fallback for a token
+    mapping(address => bool) public forceRegistryFallback;
+
+    /// @notice Toggle preference to use TokenRegistry fallback price ahead of Uniswap
+    /// @param token Token to configure
+    /// @param force When true, prefer registry fallback price over Uniswap
+    function setForceRegistryFallback(address token, bool force) external onlyOwner {
+        require(token != address(0), "invalid token");
+        if (force) {
+            require(address(tokenRegistry) != address(0), "no registry");
+            require(tokenRegistry.getFallbackPrice(token) > 0, "no fallback price");
         }
-    }
-    
-    // ========== FALLBACK PRICING MANAGEMENT ==========
-    
-    /// @notice Set fallback price for a token (owner only)
-    /// @param token Token address to set fallback price for
-    /// @param price Price in USD (18 decimals)
-    function setFallbackPrice(address token, uint256 price) external onlyOwner {
-        require(price > 0, "Price must be greater than 0");
-        fallbackPrices[token] = price;
-        // Automatically whitelist token when fallback price is set
-        whitelistedTokens[token] = true;
-        emit FallbackPriceUpdated(token, price);
-        emit TokenWhitelisted(token, true);
-    }
-    
-    /// @notice Toggle between Uniswap and fallback pricing (owner only)
-    /// @dev Fallback pricing is only used when Uniswap fails
-    /// @param token Token address to toggle
-    /// @param useFallback True to force fallback price, false to use Uniswap (default)
-    function toggleFallbackPricing(address token, bool useFallback) external onlyOwner {
-        require(fallbackPrices[token] > 0, "Token must have fallback price set");
-        useFallbackPrice[token] = useFallback;
-        emit FallbackPriceToggled(token, useFallback);
-    }
-    
-    /// @notice Batch set fallback prices (owner only)
-    /// @param tokens Array of token addresses
-    /// @param prices Array of corresponding prices in USD (18 decimals)
-    function batchSetFallbackPrices(address[] calldata tokens, uint256[] calldata prices) 
-        external 
-        onlyOwner 
-    {
-        require(tokens.length == prices.length, "Arrays length mismatch");
-        
-        for (uint256 i = 0; i < tokens.length; i++) {
-            require(prices[i] > 0, "Price must be greater than 0");
-            fallbackPrices[tokens[i]] = prices[i];
-            // Automatically whitelist tokens when fallback prices are set
-            whitelistedTokens[tokens[i]] = true;
-            emit FallbackPriceUpdated(tokens[i], prices[i]);
-            emit TokenWhitelisted(tokens[i], true);
-        }
+        forceRegistryFallback[token] = force;
+        emit ForceRegistryFallbackSet(token, force);
     }
     
     // ========== VIEW FUNCTIONS ==========
@@ -313,46 +259,49 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
     /// @param token Token address to check
     /// @return True if whitelisted
     function isTokenWhitelisted(address token) external view returns (bool) {
-        return whitelistedTokens[token];
+        if (token == USDC_ADDRESS || token == USDT_ADDRESS || token == DAI_ADDRESS) return true;
+        if (address(tokenRegistry) == address(0)) return false;
+        return tokenRegistry.getIsWhitelisted(token);
     }
     
     /// @notice Check if a token is a stablecoin
     /// @param token Token address to check
     /// @return True if stablecoin
     function checkIsStablecoin(address token) external view returns (bool) {
-        return isStablecoin[token];
+        return _isStablecoin(token);
     }
     
     /// @notice Get all whitelisted tokens (for other contracts like FundManager)
     /// @return Array of whitelisted token addresses
-    function getWhitelistedTokens() external pure returns (address[] memory) {
-        // This would need to be implemented with a dynamic array
-        // For now, returns empty array - can be enhanced with enumeration
-        address[] memory tokens = new address[](0);
-        return tokens;
+    function getWhitelistedTokens() external view returns (address[] memory) {
+        if (address(tokenRegistry) == address(0)) {
+            address[] memory empty;
+            return empty;
+        }
+        return tokenRegistry.getWhitelistedTokens();
     }
     
     /// @notice Check if a token has pricing data available
     /// @param token Token address to check
     /// @return True if token has pricing data
     function hasPricingData(address token) external view returns (bool) {
-        // Any token on Uniswap has pricing data, or tokens with fallback prices
-        return getUniswapPrice(token) > 0 || fallbackPrices[token] > 0 || isStablecoin[token];
+        // Any token on Uniswap has pricing data, or tokens with registry fallback prices, or stablecoins
+        if (_isStablecoin(token)) return true;
+        if (getUniswapPrice(token) > 0) return true;
+        if (address(tokenRegistry) != address(0)) {
+            return tokenRegistry.hasPricingData(token);
+        }
+        return false;
     }
     
     /// @notice Get current price source for a token
     /// @param token Token address to check
     /// @return "stablecoin", "fallback", "uniswap", or "default"
     function getPriceSource(address token) external view returns (string memory) {
-        if (isStablecoin[token]) {
-            return "stablecoin";
-        }
-        if (useFallbackPrice[token] && fallbackPrices[token] > 0) {
-            return "fallback";
-        }
-        if (getUniswapPrice(token) > 0) {
-            return "uniswap";
-        }
+        if (_isStablecoin(token)) return "stablecoin";
+        if (forceRegistryFallback[token]) return "fallback";
+        if (getUniswapPrice(token) > 0) return "uniswap";
+        if (address(tokenRegistry) != address(0)) return tokenRegistry.getPriceSource(token);
         return "default";
     }
 
