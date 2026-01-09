@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, useMotionValue, useTransform, AnimatePresence, animate } from 'framer-motion';
+import { motion, useAnimation, useMotionValue, useTransform, AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 
 interface PullToRefreshProps {
@@ -55,6 +55,7 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
   const containerRef = useRef<HTMLDivElement>(null);
   const startY = useRef(0);
   const isDragging = useRef(false);
+  const controls = useAnimation();
   const y = useMotionValue(0);
   
   // Transform y value to rotation for the spinner
@@ -109,17 +110,26 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
       if (currentY > THRESHOLD) {
         setIsRefreshing(true);
         // Rubber band back to 0 immediately with a spring animation
-        await animate(y, 0, { type: "spring", stiffness: 300, damping: 30 }).finished;
+        await controls.start({ 
+          y: 0,
+          transition: { type: "spring", stiffness: 300, damping: 30 }
+        });
+        y.set(0);
         
         try {
           await onRefresh();
         } finally {
           setIsRefreshing(false);
+          controls.start({ y: 0 });
           y.set(0);
         }
       } else {
         // Snap back if not passed threshold
-        animate(y, 0, { type: "spring", stiffness: 300, damping: 30 });
+        controls.start({ 
+          y: 0,
+          transition: { type: "spring", stiffness: 300, damping: 30 }
+        });
+        y.set(0);
       }
     };
 
@@ -148,7 +158,10 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
              if (finalY > THRESHOLD) {
                // Trigger refresh logic
                setIsRefreshing(true);
-               animate(y, 0, { type: "spring", stiffness: 300, damping: 30 }).finished.then(async () => {
+               controls.start({ 
+                 y: 0,
+                 transition: { type: "spring", stiffness: 300, damping: 30 }
+               }).then(async () => {
                  try {
                    await onRefresh();
                  } finally {
@@ -157,7 +170,11 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
                  }
                });
              } else {
-               animate(y, 0, { type: "spring", stiffness: 300, damping: 30 });
+               controls.start({ 
+                 y: 0,
+                 transition: { type: "spring", stiffness: 300, damping: 30 }
+               });
+               y.set(0);
              }
            }, 150); // Wait for wheel events to stop
         }
@@ -171,7 +188,8 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
          clearTimeout(wheelTimeout);
          wheelTimeout = setTimeout(() => {
             if (y.get() > 0 && !isRefreshing) {
-                animate(y, 0, { type: "spring", stiffness: 300, damping: 30 });
+                controls.start({ y: 0, transition: { type: "spring", stiffness: 300, damping: 30 } });
+                y.set(0);
             }
          }, 150);
       }
@@ -206,7 +224,7 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
 
       window.removeEventListener('wheel', handleWheel);
     };
-  }, [isRefreshing, onRefresh, y]);
+  }, [isRefreshing, onRefresh, controls, y]);
 
   return (
     <div ref={containerRef} className="relative min-h-screen">
@@ -222,6 +240,7 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
 
       {/* Content Layer */}
       <motion.div 
+        animate={controls}
         style={{ transform }} 
         className="relative z-10 transition-transform duration-200 bg-white dark:bg-[#0e0e0e] min-h-screen"
       >
