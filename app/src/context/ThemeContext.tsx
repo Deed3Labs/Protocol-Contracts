@@ -45,6 +45,8 @@ export function ThemeProvider({
     // }
 
     root.classList.add(theme);
+    // Dispatch a custom event to notify other components (like AppKitThemeSync)
+    window.dispatchEvent(new Event('themechange'));
   }, [theme]);
 
   const value = {
@@ -52,6 +54,8 @@ export function ThemeProvider({
     setTheme: (theme: Theme) => {
       localStorage.setItem(storageKey, theme);
       setTheme(theme);
+      // Dispatch a custom event to notify AppKitThemeSync
+      window.dispatchEvent(new Event('themechange'));
     },
   };
 
