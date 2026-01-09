@@ -1,4 +1,3 @@
-import React, { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
 import { format } from 'date-fns';
 
@@ -15,7 +14,7 @@ interface InteractiveChartProps {
   showReferenceLine?: boolean;
 }
 
-const CustomTooltip = ({ active, payload, isNegative, baseValue }: any) => {
+const CustomTooltip = ({ active, payload, baseValue }: any) => {
   if (active && payload && payload.length) {
     const value = payload[0].value;
     const change = value - baseValue;
@@ -57,7 +56,6 @@ const CustomCursor = ({ points, height }: any) => {
 };
 
 export default function InteractiveChart({ data, isNegative = false, color, showReferenceLine = true }: InteractiveChartProps) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const baseValue = data.length > 0 ? data[0].value : 100;
   const chartColor = color || (isNegative ? '#FF3B30' : '#30D158');
   
@@ -67,12 +65,6 @@ export default function InteractiveChart({ data, isNegative = false, color, show
         <LineChart 
           data={data} 
           margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
-          onMouseMove={(e: any) => {
-            if (e && e.activeTooltipIndex !== undefined) {
-              setActiveIndex(e.activeTooltipIndex);
-            }
-          }}
-          onMouseLeave={() => setActiveIndex(null)}
         >
           <XAxis dataKey="time" hide />
           <YAxis hide domain={['auto', 'auto']} />
@@ -84,7 +76,7 @@ export default function InteractiveChart({ data, isNegative = false, color, show
             />
           )}
           <Tooltip 
-            content={<CustomTooltip isNegative={isNegative} baseValue={baseValue} />}
+            content={<CustomTooltip baseValue={baseValue} />}
             cursor={<CustomCursor height={200} />}
             position={{ y: 0 }}
           />
