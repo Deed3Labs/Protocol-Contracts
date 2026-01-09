@@ -152,7 +152,7 @@ export default function BorrowHome() {
                       initial={{ width: 0 }}
                       animate={{ width: `${utilization}%` }}
                       transition={{ duration: 1, ease: "easeOut" }}
-                      className="h-full bg-blue-600 rounded-full"
+                      className="h-full bg-blue-600 rounded"
                     />
                  </div>
                  <div className="flex justify-between text-xs text-zinc-500 mt-2">
