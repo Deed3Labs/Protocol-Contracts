@@ -1,6 +1,6 @@
 import { X, ChevronRight, User, Settings, Lock, HelpCircle, LogOut, Sun, Moon, FileText, CreditCard } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
-import { useDisconnect } from '@reown/appkit/react';
+import { useDisconnect } from 'wagmi';
 
 const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: any; totalValue: number }) => {
   const { theme, setTheme } = useTheme();
