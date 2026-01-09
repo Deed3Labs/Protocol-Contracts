@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, Search, Plus } from 'lucide-react';
 import ProfileMenu from './ProfileMenu';
 import ClearPathLogo from '../../assets/ClearPath-Logo.png';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 
 interface HeaderNavProps {
   totalValue: number;
@@ -22,6 +23,8 @@ export default function HeaderNav({
   profileMenuOpen,
   setProfileMenuOpen
 }: HeaderNavProps) {
+  const { isConnected, openModal } = useAppKitAuth();
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 py-4 bg-white/80 dark:bg-[#0e0e0e]/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 md:border-none md:pt-6 transition-all duration-200">
       <div className="container mx-auto max-w-7xl flex items-center justify-between">
@@ -85,22 +88,31 @@ export default function HeaderNav({
              <Search className="w-5 h-5 text-black dark:text-white" />
            </button>
            
-           {/* Profile Menu Dropdown */}
-           <div className="relative">
+           {/* Connect Wallet / Profile Menu */}
+           {isConnected ? (
+             <div className="relative">
+               <button 
+                 onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                 className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors"
+               >
+                  <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-sm font-medium text-white">
+                     {user?.name?.[0] || 'U'}
+                  </div>
+               </button>
+               <ProfileMenu 
+                 isOpen={profileMenuOpen} 
+                 onClose={() => setProfileMenuOpen(false)} 
+                 user={user} 
+               />
+             </div>
+           ) : (
              <button 
-               onClick={() => setProfileMenuOpen(!profileMenuOpen)}
-               className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors"
+               onClick={() => openModal()}
+               className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-lg text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors shadow-sm whitespace-nowrap"
              >
-                <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-sm font-medium text-white">
-                   {user?.name?.[0] || 'U'}
-                </div>
+               Connect Wallet
              </button>
-             <ProfileMenu 
-               isOpen={profileMenuOpen} 
-               onClose={() => setProfileMenuOpen(false)} 
-               user={user} 
-             />
-           </div>
+           )}
         </div>
       </div>
     </header>
