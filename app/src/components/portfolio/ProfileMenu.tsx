@@ -6,9 +6,11 @@ import {
   User, 
   Settings, 
   LogOut, 
-  CreditCard
+  CreditCard,
+  Wallet
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 
 interface ProfileMenuProps {
   isOpen: boolean;
@@ -19,6 +21,7 @@ interface ProfileMenuProps {
 const ProfileMenu = ({ isOpen, onClose, user }: ProfileMenuProps) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const { theme: _theme } = useTheme();
+  const { openModal, disconnect, isConnected } = useAppKitAuth();
   const [activeTab, setActiveTab] = useState<'notifications' | 'inbox'>('notifications');
 
   // Close when clicking outside
@@ -170,10 +173,23 @@ const ProfileMenu = ({ isOpen, onClose, user }: ProfileMenuProps) => {
 
           {/* Footer */}
           <div className="p-2 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30">
-            <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-              <LogOut className="w-4 h-4" />
-              <span className="flex-1 text-left">Log Out</span>
-            </button>
+            {isConnected ? (
+              <button 
+                onClick={() => disconnect()}
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="flex-1 text-left">Log Out</span>
+              </button>
+            ) : (
+              <button 
+                onClick={() => openModal()}
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-900 dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+              >
+                <Wallet className="w-4 h-4" />
+                <span className="flex-1 text-left">Connect Wallet</span>
+              </button>
+            )}
           </div>
         </motion.div>
       )}

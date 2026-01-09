@@ -1,8 +1,10 @@
-import { X, ChevronRight, User, Settings, Lock, HelpCircle, LogOut, Sun, Moon, FileText, CreditCard } from 'lucide-react';
+import { X, ChevronRight, User, Settings, Lock, HelpCircle, LogOut, Sun, Moon, FileText, CreditCard, Wallet } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 
 const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: any; totalValue: number }) => {
   const { theme, setTheme } = useTheme();
+  const { openModal, disconnect, isConnected } = useAppKitAuth();
 
   if (!isOpen) return null;
 
@@ -110,10 +112,23 @@ const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => v
         </div>
 
         <div className="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-800">
-           <button className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors text-red-600 dark:text-red-500 group">
-              <LogOut className="w-5 h-5" />
-              <span className="font-medium">Log Out</span>
-           </button>
+           {isConnected ? (
+             <button 
+               onClick={() => disconnect()}
+               className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors text-red-600 dark:text-red-500 group"
+             >
+                <LogOut className="w-5 h-5" />
+                <span className="font-medium">Log Out</span>
+             </button>
+           ) : (
+             <button 
+               onClick={() => openModal()}
+               className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors text-zinc-900 dark:text-white group"
+             >
+                <Wallet className="w-5 h-5" />
+                <span className="font-medium">Connect Wallet</span>
+             </button>
+           )}
            <div className="mt-4 text-center text-xs text-zinc-400 dark:text-zinc-600">
               Version 1.0.0
            </div>
