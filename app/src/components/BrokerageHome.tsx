@@ -231,7 +231,7 @@ export default function BrokerageHome() {
                         <span className="text-lg text-zinc-500 font-normal">USD</span>
                       </h1>
                    </div>
-                   <div className="flex gap-2 pb-2">
+                   <div className="flex gap-2 md:gap-3 pb-2">
                       <button 
                         onClick={() => setDepositModalOpen(true)}
                         className="bg-black dark:bg-white text-white dark:text-black px-6 py-2 rounded-full text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
