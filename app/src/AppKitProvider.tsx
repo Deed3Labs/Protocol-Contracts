@@ -83,30 +83,10 @@ const wagmiAdapter = new WagmiAdapter({
   ssr: true
 });
 
-// Helper function to detect current theme
-const getCurrentTheme = (): 'light' | 'dark' => {
-  if (typeof window === 'undefined') return 'dark'; // Default for SSR
-  
-    const saved = localStorage.getItem('theme');
-  if (saved === 'dark' || saved === 'light') {
-    return saved as 'light' | 'dark';
-    }
-  
-  // Check if dark class is on document
-    if (document.documentElement.classList.contains('dark')) {
-      return 'dark';
-    }
-  
-  // Check system preference
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-  
-  return 'light';
-};
-
-// Initialize AppKit only after component mounts to avoid SSR issues
+// Initialize AppKit globally (outside component) to avoid "createAppKit" errors
 const initializeAppKit = () => {
+  if (typeof window === 'undefined') return;
+
   const currentUrl = getCurrentUrl();
   const themeMode = getCurrentTheme();
   console.log('Initializing AppKit with URL:', currentUrl, 'Theme:', themeMode);
@@ -132,21 +112,78 @@ const initializeAppKit = () => {
     });
     
     console.log('AppKit initialized successfully');
-    
-    // Check if custom elements are registered
-    setTimeout(() => {
-      const appkitButton = customElements.get('appkit-button');
-      console.log('AppKit button element registered:', !!appkitButton);
-      
-      if (!appkitButton) {
-        console.warn('AppKit button element not found. This might cause issues.');
-      }
-    }, 1000);
-    
   } catch (error) {
     console.error('Failed to initialize AppKit:', error);
   }
 };
+
+// Call initialization immediately
+initializeAppKit();
+
+// Helper function to detect current theme
+function getCurrentTheme(): 'light' | 'dark' {
+  if (typeof window === 'undefined') return 'dark'; // Default for SSR
+  
+    const saved = localStorage.getItem('theme');
+  if (saved === 'dark' || saved === 'light') {
+    return saved as 'light' | 'dark';
+    }
+  
+  // Check if dark class is on document
+    if (document.documentElement.classList.contains('dark')) {
+      return 'dark';
+    }
+  
+  // Check system preference
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+  
+  return 'light';
+};
+
+// Initialize AppKit only after component mounts to avoid SSR issues
+// const initializeAppKit = () => {
+//   const currentUrl = getCurrentUrl();
+//   const themeMode = getCurrentTheme();
+//   console.log('Initializing AppKit with URL:', currentUrl, 'Theme:', themeMode);
+  
+//   try {
+//     createAppKit({
+//       adapters: [wagmiAdapter],
+//       networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
+//       projectId,
+//       metadata: {
+//         ...metadata,
+//         url: currentUrl
+//       },
+//       features: {
+//         analytics: true,
+//         email: true,
+//         socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
+//         emailShowWallets: true,
+//       },
+//       siwx: new ReownAuthentication(),
+//       allWallets: 'SHOW',
+//       themeMode: themeMode
+//     });
+    
+//     console.log('AppKit initialized successfully');
+    
+//     // Check if custom elements are registered
+//     setTimeout(() => {
+//       const appkitButton = customElements.get('appkit-button');
+//       console.log('AppKit button element registered:', !!appkitButton);
+      
+//       if (!appkitButton) {
+//         console.warn('AppKit button element not found. This might cause issues.');
+//       }
+//     }, 1000);
+    
+//   } catch (error) {
+//     console.error('Failed to initialize AppKit:', error);
+//   }
+// };
 
 function AppKitThemeSync() {
   const { setThemeMode } = useAppKitTheme();
@@ -214,12 +251,135 @@ function AppKitThemeSync() {
 }
 
 export function AppKitProvider({ children }: { children: React.ReactNode }) {
-  // We can just use a simple effect for the theme sync now
-  
+  const [isAppKitInitialized, setIsAppKitInitialized] = React.useState(false);
+
+  // Initialize AppKit after component mounts to avoid SSR issues
+  React.useEffect(() => {
+    // initializeAppKit();
+    
+    // Wait for AppKit to be ready before using hooks
+    const checkAppKitReady = () => {
+      const appkitButton = customElements.get('appkit-button');
+      if (appkitButton) {
+        setIsAppKitInitialized(true);
+        return true;
+      }
+      return false;
+    };
+
+    // Check immediately
+    if (checkAppKitReady()) {
+      return;
+    }
+
+    // Poll for AppKit initialization
+    const interval = setInterval(() => {
+      if (checkAppKitReady()) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    // Timeout after 5 seconds
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+      console.warn('AppKit initialization timeout');
+      // Set initialized anyway to allow the hook to try
+      setIsAppKitInitialized(true);
+    }, 5000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  // Handle deep links for mobile wallet connections
+  React.useEffect(() => {
+    const handleDeepLink = () => {
+      // Check if we're returning from a mobile wallet
+      const urlParams = new URLSearchParams(window.location.search);
+      const walletReturn = urlParams.get('wallet');
+      
+      if (walletReturn) {
+        console.log('Deep link return from wallet:', walletReturn);
+        // Clear the URL parameters
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Add a longer delay for mobile wallet returns to ensure provider is ready
+        setTimeout(() => {
+          console.log('Mobile wallet return detected, ensuring provider is ready');
+          // Trigger a custom event that components can listen to
+          window.dispatchEvent(new CustomEvent('mobileWalletReturn', { 
+            detail: { wallet: walletReturn } 
+          }));
+        }, 1000);
+      }
+    };
+
+    // Handle deep link on mount
+    handleDeepLink();
+
+    // Listen for URL changes (for SPA navigation)
+    const handleUrlChange = () => {
+      handleDeepLink();
+    };
+
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
+  }, []);
+
+  // Ensure AppKit modal icons load properly
+  React.useEffect(() => {
+    // Monitor for AppKit modal and ensure icons load
+    const checkModal = () => {
+      const modal = (window as any).appKitModal;
+      if (modal) {
+        console.log('AppKit modal found, ensuring icons load properly');
+        
+        // Override the open method to ensure icons are loaded
+        const originalOpen = modal.open;
+        if (originalOpen) {
+          modal.open = function(...args: any[]) {
+            console.log('AppKit modal opening, ensuring icons load');
+            
+            // Force icon preloading before opening
+            const iconUrls = [
+              'https://api.web3modal.com/v2/connector/metamask/icon',
+              'https://api.web3modal.com/v2/connector/trust/icon',
+              'https://api.web3modal.com/v2/connector/coinbase/icon',
+              'https://api.web3modal.com/v2/connector/rainbow/icon',
+              'https://api.web3modal.com/v2/connector/google/icon',
+              'https://api.web3modal.com/v2/connector/apple/icon',
+              'https://api.web3modal.com/v2/connector/facebook/icon',
+              'https://api.web3modal.com/v2/connector/x/icon',
+              'https://api.web3modal.com/v2/connector/github/icon',
+              'https://api.web3modal.com/v2/connector/discord/icon',
+              'https://api.web3modal.com/v2/connector/farcaster/icon'
+            ];
+            
+            // Preload icons
+            iconUrls.forEach(url => {
+              const img = new Image();
+              img.src = url;
+            });
+            
+            // Call original open method
+            return originalOpen.apply(this, args);
+          };
+        }
+      } else {
+        // Retry after a short delay
+        setTimeout(checkModal, 500);
+      }
+    };
+    
+    checkModal();
+  }, []);
+
   return (
     <WagmiProvider config={wagmiAdapter.wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <AppKitThemeSync />
+        {isAppKitInitialized && <AppKitThemeSync />}
         {children}
       </QueryClientProvider>
     </WagmiProvider>
