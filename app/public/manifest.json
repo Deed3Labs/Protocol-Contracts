@@ -9,7 +9,7 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.png",
+      "src": "/ClearPath-Logo.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
