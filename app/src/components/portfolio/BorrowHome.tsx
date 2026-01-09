@@ -112,14 +112,14 @@ export default function BorrowHome() {
       />
       
       {/* Main Content */}
-      <main className="pt-24 pb-28 container mx-auto max-w-7xl md:pt-32 px-4 md:px-0">
+      <main className="pt-24 pb-28 container mx-auto max-w-7xl md:pt-32">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
            {/* Left Column (Main Data & Loans) */}
            <div className="md:col-span-8 space-y-10">
               
               {/* Header Section */}
               <div>
-                 <div className="flex items-center gap-2 mb-2 text-zinc-500 dark:text-zinc-400">
+                 <div className="flex items-center gap-2 mt-4 mb-2 text-zinc-500 dark:text-zinc-400">
                    <span className="text-sm font-medium">Available Borrowing Power</span>
                    <div className="group relative">
                       <Info className="h-4 w-4 cursor-help" />
