@@ -3,6 +3,7 @@ import { Menu, Search, Plus } from 'lucide-react';
 import ProfileMenu from './ProfileMenu';
 import ClearPathLogo from '../../assets/ClearPath-Logo.png';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 interface HeaderNavProps {
   totalValue: number;
@@ -24,6 +25,10 @@ export default function HeaderNav({
   setProfileMenuOpen
 }: HeaderNavProps) {
   const { isConnected, openModal } = useAppKitAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const isActive = (path: string) => location.pathname === path;
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 py-4 bg-white/80 dark:bg-[#0e0e0e]/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 md:border-none md:pt-6 transition-all duration-200">
@@ -61,10 +66,20 @@ export default function HeaderNav({
         
         {/* Desktop Nav Links (Hidden on Mobile) */}
         <div className="hidden md:flex items-center gap-6 text-sm font-medium text-zinc-500 dark:text-zinc-400">
-           <button className="text-black dark:text-white hover:text-black dark:hover:text-white transition-colors">Portfolio</button>
+           <button 
+             onClick={() => navigate('/')}
+             className={`${isActive('/') ? 'text-black dark:text-white' : 'hover:text-black dark:hover:text-white'} transition-colors`}
+           >
+             Portfolio
+           </button>
            <button className="hover:text-black dark:hover:text-white transition-colors">Markets</button>
            <button className="hover:text-black dark:hover:text-white transition-colors">Earn</button>
-           <button className="hover:text-black dark:hover:text-white transition-colors">Borrow</button>
+           <button 
+             onClick={() => navigate('/borrow')}
+             className={`${isActive('/borrow') ? 'text-black dark:text-white' : 'hover:text-black dark:hover:text-white'} transition-colors`}
+           >
+             Borrow
+           </button>
         </div>
 
         <div className="flex items-center gap-4">

@@ -1,4 +1,5 @@
 import { PieChart, Activity, Wallet, Plus, Coins } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 interface MobileNavProps {
   onMenuOpen: () => void;
@@ -6,14 +7,27 @@ interface MobileNavProps {
 }
 
 export default function MobileNav({ onActionOpen }: MobileNavProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const isActive = (path: string) => location.pathname === path;
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-[#0e0e0e]/90 backdrop-blur-xl border-t border-zinc-200 dark:border-zinc-800 pb-6 pt-2 z-50 md:hidden transition-all duration-300">
       <div className="flex justify-around items-end px-4">
-        <button className="flex flex-col items-center gap-1 group w-14 pb-1">
+        <button 
+          onClick={() => navigate('/')}
+          className="flex flex-col items-center gap-1 group w-14 pb-1"
+        >
           <div className="p-1 rounded-xl group-active:scale-95 transition-transform duration-200">
-            <PieChart className="h-6 w-6 text-black dark:text-white transition-colors duration-300" strokeWidth={2} />
+            <PieChart 
+              className={`h-6 w-6 transition-colors duration-300 ${isActive('/') ? 'text-black dark:text-white' : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300'}`} 
+              strokeWidth={2} 
+            />
           </div>
-          <span className="text-[10px] font-medium tracking-wide text-black dark:text-white transition-colors duration-300">Portfolio</span>
+          <span className={`text-[10px] font-medium tracking-wide transition-colors duration-300 ${isActive('/') ? 'text-black dark:text-white' : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300'}`}>
+            Portfolio
+          </span>
         </button>
         
         <button className="flex flex-col items-center gap-1 group w-14 pb-1">
@@ -32,11 +46,19 @@ export default function MobileNav({ onActionOpen }: MobileNavProps) {
           </button>
         </div>
         
-        <button className="flex flex-col items-center gap-1 group w-14 pb-1">
+        <button 
+          onClick={() => navigate('/borrow')}
+          className="flex flex-col items-center gap-1 group w-14 pb-1"
+        >
           <div className="p-1 rounded-xl group-active:scale-95 transition-transform duration-200">
-            <Wallet className="h-6 w-6 text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-colors duration-300" strokeWidth={2} />
+            <Wallet 
+              className={`h-6 w-6 transition-colors duration-300 ${isActive('/borrow') ? 'text-black dark:text-white' : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300'}`} 
+              strokeWidth={2} 
+            />
           </div>
-          <span className="text-[10px] font-medium tracking-wide text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-colors duration-300">Borrow</span>
+          <span className={`text-[10px] font-medium tracking-wide transition-colors duration-300 ${isActive('/borrow') ? 'text-black dark:text-white' : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300'}`}>
+            Borrow
+          </span>
         </button>
         
         <button className="flex flex-col items-center gap-1 group w-14 pb-1">

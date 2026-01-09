@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Home from "@/components/Home"; // Keeping for reference or fallback
 import BrokerageHome from "@/components/BrokerageHome";
+import BorrowHome from "@/components/portfolio/BorrowHome";
 import MintForm from "@/components/MintForm";
 import Explore from "@/components/Explore";
 import Dashboard from "@/components/Dashboard";
@@ -41,6 +42,7 @@ function App() {
                 <Routes>
               {/* New Brokerage Home Route - No Legacy Header/Footer */}
               <Route path="/" element={<BrokerageHome />} />
+              <Route path="/borrow" element={<BorrowHome />} />
 
               {/* Legacy Routes wrapped in Layout */}
               <Route element={<LegacyLayout />}>
