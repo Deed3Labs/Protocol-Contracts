@@ -6,14 +6,44 @@ import { useEffect, useState } from 'react';
 const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: any; totalValue: number }) => {
   const { theme, setTheme } = useTheme();
   const { disconnect } = useDisconnect();
-  // Force local state update when context theme changes to ensure UI sync
-  const [_localTheme, setLocalTheme] = useState(theme);
+  const [mounted, setMounted] = useState(false);
+  const [isDark, setIsDark] = useState(false);
 
+  // Sync with theme context and local storage
   useEffect(() => {
-    setLocalTheme(theme);
+    setMounted(true);
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      setIsDark(true);
+    } else {
+      setIsDark(false);
+    }
   }, [theme]);
 
-  if (!isOpen) return null;
+  const handleThemeChange = (newTheme: 'light' | 'dark') => {
+    // 1. Update React state (Context)
+    setTheme(newTheme);
+    setIsDark(newTheme === 'dark');
+    
+    // 2. Force manual update of localStorage (redundant but safe)
+    localStorage.setItem('theme', newTheme);
+    
+    // 3. Force manual class update on document (redundant but safe)
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    
+    // 4. Dispatch events for AppKit
+    window.dispatchEvent(new Event('themechange'));
+    window.dispatchEvent(new StorageEvent('storage', { 
+      key: 'theme', 
+      newValue: newTheme 
+    }));
+  };
+
+  if (!isOpen || !mounted) return null;
 
   const menuItems = [
     {
@@ -93,9 +123,9 @@ const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => v
               <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2 px-3">Appearance</h3>
               <div className="bg-zinc-100 dark:bg-zinc-900/50 p-1 rounded flex border border-zinc-200 dark:border-zinc-800">
                 <button 
-                  onClick={() => setTheme('light')}
+                  onClick={() => handleThemeChange('light')}
                   className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-sm font-medium transition-all ${
-                    theme === 'light' 
+                    !isDark 
                       ? 'bg-white text-zinc-900 shadow-sm ring-1 ring-black/5' 
                       : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
                   }`}
@@ -104,9 +134,9 @@ const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => v
                   <span>Light</span>
                 </button>
                 <button 
-                  onClick={() => setTheme('dark')}
+                  onClick={() => handleThemeChange('dark')}
                   className={`flex-1 flex items-center justify-center gap-2 py-2 rounded text-sm font-medium transition-all ${
-                    theme === 'dark' 
+                    isDark 
                       ? 'bg-zinc-800 text-white shadow-sm ring-1 ring-white/10' 
                       : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
                   }`}
