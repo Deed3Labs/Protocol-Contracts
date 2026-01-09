@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useDisconnect } from 'wagmi';
 import { 
   Bell, 
   Mail, 
@@ -20,6 +21,7 @@ const ProfileMenu = ({ isOpen, onClose, user }: ProfileMenuProps) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const { theme: _theme } = useTheme();
   const [activeTab, setActiveTab] = useState<'notifications' | 'inbox'>('notifications');
+  const { disconnect } = useDisconnect();
 
   // Close when clicking outside
   useEffect(() => {
@@ -170,9 +172,12 @@ const ProfileMenu = ({ isOpen, onClose, user }: ProfileMenuProps) => {
 
           {/* Footer */}
           <div className="p-2 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30">
-            <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+            <button 
+              onClick={() => disconnect()}
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+            >
               <LogOut className="w-4 h-4" />
-              <span className="flex-1 text-left">Log Out</span>
+              <span className="flex-1 text-left">Disconnect Wallet</span>
             </button>
           </div>
         </motion.div>

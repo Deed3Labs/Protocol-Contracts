@@ -8,6 +8,19 @@ import React from 'react';
 
 const queryClient = new QueryClient();
 
+// Define custom theme variables
+const themeVariables = {
+  '--w3m-accent': '#000000',
+  '--w3m-border-radius-master': '1px'
+};
+
+const darkThemeVariables = {
+  '--w3m-accent': '#FFFFFF',
+  '--w3m-color-mix': '#0e0e0e',
+  '--w3m-color-mix-strength': 100,
+  '--w3m-border-radius-master': '1px'
+};
+
 // Get project ID from environment variable
 const projectId = import.meta.env.VITE_APPKIT_PROJECT_ID;
 
@@ -108,7 +121,8 @@ const initializeAppKit = () => {
       },
       siwx: new ReownAuthentication(),
       allWallets: 'SHOW',
-      themeMode: themeMode
+      themeMode: themeMode,
+      themeVariables: themeMode === 'dark' ? darkThemeVariables : themeVariables
     });
     
     console.log('AppKit initialized successfully');
@@ -186,13 +200,14 @@ function getCurrentTheme(): 'light' | 'dark' {
 // };
 
 function AppKitThemeSync() {
-  const { setThemeMode } = useAppKitTheme();
+  const { setThemeMode, setThemeVariables } = useAppKitTheme();
   const [currentTheme, setCurrentTheme] = React.useState<'light' | 'dark'>(getCurrentTheme);
 
   React.useEffect(() => {
-    // Set initial theme
+    // Set initial theme and variables
     setThemeMode(currentTheme);
-  }, [setThemeMode, currentTheme]);
+    setThemeVariables(currentTheme === 'dark' ? darkThemeVariables : themeVariables);
+  }, [setThemeMode, setThemeVariables, currentTheme]);
 
   React.useEffect(() => {
     const updateAppKitTheme = () => {
@@ -203,6 +218,7 @@ function AppKitThemeSync() {
         console.log('Theme changed to:', newTheme, '- Updating AppKit theme');
         setCurrentTheme(newTheme);
         setThemeMode(newTheme);
+        setThemeVariables(newTheme === 'dark' ? darkThemeVariables : themeVariables);
       }
     };
 
