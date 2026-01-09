@@ -142,7 +142,7 @@ export default function BorrowHome() {
               </div>
 
               {/* Visualization Bar */}
-              <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-6">
+              <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-6">
                  <div className="flex justify-between text-sm mb-2">
                     <span className="text-zinc-500">Utilization</span>
                     <span className="text-black dark:text-white font-medium">{utilization.toFixed(1)}%</span>
@@ -169,7 +169,7 @@ export default function BorrowHome() {
                     <motion.div 
                       key={loan.id}
                       whileHover={{ scale: 1.01 }}
-                      className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-xl p-6 cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                      className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-6 cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
                     >
                        <div className="flex justify-between items-start mb-4">
                           <div className={`w-10 h-10 rounded-full ${loan.bgColor} flex items-center justify-center`}>
@@ -195,14 +195,14 @@ export default function BorrowHome() {
            <div className="md:col-span-4 space-y-6">
               
               {/* Active Loans Widget */}
-              <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded-xl border border-zinc-200 dark:border-zinc-800/50 overflow-hidden">
+              <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 overflow-hidden">
                   <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
                     <h2 className="text-base font-medium text-black dark:text-white">Active Loans</h2>
                     <button className="text-xs text-blue-600 hover:text-blue-500">View All</button>
                   </div>
                   <div className="p-2">
                     {currentLoans.map((loan) => (
-                      <div key={loan.id} className="p-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer">
+                      <div key={loan.id} className="p-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-sm transition-colors cursor-pointer">
                          <div className="flex justify-between mb-1">
                             <span className="text-sm font-medium text-black dark:text-white">{loan.type}</span>
                             <span className="text-sm font-medium text-black dark:text-white">${loan.amount.toLocaleString()}</span>
@@ -222,7 +222,7 @@ export default function BorrowHome() {
               </div>
 
               {/* Market Rates Widget */}
-              <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded-xl border border-zinc-200 dark:border-zinc-800/50 p-1">
+              <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-1">
                   <div className="p-4">
                     <h2 className="text-base font-medium text-black dark:text-white mb-4">Current Rates</h2>
                     <div className="space-y-3">
@@ -244,10 +244,10 @@ export default function BorrowHome() {
               </div>
 
               {/* Help Box */}
-              <div className="bg-blue-600 rounded-xl p-5 text-white">
+              <div className="bg-blue-600 rounded p-5 text-white">
                  <h3 className="font-medium mb-2">Need help?</h3>
                  <p className="text-sm text-blue-100 mb-4">Talk to our loan specialists about custom financing options for your assets.</p>
-                 <button className="w-full bg-white text-blue-600 py-2 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors">
+                 <button className="w-full bg-white text-blue-600 py-2 rounded-full text-sm font-medium hover:bg-blue-50 transition-colors">
                    Contact Support
                  </button>
               </div>
