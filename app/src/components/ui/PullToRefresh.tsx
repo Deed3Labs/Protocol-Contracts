@@ -94,7 +94,8 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
       if (diff > 0) {
         const newY = Math.min(diff * 0.5, MAX_PULL);
         y.set(newY);
-        if (e.cancelable && 'touches' in e) e.preventDefault(); // Only prevent default on touch
+        // Prevent default behavior (scroll/selection) when actively pulling
+        if (e.cancelable) e.preventDefault();
       } else {
         isDragging.current = false;
       }
@@ -108,20 +109,26 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
 
       if (currentY > THRESHOLD) {
         setIsRefreshing(true);
-        // Rubber band back to 0 immediately to show skeleton
-        await controls.start({ y: 0 });
+        // Rubber band back to 0 immediately with a spring animation
+        await controls.start({ 
+          y: 0,
+          transition: { type: "spring", stiffness: 300, damping: 30 }
+        });
         y.set(0);
         
         try {
           await onRefresh();
         } finally {
           setIsRefreshing(false);
-          // Ensure we're at 0
           controls.start({ y: 0 });
           y.set(0);
         }
       } else {
-        await controls.start({ y: 0 });
+        // Snap back if not passed threshold
+        controls.start({ 
+          y: 0,
+          transition: { type: "spring", stiffness: 300, damping: 30 }
+        });
         y.set(0);
       }
     };
@@ -130,11 +137,14 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
     let wheelTimeout: NodeJS.Timeout;
     const handleWheel = (e: WheelEvent) => {
       // Allow default scroll if we're not at the top or if the user is scrolling down
-      if (window.scrollY > 5 || (e.deltaY > 0 && y.get() === 0) || isRefreshing) return;
+      if (window.scrollY > 5 || isRefreshing) return;
 
       // Check if it's a vertical pull (negative deltaY at top)
       // Note: Trackpads often send very small deltaY values
-      if (e.deltaY < 0 && window.scrollY <= 5) {
+      if ((e.deltaY < 0 && window.scrollY <= 5) || (y.get() > 0 && e.deltaY < 0)) {
+        // Prevent native browser history navigation / overscroll bounce
+        if (e.cancelable) e.preventDefault();
+        
         const currentY = y.get();
         // Accumulate pull (simulating drag)
         const newY = Math.min(currentY + Math.abs(e.deltaY) * 0.5, MAX_PULL);
@@ -146,9 +156,12 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
            wheelTimeout = setTimeout(() => {
              const finalY = y.get();
              if (finalY > THRESHOLD) {
-               // Trigger refresh logic (reuse logic manually)
+               // Trigger refresh logic
                setIsRefreshing(true);
-               controls.start({ y: 0 }).then(async () => {
+               controls.start({ 
+                 y: 0,
+                 transition: { type: "spring", stiffness: 300, damping: 30 }
+               }).then(async () => {
                  try {
                    await onRefresh();
                  } finally {
@@ -157,11 +170,28 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
                  }
                });
              } else {
-               controls.start({ y: 0 });
+               controls.start({ 
+                 y: 0,
+                 transition: { type: "spring", stiffness: 300, damping: 30 }
+               });
                y.set(0);
              }
            }, 150); // Wait for wheel events to stop
         }
+      } else if (y.get() > 0 && e.deltaY > 0) {
+         // If pulling and user scrolls down, reduce pull
+         const currentY = y.get();
+         const newY = Math.max(0, currentY - e.deltaY);
+         y.set(newY);
+         if (e.cancelable) e.preventDefault();
+         
+         clearTimeout(wheelTimeout);
+         wheelTimeout = setTimeout(() => {
+            if (y.get() > 0 && !isRefreshing) {
+                controls.start({ y: 0, transition: { type: "spring", stiffness: 300, damping: 30 } });
+                y.set(0);
+            }
+         }, 150);
       }
     };
 
@@ -171,12 +201,16 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
     
     // Desktop Mouse Events
     window.addEventListener('mousedown', handleStart);
-    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mousemove', handleMove); // Keep passive: true default for mouse unless prevented? 
+    // Actually for mousemove we generally don't need passive: false unless preventing default.
+    // We added preventDefault above, so we should treat it as non-passive in logic if needed, 
+    // but addEventListener defaults to passive: false for mousemove in most browsers or is neutral.
+    // However, to be safe and explicit:
     window.addEventListener('mouseup', handleEnd);
     window.addEventListener('mouseleave', handleEnd);
 
-    // Trackpad Wheel Event
-    window.addEventListener('wheel', handleWheel, { passive: true });
+    // Trackpad Wheel Event - passive: false is REQUIRED to prevent default
+    window.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
       window.removeEventListener('touchstart', handleStart);
