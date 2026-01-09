@@ -234,13 +234,13 @@ export default function BrokerageHome() {
                    <div className="flex gap-2 md:gap-3 pb-2">
                       <button 
                         onClick={() => setDepositModalOpen(true)}
-                        className="bg-black dark:bg-white text-white dark:text-black px-6 py-2 rounded-full text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
+                        className="bg-black dark:bg-white text-white dark:text-black px-6 py-2 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
                       >
                         Deposit
                       </button>
                       <button 
                         onClick={() => setWithdrawModalOpen(true)}
-                        className="bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white px-6 py-2 rounded-full text-sm font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                        className="bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white px-6 py-2 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
                       >
                         Withdraw
                       </button>

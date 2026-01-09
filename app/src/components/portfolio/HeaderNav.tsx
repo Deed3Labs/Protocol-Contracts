@@ -108,7 +108,7 @@ export default function HeaderNav({
            ) : (
              <button 
                onClick={() => openModal()}
-               className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors shadow-sm whitespace-nowrap"
+               className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors shadow-sm whitespace-nowrap"
              >
                Login
              </button>
