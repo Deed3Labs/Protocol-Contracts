@@ -64,15 +64,7 @@ export function ThemeProvider({
     // 1. Update meta theme-color tags immediately for browser UI
     const metaThemeColors = document.querySelectorAll('meta[name="theme-color"]');
     metaThemeColors.forEach(meta => {
-      // If we have specific media query tags, they might handle auto-switching, but for manual override:
-      // We can also just set a single one if we want to force it.
-      // For now, let's look for one without media or force update based on preference.
-      // Best approach for SPA toggle: Remove media query reliance and force the value
-      // OR let the existing media query ones be if we rely on system, but we are doing manual toggle.
-      // So we should probably update them or add a high-priority one.
-      
-      // Simpler approach: Find specifically the one active or update all to match current state?
-      // Actually, if we use manual toggle, we should force the content.
+      meta.removeAttribute('media'); // Remove media query so manual override sticks
       meta.setAttribute('content', themeColor);
     });
 

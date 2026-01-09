@@ -45,7 +45,9 @@ self.addEventListener('fetch', (event) => {
     // Skip web components and custom elements
     url.pathname.includes('appkit-button') ||
     url.pathname.includes('web-components') ||
-    url.pathname.includes('custom-elements')
+    url.pathname.includes('custom-elements') ||
+    // Skip manifest to allow dynamic updates (though PWA shell caching is handled by OS)
+    url.pathname.includes('manifest.json')
   ) {
     event.respondWith(fetch(request));
     return;
