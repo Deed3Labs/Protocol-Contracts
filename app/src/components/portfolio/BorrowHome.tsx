@@ -147,7 +147,7 @@ export default function BorrowHome() {
                     <span className="text-zinc-500">Utilization</span>
                     <span className="text-black dark:text-white font-medium">{utilization.toFixed(1)}%</span>
                  </div>
-                 <div className="h-3 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                 <div className="h-3 w-full bg-zinc-200 dark:bg-zinc-800 rounded overflow-hidden">
                     <motion.div 
                       initial={{ width: 0 }}
                       animate={{ width: `${utilization}%` }}
