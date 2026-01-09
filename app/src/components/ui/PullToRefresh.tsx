@@ -108,18 +108,60 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
 
       if (currentY > THRESHOLD) {
         setIsRefreshing(true);
-        await controls.start({ y: THRESHOLD });
+        // Rubber band back to 0 immediately to show skeleton
+        await controls.start({ y: 0 });
+        y.set(0);
         
         try {
           await onRefresh();
         } finally {
           setIsRefreshing(false);
-          await controls.start({ y: 0 });
+          // Ensure we're at 0
+          controls.start({ y: 0 });
           y.set(0);
         }
       } else {
         await controls.start({ y: 0 });
         y.set(0);
+      }
+    };
+
+    // Trackpad Support (Wheel Event)
+    let wheelTimeout: NodeJS.Timeout;
+    const handleWheel = (e: WheelEvent) => {
+      // Allow default scroll if we're not at the top or if the user is scrolling down
+      if (window.scrollY > 5 || (e.deltaY > 0 && y.get() === 0) || isRefreshing) return;
+
+      // Check if it's a vertical pull (negative deltaY at top)
+      // Note: Trackpads often send very small deltaY values
+      if (e.deltaY < 0 && window.scrollY <= 5) {
+        const currentY = y.get();
+        // Accumulate pull (simulating drag)
+        const newY = Math.min(currentY + Math.abs(e.deltaY) * 0.5, MAX_PULL);
+        
+        if (newY > 0) {
+           y.set(newY);
+           // Debounce the "end" of the gesture
+           clearTimeout(wheelTimeout);
+           wheelTimeout = setTimeout(() => {
+             const finalY = y.get();
+             if (finalY > THRESHOLD) {
+               // Trigger refresh logic (reuse logic manually)
+               setIsRefreshing(true);
+               controls.start({ y: 0 }).then(async () => {
+                 try {
+                   await onRefresh();
+                 } finally {
+                   setIsRefreshing(false);
+                   y.set(0);
+                 }
+               });
+             } else {
+               controls.start({ y: 0 });
+               y.set(0);
+             }
+           }, 150); // Wait for wheel events to stop
+        }
       }
     };
 
@@ -133,6 +175,9 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
     window.addEventListener('mouseup', handleEnd);
     window.addEventListener('mouseleave', handleEnd);
 
+    // Trackpad Wheel Event
+    window.addEventListener('wheel', handleWheel, { passive: true });
+
     return () => {
       window.removeEventListener('touchstart', handleStart);
       window.removeEventListener('touchmove', handleMove);
@@ -142,6 +187,8 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mouseup', handleEnd);
       window.removeEventListener('mouseleave', handleEnd);
+
+      window.removeEventListener('wheel', handleWheel);
     };
   }, [isRefreshing, onRefresh, controls, y]);
 
