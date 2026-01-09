@@ -1,10 +1,17 @@
 import { X, ChevronRight, User, Settings, Lock, HelpCircle, LogOut, Sun, Moon, FileText, CreditCard } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useDisconnect } from 'wagmi';
+import { useEffect, useState } from 'react';
 
 const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: any; totalValue: number }) => {
   const { theme, setTheme } = useTheme();
   const { disconnect } = useDisconnect();
+  // Force local state update when context theme changes to ensure UI sync
+  const [_localTheme, setLocalTheme] = useState(theme);
+
+  useEffect(() => {
+    setLocalTheme(theme);
+  }, [theme]);
 
   if (!isOpen) return null;
 

@@ -42,19 +42,12 @@ export function ThemeProvider({
   useEffect(() => {
     const root = window.document.documentElement;
 
-    root.classList.remove('light', 'dark');
-
-    // if (theme === 'system') {
-    //   const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
-    //     .matches
-    //     ? 'dark'
-    //     : 'light';
-
-    //   root.classList.add(systemTheme);
-    //   return;
-    // }
-
-    root.classList.add(theme);
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    
     // Dispatch a custom event to notify other components (like AppKitThemeSync)
     window.dispatchEvent(new Event('themechange'));
   }, [theme]);
