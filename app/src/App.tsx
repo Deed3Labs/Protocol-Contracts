@@ -35,8 +35,8 @@ const LegacyLayout = () => {
 
 const AppLayout = () => {
   const handleRefresh = async () => {
-    // Wait for animation
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // Wait for animation (increased to 2s to show skeleton)
+    await new Promise(resolve => setTimeout(resolve, 2000));
     window.location.reload();
   };
 

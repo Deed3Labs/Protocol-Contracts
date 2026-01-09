@@ -1,11 +1,54 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, useAnimation, useMotionValue, useTransform } from 'framer-motion';
+import { motion, useAnimation, useMotionValue, useTransform, AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 
 interface PullToRefreshProps {
   onRefresh: () => Promise<void>;
   children: React.ReactNode;
 }
+
+const Skeleton = () => (
+  <div className="container mx-auto max-w-7xl pt-24 px-4 md:px-6">
+    <div className="animate-pulse space-y-8">
+      {/* Header Area */}
+      <div className="flex justify-between items-end">
+        <div className="space-y-3">
+          <div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded w-32"></div>
+          <div className="h-10 bg-zinc-100 dark:bg-zinc-800 rounded w-64"></div>
+        </div>
+        <div className="flex gap-3">
+          <div className="h-10 bg-zinc-100 dark:bg-zinc-800 rounded-full w-24"></div>
+          <div className="h-10 bg-zinc-100 dark:bg-zinc-800 rounded-full w-24"></div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-6 border-b border-zinc-100 dark:border-zinc-800 pb-4">
+         {[1,2,3,4].map(i => (
+           <div key={i} className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded w-20"></div>
+         ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+        {/* Main Content */}
+        <div className="md:col-span-8 space-y-6">
+           <div className="h-64 bg-zinc-100 dark:bg-zinc-800 rounded-xl w-full"></div>
+           <div className="space-y-4">
+              {[1,2,3].map(i => (
+                <div key={i} className="h-16 bg-zinc-100 dark:bg-zinc-800 rounded-lg w-full"></div>
+              ))}
+           </div>
+        </div>
+        
+        {/* Sidebar */}
+        <div className="md:col-span-4 space-y-6 hidden md:block">
+           <div className="h-40 bg-zinc-100 dark:bg-zinc-800 rounded-xl w-full"></div>
+           <div className="h-64 bg-zinc-100 dark:bg-zinc-800 rounded-xl w-full"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
 export default function PullToRefresh({ onRefresh, children }: PullToRefreshProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -18,42 +61,46 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
   // Transform y value to rotation for the spinner
   const rotate = useTransform(y, [0, 100], [0, 360]);
   const opacity = useTransform(y, [0, 50], [0, 1]);
+
+  // Fix for fixed position elements: only apply transform when actively pulling/refreshing
+  const transform = useTransform(y, (latest) => {
+    if (latest === 0 && !isRefreshing) return "none";
+    return `translateY(${latest}px)`;
+  });
   
   const MAX_PULL = 150;
   const THRESHOLD = 80;
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    if (typeof window === 'undefined') return;
 
-    const handleTouchStart = (e: TouchEvent) => {
+    // Use unified pointer events to handle both mouse (desktop) and touch (mobile)
+    const handleStart = (e: TouchEvent | MouseEvent) => {
       // Only enable if we're at the top of the page
-      if (window.scrollY <= 5) { // Small buffer
-        startY.current = e.touches[0].clientY;
+      if (window.scrollY <= 5) {
+        startY.current = 'touches' in e ? e.touches[0].clientY : e.clientY;
+        // Only trigger on mouse drag if mouse button is down
+        if ('button' in e && e.button !== 0) return;
         isDragging.current = true;
       }
     };
 
-    const handleTouchMove = (e: TouchEvent) => {
+    const handleMove = (e: TouchEvent | MouseEvent) => {
       if (!isDragging.current || window.scrollY > 5 || isRefreshing) return;
 
-      const currentY = e.touches[0].clientY;
+      const currentY = 'touches' in e ? e.touches[0].clientY : e.clientY;
       const diff = currentY - startY.current;
 
       if (diff > 0) {
-        // Add resistance
         const newY = Math.min(diff * 0.5, MAX_PULL);
         y.set(newY);
-        
-        // Prevent default to stop native rubber banding
-        if (e.cancelable) e.preventDefault();
+        if (e.cancelable && 'touches' in e) e.preventDefault(); // Only prevent default on touch
       } else {
-        // If pushing up, stop dragging logic to allow scroll
         isDragging.current = false;
       }
     };
 
-    const handleTouchEnd = async () => {
+    const handleEnd = async () => {
       if (!isDragging.current || isRefreshing) return;
       isDragging.current = false;
 
@@ -61,47 +108,46 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
 
       if (currentY > THRESHOLD) {
         setIsRefreshing(true);
-        // Animate to threshold
         await controls.start({ y: THRESHOLD });
         
         try {
           await onRefresh();
         } finally {
           setIsRefreshing(false);
-          // Animate back to 0
-          controls.start({ y: 0 });
+          await controls.start({ y: 0 });
           y.set(0);
         }
       } else {
-        // Animate back to 0
-        controls.start({ y: 0 });
+        await controls.start({ y: 0 });
         y.set(0);
       }
     };
 
-    // Attach to window to catch pulls even if starting on fixed elements
-    window.addEventListener('touchstart', handleTouchStart, { passive: true });
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
-    window.addEventListener('touchend', handleTouchEnd);
+    window.addEventListener('touchstart', handleStart, { passive: true });
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
+    
+    // Desktop Mouse Events
+    window.addEventListener('mousedown', handleStart);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('mouseleave', handleEnd);
 
     return () => {
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchstart', handleStart);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleEnd);
+      
+      window.removeEventListener('mousedown', handleStart);
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('mouseleave', handleEnd);
     };
   }, [isRefreshing, onRefresh, controls, y]);
 
-  // Sync motion value with animation controls
-  useEffect(() => {
-    const unsubscribe = y.on("change", () => {
-       // Only manually set if not animating via controls
-    });
-    return unsubscribe;
-  }, [y]);
-
   return (
     <div ref={containerRef} className="relative min-h-screen">
-      {/* Loading Indicator Layer - Positioned below header (approx 80px) */}
+      {/* Loading Indicator Layer */}
       <div className="absolute top-24 left-0 right-0 flex justify-center z-0 pointer-events-none">
         <motion.div 
           style={{ opacity, rotate, scale: opacity }}
@@ -114,9 +160,22 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
       {/* Content Layer */}
       <motion.div 
         animate={controls}
-        style={{ y: isRefreshing ? undefined : y }} 
-        className="relative z-10 transition-transform duration-200 bg-white dark:bg-[#0e0e0e]"
+        style={{ transform }} 
+        className="relative z-10 transition-transform duration-200 bg-white dark:bg-[#0e0e0e] min-h-screen"
       >
+        <AnimatePresence>
+          {isRefreshing && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 z-50 bg-white dark:bg-[#0e0e0e]"
+            >
+              <Skeleton />
+            </motion.div>
+          )}
+        </AnimatePresence>
         {children}
       </motion.div>
     </div>
