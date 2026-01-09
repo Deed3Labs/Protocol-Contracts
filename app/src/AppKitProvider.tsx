@@ -84,6 +84,28 @@ const wagmiAdapter = new WagmiAdapter({
   ssr: true
 });
 
+// Helper function to detect current theme
+const getCurrentTheme = (): 'light' | 'dark' => {
+  if (typeof window === 'undefined') return 'dark'; // Default for SSR
+  
+    const saved = localStorage.getItem('theme');
+  if (saved === 'dark' || saved === 'light') {
+    return saved as 'light' | 'dark';
+    }
+  
+  // Check if dark class is on document
+    if (document.documentElement.classList.contains('dark')) {
+      return 'dark';
+    }
+  
+  // Check system preference
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+  
+  return 'light';
+};
+
 // Initialize AppKit globally (outside component) to avoid "createAppKit" errors
 const initializeAppKit = () => {
   if (typeof window === 'undefined') return;
@@ -109,8 +131,7 @@ const initializeAppKit = () => {
       },
       siwx: new ReownAuthentication(),
       allWallets: 'SHOW',
-      themeMode: themeMode,
-      // themeVariables: themeMode === 'dark' ? darkThemeVariables : themeVariables
+      themeMode: themeMode
     });
     
     console.log('AppKit initialized successfully');
@@ -121,28 +142,6 @@ const initializeAppKit = () => {
 
 // Call initialization immediately
 initializeAppKit();
-
-// Helper function to detect current theme
-function getCurrentTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'dark'; // Default for SSR
-  
-    const saved = localStorage.getItem('theme');
-  if (saved === 'dark' || saved === 'light') {
-    return saved as 'light' | 'dark';
-    }
-  
-  // Check if dark class is on document
-    if (document.documentElement.classList.contains('dark')) {
-      return 'dark';
-    }
-  
-  // Check system preference
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-  
-  return 'light';
-};
 
 // Initialize AppKit only after component mounts to avoid SSR issues
 // const initializeAppKit = () => {
