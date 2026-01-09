@@ -102,7 +102,7 @@ const Card = ({ data, index, onDismiss }: { data: CTAData; index: number; onDism
                 {data.description}
             </p>
          </div>
-         <button className="bg-zinc-900 dark:bg-zinc-800 text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors w-fit shadow-sm">
+         <button className="bg-zinc-900 dark:bg-zinc-800 text-white px-5 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors w-fit shadow-sm">
             {data.buttonText}
          </button>
       </div>
@@ -155,7 +155,7 @@ export default function CTAStack() {
             </p>
             <button 
               onClick={handleDismissAll}
-              className="px-4 py-1.5 rounded-full border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all uppercase tracking-wider"
+              className="px-4 py-1.5 rounded-full border border-zinc-200 dark:border-zinc-700 text-xs font-normal text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all uppercase tracking-wider"
             >
               Dismiss
             </button>

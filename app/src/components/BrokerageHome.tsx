@@ -221,7 +221,7 @@ export default function BrokerageHome() {
               <div className="mt-4 mb-8 flex items-end justify-between">
                    <div>
                        <div className="flex items-center gap-2 mb-1 text-zinc-500 dark:text-zinc-500">
-                         <span className="text-sm font-medium">Account Balance</span>
+                         <span className="text-sm font-normal">Account Balance</span>
                          <div className="group relative">
                             <Info className="h-4 w-4 cursor-help" />
                          </div>
@@ -253,7 +253,7 @@ export default function BrokerageHome() {
                   <button
                     key={tab}
                     onClick={() => setSelectedTab(tab)}
-                    className={`text-sm font-medium transition-colors relative pb-2 whitespace-nowrap ${
+                    className={`text-sm font-normal transition-colors relative pb-2 whitespace-nowrap ${
                       selectedTab === tab ? 'text-black dark:text-white' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
                     }`}
                   >
@@ -295,7 +295,7 @@ export default function BrokerageHome() {
                       <button
                         key={filter}
                         onClick={() => setPortfolioFilter(filter)}
-                        className={`px-3 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
+                        className={`px-3 py-1 rounded text-xs font-normal transition-all flex items-center gap-1 ${
                           portfolioFilter === filter
                             ? 'bg-zinc-900 dark:bg-zinc-800 text-white'
                             : 'bg-transparent text-zinc-500 dark:text-zinc-500 border border-zinc-300 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'
@@ -331,13 +331,13 @@ export default function BrokerageHome() {
                                  <span className="font-bold text-xs text-black dark:text-white">{holding.asset_symbol[0]}</span>
                               </div>
                               <div>
-                                <p className="text-black dark:text-white font-medium text-sm">{holding.asset_symbol}</p>
+                                <p className="text-black dark:text-white font-normal text-sm">{holding.asset_symbol}</p>
                                 <p className="text-zinc-500 text-xs">{holding.asset_name}</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
                               <div className="text-right">
-                                <p className={`font-medium text-sm ${isHoldingNegative ? 'text-[#FF3B30]' : 'text-[#30D158]'}`}>
+                                <p className={`font-normal text-sm ${isHoldingNegative ? 'text-[#FF3B30]' : 'text-[#30D158]'}`}>
                                   {isHoldingNegative ? '-' : '+'}${Math.abs(displayChange * (holding.quantity || 1)).toFixed(2)}
                                 </p>
                                 <p className={`text-xs ${isHoldingNegative ? 'text-[#FF3B30]' : 'text-[#30D158]'}`}>
@@ -381,7 +381,7 @@ export default function BrokerageHome() {
                              {item.type === 'trade' && <RefreshCw className="w-4 h-4" />}
                           </div>
                           <div>
-                            <p className="text-black dark:text-white font-medium text-sm capitalize">
+                            <p className="text-black dark:text-white font-normal text-sm capitalize">
                               {item.type === 'buy' ? `Bought ${item.assetSymbol}` : 
                                item.type === 'sell' ? `Sold ${item.assetSymbol}` : 
                                item.type === 'mint' ? `Minted ${item.assetSymbol}` :
@@ -395,7 +395,7 @@ export default function BrokerageHome() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-black dark:text-white font-medium text-sm">
+                          <p className="text-black dark:text-white font-normal text-sm">
                             {item.amount > 0 ? (
                               <>
                                 {item.type === 'deposit' || item.type === 'buy' ? '+' : ''}

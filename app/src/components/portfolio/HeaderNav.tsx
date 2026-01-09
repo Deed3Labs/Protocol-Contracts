@@ -40,7 +40,7 @@ export default function HeaderNav({
             className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-900 rounded px-3 py-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors overflow-hidden"
           >
             <Menu className="w-4 h-4 text-black dark:text-white shrink-0" />
-            <motion.span layout="position" className="text-sm font-medium whitespace-nowrap">Menu</motion.span>
+            <motion.span layout="position" className="text-sm font-normal whitespace-nowrap">Menu</motion.span>
             <AnimatePresence>
               {(isScrolledPast) && (
                 <motion.span 
@@ -60,7 +60,7 @@ export default function HeaderNav({
         </div>
         
         {/* Desktop Nav Links (Hidden on Mobile) */}
-        <div className="hidden md:flex items-center gap-6 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+        <div className="hidden md:flex items-center gap-6 text-sm font-normal text-zinc-500 dark:text-zinc-400">
            <button className="text-black dark:text-white hover:text-black dark:hover:text-white transition-colors">Portfolio</button>
            <button className="hover:text-black dark:hover:text-white transition-colors">Markets</button>
            <button className="hover:text-black dark:hover:text-white transition-colors">Earn</button>
@@ -77,7 +77,7 @@ export default function HeaderNav({
              <Plus className="w-4 h-4" />
            </motion.button>
 
-           <button className="hidden md:flex items-center gap-2 px-4 py-2 w-64 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded text-sm font-medium transition-colors justify-between">
+           <button className="hidden md:flex items-center gap-2 px-4 py-2 w-64 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded text-sm font-normal transition-colors justify-between">
              <div className="flex items-center gap-2">
                <Search className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
                <span className="text-zinc-500 dark:text-zinc-400">Search</span>
@@ -95,7 +95,7 @@ export default function HeaderNav({
                  onClick={() => setProfileMenuOpen(!profileMenuOpen)}
                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors"
                >
-                  <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-sm font-medium text-white">
+                  <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-sm font-normal text-white">
                      {user?.name?.[0] || 'U'}
                   </div>
                </button>
