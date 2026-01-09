@@ -33,7 +33,7 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
         ) : (
           <TrendingUp className="w-4 h-4 text-[#30D158]" />
         )}
-        <span className={`font-medium ${isNegative ? 'text-[#FF3B30]' : 'text-[#30D158]'}`}>
+        <span className={`font-normal ${isNegative ? 'text-[#FF3B30]' : 'text-[#30D158]'}`}>
           ${Math.abs(dailyChange).toFixed(2)} ({Math.abs(dailyChangePercent).toFixed(2)}%)
         </span>
         <span className="text-zinc-500 text-sm">{periodLabels[selectedRange]}</span>
@@ -49,7 +49,7 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
           <button
             key={range}
             onClick={() => onRangeChange(range)}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-all whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded text-sm font-normal transition-all whitespace-nowrap ${
               selectedRange === range
                 ? 'bg-zinc-900 dark:bg-zinc-800 text-white'
                 : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
@@ -104,12 +104,12 @@ export function IncomeView({ totalValue: _totalValue }: { totalValue: number }) 
     <div>
       <div className="mb-4">
         <div className="flex items-center gap-2">
-          <span className="text-[#30D158] font-medium">${estIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="text-[#30D158] font-normal">${estIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           <span className="text-zinc-500">est. {selectedYear} income</span>
           <Info className="w-4 h-4 text-zinc-600" />
         </div>
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-[#30D158] font-medium">${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="text-[#30D158] font-normal">${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           <span className="text-zinc-500">received income to date</span>
           <Info className="w-4 h-4 text-zinc-600" />
         </div>
@@ -124,7 +124,7 @@ export function IncomeView({ totalValue: _totalValue }: { totalValue: number }) 
           <button
             key={year}
             onClick={() => setSelectedYear(year)}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-all whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded text-sm font-normal transition-all whitespace-nowrap ${
               selectedYear === year
                 ? 'bg-zinc-800 text-white'
                 : 'text-zinc-500 hover:text-zinc-300'
@@ -164,11 +164,11 @@ export function AccountValueView({ chartData, selectedRange, onRangeChange, tota
       <div className="mb-4">
         <div className="flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-[#30D158]" />
-          <span className="text-[#30D158] font-medium">${totalValue.toFixed(2)}</span>
+          <span className="text-[#30D158] font-normal">${totalValue.toFixed(2)}</span>
           <span className="text-zinc-500">all time</span>
         </div>
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-[#30D158] font-medium">$5.00</span>
+          <span className="text-[#30D158] font-normal">$5.00</span>
           <span className="text-zinc-500">net deposits</span>
           <Info className="w-4 h-4 text-zinc-600" />
         </div>
@@ -183,7 +183,7 @@ export function AccountValueView({ chartData, selectedRange, onRangeChange, tota
           <button
             key={range}
             onClick={() => onRangeChange(range)}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-all whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded text-sm font-normal transition-all whitespace-nowrap ${
               selectedRange === range
                 ? 'bg-blue-600 text-white'
                 : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
@@ -253,7 +253,7 @@ export function AllocationView({ totalValue }: { totalValue: number }) {
             </div>
             <div className="flex items-center gap-4">
               <span className="text-zinc-500 dark:text-zinc-400">${item.value.toFixed(2)}</span>
-              <span className="text-black dark:text-white font-medium w-16 text-right">{item.percent.toFixed(2)}%</span>
+              <span className="text-black dark:text-white font-normal w-16 text-right">{item.percent.toFixed(2)}%</span>
             </div>
           </div>
         ))}
