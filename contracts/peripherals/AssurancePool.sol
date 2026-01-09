@@ -7,9 +7,9 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import "../core/interfaces/IStableCredit.sol";
-import "../core/interfaces/IAssurancePool.sol";
-import "../core/interfaces/IAssuranceOracle.sol";
+import "../core/interfaces/stable-credit/IStableCredit.sol";
+import "../core/interfaces/stable-credit/IAssurancePool.sol";
+import "../core/interfaces/stable-credit/IAssuranceOracle.sol";
 
 /// @title AssurancePool
 /// @notice Stores and manages reserve tokens according to pool
@@ -41,9 +41,6 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// Operator access granted addresses can withdraw from the excess reserve.
     /// @dev reserve token address => excess reserve balance
     mapping(address => uint256) public excessReserve;
-    
-    // Events
-    event RTDRebalanced(uint256 previousRTD, uint256 targetRTD, uint256 newRTD);
 
     /* ========== INITIALIZER ========== */
 
@@ -296,7 +293,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
 
     /* ========== RESTRICTED FUNCTIONS ========== */
 
-    /// @notice Called by the stable credit implementation to reimburse an account.
+    /// @notice Called by the stable credit implementation toreimburse an account.
     /// If the amount is covered by the buffer reserve, the buffer reserve is depleted first,
     /// followed by the primary reserve.
     /// @dev The stable credit implementation should not expose this function to the public as it could be
@@ -379,17 +376,17 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         _updateReserveValues();
         
         uint256 currentRTD = RTD();
-        uint256 targetRTD = targetRTD();
+        uint256 _targetRTD = targetRTD();
         
-        if (currentRTD < targetRTD) {
+        if (currentRTD < _targetRTD) {
             // RTD is below target - move reserves from buffer/excess to primary
             _rebalanceToPrimary();
-        } else if (currentRTD > targetRTD) {
+        } else if (currentRTD > _targetRTD) {
             // RTD is above target - move reserves from primary to buffer/excess
             _rebalanceFromPrimary();
         }
         
-        emit RTDRebalanced(currentRTD, targetRTD, RTD());
+        emit RTDRebalanced(currentRTD, _targetRTD, RTD());
     }
     
     /// @notice Recalculate RTD and rebalance reserves based on current token prices (public)
@@ -399,38 +396,38 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         _updateReserveValues();
         
         uint256 currentRTD = RTD();
-        uint256 targetRTD = targetRTD();
+        uint256 _targetRTD = targetRTD();
         
-        if (currentRTD < targetRTD) {
+        if (currentRTD < _targetRTD) {
             // RTD is below target - move reserves from buffer/excess to primary
             _rebalanceToPrimary();
-        } else if (currentRTD > targetRTD) {
+        } else if (currentRTD > _targetRTD) {
             // RTD is above target - move reserves from primary to buffer/excess
             _rebalanceFromPrimary();
         }
         
-        emit RTDRebalanced(currentRTD, targetRTD, RTD());
+        emit RTDRebalanced(currentRTD, _targetRTD, RTD());
     }
     
     /// @notice Internal function to rebalance reserves to primary when RTD is below target
     function _rebalanceToPrimary() internal {
-        uint256 neededReserves = neededReserves();
-        if (neededReserves == 0) return;
+        uint256 _neededReserves = neededReserves();
+        if (_neededReserves == 0) return;
         
         // First, try to use buffer reserve
         uint256 bufferAvailable = bufferBalance();
         if (bufferAvailable > 0) {
-            uint256 fromBuffer = bufferAvailable <= neededReserves ? bufferAvailable : neededReserves;
+            uint256 fromBuffer = bufferAvailable <= _neededReserves ? bufferAvailable : _neededReserves;
             bufferReserve[address(reserveToken)] -= fromBuffer;
             primaryReserve[address(reserveToken)] += fromBuffer;
-            neededReserves -= fromBuffer;
+            _neededReserves -= fromBuffer;
         }
         
         // Then, use excess reserve if still needed
-        if (neededReserves > 0) {
+        if (_neededReserves > 0) {
             uint256 excessAvailable = excessBalance();
             if (excessAvailable > 0) {
-                uint256 fromExcess = excessAvailable <= neededReserves ? excessAvailable : neededReserves;
+                uint256 fromExcess = excessAvailable <= _neededReserves ? excessAvailable : _neededReserves;
                 excessReserve[address(reserveToken)] -= fromExcess;
                 primaryReserve[address(reserveToken)] += fromExcess;
             }
@@ -440,12 +437,12 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @notice Internal function to rebalance reserves from primary when RTD is above target
     function _rebalanceFromPrimary() internal {
         uint256 currentRTD = RTD();
-        uint256 targetRTD = targetRTD();
+        uint256 _targetRTD = targetRTD();
         
-        if (currentRTD <= targetRTD) return;
+        if (currentRTD <= _targetRTD) return;
         
         // Calculate how much to move from primary
-        uint256 excessAmount = ((currentRTD - targetRTD) * primaryBalance()) / 1 ether;
+        uint256 excessAmount = ((currentRTD - _targetRTD) * primaryBalance()) / 1 ether;
         
         // Move to buffer first (for emergency reimbursements)
         uint256 bufferNeeded = bufferBalance() == 0 ? excessAmount / 2 : 0; // Fill buffer if empty
@@ -536,22 +533,22 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     
     /// @notice Get current RTD status and rebalancing needs
     /// @return currentRTD Current RTD percentage
-    /// @return targetRTD Target RTD percentage
+    /// @return _targetRTD Target RTD percentage
     /// @return needsRebalancing True if RTD needs rebalancing
     /// @return rebalanceDirection "to_primary", "from_primary", or "balanced"
     function getRTDStatus() external view returns (
         uint256 currentRTD,
-        uint256 targetRTD,
+        uint256 _targetRTD,
         bool needsRebalancing,
         string memory rebalanceDirection
     ) {
         currentRTD = RTD();
-        targetRTD = targetRTD();
+        _targetRTD = targetRTD();
         
-        if (currentRTD < targetRTD) {
+        if (currentRTD < _targetRTD) {
             needsRebalancing = true;
             rebalanceDirection = "to_primary";
-        } else if (currentRTD > targetRTD) {
+        } else if (currentRTD > _targetRTD) {
             needsRebalancing = true;
             rebalanceDirection = "from_primary";
         } else {
@@ -566,21 +563,21 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @return excessAmount Excess reserve amount
     /// @return totalReserves Total reserves
     /// @return currentRTD Current RTD percentage
-    /// @return targetRTD Target RTD percentage
+    /// @return _targetRTD Target RTD percentage
     function getReserveBreakdown() external view returns (
         uint256 primaryAmount,
         uint256 bufferAmount,
         uint256 excessAmount,
         uint256 totalReserves,
         uint256 currentRTD,
-        uint256 targetRTD
+        uint256 _targetRTD
     ) {
         primaryAmount = primaryBalance();
         bufferAmount = bufferBalance();
         excessAmount = excessBalance();
         totalReserves = primaryAmount + bufferAmount + excessAmount;
         currentRTD = RTD();
-        targetRTD = targetRTD();
+        _targetRTD = targetRTD();
     }
     
     /// @notice Check if price changes require rebalancing
@@ -760,31 +757,55 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     }
     
     /// @notice Internal function to withdraw equivalent value using available tokens
-    /// @param requestedToken Token the user originally requested
+    /// @param requestedToken Token the user originally requested (prioritized if available)
     /// @param amount Amount of reserve token equivalent to withdraw
     function _withdrawEquivalentValue(address requestedToken, uint256 amount) internal {
         uint256 remainingAmount = amount;
         
-        // Priority order for withdrawal (most cost-effective first)
-        address[] memory priorityTokens = _getWithdrawalPriority();
-        
-        for (uint256 i = 0; i < priorityTokens.length && remainingAmount > 0; i++) {
-            address token = priorityTokens[i];
-            uint256 tokenBalance = IERC20Upgradeable(token).balanceOf(address(this));
-            
-            if (tokenBalance > 0) {
-                // Calculate how much of this token we can use
-                uint256 tokenValue = _convertToReserveToken(token, tokenBalance);
+        // First, try to give the user their requested token if we have any
+        if (requestedToken != address(0)) {
+            uint256 requestedTokenBalance = IERC20Upgradeable(requestedToken).balanceOf(address(this));
+            if (requestedTokenBalance > 0) {
+                uint256 requestedTokenValue = _convertToReserveToken(requestedToken, requestedTokenBalance);
                 
-                if (tokenValue <= remainingAmount) {
-                    // Use all of this token
-                    IERC20Upgradeable(token).safeTransfer(_msgSender(), tokenBalance);
-                    remainingAmount -= tokenValue;
+                if (requestedTokenValue <= remainingAmount) {
+                    // Use all of the requested token
+                    IERC20Upgradeable(requestedToken).safeTransfer(_msgSender(), requestedTokenBalance);
+                    remainingAmount -= requestedTokenValue;
                 } else {
-                    // Use partial amount of this token
-                    uint256 neededTokenAmount = _convertFromReserveToken(token, remainingAmount);
-                    IERC20Upgradeable(token).safeTransfer(_msgSender(), neededTokenAmount);
+                    // Use partial amount of the requested token
+                    uint256 neededTokenAmount = _convertFromReserveToken(requestedToken, remainingAmount);
+                    IERC20Upgradeable(requestedToken).safeTransfer(_msgSender(), neededTokenAmount);
                     remainingAmount = 0;
+                }
+            }
+        }
+        
+        // If we still need more, use priority order for withdrawal (most cost-effective first)
+        if (remainingAmount > 0) {
+            address[] memory priorityTokens = _getWithdrawalPriority();
+            
+            for (uint256 i = 0; i < priorityTokens.length && remainingAmount > 0; i++) {
+                address token = priorityTokens[i];
+                // Skip the requested token if we already tried it
+                if (token == requestedToken) continue;
+                
+                uint256 tokenBalance = IERC20Upgradeable(token).balanceOf(address(this));
+                
+                if (tokenBalance > 0) {
+                    // Calculate how much of this token we can use
+                    uint256 tokenValue = _convertToReserveToken(token, tokenBalance);
+                    
+                    if (tokenValue <= remainingAmount) {
+                        // Use all of this token
+                        IERC20Upgradeable(token).safeTransfer(_msgSender(), tokenBalance);
+                        remainingAmount -= tokenValue;
+                    } else {
+                        // Use partial amount of this token
+                        uint256 neededTokenAmount = _convertFromReserveToken(token, remainingAmount);
+                        IERC20Upgradeable(token).safeTransfer(_msgSender(), neededTokenAmount);
+                        remainingAmount = 0;
+                    }
                 }
             }
         }

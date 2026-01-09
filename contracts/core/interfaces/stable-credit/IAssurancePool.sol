@@ -68,12 +68,12 @@ interface IAssurancePool {
 
     /// @notice Get current RTD status and rebalancing needs
     /// @return currentRTD Current RTD percentage
-    /// @return targetRTD Target RTD percentage
+    /// @return _targetRTD Target RTD percentage
     /// @return needsRebalancing True if RTD needs rebalancing
     /// @return rebalanceDirection "to_primary", "from_primary", or "balanced"
     function getRTDStatus() external view returns (
         uint256 currentRTD,
-        uint256 targetRTD,
+        uint256 _targetRTD,
         bool needsRebalancing,
         string memory rebalanceDirection
     );
@@ -84,14 +84,14 @@ interface IAssurancePool {
     /// @return excessAmount Excess reserve amount
     /// @return totalReserves Total reserves
     /// @return currentRTD Current RTD percentage
-    /// @return targetRTD Target RTD percentage
+    /// @return _targetRTD Target RTD percentage
     function getReserveBreakdown() external view returns (
         uint256 primaryAmount,
         uint256 bufferAmount,
         uint256 excessAmount,
         uint256 totalReserves,
         uint256 currentRTD,
-        uint256 targetRTD
+        uint256 _targetRTD
     );
 
     /// @notice Set token addresses for withdrawal priority (admin only)
@@ -99,6 +99,15 @@ interface IAssurancePool {
     /// @param _usdtAddress USDT token address  
     /// @param _daiAddress DAI token address
     function setTokenAddresses(address _usdcAddress, address _usdtAddress, address _daiAddress) external;
+
+    /// @notice Set the assurance oracle address (admin only)
+    /// @param _assuranceOracle Address of the new assurance oracle
+    function setAssuranceOracle(address _assuranceOracle) external;
+
+    /// @notice Check if price changes require rebalancing
+    /// @return needsRebalancing True if price changes require rebalancing
+    /// @return priceImpact Percentage impact of price changes on RTD
+    function checkPriceImpact() external view returns (bool needsRebalancing, uint256 priceImpact);
 
     /* ========== EVENTS ========== */
 
