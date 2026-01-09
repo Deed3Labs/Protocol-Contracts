@@ -34,7 +34,7 @@ export default function HeaderNav({
     <header className="fixed top-0 left-0 right-0 z-50 py-4 bg-white/80 dark:bg-[#0e0e0e]/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 md:border-none md:pt-6 transition-all duration-200">
       <div className="container mx-auto max-w-7xl flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 md:w-10 md:h-10 rounded border border-black dark:border-white/10 flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]/50">
+          <div className="w-9 h-9 md:w-10 md:h-10 rounded border border-black/90 dark:border-white/10 flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]/50">
             <img src={ClearPathLogo} alt="ClearPath" className="w-full h-full object-cover" />
           </div>
           <div className="h-5 w-px bg-zinc-200 dark:bg-zinc-800" />

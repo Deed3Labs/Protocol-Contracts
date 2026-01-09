@@ -18,6 +18,7 @@ import { XMTPProvider } from "@/context/XMTPContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import Faucet from "@/components/Faucet";
 import BurnerBondPage from "@/components/BurnerBondPage";
+import PullToRefresh from "@/components/ui/PullToRefresh";
 
 const LegacyLayout = () => {
   return (
@@ -32,6 +33,20 @@ const LegacyLayout = () => {
   );
 };
 
+const AppLayout = () => {
+  const handleRefresh = async () => {
+    // Wait for animation
+    await new Promise(resolve => setTimeout(resolve, 800));
+    window.location.reload();
+  };
+
+  return (
+    <PullToRefresh onRefresh={handleRefresh}>
+      <Outlet />
+    </PullToRefresh>
+  );
+};
+
 function App() {
   return (
     <BrowserRouter>
@@ -40,9 +55,11 @@ function App() {
             <DeedNFTProvider>
               <XMTPProvider>
                 <Routes>
-              {/* New Brokerage Home Route - No Legacy Header/Footer */}
-              <Route path="/" element={<BrokerageHome />} />
-              <Route path="/borrow" element={<BorrowHome />} />
+              {/* App Routes wrapped in PullToRefresh Layout */}
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<BrokerageHome />} />
+                <Route path="/borrow" element={<BorrowHome />} />
+              </Route>
 
               {/* Legacy Routes wrapped in Layout */}
               <Route element={<LegacyLayout />}>
