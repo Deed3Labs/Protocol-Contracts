@@ -83,7 +83,12 @@ export default function HeaderNav({
              >
                Portfolio
              </button>
-             <button className="hover:text-black dark:hover:text-white transition-colors">Markets</button>
+             <button 
+               onClick={() => navigate('/markets')}
+               className={`${isActive('/markets') ? 'text-black dark:text-white' : 'hover:text-black dark:hover:text-white'} transition-colors`}
+             >
+               Markets
+             </button>
              <button className="hover:text-black dark:hover:text-white transition-colors">Earn</button>
              <button 
                onClick={() => navigate('/borrow')}

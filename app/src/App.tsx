@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import Home from "@/components/Home"; // Keeping for reference or fallback
 import BrokerageHome from "@/components/BrokerageHome";
 import BorrowHome from "@/components/portfolio/BorrowHome";
+import MarketsHome from "@/components/portfolio/MarketsHome";
 import MintForm from "@/components/MintForm";
 import Explore from "@/components/Explore";
 import Dashboard from "@/components/Dashboard";
@@ -84,6 +85,7 @@ function App() {
               {/* Pass true if splash was skipped OR if splash just finished */}
               <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} />}>
                 <Route path="/" element={<BrokerageHome />} />
+                <Route path="/markets" element={<MarketsHome />} />
                 <Route path="/borrow" element={<BorrowHome />} />
               </Route>
 
