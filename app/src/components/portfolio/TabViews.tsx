@@ -68,7 +68,7 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
       <button className="w-full flex items-center justify-between py-4 border-t border-b border-zinc-200 dark:border-zinc-800 mt-4">
         <span className="text-black dark:text-white">Borrowing power</span>
         <div className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
-          <span>$0.01</span>
+          <span>$8500.00</span>
           <ChevronRight className="w-5 h-5 text-zinc-500" />
         </div>
       </button>
