@@ -224,7 +224,7 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
         <AnimatePresence>
           {isRefreshing && (
             <motion.div
-              key="skeleton-overlay"
+              key="skeleton"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
