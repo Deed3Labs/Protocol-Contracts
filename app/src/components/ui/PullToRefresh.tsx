@@ -5,18 +5,19 @@ import { Loader2 } from 'lucide-react';
 interface PullToRefreshProps {
   onRefresh: () => Promise<void>;
   children: React.ReactNode;
+  initialLoading?: boolean;
 }
 
 const Skeleton = () => (
   <div className="container mx-auto max-w-7xl pt-24 px-4 md:px-6">
     <div className="animate-pulse space-y-8">
       {/* Header Area */}
-      <div className="flex justify-between items-end">
-        <div className="space-y-3">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-0">
+        <div className="space-y-3 w-full md:w-auto">
           <div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded w-32"></div>
-          <div className="h-10 bg-zinc-100 dark:bg-zinc-800 rounded w-64"></div>
+          <div className="h-10 bg-zinc-100 dark:bg-zinc-800 rounded w-full md:w-64"></div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 self-end md:self-auto">
           <div className="h-10 bg-zinc-100 dark:bg-zinc-800 rounded-full w-24"></div>
           <div className="h-10 bg-zinc-100 dark:bg-zinc-800 rounded-full w-24"></div>
         </div>
@@ -50,13 +51,25 @@ const Skeleton = () => (
   </div>
 );
 
-export default function PullToRefresh({ onRefresh, children }: PullToRefreshProps) {
-  const [isRefreshing, setIsRefreshing] = useState(false);
+export default function PullToRefresh({ onRefresh, children, initialLoading = false }: PullToRefreshProps) {
+  const [isRefreshing, setIsRefreshing] = useState(initialLoading);
   const containerRef = useRef<HTMLDivElement>(null);
   const startY = useRef(0);
   const isDragging = useRef(false);
   const controls = useAnimation();
   const y = useMotionValue(0);
+  
+  // Handle initial loading trigger
+  useEffect(() => {
+    if (initialLoading) {
+      setIsRefreshing(true);
+      // Simulate loading delay then turn off, NO reload call
+      const timer = setTimeout(() => {
+        setIsRefreshing(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [initialLoading]);
   
   // Transform y value to rotation for the spinner
   const rotate = useTransform(y, [0, 100], [0, 360]);

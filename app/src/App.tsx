@@ -36,7 +36,7 @@ const LegacyLayout = () => {
   );
 };
 
-const AppLayout = () => {
+const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean }) => {
   const handleRefresh = async () => {
     // Wait for animation (increased to 800ms to show skeleton)
     await new Promise(resolve => setTimeout(resolve, 800));
@@ -44,20 +44,28 @@ const AppLayout = () => {
   };
 
   return (
-    <PullToRefresh onRefresh={handleRefresh}>
+    <PullToRefresh onRefresh={handleRefresh} initialLoading={startWithSkeleton}>
       <Outlet />
     </PullToRefresh>
   );
 };
 
 function App() {
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(() => {
+    // Check if splash has been shown in this session
+    return !sessionStorage.getItem('splash_shown');
+  });
 
   useEffect(() => {
-    // Show splash screen for 3 seconds
-    const timer = setTimeout(() => setShowSplash(false), 3000);
-    return () => clearTimeout(timer);
-  }, []);
+    if (showSplash) {
+      // Show splash screen for 3 seconds
+      const timer = setTimeout(() => {
+        setShowSplash(false);
+        sessionStorage.setItem('splash_shown', 'true');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showSplash]);
 
   return (
     <BrowserRouter>
@@ -71,7 +79,7 @@ function App() {
                 
                 <Routes>
               {/* App Routes wrapped in PullToRefresh Layout */}
-              <Route element={<AppLayout />}>
+              <Route element={<AppLayout startWithSkeleton={!showSplash} />}>
                 <Route path="/" element={<BrokerageHome />} />
                 <Route path="/borrow" element={<BorrowHome />} />
               </Route>
