@@ -100,7 +100,7 @@ export default function MarketsHome() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
            
            {/* Left Column (Main Feed) */}
-           <div className="md:col-span-8 space-y-8">
+           <div className="md:col-span-8 space-y-10">
               
               {/* Buying Power Header */}
               <div>
