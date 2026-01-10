@@ -113,7 +113,7 @@ export default function BrokerageHome() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
   
-  const totalValue = 13.76; // Hardcoded for demo match
+  const totalValue = 8500.00; // Hardcoded for demo match
   
   // Calculate dynamic change stats based on chart data
   const { dailyChange, dailyChangePercent, isNegative } = (() => {
