@@ -51,19 +51,18 @@ const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean 
 };
 
 function App() {
-  // Use a ref to store the initial splash state to avoid re-triggering skeleton logic
-  // when the splash screen closes.
-  const [initialSplashNeeded] = useState(() => {
-    return !sessionStorage.getItem('splash_shown');
-  });
-  
-  const [showSplash, setShowSplash] = useState(initialSplashNeeded);
+  // Check if splash has been shown in this session
+  const [splashShown] = useState(() => !!sessionStorage.getItem('splash_shown'));
+  const [showSplash, setShowSplash] = useState(!splashShown);
+  // Track if we should show skeleton after splash
+  const [showSkeletonAfterSplash, setShowSkeletonAfterSplash] = useState(false);
 
   useEffect(() => {
     if (showSplash) {
       // Show splash screen for 4 seconds
       const timer = setTimeout(() => {
         setShowSplash(false);
+        setShowSkeletonAfterSplash(true); // Trigger skeleton after splash
         sessionStorage.setItem('splash_shown', 'true');
       }, 4000);
       return () => clearTimeout(timer);
@@ -82,7 +81,8 @@ function App() {
                 
                 <Routes>
               {/* App Routes wrapped in PullToRefresh Layout */}
-              <Route element={<AppLayout startWithSkeleton={!initialSplashNeeded} />}>
+              {/* Pass true if splash was skipped OR if splash just finished */}
+              <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} />}>
                 <Route path="/" element={<BrokerageHome />} />
                 <Route path="/borrow" element={<BorrowHome />} />
               </Route>
