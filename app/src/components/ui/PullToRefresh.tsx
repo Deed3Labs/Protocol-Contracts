@@ -8,7 +8,7 @@ interface PullToRefreshProps {
   initialLoading?: boolean;
 }
 
-const Skeleton = () => (
+export const Skeleton = () => (
   <div className="container mx-auto max-w-7xl pt-24 px-4 md:px-6">
     <div className="animate-pulse space-y-8">
       {/* Header Area */}

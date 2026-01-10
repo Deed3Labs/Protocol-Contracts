@@ -1,6 +1,6 @@
-import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Home from "@/components/Home"; // Keeping for reference or fallback
@@ -22,7 +22,7 @@ import { XMTPProvider } from "@/context/XMTPContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import Faucet from "@/components/Faucet";
 import BurnerBondPage from "@/components/BurnerBondPage";
-import PullToRefresh from "@/components/ui/PullToRefresh";
+import PullToRefresh, { Skeleton } from "@/components/ui/PullToRefresh";
 
 const LegacyLayout = () => {
   return (
@@ -38,15 +38,60 @@ const LegacyLayout = () => {
 };
 
 const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean }) => {
+  const location = useLocation();
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [prevLocation, setPrevLocation] = useState(location.pathname);
+
   const handleRefresh = async () => {
     // Wait for animation (increased to 800ms to show skeleton)
     await new Promise(resolve => setTimeout(resolve, 800));
     window.location.reload();
   };
 
+  // Detect route changes and show skeleton
+  useEffect(() => {
+    if (location.pathname !== prevLocation && prevLocation !== '') {
+      setIsNavigating(true);
+      setPrevLocation(location.pathname);
+      
+      // Show skeleton for a brief moment during navigation
+      const timer = setTimeout(() => {
+        setIsNavigating(false);
+      }, 600); // Match the skeleton display duration
+      
+      return () => clearTimeout(timer);
+    } else if (prevLocation === '') {
+      // Initial load - set prevLocation to current
+      setPrevLocation(location.pathname);
+    }
+  }, [location.pathname, prevLocation]);
+
   return (
     <PullToRefresh onRefresh={handleRefresh} initialLoading={startWithSkeleton}>
-      <Outlet />
+      <div className="relative">
+        <AnimatePresence>
+          {isNavigating && (
+            <motion.div
+              key="navigation-skeleton"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-50 bg-white dark:bg-[#0e0e0e]"
+            >
+              <Skeleton />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <motion.div
+          key={location.pathname}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: isNavigating ? 0 : 1 }}
+          transition={{ duration: 0.2 }}
+        >
+          <Outlet />
+        </motion.div>
+      </div>
     </PullToRefresh>
   );
 };
