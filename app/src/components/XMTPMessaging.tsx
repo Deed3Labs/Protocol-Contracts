@@ -33,6 +33,7 @@ interface XMTPMessagingProps {
   assetType?: string;
   isOpen: boolean;
   onClose: () => void;
+  initialConversationId?: string | null;
 }
 
 const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
@@ -41,6 +42,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   assetType,
   isOpen,
   onClose,
+  initialConversationId,
 }) => {
   const { 
     conversations, 
@@ -61,7 +63,16 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   
   const { handleConnect, isConnecting, isEmbeddedWallet, address } = useXMTPConnection();
   
-  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(initialConversationId || null);
+
+  // Update selected conversation when initialConversationId changes
+  useEffect(() => {
+    if (isOpen && initialConversationId) {
+      setSelectedConversation(initialConversationId);
+      loadMessages(initialConversationId);
+    }
+  }, [isOpen, initialConversationId, loadMessages]);
+
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [newDmAddress, setNewDmAddress] = useState('');

@@ -7,21 +7,25 @@ import {
   User, 
   Settings, 
   LogOut, 
-  CreditCard
+  CreditCard,
+  Loader2
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { useXMTP } from '@/context/XMTPContext';
 
 interface ProfileMenuProps {
   isOpen: boolean;
   onClose: () => void;
   user: any;
+  onOpenXMTP: (conversationId?: string) => void;
 }
 
-const ProfileMenu = ({ isOpen, onClose, user }: ProfileMenuProps) => {
+const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const { theme: _theme } = useTheme();
   const [activeTab, setActiveTab] = useState<'notifications' | 'inbox'>('notifications');
   const { disconnect } = useDisconnect();
+  const { conversations, messages, isConnected, isLoading } = useXMTP();
 
   // Close when clicking outside
   useEffect(() => {
@@ -43,10 +47,28 @@ const ProfileMenu = ({ isOpen, onClose, user }: ProfileMenuProps) => {
     { id: 3, title: 'New Feature: Income Hub', time: '2d ago', read: true, type: 'info' },
   ];
 
-  const messages = [
-    { id: 1, sender: 'Support Team', preview: 'Your ticket #1234 has been resolved...', time: '1d ago', read: false },
-    { id: 2, sender: 'System', preview: 'Welcome to the new dashboard!', time: '3d ago', read: true },
-  ];
+  const formatTimestamp = (date: Date) => {
+    const now = new Date();
+    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+    
+    if (diffInHours < 24) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (diffInHours < 48) {
+      return 'Yesterday';
+    } else {
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+  };
+
+  const formatAddress = (address: string) => {
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  const getLatestMessage = (conversationId: string) => {
+    const conversationMessages = messages[conversationId] || [];
+    if (conversationMessages.length === 0) return null;
+    return conversationMessages[conversationMessages.length - 1];
+  };
 
   return (
     <AnimatePresence>
@@ -107,6 +129,9 @@ const ProfileMenu = ({ isOpen, onClose, user }: ProfileMenuProps) => {
               <div className="flex items-center justify-center gap-2">
                 <Mail className="w-4 h-4" />
                 <span>Inbox</span>
+                {isConnected && conversations.length > 0 && (
+                  <span className="bg-blue-600 text-white text-[10px] px-1.5 rounded-full">{conversations.length}</span>
+                )}
               </div>
             </button>
           </div>
@@ -130,21 +155,59 @@ const ProfileMenu = ({ isOpen, onClose, user }: ProfileMenuProps) => {
               </div>
             ) : (
               <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
-                 {messages.map((item) => (
-                  <div key={item.id} className="p-3 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors flex gap-3 cursor-pointer">
-                    <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
-                      <User className="w-4 h-4 text-zinc-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-baseline mb-0.5">
-                        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{item.sender}</p>
-                        <span className="text-xs text-zinc-400">{item.time}</span>
-                      </div>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{item.preview}</p>
-                    </div>
+                {!isConnected ? (
+                  <div className="p-8 text-center text-zinc-500 dark:text-zinc-400">
+                    <p className="text-sm mb-2">Connect your wallet to see messages</p>
                   </div>
-                ))}
-                 <button className="w-full py-2 text-xs text-center text-blue-600 dark:text-blue-400 hover:underline">
+                ) : isLoading ? (
+                  <div className="p-8 flex justify-center">
+                    <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
+                  </div>
+                ) : conversations.length === 0 ? (
+                  <div className="p-8 text-center text-zinc-500 dark:text-zinc-400">
+                    <p className="text-sm">No messages yet</p>
+                  </div>
+                ) : (
+                  conversations.map((conversation) => {
+                    const latestMsg = getLatestMessage(conversation.id);
+                    return (
+                      <div 
+                        key={conversation.id} 
+                        className="p-3 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors flex gap-3 cursor-pointer"
+                        onClick={() => {
+                          onOpenXMTP(conversation.id);
+                          onClose();
+                        }}
+                      >
+                        <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                          <User className="w-4 h-4 text-zinc-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-baseline mb-0.5">
+                            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                              {(conversation as any).peerAddress ? formatAddress((conversation as any).peerAddress) : formatAddress(conversation.id)}
+                            </p>
+                            {latestMsg && (
+                              <span className="text-xs text-zinc-400">
+                                {formatTimestamp(latestMsg.sentAtNs ? new Date(Number(latestMsg.sentAtNs) / 1000000) : new Date())}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                            {typeof latestMsg?.content === 'string' ? latestMsg.content : (latestMsg ? 'Message' : 'New conversation')}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <button 
+                  onClick={() => {
+                    onOpenXMTP();
+                    onClose();
+                  }}
+                  className="w-full py-2 text-xs text-center text-blue-600 dark:text-blue-400 hover:underline"
+                >
                   Go to Inbox
                 </button>
               </div>
