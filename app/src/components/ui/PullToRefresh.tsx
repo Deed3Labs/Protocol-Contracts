@@ -95,17 +95,21 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
     const handleStart = (e: TouchEvent | MouseEvent) => {
       // Only enable if we're at the top of the page
       if (window.scrollY <= 5) {
-        startY.current = 'touches' in e ? e.touches[0].clientY : e.clientY;
-        // Only trigger on mouse drag if mouse button is down
-        if ('button' in e && e.button !== 0) return;
+        // If mouse event, do NOT enable dragging (disable pull-to-refresh on desktop via mouse)
+        if (!('touches' in e)) return;
+        
+        startY.current = e.touches[0].clientY;
         isDragging.current = true;
       }
     };
 
     const handleMove = (e: TouchEvent | MouseEvent) => {
+      // If mouse event, return early (disable pull-to-refresh on desktop via mouse)
+      if (!('touches' in e)) return;
+
       if (!isDragging.current || window.scrollY > 5 || isRefreshing) return;
 
-      const currentY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      const currentY = e.touches[0].clientY;
       const diff = currentY - startY.current;
 
       if (diff > 0) {
@@ -150,96 +154,37 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
       }
     };
 
-    // Trackpad Support (Wheel Event)
-    let wheelTimeout: NodeJS.Timeout;
-    const handleWheel = (e: WheelEvent) => {
-      // Allow default scroll if we're not at the top or if the user is scrolling down
-      if (window.scrollY > 5 || isRefreshing) return;
-
-      // Check if it's a vertical pull (negative deltaY at top)
-      // Note: Trackpads often send very small deltaY values
-      if ((e.deltaY < 0 && window.scrollY <= 5) || (y.get() > 0 && e.deltaY < 0)) {
-        // Prevent native browser history navigation / overscroll bounce
-        if (e.cancelable) e.preventDefault();
-        
-        const currentY = y.get();
-        // Accumulate pull (simulating drag)
-        const newY = Math.min(currentY + Math.abs(e.deltaY) * 0.5, MAX_PULL);
-        
-        if (newY > 0) {
-           y.set(newY);
-           // Debounce the "end" of the gesture
-           clearTimeout(wheelTimeout);
-           wheelTimeout = setTimeout(() => {
-             const finalY = y.get();
-             if (finalY > THRESHOLD) {
-               // Trigger refresh logic
-               setIsRefreshing(true);
-               controls.start({ 
-                 y: 0,
-                 transition: { type: "spring", stiffness: 300, damping: 30 }
-               }).then(async () => {
-                 try {
-                   await onRefresh();
-                 } finally {
-                   setIsRefreshing(false);
-                   y.set(0);
-                 }
-               });
-             } else {
-               controls.start({ 
-                 y: 0,
-                 transition: { type: "spring", stiffness: 300, damping: 30 }
-               });
-               y.set(0);
-             }
-           }, 150); // Wait for wheel events to stop
-        }
-      } else if (y.get() > 0 && e.deltaY > 0) {
-         // If pulling and user scrolls down, reduce pull
-         const currentY = y.get();
-         const newY = Math.max(0, currentY - e.deltaY);
-         y.set(newY);
-         if (e.cancelable) e.preventDefault();
-         
-         clearTimeout(wheelTimeout);
-         wheelTimeout = setTimeout(() => {
-            if (y.get() > 0 && !isRefreshing) {
-                controls.start({ y: 0, transition: { type: "spring", stiffness: 300, damping: 30 } });
-                y.set(0);
-            }
-         }, 150);
-      }
-    };
+    // Trackpad Support (Wheel Event) - DISABLED for Pull-to-Refresh
+    // We only keep this empty listener if needed for passive/non-passive optimization, 
+    // but effectively we remove the logic.
+    /* 
+    const handleWheel = (e: WheelEvent) => { ... } 
+    */
 
     window.addEventListener('touchstart', handleStart, { passive: true });
     window.addEventListener('touchmove', handleMove, { passive: false });
     window.addEventListener('touchend', handleEnd);
     
-    // Desktop Mouse Events
+    // REMOVED Desktop Mouse/Wheel Events for Pull-to-Refresh
+    /*
     window.addEventListener('mousedown', handleStart);
-    window.addEventListener('mousemove', handleMove); // Keep passive: true default for mouse unless prevented? 
-    // Actually for mousemove we generally don't need passive: false unless preventing default.
-    // We added preventDefault above, so we should treat it as non-passive in logic if needed, 
-    // but addEventListener defaults to passive: false for mousemove in most browsers or is neutral.
-    // However, to be safe and explicit:
+    window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleEnd);
     window.addEventListener('mouseleave', handleEnd);
-
-    // Trackpad Wheel Event - passive: false is REQUIRED to prevent default
     window.addEventListener('wheel', handleWheel, { passive: false });
+    */
 
     return () => {
       window.removeEventListener('touchstart', handleStart);
       window.removeEventListener('touchmove', handleMove);
       window.removeEventListener('touchend', handleEnd);
       
-      window.removeEventListener('mousedown', handleStart);
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleEnd);
-      window.removeEventListener('mouseleave', handleEnd);
-
-      window.removeEventListener('wheel', handleWheel);
+      // Cleanup removed listeners just in case
+      // window.removeEventListener('mousedown', handleStart);
+      // window.removeEventListener('mousemove', handleMove);
+      // window.removeEventListener('mouseup', handleEnd);
+      // window.removeEventListener('mouseleave', handleEnd);
+      // window.removeEventListener('wheel', handleWheel);
     };
   }, [isRefreshing, onRefresh, controls, y]);
 
