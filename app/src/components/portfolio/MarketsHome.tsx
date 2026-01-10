@@ -133,7 +133,7 @@ export default function MarketsHome() {
               </div>
 
               {/* Search & Filter Bar */}
-              <div className="sticky top-20 z-30 bg-white/80 dark:bg-[#0e0e0e]/80 backdrop-blur-md py-4 -mx-4 px-4 md:mx-0 md:px-0 border-b border-zinc-100 dark:border-zinc-800/50">
+              <div className="sticky top-18 z-30 bg-white/80 dark:bg-[#0e0e0e]/80 backdrop-blur-md py-4 -mx-4 px-4 md:mx-0 md:px-0 border-b border-zinc-100 dark:border-zinc-800/50">
                   <div className="flex gap-2 mb-4">
                      <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
