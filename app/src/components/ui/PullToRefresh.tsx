@@ -75,9 +75,10 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
   const rotate = useTransform(y, [0, 100], [0, 360]);
   const opacity = useTransform(y, [0, 50], [0, 1]);
 
-  // Fix for fixed position elements: only apply transform when actively pulling/refreshing
+  // Fix for fixed position elements: only apply transform when actively pulling
+  // We use a small threshold (1px) to prevent jitter/stacking context creation when close to 0
   const transform = useTransform(y, (latest) => {
-    if (latest === 0 && !isRefreshing) return "none";
+    if (latest < 1) return "none";
     return `translateY(${latest}px)`;
   });
   
