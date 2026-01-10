@@ -198,7 +198,7 @@ export default function BorrowHome() {
               <div className="bg-blue-600 rounded-lg p-5 text-white">
                  <h3 className="font-medium mb-2">Need help?</h3>
                  <p className="text-sm text-blue-100 mb-4">Talk to our loan specialists about custom financing options for your assets.</p>
-                 <button className="w-full bg-white text-blue-600 py-2 rounded-full text-sm font-medium hover:bg-blue-50 transition-colors">
+                 <button className="w-full bg-white text-blue-600 py-2 rounded-full text-sm font-normal hover:bg-blue-50 transition-colors">
                    Contact Support
                  </button>
               </div>

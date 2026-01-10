@@ -103,29 +103,28 @@ export default function MarketsHome() {
            <div className="md:col-span-8 space-y-8">
               
               {/* Buying Power Header */}
-              <div className="mt-4 mb-8 flex items-end justify-between">
-                 <div>
-                    <div className="flex items-center gap-2 mb-1 text-zinc-500 dark:text-zinc-500">
-                      <span className="text-sm font-medium">Buying Power</span>
-                      <div className="group relative">
-                         <Info className="h-4 w-4 cursor-help" />
-                      </div>
+              <div>
+                 <div className="flex items-center gap-2 mt-4 mb-2 text-zinc-500 dark:text-zinc-400">
+                   <span className="text-sm font-medium">Buying Power</span>
+                   <div className="group relative">
+                      <Info className="h-4 w-4 cursor-help" />
                    </div>
-                   <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
-                     ${buyingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                     <span className="text-lg text-zinc-500 font-normal">USD</span>
-                   </h1>
                  </div>
-                 <div className="flex gap-2 md:gap-3 pb-2">
+                 <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
+                   ${buyingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                   <span className="text-lg text-zinc-500 font-normal">USD</span>
+                 </h1>
+                 
+                 <div className="mt-6 flex flex-wrap gap-3">
                     <button 
                       onClick={() => setDepositModalOpen(true)}
-                      className="bg-black dark:bg-white text-white dark:text-black px-6 py-2 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
+                      className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
                     >
                       Deposit
                     </button>
                     <button 
                       onClick={() => setWithdrawModalOpen(true)}
-                      className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-6 py-2 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800"
+                      className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800"
                     >
                       Withdraw
                     </button>
@@ -304,7 +303,7 @@ export default function MarketsHome() {
                  </div>
                  <h3 className="text-lg font-bold mb-2 relative z-10">Pro Market Analysis</h3>
                  <p className="text-sm text-blue-100 mb-4 relative z-10">Get access to institutional-grade data and real-time signals.</p>
-                 <button className="bg-white text-blue-700 px-4 py-2 rounded-sm text-sm font-medium hover:bg-blue-50 transition-colors relative z-10">
+                 <button className="bg-white text-blue-700 px-4 py-2 rounded-full text-sm font-normal hover:bg-blue-50 transition-colors relative z-10">
                     Unlock Pro
                  </button>
               </div>
