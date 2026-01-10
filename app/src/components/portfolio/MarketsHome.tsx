@@ -46,8 +46,8 @@ export default function MarketsHome() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Mock values
-  const totalValue = 13.76;
-  const buyingPower = 13.76; // Cash available for trading
+  const totalValue = 5500.87;
+  const buyingPower = 4583.97; // Cash available for trading
 
   useEffect(() => {
     const handleScroll = () => {
