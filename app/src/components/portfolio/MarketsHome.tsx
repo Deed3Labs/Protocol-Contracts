@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, ArrowUpRight, ArrowDownLeft, TrendingUp, Newspaper, Calendar, FileText, ChevronRight, SlidersHorizontal } from 'lucide-react';
+import { Search, ArrowUpRight, ArrowDownLeft, TrendingUp, Newspaper, Calendar, FileText, ChevronRight, SlidersHorizontal, Info } from 'lucide-react';
 import SideMenu from './SideMenu';
 import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
@@ -103,14 +103,33 @@ export default function MarketsHome() {
            <div className="md:col-span-8 space-y-8">
               
               {/* Buying Power Header */}
-              <div>
-                 <div className="flex items-center gap-2 mt-4 mb-2 text-zinc-500 dark:text-zinc-400">
-                   <span className="text-sm font-medium">Buying Power</span>
+              <div className="mt-4 mb-8 flex items-end justify-between">
+                 <div>
+                    <div className="flex items-center gap-2 mb-1 text-zinc-500 dark:text-zinc-500">
+                      <span className="text-sm font-medium">Buying Power</span>
+                      <div className="group relative">
+                         <Info className="h-4 w-4 cursor-help" />
+                      </div>
+                   </div>
+                   <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
+                     ${buyingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                     <span className="text-lg text-zinc-500 font-normal">USD</span>
+                   </h1>
                  </div>
-                 <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
-                   ${buyingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                   <span className="text-lg text-zinc-500 font-normal">USD</span>
-                 </h1>
+                 <div className="flex gap-2 md:gap-3 pb-2">
+                    <button 
+                      onClick={() => setDepositModalOpen(true)}
+                      className="bg-black dark:bg-white text-white dark:text-black px-6 py-2 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
+                    >
+                      Deposit
+                    </button>
+                    <button 
+                      onClick={() => setWithdrawModalOpen(true)}
+                      className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-6 py-2 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800"
+                    >
+                      Withdraw
+                    </button>
+                 </div>
               </div>
 
               {/* Search & Filter Bar */}
@@ -123,10 +142,10 @@ export default function MarketsHome() {
                            placeholder="Search assets, symbols, news..." 
                            value={searchQuery}
                            onChange={(e) => setSearchQuery(e.target.value)}
-                           className="w-full bg-zinc-100 dark:bg-zinc-900 border-none rounded-xl py-3 pl-10 pr-4 text-sm focus:ring-1 focus:ring-black dark:focus:ring-white transition-all"
+                           className="w-full bg-zinc-100 dark:bg-zinc-900 border-none rounded py-3 pl-10 pr-4 text-sm focus:ring-1 focus:ring-black dark:focus:ring-white transition-all"
                         />
                      </div>
-                     <button className="bg-zinc-100 dark:bg-zinc-900 p-3 rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors">
+                     <button className="bg-zinc-100 dark:bg-zinc-900 p-3 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors">
                         <SlidersHorizontal className="w-5 h-5 text-black dark:text-white" />
                      </button>
                   </div>
@@ -161,7 +180,7 @@ export default function MarketsHome() {
                  
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {trendingAssets.map((asset) => (
-                       <div key={asset.id} className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-xl p-4 cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-700 transition-all group">
+                       <div key={asset.id} className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-4 cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-700 transition-all group">
                           <div className="flex justify-between items-start mb-2">
                              <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-white dark:bg-zinc-800 flex items-center justify-center shadow-sm text-xs font-bold">
@@ -202,8 +221,8 @@ export default function MarketsHome() {
                  
                  <div className="space-y-4">
                     {newsArticles.map((article) => (
-                       <div key={article.id} className="flex gap-4 p-4 bg-white dark:bg-zinc-900/10 border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer rounded-lg">
-                          <div className={`w-20 h-20 rounded-lg shrink-0 ${article.image}`} />
+                       <div key={article.id} className="flex gap-4 p-4 bg-white dark:bg-zinc-900/10 border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer">
+                          <div className={`w-20 h-20 rounded-md shrink-0 ${article.image}`} />
                           <div className="flex flex-col justify-between py-0.5">
                              <h4 className="font-medium text-black dark:text-white line-clamp-2">{article.title}</h4>
                              <div className="flex items-center gap-2 text-xs text-zinc-500">
@@ -245,7 +264,7 @@ export default function MarketsHome() {
                           </div>
                        </div>
                     ))}
-                    <button className="w-full mt-2 py-2 text-sm text-center text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white border border-zinc-200 dark:border-zinc-800 rounded-lg hover:bg-white dark:hover:bg-zinc-800 transition-all">
+                    <button className="w-full mt-2 py-2 text-sm text-center text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white border border-zinc-200 dark:border-zinc-800 rounded-sm hover:bg-white dark:hover:bg-zinc-800 transition-all">
                        View Calendar
                     </button>
                  </div>
@@ -259,7 +278,7 @@ export default function MarketsHome() {
                  </div>
                  <div className="space-y-3">
                     {reports.map(report => (
-                       <div key={report.id} className="group flex items-center justify-between p-3 bg-white dark:bg-zinc-800/50 hover:bg-blue-50 dark:hover:bg-blue-900/10 border border-zinc-100 dark:border-zinc-800 rounded-lg cursor-pointer transition-colors">
+                       <div key={report.id} className="group flex items-center justify-between p-3 bg-white dark:bg-zinc-800/50 hover:bg-blue-50 dark:hover:bg-blue-900/10 border border-zinc-100 dark:border-zinc-800 rounded-sm cursor-pointer transition-colors">
                           <div className="flex items-center gap-3">
                              <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-700 flex items-center justify-center text-zinc-500 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                                 <FileText className="w-4 h-4" />
@@ -285,7 +304,7 @@ export default function MarketsHome() {
                  </div>
                  <h3 className="text-lg font-bold mb-2 relative z-10">Pro Market Analysis</h3>
                  <p className="text-sm text-blue-100 mb-4 relative z-10">Get access to institutional-grade data and real-time signals.</p>
-                 <button className="bg-white text-blue-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors relative z-10">
+                 <button className="bg-white text-blue-700 px-4 py-2 rounded-sm text-sm font-medium hover:bg-blue-50 transition-colors relative z-10">
                     Unlock Pro
                  </button>
               </div>
