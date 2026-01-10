@@ -256,7 +256,7 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
       <motion.div 
         animate={controls}
         style={{ transform }} 
-        className="relative z-10 transition-transform duration-200 bg-white dark:bg-[#0e0e0e] min-h-screen"
+        className="relative z-10 bg-white dark:bg-[#0e0e0e] min-h-screen"
       >
         <AnimatePresence>
           {isRefreshing && (
