@@ -545,7 +545,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
-      <div className="bg-white dark:bg-[#0e0e0e] rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[95vh] flex flex-col">
+      <div className="bg-white dark:bg-[#0e0e0e] rounded shadow-xl w-full max-w-6xl h-full max-h-[95vh] flex flex-col">
         {/* Main Header */}
         <div className="p-4 border-b border-black/10 dark:border-white/10">
           <div className="flex items-center justify-between">
@@ -602,7 +602,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       <span className="sm:hidden">New</span>
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="w-[calc(100vw-2rem)] max-w-lg mx-auto rounded-lg border-black/10 dark:border-white/10">
+                  <DialogContent className="w-[calc(100vw-2rem)] max-w-lg mx-auto rounded-sm border-black/10 dark:border-white/10">
                     <DialogHeader>
                       <DialogTitle>Create New Conversation</DialogTitle>
                     </DialogHeader>
@@ -939,7 +939,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                         </div>
                       ))}
                       {filteredConversations.length === 0 && (
-                        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded">
                           <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
                             {showHiddenConversations 
                               ? "No hidden conversations" 
@@ -1028,7 +1028,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       >
                         <div
                           className={cn(
-                            "max-w-[85%] px-4 py-3 rounded-lg",
+                            "max-w-[85%] px-4 py-3 rounded-sm",
                             isFromCurrentUser
                               ? "bg-blue-600 text-white" // Sent message styling
                               : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white" // Received message styling
@@ -1317,7 +1317,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       >
                         <div
                           className={cn(
-                            "max-w-[85%] sm:max-w-xs lg:max-w-md px-4 py-3 rounded-lg",
+                            "max-w-[85%] sm:max-w-xs lg:max-w-md px-4 py-3 rounded-sm",
                             isFromCurrentUser
                               ? "bg-blue-600 text-white" // Sent message styling
                               : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white" // Received message styling
