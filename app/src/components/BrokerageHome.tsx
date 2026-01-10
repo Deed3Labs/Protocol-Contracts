@@ -214,7 +214,7 @@ export default function BrokerageHome() {
         
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
            {/* Left Column (Chart & Main Data) */}
-           <div className="md:col-span-8">
+           <div className="md:col-span-8 space-y-10">
               {/* Persistent Portfolio Value & Subheader */}
               <div className="mt-4 mb-8 flex items-end justify-between">
                    <div>
