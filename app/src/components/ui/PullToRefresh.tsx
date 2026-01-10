@@ -8,7 +8,7 @@ interface PullToRefreshProps {
   initialLoading?: boolean;
 }
 
-export const Skeleton = () => (
+const Skeleton = () => (
   <div className="container mx-auto max-w-7xl pt-24 px-4 md:px-6">
     <div className="animate-pulse space-y-8">
       {/* Header Area */}
@@ -59,15 +59,18 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
   const controls = useAnimation();
   const y = useMotionValue(0);
   
-  // Handle initial loading trigger
+  // Handle initial loading trigger (for both initial load and route changes)
   useEffect(() => {
     if (initialLoading) {
       setIsRefreshing(true);
       // Simulate loading delay then turn off, NO reload call
       const timer = setTimeout(() => {
         setIsRefreshing(false);
-      }, 2000);
+      }, 800); // Match the navigation skeleton duration
       return () => clearTimeout(timer);
+    } else {
+      // If initialLoading becomes false, immediately hide skeleton
+      setIsRefreshing(false);
     }
   }, [initialLoading]);
   
