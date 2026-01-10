@@ -62,6 +62,7 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
   
   // Handle initial loading trigger (for both initial load and route changes)
   useEffect(() => {
+    // Trigger whenever initialLoading becomes true (route navigation or initial load)
     if (initialLoading) {
       // Clear any existing timer first
       if (loadingTimerRef.current) {
@@ -75,7 +76,6 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
         loadingTimerRef.current = null;
       }, 800); // Match the navigation skeleton duration
     }
-    // Don't immediately hide when initialLoading becomes false - let the timer complete
 
     return () => {
       if (loadingTimerRef.current) {
@@ -220,20 +220,21 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
         style={{ transform }} 
         className="relative z-10 bg-white dark:bg-[#0e0e0e] min-h-screen"
       >
+        {children}
         <AnimatePresence>
           {isRefreshing && (
             <motion.div
+              key="skeleton-overlay"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="absolute inset-0 z-50 bg-white dark:bg-[#0e0e0e]"
+              className="fixed inset-0 z-[100] bg-white dark:bg-[#0e0e0e] overflow-auto"
             >
               <Skeleton />
             </motion.div>
           )}
         </AnimatePresence>
-        {children}
       </motion.div>
     </div>
   );
