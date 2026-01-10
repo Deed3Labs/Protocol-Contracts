@@ -229,7 +229,7 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-[100] bg-white dark:bg-[#0e0e0e] overflow-auto"
+              className="fixed inset-0 z-[50] bg-white dark:bg-[#0e0e0e] overflow-auto"
             >
               <Skeleton />
             </motion.div>
