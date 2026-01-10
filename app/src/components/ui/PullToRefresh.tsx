@@ -79,7 +79,10 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
   // We use a small threshold (1px) to prevent jitter/stacking context creation when close to 0
   const transform = useTransform(y, (latest) => {
     if (latest < 1) return "none";
-    return `translateY(${latest}px)`;
+    // Limit the visual pull distance to create resistance
+    // This makes the pull feel "heavier" as you pull further, similar to native behavior
+    const damped = latest > 0 ? latest * 0.6 : 0;
+    return `translateY(${damped}px)`;
   });
   
   const MAX_PULL = 150;
