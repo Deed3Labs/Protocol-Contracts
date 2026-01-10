@@ -41,7 +41,6 @@ const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean 
   const location = useLocation();
   const [isNavigating, setIsNavigating] = useState(false);
   const prevLocationRef = useRef(location.pathname);
-  const isFirstRender = useRef(true);
 
   const handleRefresh = async () => {
     // Wait for animation (increased to 800ms to show skeleton)
@@ -51,13 +50,6 @@ const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean 
 
   // Detect route changes and show skeleton
   useEffect(() => {
-    // Skip the initial mount - only trigger on actual navigation
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      prevLocationRef.current = location.pathname;
-      return;
-    }
-    
     if (location.pathname !== prevLocationRef.current) {
       setIsNavigating(true);
       prevLocationRef.current = location.pathname;
