@@ -58,31 +58,17 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
   const isDragging = useRef(false);
   const controls = useAnimation();
   const y = useMotionValue(0);
-  const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Handle initial loading trigger (for both initial load and route changes)
+  // Handle initial loading trigger
   useEffect(() => {
     if (initialLoading) {
-      // Clear any existing timer first
-      if (loadingTimerRef.current) {
-        clearTimeout(loadingTimerRef.current);
-      }
-      
       setIsRefreshing(true);
       // Simulate loading delay then turn off, NO reload call
-      loadingTimerRef.current = setTimeout(() => {
+      const timer = setTimeout(() => {
         setIsRefreshing(false);
-        loadingTimerRef.current = null;
-      }, 800); // Match the navigation skeleton duration
+      }, 2000);
+      return () => clearTimeout(timer);
     }
-    // Don't immediately hide when initialLoading becomes false - let the timer complete
-
-    return () => {
-      if (loadingTimerRef.current) {
-        clearTimeout(loadingTimerRef.current);
-        loadingTimerRef.current = null;
-      }
-    };
   }, [initialLoading]);
   
   // Transform y value to rotation for the spinner
