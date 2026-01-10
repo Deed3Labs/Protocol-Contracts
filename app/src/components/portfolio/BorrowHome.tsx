@@ -123,7 +123,7 @@ export default function BorrowHome() {
               
               {/* Header Section */}
               <div>
-                 <div className="flex items-center gap-2 mt-4 mb-2 text-zinc-500 dark:text-zinc-400">
+                 <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
                    <span className="text-sm font-medium">Available Borrowing Power</span>
                    <div className="group relative">
                       <Info className="h-4 w-4 cursor-help" />
