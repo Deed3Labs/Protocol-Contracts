@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Outlet, useLocation } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AnimatePresence } from "framer-motion";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -40,7 +40,7 @@ const LegacyLayout = () => {
 const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean }) => {
   const location = useLocation();
   const [isNavigating, setIsNavigating] = useState(false);
-  const [prevLocation, setPrevLocation] = useState(location.pathname);
+  const prevLocationRef = useRef(location.pathname);
 
   const handleRefresh = async () => {
     // Wait for animation (increased to 800ms to show skeleton)
@@ -50,9 +50,9 @@ const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean 
 
   // Detect route changes and show skeleton
   useEffect(() => {
-    if (location.pathname !== prevLocation) {
+    if (location.pathname !== prevLocationRef.current) {
       setIsNavigating(true);
-      setPrevLocation(location.pathname);
+      prevLocationRef.current = location.pathname;
       
       // Show skeleton for 800ms (same duration as refresh)
       const timer = setTimeout(() => {
@@ -61,7 +61,7 @@ const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean 
       
       return () => clearTimeout(timer);
     }
-  }, [location.pathname, prevLocation]);
+  }, [location.pathname]);
 
   return (
     <PullToRefresh 
