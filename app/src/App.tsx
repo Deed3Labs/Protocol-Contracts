@@ -1,4 +1,6 @@
 import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { AnimatePresence } from "framer-motion";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Home from "@/components/Home"; // Keeping for reference or fallback
@@ -10,6 +12,7 @@ import Dashboard from "@/components/Dashboard";
 import Validation from "@/components/Validation";
 import AdminPanel from "@/components/AdminPanel";
 import InstallPrompt from "@/components/InstallPrompt";
+import SplashScreen from "@/components/SplashScreen";
 import { SWIXAuth } from "@/components/SWIXAuth";
 import { SWIXDemo } from "@/components/SWIXDemo";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -48,12 +51,24 @@ const AppLayout = () => {
 };
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
+  useEffect(() => {
+    // Show splash screen for 3 seconds
+    const timer = setTimeout(() => setShowSplash(false), 3000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <BrowserRouter>
       <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <NotificationProvider>
             <DeedNFTProvider>
               <XMTPProvider>
+                <AnimatePresence>
+                  {showSplash && <SplashScreen />}
+                </AnimatePresence>
+                
                 <Routes>
               {/* App Routes wrapped in PullToRefresh Layout */}
               <Route element={<AppLayout />}>
