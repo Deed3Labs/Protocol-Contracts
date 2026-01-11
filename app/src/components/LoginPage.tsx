@@ -218,7 +218,7 @@ export default function LoginPage() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
-              className="rounded border p-8 md:p-10 space-y-8 transition-colors duration-200 relative overflow-hidden bg-zinc-50 dark:bg-zinc-900/20 border-zinc-200 dark:border-zinc-800/50"
+              className="rounded border-[0.5px] border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] transition-colors duration-200 relative overflow-hidden shadow-sm"
             >
               {/* Subtle background animation sync with gradient */}
               <motion.div
@@ -253,33 +253,39 @@ export default function LoginPage() {
                   repeat: Infinity
                 }}
               />
+              
               <div className="relative z-10">
-                <div className="space-y-3">
-                  <h3 className="text-2xl md:text-3xl font-light text-black dark:text-white transition-colors duration-200">
+                {/* Header */}
+                <div className="p-6 pb-2">
+                  <h3 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight transition-colors duration-200">
                     Connect Your Wallet
                   </h3>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-400 transition-colors duration-200">
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 transition-colors duration-200">
                     Choose your preferred wallet to get started
                   </p>
                 </div>
 
-                <motion.button
-                  onClick={handleConnect}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="w-full bg-black dark:bg-white text-white dark:text-black px-6 py-4 rounded-full text-base font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all duration-200 flex items-center justify-center gap-3 group shadow-sm relative z-10"
-                >
-                  <Wallet className="w-5 h-5" />
-                  <span>Connect Wallet</span>
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
-                </motion.button>
+                {/* Content */}
+                <div className="p-4">
+                  <motion.button
+                    onClick={handleConnect}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    className="w-full bg-black dark:bg-white text-white dark:text-black px-6 py-4 rounded-full text-base font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all duration-200 flex items-center justify-center gap-3 group shadow-sm"
+                  >
+                    <Wallet className="w-5 h-5" />
+                    <span>Connect Wallet</span>
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
+                  </motion.button>
+                </div>
 
-                <div className="pt-6 border-t border-zinc-200 dark:border-zinc-800/50 space-y-4 transition-colors duration-200">
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center leading-relaxed transition-colors duration-200">
+                {/* Footer */}
+                <div className="p-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30 text-center">
+                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500 max-w-xs mx-auto leading-relaxed transition-colors duration-200">
                     By connecting, you agree to ClearPath's Terms of Service and Privacy Policy
                   </p>
-                  <div className="flex items-center justify-center gap-2 text-xs text-zinc-400 dark:text-zinc-500 transition-colors duration-200">
-                    <Shield className="w-4 h-4" />
+                  <div className="flex items-center justify-center gap-2 mt-2 text-[11px] text-zinc-400 dark:text-zinc-500 transition-colors duration-200">
+                    <Shield className="w-3.5 h-3.5" />
                     <span>Your keys, your crypto</span>
                   </div>
                 </div>
