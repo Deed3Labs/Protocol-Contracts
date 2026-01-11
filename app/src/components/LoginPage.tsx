@@ -61,7 +61,7 @@ export default function LoginPage() {
       <div 
         className="absolute inset-0 z-0 dark:hidden pointer-events-none"
         style={{
-          background: "linear-gradient(135deg, #ffffff 0%, #ffffff 30%, #0e0e0e 50%, #ffffff 70%, #ffffff 100%)",
+          background: "linear-gradient(135deg, #0e0e0e 0%, #0e0e0e 30%, #ffffff 50%, #0e0e0e 70%, #0e0e0e 100%)",
           backgroundSize: "400% 400%",
           animation: "gradientFlow 20s linear infinite"
         }}
@@ -71,7 +71,7 @@ export default function LoginPage() {
       <div 
         className="absolute inset-0 z-0 hidden dark:block pointer-events-none"
         style={{
-          background: "linear-gradient(135deg, #0e0e0e 0%, #0e0e0e 30%, #ffffff 50%, #0e0e0e 70%, #0e0e0e 100%)",
+          background: "linear-gradient(135deg, #ffffff 0%, #ffffff 30%, #0e0e0e 50%, #ffffff 70%, #ffffff 100%)",
           backgroundSize: "400% 400%",
           animation: "gradientFlow 20s linear infinite"
         }}
