@@ -221,7 +221,7 @@ export default function MarketsHome() {
                  
                  <div className="space-y-4">
                     {newsArticles.map((article) => (
-                       <div key={article.id} className="flex gap-4 p-4 bg-white dark:bg-zinc-900/10 border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer">
+                       <div key={article.id} className="flex gap-4 p-4 bg-white dark:bg-[#0e0e0e] border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer">
                           <div className={`w-20 h-20 rounded-md shrink-0 ${article.image}`} />
                           <div className="flex flex-col justify-between py-0.5">
                              <h4 className="font-medium text-black dark:text-white line-clamp-2">{article.title}</h4>
