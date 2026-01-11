@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDisconnect } from 'wagmi';
+import { useNavigate } from 'react-router-dom';
 import { 
   Bell, 
   Mail, 
