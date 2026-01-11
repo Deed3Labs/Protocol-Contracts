@@ -142,7 +142,7 @@ export default function LoginPage() {
               </div>
               
               {/* Headline */}
-              <div className="space-y-4">
+              <div className="space-y-4 md:mb-4">
                 <h2 className="text-4xl md:text-5xl lg:text-6xl font-light text-black dark:text-white leading-tight tracking-tight transition-colors duration-200">
                   Your Gateway to<br />
                   <span className="font-medium">Decentralized Finance</span>
