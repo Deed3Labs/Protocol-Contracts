@@ -213,11 +213,11 @@ export default function LoginPage() {
                     onClick={handleConnect}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
-                    className="w-full bg-black dark:bg-white text-white dark:text-black px-6 py-4 mb-3 rounded-full text-base font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all duration-200 flex items-center justify-center gap-3 group shadow-sm"
+                    className="w-full bg-black dark:bg-white text-white dark:text-black px-6 py-4 mb-3 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all duration-200 flex items-center justify-center gap-3 group shadow-sm"
                   >
-                    <Wallet className="w-5 h-5" />
+                    <Wallet className="w-4 h-4" />
                     <span>Connect Wallet</span>
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
                   </motion.button>
                 </div>
 
