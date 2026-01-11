@@ -54,36 +54,69 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0e0e0e] text-black dark:text-white font-sans relative overflow-hidden transition-colors duration-200">
+      {/* Base Background */}
+      <div className="absolute inset-0 z-0 bg-white dark:bg-[#0e0e0e] transition-colors duration-200" />
+      
       {/* Animated Gradient Background - Light Mode */}
-      <motion.div 
-        className="absolute inset-0 z-0 dark:hidden"
+      <div 
+        className="absolute inset-0 z-0 dark:hidden pointer-events-none"
         style={{
           background: "linear-gradient(135deg, #ffffff 0%, #f5f5f5 25%, #e5e5e5 50%, #d4d4d4 75%, #a3a3a3 100%)",
-          backgroundSize: "400% 400%"
-        }}
-        animate={{ 
-          backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"]
-        }}
-        transition={{ 
-          duration: 20, 
-          ease: "linear", 
-          repeat: Infinity 
+          backgroundSize: "400% 400%",
+          animation: "gradientFlow 20s linear infinite"
         }}
       />
       
       {/* Animated Gradient Background - Dark Mode */}
-      <motion.div 
-        className="absolute inset-0 z-0 hidden dark:block"
+      <div 
+        className="absolute inset-0 z-0 hidden dark:block pointer-events-none"
         style={{
           background: "linear-gradient(135deg, #0e0e0e 0%, #141414 25%, #1a1a1a 50%, #1f1f1f 75%, #262626 100%)",
-          backgroundSize: "400% 400%"
+          backgroundSize: "400% 400%",
+          animation: "gradientFlow 20s linear infinite"
+        }}
+      />
+      
+      {/* Additional Water-like Flow Effect - Light Mode */}
+      <motion.div 
+        className="absolute inset-0 z-0 dark:hidden pointer-events-none opacity-40"
+        style={{
+          background: "radial-gradient(ellipse 80% 50% at 50% 50%, rgba(245, 245, 245, 0.8) 0%, transparent 70%)",
+          width: "150%",
+          height: "150%",
+          left: "-25%",
+          top: "-25%"
         }}
         animate={{ 
-          backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"]
+          x: [0, 100, 0],
+          y: [0, 100, 0],
+          scale: [1, 1.1, 1]
         }}
         transition={{ 
-          duration: 20, 
-          ease: "linear", 
+          duration: 15, 
+          ease: "easeInOut", 
+          repeat: Infinity 
+        }}
+      />
+      
+      {/* Additional Water-like Flow Effect - Dark Mode */}
+      <motion.div 
+        className="absolute inset-0 z-0 hidden dark:block pointer-events-none opacity-30"
+        style={{
+          background: "radial-gradient(ellipse 80% 50% at 50% 50%, rgba(20, 20, 20, 0.8) 0%, transparent 70%)",
+          width: "150%",
+          height: "150%",
+          left: "-25%",
+          top: "-25%"
+        }}
+        animate={{ 
+          x: [0, 100, 0],
+          y: [0, 100, 0],
+          scale: [1, 1.1, 1]
+        }}
+        transition={{ 
+          duration: 15, 
+          ease: "easeInOut", 
           repeat: Infinity 
         }}
       />
