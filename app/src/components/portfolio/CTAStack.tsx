@@ -165,7 +165,7 @@ export default function CTAStack() {
       
       {/* Counter Badge */}
       {cards.length > 0 && (
-        <div className="absolute -top-3 -right-3 z-20 w-8 h-8 bg-blue-600 dark:bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-medium shadow-lg border-2 border-white animate-in zoom-in duration-300">
+        <div className="absolute -top-3 -right-3 z-20 w-10 h-10 bg-blue-600 dark:bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-medium shadow-lg border-2 border-white animate-in zoom-in duration-300">
           {cards.length}
         </div>
       )}
