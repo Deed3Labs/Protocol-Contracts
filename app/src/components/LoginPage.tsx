@@ -155,7 +155,7 @@ export default function LoginPage() {
           </div>
 
           {/* Right Column - Connect Card */}
-          <div className="md:col-span-5 order-2 md:order-2 md:self-center">
+          <div className="md:col-span-5 order-2 md:order-2 md:mb-10">
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
