@@ -80,8 +80,8 @@ const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => v
       />
       
       {/* Menu Panel */}
-      <div className="relative w-full max-w-[340px] bg-white dark:bg-[#0e0e0e] h-full p-6 md:pt-2 flex flex-col animate-slide-in-left border-r border-zinc-200 dark:border-zinc-800 shadow-2xl">
-        <div className="flex items-center justify-between mb-8">
+      <div className="relative w-full max-w-[340px] bg-white dark:bg-[#0e0e0e] h-full p-6 flex flex-col animate-slide-in-left border-r border-zinc-200 dark:border-zinc-800 shadow-2xl">
+        <div className="flex items-center justify-between mb-8 md:mt-3">
           <div className="flex items-center gap-3">
              <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-900 dark:text-zinc-100 font-medium text-lg">
                 {user?.name?.[0] || 'U'}
