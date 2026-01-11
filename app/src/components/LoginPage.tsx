@@ -53,7 +53,7 @@ export default function LoginPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-white dark:bg-[#0e0e0e] text-black dark:text-white font-sans relative overflow-hidden transition-colors duration-200">
+    <div className="min-h-screen bg-white dark:bg-[#0e0e0e] text-black dark:text-white font-sans relative overflow-hidden transition-colors duration-200 flex flex-col md:justify-center">
       {/* Base Background */}
       <div className="absolute inset-0 z-0 bg-white dark:bg-[#0e0e0e] transition-colors duration-200" />
       
@@ -122,11 +122,11 @@ export default function LoginPage() {
       />
 
       {/* Main Content */}
-      <main className="relative z-10 pt-24 pb-28 container mx-auto max-w-7xl md:pt-32 px-4 md:px-6">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12 items-center">
+      <main className="relative z-10 pt-24 pb-28 md:pt-0 md:pb-0 container mx-auto max-w-7xl px-4 md:px-6 flex-1 flex items-center">
+        <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12 items-center">
           
-          {/* Left Column - Branding & Features */}
-          <div className="md:col-span-7 space-y-10 order-2 md:order-1">
+          {/* Left Column - Branding */}
+          <div className="md:col-span-7 order-1">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -152,68 +152,10 @@ export default function LoginPage() {
                 </p>
               </div>
             </motion.div>
-
-            {/* Features Grid */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
-              className="grid grid-cols-2 gap-4"
-            >
-              {features.map((feature, index) => (
-                <motion.div
-                  key={feature.title}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: 0.3 + index * 0.1, ease: "easeOut" }}
-                  whileHover={{ scale: 1.02 }}
-                  className="p-6 rounded border cursor-pointer group relative overflow-hidden bg-zinc-50 dark:bg-zinc-900/20 border-zinc-200 dark:border-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-700"
-                >
-                  {/* Subtle background animation sync with gradient */}
-                  <motion.div
-                    className="absolute inset-0 opacity-0 dark:opacity-0 pointer-events-none"
-                    style={{
-                      background: "linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(14, 14, 14, 0.2) 50%, rgba(255, 255, 255, 0.3) 100%)",
-                      backgroundSize: "400% 400%"
-                    }}
-                    animate={{
-                      backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
-                      opacity: [0, 0.15, 0]
-                    }}
-                    transition={{
-                      duration: 20,
-                      ease: "linear",
-                      repeat: Infinity
-                    }}
-                  />
-                  <motion.div
-                    className="absolute inset-0 opacity-0 dark:opacity-[0.1] pointer-events-none hidden dark:block"
-                    style={{
-                      background: "linear-gradient(135deg, rgba(14, 14, 14, 0.3) 0%, rgba(255, 255, 255, 0.15) 50%, rgba(14, 14, 14, 0.3) 100%)",
-                      backgroundSize: "400% 400%"
-                    }}
-                    animate={{
-                      backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
-                      opacity: [0, 0.15, 0]
-                    }}
-                    transition={{
-                      duration: 20,
-                      ease: "linear",
-                      repeat: Infinity
-                    }}
-                  />
-                  <div className="relative z-10">
-                    <feature.icon className="w-6 h-6 text-black dark:text-white mb-3 group-hover:scale-110 transition-transform duration-200" />
-                    <h3 className="text-sm font-medium text-black dark:text-white mb-1.5 transition-colors duration-200">{feature.title}</h3>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed transition-colors duration-200">{feature.description}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </motion.div>
           </div>
 
           {/* Right Column - Connect Card */}
-          <div className="md:col-span-5 order-1 md:order-2">
+          <div className="md:col-span-5 order-2 md:order-2">
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -290,6 +232,66 @@ export default function LoginPage() {
                   </div>
                 </div>
               </div>
+            </motion.div>
+          </div>
+
+          {/* Features Grid - Full Width on Mobile, Part of Left Column on Desktop */}
+          <div className="md:col-span-7 order-3 md:order-1 md:-mt-10">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
+              className="grid grid-cols-2 gap-4"
+            >
+              {features.map((feature, index) => (
+                <motion.div
+                  key={feature.title}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: 0.3 + index * 0.1, ease: "easeOut" }}
+                  whileHover={{ scale: 1.02 }}
+                  className="p-6 rounded border cursor-pointer group relative overflow-hidden bg-zinc-50 dark:bg-zinc-900/20 border-zinc-200 dark:border-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-700"
+                >
+                  {/* Subtle background animation sync with gradient */}
+                  <motion.div
+                    className="absolute inset-0 opacity-0 dark:opacity-0 pointer-events-none"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(14, 14, 14, 0.2) 50%, rgba(255, 255, 255, 0.3) 100%)",
+                      backgroundSize: "400% 400%"
+                    }}
+                    animate={{
+                      backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
+                      opacity: [0, 0.15, 0]
+                    }}
+                    transition={{
+                      duration: 20,
+                      ease: "linear",
+                      repeat: Infinity
+                    }}
+                  />
+                  <motion.div
+                    className="absolute inset-0 opacity-0 dark:opacity-[0.1] pointer-events-none hidden dark:block"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(14, 14, 14, 0.3) 0%, rgba(255, 255, 255, 0.15) 50%, rgba(14, 14, 14, 0.3) 100%)",
+                      backgroundSize: "400% 400%"
+                    }}
+                    animate={{
+                      backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
+                      opacity: [0, 0.15, 0]
+                    }}
+                    transition={{
+                      duration: 20,
+                      ease: "linear",
+                      repeat: Infinity
+                    }}
+                  />
+                  <div className="relative z-10">
+                    <feature.icon className="w-6 h-6 text-black dark:text-white mb-3 group-hover:scale-110 transition-transform duration-200" />
+                    <h3 className="text-sm font-medium text-black dark:text-white mb-1.5 transition-colors duration-200">{feature.title}</h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed transition-colors duration-200">{feature.description}</p>
+                  </div>
+                </motion.div>
+              ))}
             </motion.div>
           </div>
         </div>
