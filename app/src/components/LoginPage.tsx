@@ -218,9 +218,9 @@ export default function LoginPage() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
-              className="rounded border-[0.5px] border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] transition-colors duration-200 relative overflow-hidden shadow-sm"
+              className="rounded border border-zinc-200 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/20 transition-colors duration-200 relative overflow-hidden"
             >
-              {/* Subtle background animation sync with gradient - Light Mode */}
+              {/* Subtle background animation sync with gradient */}
               <motion.div
                 className="absolute inset-0 opacity-0 dark:opacity-0 pointer-events-none"
                 style={{
@@ -237,7 +237,6 @@ export default function LoginPage() {
                   repeat: Infinity
                 }}
               />
-              {/* Subtle background animation sync with gradient - Dark Mode */}
               <motion.div
                 className="absolute inset-0 opacity-0 dark:opacity-[0.1] pointer-events-none hidden dark:block"
                 style={{
@@ -281,8 +280,8 @@ export default function LoginPage() {
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30 text-center">
-                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500 max-w-xs mx-auto leading-relaxed transition-colors duration-200">
+                <div className="p-4 pt-3 border-t border-zinc-200 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/30 text-center">
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto leading-relaxed transition-colors duration-200">
                     By connecting, you agree to ClearPath's Terms of Service and Privacy Policy
                   </p>
                   <div className="flex items-center justify-center gap-2 mt-2 text-[11px] text-zinc-400 dark:text-zinc-500 transition-colors duration-200">
