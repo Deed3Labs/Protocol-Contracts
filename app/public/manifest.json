@@ -3,7 +3,7 @@
   "short_name": "CLEAR Wallet",
   "description": "A Modern Platform for RWA Tokenization and Portfolio Management",
   "start_url": "/",
-  "display_override": ["window-controls-overlay", "standalone"],
+  "display_override": ["window-controls-overlay", "fullscreen", "standalone"],
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#000000",
