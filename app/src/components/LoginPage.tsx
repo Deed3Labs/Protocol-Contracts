@@ -280,9 +280,9 @@ export default function LoginPage() {
                 </div>
 
                 {/* Footer */}
-                <div className="p-0 pt-4 border-t border-zinc-200 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/30 text-center">
+                <div className="p-4 pt-4 border-t border-zinc-200 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/30 text-center">
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto leading-relaxed transition-colors duration-200">
-                    By connecting, you agree to our Terms of Service & Privacy Policy
+                    By connecting, you agree to our Terms & Privacy Policy
                   </p>
                   <div className="flex items-center justify-center gap-2 mt-2 text-[11px] text-zinc-400 dark:text-zinc-500 transition-colors duration-200">
                     <Shield className="w-3.5 h-3.5" />
