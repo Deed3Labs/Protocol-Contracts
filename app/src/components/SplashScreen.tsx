@@ -35,7 +35,7 @@ export default function SplashScreen() {
           ease: "easeInOut",
           repeat: Infinity,
         }}
-        className="relative z-10 w-20 h-20 md:w-26 md:h-26 -mt-26 md:mt-0 rounded-2xl border border-black/90 dark:border-white/10 flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]/50 shadow-sm"
+        className="relative z-10 w-20 h-20 md:w-28 md:h-28 -mt-26 md:-mt-12 md:mt-0 rounded-2xl border border-black/90 dark:border-white/10 flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]/50 shadow-sm"
       >
           <img 
               src={ClearPathLogo} 
