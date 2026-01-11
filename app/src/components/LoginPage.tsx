@@ -126,7 +126,7 @@ export default function LoginPage() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12 items-center">
           
           {/* Left Column - Branding & Features */}
-          <div className="md:col-span-7 space-y-10">
+          <div className="md:col-span-7 space-y-10 order-2 md:order-1">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -213,7 +213,7 @@ export default function LoginPage() {
           </div>
 
           {/* Right Column - Connect Card */}
-          <div className="md:col-span-5">
+          <div className="md:col-span-5 order-1 md:order-2">
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
