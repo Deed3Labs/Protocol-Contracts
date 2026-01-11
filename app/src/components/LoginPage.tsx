@@ -256,7 +256,7 @@ export default function LoginPage() {
               
               <div className="relative z-10">
                 {/* Header */}
-                <div className="p-6 pb-2">
+                <div className="p-6 pb-4">
                   <h3 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight transition-colors duration-200">
                     Connect Your Wallet
                   </h3>
@@ -280,7 +280,7 @@ export default function LoginPage() {
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 pt-3 border-t border-zinc-200 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/30 text-center">
+                <div className="p-4 pt-4 border-t border-zinc-200 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/30 text-center">
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto leading-relaxed transition-colors duration-200">
                     By connecting, you agree to ClearPath's Terms of Service and Privacy Policy
                   </p>
