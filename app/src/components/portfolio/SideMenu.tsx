@@ -2,10 +2,12 @@ import { X, ChevronRight, User, Settings, Lock, HelpCircle, LogOut, Sun, Moon, F
 import { useTheme } from '@/context/ThemeContext';
 import { useDisconnect } from 'wagmi';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: any; totalValue: number }) => {
   const { theme, setTheme } = useTheme();
   const { disconnect } = useDisconnect();
+  const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
   const [isDark, setIsDark] = useState(false);
 
@@ -149,13 +151,22 @@ const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => v
         </div>
 
         <div className="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-800">
-           <button 
-             onClick={() => disconnect()}
-             className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors text-red-600 dark:text-red-500 group"
-           >
-              <LogOut className="w-5 h-5" />
-              <span className="font-medium">Disconnect Wallet</span>
-           </button>
+        <button 
+          onClick={() => {
+            disconnect();
+            onClose(); // Close the menu
+            // Dispatch event to trigger splash screen
+            window.dispatchEvent(new Event('wallet-disconnected'));
+            // Navigate to login after a short delay
+            setTimeout(() => {
+              navigate('/login');
+            }, 500);
+          }}
+          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors text-red-600 dark:text-red-500 group"
+        >
+           <LogOut className="w-5 h-5" />
+           <span className="font-medium">Disconnect Wallet</span>
+        </button>
            <div className="mt-4 text-center text-xs text-zinc-400 dark:text-zinc-600">
               Version 1.0.0
            </div>

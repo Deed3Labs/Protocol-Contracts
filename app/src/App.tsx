@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
 import Header from "@/components/Header";
@@ -7,6 +7,8 @@ import Home from "@/components/Home"; // Keeping for reference or fallback
 import BrokerageHome from "@/components/BrokerageHome";
 import BorrowHome from "@/components/portfolio/BorrowHome";
 import MarketsHome from "@/components/portfolio/MarketsHome";
+import LoginPage from "@/components/LoginPage";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import MintForm from "@/components/MintForm";
 import Explore from "@/components/Explore";
 import Dashboard from "@/components/Dashboard";
@@ -37,7 +39,7 @@ const LegacyLayout = () => {
   );
 };
 
-const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean }) => {
+const AppLayout = ({ startWithSkeleton = false, showSplashOnMount = false }: { startWithSkeleton?: boolean; showSplashOnMount?: boolean }) => {
   const handleRefresh = async () => {
     // Wait for animation (increased to 800ms to show skeleton)
     await new Promise(resolve => setTimeout(resolve, 800));
@@ -45,9 +47,11 @@ const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean 
   };
 
   return (
-    <PullToRefresh onRefresh={handleRefresh} initialLoading={startWithSkeleton}>
-      <Outlet />
-    </PullToRefresh>
+    <ProtectedRoute showSplashOnMount={showSplashOnMount}>
+      <PullToRefresh onRefresh={handleRefresh} initialLoading={startWithSkeleton}>
+        <Outlet />
+      </PullToRefresh>
+    </ProtectedRoute>
   );
 };
 
@@ -57,6 +61,8 @@ function App() {
   const [showSplash, setShowSplash] = useState(!splashShown);
   // Track if we should show skeleton after splash
   const [showSkeletonAfterSplash, setShowSkeletonAfterSplash] = useState(false);
+  // Track if we should show splash on mount (for login/logout)
+  const [showSplashOnMount, setShowSplashOnMount] = useState(false);
 
   useEffect(() => {
     if (showSplash) {
@@ -70,6 +76,23 @@ function App() {
     }
   }, [showSplash]);
 
+  // Listen for disconnect events to show splash and redirect
+  useEffect(() => {
+    const handleDisconnect = () => {
+      // Clear splash shown flag to show splash again
+      sessionStorage.removeItem('splash_shown');
+      setShowSplash(true);
+      setShowSplashOnMount(true);
+    };
+
+    // Listen for custom disconnect event
+    window.addEventListener('wallet-disconnected', handleDisconnect);
+    
+    return () => {
+      window.removeEventListener('wallet-disconnected', handleDisconnect);
+    };
+  }, []);
+
   return (
     <BrowserRouter>
       <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -81,13 +104,19 @@ function App() {
                 </AnimatePresence>
                 
                 <Routes>
-              {/* App Routes wrapped in PullToRefresh Layout */}
+              {/* Login Page - Public */}
+              <Route path="/login" element={<LoginPage />} />
+              
+              {/* App Routes wrapped in PullToRefresh Layout - Protected */}
               {/* Pass true if splash was skipped OR if splash just finished */}
-              <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} />}>
+              <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} showSplashOnMount={showSplashOnMount} />}>
                 <Route path="/" element={<BrokerageHome />} />
                 <Route path="/markets" element={<MarketsHome />} />
                 <Route path="/borrow" element={<BorrowHome />} />
               </Route>
+              
+              {/* Redirect unknown routes to login */}
+              <Route path="*" element={<Navigate to="/login" replace />} />
 
               {/* Legacy Routes wrapped in Layout */}
               <Route element={<LegacyLayout />}>

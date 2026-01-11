@@ -25,6 +25,7 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
   const { theme: _theme } = useTheme();
   const [activeTab, setActiveTab] = useState<'notifications' | 'inbox'>('notifications');
   const { disconnect } = useDisconnect();
+  const navigate = useNavigate();
   const { conversations, messages, isConnected, isLoading } = useXMTP();
 
   // Close when clicking outside
@@ -236,7 +237,16 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
           {/* Footer */}
           <div className="p-2 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30">
             <button 
-              onClick={() => disconnect()}
+              onClick={() => {
+                disconnect();
+                onClose(); // Close the menu
+                // Dispatch event to trigger splash screen
+                window.dispatchEvent(new Event('wallet-disconnected'));
+                // Navigate to login after a short delay
+                setTimeout(() => {
+                  navigate('/login');
+                }, 500);
+              }}
               className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
             >
               <LogOut className="w-4 h-4" />
