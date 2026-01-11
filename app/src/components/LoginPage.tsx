@@ -33,7 +33,7 @@ export default function LoginPage() {
     {
       icon: Wallet,
       title: 'Secure Wallets',
-      description: 'Connect with MetaMask, Coinbase, or 300+ wallets'
+      description: 'Use with MetaMask, Coinbase, or 300+ wallets'
     },
     {
       icon: Shield,
@@ -47,7 +47,7 @@ export default function LoginPage() {
     },
     {
       icon: Globe,
-      title: 'Multi-Chain',
+      title: 'Cross-Chain',
       description: 'Access assets across multiple blockchains'
     }
   ];
