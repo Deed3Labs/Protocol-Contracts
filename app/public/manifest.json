@@ -12,14 +12,12 @@
     {
       "src": "/ClearPath-Logo.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
+      "type": "image/png"
     },
     {
       "src": "/ClearPath-Logo.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
+      "type": "image/png"
     }
   ],
   "categories": ["finance", "trading", "banking", "crypto"],
