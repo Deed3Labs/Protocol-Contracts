@@ -43,6 +43,16 @@ export default function SplashScreen() {
               className="w-full h-full object-cover" 
           />
       </motion.div>
+      
+      {/* Footer Text */}
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8, delay: 0.5 }}
+        className="absolute bottom-8 md:bottom-12 left-0 right-0 text-center text-black dark:text-white font-bold tracking-wider text-lg md:text-xl"
+      >
+        ClearPath
+      </motion.p>
     </motion.div>
   );
 }
