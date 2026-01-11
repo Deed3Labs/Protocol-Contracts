@@ -1,8 +1,8 @@
 {
-  "name": "CLEAR: Non-Custodial Banking",
+  "name": "ClearPath",
   "short_name": "CLEAR Wallet",
   "description": "A Modern Platform for RWA Tokenization and Portfolio Management",
-  "start_url": "/",
+  "start_url": "https://protocol-contracts-git-contract-rework-deed3.vercel.app/",
   "display_override": ["window-controls-overlay", "fullscreen", "standalone"],
   "display": "standalone",
   "background_color": "#ffffff",
