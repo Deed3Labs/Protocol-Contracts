@@ -220,7 +220,7 @@ export default function LoginPage() {
               transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
               className="rounded border-[0.5px] border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] transition-colors duration-200 relative overflow-hidden shadow-sm"
             >
-              {/* Subtle background animation sync with gradient */}
+              {/* Subtle background animation sync with gradient - Light Mode */}
               <motion.div
                 className="absolute inset-0 opacity-0 dark:opacity-0 pointer-events-none"
                 style={{
@@ -229,7 +229,7 @@ export default function LoginPage() {
                 }}
                 animate={{
                   backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
-                  opacity: [0, 0.2, 0]
+                  opacity: [0, 0.15, 0]
                 }}
                 transition={{
                   duration: 20,
@@ -237,6 +237,7 @@ export default function LoginPage() {
                   repeat: Infinity
                 }}
               />
+              {/* Subtle background animation sync with gradient - Dark Mode */}
               <motion.div
                 className="absolute inset-0 opacity-0 dark:opacity-[0.1] pointer-events-none hidden dark:block"
                 style={{
@@ -245,7 +246,7 @@ export default function LoginPage() {
                 }}
                 animate={{
                   backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
-                  opacity: [0, 0.2, 0]
+                  opacity: [0, 0.15, 0]
                 }}
                 transition={{
                   duration: 20,
