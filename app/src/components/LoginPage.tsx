@@ -256,7 +256,7 @@ export default function LoginPage() {
               
               <div className="relative z-10">
                 {/* Header */}
-                <div className="p-6 pb-4">
+                <div className="p-6 pb-2">
                   <h3 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight transition-colors duration-200">
                     Connect Your Wallet
                   </h3>
@@ -271,7 +271,7 @@ export default function LoginPage() {
                     onClick={handleConnect}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
-                    className="w-full bg-black dark:bg-white text-white dark:text-black px-6 py-4 rounded-full text-base font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all duration-200 flex items-center justify-center gap-3 group shadow-sm"
+                    className="w-full bg-black dark:bg-white text-white dark:text-black px-6 py-4 mb-2rounded-full text-base font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all duration-200 flex items-center justify-center gap-3 group shadow-sm"
                   >
                     <Wallet className="w-5 h-5" />
                     <span>Connect Wallet</span>
@@ -282,11 +282,11 @@ export default function LoginPage() {
                 {/* Footer */}
                 <div className="p-4 pt-4 border-t border-zinc-200 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/30 text-center">
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto leading-relaxed transition-colors duration-200">
-                    By connecting, you agree to ClearPath's Terms of Service and Privacy Policy
+                    By connecting, you agree to our Terms of Service & Privacy Policy
                   </p>
                   <div className="flex items-center justify-center gap-2 mt-2 text-[11px] text-zinc-400 dark:text-zinc-500 transition-colors duration-200">
                     <Shield className="w-3.5 h-3.5" />
-                    <span>Your keys, your crypto</span>
+                    <span>Your keys, your money</span>
                   </div>
                 </div>
               </div>
