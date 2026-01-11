@@ -53,9 +53,9 @@ export default function LoginPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-white dark:bg-[#0e0e0e] text-black dark:text-white font-sans relative overflow-hidden transition-colors duration-200 flex flex-col md:justify-center">
+    <div className="min-h-screen bg-[#0e0e0e] text-white font-sans relative overflow-hidden flex flex-col md:justify-center">
       {/* Base Background */}
-      <div className="absolute inset-0 z-0 bg-white dark:bg-[#0e0e0e] transition-colors duration-200" />
+      <div className="absolute inset-0 z-0 bg-[#0e0e0e]" />
       
       {/* Animated Gradient Background - Light Mode */}
       <div 
@@ -135,19 +135,19 @@ export default function LoginPage() {
             >
               {/* Logo */}
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 md:w-12 md:h-12 rounded border border-black/90 dark:border-white/10 flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]/50 transition-colors duration-200">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded border border-black/90 flex items-center justify-center overflow-hidden bg-[#0e0e0e]/50">
                   <img src={ClearPathLogo} alt="ClearPath" className="w-full h-full object-cover" />
                 </div>
-                <h1 className="text-2xl md:text-3xl font-light text-black dark:text-white transition-colors duration-200">ClearPath</h1>
+                <h1 className="text-2xl md:text-3xl font-light text-white">ClearPath</h1>
               </div>
               
               {/* Headline */}
               <div className="space-y-4 md:mb-3">
-                <h2 className="text-4xl md:text-5xl lg:text-6xl font-light text-black dark:text-white leading-tight tracking-tight transition-colors duration-200">
+                <h2 className="text-4xl md:text-5xl lg:text-6xl font-light text-white leading-tight tracking-tight">
                   Your Gateway to<br />
                   <span className="font-medium">Decentralized Finance</span>
                 </h2>
-                <p className="text-lg md:text-xl text-zinc-600 dark:text-zinc-400 max-w-xl transition-colors duration-200">
+                <p className="text-lg md:text-xl text-zinc-400 max-w-xl">
                   Connect your wallet to access tokenized assets, trading, borrowing, and more.
                 </p>
               </div>
@@ -160,27 +160,11 @@ export default function LoginPage() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
-              className="rounded border border-zinc-200 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/20 transition-colors duration-200 relative overflow-hidden"
+              className="rounded border border-zinc-800/50 bg-zinc-900/20 relative overflow-hidden"
             >
               {/* Subtle background animation sync with gradient */}
               <motion.div
-                className="absolute inset-0 opacity-0 dark:opacity-0 pointer-events-none"
-                style={{
-                  background: "linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(14, 14, 14, 0.2) 50%, rgba(255, 255, 255, 0.3) 100%)",
-                  backgroundSize: "400% 400%"
-                }}
-                animate={{
-                  backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
-                  opacity: [0, 0.15, 0]
-                }}
-                transition={{
-                  duration: 20,
-                  ease: "linear",
-                  repeat: Infinity
-                }}
-              />
-              <motion.div
-                className="absolute inset-0 opacity-0 dark:opacity-[0.1] pointer-events-none hidden dark:block"
+                className="absolute inset-0 opacity-0 pointer-events-none"
                 style={{
                   background: "linear-gradient(135deg, rgba(14, 14, 14, 0.3) 0%, rgba(255, 255, 255, 0.15) 50%, rgba(14, 14, 14, 0.3) 100%)",
                   backgroundSize: "400% 400%"
@@ -199,10 +183,10 @@ export default function LoginPage() {
               <div className="relative z-10">
                 {/* Header */}
                 <div className="p-6 pb-2">
-                  <h3 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight transition-colors duration-200">
+                  <h3 className="text-2xl font-light text-white tracking-tight">
                     Connect Your Wallet
                   </h3>
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 transition-colors duration-200">
+                  <p className="text-sm text-zinc-400 mt-1">
                     Choose your preferred wallet to get started
                   </p>
                 </div>
@@ -213,7 +197,7 @@ export default function LoginPage() {
                     onClick={handleConnect}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
-                    className="w-full bg-black dark:bg-white text-white dark:text-black px-6 py-4 mb-3 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all duration-200 flex items-center justify-center gap-3 group shadow-sm"
+                    className="w-full bg-white text-black px-6 py-4 mb-3 rounded-full text-sm font-normal hover:bg-zinc-200 transition-all duration-200 flex items-center justify-center gap-3 group shadow-sm"
                   >
                     <Wallet className="w-4 h-4" />
                     <span>Connect Wallet</span>
@@ -222,11 +206,11 @@ export default function LoginPage() {
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 pt-4 border-t border-zinc-200 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-zinc-900/30 text-center">
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto leading-relaxed transition-colors duration-200">
+                <div className="p-4 pt-4 border-t border-zinc-800/50 bg-zinc-900/30 text-center">
+                  <p className="text-[11px] text-zinc-400 max-w-xs mx-auto leading-relaxed">
                     By connecting, you agree to our Terms & Privacy Policy
                   </p>
-                  <div className="flex items-center justify-center gap-2 mt-2 text-[11px] text-zinc-400 dark:text-zinc-500 transition-colors duration-200">
+                  <div className="flex items-center justify-center gap-2 mt-2 text-[11px] text-zinc-500">
                     <Shield className="w-3.5 h-3.5" />
                     <span>Your keys, your money</span>
                   </div>
@@ -250,27 +234,11 @@ export default function LoginPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4, delay: 0.3 + index * 0.1, ease: "easeOut" }}
                   whileHover={{ scale: 1.02 }}
-                  className="p-6 rounded border cursor-pointer group relative overflow-hidden bg-zinc-50 dark:bg-zinc-900/20 border-zinc-200 dark:border-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-700"
+                  className="p-6 rounded border cursor-pointer group relative overflow-hidden bg-zinc-900/20 border-zinc-800/50 hover:border-zinc-700"
                 >
                   {/* Subtle background animation sync with gradient */}
                   <motion.div
-                    className="absolute inset-0 opacity-0 dark:opacity-0 pointer-events-none"
-                    style={{
-                      background: "linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(14, 14, 14, 0.2) 50%, rgba(255, 255, 255, 0.3) 100%)",
-                      backgroundSize: "400% 400%"
-                    }}
-                    animate={{
-                      backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
-                      opacity: [0, 0.15, 0]
-                    }}
-                    transition={{
-                      duration: 20,
-                      ease: "linear",
-                      repeat: Infinity
-                    }}
-                  />
-                  <motion.div
-                    className="absolute inset-0 opacity-0 dark:opacity-[0.1] pointer-events-none hidden dark:block"
+                    className="absolute inset-0 opacity-0 pointer-events-none"
                     style={{
                       background: "linear-gradient(135deg, rgba(14, 14, 14, 0.3) 0%, rgba(255, 255, 255, 0.15) 50%, rgba(14, 14, 14, 0.3) 100%)",
                       backgroundSize: "400% 400%"
@@ -286,9 +254,9 @@ export default function LoginPage() {
                     }}
                   />
                   <div className="relative z-10">
-                    <feature.icon className="w-6 h-6 text-black dark:text-white mb-3 group-hover:scale-110 transition-transform duration-200" />
-                    <h3 className="text-sm font-medium text-black dark:text-white mb-1.5 transition-colors duration-200">{feature.title}</h3>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed transition-colors duration-200">{feature.description}</p>
+                    <feature.icon className="w-6 h-6 text-white mb-3 group-hover:scale-110 transition-transform duration-200" />
+                    <h3 className="text-sm font-medium text-white mb-1.5">{feature.title}</h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed">{feature.description}</p>
                   </div>
                 </motion.div>
               ))}
