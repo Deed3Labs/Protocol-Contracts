@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, ArrowRight, Shield, Zap, Globe } from 'lucide-react';
+import { Wallet, ArrowUpRight, Shield, Zap, Globe } from 'lucide-react';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useNavigate } from 'react-router-dom';
 import ClearPathLogo from '../assets/ClearPath-Logo.png';
@@ -217,7 +217,7 @@ export default function LoginPage() {
                   >
                     <Wallet className="w-4 h-4" />
                     <span>Connect Wallet</span>
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
+                    <ArrowUpRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
                   </motion.button>
                 </div>
 
