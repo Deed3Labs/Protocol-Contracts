@@ -39,7 +39,7 @@ const LegacyLayout = () => {
   );
 };
 
-const AppLayout = ({ startWithSkeleton = false, showSplashOnMount = false }: { startWithSkeleton?: boolean; showSplashOnMount?: boolean }) => {
+const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean }) => {
   const handleRefresh = async () => {
     // Wait for animation (increased to 800ms to show skeleton)
     await new Promise(resolve => setTimeout(resolve, 800));
@@ -47,7 +47,7 @@ const AppLayout = ({ startWithSkeleton = false, showSplashOnMount = false }: { s
   };
 
   return (
-    <ProtectedRoute showSplashOnMount={showSplashOnMount}>
+    <ProtectedRoute>
       <PullToRefresh onRefresh={handleRefresh} initialLoading={startWithSkeleton}>
         <Outlet />
       </PullToRefresh>
@@ -61,8 +61,6 @@ function App() {
   const [showSplash, setShowSplash] = useState(!splashShown);
   // Track if we should show skeleton after splash
   const [showSkeletonAfterSplash, setShowSkeletonAfterSplash] = useState(false);
-  // Track if we should show splash on mount (for login/logout)
-  const [showSplashOnMount, setShowSplashOnMount] = useState(false);
 
   useEffect(() => {
     if (showSplash) {
@@ -76,20 +74,27 @@ function App() {
     }
   }, [showSplash]);
 
-  // Listen for disconnect events to show splash and redirect
+  // Listen for disconnect and connect events to show splash
   useEffect(() => {
     const handleDisconnect = () => {
       // Clear splash shown flag to show splash again
       sessionStorage.removeItem('splash_shown');
       setShowSplash(true);
-      setShowSplashOnMount(true);
     };
 
-    // Listen for custom disconnect event
+    const handleConnect = () => {
+      // Show splash when user connects
+      sessionStorage.removeItem('splash_shown');
+      setShowSplash(true);
+    };
+
+    // Listen for custom events
     window.addEventListener('wallet-disconnected', handleDisconnect);
+    window.addEventListener('wallet-connected', handleConnect);
     
     return () => {
       window.removeEventListener('wallet-disconnected', handleDisconnect);
+      window.removeEventListener('wallet-connected', handleConnect);
     };
   }, []);
 
@@ -109,7 +114,7 @@ function App() {
               
               {/* App Routes wrapped in PullToRefresh Layout - Protected */}
               {/* Pass true if splash was skipped OR if splash just finished */}
-              <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} showSplashOnMount={showSplashOnMount} />}>
+              <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} />}>
                 <Route path="/" element={<BrokerageHome />} />
                 <Route path="/markets" element={<MarketsHome />} />
                 <Route path="/borrow" element={<BorrowHome />} />

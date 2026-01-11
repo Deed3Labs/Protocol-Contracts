@@ -1,34 +1,29 @@
 import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Wallet, ArrowRight, Shield, Zap, Globe } from 'lucide-react';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useNavigate } from 'react-router-dom';
 import ClearPathLogo from '../assets/ClearPath-Logo.png';
-import SplashScreen from './SplashScreen';
 
 export default function LoginPage() {
   const { isConnected, openModal } = useAppKitAuth();
   const navigate = useNavigate();
-  const [showSplash, setShowSplash] = useState(false);
-  const [wasConnected, setWasConnected] = useState(false);
+  const [hasNavigated, setHasNavigated] = useState(false);
 
   useEffect(() => {
-    // If user is already connected, show splash then redirect to home
-    if (isConnected && !wasConnected) {
-      setWasConnected(true);
-      setShowSplash(true);
-      // Show splash for 2 seconds, then redirect
-      const timer = setTimeout(() => {
-        setShowSplash(false);
-        setTimeout(() => {
-          navigate('/');
-        }, 300);
-      }, 2000);
-      return () => clearTimeout(timer);
+    // If user is already connected, redirect to home (splash will be handled by App.tsx)
+    if (isConnected && !hasNavigated) {
+      setHasNavigated(true);
+      // Dispatch event to trigger splash screen in App.tsx
+      window.dispatchEvent(new Event('wallet-connected'));
+      // Small delay before navigation to ensure splash triggers
+      setTimeout(() => {
+        navigate('/', { replace: true });
+      }, 100);
     } else if (!isConnected) {
-      setWasConnected(false);
+      setHasNavigated(false);
     }
-  }, [isConnected, navigate, wasConnected]);
+  }, [isConnected, navigate, hasNavigated]);
 
   const handleConnect = () => {
     openModal('Connect');
@@ -58,11 +53,7 @@ export default function LoginPage() {
   ];
 
   return (
-    <>
-      <AnimatePresence>
-        {showSplash && <SplashScreen />}
-      </AnimatePresence>
-      <div className="min-h-screen bg-white dark:bg-[#0e0e0e] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-white dark:bg-[#0e0e0e] flex items-center justify-center p-4">
       <div className="w-full max-w-5xl">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           {/* Left Side - Branding & Features */}
@@ -154,6 +145,5 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
-    </>
   );
 }
