@@ -54,11 +54,28 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0e0e0e] text-black dark:text-white font-sans relative overflow-hidden transition-colors duration-200">
-      {/* Animated Gradient Background */}
+      {/* Animated Gradient Background - Light Mode */}
       <motion.div 
-        className="absolute inset-0 z-0"
+        className="absolute inset-0 z-0 dark:hidden"
         style={{
-          background: "linear-gradient(135deg, #ffffff 0%, #f5f5f5 25%, #e5e5e5 50%, #0e0e0e 75%, #0e0e0e 100%)",
+          background: "linear-gradient(135deg, #ffffff 0%, #f5f5f5 25%, #e5e5e5 50%, #d4d4d4 75%, #a3a3a3 100%)",
+          backgroundSize: "400% 400%"
+        }}
+        animate={{ 
+          backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"]
+        }}
+        transition={{ 
+          duration: 20, 
+          ease: "linear", 
+          repeat: Infinity 
+        }}
+      />
+      
+      {/* Animated Gradient Background - Dark Mode */}
+      <motion.div 
+        className="absolute inset-0 z-0 hidden dark:block"
+        style={{
+          background: "linear-gradient(135deg, #0e0e0e 0%, #141414 25%, #1a1a1a 50%, #1f1f1f 75%, #262626 100%)",
           backgroundSize: "400% 400%"
         }}
         animate={{ 
@@ -85,19 +102,19 @@ export default function LoginPage() {
             >
               {/* Logo */}
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 md:w-12 md:h-12 rounded border border-black/90 dark:border-white/10 flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]/50">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded border border-black/90 dark:border-white/10 flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]/50 transition-colors duration-200">
                   <img src={ClearPathLogo} alt="ClearPath" className="w-full h-full object-cover" />
                 </div>
-                <h1 className="text-2xl md:text-3xl font-light text-black dark:text-white">ClearPath</h1>
+                <h1 className="text-2xl md:text-3xl font-light text-black dark:text-white transition-colors duration-200">ClearPath</h1>
               </div>
               
               {/* Headline */}
               <div className="space-y-4">
-                <h2 className="text-4xl md:text-5xl lg:text-6xl font-light text-black dark:text-white leading-tight tracking-tight">
+                <h2 className="text-4xl md:text-5xl lg:text-6xl font-light text-black dark:text-white leading-tight tracking-tight transition-colors duration-200">
                   Your Gateway to<br />
                   <span className="font-medium">Decentralized Finance</span>
                 </h2>
-                <p className="text-lg md:text-xl text-zinc-600 dark:text-zinc-400 max-w-xl">
+                <p className="text-lg md:text-xl text-zinc-600 dark:text-zinc-400 max-w-xl transition-colors duration-200">
                   Connect your wallet to access tokenized assets, trading, borrowing, and more.
                 </p>
               </div>
@@ -117,11 +134,11 @@ export default function LoginPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4, delay: 0.3 + index * 0.1, ease: "easeOut" }}
                   whileHover={{ scale: 1.02 }}
-                  className="p-6 bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all cursor-pointer group"
+                  className="p-6 bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-200 cursor-pointer group"
                 >
-                  <feature.icon className="w-6 h-6 text-black dark:text-white mb-3 group-hover:scale-110 transition-transform" />
-                  <h3 className="text-sm font-medium text-black dark:text-white mb-1.5">{feature.title}</h3>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">{feature.description}</p>
+                  <feature.icon className="w-6 h-6 text-black dark:text-white mb-3 group-hover:scale-110 transition-transform duration-200" />
+                  <h3 className="text-sm font-medium text-black dark:text-white mb-1.5 transition-colors duration-200">{feature.title}</h3>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed transition-colors duration-200">{feature.description}</p>
                 </motion.div>
               ))}
             </motion.div>
@@ -133,13 +150,13 @@ export default function LoginPage() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
-              className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-8 md:p-10 space-y-8"
+              className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-8 md:p-10 space-y-8 transition-colors duration-200"
             >
               <div className="space-y-3">
-                <h3 className="text-2xl md:text-3xl font-light text-black dark:text-white">
+                <h3 className="text-2xl md:text-3xl font-light text-black dark:text-white transition-colors duration-200">
                   Connect Your Wallet
                 </h3>
-                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                <p className="text-sm text-zinc-600 dark:text-zinc-400 transition-colors duration-200">
                   Choose your preferred wallet to get started
                 </p>
               </div>
@@ -148,18 +165,18 @@ export default function LoginPage() {
                 onClick={handleConnect}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="w-full bg-black dark:bg-white text-white dark:text-black px-6 py-4 rounded-full text-base font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all flex items-center justify-center gap-3 group shadow-sm"
+                className="w-full bg-black dark:bg-white text-white dark:text-black px-6 py-4 rounded-full text-base font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all duration-200 flex items-center justify-center gap-3 group shadow-sm"
               >
                 <Wallet className="w-5 h-5" />
                 <span>Connect Wallet</span>
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
               </motion.button>
 
-              <div className="pt-6 border-t border-zinc-200 dark:border-zinc-800/50 space-y-4">
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center leading-relaxed">
+              <div className="pt-6 border-t border-zinc-200 dark:border-zinc-800/50 space-y-4 transition-colors duration-200">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center leading-relaxed transition-colors duration-200">
                   By connecting, you agree to ClearPath's Terms of Service and Privacy Policy
                 </p>
-                <div className="flex items-center justify-center gap-2 text-xs text-zinc-400">
+                <div className="flex items-center justify-center gap-2 text-xs text-zinc-400 dark:text-zinc-500 transition-colors duration-200">
                   <Shield className="w-4 h-4" />
                   <span>Your keys, your crypto</span>
                 </div>
