@@ -49,7 +49,7 @@ export default function SplashScreen() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8, delay: 0.5 }}
-        className="absolute bottom-8 md:bottom-12 left-0 right-0 text-center text-black mb-3 md:mb-0 dark:text-white font-medium tracking-wide text-lg md:text-xl"
+        className="absolute bottom-8 md:bottom-12 left-0 right-0 text-center text-black mb-3 md:mb-0 dark:text-white font-normal tracking-wide text-lg md:text-xl"
       >
         ClearPath | Deed3Labs
       </motion.p>
