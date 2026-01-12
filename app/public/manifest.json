@@ -1,6 +1,6 @@
 {
-  "name": "ClearPath",
-  "short_name": "CLEAR Wallet",
+  "name": "CLEAR Credit",
+  "short_name": "CLEAR",
   "description": "A Modern Platform for RWA Tokenization and Portfolio Management",
   "start_url": "https://protocol-contracts-git-contract-rework-deed3.vercel.app/",
   "display_override": ["window-controls-overlay", "fullscreen", "standalone"],
