@@ -65,11 +65,12 @@ export default function SearchModal({
             transition={{ duration: 0.3, ease: 'easeOut' }}
             onClick={(e) => e.stopPropagation()}
             className="fixed inset-0 z-[101] flex flex-col bg-white dark:bg-[#0e0e0e]"
+            style={{ paddingTop: 'env(safe-area-inset-top)' }}
           >
             {/* Header */}
-            <div className="border-b border-zinc-200 dark:border-zinc-800 px-6 py-4">
-              <div className="container mx-auto max-w-4xl flex items-center justify-between">
-                <div className="flex-1 max-w-4xl">
+            <div className="border-b border-zinc-200 dark:border-zinc-800 px-4 py-3 pt-1 md:px-6 md:py-4">
+              <div className="container mx-auto max-w-4xl flex items-start md:items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
                   <SearchBar
                     searchQuery={searchQuery}
                     onSearchChange={onSearchChange}
@@ -81,7 +82,8 @@ export default function SearchModal({
                 </div>
                 <button
                   onClick={onClose}
-                  className="ml-4 p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors"
+                  className="flex-shrink-0 p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors -mr-2 md:ml-4 md:mr-0"
+                  aria-label="Close search"
                 >
                   <X className="w-5 h-5 text-black dark:text-white" />
                 </button>
@@ -90,14 +92,17 @@ export default function SearchModal({
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto">
-              <div className="container mx-auto max-w-4xl px-6 py-6">
+              <div 
+                className="container mx-auto max-w-4xl px-4 py-4 md:px-6 md:py-6"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1.5rem)' }}
+              >
                 {searchQuery ? (
                   <SearchResults 
                     query={searchQuery} 
                     selectedCategories={selectedCategories}
                   />
                 ) : (
-                  <div className="py-16 text-center">
+                  <div className="py-12 md:py-16 text-center">
                     <p className="text-zinc-500 dark:text-zinc-400 text-sm">
                       Start typing to search...
                     </p>
