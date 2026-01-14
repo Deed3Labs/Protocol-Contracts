@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ArrowUpRight, ArrowDownLeft, TrendingUp, Newspaper, Calendar, FileText, ChevronRight, SlidersHorizontal, Info } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, TrendingUp, Newspaper, Calendar, FileText, ChevronRight, Info } from 'lucide-react';
 import SideMenu from './SideMenu';
 import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
@@ -8,9 +8,22 @@ import DepositModal from './DepositModal';
 import WithdrawModal from './WithdrawModal';
 import ActionModal from './ActionModal';
 import SearchResults from './SearchResults';
+import SearchBar from './SearchBar';
 
-// Mock Data
-const assetCategories = ['All', 'Equities', 'ETFs', 'Indices', 'Deeds/RWAs', 'Collectibles', 'Tokens'];
+// Mock Data - Categories/Sectors/Themes
+const filterCategories = [
+  'Technology',
+  'Finance',
+  'Healthcare',
+  'Energy',
+  'Real Estate',
+  'Consumer',
+  'Crypto & DeFi',
+  'ESG',
+  'Growth',
+  'Value',
+  'Dividend',
+];
 
 const trendingAssets = [
   { id: 1, symbol: 'TSLA', name: 'Tesla Inc.', price: 274.96, change: 5.2, type: 'Equity' },
@@ -44,7 +57,7 @@ export default function MarketsHome() {
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const [isScrolledPast, setIsScrolledPast] = useState(false);
   
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Mock values
@@ -136,48 +149,19 @@ export default function MarketsHome() {
 
               {/* Search & Filter Bar */}
               <div className="sticky top-20 md:top-20 z-30 bg-white/80 dark:bg-[#0e0e0e]/80 backdrop-blur-md py-4 -mt-3 -mx-4 px-4 md:mx-0 md:px-0 border-b border-zinc-100 dark:border-zinc-800/50">
-                  <div className="flex gap-2 mb-4">
-                     <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                        <input 
-                           type="text" 
-                           placeholder="Search assets, symbols, news..." 
-                           value={searchQuery}
-                           onChange={(e) => setSearchQuery(e.target.value)}
-                           className="w-full bg-zinc-100 dark:bg-zinc-900 border-none rounded py-3 pl-10 pr-4 text-sm focus:ring-1 focus:ring-black dark:focus:ring-white transition-all"
-                        />
-                     </div>
-                     <button className="bg-zinc-100 dark:bg-zinc-900 p-3 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors">
-                        <SlidersHorizontal className="w-5 h-5 text-black dark:text-white" />
-                     </button>
-                  </div>
-                  
-                  {/* Category Tabs - Only show when not searching */}
-                  <AnimatePresence>
-                     {!searchQuery && (
-                        <motion.div
-                           initial={{ opacity: 0, height: 0 }}
-                           animate={{ opacity: 1, height: 'auto' }}
-                           exit={{ opacity: 0, height: 0 }}
-                           transition={{ duration: 0.2 }}
-                           className="flex gap-2 overflow-x-auto no-scrollbar pb-1"
-                        >
-                           {assetCategories.map(category => (
-                              <button
-                                 key={category}
-                                 onClick={() => setSelectedCategory(category)}
-                                 className={`px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                                    selectedCategory === category 
-                                       ? 'bg-black dark:bg-white text-white dark:text-black' 
-                                       : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800'
-                                 }`}
-                              >
-                                 {category}
-                              </button>
-                           ))}
-                        </motion.div>
-                     )}
-                  </AnimatePresence>
+                  <SearchBar
+                     searchQuery={searchQuery}
+                     onSearchChange={setSearchQuery}
+                     selectedCategories={selectedCategories}
+                     onCategoryToggle={(category) => {
+                        if (selectedCategories.includes(category)) {
+                           setSelectedCategories(prev => prev.filter(c => c !== category));
+                        } else {
+                           setSelectedCategories(prev => [...prev, category]);
+                        }
+                     }}
+                     filterCategories={filterCategories}
+                  />
               </div>
 
               {/* Search Results or Regular Content */}
@@ -190,7 +174,7 @@ export default function MarketsHome() {
                        exit={{ opacity: 0, y: -20 }}
                        transition={{ duration: 0.3 }}
                     >
-                       <SearchResults query={searchQuery} />
+                       <SearchResults query={searchQuery} selectedCategories={selectedCategories} />
                     </motion.div>
                  ) : (
                     <motion.div

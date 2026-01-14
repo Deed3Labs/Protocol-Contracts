@@ -17,14 +17,31 @@ interface SearchResult {
   date?: string;
   timeEvent?: string;
   eventType?: string;
+  sectors?: string[];
+  themes?: string[];
 }
 
 interface SearchResultsProps {
   query: string;
+  selectedCategories?: string[];
 }
 
+// Helper function to check if result matches selected categories
+const matchesCategories = (result: SearchResult, selectedCategories: string[]): boolean => {
+  if (selectedCategories.length === 0) return true;
+  
+  const resultCategories = [
+    ...(result.sectors || []),
+    ...(result.themes || []),
+  ];
+  
+  return selectedCategories.some(category => 
+    resultCategories.some(rc => rc.toLowerCase() === category.toLowerCase())
+  );
+};
+
 // Mock search function - in real app, this would be an API call
-const performSearch = (query: string): Record<string, SearchResult[]> => {
+const performSearch = (query: string, selectedCategories: string[] = []): Record<string, SearchResult[]> => {
   if (!query.trim()) return {};
 
   const lowerQuery = query.toLowerCase();
@@ -37,75 +54,81 @@ const performSearch = (query: string): Record<string, SearchResult[]> => {
     'Calls and Events': [],
   };
 
-  // Mock data - Equities
+  // Mock data - Equities with sectors/themes
   const equities = [
-    { id: 1, symbol: 'TSLA', name: 'Tesla Inc.', price: 274.96, change: 5.2, type: 'Equity' },
-    { id: 2, symbol: 'AAPL', name: 'Apple Inc.', price: 178.50, change: 1.3, type: 'Equity' },
-    { id: 3, symbol: 'MSFT', name: 'Microsoft Corporation', price: 378.20, change: -0.8, type: 'Equity' },
-    { id: 4, symbol: 'GOOGL', name: 'Alphabet Inc.', price: 142.30, change: 2.1, type: 'Equity' },
+    { id: 1, symbol: 'TSLA', name: 'Tesla Inc.', price: 274.96, change: 5.2, type: 'Equity', sectors: ['Technology', 'Energy'], themes: ['ESG', 'Growth'] },
+    { id: 2, symbol: 'AAPL', name: 'Apple Inc.', price: 178.50, change: 1.3, type: 'Equity', sectors: ['Technology'], themes: ['Growth', 'Value'] },
+    { id: 3, symbol: 'MSFT', name: 'Microsoft Corporation', price: 378.20, change: -0.8, type: 'Equity', sectors: ['Technology'], themes: ['Growth', 'Dividend'] },
+    { id: 4, symbol: 'GOOGL', name: 'Alphabet Inc.', price: 142.30, change: 2.1, type: 'Equity', sectors: ['Technology'], themes: ['Growth'] },
   ];
   equities.forEach(equity => {
-    if (equity.symbol.toLowerCase().includes(lowerQuery) || equity.name.toLowerCase().includes(lowerQuery)) {
+    if ((equity.symbol.toLowerCase().includes(lowerQuery) || equity.name.toLowerCase().includes(lowerQuery)) &&
+        matchesCategories(equity, selectedCategories)) {
       results['Equities'].push(equity);
     }
   });
 
-  // Mock data - ETFs & Indices
+  // Mock data - ETFs & Indices with sectors/themes
   const etfs = [
-    { id: 5, symbol: 'SPY', name: 'SPDR S&P 500', price: 432.10, change: -0.5, type: 'ETF' },
-    { id: 6, symbol: 'QQQ', name: 'Invesco QQQ Trust', price: 367.80, change: 1.2, type: 'ETF' },
-    { id: 7, symbol: 'DIA', name: 'SPDR Dow Jones', price: 338.90, change: 0.3, type: 'ETF' },
+    { id: 5, symbol: 'SPY', name: 'SPDR S&P 500', price: 432.10, change: -0.5, type: 'ETF', sectors: ['Finance'], themes: ['Value', 'Dividend'] },
+    { id: 6, symbol: 'QQQ', name: 'Invesco QQQ Trust', price: 367.80, change: 1.2, type: 'ETF', sectors: ['Technology'], themes: ['Growth'] },
+    { id: 7, symbol: 'DIA', name: 'SPDR Dow Jones', price: 338.90, change: 0.3, type: 'ETF', sectors: ['Finance'], themes: ['Value', 'Dividend'] },
   ];
   etfs.forEach(etf => {
-    if (etf.symbol.toLowerCase().includes(lowerQuery) || etf.name.toLowerCase().includes(lowerQuery)) {
+    if ((etf.symbol.toLowerCase().includes(lowerQuery) || etf.name.toLowerCase().includes(lowerQuery)) &&
+        matchesCategories(etf, selectedCategories)) {
       results['ETFs & Indices'].push(etf);
     }
   });
 
-  // Mock data - Collectibles
+  // Mock data - Collectibles with themes
   const collectibles = [
-    { id: 8, symbol: 'NFT-001', name: 'CryptoPunk #1234', price: 12.5, change: 8.3, type: 'Collectible' },
-    { id: 9, symbol: 'ART-042', name: 'Digital Art Collection', price: 5.2, change: -2.1, type: 'Collectible' },
+    { id: 8, symbol: 'NFT-001', name: 'CryptoPunk #1234', price: 12.5, change: 8.3, type: 'Collectible', themes: ['Crypto & DeFi'] },
+    { id: 9, symbol: 'ART-042', name: 'Digital Art Collection', price: 5.2, change: -2.1, type: 'Collectible', themes: ['Crypto & DeFi', 'Consumer'] },
   ];
   collectibles.forEach(collectible => {
-    if (collectible.symbol.toLowerCase().includes(lowerQuery) || collectible.name.toLowerCase().includes(lowerQuery)) {
+    if ((collectible.symbol.toLowerCase().includes(lowerQuery) || collectible.name.toLowerCase().includes(lowerQuery)) &&
+        matchesCategories(collectible, selectedCategories)) {
       results['Collectibles'].push(collectible);
     }
   });
 
-  // Mock data - News & Articles
+  // Mock data - News & Articles with sectors/themes
   const news = [
-    { id: 10, title: 'Tokenized Real Estate Market hits $10B Cap', source: 'DeFi Daily', time: '2h ago', image: 'bg-blue-100 dark:bg-blue-900' },
-    { id: 11, title: 'Tesla Announces New Battery Tech', source: 'MarketWatch', time: '4h ago', image: 'bg-red-100 dark:bg-red-900' },
-    { id: 12, title: 'Crypto Regulation Talks Heat Up', source: 'CoinDesk', time: '5h ago', image: 'bg-amber-100 dark:bg-amber-900' },
-    { id: 13, title: 'Apple Reports Record Q4 Earnings', source: 'Bloomberg', time: '6h ago', image: 'bg-green-100 dark:bg-green-900' },
+    { id: 10, title: 'Tokenized Real Estate Market hits $10B Cap', source: 'DeFi Daily', time: '2h ago', image: 'bg-blue-100 dark:bg-blue-900', sectors: ['Real Estate'], themes: ['Crypto & DeFi'] },
+    { id: 11, title: 'Tesla Announces New Battery Tech', source: 'MarketWatch', time: '4h ago', image: 'bg-red-100 dark:bg-red-900', sectors: ['Technology', 'Energy'], themes: ['ESG', 'Growth'] },
+    { id: 12, title: 'Crypto Regulation Talks Heat Up', source: 'CoinDesk', time: '5h ago', image: 'bg-amber-100 dark:bg-amber-900', themes: ['Crypto & DeFi', 'Finance'] },
+    { id: 13, title: 'Apple Reports Record Q4 Earnings', source: 'Bloomberg', time: '6h ago', image: 'bg-green-100 dark:bg-green-900', sectors: ['Technology'], themes: ['Growth'] },
   ];
   news.forEach(article => {
-    if (article.title.toLowerCase().includes(lowerQuery) || article.source.toLowerCase().includes(lowerQuery)) {
+    if ((article.title.toLowerCase().includes(lowerQuery) || article.source.toLowerCase().includes(lowerQuery)) &&
+        matchesCategories(article, selectedCategories)) {
       results['News & Articles'].push(article);
     }
   });
 
-  // Mock data - Reports & Predictions
+  // Mock data - Reports & Predictions with sectors/themes
   const reports = [
-    { id: 14, title: 'Q4 2025 Market Outlook', author: 'ClearPath Research', date: 'Oct 15' },
-    { id: 15, title: 'State of RWAs Report', author: 'DeFi Institute', date: 'Oct 10' },
-    { id: 16, title: 'Tech Sector Analysis 2025', author: 'Tech Insights', date: 'Oct 8' },
+    { id: 14, title: 'Q4 2025 Market Outlook', author: 'ClearPath Research', date: 'Oct 15', sectors: ['Finance'], themes: ['Value'] },
+    { id: 15, title: 'State of RWAs Report', author: 'DeFi Institute', date: 'Oct 10', sectors: ['Real Estate'], themes: ['Crypto & DeFi'] },
+    { id: 16, title: 'Tech Sector Analysis 2025', author: 'Tech Insights', date: 'Oct 8', sectors: ['Technology'], themes: ['Growth'] },
   ];
   reports.forEach(report => {
-    if (report.title.toLowerCase().includes(lowerQuery) || report.author.toLowerCase().includes(lowerQuery)) {
+    if ((report.title.toLowerCase().includes(lowerQuery) || report.author.toLowerCase().includes(lowerQuery)) &&
+        matchesCategories(report, selectedCategories)) {
       results['Reports & Predictions'].push(report);
     }
   });
 
-  // Mock data - Calls and Events
+  // Mock data - Calls and Events with sectors/themes
   const events = [
-    { id: 17, title: 'Apple Earnings Call', date: 'Oct 28', timeEvent: '4:30 PM EST', eventType: 'Earnings' },
-    { id: 18, title: 'Fed Interest Rate Decision', date: 'Nov 1', timeEvent: '2:00 PM EST', eventType: 'Economic' },
-    { id: 19, title: 'Tesla Product Launch Event', date: 'Oct 30', timeEvent: '1:00 PM EST', eventType: 'Product' },
+    { id: 17, title: 'Apple Earnings Call', date: 'Oct 28', timeEvent: '4:30 PM EST', eventType: 'Earnings', sectors: ['Technology'], themes: ['Growth'] },
+    { id: 18, title: 'Fed Interest Rate Decision', date: 'Nov 1', timeEvent: '2:00 PM EST', eventType: 'Economic', sectors: ['Finance'] },
+    { id: 19, title: 'Tesla Product Launch Event', date: 'Oct 30', timeEvent: '1:00 PM EST', eventType: 'Product', sectors: ['Technology', 'Energy'], themes: ['ESG'] },
   ];
   events.forEach(event => {
-    if (event.title.toLowerCase().includes(lowerQuery) || event.eventType?.toLowerCase().includes(lowerQuery)) {
+    if ((event.title.toLowerCase().includes(lowerQuery) || event.eventType?.toLowerCase().includes(lowerQuery)) &&
+        matchesCategories(event, selectedCategories)) {
       results['Calls and Events'].push(event);
     }
   });
@@ -129,8 +152,8 @@ const categoryIcons: Record<string, any> = {
   'Calls and Events': Calendar,
 };
 
-export default function SearchResults({ query }: SearchResultsProps) {
-  const results = performSearch(query);
+export default function SearchResults({ query, selectedCategories = [] }: SearchResultsProps) {
+  const results = performSearch(query, selectedCategories);
   const categories = Object.keys(results);
 
   if (categories.length === 0) {

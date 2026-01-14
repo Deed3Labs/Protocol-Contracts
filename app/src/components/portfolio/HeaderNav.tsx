@@ -5,7 +5,8 @@ import ClearPathLogo from '../../assets/ClearPath-Logo.png';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useNavigate, useLocation } from 'react-router-dom';
 import XMTPMessaging from '@/components/XMTPMessaging';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import SearchModal from './SearchModal';
 
 interface HeaderNavProps {
   totalValue: number;
@@ -31,8 +32,56 @@ export default function HeaderNav({
   const location = useLocation();
   const [isXMTPModalOpen, setIsXMTPModalOpen] = useState(false);
   const [xmtpConversationId, setXmtpConversationId] = useState<string | null>(null);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+
+  // Filter categories for search
+  const filterCategories = [
+    'Technology',
+    'Finance',
+    'Healthcare',
+    'Energy',
+    'Real Estate',
+    'Consumer',
+    'Crypto & DeFi',
+    'ESG',
+    'Growth',
+    'Value',
+    'Dividend',
+  ];
 
   const isActive = (path: string) => location.pathname === path;
+
+  // Handle Cmd+K / Ctrl+K keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchModalOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleCategoryToggle = (category: string) => {
+    setSelectedCategories(prev => {
+      if (prev.includes(category)) {
+        return prev.filter(c => c !== category);
+      } else {
+        return [...prev, category];
+      }
+    });
+  };
+
+  const handleSearchModalClose = () => {
+    setIsSearchModalOpen(false);
+    // Optionally clear search on close
+    // setSearchQuery('');
+    // setSelectedCategories([]);
+  };
 
   const handleOpenXMTP = (conversationId?: string) => {
     setXmtpConversationId(conversationId || null);
@@ -108,14 +157,20 @@ export default function HeaderNav({
                <Plus className="w-4 h-4" />
              </motion.button>
   
-             <button className="hidden md:flex items-center gap-2 px-4 py-2 w-64 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded text-sm font-normal transition-colors justify-between">
+             <button 
+               onClick={() => setIsSearchModalOpen(true)}
+               className="hidden md:flex items-center gap-2 px-4 py-2 w-64 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded text-sm font-normal transition-colors justify-between cursor-pointer"
+             >
                <div className="flex items-center gap-2">
                  <Search className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
                  <span className="text-zinc-500 dark:text-zinc-400">Search</span>
                </div>
                <span className="text-zinc-500 dark:text-zinc-600 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-xs">⌘K</span>
              </button>
-             <button className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors md:hidden">
+             <button 
+               onClick={() => setIsSearchModalOpen(true)}
+               className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors md:hidden"
+             >
                <Search className="w-5 h-5 text-black dark:text-white" />
              </button>
              
@@ -154,6 +209,17 @@ export default function HeaderNav({
         isOpen={isXMTPModalOpen} 
         onClose={() => setIsXMTPModalOpen(false)}
         initialConversationId={xmtpConversationId}
+      />
+
+      {/* Search Modal */}
+      <SearchModal
+        isOpen={isSearchModalOpen}
+        onClose={handleSearchModalClose}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        selectedCategories={selectedCategories}
+        onCategoryToggle={handleCategoryToggle}
+        filterCategories={filterCategories}
       />
     </>
   );
