@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ArrowUpRight, ArrowDownLeft, TrendingUp, Newspaper, Calendar, FileText, ChevronRight, SlidersHorizontal, Info } from 'lucide-react';
 import SideMenu from './SideMenu';
 import HeaderNav from './HeaderNav';
@@ -6,6 +7,7 @@ import MobileNav from './MobileNav';
 import DepositModal from './DepositModal';
 import WithdrawModal from './WithdrawModal';
 import ActionModal from './ActionModal';
+import SearchResults from './SearchResults';
 
 // Mock Data
 const assetCategories = ['All', 'Equities', 'ETFs', 'Indices', 'Deeds/RWAs', 'Collectibles', 'Tokens'];
@@ -150,91 +152,125 @@ export default function MarketsHome() {
                      </button>
                   </div>
                   
-                  {/* Category Tabs */}
-                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                     {assetCategories.map(category => (
-                        <button
-                           key={category}
-                           onClick={() => setSelectedCategory(category)}
-                           className={`px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                              selectedCategory === category 
-                                 ? 'bg-black dark:bg-white text-white dark:text-black' 
-                                 : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800'
-                           }`}
+                  {/* Category Tabs - Only show when not searching */}
+                  <AnimatePresence>
+                     {!searchQuery && (
+                        <motion.div
+                           initial={{ opacity: 0, height: 0 }}
+                           animate={{ opacity: 1, height: 'auto' }}
+                           exit={{ opacity: 0, height: 0 }}
+                           transition={{ duration: 0.2 }}
+                           className="flex gap-2 overflow-x-auto no-scrollbar pb-1"
                         >
-                           {category}
-                        </button>
-                     ))}
-                  </div>
+                           {assetCategories.map(category => (
+                              <button
+                                 key={category}
+                                 onClick={() => setSelectedCategory(category)}
+                                 className={`px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                                    selectedCategory === category 
+                                       ? 'bg-black dark:bg-white text-white dark:text-black' 
+                                       : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800'
+                                 }`}
+                              >
+                                 {category}
+                              </button>
+                           ))}
+                        </motion.div>
+                     )}
+                  </AnimatePresence>
               </div>
 
-              {/* Featured / Trending Assets */}
-              <div>
-                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-light text-black dark:text-white flex items-center gap-2">
-                       <TrendingUp className="w-5 h-5" />
-                       Trending
-                    </h3>
-                    <button className="text-sm text-blue-600 dark:text-blue-400 hover:underline">View All</button>
-                 </div>
-                 
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {trendingAssets.map((asset) => (
-                       <div key={asset.id} className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-4 cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-700 transition-all group">
-                          <div className="flex justify-between items-start mb-2">
-                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-white dark:bg-zinc-800 flex items-center justify-center shadow-sm text-xs font-bold">
-                                   {asset.symbol[0]}
-                                </div>
-                                <div>
-                                   <h4 className="font-medium text-black dark:text-white">{asset.symbol}</h4>
-                                   <p className="text-xs text-zinc-500">{asset.name}</p>
-                                </div>
-                             </div>
-                             <div className={`flex items-center text-sm font-medium ${asset.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {asset.change >= 0 ? <ArrowUpRight className="w-3 h-3 mr-0.5" /> : <ArrowDownLeft className="w-3 h-3 mr-0.5" />}
-                                {Math.abs(asset.change)}%
-                             </div>
+              {/* Search Results or Regular Content */}
+              <AnimatePresence mode="wait">
+                 {searchQuery ? (
+                    <motion.div
+                       key="search-results"
+                       initial={{ opacity: 0, y: 20 }}
+                       animate={{ opacity: 1, y: 0 }}
+                       exit={{ opacity: 0, y: -20 }}
+                       transition={{ duration: 0.3 }}
+                    >
+                       <SearchResults query={searchQuery} />
+                    </motion.div>
+                 ) : (
+                    <motion.div
+                       key="regular-content"
+                       initial={{ opacity: 0, y: 20 }}
+                       animate={{ opacity: 1, y: 0 }}
+                       exit={{ opacity: 0, y: -20 }}
+                       transition={{ duration: 0.3 }}
+                       className="space-y-10"
+                    >
+                       {/* Featured / Trending Assets */}
+                       <div>
+                          <div className="flex items-center justify-between mb-4">
+                             <h3 className="text-xl font-light text-black dark:text-white flex items-center gap-2">
+                                <TrendingUp className="w-5 h-5" />
+                                Trending
+                             </h3>
+                             <button className="text-sm text-blue-600 dark:text-blue-400 hover:underline">View All</button>
                           </div>
-                          <div className="flex justify-between items-end mt-4">
-                             <span className="text-xs px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
-                                {asset.type}
-                             </span>
-                             <span className="text-lg font-medium text-black dark:text-white">
-                                ${asset.price.toLocaleString()}
-                             </span>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                             {trendingAssets.map((asset) => (
+                                <div key={asset.id} className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-4 cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-700 transition-all group">
+                                   <div className="flex justify-between items-start mb-2">
+                                      <div className="flex items-center gap-3">
+                                         <div className="w-10 h-10 rounded-full bg-white dark:bg-zinc-800 flex items-center justify-center shadow-sm text-xs font-bold">
+                                            {asset.symbol[0]}
+                                         </div>
+                                         <div>
+                                            <h4 className="font-medium text-black dark:text-white">{asset.symbol}</h4>
+                                            <p className="text-xs text-zinc-500">{asset.name}</p>
+                                         </div>
+                                      </div>
+                                      <div className={`flex items-center text-sm font-medium ${asset.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                         {asset.change >= 0 ? <ArrowUpRight className="w-3 h-3 mr-0.5" /> : <ArrowDownLeft className="w-3 h-3 mr-0.5" />}
+                                         {Math.abs(asset.change)}%
+                                      </div>
+                                   </div>
+                                   <div className="flex justify-between items-end mt-4">
+                                      <span className="text-xs px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+                                         {asset.type}
+                                      </span>
+                                      <span className="text-lg font-medium text-black dark:text-white">
+                                         ${asset.price.toLocaleString()}
+                                      </span>
+                                   </div>
+                                </div>
+                             ))}
                           </div>
                        </div>
-                    ))}
-                 </div>
-              </div>
 
-              {/* News Section */}
-              <div>
-                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-light text-black dark:text-white flex items-center gap-2">
-                       <Newspaper className="w-5 h-5" />
-                       News & Articles
-                    </h3>
-                    <button className="text-sm text-blue-600 dark:text-blue-400 hover:underline">View All</button>
-                 </div>
-                 
-                 <div className="space-y-4">
-                    {newsArticles.map((article) => (
-                       <div key={article.id} className="flex gap-4 p-4 bg-white dark:bg-[#0e0e0e] border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer">
-                          <div className={`w-20 h-20 rounded-md shrink-0 ${article.image}`} />
-                          <div className="flex flex-col justify-between py-0.5">
-                             <h4 className="font-medium text-black dark:text-white line-clamp-2">{article.title}</h4>
-                             <div className="flex items-center gap-2 text-xs text-zinc-500">
-                                <span className="font-medium text-zinc-700 dark:text-zinc-300">{article.source}</span>
-                                <span>•</span>
-                                <span>{article.time}</span>
-                             </div>
+                       {/* News Section */}
+                       <div>
+                          <div className="flex items-center justify-between mb-4">
+                             <h3 className="text-xl font-light text-black dark:text-white flex items-center gap-2">
+                                <Newspaper className="w-5 h-5" />
+                                News & Articles
+                             </h3>
+                             <button className="text-sm text-blue-600 dark:text-blue-400 hover:underline">View All</button>
+                          </div>
+                          
+                          <div className="space-y-4">
+                             {newsArticles.map((article) => (
+                                <div key={article.id} className="flex gap-4 p-4 bg-white dark:bg-[#0e0e0e] border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/30 transition-colors cursor-pointer">
+                                   <div className={`w-20 h-20 rounded-md shrink-0 ${article.image}`} />
+                                   <div className="flex flex-col justify-between py-0.5">
+                                      <h4 className="font-medium text-black dark:text-white line-clamp-2">{article.title}</h4>
+                                      <div className="flex items-center gap-2 text-xs text-zinc-500">
+                                         <span className="font-medium text-zinc-700 dark:text-zinc-300">{article.source}</span>
+                                         <span>•</span>
+                                         <span>{article.time}</span>
+                                      </div>
+                                   </div>
+                                </div>
+                             ))}
                           </div>
                        </div>
-                    ))}
-                 </div>
-              </div>
+                    </motion.div>
+                 )}
+              </AnimatePresence>
 
            </div>
 
