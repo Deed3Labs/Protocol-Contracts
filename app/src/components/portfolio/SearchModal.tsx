@@ -1,6 +1,6 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { X } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import SearchBar from './SearchBar';
 import SearchResults from './SearchResults';
 
@@ -23,6 +23,14 @@ export default function SearchModal({
   onCategoryToggle,
   filterCategories,
 }: SearchModalProps) {
+  const [isDragging, setIsDragging] = useState(false);
+  const y = useMotionValue(0);
+  const x = useMotionValue(0);
+  
+  // Calculate opacity and scale based on drag distance (for visual feedback)
+  const opacity = useTransform(y, [0, 300], [1, 0]);
+  const scale = useTransform(y, [0, 300], [1, 0.9]);
+
   // Handle Escape key to close
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -43,6 +51,35 @@ export default function SearchModal({
     };
   }, [isOpen, onClose]);
 
+  // Reset motion values when modal opens/closes
+  useEffect(() => {
+    if (!isOpen) {
+      y.set(0);
+      x.set(0);
+    }
+  }, [isOpen, y, x]);
+
+  const handleDragEnd = (_event: any, info: any) => {
+    setIsDragging(false);
+    const threshold = 100; // Minimum drag distance to close
+    
+    // Check if dragged down enough
+    if (info.offset.y > threshold) {
+      onClose();
+      return;
+    }
+    
+    // Check if dragged left or right enough
+    if (Math.abs(info.offset.x) > threshold) {
+      onClose();
+      return;
+    }
+    
+    // Reset position if not dragged enough
+    y.set(0);
+    x.set(0);
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -60,12 +97,25 @@ export default function SearchModal({
           {/* Modal */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            animate={{ opacity: isDragging ? undefined : 1, y: isDragging ? undefined : 0 }}
             exit={{ opacity: 0, y: 20 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
             onClick={(e) => e.stopPropagation()}
             className="fixed inset-0 z-[101] flex flex-col bg-white dark:bg-[#0e0e0e]"
-            style={{ paddingTop: 'env(safe-area-inset-top)' }}
+            style={{ 
+              paddingTop: 'env(safe-area-inset-top)',
+              y: y,
+              x: x,
+              opacity: isDragging ? opacity : undefined,
+              scale: isDragging ? scale : undefined,
+            }}
+            drag
+            dragConstraints={{ top: 0, bottom: 0, left: 0, right: 0 }}
+            dragElastic={0.2}
+            dragDirectionLock
+            onDragStart={() => setIsDragging(true)}
+            onDragEnd={handleDragEnd}
+            dragMomentum={false}
           >
             {/* Header */}
             <div className="border-b border-zinc-200 dark:border-zinc-800 px-4 py-3 pt-1 md:px-6 md:py-4">
@@ -82,7 +132,7 @@ export default function SearchModal({
                 </div>
                 <button
                   onClick={onClose}
-                  className="flex-shrink-0 p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors -mr-2 md:ml-4 md:mr-0"
+                  className="hidden md:flex flex-shrink-0 p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors ml-4"
                   aria-label="Close search"
                 >
                   <X className="w-5 h-5 text-black dark:text-white" />
