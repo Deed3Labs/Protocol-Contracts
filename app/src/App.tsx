@@ -25,6 +25,7 @@ import { NotificationProvider } from "@/context/NotificationContext";
 import Faucet from "@/components/Faucet";
 import BurnerBondPage from "@/components/BurnerBondPage";
 import PullToRefresh from "@/components/ui/PullToRefresh";
+import ScrollToTop from "@/components/ScrollToTop";
 
 const LegacyLayout = () => {
   return (
@@ -104,6 +105,7 @@ function App() {
       <NotificationProvider>
             <DeedNFTProvider>
               <XMTPProvider>
+                <ScrollToTop />
                 <AnimatePresence>
                   {showSplash && <SplashScreen />}
                 </AnimatePresence>
