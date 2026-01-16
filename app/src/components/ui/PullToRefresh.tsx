@@ -6,6 +6,7 @@ interface PullToRefreshProps {
   onRefresh: () => Promise<void>;
   children: React.ReactNode;
   initialLoading?: boolean;
+  disabled?: boolean;
 }
 
 const Skeleton = () => (
@@ -51,7 +52,7 @@ const Skeleton = () => (
   </div>
 );
 
-export default function PullToRefresh({ onRefresh, children, initialLoading = false }: PullToRefreshProps) {
+export default function PullToRefresh({ onRefresh, children, initialLoading = false, disabled = false }: PullToRefreshProps) {
   const [isRefreshing, setIsRefreshing] = useState(initialLoading);
   const containerRef = useRef<HTMLDivElement>(null);
   const startY = useRef(0);
@@ -70,6 +71,30 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
       return () => clearTimeout(timer);
     }
   }, [initialLoading]);
+
+  // Prevent scrolling when skeleton loader is showing
+  useEffect(() => {
+    if (isRefreshing) {
+      // Prevent body scroll
+      document.body.style.overflow = 'hidden';
+      // Also prevent scroll on the window
+      const preventScroll = (e: Event) => {
+        e.preventDefault();
+      };
+      window.addEventListener('scroll', preventScroll, { passive: false });
+      window.addEventListener('wheel', preventScroll, { passive: false });
+      window.addEventListener('touchmove', preventScroll, { passive: false });
+      
+      return () => {
+        document.body.style.overflow = 'unset';
+        window.removeEventListener('scroll', preventScroll);
+        window.removeEventListener('wheel', preventScroll);
+        window.removeEventListener('touchmove', preventScroll);
+      };
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+  }, [isRefreshing]);
   
   // Transform y value to rotation for the spinner
   const rotate = useTransform(y, [0, 100], [0, 360]);
@@ -93,6 +118,9 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
 
     // Use unified pointer events to handle both mouse (desktop) and touch (mobile)
     const handleStart = (e: TouchEvent | MouseEvent) => {
+      // Disable if pull-to-refresh is disabled (e.g., when modal is open)
+      if (disabled) return;
+      
       // Only enable if we're at the top of the page
       if (window.scrollY <= 5) {
         // If mouse event, do NOT enable dragging (disable pull-to-refresh on desktop via mouse)
@@ -186,7 +214,7 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
       // window.removeEventListener('mouseleave', handleEnd);
       // window.removeEventListener('wheel', handleWheel);
     };
-  }, [isRefreshing, onRefresh, controls, y]);
+  }, [isRefreshing, onRefresh, controls, y, disabled]);
 
   return (
     <div ref={containerRef} className="relative min-h-screen">
@@ -204,7 +232,7 @@ export default function PullToRefresh({ onRefresh, children, initialLoading = fa
       <motion.div 
         animate={controls}
         style={{ transform }} 
-        className="relative z-10 bg-white dark:bg-[#0e0e0e] min-h-screen"
+        className={`relative z-10 bg-white dark:bg-[#0e0e0e] min-h-screen ${isRefreshing ? 'overflow-hidden' : ''}`}
       >
         <AnimatePresence>
           {isRefreshing && (

@@ -22,6 +22,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { DeedNFTProvider } from "@/context/DeedNFTContext";
 import { XMTPProvider } from "@/context/XMTPContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { ModalProvider, useModal } from "@/context/ModalContext";
 import Faucet from "@/components/Faucet";
 import BurnerBondPage from "@/components/BurnerBondPage";
 import PullToRefresh from "@/components/ui/PullToRefresh";
@@ -41,6 +42,7 @@ const LegacyLayout = () => {
 };
 
 const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean }) => {
+  const { isModalOpen } = useModal();
   const handleRefresh = async () => {
     // Wait for animation (increased to 800ms to show skeleton)
     await new Promise(resolve => setTimeout(resolve, 800));
@@ -49,7 +51,7 @@ const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean 
 
   return (
     <ProtectedRoute>
-      <PullToRefresh onRefresh={handleRefresh} initialLoading={startWithSkeleton}>
+      <PullToRefresh onRefresh={handleRefresh} initialLoading={startWithSkeleton} disabled={isModalOpen}>
         <Outlet />
       </PullToRefresh>
     </ProtectedRoute>
@@ -105,7 +107,8 @@ function App() {
       <NotificationProvider>
             <DeedNFTProvider>
               <XMTPProvider>
-                <ScrollToTop />
+                <ModalProvider>
+                  <ScrollToTop />
                 <AnimatePresence>
                   {showSplash && <SplashScreen />}
                 </AnimatePresence>
@@ -139,6 +142,7 @@ function App() {
                   <Route path="/faucet" element={<Faucet />} />
               </Route>
                 </Routes>
+                </ModalProvider>
               </XMTPProvider>
             </DeedNFTProvider>
       </NotificationProvider>
