@@ -118,7 +118,7 @@ export default function SearchModal({
             dragMomentum={false}
           >
             {/* Header */}
-            <div className="border-b border-zinc-200 dark:border-zinc-800 px-4 py-3 pt-1 md:px-6 md:py-4">
+            <div className="border-b border-zinc-200 dark:border-zinc-800 px-3 py-3 pt-2 md:pt-1 md:px-6 md:py-4">
               <div className="container mx-auto max-w-4xl flex items-start md:items-center justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <SearchBar
