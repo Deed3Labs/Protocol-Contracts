@@ -157,7 +157,8 @@ export default function SearchModal({
                       Start typing to search...
                     </p>
                     <p className="text-zinc-400 dark:text-zinc-500 text-xs mt-2">
-                      Press <kbd className="px-2 py-1 bg-zinc-100 dark:bg-zinc-900 rounded text-xs">Esc</kbd> to close
+                      <span className="hidden md:inline">Press <kbd className="px-2 py-1 bg-zinc-100 dark:bg-zinc-900 rounded text-xs">Esc</kbd> to close</span>
+                      <span className="md:hidden">Swipe to close</span>
                     </p>
                   </div>
                 )}

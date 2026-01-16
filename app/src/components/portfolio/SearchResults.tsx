@@ -324,6 +324,18 @@ export default function SearchResults({ query, selectedCategories = [] }: Search
           </motion.div>
         );
       })}
+      
+      {/* End of List Indicator */}
+      <div className="pt-8 pb-4 text-center space-y-2">
+        <div className="flex items-center justify-center gap-2 text-zinc-400 dark:text-zinc-600">
+          <div className="h-px w-12 bg-zinc-300 dark:bg-zinc-700"></div>
+          <span className="text-xs">End of results</span>
+          <div className="h-px w-12 bg-zinc-300 dark:bg-zinc-700"></div>
+        </div>
+        <p className="text-xs text-zinc-400 dark:text-zinc-600 md:hidden">
+          Swipe to close
+        </p>
+      </div>
     </motion.div>
   );
 }
