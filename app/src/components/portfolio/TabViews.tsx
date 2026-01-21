@@ -10,6 +10,28 @@ interface ChartPoint {
 }
 
 
+interface Holding {
+  id: string | number;
+  asset_symbol: string;
+  asset_name: string;
+  quantity: number;
+  average_cost: number;
+  current_price: number;
+  valueUSD?: number;
+  type: 'equity' | 'nft' | 'token' | 'crypto';
+}
+
+interface WalletTransaction {
+  id: string;
+  type: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'mint' | 'trade' | 'transfer' | 'contract';
+  assetSymbol: string;
+  amount: number;
+  currency: string;
+  date: string;
+  status: 'completed' | 'pending' | 'failed';
+  timestamp?: number;
+}
+
 interface ReturnViewProps {
   chartData: ChartPoint[];
   selectedRange: string;
@@ -17,10 +39,12 @@ interface ReturnViewProps {
   dailyChange: number;
   dailyChangePercent: number;
   isNegative: boolean;
+  holdings?: Holding[];
+  balanceUSD?: number;
 }
 
 // Return Tab View
-export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChange, dailyChangePercent, isNegative }: ReturnViewProps) {
+export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChange, dailyChangePercent, isNegative, holdings, balanceUSD }: ReturnViewProps) {
   const timeRanges = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', 'All'];
   const periodLabels: Record<string, string> = { '1D': 'today', '1W': 'past week', '1M': 'past month', '3M': 'past quarter', '6M': 'past 6 months', 'YTD': 'year to date', '1Y': 'past year', 'All': 'all time' };
   
@@ -68,7 +92,7 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
       <button className="w-full flex items-center justify-between py-4 border-t border-b border-zinc-200 dark:border-zinc-800 mt-4">
         <span className="text-black dark:text-white">Borrowing power</span>
         <div className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
-          <span>$8500.00</span>
+          <span>${((holdings?.reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0) + (balanceUSD || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           <ChevronRight className="w-5 h-5 text-zinc-500" />
         </div>
       </button>
@@ -77,28 +101,49 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
 }
 
 // Income Tab View
-export function IncomeView({ totalValue: _totalValue }: { totalValue: number }) {
+interface IncomeViewProps {
+  totalValue: number;
+  transactions?: WalletTransaction[];
+}
+
+export function IncomeView({ totalValue: _totalValue, transactions }: IncomeViewProps) {
   const years = ['Next 12M', '2026', '2025', '2024', '2023', '2022'];
   const [selectedYear, setSelectedYear] = useState('2026');
   
-  // Mock data generator for income chart based on year
+  // Calculate income from transactions
   const getIncomeData = (year: string) => {
-    // Generate 12 months of data
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const currentYear = new Date().getFullYear();
+    const targetYear = year === 'Next 12M' ? currentYear + 1 : parseInt(year);
     
-    // Base multiplier to make years look different
-    const multiplier = year === '2026' ? 1.2 : year === '2025' ? 1.0 : year === '2024' ? 0.8 : 0.6;
+    // Group transactions by month
+    const monthlyData = months.map(month => ({ month, inflow: 0, outflow: 0 }));
     
-    return months.map(month => ({
-      month,
-      inflow: Math.floor((Math.random() * 100 + 100) * multiplier),
-      outflow: Math.floor((Math.random() * 60 + 20) * multiplier)
-    }));
+    if (transactions && transactions.length > 0) {
+      transactions.forEach(tx => {
+        if (!tx.timestamp) return;
+        const txDate = new Date(tx.timestamp);
+        const txYear = txDate.getFullYear();
+        
+        if (txYear === targetYear || (year === 'Next 12M' && txYear >= currentYear)) {
+          const monthIndex = txDate.getMonth();
+          if (monthIndex >= 0 && monthIndex < 12) {
+            if (tx.type === 'deposit' || tx.type === 'mint') {
+              monthlyData[monthIndex].inflow += tx.amount;
+            } else if (tx.type === 'withdraw' || tx.type === 'sell') {
+              monthlyData[monthIndex].outflow += tx.amount;
+            }
+          }
+        }
+      });
+    }
+    
+    return monthlyData;
   };
   
   const incomeData = getIncomeData(selectedYear);
   const totalIncome = incomeData.reduce((acc, curr) => acc + curr.inflow, 0);
-  const estIncome = totalIncome * 1.1; // Just a mock projection
+  const estIncome = totalIncome * 1.1; // Projection estimate
   
   return (
     <div>
@@ -153,10 +198,12 @@ interface AccountValueViewProps {
   selectedRange: string;
   onRangeChange: (range: string) => void;
   totalValue: number;
+  balanceUSD?: number;
+  holdings?: Holding[];
 }
 
 // Account Value Tab View
-export function AccountValueView({ chartData, selectedRange, onRangeChange, totalValue }: AccountValueViewProps) {
+export function AccountValueView({ chartData, selectedRange, onRangeChange, totalValue, balanceUSD, holdings }: AccountValueViewProps) {
   const timeRanges = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', 'All'];
   
   return (
@@ -168,7 +215,15 @@ export function AccountValueView({ chartData, selectedRange, onRangeChange, tota
           <span className="text-zinc-500">all time</span>
         </div>
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-[#30D158] font-medium">$5.00</span>
+          <span className="text-[#30D158] font-medium">
+            ${(() => {
+              // Calculate net deposits from transactions
+              if (!holdings || holdings.length === 0) return '0.00';
+              const totalHoldingsValue = holdings.reduce((sum, h) => sum + (h.valueUSD || 0), 0);
+              const netDeposits = totalHoldingsValue + (balanceUSD || 0);
+              return netDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            })()}
+          </span>
           <span className="text-zinc-500">net deposits</span>
           <Info className="w-4 h-4 text-zinc-600" />
         </div>
@@ -208,15 +263,26 @@ export function AccountValueView({ chartData, selectedRange, onRangeChange, tota
 }
 
 // Allocation Tab View
-export function AllocationView({ totalValue }: { totalValue: number }) {
-  // Calculate allocations dynamically based on totalValue
+interface AllocationViewProps {
+  totalValue: number;
+  holdings?: Holding[];
+  balanceUSD?: number;
+}
+
+export function AllocationView({ totalValue, holdings, balanceUSD }: AllocationViewProps) {
+  // Calculate allocations from actual holdings
+  const tokenValue = holdings?.filter(h => h.type === 'token').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0;
+  const nftValue = holdings?.filter(h => h.type === 'nft').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0;
+  const cashValue = balanceUSD || 0;
+  
   const rawAllocations = [
-    { name: 'Equities', value: totalValue * 0.70, color: 'bg-white dark:bg-white bg-zinc-900', hasInfo: false },
+    { name: 'Equities', value: 0, color: 'bg-white dark:bg-white bg-zinc-900', hasInfo: false },
     { name: 'Options', value: 0, color: 'bg-blue-500', hasInfo: false },
     { name: 'Bonds', value: 0, color: 'bg-blue-500', hasInfo: false },
-    { name: 'Crypto', value: totalValue * 0.20, color: 'bg-blue-500', hasInfo: false },
+    { name: 'Crypto', value: tokenValue, color: 'bg-blue-500', hasInfo: false },
+    { name: 'NFTs', value: nftValue, color: 'bg-purple-500', hasInfo: false },
     { name: 'High-Yield Cash', value: 0, color: 'bg-blue-500', hasInfo: false },
-    { name: 'Cash', value: totalValue * 0.10, color: 'bg-green-500', hasInfo: true },
+    { name: 'Cash', value: cashValue, color: 'bg-green-500', hasInfo: true },
     { name: 'Margin Usage', value: 0, color: 'bg-zinc-600', hasInfo: false },
   ];
 

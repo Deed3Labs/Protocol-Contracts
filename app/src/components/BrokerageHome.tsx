@@ -51,12 +51,6 @@ const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: DeedNFT | u
     return text.substring(0, maxLength - 3) + '...';
   };
   
-  // Truncate secondary text to show last few characters (max ~18 chars)
-  const truncateSecondary = (text: string, maxLength: number = 18): string => {
-    if (text.length <= maxLength) return text;
-    return '...' + text.substring(text.length - (maxLength - 3));
-  };
-  
   // Main text: name from metadata, fallback to asset_symbol
   const mainText = deedName 
     ? truncateText(deedName, 25) 
@@ -64,12 +58,14 @@ const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: DeedNFT | u
   const mainTextFull = deedName || holding.asset_symbol;
   
   // Secondary text: description or configuration, fallback to asset_name
-  const secondaryText = deed?.definition 
-    ? truncateSecondary(deed.definition, 18)
+  // Truncate at the end (not beginning) to show start of text
+  const secondaryTextRaw = deed?.definition 
+    ? deed.definition
     : deed?.configuration
-    ? truncateSecondary(deed.configuration, 18)
-    : truncateSecondary(holding.asset_name, 18);
-  const secondaryTextFull = deed?.definition || deed?.configuration || holding.asset_name;
+    ? deed.configuration
+    : holding.asset_name;
+  const secondaryText = truncateText(secondaryTextRaw, 20);
+  const secondaryTextFull = secondaryTextRaw;
   
   return (
     <div className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
@@ -259,10 +255,12 @@ export default function BrokerageHome() {
             dailyChange={dailyChange}
             dailyChangePercent={dailyChangePercent}
             isNegative={isNegative}
+            holdings={allHoldings}
+            balanceUSD={balanceUSD}
           />
         );
       case 'Income':
-        return <IncomeView totalValue={totalValue} />;
+        return <IncomeView totalValue={totalValue} transactions={walletTransactions} />;
       case 'Account value':
         return (
           <AccountValueView 
@@ -270,10 +268,12 @@ export default function BrokerageHome() {
             selectedRange={selectedRange}
             onRangeChange={handleRangeChange}
             totalValue={totalValue}
+            balanceUSD={balanceUSD}
+            holdings={allHoldings}
           />
         );
       case 'Allocations':
-        return <AllocationView totalValue={totalValue} />;
+        return <AllocationView totalValue={totalValue} holdings={allHoldings} balanceUSD={balanceUSD} />;
       default:
         return null;
     }
