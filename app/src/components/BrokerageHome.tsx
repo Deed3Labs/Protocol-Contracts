@@ -72,10 +72,10 @@ export default function BrokerageHome() {
   const { transactions: walletTransactions, isLoading: activityLoading, error: activityError, refresh: refreshActivity, blockExplorerUrl } = useWalletActivity(10);
   
   // DeedNFT holdings
-  const { userDeedNFTs, loading: deedNFTsLoading, getAssetTypeLabel } = useDeedNFTData();
+  const { userDeedNFTs, getAssetTypeLabel } = useDeedNFTData();
   
   // Token balances
-  const { tokens: tokenBalances, isLoading: tokensLoading } = useTokenBalances();
+  const { tokens: tokenBalances } = useTokenBalances();
   
   const [user, setUser] = useState<User | null>(null);
   const [selectedTab, setSelectedTab] = useState('Return');
@@ -142,7 +142,7 @@ export default function BrokerageHome() {
   // Limit displayed holdings when not expanded
   const displayedHoldings = useMemo(() => {
     if (isPortfolioExpanded) return filteredHoldings;
-    return filteredHoldings.slice(0, 7); // Show 7 holdings initially
+    return filteredHoldings.slice(0, 5); // Show 5 holdings initially
   }, [filteredHoldings, isPortfolioExpanded]);
   
   useEffect(() => {
@@ -381,15 +381,10 @@ export default function BrokerageHome() {
                   </div>
                   
                   {/* Holdings Section */}
-                  <div className="mt-4 px-2 pb-2">
+                  <div className="mt-4 px-2 pb-2 min-h-[200px]">
                     {!isConnected ? (
                       <div className="py-8 text-center text-zinc-500 text-sm">
                         Connect wallet to view holdings
-                      </div>
-                    ) : (deedNFTsLoading || tokensLoading) ? (
-                      <div className="py-8 text-center">
-                        <Loader2 className="w-5 h-5 animate-spin text-zinc-400 mx-auto mb-2" />
-                        <span className="text-zinc-500 text-sm">Loading holdings...</span>
                       </div>
                     ) : filteredHoldings.length > 0 ? (
                       <>
@@ -477,7 +472,7 @@ export default function BrokerageHome() {
                               )}
                               
                               {/* View All / Show Less Button */}
-                              {filteredHoldings.length > 7 && (
+                              {filteredHoldings.length > 5 && (
                                 <div className="mt-4 pt-2 border-t border-zinc-200 dark:border-zinc-800">
                                   <button
                                     onClick={() => setIsPortfolioExpanded(!isPortfolioExpanded)}
@@ -508,26 +503,27 @@ export default function BrokerageHome() {
                     <h2 className="text-xl font-light text-black dark:text-white">Activity</h2>
                     <button 
                       onClick={refreshActivity}
-                      className="text-zinc-500 text-sm hover:text-black dark:hover:text-white transition-colors flex items-center gap-1"
+                      className="text-zinc-500 text-sm hover:text-black dark:hover:text-white transition-colors flex items-center gap-1.5"
                       disabled={activityLoading}
                     >
                       {activityLoading ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>Refreshing...</span>
+                        </>
                       ) : (
-                        'Refresh'
+                        <>
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Refresh</span>
+                        </>
                       )}
                     </button>
                   </div>
                   
-                  <div className="space-y-1 px-2 pb-2">
+                  <div className="space-y-1 px-2 pb-2 min-h-[200px]">
                     {!isConnected ? (
                       <div className="py-8 text-center text-zinc-500 text-sm">
                         Connect wallet to view activity
-                      </div>
-                    ) : activityLoading && walletTransactions.length === 0 ? (
-                      <div className="py-8 text-center">
-                        <Loader2 className="w-5 h-5 animate-spin text-zinc-400 mx-auto mb-2" />
-                        <span className="text-zinc-500 text-sm">Loading transactions...</span>
                       </div>
                     ) : activityError ? (
                       <div className="py-8 text-center text-red-500 text-sm">
