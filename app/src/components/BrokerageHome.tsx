@@ -57,8 +57,19 @@ const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: DeedNFT | u
     return '...' + text.substring(text.length - (maxLength - 3));
   };
   
-  const mainText = truncateText(holding.asset_symbol, 25);
-  const secondaryText = deedName ? truncateSecondary(deedName, 18) : truncateSecondary(holding.asset_name, 18);
+  // Main text: name from metadata, fallback to asset_symbol
+  const mainText = deedName 
+    ? truncateText(deedName, 25) 
+    : truncateText(holding.asset_symbol, 25);
+  const mainTextFull = deedName || holding.asset_symbol;
+  
+  // Secondary text: description or configuration, fallback to asset_name
+  const secondaryText = deed?.definition 
+    ? truncateSecondary(deed.definition, 18)
+    : deed?.configuration
+    ? truncateSecondary(deed.configuration, 18)
+    : truncateSecondary(holding.asset_name, 18);
+  const secondaryTextFull = deed?.definition || deed?.configuration || holding.asset_name;
   
   return (
     <div className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
@@ -67,8 +78,8 @@ const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: DeedNFT | u
           <span className="font-bold text-xs text-black dark:text-white">N</span>
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-black dark:text-white font-medium text-sm truncate" title={holding.asset_symbol}>{mainText}</p>
-          <p className="text-zinc-500 text-xs truncate" title={deedName || holding.asset_name}>{secondaryText}</p>
+          <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
+          <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
         </div>
       </div>
       <div className="flex items-center gap-3 shrink-0">
