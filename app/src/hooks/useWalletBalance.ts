@@ -3,7 +3,7 @@ import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { getNetworkByChainId, getRpcUrlForNetwork } from '@/config/networks';
 import { getEthereumProvider } from '@/utils/providerUtils';
-import { useTokenPrice } from './useTokenPrice';
+import { usePricingData } from './usePricingData';
 
 interface WalletBalance {
   balance: string; // Formatted balance string
@@ -27,7 +27,7 @@ export function useWalletBalance(): WalletBalance {
   const [error, setError] = useState<string | null>(null);
   
   // Fetch token price for USD conversion
-  const { price: tokenPrice } = useTokenPrice();
+  const { price: tokenPrice } = usePricingData();
 
   // Get network info for native currency
   const chainId = useMemo(() => {

@@ -3,7 +3,7 @@ import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { getRpcUrlForNetwork } from '@/config/networks';
 import { getEthereumProvider } from '@/utils/providerUtils';
-import { useTokenPrice } from './useTokenPrice';
+import { usePricingData, getUniswapPrice, getExplorerPrice } from './usePricingData';
 
 export interface TokenBalance {
   address: string;
@@ -68,13 +68,29 @@ export function useTokenBalances(): UseTokenBalancesReturn {
   }, [caipNetworkId]);
 
   // Get ETH price for WETH conversion
-  const { price: ethPrice } = useTokenPrice();
+  const { price: ethPrice } = usePricingData();
 
-  // Token price map (for stablecoins, use 1.0; for WETH, use ETH price)
-  const getTokenPrice = (symbol: string): number => {
+  // Helper to get token price (will fetch from Uniswap if needed)
+  const getTokenPrice = async (symbol: string, address: string, provider: ethers.Provider, chainId: number): Promise<number> => {
+    // Stablecoins are always $1
     if (['USDC', 'USDT', 'DAI'].includes(symbol)) return 1.0;
+    
+    // WETH uses ETH price
     if (symbol === 'WETH') return ethPrice;
-    return 0; // Unknown tokens default to 0
+    
+    // For other tokens, fetch from Uniswap
+    try {
+      const price = await getUniswapPrice(provider, address, chainId);
+      if (price && price > 0) return price;
+      
+      // Fallback to explorer if Uniswap fails
+      const explorerPrice = await getExplorerPrice(address, chainId);
+      if (explorerPrice && explorerPrice > 0) return explorerPrice;
+    } catch (error) {
+      console.error(`Error fetching price for ${symbol}:`, error);
+    }
+    
+    return 0; // Default to 0 if price can't be determined
   };
 
   const fetchTokenBalances = async () => {
@@ -129,7 +145,7 @@ export function useTokenBalances(): UseTokenBalancesReturn {
           if (balance > 0n) {
             const formattedBalance = ethers.formatUnits(balance, decimals);
             const balanceNum = parseFloat(formattedBalance);
-            const tokenPrice = getTokenPrice(symbol);
+            const tokenPrice = await getTokenPrice(symbol, tokenInfo.address, provider, chainId);
             const balanceUSD = balanceNum * tokenPrice;
 
             tokenBalances.push({
