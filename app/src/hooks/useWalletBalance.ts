@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useAppKitAccount, useAppKitProvider, useAppKitNetwork } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { getNetworkByChainId, getRpcUrlForNetwork } from '@/config/networks';
 
@@ -17,7 +17,6 @@ interface WalletBalance {
  */
 export function useWalletBalance(): WalletBalance {
   const { address, isConnected } = useAppKitAccount();
-  const { walletProvider } = useAppKitProvider("eip155");
   const { caipNetworkId } = useAppKitNetwork();
   const [balance, setBalance] = useState<string>('0.00');
   const [balanceWei, setBalanceWei] = useState<bigint>(0n);
@@ -57,10 +56,9 @@ export function useWalletBalance(): WalletBalance {
       try {
         let provider: ethers.Provider;
 
-        // Try to use AppKit provider first
-        if (walletProvider) {
-          provider = walletProvider as unknown as ethers.Provider;
-        } else if (window.ethereum) {
+        // For read operations, always use a standard ethers provider
+        // AppKit walletProvider is for transactions, not read operations
+        if (window.ethereum) {
           provider = new ethers.BrowserProvider(window.ethereum as unknown as ethers.Eip1193Provider);
         } else {
           // Fallback to RPC provider using network config
@@ -98,7 +96,7 @@ export function useWalletBalance(): WalletBalance {
     const interval = setInterval(fetchBalance, 10000);
 
     return () => clearInterval(interval);
-  }, [address, isConnected, walletProvider, chainId]);
+  }, [address, isConnected, chainId]);
 
   return {
     balance,

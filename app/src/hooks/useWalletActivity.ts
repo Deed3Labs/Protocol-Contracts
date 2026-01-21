@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useAppKitAccount, useAppKitProvider, useAppKitNetwork } from '@reown/appkit/react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { formatDistanceToNow } from 'date-fns';
 import { getNetworkByChainId, getNetworkInfo, getRpcUrlForNetwork } from '@/config/networks';
@@ -34,7 +34,6 @@ interface UseWalletActivityReturn {
  */
 export function useWalletActivity(limit: number = 20): UseWalletActivityReturn {
   const { address, isConnected } = useAppKitAccount();
-  const { walletProvider } = useAppKitProvider("eip155");
   const { caipNetworkId } = useAppKitNetwork();
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -62,7 +61,7 @@ export function useWalletActivity(limit: number = 20): UseWalletActivityReturn {
     return networkConfig?.blockExplorer || networkInfo?.blockExplorer || 'https://basescan.org';
   }, [networkConfig, networkInfo]);
 
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     if (!isConnected || !address) {
       setTransactions([]);
       setIsLoading(false);
@@ -74,26 +73,25 @@ export function useWalletActivity(limit: number = 20): UseWalletActivityReturn {
     setError(null);
 
     try {
-      let provider: ethers.Provider;
+        let provider: ethers.Provider;
 
-      // Try to use AppKit provider first
-      if (walletProvider) {
-        provider = walletProvider as unknown as ethers.Provider;
-      } else if (window.ethereum) {
-        provider = new ethers.BrowserProvider(window.ethereum as unknown as ethers.Eip1193Provider);
-      } else {
-        // Fallback to RPC provider using network config
-        if (!chainId) {
-          throw new Error('No chain ID available');
+        // For read operations, always use a standard ethers provider
+        // AppKit walletProvider is for transactions, not read operations
+        if (window.ethereum) {
+          provider = new ethers.BrowserProvider(window.ethereum as unknown as ethers.Eip1193Provider);
+        } else {
+          // Fallback to RPC provider using network config
+          if (!chainId) {
+            throw new Error('No chain ID available');
+          }
+          
+          const rpcUrl = getRpcUrlForNetwork(chainId);
+          if (!rpcUrl) {
+            throw new Error(`No RPC URL available for chain ${chainId}`);
+          }
+          
+          provider = new ethers.JsonRpcProvider(rpcUrl);
         }
-        
-        const rpcUrl = getRpcUrlForNetwork(chainId);
-        if (!rpcUrl) {
-          throw new Error(`No RPC URL available for chain ${chainId}`);
-        }
-        
-        provider = new ethers.JsonRpcProvider(rpcUrl);
-      }
 
       // Fetch transaction history
       // Note: This is a simplified version. For production, you might want to use:
@@ -192,7 +190,7 @@ export function useWalletActivity(limit: number = 20): UseWalletActivityReturn {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isConnected, address, chainId, limit, currencySymbol]);
 
   useEffect(() => {
     fetchTransactions();
@@ -201,7 +199,7 @@ export function useWalletActivity(limit: number = 20): UseWalletActivityReturn {
     const interval = setInterval(fetchTransactions, 30000);
     
     return () => clearInterval(interval);
-  }, [address, isConnected, walletProvider, caipNetworkId, limit]);
+  }, [address, isConnected, chainId, limit, currencySymbol, blockExplorerUrl]);
 
   return {
     transactions,
