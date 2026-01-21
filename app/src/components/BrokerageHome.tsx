@@ -12,6 +12,7 @@ import CTAStack from './portfolio/CTAStack';
 import { useWalletBalance } from '@/hooks/useWalletBalance';
 import { useWalletActivity } from '@/hooks/useWalletActivity';
 import { useDeedNFTData } from '@/hooks/useDeedNFTData';
+import { useTokenBalances } from '@/hooks/useTokenBalances';
 import { useAppKitAccount } from '@reown/appkit/react';
 
 // Types
@@ -26,7 +27,8 @@ interface Holding {
   quantity: number;
   average_cost: number;
   current_price: number;
-  type?: 'equity' | 'nft' | 'token' | 'crypto';
+  valueUSD?: number; // USD value for sorting/filtering
+  type: 'equity' | 'nft' | 'token' | 'crypto';
 }
 
 interface ChartPoint {
@@ -41,15 +43,6 @@ interface ChartPoint {
 const base44 = {
   auth: {
     me: async (): Promise<User> => ({ name: 'Isaiah Litt' })
-  },
-  entities: {
-    Holding: {
-      list: async (): Promise<Holding[]> => [
-         { id: 1, asset_symbol: 'TSLA', asset_name: 'Tesla', quantity: 0.05, average_cost: 279.80, current_price: 274.96 }, // Loss example
-         { id: 2, asset_symbol: 'AAPL', asset_name: 'Apple', quantity: 0, average_cost: 0, current_price: 0 },
-         { id: 3, asset_symbol: 'BTC', asset_name: 'Bitcoin', quantity: 0, average_cost: 0, current_price: 0 }
-      ]
-    }
   }
 };
 
@@ -81,11 +74,15 @@ export default function BrokerageHome() {
   // DeedNFT holdings
   const { userDeedNFTs, loading: deedNFTsLoading, getAssetTypeLabel } = useDeedNFTData();
   
+  // Token balances
+  const { tokens: tokenBalances, isLoading: tokensLoading } = useTokenBalances();
+  
   const [user, setUser] = useState<User | null>(null);
   const [selectedTab, setSelectedTab] = useState('Return');
   const [selectedRange, setSelectedRange] = useState('1D');
   const [chartData, setChartData] = useState<ChartPoint[]>(() => generateChartData('1D', true));
-  const [portfolioFilter, setPortfolioFilter] = useState('All');
+  const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'NFTs' | 'Tokens'>('All');
+  const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
@@ -95,22 +92,58 @@ export default function BrokerageHome() {
   // State for tracking scroll position relative to portfolio value header
   const [isScrolledPast, setIsScrolledPast] = useState(false);
   
-  // Combine DeedNFTs with other holdings
-  const holdings = useMemo<Holding[]>(() => {
+  // Combine DeedNFTs with token balances
+  const allHoldings = useMemo<Holding[]>(() => {
+    const holdings: Holding[] = [];
+    
+    // Add DeedNFTs
     const deedNFTHoldings: Holding[] = userDeedNFTs.map((deed) => ({
       id: `deed-${deed.tokenId}`,
       asset_symbol: `T-Deed #${deed.tokenId}`,
       asset_name: getAssetTypeLabel?.(deed.assetType) || 'T-Deed',
       quantity: 1,
-      average_cost: 0, // Could be fetched from contract if available
-      current_price: 0, // Could be fetched from contract if available
+      average_cost: 0,
+      current_price: 0,
+      valueUSD: 0, // NFTs don't have USD value yet
       type: 'nft' as const
     }));
+    holdings.push(...deedNFTHoldings);
     
-    // You can add other holdings here (tokens, equities, etc.)
-    // For now, we'll just use DeedNFTs
-    return deedNFTHoldings;
-  }, [userDeedNFTs, getAssetTypeLabel]);
+    // Add token balances
+    const tokenHoldings: Holding[] = tokenBalances.map((token) => ({
+      id: `token-${token.address}`,
+      asset_symbol: token.symbol,
+      asset_name: token.name,
+      quantity: parseFloat(token.balance),
+      average_cost: 0,
+      current_price: token.balanceUSD / parseFloat(token.balance) || 0,
+      valueUSD: token.balanceUSD,
+      type: 'token' as const
+    }));
+    holdings.push(...tokenHoldings);
+    
+    // Sort by USD value (highest first), then by type
+    return holdings.sort((a, b) => {
+      if (a.valueUSD !== b.valueUSD) {
+        return (b.valueUSD || 0) - (a.valueUSD || 0);
+      }
+      return a.type.localeCompare(b.type);
+    });
+  }, [userDeedNFTs, getAssetTypeLabel, tokenBalances]);
+
+  // Filter holdings based on selected filter
+  const filteredHoldings = useMemo(() => {
+    if (portfolioFilter === 'All') return allHoldings;
+    if (portfolioFilter === 'NFTs') return allHoldings.filter(h => h.type === 'nft');
+    if (portfolioFilter === 'Tokens') return allHoldings.filter(h => h.type === 'token');
+    return allHoldings;
+  }, [allHoldings, portfolioFilter]);
+
+  // Limit displayed holdings when not expanded
+  const displayedHoldings = useMemo(() => {
+    if (isPortfolioExpanded) return filteredHoldings;
+    return filteredHoldings.slice(0, 7); // Show 7 holdings initially
+  }, [filteredHoldings, isPortfolioExpanded]);
   
   useEffect(() => {
     // Mock API calls for user info
@@ -342,7 +375,7 @@ export default function BrokerageHome() {
                   
                   {/* Filter Pills */}
                   <div className="flex gap-2 mb-2 px-4">
-                    {['All', 'Asset Types'].map((filter) => (
+                    {(['All', 'NFTs', 'Tokens'] as const).map((filter) => (
                       <button
                         key={filter}
                         onClick={() => setPortfolioFilter(filter)}
@@ -353,7 +386,6 @@ export default function BrokerageHome() {
                         }`}
                       >
                         {filter}
-                        {filter === 'Asset Types' && <ChevronDown className="w-3 h-3" />}
                       </button>
                     ))}
                   </div>
@@ -364,59 +396,113 @@ export default function BrokerageHome() {
                       <div className="py-8 text-center text-zinc-500 text-sm">
                         Connect wallet to view holdings
                       </div>
-                    ) : deedNFTsLoading ? (
+                    ) : (deedNFTsLoading || tokensLoading) ? (
                       <div className="py-8 text-center">
                         <Loader2 className="w-5 h-5 animate-spin text-zinc-400 mx-auto mb-2" />
                         <span className="text-zinc-500 text-sm">Loading holdings...</span>
                       </div>
-                    ) : holdings.length > 0 ? (
+                    ) : filteredHoldings.length > 0 ? (
                       <>
-                        <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
-                          <span>{holdings[0]?.type === 'nft' ? 'NFTs' : 'Holdings'}</span>
-                          <span>Value</span>
-                        </div>
-                        <div className="space-y-1">
-                          {holdings.map((holding) => {
-                            const change = (holding.current_price || 0) - holding.average_cost;
-                            const changePercent = holding.average_cost > 0 ? (change / holding.average_cost) * 100 : 0;
-                            const isHoldingNegative = change < 0;
-                            
-                            return (
-                              <div key={holding.id} className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
-                                    <span className="font-bold text-xs text-black dark:text-white">
-                                      {holding.type === 'nft' ? 'N' : holding.asset_symbol[0]}
-                                    </span>
+                        {/* Group holdings by type for display */}
+                        {(() => {
+                          const nftHoldings = displayedHoldings.filter(h => h.type === 'nft');
+                          const tokenHoldings = displayedHoldings.filter(h => h.type === 'token');
+                          
+                          return (
+                            <>
+                              {nftHoldings.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'NFTs') && (
+                                <div className="mb-4">
+                                  <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
+                                    <span>NFTs</span>
+                                    <span>Value</span>
                                   </div>
-                                  <div>
-                                    <p className="text-black dark:text-white font-medium text-sm">{holding.asset_symbol}</p>
-                                    <p className="text-zinc-500 text-xs">{holding.asset_name}</p>
+                                  <div className="space-y-1">
+                                    {nftHoldings.map((holding) => (
+                                      <div key={holding.id} className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
+                                        <div className="flex items-center gap-3">
+                                          <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
+                                            <span className="font-bold text-xs text-black dark:text-white">N</span>
+                                          </div>
+                                          <div>
+                                            <p className="text-black dark:text-white font-medium text-sm">{holding.asset_symbol}</p>
+                                            <p className="text-zinc-500 text-xs">{holding.asset_name}</p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                          <div className="text-right">
+                                            <p className="text-black dark:text-white font-medium text-sm">
+                                              {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
+                                            </p>
+                                          </div>
+                                          <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                  {holding.current_price > 0 ? (
-                                    <div className="text-right">
-                                      <p className={`font-medium text-sm ${isHoldingNegative ? 'text-[#FF3B30]' : 'text-[#30D158]'}`}>
-                                        {isHoldingNegative ? '-' : '+'}${Math.abs(change * (holding.quantity || 1)).toFixed(2)}
-                                      </p>
-                                      <p className={`text-xs ${isHoldingNegative ? 'text-[#FF3B30]' : 'text-[#30D158]'}`}>
-                                        {isHoldingNegative ? '' : '+'}{changePercent.toFixed(2)}%
-                                      </p>
-                                    </div>
-                                  ) : (
-                                    <div className="text-right">
-                                      <p className="text-black dark:text-white font-medium text-sm">
-                                        {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
-                                      </p>
-                                    </div>
-                                  )}
-                                  <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
+                              )}
+                              
+                              {tokenHoldings.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'Tokens') && (
+                                <div>
+                                  <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
+                                    <span>Tokens</span>
+                                    <span>Value</span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {tokenHoldings.map((holding) => {
+                                      const valueUSD = holding.valueUSD || 0;
+                                      
+                                      return (
+                                        <div key={holding.id} className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
+                                          <div className="flex items-center gap-3">
+                                            <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
+                                              <span className="font-bold text-xs text-black dark:text-white">
+                                                {holding.asset_symbol[0]}
+                                              </span>
+                                            </div>
+                                            <div>
+                                              <p className="text-black dark:text-white font-medium text-sm">{holding.asset_symbol}</p>
+                                              <p className="text-zinc-500 text-xs">{holding.asset_name}</p>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-3">
+                                            <div className="text-right">
+                                              <p className="text-black dark:text-white font-medium text-sm">
+                                                ${valueUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                              </p>
+                                              <p className="text-zinc-500 text-xs">
+                                                {holding.quantity.toLocaleString('en-US', { 
+                                                  minimumFractionDigits: holding.quantity < 1 ? 4 : 2,
+                                                  maximumFractionDigits: holding.quantity < 1 ? 4 : 2
+                                                })} {holding.asset_symbol}
+                                              </p>
+                                            </div>
+                                            <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                              )}
+                              
+                              {/* View All / Show Less Button */}
+                              {filteredHoldings.length > 7 && (
+                                <div className="mt-4 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                                  <button
+                                    onClick={() => setIsPortfolioExpanded(!isPortfolioExpanded)}
+                                    className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-2"
+                                  >
+                                    {isPortfolioExpanded 
+                                      ? `Show Less (${filteredHoldings.length} total)`
+                                      : `View All (${filteredHoldings.length} holdings)`
+                                    }
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </>
                     ) : (
                       <div className="py-8 text-center text-zinc-500 text-sm">
