@@ -14,6 +14,8 @@ import { useWalletActivity } from '@/hooks/useWalletActivity';
 import { useDeedNFTData } from '@/hooks/useDeedNFTData';
 import { useTokenBalances } from '@/hooks/useTokenBalances';
 import { useAppKitAccount } from '@reown/appkit/react';
+import { useDeedName } from '@/hooks/useDeedName';
+import type { DeedNFT } from '@/hooks/useDeedNFTData';
 
 // Types
 interface User {
@@ -38,6 +40,34 @@ interface ChartPoint {
 }
 
 // Transaction type is now imported from useWalletActivity
+
+// Component to display NFT holding with name from metadata
+const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: DeedNFT | undefined }) => {
+  const deedName = useDeedName(deed || null);
+  const displayName = deedName || holding.asset_name;
+  
+  return (
+    <div className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
+          <span className="font-bold text-xs text-black dark:text-white">N</span>
+        </div>
+        <div>
+          <p className="text-black dark:text-white font-medium text-sm">{displayName}</p>
+          <p className="text-zinc-500 text-xs">{holding.asset_symbol}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="text-right">
+          <p className="text-black dark:text-white font-medium text-sm">
+            {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
+          </p>
+        </div>
+        <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
+      </div>
+    </div>
+  );
+};
 
 // Mock base44 client (since it's not available in this env)
 const base44 = {
@@ -390,38 +420,27 @@ export default function BrokerageHome() {
                       <>
                         {/* Group holdings by type for display */}
                         {(() => {
-                          const nftHoldings = displayedHoldings.filter(h => h.type === 'nft');
+                          // Map displayed holdings back to their original DeedNFT objects for name fetching
+                          const nftHoldingsWithDeeds = displayedHoldings
+                            .filter(h => h.type === 'nft')
+                            .map(holding => {
+                              const tokenId = holding.id.toString().replace('deed-', '');
+                              const deed = userDeedNFTs.find(d => d.tokenId === tokenId);
+                              return { holding, deed };
+                            });
                           const tokenHoldings = displayedHoldings.filter(h => h.type === 'token');
                           
                           return (
                             <>
-                              {nftHoldings.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'NFTs') && (
+                              {nftHoldingsWithDeeds.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'NFTs') && (
                                 <div className="mb-4">
                                   <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
                                     <span>NFTs</span>
                                     <span>Value</span>
                                   </div>
                                   <div className="space-y-1">
-                                    {nftHoldings.map((holding) => (
-                                      <div key={holding.id} className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
-                                        <div className="flex items-center gap-3">
-                                          <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
-                                            <span className="font-bold text-xs text-black dark:text-white">N</span>
-                                          </div>
-                                          <div>
-                                            <p className="text-black dark:text-white font-medium text-sm">{holding.asset_symbol}</p>
-                                            <p className="text-zinc-500 text-xs">{holding.asset_name}</p>
-                                          </div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                          <div className="text-right">
-                                            <p className="text-black dark:text-white font-medium text-sm">
-                                              {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
-                                            </p>
-                                          </div>
-                                          <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-                                        </div>
-                                      </div>
+                                    {nftHoldingsWithDeeds.map(({ holding, deed }) => (
+                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} />
                                     ))}
                                   </div>
                                 </div>
