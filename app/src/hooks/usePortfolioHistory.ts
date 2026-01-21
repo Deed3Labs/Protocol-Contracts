@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 
 export interface PortfolioSnapshot {
   timestamp: number;
@@ -9,11 +9,84 @@ export interface PortfolioSnapshot {
 const STORAGE_KEY = 'portfolio_history';
 const MAX_SNAPSHOTS = 730; // Keep 2 years of daily data
 const SNAPSHOT_INTERVAL = 60 * 60 * 1000; // Take snapshot every hour
+const FETCHED_HISTORY_KEY = 'portfolio_fetched_history'; // Track if we've fetched blockchain history
+
+/**
+ * Fetch historical portfolio values from blockchain transactions
+ * This reconstructs portfolio value over time based on transaction history
+ */
+async function fetchHistoricalPortfolioValues(
+  _address: string, // Address is used for localStorage key in fetchAndMergeHistory
+  transactions: Array<{ timestamp?: number; date: string; type: string; amount: number; currency: string }>,
+  currentValue: number
+): Promise<PortfolioSnapshot[]> {
+  if (!transactions || transactions.length === 0) {
+    return [];
+  }
+
+  // Sort transactions by timestamp (oldest first)
+  const sortedTxs = [...transactions]
+    .filter(tx => tx.timestamp)
+    .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+  if (sortedTxs.length === 0) {
+    return [];
+  }
+
+  // Reconstruct portfolio value over time
+  // Start from the oldest transaction and work forward
+  const snapshots: PortfolioSnapshot[] = [];
+  let runningValue = 0;
+
+  // Group transactions by day to create daily snapshots
+  const dailySnapshots = new Map<number, number>();
+
+  sortedTxs.forEach(tx => {
+    if (!tx.timestamp) return;
+    
+    const txDate = new Date(tx.timestamp);
+    const dayStart = new Date(txDate.getFullYear(), txDate.getMonth(), txDate.getDate()).getTime();
+    
+    // Estimate value change from transaction
+    // This is a simplified approach - in production, you'd want to track actual token balances
+    if (tx.type === 'deposit' || tx.type === 'mint') {
+      runningValue += tx.amount;
+    } else if (tx.type === 'withdraw' || tx.type === 'sell') {
+      runningValue = Math.max(0, runningValue - tx.amount);
+    }
+    
+    // Store the value at the end of each day
+    dailySnapshots.set(dayStart, runningValue);
+  });
+
+  // Convert daily snapshots to array
+  Array.from(dailySnapshots.entries())
+    .sort((a, b) => a[0] - b[0])
+    .forEach(([timestamp, value]) => {
+      snapshots.push({
+        timestamp,
+        value,
+        date: new Date(timestamp)
+      });
+    });
+
+  // Add current value as the latest point
+  if (snapshots.length > 0) {
+    snapshots.push({
+      timestamp: Date.now(),
+      value: currentValue,
+      date: new Date()
+    });
+  }
+
+  return snapshots;
+}
 
 /**
  * Hook to track and retrieve historical portfolio values
  */
 export function usePortfolioHistory() {
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   // Get all historical snapshots
   const getHistory = useCallback((): PortfolioSnapshot[] => {
     if (typeof window === 'undefined') return [];
@@ -135,16 +208,72 @@ export function usePortfolioHistory() {
     return result;
   }, [getHistory]);
 
+  // Fetch and merge historical data from blockchain
+  const fetchAndMergeHistory = useCallback(async (
+    address: string,
+    transactions: Array<{ timestamp?: number; date: string; type: string; amount: number; currency: string }>,
+    currentValue: number
+  ) => {
+    if (typeof window === 'undefined') return;
+    
+    // Check if we've already fetched history for this address
+    const fetchedKey = `${FETCHED_HISTORY_KEY}_${address}`;
+    const hasFetched = localStorage.getItem(fetchedKey);
+    
+    if (hasFetched) {
+      // Already fetched, skip
+      return;
+    }
+
+    setIsFetchingHistory(true);
+    
+    try {
+      const fetchedSnapshots = await fetchHistoricalPortfolioValues(address, transactions, currentValue);
+      
+      if (fetchedSnapshots.length > 0) {
+        // Merge with existing local history
+        const localHistory = getHistory();
+        const merged = [...localHistory, ...fetchedSnapshots]
+          .sort((a, b) => a.timestamp - b.timestamp)
+          // Remove duplicates (same timestamp)
+          .filter((snapshot, index, self) => 
+            index === 0 || self[index - 1].timestamp !== snapshot.timestamp
+          )
+          .slice(-MAX_SNAPSHOTS);
+        
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          snapshots: merged,
+          lastUpdated: Date.now()
+        }));
+      }
+      
+      // Mark as fetched for this address
+      localStorage.setItem(fetchedKey, 'true');
+    } catch (error) {
+      console.error('Error fetching historical portfolio data:', error);
+    } finally {
+      setIsFetchingHistory(false);
+    }
+  }, [getHistory]);
+
   // Clear all history (useful for testing or reset)
   const clearHistory = useCallback(() => {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(STORAGE_KEY);
+    // Also clear fetched flags
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith(FETCHED_HISTORY_KEY)) {
+        localStorage.removeItem(key);
+      }
+    });
   }, []);
 
   return {
     getHistory,
     addSnapshot,
     getSnapshotsForRange,
+    fetchAndMergeHistory,
+    isFetchingHistory,
     clearHistory
   };
 }

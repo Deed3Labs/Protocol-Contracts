@@ -98,7 +98,7 @@ const base44 = {
   }
 };
 
-// Generate chart data from historical portfolio values or create realistic mock data
+// Generate chart data from historical portfolio values or show flat line at current value
 const generateChartData = (
   range: string, 
   currentValue: number, 
@@ -124,9 +124,9 @@ const generateChartData = (
         date: snapshot.date
       }));
     } else {
-      // We have some history but not enough - interpolate
+      // We have some history but not enough - interpolate between known points
       const data: ChartPoint[] = [];
-      const startValue = historicalSnapshots[0]?.value || currentValue * 0.9;
+      const startValue = historicalSnapshots[0]?.value || 0;
       const endValue = currentValue;
       
       // Fill in missing points with interpolation
@@ -156,7 +156,8 @@ const generateChartData = (
     }
   }
   
-  // No historical data - generate realistic mock data based on current value
+  // No historical data - show flat line at current value (or zero if no value)
+  // This ensures we don't show mock/fake data on first visit
   const pointsMap: Record<string, number> = { 
     '1D': 48, '1W': 7, '1M': 30, '3M': 90, 
     '6M': 180, 'YTD': 200, '1Y': 365, 'All': 730 
@@ -164,25 +165,14 @@ const generateChartData = (
   const points = pointsMap[range] || 48;
   const data: ChartPoint[] = [];
   
-  // Start from a slightly lower value to show growth
-  let value = currentValue > 0 ? currentValue * 0.95 : 100;
+  // Use current value (or zero) for all points - flat line
+  const value = currentValue || 0;
   
   for (let i = 0; i < points; i++) {
-    // Small random volatility
-    const volatility = 0.01;
-    // Slight upward trend to reach current value
-    const trend = (currentValue - value) / (points - i) / value;
-    value = value * (1 + (Math.random() - 0.5) * volatility + trend * 0.1);
-    
-    // Ensure we end close to current value
-    if (i === points - 1) {
-      value = currentValue;
-    }
-    
     const timeOffset = (points - i) * (24 * 60 * 60 * 1000 / points);
     data.push({ 
       time: i, 
-      value: Math.max(0, value), 
+      value: value, 
       date: new Date(Date.now() - timeOffset) 
     });
   }
@@ -192,7 +182,7 @@ const generateChartData = (
 
 export default function BrokerageHome() {
   // Wallet connection
-  const { isConnected } = useAppKitAccount();
+  const { address, isConnected } = useAppKitAccount();
   
   // Wallet balance hook
   const { balance: walletBalance, error: balanceError, currencySymbol, balanceUSD } = useWalletBalance();
@@ -207,7 +197,7 @@ export default function BrokerageHome() {
   const { tokens: tokenBalances } = useTokenBalances();
   
   // Portfolio history tracking
-  const { addSnapshot, getSnapshotsForRange } = usePortfolioHistory();
+  const { addSnapshot, getSnapshotsForRange, fetchAndMergeHistory } = usePortfolioHistory();
   
   const [user, setUser] = useState<User | null>(null);
   const [selectedTab, setSelectedTab] = useState('Return');
@@ -309,6 +299,24 @@ export default function BrokerageHome() {
       addSnapshot(totalValue);
     }
   }, [isConnected, totalValue, addSnapshot]);
+  
+  // Fetch historical portfolio data from blockchain transactions
+  useEffect(() => {
+    if (isConnected && address && walletTransactions.length > 0 && totalValue > 0) {
+      // Fetch and merge historical data from transactions
+      fetchAndMergeHistory(
+        address,
+        walletTransactions.map(tx => ({
+          timestamp: tx.timestamp,
+          date: tx.date,
+          type: tx.type,
+          amount: tx.amount,
+          currency: tx.currency
+        })),
+        totalValue
+      );
+    }
+  }, [isConnected, address, walletTransactions, totalValue, fetchAndMergeHistory]);
   
   // Generate chart data from historical snapshots or current value
   const chartData = useMemo(() => {
