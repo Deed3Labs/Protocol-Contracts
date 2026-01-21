@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAppKitNetwork } from '@reown/appkit/react';
 import { ethers } from 'ethers';
-import { getNetworkByChainId, getRpcUrlForNetwork } from '@/config/networks';
+import { getRpcUrlForNetwork } from '@/config/networks';
 import { getEthereumProvider } from '@/utils/providerUtils';
 
 interface PricingData {
@@ -54,6 +54,74 @@ const ERC20_ABI = [
 const FEE_TIER = 3000; // 0.3% fee tier
 
 /**
+ * Get price from a specific Uniswap V3 pool
+ * Based on AssuranceOracle.sol implementation
+ * Returns price of token0 in terms of token1, adjusted to 18 decimals
+ */
+async function getPoolPrice(
+  provider: ethers.Provider,
+  poolAddress: string,
+  token0Address: string,
+  token1Address: string
+): Promise<number> {
+  try {
+    const pool = new ethers.Contract(poolAddress, UNISWAP_V3_POOL_ABI, provider);
+    const slot0 = await pool.slot0();
+    const sqrtPriceX96 = slot0[0]; // uint160
+
+    // Get token decimals
+    const token0 = new ethers.Contract(token0Address, ERC20_ABI, provider);
+    const token1 = new ethers.Contract(token1Address, ERC20_ABI, provider);
+    const decimals0 = Number(await token0.decimals());
+    const decimals1 = Number(await token1.decimals());
+
+    // Calculate price from sqrtPriceX96
+    // Following AssuranceOracle.sol: price = (sqrtPriceX96 * sqrtPriceX96) >> (96 * 2)
+    // This gives us: price = (sqrtPriceX96^2) / (2^192)
+    // The result is token1/token0 in Q64.96 fixed point
+    
+    const sqrtPrice = BigInt(sqrtPriceX96.toString());
+    const Q96 = 2n ** 96n;
+    const Q192 = Q96 * Q96;
+    
+    // Calculate: price = (sqrtPriceX96^2) / (2^192)
+    // This is token1/token0 ratio
+    const priceX192 = sqrtPrice * sqrtPrice;
+    
+    // Convert to number with proper scaling
+    // We'll work in 18 decimals for the final result
+    const SCALE_18 = 10n ** 18n;
+    
+    // Calculate: (priceX192 * 10^18) / Q192
+    // This gives us price in 18 decimals
+    const scaledPrice = (priceX192 * SCALE_18) / Q192;
+    
+    // Convert to JavaScript number
+    let price = Number(scaledPrice) / 1e18;
+
+    // Adjust for token decimals (following AssuranceOracle.sol logic)
+    // The price from Uniswap is in raw units, we need to adjust for decimals
+    if (decimals0 > decimals1) {
+      price = price / Math.pow(10, decimals0 - decimals1);
+    } else if (decimals1 > decimals0) {
+      price = price * Math.pow(10, decimals1 - decimals0);
+    }
+    
+    // Ensure price is in 18 decimals (as per AssuranceOracle)
+    if (decimals0 < 18) {
+      price = price * Math.pow(10, 18 - decimals0);
+    } else if (decimals0 > 18) {
+      price = price / Math.pow(10, decimals0 - 18);
+    }
+
+    return price;
+  } catch (error) {
+    console.error('Error getting pool price:', error);
+    return 0;
+  }
+}
+
+/**
  * Get price from Uniswap V3 pool
  * Exported for use in other hooks
  */
@@ -76,21 +144,73 @@ export async function getUniswapPrice(
     // Try direct USDC pair first
     const usdcPoolAddress = await factory.getPool(tokenAddress, usdcAddress, FEE_TIER);
     if (usdcPoolAddress && usdcPoolAddress !== ethers.ZeroAddress) {
-      const price = await getPoolPrice(provider, usdcPoolAddress, tokenAddress, usdcAddress);
-      if (price > 0) return price;
+      // Check which token is token0 in the pool
+      const pool = new ethers.Contract(usdcPoolAddress, UNISWAP_V3_POOL_ABI, provider);
+      const token0Address = await pool.token0();
+      const token1Address = await pool.token1();
+      
+      const price = await getPoolPrice(provider, usdcPoolAddress, token0Address, token1Address);
+      if (price > 0) {
+        // Price is in 18 decimals, representing token1/token0
+        // If token0 is our token and token1 is USDC, we need to invert
+        // If token1 is our token and token0 is USDC, price is already token/USDC
+        if (token0Address.toLowerCase() === tokenAddress.toLowerCase()) {
+          // Our token is token0, USDC is token1
+          // Price is USDC/token, so we need token/USDC = 1 / (USDC/token)
+          // But price is in 18 decimals, so: token/USDC = 1e18 / price
+          return Number(1e18) / price;
+        } else {
+          // Our token is token1, USDC is token0
+          // Price is token/USDC, which is what we want
+          return price / 1e18; // Convert from 18 decimals to normal number
+        }
+      }
     }
 
     // Try via WETH if no direct USDC pair
     const wethPoolAddress = await factory.getPool(tokenAddress, wethAddress, FEE_TIER);
     if (wethPoolAddress && wethPoolAddress !== ethers.ZeroAddress) {
-      const tokenWethPrice = await getPoolPrice(provider, wethPoolAddress, tokenAddress, wethAddress);
+      const pool = new ethers.Contract(wethPoolAddress, UNISWAP_V3_POOL_ABI, provider);
+      const token0Address = await pool.token0();
+      const token1Address = await pool.token1();
+      
+      const tokenWethPrice = await getPoolPrice(provider, wethPoolAddress, token0Address, token1Address);
       if (tokenWethPrice > 0) {
+        // Get WETH/USDC price
         const wethUsdcPoolAddress = await factory.getPool(wethAddress, usdcAddress, FEE_TIER);
         if (wethUsdcPoolAddress && wethUsdcPoolAddress !== ethers.ZeroAddress) {
-          const wethUsdcPrice = await getPoolPrice(provider, wethUsdcPoolAddress, wethAddress, usdcAddress);
+          const wethUsdcPool = new ethers.Contract(wethUsdcPoolAddress, UNISWAP_V3_POOL_ABI, provider);
+          const wethUsdcToken0 = await wethUsdcPool.token0();
+          const wethUsdcToken1 = await wethUsdcPool.token1();
+          
+          const wethUsdcPrice = await getPoolPrice(provider, wethUsdcPoolAddress, wethUsdcToken0, wethUsdcToken1);
           if (wethUsdcPrice > 0) {
-            // Calculate token price in USD: (token/WETH) * (WETH/USDC)
-            return (tokenWethPrice * wethUsdcPrice) / 1e18;
+            // Calculate token price in USD
+            // tokenWethPrice is in 18 decimals (token/WETH or WETH/token)
+            // wethUsdcPrice is in 18 decimals (WETH/USDC or USDC/WETH)
+            
+            // Determine if we need to invert tokenWethPrice
+            let tokenWethRatio: number;
+            if (token0Address.toLowerCase() === tokenAddress.toLowerCase()) {
+              // Token is token0, WETH is token1
+              tokenWethRatio = Number(1e18) / tokenWethPrice; // Invert to get token/WETH
+            } else {
+              // Token is token1, WETH is token0
+              tokenWethRatio = tokenWethPrice / 1e18; // Already token/WETH
+            }
+            
+            // Determine if we need to invert wethUsdcPrice
+            let wethUsdcRatio: number;
+            if (wethUsdcToken0.toLowerCase() === wethAddress.toLowerCase()) {
+              // WETH is token0, USDC is token1
+              wethUsdcRatio = wethUsdcPrice / 1e18; // Already WETH/USDC
+            } else {
+              // WETH is token1, USDC is token0
+              wethUsdcRatio = Number(1e18) / wethUsdcPrice; // Invert to get WETH/USDC
+            }
+            
+            // Calculate: (token/WETH) * (WETH/USDC) = token/USDC
+            return tokenWethRatio * wethUsdcRatio;
           }
         }
       }
@@ -104,120 +224,67 @@ export async function getUniswapPrice(
 }
 
 /**
- * Get price from a specific Uniswap V3 pool
- * Returns price of token0 in terms of token1
+ * Get price from CoinGecko API (fallback)
  */
-async function getPoolPrice(
-  provider: ethers.Provider,
-  poolAddress: string,
-  token0Address: string,
-  token1Address: string
-): Promise<number> {
+async function getCoinGeckoPrice(
+  tokenAddress: string,
+  chainId: number
+): Promise<number | null> {
   try {
-    const pool = new ethers.Contract(poolAddress, UNISWAP_V3_POOL_ABI, provider);
-    const slot0 = await pool.slot0();
-    const sqrtPriceX96 = slot0[0]; // First return value (uint160)
+    // Map chain IDs to CoinGecko platform IDs
+    const platformMap: Record<number, string> = {
+      1: 'ethereum',
+      8453: 'base',
+      11155111: 'ethereum', // Sepolia uses Ethereum platform
+      84532: 'base', // Base Sepolia uses Base platform
+    };
 
-    // Get token decimals
-    const token0 = new ethers.Contract(token0Address, ERC20_ABI, provider);
-    const token1 = new ethers.Contract(token1Address, ERC20_ABI, provider);
-    const decimals0 = await token0.decimals();
-    const decimals1 = await token1.decimals();
+    const platform = platformMap[chainId];
+    if (!platform) return null;
 
-    // Calculate price from sqrtPriceX96
-    // sqrtPriceX96 = sqrt(token1/token0) * 2^96
-    // price = token1/token0 = (sqrtPriceX96 / 2^96)^2
-    
-    const sqrtPrice = BigInt(sqrtPriceX96.toString());
-    const Q96 = 2n ** 96n;
-    
-    // Calculate price = (sqrtPriceX96^2) / (2^96)^2
-    // To maintain precision and avoid BigInt overflow when converting to Number,
-    // we'll scale the calculation before division
-    const priceX192 = sqrtPrice * sqrtPrice;
-    const Q192 = Q96 * Q96;
-    
-    // Scale by 1e18 to maintain precision when converting to number
-    // This allows us to do the division in BigInt first, then scale down
-    const SCALE = 1e18;
-    const scaleBigInt = BigInt(SCALE);
-    
-    // Calculate: (priceX192 * scale) / Q192
-    // This gives us the price scaled by 1e18, all in BigInt
-    const scaledPrice = (priceX192 * scaleBigInt) / Q192;
-    
-    // Convert to number (scaledPrice should be within safe number range now)
-    // If it's still too large, we'll need to scale down further
-    let price: number;
-    try {
-      price = Number(scaledPrice) / SCALE;
-    } catch (e) {
-      // If still too large, scale down more
-      const smallerScale = 1e9;
-      const smallerScaleBigInt = BigInt(smallerScale);
-      const smallerScaledPrice = (priceX192 * smallerScaleBigInt) / Q192;
-      price = Number(smallerScaledPrice) / smallerScale;
+    // For native tokens (ETH), use the native token ID
+    const wethAddress = WETH_ADDRESSES[chainId];
+    if (tokenAddress.toLowerCase() === wethAddress.toLowerCase()) {
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd`,
+        { method: 'GET' }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        return data.ethereum?.usd || null;
+      }
     }
 
-    // Adjust for token decimals
-    // The price from Uniswap is token1/token0 in raw units
-    // We need to adjust: price = (token1/token0) * (10^decimals0 / 10^decimals1)
-    const decimals0Num = Number(decimals0);
-    const decimals1Num = Number(decimals1);
-    const decimalDiff = decimals0Num - decimals1Num;
-    
-    if (decimalDiff > 0) {
-      price = price * Math.pow(10, decimalDiff);
-    } else if (decimalDiff < 0) {
-      price = price / Math.pow(10, Math.abs(decimalDiff));
+    // For other tokens, use the contract address
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/simple/token_price/${platform}?contract_addresses=${tokenAddress}&vs_currencies=usd`,
+      { method: 'GET' }
+    );
+
+    if (response.ok) {
+      const data = await response.json();
+      const tokenData = data[tokenAddress.toLowerCase()];
+      return tokenData?.usd || null;
     }
 
-    // The price from Uniswap is token1/token0
-    // If we want token0/token1 (which is what we need when token1 is USDC), we invert
-    const token0Symbol = await token0.symbol();
-    
-    // If token1 is USDC (our quote token), price is already token0/USDC, so we're good
-    // If token0 is USDC, we need to invert
-    if (token0Symbol === 'USDC' || token0Symbol === 'USDT' || token0Symbol === 'DAI') {
-      price = 1 / price;
-    }
-
-    return price;
+    return null;
   } catch (error) {
-    console.error('Error getting pool price:', error);
-    return 0;
+    console.error('Error fetching CoinGecko price:', error);
+    return null;
   }
 }
 
 /**
- * Get price from chain explorer API (fallback)
- * Note: Explorer APIs may require API keys, but we try without first
- * Exported for use in other hooks
+ * Get price from chain explorer API (fallback - currently not implemented as it requires API keys)
  */
 export async function getExplorerPrice(
-  _tokenAddress: string, // Token address (currently unused as explorer APIs require API keys)
-  chainId: number
+  _tokenAddress: string,
+  _chainId: number
 ): Promise<number | null> {
-  try {
-    const networkConfig = getNetworkByChainId(chainId);
-    if (!networkConfig) return null;
-
-    // Explorer APIs typically require API keys for price data
-    // For now, skip as it requires API keys
-    // In production, you could add API key support via environment variables
-    // Example for Basescan:
-    //   const apiUrl = networkConfig.blockExplorer.replace('basescan.org', 'api.basescan.org');
-    //   const response = await fetch(`${apiUrl}/api?module=token&action=tokeninfo&contractaddress=${_tokenAddress}&apikey=${apiKey}`);
-    // Example for Etherscan:
-    //   const apiUrl = networkConfig.blockExplorer.replace('etherscan.io', 'api.etherscan.io');
-    //   const response = await fetch(`${apiUrl}/api?module=token&action=tokeninfo&contractaddress=${_tokenAddress}&apikey=${apiKey}`);
-
-    // Return null to fall back to other methods
-    return null;
-  } catch (error) {
-    console.error('Error fetching explorer price:', error);
-    return null;
-  }
+  // Explorer APIs typically require API keys for price data
+  // For now, return null to fall back to CoinGecko
+  return null;
 }
 
 /**
@@ -228,8 +295,8 @@ function getNativeTokenAddress(chainId: number): string | null {
 }
 
 /**
- * Hook to fetch token prices using Uniswap and chain explorers
- * Decentralized pricing - no reliance on centralized APIs
+ * Hook to fetch token prices using Uniswap and CoinGecko
+ * Priority: Uniswap V3 > CoinGecko
  */
 export function usePricingData(tokenAddress?: string): PricingData {
   const { caipNetworkId } = useAppKitNetwork();
@@ -275,24 +342,28 @@ export function usePricingData(tokenAddress?: string): PricingData {
       // Try Uniswap first (primary source)
       let tokenPrice = await getUniswapPrice(provider, targetTokenAddress, chainId);
 
-      // Fallback to chain explorer API if Uniswap fails
-      if (!tokenPrice || tokenPrice === 0) {
-        tokenPrice = await getExplorerPrice(targetTokenAddress, chainId);
+      // Fallback to CoinGecko if Uniswap fails
+      if (!tokenPrice || tokenPrice === 0 || !isFinite(tokenPrice)) {
+        tokenPrice = await getCoinGeckoPrice(targetTokenAddress, chainId);
       }
 
       // For stablecoins, default to $1 if no price found
-      if (!tokenPrice || tokenPrice === 0) {
-        const tokenContract = new ethers.Contract(targetTokenAddress, ERC20_ABI, provider);
-        const symbol = await tokenContract.symbol();
-        if (['USDC', 'USDT', 'DAI'].includes(symbol)) {
-          tokenPrice = 1;
+      if (!tokenPrice || tokenPrice === 0 || !isFinite(tokenPrice)) {
+        try {
+          const tokenContract = new ethers.Contract(targetTokenAddress, ['function symbol() view returns (string)'], provider);
+          const symbol = await tokenContract.symbol();
+          if (['USDC', 'USDT', 'DAI'].includes(symbol)) {
+            tokenPrice = 1;
+          }
+        } catch (e) {
+          // Ignore errors when checking symbol
         }
       }
 
-      if (tokenPrice && tokenPrice > 0) {
+      if (tokenPrice && tokenPrice > 0 && isFinite(tokenPrice)) {
         setPrice(tokenPrice);
       } else {
-        setError('Price not available from Uniswap or explorer');
+        setError('Price not available from Uniswap or CoinGecko');
       }
     } catch (err) {
       console.error('Error fetching token price:', err);
