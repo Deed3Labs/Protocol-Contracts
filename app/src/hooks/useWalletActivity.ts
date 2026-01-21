@@ -3,6 +3,7 @@ import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { formatDistanceToNow } from 'date-fns';
 import { getNetworkByChainId, getNetworkInfo, getRpcUrlForNetwork } from '@/config/networks';
+import { getEthereumProvider } from '@/utils/providerUtils';
 
 export interface WalletTransaction {
   id: string;
@@ -72,26 +73,32 @@ export function useWalletActivity(limit: number = 20): UseWalletActivityReturn {
     setIsLoading(true);
     setError(null);
 
-    try {
-        let provider: ethers.Provider;
+    // Add a small delay for mobile wallet connections to ensure provider is ready
+    // This is especially important after returning from MetaMask app on mobile
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-        // For read operations, always use a standard ethers provider
-        // AppKit walletProvider is for transactions, not read operations
-        if (window.ethereum) {
-          provider = new ethers.BrowserProvider(window.ethereum as unknown as ethers.Eip1193Provider);
-        } else {
-          // Fallback to RPC provider using network config
-          if (!chainId) {
-            throw new Error('No chain ID available');
-          }
-          
-          const rpcUrl = getRpcUrlForNetwork(chainId);
-          if (!rpcUrl) {
-            throw new Error(`No RPC URL available for chain ${chainId}`);
-          }
-          
-          provider = new ethers.JsonRpcProvider(rpcUrl);
+    try {
+      let provider: ethers.Provider;
+
+      // For read operations, always use a standard ethers provider
+      // Use mobile-safe provider helper that handles initialization delays
+      try {
+        // Try to get provider from window.ethereum (works with MetaMask on mobile)
+        provider = await getEthereumProvider();
+      } catch (providerError) {
+        // Fallback to RPC provider using network config
+        // This is useful when window.ethereum is not available (e.g., some mobile scenarios)
+        if (!chainId) {
+          throw new Error('No chain ID available');
         }
+        
+        const rpcUrl = getRpcUrlForNetwork(chainId);
+        if (!rpcUrl) {
+          throw new Error(`No RPC URL available for chain ${chainId}`);
+        }
+        
+        provider = new ethers.JsonRpcProvider(rpcUrl);
+      }
 
       // Fetch transaction history
       // Note: This is a simplified version. For production, you might want to use:
@@ -197,9 +204,21 @@ export function useWalletActivity(limit: number = 20): UseWalletActivityReturn {
     
     // Refresh every 30 seconds
     const interval = setInterval(fetchTransactions, 30000);
+
+    // Listen for mobile wallet return events (from AppKitProvider)
+    const handleMobileWalletReturn = () => {
+      console.log('Mobile wallet return detected, refreshing transactions...');
+      // Wait a bit longer for mobile wallet to fully initialize
+      setTimeout(fetchTransactions, 1000);
+    };
+
+    window.addEventListener('mobileWalletReturn', handleMobileWalletReturn);
     
-    return () => clearInterval(interval);
-  }, [address, isConnected, chainId, limit, currencySymbol, blockExplorerUrl]);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('mobileWalletReturn', handleMobileWalletReturn);
+    };
+  }, [address, isConnected, chainId, limit, currencySymbol, blockExplorerUrl, fetchTransactions]);
 
   return {
     transactions,

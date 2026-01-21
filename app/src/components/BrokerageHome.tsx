@@ -73,7 +73,7 @@ export default function BrokerageHome() {
   const { isConnected } = useAppKitAccount();
   
   // Wallet balance hook
-  const { balance: walletBalance, isLoading: balanceLoading, error: balanceError, currencySymbol } = useWalletBalance();
+  const { balance: walletBalance, isLoading: balanceLoading, error: balanceError, currencySymbol, balanceUSD } = useWalletBalance();
   
   // Wallet activity hook
   const { transactions: walletTransactions, isLoading: activityLoading, error: activityError, refresh: refreshActivity, blockExplorerUrl } = useWalletActivity(10);
@@ -129,15 +129,13 @@ export default function BrokerageHome() {
   }, []);
   
   // Calculate total value from wallet balance and holdings
-  // For now, we'll use wallet balance as the primary value
-  // In production, you'd calculate this from all holdings
+  // Use USD balance for total value calculation
   const totalValue = useMemo(() => {
     if (!isConnected) return 0;
-    const balanceNum = parseFloat(walletBalance) || 0;
-    // Add value from holdings if you have price data
-    // For now, just use wallet balance
-    return balanceNum;
-  }, [isConnected, walletBalance]);
+    // Use USD balance from the hook
+    // In production, you'd add value from holdings (NFTs, tokens, etc.)
+    return balanceUSD || 0;
+  }, [isConnected, balanceUSD]);
   
   // Calculate dynamic change stats based on chart data
   const { dailyChange, dailyChangePercent, isNegative } = (() => {
@@ -261,19 +259,26 @@ export default function BrokerageHome() {
                    ) : balanceError ? (
                      <div className="text-red-500 text-sm">{balanceError}</div>
                    ) : (
-                     <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
-                       {isConnected ? (
-                         <>
-                           {parseFloat(walletBalance).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
-                           <span className="text-lg text-zinc-500 font-normal">{currencySymbol}</span>
-                         </>
-                       ) : (
-                         <>
-                           $0.00
-                           <span className="text-lg text-zinc-500 font-normal">USD</span>
-                         </>
+                     <div className="space-y-2">
+                       <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
+                         {isConnected ? (
+                           <>
+                             ${balanceUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                             <span className="text-lg text-zinc-500 font-normal">USD</span>
+                           </>
+                         ) : (
+                           <>
+                             $0.00
+                             <span className="text-lg text-zinc-500 font-normal">USD</span>
+                           </>
+                         )}
+                       </h1>
+                       {isConnected && (
+                         <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                           {parseFloat(walletBalance).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} {currencySymbol}
+                         </p>
                        )}
-                     </h1>
+                     </div>
                    )}
                    
                    <div className="mt-6 flex flex-wrap gap-3">
