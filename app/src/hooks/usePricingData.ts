@@ -150,7 +150,6 @@ async function getPoolPrice(
     // If we want token0/token1 (which is what we need when token1 is USDC), we invert
     // But first, let's check which token is which
     const token0Symbol = await token0.symbol();
-    const token1Symbol = await token1.symbol();
     
     // If token1 is USDC (our quote token), price is already token0/USDC, so we're good
     // If token0 is USDC, we need to invert
@@ -171,45 +170,23 @@ async function getPoolPrice(
  * Exported for use in other hooks
  */
 export async function getExplorerPrice(
-  tokenAddress: string,
+  _tokenAddress: string, // Token address (currently unused as explorer APIs require API keys)
   chainId: number
 ): Promise<number | null> {
   try {
     const networkConfig = getNetworkByChainId(chainId);
     if (!networkConfig) return null;
 
-    const explorerUrl = networkConfig.blockExplorer;
-    
-    // Try Basescan API for Base networks (no API key required for basic queries)
-    if (explorerUrl.includes('basescan.org')) {
-      try {
-        const apiUrl = explorerUrl.replace('basescan.org', 'api.basescan.org');
-        // Try without API key first (some endpoints work without it)
-        const response = await fetch(
-          `${apiUrl}/api?module=stats&action=tokensupply&contractaddress=${tokenAddress}`,
-          { method: 'GET' }
-        );
-        
-        // If that works, try to get token info (may require API key)
-        // For now, we'll skip this as it requires API keys
-        // In production, you could add API key support via environment variables
-      } catch (e) {
-        // Silently fail - explorer API is optional
-      }
-    }
-
-    // Try Etherscan API for Ethereum networks
-    if (explorerUrl.includes('etherscan.io')) {
-      try {
-        const apiUrl = explorerUrl.replace('etherscan.io', 'api.etherscan.io');
-        // Similar to Basescan - would need API key for price data
-        // For now, skip as it requires API keys
-      } catch (e) {
-        // Silently fail - explorer API is optional
-      }
-    }
-
     // Explorer APIs typically require API keys for price data
+    // For now, skip as it requires API keys
+    // In production, you could add API key support via environment variables
+    // Example for Basescan:
+    //   const apiUrl = networkConfig.blockExplorer.replace('basescan.org', 'api.basescan.org');
+    //   const response = await fetch(`${apiUrl}/api?module=token&action=tokeninfo&contractaddress=${_tokenAddress}&apikey=${apiKey}`);
+    // Example for Etherscan:
+    //   const apiUrl = networkConfig.blockExplorer.replace('etherscan.io', 'api.etherscan.io');
+    //   const response = await fetch(`${apiUrl}/api?module=token&action=tokeninfo&contractaddress=${_tokenAddress}&apikey=${apiKey}`);
+
     // Return null to fall back to other methods
     return null;
   } catch (error) {
