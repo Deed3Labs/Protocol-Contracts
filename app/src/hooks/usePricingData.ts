@@ -116,7 +116,7 @@ async function getPoolPrice(
   try {
     const pool = new ethers.Contract(poolAddress, UNISWAP_V3_POOL_ABI, provider);
     const slot0 = await pool.slot0();
-    const sqrtPriceX96 = slot0[0]; // First return value
+    const sqrtPriceX96 = slot0[0]; // First return value (uint160)
 
     // Get token decimals
     const token0 = new ethers.Contract(token0Address, ERC20_ABI, provider);
@@ -125,30 +125,55 @@ async function getPoolPrice(
     const decimals1 = await token1.decimals();
 
     // Calculate price from sqrtPriceX96
-    // price = (sqrtPriceX96 / 2^96)^2
-    // This gives us token1/token0 ratio
-    const Q96 = 2n ** 96n;
-    const sqrtPrice = BigInt(sqrtPriceX96.toString());
+    // sqrtPriceX96 = sqrt(token1/token0) * 2^96
+    // price = token1/token0 = (sqrtPriceX96 / 2^96)^2
     
-    // Calculate price with proper precision
-    // price = (sqrtPriceX96^2) / (2^96)^2
-    const priceX192 = (sqrtPrice * sqrtPrice);
+    const sqrtPrice = BigInt(sqrtPriceX96.toString());
+    const Q96 = 2n ** 96n;
+    
+    // Calculate price = (sqrtPriceX96^2) / (2^96)^2
+    // To maintain precision and avoid BigInt overflow when converting to Number,
+    // we'll scale the calculation before division
+    const priceX192 = sqrtPrice * sqrtPrice;
     const Q192 = Q96 * Q96;
     
-    // Convert to JavaScript number with proper scaling
-    // We need to handle the large numbers carefully
-    const priceRatio = Number(priceX192) / Number(Q192);
+    // Scale by 1e18 to maintain precision when converting to number
+    // This allows us to do the division in BigInt first, then scale down
+    const SCALE = 1e18;
+    const scaleBigInt = BigInt(SCALE);
+    
+    // Calculate: (priceX192 * scale) / Q192
+    // This gives us the price scaled by 1e18, all in BigInt
+    const scaledPrice = (priceX192 * scaleBigInt) / Q192;
+    
+    // Convert to number (scaledPrice should be within safe number range now)
+    // If it's still too large, we'll need to scale down further
+    let price: number;
+    try {
+      price = Number(scaledPrice) / SCALE;
+    } catch (e) {
+      // If still too large, scale down more
+      const smallerScale = 1e9;
+      const smallerScaleBigInt = BigInt(smallerScale);
+      const smallerScaledPrice = (priceX192 * smallerScaleBigInt) / Q192;
+      price = Number(smallerScaledPrice) / smallerScale;
+    }
 
     // Adjust for token decimals
-    // sqrtPriceX96 represents sqrt(token1/token0) * 2^96
-    // So price = token1/token0 = (sqrtPriceX96 / 2^96)^2
-    // We need to adjust for decimals: price = (token1/token0) * (10^decimals0 / 10^decimals1)
-    const decimalAdjustment = Math.pow(10, decimals0 - decimals1);
-    let price = priceRatio * decimalAdjustment;
+    // The price from Uniswap is token1/token0 in raw units
+    // We need to adjust: price = (token1/token0) * (10^decimals0 / 10^decimals1)
+    const decimals0Num = Number(decimals0);
+    const decimals1Num = Number(decimals1);
+    const decimalDiff = decimals0Num - decimals1Num;
+    
+    if (decimalDiff > 0) {
+      price = price * Math.pow(10, decimalDiff);
+    } else if (decimalDiff < 0) {
+      price = price / Math.pow(10, Math.abs(decimalDiff));
+    }
 
     // The price from Uniswap is token1/token0
     // If we want token0/token1 (which is what we need when token1 is USDC), we invert
-    // But first, let's check which token is which
     const token0Symbol = await token0.symbol();
     
     // If token1 is USDC (our quote token), price is already token0/USDC, so we're good
