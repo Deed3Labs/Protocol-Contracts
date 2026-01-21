@@ -100,7 +100,7 @@ export default function BrokerageHome() {
     const deedNFTHoldings: Holding[] = userDeedNFTs.map((deed) => ({
       id: `deed-${deed.tokenId}`,
       asset_symbol: `T-Deed #${deed.tokenId}`,
-      asset_name: getAssetTypeLabel?.(deed.assetType) || 'T-Deed',
+      asset_name: deed.definition || getAssetTypeLabel?.(deed.assetType) || 'T-Deed',
       quantity: 1,
       average_cost: 0,
       current_price: 0,
@@ -381,7 +381,7 @@ export default function BrokerageHome() {
                   </div>
                   
                   {/* Holdings Section */}
-                  <div className="mt-4 px-2 pb-2 min-h-[200px]">
+                  <div className="mt-4 px-2 pb-2">
                     {!isConnected ? (
                       <div className="py-8 text-center text-zinc-500 text-sm">
                         Connect wallet to view holdings
@@ -520,7 +520,7 @@ export default function BrokerageHome() {
                     </button>
                   </div>
                   
-                  <div className="space-y-1 px-2 pb-2 min-h-[200px]">
+                  <div className="space-y-1 px-2 pb-2">
                     {!isConnected ? (
                       <div className="py-8 text-center text-zinc-500 text-sm">
                         Connect wallet to view activity
