@@ -44,20 +44,34 @@ interface ChartPoint {
 // Component to display NFT holding with name from metadata
 const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: DeedNFT | undefined }) => {
   const deedName = useDeedName(deed || null);
-  const displayName = deedName || holding.asset_name;
+  
+  // Truncate text to prevent wrapping (max ~25 chars for main, ~20 for secondary)
+  const truncateText = (text: string, maxLength: number): string => {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 3) + '...';
+  };
+  
+  // Truncate secondary text to show last few characters (max ~18 chars)
+  const truncateSecondary = (text: string, maxLength: number = 18): string => {
+    if (text.length <= maxLength) return text;
+    return '...' + text.substring(text.length - (maxLength - 3));
+  };
+  
+  const mainText = truncateText(holding.asset_symbol, 25);
+  const secondaryText = deedName ? truncateSecondary(deedName, 18) : truncateSecondary(holding.asset_name, 18);
   
   return (
     <div className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0 flex-1">
         <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
           <span className="font-bold text-xs text-black dark:text-white">N</span>
         </div>
-        <div>
-          <p className="text-black dark:text-white font-medium text-sm">{displayName}</p>
-          <p className="text-zinc-500 text-xs">{holding.asset_symbol}</p>
+        <div className="min-w-0 flex-1">
+          <p className="text-black dark:text-white font-medium text-sm truncate" title={holding.asset_symbol}>{mainText}</p>
+          <p className="text-zinc-500 text-xs truncate" title={deedName || holding.asset_name}>{secondaryText}</p>
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 shrink-0">
         <div className="text-right">
           <p className="text-black dark:text-white font-medium text-sm">
             {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
