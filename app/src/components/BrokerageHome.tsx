@@ -66,7 +66,7 @@ export default function BrokerageHome() {
   const { isConnected } = useAppKitAccount();
   
   // Wallet balance hook
-  const { balance: walletBalance, isLoading: balanceLoading, error: balanceError, currencySymbol, balanceUSD } = useWalletBalance();
+  const { balance: walletBalance, error: balanceError, currencySymbol, balanceUSD } = useWalletBalance();
   
   // Wallet activity hook
   const { transactions: walletTransactions, isLoading: activityLoading, error: activityError, refresh: refreshActivity, blockExplorerUrl } = useWalletActivity(10);
@@ -284,15 +284,10 @@ export default function BrokerageHome() {
                        <span className="text-xs text-amber-500">Connect wallet to view balance</span>
                      )}
                    </div>
-                   {balanceLoading ? (
-                     <div className="flex items-center gap-2">
-                       <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
-                       <span className="text-zinc-400 text-sm">Loading balance...</span>
-                     </div>
-                   ) : balanceError ? (
-                     <div className="text-red-500 text-sm">{balanceError}</div>
-                   ) : (
-                     <div className="space-y-2">
+                   <div className="min-h-[60px] flex items-center">
+                     {balanceError ? (
+                       <div className="text-red-500 text-sm">{balanceError}</div>
+                     ) : (
                        <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
                          {isConnected ? (
                            <>
@@ -306,13 +301,8 @@ export default function BrokerageHome() {
                            </>
                          )}
                        </h1>
-                       {isConnected && (
-                         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                           {parseFloat(walletBalance).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} {currencySymbol}
-                         </p>
-                       )}
-                     </div>
-                   )}
+                     )}
+                   </div>
                    
                    <div className="mt-6 flex flex-wrap gap-3">
                       <button 
