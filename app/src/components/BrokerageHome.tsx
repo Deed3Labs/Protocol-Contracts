@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw } from 'lucide-react';
+import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
 import { ReturnView, IncomeView, AccountValueView, AllocationView } from './portfolio/TabViews';
 import SideMenu from './portfolio/SideMenu';
 import HeaderNav from './portfolio/HeaderNav';
@@ -9,6 +9,10 @@ import DepositModal from './portfolio/DepositModal';
 import WithdrawModal from './portfolio/WithdrawModal';
 import ActionModal from './portfolio/ActionModal';
 import CTAStack from './portfolio/CTAStack';
+import { useWalletBalance } from '@/hooks/useWalletBalance';
+import { useWalletActivity } from '@/hooks/useWalletActivity';
+import { useDeedNFTData } from '@/hooks/useDeedNFTData';
+import { useAppKitAccount } from '@reown/appkit/react';
 
 // Types
 interface User {
@@ -16,12 +20,13 @@ interface User {
 }
 
 interface Holding {
-  id: number;
+  id: string | number;
   asset_symbol: string;
   asset_name: string;
   quantity: number;
   average_cost: number;
   current_price: number;
+  type?: 'equity' | 'nft' | 'token' | 'crypto';
 }
 
 interface ChartPoint {
@@ -30,16 +35,7 @@ interface ChartPoint {
   date: Date;
 }
 
-interface Transaction {
-  id: string;
-  type: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'mint' | 'trade';
-  assetSymbol: string;
-  assetName?: string;
-  amount: number;
-  currency: string;
-  date: string;
-  status: 'completed' | 'pending' | 'failed';
-}
+// Transaction type is now imported from useWalletActivity
 
 // Mock base44 client (since it's not available in this env)
 const base44 = {
@@ -72,15 +68,19 @@ const generateChartData = (range: string, isNegative: boolean): ChartPoint[] => 
   return data;
 };
 
-// Mock Activity Data
-const recentActivity: Transaction[] = [
-  { id: '1', type: 'buy', assetSymbol: 'TSLA', assetName: 'Tesla', amount: 500.00, currency: 'USD', date: 'Today', status: 'completed' },
-  { id: '2', type: 'deposit', assetSymbol: 'USD', amount: 1000.00, currency: 'USD', date: 'Yesterday', status: 'completed' },
-  { id: '3', type: 'mint', assetSymbol: 'House #1204', amount: 0, currency: 'NFT', date: 'Oct 24', status: 'completed' },
-  { id: '4', type: 'trade', assetSymbol: 'ETH', amount: 1.5, currency: 'ETH', date: 'Oct 20', status: 'completed' },
-];
-
 export default function BrokerageHome() {
+  // Wallet connection
+  const { isConnected } = useAppKitAccount();
+  
+  // Wallet balance hook
+  const { balance: walletBalance, isLoading: balanceLoading, error: balanceError, currencySymbol } = useWalletBalance();
+  
+  // Wallet activity hook
+  const { transactions: walletTransactions, isLoading: activityLoading, error: activityError, refresh: refreshActivity, blockExplorerUrl } = useWalletActivity(10);
+  
+  // DeedNFT holdings
+  const { userDeedNFTs, loading: deedNFTsLoading, getAssetTypeLabel } = useDeedNFTData();
+  
   const [user, setUser] = useState<User | null>(null);
   const [selectedTab, setSelectedTab] = useState('Return');
   const [selectedRange, setSelectedRange] = useState('1D');
@@ -91,15 +91,30 @@ export default function BrokerageHome() {
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const [actionModalOpen, setActionModalOpen] = useState(false);
-  const [holdings, setHoldings] = useState<Holding[]>([]);
   
   // State for tracking scroll position relative to portfolio value header
   const [isScrolledPast, setIsScrolledPast] = useState(false);
   
+  // Combine DeedNFTs with other holdings
+  const holdings = useMemo<Holding[]>(() => {
+    const deedNFTHoldings: Holding[] = userDeedNFTs.map((deed) => ({
+      id: `deed-${deed.tokenId}`,
+      asset_symbol: `T-Deed #${deed.tokenId}`,
+      asset_name: getAssetTypeLabel?.(deed.assetType) || 'T-Deed',
+      quantity: 1,
+      average_cost: 0, // Could be fetched from contract if available
+      current_price: 0, // Could be fetched from contract if available
+      type: 'nft' as const
+    }));
+    
+    // You can add other holdings here (tokens, equities, etc.)
+    // For now, we'll just use DeedNFTs
+    return deedNFTHoldings;
+  }, [userDeedNFTs, getAssetTypeLabel]);
+  
   useEffect(() => {
-    // Mock API calls
+    // Mock API calls for user info
     base44.auth.me().then(setUser).catch(() => {});
-    base44.entities.Holding.list().then(setHoldings).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -113,7 +128,16 @@ export default function BrokerageHome() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
   
-  const totalValue = 13.76; // Hardcoded for demo match
+  // Calculate total value from wallet balance and holdings
+  // For now, we'll use wallet balance as the primary value
+  // In production, you'd calculate this from all holdings
+  const totalValue = useMemo(() => {
+    if (!isConnected) return 0;
+    const balanceNum = parseFloat(walletBalance) || 0;
+    // Add value from holdings if you have price data
+    // For now, just use wallet balance
+    return balanceNum;
+  }, [isConnected, walletBalance]);
   
   // Calculate dynamic change stats based on chart data
   const { dailyChange, dailyChangePercent, isNegative } = (() => {
@@ -189,7 +213,7 @@ export default function BrokerageHome() {
       <WithdrawModal
         isOpen={withdrawModalOpen}
         onClose={() => setWithdrawModalOpen(false)}
-        withdrawableBalance={totalValue} // Using totalValue as mock cash balance
+        withdrawableBalance={isConnected ? parseFloat(walletBalance) : 0}
       />
 
       {/* Action Modal */}
@@ -218,15 +242,39 @@ export default function BrokerageHome() {
               {/* Persistent Portfolio Value & Subheader */}
               <div>
                    <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
-                     <span className="text-sm font-medium">Account Balance</span>
+                     <span className="text-sm font-medium">Wallet Balance</span>
                      <div className="group relative">
                         <Info className="h-4 w-4 cursor-help" />
+                        <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+                          Native token balance from connected wallet
+                        </div>
                      </div>
+                     {!isConnected && (
+                       <span className="text-xs text-amber-500">Connect wallet to view balance</span>
+                     )}
                    </div>
-                   <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
-                     ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                     <span className="text-lg text-zinc-500 font-normal">USD</span>
-                   </h1>
+                   {balanceLoading ? (
+                     <div className="flex items-center gap-2">
+                       <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
+                       <span className="text-zinc-400 text-sm">Loading balance...</span>
+                     </div>
+                   ) : balanceError ? (
+                     <div className="text-red-500 text-sm">{balanceError}</div>
+                   ) : (
+                     <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
+                       {isConnected ? (
+                         <>
+                           {parseFloat(walletBalance).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                           <span className="text-lg text-zinc-500 font-normal">{currencySymbol}</span>
+                         </>
+                       ) : (
+                         <>
+                           $0.00
+                           <span className="text-lg text-zinc-500 font-normal">USD</span>
+                         </>
+                       )}
+                     </h1>
+                   )}
                    
                    <div className="mt-6 flex flex-wrap gap-3">
                       <button 
@@ -305,51 +353,71 @@ export default function BrokerageHome() {
                     ))}
                   </div>
                   
-                  {/* Equities Section */}
+                  {/* Holdings Section */}
                   <div className="mt-4 px-2 pb-2">
-                    <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
-                      <span>Equities</span>
-                      <span>1D return</span>
-                    </div>
-                    
-                    {/* Holdings List */}
-                    <div className="space-y-1">
-                      {holdings.length > 0 ? holdings.map((holding) => {
-                        const change = (holding.current_price || 0) - holding.average_cost;
-                        const changePercent = holding.average_cost > 0 ? (change / holding.average_cost) * 100 : 0;
-                        // For demo, force TSLA to be negative as per screenshot
-                        const isHoldingNegative = holding.asset_symbol === 'TSLA' ? true : change < 0;
-                        const displayChange = holding.asset_symbol === 'TSLA' ? -0.25 : change;
-                        const displayPercent = holding.asset_symbol === 'TSLA' ? -1.83 : changePercent;
-                        
-                        return (
-                          <div key={holding.id} className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
-                            <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
-                                 <span className="font-bold text-xs text-black dark:text-white">{holding.asset_symbol[0]}</span>
+                    {!isConnected ? (
+                      <div className="py-8 text-center text-zinc-500 text-sm">
+                        Connect wallet to view holdings
+                      </div>
+                    ) : deedNFTsLoading ? (
+                      <div className="py-8 text-center">
+                        <Loader2 className="w-5 h-5 animate-spin text-zinc-400 mx-auto mb-2" />
+                        <span className="text-zinc-500 text-sm">Loading holdings...</span>
+                      </div>
+                    ) : holdings.length > 0 ? (
+                      <>
+                        <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
+                          <span>{holdings[0]?.type === 'nft' ? 'NFTs' : 'Holdings'}</span>
+                          <span>Value</span>
+                        </div>
+                        <div className="space-y-1">
+                          {holdings.map((holding) => {
+                            const change = (holding.current_price || 0) - holding.average_cost;
+                            const changePercent = holding.average_cost > 0 ? (change / holding.average_cost) * 100 : 0;
+                            const isHoldingNegative = change < 0;
+                            
+                            return (
+                              <div key={holding.id} className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
+                                    <span className="font-bold text-xs text-black dark:text-white">
+                                      {holding.type === 'nft' ? 'N' : holding.asset_symbol[0]}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <p className="text-black dark:text-white font-medium text-sm">{holding.asset_symbol}</p>
+                                    <p className="text-zinc-500 text-xs">{holding.asset_name}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {holding.current_price > 0 ? (
+                                    <div className="text-right">
+                                      <p className={`font-medium text-sm ${isHoldingNegative ? 'text-[#FF3B30]' : 'text-[#30D158]'}`}>
+                                        {isHoldingNegative ? '-' : '+'}${Math.abs(change * (holding.quantity || 1)).toFixed(2)}
+                                      </p>
+                                      <p className={`text-xs ${isHoldingNegative ? 'text-[#FF3B30]' : 'text-[#30D158]'}`}>
+                                        {isHoldingNegative ? '' : '+'}{changePercent.toFixed(2)}%
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <div className="text-right">
+                                      <p className="text-black dark:text-white font-medium text-sm">
+                                        {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
+                                      </p>
+                                    </div>
+                                  )}
+                                  <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
+                                </div>
                               </div>
-                              <div>
-                                <p className="text-black dark:text-white font-medium text-sm">{holding.asset_symbol}</p>
-                                <p className="text-zinc-500 text-xs">{holding.asset_name}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <div className="text-right">
-                                <p className={`font-medium text-sm ${isHoldingNegative ? 'text-[#FF3B30]' : 'text-[#30D158]'}`}>
-                                  {isHoldingNegative ? '-' : '+'}${Math.abs(displayChange * (holding.quantity || 1)).toFixed(2)}
-                                </p>
-                                <p className={`text-xs ${isHoldingNegative ? 'text-[#FF3B30]' : 'text-[#30D158]'}`}>
-                                  {isHoldingNegative ? '' : '+'}{displayPercent.toFixed(2)}%
-                                </p>
-                              </div>
-                              <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-                            </div>
-                          </div>
-                        );
-                      }) : (
-                         <div className="py-8 text-center text-zinc-500">No holdings found</div>
-                      )}
-                    </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="py-8 text-center text-zinc-500 text-sm">
+                        No holdings found
+                      </div>
+                    )}
                   </div>
               </div>
               
@@ -357,55 +425,94 @@ export default function BrokerageHome() {
               <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-1">
                   <div className="p-4 flex items-center justify-between">
                     <h2 className="text-xl font-light text-black dark:text-white">Activity</h2>
-                    <button className="text-zinc-500 text-sm hover:text-black dark:hover:text-white transition-colors">
-                      View all
+                    <button 
+                      onClick={refreshActivity}
+                      className="text-zinc-500 text-sm hover:text-black dark:hover:text-white transition-colors flex items-center gap-1"
+                      disabled={activityLoading}
+                    >
+                      {activityLoading ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        'Refresh'
+                      )}
                     </button>
                   </div>
                   
                   <div className="space-y-1 px-2 pb-2">
-                    {recentActivity.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${
-                            item.type === 'buy' || item.type === 'deposit' || item.type === 'mint' 
-                              ? 'bg-zinc-200 dark:bg-zinc-800 text-green-600 dark:text-green-500 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700' 
-                              : 'bg-zinc-200 dark:bg-zinc-800 text-black dark:text-white group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700'
-                          }`}>
-                             {item.type === 'buy' && <ArrowDownLeft className="w-5 h-5" />}
-                             {item.type === 'deposit' && <ArrowDownLeft className="w-5 h-5" />}
-                             {item.type === 'mint' && <CheckCircle2 className="w-5 h-5" />}
-                             {item.type === 'sell' && <ArrowUpRight className="w-5 h-5" />}
-                             {item.type === 'withdraw' && <ArrowUpRight className="w-5 h-5" />}
-                             {item.type === 'trade' && <RefreshCw className="w-4 h-4" />}
-                          </div>
-                          <div>
-                            <p className="text-black dark:text-white font-medium text-sm capitalize">
-                              {item.type === 'buy' ? `Bought ${item.assetSymbol}` : 
-                               item.type === 'sell' ? `Sold ${item.assetSymbol}` : 
-                               item.type === 'mint' ? `Minted ${item.assetSymbol}` :
-                               item.type}
-                            </p>
-                            <div className="flex items-center gap-1.5 text-zinc-500 text-xs">
-                              <span>{item.date}</span>
-                              <span className="w-0.5 h-0.5 bg-zinc-400 dark:bg-zinc-600 rounded-full"></span>
-                              <span className="capitalize">{item.status}</span>
+                    {!isConnected ? (
+                      <div className="py-8 text-center text-zinc-500 text-sm">
+                        Connect wallet to view activity
+                      </div>
+                    ) : activityLoading && walletTransactions.length === 0 ? (
+                      <div className="py-8 text-center">
+                        <Loader2 className="w-5 h-5 animate-spin text-zinc-400 mx-auto mb-2" />
+                        <span className="text-zinc-500 text-sm">Loading transactions...</span>
+                      </div>
+                    ) : activityError ? (
+                      <div className="py-8 text-center text-red-500 text-sm">
+                        {activityError}
+                      </div>
+                    ) : walletTransactions.length > 0 ? (
+                      walletTransactions.map((item) => (
+                        <div 
+                          key={item.id} 
+                          className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group"
+                          onClick={() => item.hash && window.open(`${blockExplorerUrl}/tx/${item.hash}`, '_blank')}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+                              item.type === 'buy' || item.type === 'deposit' || item.type === 'mint' 
+                                ? 'bg-zinc-200 dark:bg-zinc-800 text-green-600 dark:text-green-500 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700' 
+                                : 'bg-zinc-200 dark:bg-zinc-800 text-black dark:text-white group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700'
+                            }`}>
+                               {item.type === 'buy' && <ArrowDownLeft className="w-5 h-5" />}
+                               {item.type === 'deposit' && <ArrowDownLeft className="w-5 h-5" />}
+                               {item.type === 'mint' && <CheckCircle2 className="w-5 h-5" />}
+                               {item.type === 'sell' && <ArrowUpRight className="w-5 h-5" />}
+                               {item.type === 'withdraw' && <ArrowUpRight className="w-5 h-5" />}
+                               {item.type === 'trade' && <RefreshCw className="w-4 h-4" />}
+                               {item.type === 'transfer' && <ArrowUpRight className="w-5 h-5" />}
+                               {item.type === 'contract' && <RefreshCw className="w-4 h-4" />}
+                            </div>
+                            <div>
+                              <p className="text-black dark:text-white font-medium text-sm capitalize">
+                                {item.type === 'buy' ? `Bought ${item.assetSymbol}` : 
+                                 item.type === 'sell' ? `Sold ${item.assetSymbol}` : 
+                                 item.type === 'mint' ? `Minted ${item.assetSymbol}` :
+                                 item.type === 'deposit' ? `Received ${item.assetSymbol}` :
+                                 item.type === 'withdraw' ? `Sent ${item.assetSymbol}` :
+                                 item.type === 'transfer' ? `Transferred ${item.assetSymbol}` :
+                                 item.type}
+                              </p>
+                              <div className="flex items-center gap-1.5 text-zinc-500 text-xs">
+                                <span>{item.date}</span>
+                                <span className="w-0.5 h-0.5 bg-zinc-400 dark:bg-zinc-600 rounded-full"></span>
+                                <span className="capitalize">{item.status}</span>
+                              </div>
                             </div>
                           </div>
+                          <div className="text-right">
+                            <p className="text-black dark:text-white font-medium text-sm">
+                              {item.amount > 0 ? (
+                                <>
+                                  {item.type === 'deposit' || item.type === 'buy' ? '+' : item.type === 'withdraw' || item.type === 'sell' ? '-' : ''}
+                                  {item.currency === 'USD' ? '$' : ''}{item.amount.toLocaleString(undefined, { 
+                                    minimumFractionDigits: item.currency === currencySymbol ? 4 : 2,
+                                    maximumFractionDigits: item.currency === currencySymbol ? 4 : 2
+                                  })} {item.currency !== 'USD' ? item.currency : ''}
+                                </>
+                              ) : (
+                                 <span className="text-zinc-500 text-xs">View</span>
+                              )}
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-black dark:text-white font-medium text-sm">
-                            {item.amount > 0 ? (
-                              <>
-                                {item.type === 'deposit' || item.type === 'buy' ? '+' : ''}
-                                {item.currency === 'USD' ? '$' : ''}{item.amount.toLocaleString()} {item.currency !== 'USD' ? item.currency : ''}
-                              </>
-                            ) : (
-                               <span className="text-zinc-500 text-xs">View</span>
-                            )}
-                          </p>
-                        </div>
+                      ))
+                    ) : (
+                      <div className="py-8 text-center text-zinc-500 text-sm">
+                        No recent activity
                       </div>
-                    ))}
+                    )}
                   </div>
               </div>
            </div>
