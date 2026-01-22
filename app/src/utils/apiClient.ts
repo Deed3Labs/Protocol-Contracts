@@ -205,11 +205,35 @@ export async function getTransactionsBatch(
  */
 export async function checkServerHealth(): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE_URL}/health`);
+    const response = await fetch(`${API_BASE_URL}/health`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+      // Add timeout to prevent hanging
+      signal: AbortSignal.timeout(5000), // 5 second timeout
+    });
+
+    // Check if response is actually JSON (not HTML error page)
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.warn('Server health check: Received non-JSON response (likely error page)');
+      return false;
+    }
+
+    if (!response.ok) {
+      return false;
+    }
+
     const data = await response.json();
-    return data.status === 'ok' && data.redis === 'connected';
-  } catch (error) {
-    console.error('Server health check failed:', error);
+    return data.status === 'ok';
+    // Don't require redis to be connected - server can work without it
+  } catch (error: any) {
+    // Silently fail - server might be down or unreachable
+    if (error.name !== 'AbortError') {
+      // Only log non-timeout errors
+      console.warn('Server health check failed:', error.message || error);
+    }
     return false;
   }
 }
