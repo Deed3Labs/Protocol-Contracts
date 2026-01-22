@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS, getContractAddressForNetwork, getAbiPathForNetwork } from '@/config/networks';
@@ -271,9 +271,8 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
   }, [isConnected, address, fetchChainNFTs]);
 
   // Initial load
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  // Note: Automatic refresh is now controlled by PortfolioContext
+  // This hook only provides the refresh function - it does not auto-refresh
 
   // Calculate total count
   const totalCount = useMemo(() => {

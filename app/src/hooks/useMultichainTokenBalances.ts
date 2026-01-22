@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS } from '@/config/networks';
@@ -230,17 +230,8 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
   }, [isConnected, address, fetchChainTokens]);
 
   // Initial load
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  // Refresh every 30 seconds
-  useEffect(() => {
-    if (!isConnected || !address) return;
-
-    const interval = setInterval(refresh, 30000);
-    return () => clearInterval(interval);
-  }, [isConnected, address, refresh]);
+  // Note: Automatic refresh is now controlled by PortfolioContext
+  // This hook only provides the refresh function - it does not auto-refresh
 
   // Calculate total value
   const totalValueUSD = useMemo(() => {
