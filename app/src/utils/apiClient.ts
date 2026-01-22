@@ -16,6 +16,7 @@ interface ApiResponse<T> {
 
 /**
  * Generic API request function
+ * Handles errors gracefully, including HTML responses (server down, wrong endpoint, etc.)
  */
 async function apiRequest<T>(
   endpoint: string,
@@ -30,15 +31,42 @@ async function apiRequest<T>(
       },
     });
 
+    // Check if response is actually JSON before trying to parse
+    const contentType = response.headers.get('content-type');
+    const isJson = contentType?.includes('application/json');
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      // Try to parse error as JSON, but handle HTML/other responses
+      if (isJson) {
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        } catch (parseError) {
+          // If JSON parsing fails, it's likely HTML or other non-JSON response
+          throw new Error(`HTTP ${response.status}: ${response.statusText} (Server may be down or endpoint incorrect)`);
+        }
+      } else {
+        // Non-JSON response (likely HTML error page)
+        throw new Error(`HTTP ${response.status}: Server returned non-JSON response (Server may be down or endpoint incorrect)`);
+      }
+    }
+
+    // Parse response as JSON only if content-type indicates JSON
+    if (!isJson) {
+      // If we expected JSON but got something else, it's likely an error
+      const text = await response.text();
+      // Check if it's HTML (common when server is down or wrong endpoint)
+      if (text.trim().startsWith('<!doctype') || text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+        throw new Error('Server returned HTML instead of JSON (Server may be down or endpoint incorrect)');
+      }
+      throw new Error(`Server returned non-JSON response: ${contentType || 'unknown'}`);
     }
 
     const data = await response.json();
     return { data: data as T, cached: data.cached, timestamp: data.timestamp };
   } catch (error) {
-    console.error(`API request error for ${endpoint}:`, error);
+    // Silent error handling - don't log to console to avoid noise
+    // The hooks will handle the error gracefully and fall back to RPC calls
     return {
       error: error instanceof Error ? error.message : 'Unknown error',
     };
