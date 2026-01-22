@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS, getNetworkByChainId } from '@/config/networks';
 import { usePricingData } from './usePricingData';
 import { getBalanceOptimized } from '@/utils/rpcOptimizer';
+import { getBalance, getBalancesBatch, checkServerHealth } from '@/utils/apiClient';
 
 // Detect mobile device
 const isMobileDevice = (): boolean => {
@@ -59,6 +60,32 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     }
 
     try {
+      // Try server API first (with Redis caching)
+      const isServerAvailable = await checkServerHealth();
+      if (isServerAvailable) {
+        try {
+          const serverBalance = await getBalance(chainId, address);
+          if (serverBalance && serverBalance.balance) {
+            const balanceWei = BigInt(serverBalance.balanceWei);
+            const balanceUSD = parseFloat(serverBalance.balance) * (ethPrice || 0);
+            return {
+              chainId,
+              chainName: networkConfig.name,
+              balance: serverBalance.balance,
+              balanceWei,
+              balanceUSD,
+              currencySymbol: networkConfig.nativeCurrency.symbol,
+              currencyName: networkConfig.nativeCurrency.name,
+              isLoading: false,
+              error: null,
+            };
+          }
+        } catch (serverError) {
+          // Server failed, fall through to direct RPC call
+        }
+      }
+
+      // Fallback to direct RPC call if server is unavailable
       // Use optimized RPC call with caching and rate limiting
       const balanceWei = await getBalanceOptimized(chainId, address, true);
       const balance = parseFloat(ethers.formatEther(balanceWei)).toFixed(4);
@@ -167,6 +194,81 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     });
 
     try {
+      // Try batch API first if server is available (more efficient)
+      const isServerAvailable = await checkServerHealth();
+      if (isServerAvailable) {
+        try {
+          const batchRequests = SUPPORTED_NETWORKS.map(network => ({
+            chainId: network.chainId,
+            address: address,
+          }));
+          
+          const batchResults = await getBalancesBatch(batchRequests);
+          
+          // Convert batch results to MultichainBalance format
+          const results: MultichainBalance[] = batchResults.map((result, index) => {
+            const network = SUPPORTED_NETWORKS[index];
+            if (result.balance && result.balanceWei) {
+              const balanceWei = BigInt(result.balanceWei);
+              const balanceUSD = parseFloat(result.balance) * (ethPrice || 0);
+              return {
+                chainId: result.chainId,
+                chainName: network.name,
+                balance: result.balance,
+                balanceWei,
+                balanceUSD,
+                currencySymbol: network.nativeCurrency.symbol,
+                currencyName: network.nativeCurrency.name,
+                isLoading: false,
+                error: result.error || null,
+              };
+            } else {
+              // Fallback to individual fetch if batch failed for this chain
+              return {
+                chainId: result.chainId,
+                chainName: network.name,
+                balance: '0.00',
+                balanceWei: 0n,
+                balanceUSD: 0,
+                currencySymbol: network.nativeCurrency.symbol,
+                currencyName: network.nativeCurrency.name,
+                isLoading: false,
+                error: result.error || 'Failed to fetch balance',
+              };
+            }
+          });
+          
+          // For any failed batch results, try individual fetch
+          const failedIndices = batchResults
+            .map((result, index) => (!result.balance || result.error ? index : -1))
+            .filter(index => index !== -1);
+          
+          if (failedIndices.length > 0) {
+            const individualPromises = failedIndices.map(async (index) => {
+              const network = SUPPORTED_NETWORKS[index];
+              try {
+                return await fetchChainBalance(network.chainId);
+              } catch (err) {
+                return results[index]; // Keep the error result
+              }
+            });
+            
+            const individualResults = await Promise.all(individualPromises);
+            failedIndices.forEach((originalIndex, i) => {
+              results[originalIndex] = individualResults[i];
+            });
+          }
+          
+          setBalances(results);
+          setIsLoading(false);
+          return;
+        } catch (batchError) {
+          // Batch API failed, fall through to individual fetches
+          console.log('Batch API unavailable, using individual fetches');
+        }
+      }
+
+      // Fallback to individual fetches (original logic)
       const isMobile = isMobileDevice();
       
       if (isMobile) {

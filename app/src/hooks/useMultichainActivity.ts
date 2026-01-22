@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { SUPPORTED_NETWORKS, getNetworkByChainId, getNetworkInfo } from '@/config/networks';
 import { executeRpcCall } from '@/utils/rpcOptimizer';
 import type { WalletTransaction } from './useWalletActivity';
+import { getTransactions, checkServerHealth } from '@/utils/apiClient';
 
 // Detect mobile device
 const isMobileDevice = (): boolean => {
@@ -45,6 +46,26 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
     const currencySymbol = networkConfig?.nativeCurrency.symbol || networkInfo?.nativeCurrency.symbol || 'ETH';
 
     try {
+      // Try server API first (with Redis caching)
+      const isServerAvailable = await checkServerHealth();
+      if (isServerAvailable) {
+        try {
+          const serverTransactions = await getTransactions(chainId, address, limit);
+          if (serverTransactions && serverTransactions.transactions) {
+            // Map server response to MultichainTransaction format
+            return serverTransactions.transactions.map((tx: any) => ({
+              ...tx,
+              date: formatDistanceToNow(new Date(tx.timestamp), { addSuffix: true }),
+              chainId,
+              chainName: networkConfig?.name || networkInfo?.name || `Chain ${chainId}`,
+            }));
+          }
+        } catch (serverError) {
+          // Server failed, fall through to direct RPC calls
+        }
+      }
+
+      // Fallback to direct RPC calls if server is unavailable
       // Use optimized RPC call for getBlockNumber with longer cache (block numbers change slowly)
       const blockNumber = await executeRpcCall(
         chainId,

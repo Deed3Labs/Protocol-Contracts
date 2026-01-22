@@ -3,6 +3,7 @@ import { useAppKitNetwork } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { getRpcUrlForNetwork } from '@/config/networks';
 import { getEthereumProvider } from '@/utils/providerUtils';
+import { getTokenPrice, checkServerHealth } from '@/utils/apiClient';
 
 interface PricingData {
   price: number; // Price in USD
@@ -394,6 +395,23 @@ export function usePricingData(tokenAddress?: string): PricingData {
     setError(null);
 
     try {
+      // Try server API first (with Redis caching)
+      const isServerAvailable = await checkServerHealth();
+      if (isServerAvailable) {
+        try {
+          const serverPrice = await getTokenPrice(chainId, targetTokenAddress);
+          if (serverPrice && serverPrice.price > 0 && isFinite(serverPrice.price)) {
+            setPrice(serverPrice.price);
+            setIsLoading(false);
+            return; // Successfully fetched from server
+          }
+        } catch (serverError) {
+          // Server failed, fall through to direct API calls
+          console.log('Server API unavailable, using direct calls');
+        }
+      }
+
+      // Fallback to direct API calls if server is unavailable or returns no price
       // Get provider
       let provider: ethers.Provider;
       try {

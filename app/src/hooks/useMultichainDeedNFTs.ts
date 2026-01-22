@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS, getContractAddressForNetwork, getAbiPathForNetwork } from '@/config/networks';
 import { getCachedProvider } from '@/utils/rpcOptimizer';
 import type { DeedNFT } from '@/context/DeedNFTContext';
+import { getNFTs, checkServerHealth } from '@/utils/apiClient';
 
 // Detect mobile device
 const isMobileDevice = (): boolean => {
@@ -167,6 +168,25 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     }
 
     try {
+      // Try server API first (with Redis caching)
+      const isServerAvailable = await checkServerHealth();
+      if (isServerAvailable) {
+        try {
+          const serverNFTs = await getNFTs(chainId, address, contractAddress);
+          if (serverNFTs && serverNFTs.nfts) {
+            // Map server response to MultichainDeedNFT format
+            return serverNFTs.nfts.map((nft: any) => ({
+              ...nft,
+              chainId,
+              chainName: networkConfig.name,
+            }));
+          }
+        } catch (serverError) {
+          // Server failed, fall through to direct contract calls
+        }
+      }
+
+      // Fallback to direct contract calls if server is unavailable
       const provider = getCachedProvider(chainId);
       const abi = await getDeedNFTAbi(chainId);
       const contract = new ethers.Contract(contractAddress, abi, provider);
