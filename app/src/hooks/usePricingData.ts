@@ -76,44 +76,61 @@ async function getPoolPrice(
     const decimals1 = Number(await token1.decimals());
 
     // Calculate price from sqrtPriceX96
-    // Following AssuranceOracle.sol: price = (sqrtPriceX96 * sqrtPriceX96) >> (96 * 2)
-    // This gives us: price = (sqrtPriceX96^2) / (2^192)
-    // The result is token1/token0 in Q64.96 fixed point
+    // sqrtPriceX96 = sqrt(token1/token0) * 2^96
+    // So: price = token1/token0 = (sqrtPriceX96 / 2^96)^2
     
     const sqrtPrice = BigInt(sqrtPriceX96.toString());
     const Q96 = 2n ** 96n;
-    const Q192 = Q96 * Q96;
     
-    // Calculate: price = (sqrtPriceX96^2) / (2^192)
-    // This is token1/token0 ratio
-    const priceX192 = sqrtPrice * sqrtPrice;
+    // Calculate price = (sqrtPriceX96 / 2^96)^2 = token1/token0
+    // To avoid overflow, we'll calculate this step by step
+    // price = (sqrtPriceX96^2) / (2^192)
     
-    // Convert to number with proper scaling
-    // We'll work in 18 decimals for the final result
-    const SCALE_18 = 10n ** 18n;
+    // First, calculate numerator and denominator
+    const numerator = sqrtPrice * sqrtPrice;
+    const denominator = Q96 * Q96;
     
-    // Calculate: (priceX192 * 10^18) / Q192
-    // This gives us price in 18 decimals
-    const scaledPrice = (priceX192 * SCALE_18) / Q192;
+    // To get a human-readable ratio, we need to:
+    // 1. Account for the Q64.96 format (divide by 2^192)
+    // 2. Account for token decimals
+    
+    // Use a large scale for intermediate calculation to maintain precision
+    const INTERMEDIATE_SCALE = 10n ** 36n; // Very large scale for precision
+    
+    // Calculate: (numerator * INTERMEDIATE_SCALE) / denominator
+    // This gives us the ratio scaled by INTERMEDIATE_SCALE
+    const scaledRatio = (numerator * INTERMEDIATE_SCALE) / denominator;
+    
+    // Now adjust for token decimals
+    // The ratio from Uniswap is in raw units: token1_raw / token0_raw
+    // We need: (token1_raw / 10^decimals1) / (token0_raw / 10^decimals0)
+    // = (token1_raw / token0_raw) * (10^decimals0 / 10^decimals1)
+    
+    const decimalFactor = 10n ** BigInt(decimals0 - decimals1);
+    let adjustedRatio = scaledRatio;
+    
+    if (decimals0 > decimals1) {
+      // Divide by the factor (equivalent to multiplying by 10^(decimals1-decimals0))
+      adjustedRatio = adjustedRatio / decimalFactor;
+    } else if (decimals1 > decimals0) {
+      // Multiply by the factor
+      adjustedRatio = adjustedRatio * decimalFactor;
+    }
     
     // Convert to JavaScript number
-    let price = Number(scaledPrice) / 1e18;
-
-    // Adjust for token decimals (following AssuranceOracle.sol logic)
-    // The price from Uniswap is in raw units, we need to adjust for decimals
-    if (decimals0 > decimals1) {
-      price = price / Math.pow(10, decimals0 - decimals1);
-    } else if (decimals1 > decimals0) {
-      price = price * Math.pow(10, decimals1 - decimals0);
+    // adjustedRatio is scaled by INTERMEDIATE_SCALE, so divide by it
+    let price = Number(adjustedRatio) / Number(INTERMEDIATE_SCALE);
+    
+    // Safety check - prices should be reasonable (between 1e-10 and 1e10 for most tokens)
+    if (!isFinite(price) || price <= 0 || price > 1e10 || price < 1e-10) {
+      console.error('Price calculation error: invalid price', price, {
+        sqrtPriceX96: sqrtPriceX96.toString(),
+        decimals0,
+        decimals1
+      });
+      return 0;
     }
     
-    // Ensure price is in 18 decimals (as per AssuranceOracle)
-    if (decimals0 < 18) {
-      price = price * Math.pow(10, 18 - decimals0);
-    } else if (decimals0 > 18) {
-      price = price / Math.pow(10, decimals0 - 18);
-    }
-
     return price;
   } catch (error) {
     console.error('Error getting pool price:', error);
@@ -161,19 +178,20 @@ export async function getUniswapPrice(
       const token1Address = await pool.token1();
       
       const price = await getPoolPrice(provider, usdcPoolAddress, token0Address, token1Address);
-      if (price > 0) {
-        // Price is in 18 decimals, representing token1/token0
-        // If token0 is our token and token1 is USDC, we need to invert
-        // If token1 is our token and token0 is USDC, price is already token/USDC
+      if (price > 0 && isFinite(price)) {
+        // Price from getPoolPrice is token1/token0 in human-readable units
+        // If token0 is our token and token1 is USDC, price = USDC/token
+        // If token1 is our token and token0 is USDC, price = token/USDC
         if (token0Address.toLowerCase() === tokenAddress.toLowerCase()) {
           // Our token is token0, USDC is token1
-          // Price is USDC/token, so we need token/USDC = 1 / (USDC/token)
-          // But price is in 18 decimals, so: token/USDC = 1e18 / price
-          return Number(1e18) / price;
+          // Price = USDC/token, so we need token/USDC = 1 / price
+          const tokenPriceUSD = 1 / price;
+          // USDC has 6 decimals, so if price is in terms of USDC, we're good
+          return tokenPriceUSD;
         } else {
           // Our token is token1, USDC is token0
-          // Price is token/USDC, which is what we want
-          return price / 1e18; // Convert from 18 decimals to normal number
+          // Price = token/USDC, which is what we want (token price in USD)
+          return price;
         }
       }
     }
@@ -211,33 +229,38 @@ export async function getUniswapPrice(
           const wethUsdcToken1 = await wethUsdcPool.token1();
           
           const wethUsdcPrice = await getPoolPrice(provider, wethUsdcPoolAddress, wethUsdcToken0, wethUsdcToken1);
-          if (wethUsdcPrice > 0) {
+          if (wethUsdcPrice > 0 && isFinite(wethUsdcPrice)) {
             // Calculate token price in USD
-            // tokenWethPrice is in 18 decimals (token/WETH or WETH/token)
-            // wethUsdcPrice is in 18 decimals (WETH/USDC or USDC/WETH)
+            // tokenWethPrice is token1/token0 (in human-readable units)
+            // wethUsdcPrice is token1/token0 (in human-readable units)
             
-            // Determine if we need to invert tokenWethPrice
+            // Determine token/WETH ratio
             let tokenWethRatio: number;
             if (token0Address.toLowerCase() === tokenAddress.toLowerCase()) {
               // Token is token0, WETH is token1
-              tokenWethRatio = Number(1e18) / tokenWethPrice; // Invert to get token/WETH
+              // tokenWethPrice = WETH/token, so token/WETH = 1 / tokenWethPrice
+              tokenWethRatio = 1 / tokenWethPrice;
             } else {
               // Token is token1, WETH is token0
-              tokenWethRatio = tokenWethPrice / 1e18; // Already token/WETH
+              // tokenWethPrice = token/WETH, which is what we want
+              tokenWethRatio = tokenWethPrice;
             }
             
-            // Determine if we need to invert wethUsdcPrice
+            // Determine WETH/USDC ratio
             let wethUsdcRatio: number;
             if (wethUsdcToken0.toLowerCase() === wethAddress.toLowerCase()) {
               // WETH is token0, USDC is token1
-              wethUsdcRatio = wethUsdcPrice / 1e18; // Already WETH/USDC
+              // wethUsdcPrice = USDC/WETH, so WETH/USDC = 1 / wethUsdcPrice
+              wethUsdcRatio = 1 / wethUsdcPrice;
             } else {
               // WETH is token1, USDC is token0
-              wethUsdcRatio = Number(1e18) / wethUsdcPrice; // Invert to get WETH/USDC
+              // wethUsdcPrice = WETH/USDC, which is what we want
+              wethUsdcRatio = wethUsdcPrice;
             }
             
             // Calculate: (token/WETH) * (WETH/USDC) = token/USDC
-            return tokenWethRatio * wethUsdcRatio;
+            const tokenPriceUSD = tokenWethRatio * wethUsdcRatio;
+            return isFinite(tokenPriceUSD) && tokenPriceUSD > 0 ? tokenPriceUSD : null;
           }
         }
       }
