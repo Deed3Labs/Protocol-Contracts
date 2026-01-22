@@ -8,6 +8,7 @@ import React from 'react';
 
 const queryClient = new QueryClient();
 
+
 // Get project ID from environment variable
 const projectId = import.meta.env.VITE_APPKIT_PROJECT_ID;
 
@@ -18,7 +19,7 @@ if (!projectId) {
 
 // Determine the current environment and set the appropriate URL
 const getCurrentUrl = () => {
-  // Check if we're in a browser environment
+  // Check if we're in a b/ Define custom theme variablesrowser environment
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     const protocol = window.location.protocol;
@@ -105,8 +106,10 @@ const getCurrentTheme = (): 'light' | 'dark' => {
   return 'light';
 };
 
-// Initialize AppKit only after component mounts to avoid SSR issues
+// Initialize AppKit globally (outside component) to avoid "createAppKit" errors
 const initializeAppKit = () => {
+  if (typeof window === 'undefined') return;
+
   const currentUrl = getCurrentUrl();
   const themeMode = getCurrentTheme();
   console.log('Initializing AppKit with URL:', currentUrl, 'Theme:', themeMode);
@@ -132,21 +135,56 @@ const initializeAppKit = () => {
     });
     
     console.log('AppKit initialized successfully');
-    
-    // Check if custom elements are registered
-    setTimeout(() => {
-      const appkitButton = customElements.get('appkit-button');
-      console.log('AppKit button element registered:', !!appkitButton);
-      
-      if (!appkitButton) {
-        console.warn('AppKit button element not found. This might cause issues.');
-      }
-    }, 1000);
-    
   } catch (error) {
     console.error('Failed to initialize AppKit:', error);
   }
 };
+
+// Call initialization immediately
+initializeAppKit();
+
+// Initialize AppKit only after component mounts to avoid SSR issues
+// const initializeAppKit = () => {
+//   const currentUrl = getCurrentUrl();
+//   const themeMode = getCurrentTheme();
+//   console.log('Initializing AppKit with URL:', currentUrl, 'Theme:', themeMode);
+  
+//   try {
+//     createAppKit({
+//       adapters: [wagmiAdapter],
+//       networks: supportedNetworks as [typeof mainnet, ...typeof supportedNetworks],
+//       projectId,
+//       metadata: {
+//         ...metadata,
+//         url: currentUrl
+//       },
+//       features: {
+//         analytics: true,
+//         email: true,
+//         socials: ['google', 'x', 'github', 'discord', 'apple', 'facebook', 'farcaster'],
+//         emailShowWallets: true,
+//       },
+//       siwx: new ReownAuthentication(),
+//       allWallets: 'SHOW',
+//       themeMode: themeMode
+//     });
+    
+//     console.log('AppKit initialized successfully');
+    
+//     // Check if custom elements are registered
+//     setTimeout(() => {
+//       const appkitButton = customElements.get('appkit-button');
+//       console.log('AppKit button element registered:', !!appkitButton);
+      
+//       if (!appkitButton) {
+//         console.warn('AppKit button element not found. This might cause issues.');
+//       }
+//     }, 1000);
+    
+//   } catch (error) {
+//     console.error('Failed to initialize AppKit:', error);
+//   }
+// };
 
 function AppKitThemeSync() {
   const { setThemeMode } = useAppKitTheme();
@@ -218,7 +256,7 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize AppKit after component mounts to avoid SSR issues
   React.useEffect(() => {
-    initializeAppKit();
+    // initializeAppKit();
     
     // Wait for AppKit to be ready before using hooks
     const checkAppKitReady = () => {

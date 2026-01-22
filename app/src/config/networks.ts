@@ -14,14 +14,26 @@ export interface NetworkConfig {
   };
 }
 
+// Get Infura project ID from environment variable
+// ⚠️ SECURITY NOTE: VITE_ prefixed variables are exposed to the browser
+// Infura Project IDs are safe to expose, but you MUST:
+// 1. Enable domain/origin restrictions in Infura dashboard
+// 2. Enable rate limiting
+// 3. Enable method allowlists
+// 4. Never expose the Project Secret (only use Project ID)
+// See docs/security-rpc-providers.md for details
+const INFURA_PROJECT_ID = import.meta.env.VITE_INFURA_PROJECT_ID || '';
+
 export const SUPPORTED_NETWORKS: NetworkConfig[] = [
   {
     id: 1,
     name: 'Ethereum Mainnet',
     chainId: 1,
-    rpcUrl: 'https://mainnet.infura.io/v3/your-project-id',
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://eth.llamarpc.com', // Fallback to public RPC
     alchemyUrl: import.meta.env.VITE_ALCHEMY_ETH_MAINNET,
-    infuraUrl: import.meta.env.VITE_INFURA_ETH_MAINNET,
+    infuraUrl: import.meta.env.VITE_INFURA_ETH_MAINNET || (INFURA_PROJECT_ID ? `https://mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
     blockExplorer: 'https://etherscan.io',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
     nativeCurrency: {
@@ -48,9 +60,11 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     id: 11155111,
     name: 'Sepolia',
     chainId: 11155111,
-    rpcUrl: 'https://sepolia.infura.io/v3/your-project-id',
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://sepolia.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://sepolia.infura.io/v3/your-project-id', // Fallback placeholder
     alchemyUrl: import.meta.env.VITE_ALCHEMY_ETH_SEPOLIA,
-    infuraUrl: import.meta.env.VITE_INFURA_ETH_SEPOLIA,
+    infuraUrl: import.meta.env.VITE_INFURA_ETH_SEPOLIA || (INFURA_PROJECT_ID ? `https://sepolia.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
     blockExplorer: 'https://sepolia.etherscan.io',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
     nativeCurrency: {
@@ -103,7 +117,9 @@ export const networks = {
   11155111: {
     name: 'Sepolia',
     chainId: 11155111,
-    rpcUrl: 'https://sepolia.infura.io/v3/your-project-id',
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://sepolia.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://sepolia.infura.io/v3/your-project-id', // Fallback placeholder
     blockExplorer: 'https://sepolia.etherscan.io',
     nativeCurrency: {
       name: 'ETH',
@@ -187,6 +203,11 @@ export const getNetworkInfo = (chainId: number) => {
 };
 
 // Get the best available RPC URL for a network
+// Priority: Alchemy > Infura > Public RPC
+// Environment variables needed:
+// - VITE_INFURA_PROJECT_ID: Your Infura project ID (used for Infura RPC URLs)
+// - VITE_ALCHEMY_ETH_MAINNET, VITE_ALCHEMY_ETH_SEPOLIA, etc.: Alchemy API keys (optional)
+// - VITE_INFURA_ETH_MAINNET, VITE_INFURA_ETH_SEPOLIA, etc.: Full Infura URLs (optional, overrides project ID)
 export const getRpcUrlForNetwork = (chainId: number, preferAlchemy = false): string | null => {
   const network = getNetworkByChainId(chainId);
   if (!network) return null;

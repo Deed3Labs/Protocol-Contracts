@@ -2,8 +2,8 @@
 pragma solidity ^0.8.29;
 
 import "./IBurnerBond.sol";
-import "./IAssurancePool.sol";
-import "./IAssuranceOracle.sol";
+import "../stable-credit/IAssurancePool.sol";
+import "../stable-credit/IAssuranceOracle.sol";
 
 /// @title IBurnerBondFactory
 /// @notice Interface for BurnerBond factory that creates token-specific collections

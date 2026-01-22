@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "../core/interfaces/IAssuranceOracle.sol";
-import "../core/interfaces/IAssurancePool.sol";
+import "../core/interfaces/stable-credit/IAssuranceOracle.sol";
+import "../core/interfaces/stable-credit/IAssurancePool.sol";
 import "../core/interfaces/ITokenRegistry.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";

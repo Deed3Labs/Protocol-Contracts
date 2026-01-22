@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitNetwork, useAppKit } from '@reown/appkit/react';
 import { useAppKitSIWX } from '@reown/appkit-siwx/react';
 import type { ReownAuthentication } from '@reown/appkit-siwx';
 
@@ -21,6 +21,7 @@ export interface AuthState {
 export function useAppKitAuth() {
   const { address, isConnected } = useAppKitAccount();
   const { caipNetworkId } = useAppKitNetwork();
+  const { open } = useAppKit();
   const siwx = useAppKitSIWX<ReownAuthentication>();
   
   // Derive chainId from caipNetworkId
@@ -65,58 +66,27 @@ export function useAppKitAuth() {
   }, []);
 
   // Open the AppKit modal for wallet connection
-  const openModal = useCallback((view?: string) => {
-    const appKit = getAppKitModal();
-    if (appKit) {
-      try {
-        console.log('Opening AppKit modal with view:', view);
-        
-        // Try different methods to open modal
-        if (appKit.open) {
-          appKit.open(view ? { view } : undefined);
-        } else if (appKit.modal && appKit.modal.open) {
-          appKit.modal.open(view ? { view } : undefined);
-        } else if (appKit.showModal) {
-          appKit.showModal(view ? { view } : undefined);
-        } else {
-          throw new Error('No open method available on AppKit instance');
-        }
-      } catch (error) {
-        console.error('Error opening modal:', error);
-        throw error;
-      }
-    } else {
-      console.error('AppKit not available');
-      throw new Error('AppKit not available');
+  const openModal = useCallback((view?: "Account" | "Connect" | "Networks") => {
+    try {
+      console.log('Opening AppKit modal with view:', view);
+      open(view ? { view } : undefined);
+    } catch (error) {
+      console.error('Error opening modal:', error);
+      throw error;
     }
-  }, [getAppKitModal]);
+  }, [open]);
 
   // Open modal for disconnection (don't directly disconnect)
   const disconnect = useCallback(async () => {
     try {
-      const appKit = getAppKitModal();
-      if (appKit) {
-        // Open the modal instead of directly disconnecting
-        console.log('Opening modal for disconnection...');
-        
-        if (appKit.open) {
-          appKit.open();
-        } else if (appKit.modal && appKit.modal.open) {
-          appKit.modal.open();
-        } else if (appKit.showModal) {
-          appKit.showModal();
-        } else {
-          throw new Error('No open method available on AppKit instance');
-        }
-      } else {
-        console.error('AppKit not available for disconnection');
-        throw new Error('AppKit not available');
-      }
+      // Open the modal instead of directly disconnecting
+      console.log('Opening modal for disconnection...');
+      open();
     } catch (error) {
       console.error('Error opening disconnection modal:', error);
       throw error;
     }
-  }, [getAppKitModal]);
+  }, [open]);
 
   // Sign a message using the connected wallet
   const signMessage = useCallback(async (message: string) => {
