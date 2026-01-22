@@ -145,12 +145,25 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
               const normalizedSymbol = (symbol || tokenInfo.symbol || '').toUpperCase();
               let tokenPrice = await getTokenPrice(normalizedSymbol, tokenInfo.address, provider, chainId);
               
-              // Double-check: if price is 0 but it's a stablecoin, force to $1
-              if (tokenPrice === 0 && isStablecoin(normalizedSymbol)) {
-                tokenPrice = 1.0;
+              // Force stablecoins to $1 if price is missing or 0
+              if (isStablecoin(normalizedSymbol)) {
+                if (!tokenPrice || tokenPrice === 0 || !isFinite(tokenPrice)) {
+                  tokenPrice = 1.0;
+                }
               }
               
               const balanceUSD = balanceNum * tokenPrice;
+              
+              // Debug: Log token balance calculation in development
+              if (import.meta.env.DEV && balanceNum > 0) {
+                console.log(`[useMultichainTokenBalances] Token ${normalizedSymbol} (${chainId}):`, {
+                  address: tokenInfo.address,
+                  balance: balanceNum,
+                  tokenPrice,
+                  balanceUSD,
+                  isStablecoin: isStablecoin(normalizedSymbol)
+                });
+              }
 
               return {
                 address: tokenInfo.address,
@@ -231,12 +244,25 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
           const normalizedSymbol = (symbol || tokenInfo.symbol || '').toUpperCase();
           let tokenPrice = await getTokenPrice(normalizedSymbol, tokenInfo.address, provider, chainId);
           
-          // Double-check: if price is 0 but it's a stablecoin, force to $1
-          if (tokenPrice === 0 && isStablecoin(normalizedSymbol)) {
-            tokenPrice = 1.0;
+          // Force stablecoins to $1 if price is missing or 0
+          if (isStablecoin(normalizedSymbol)) {
+            if (!tokenPrice || tokenPrice === 0 || !isFinite(tokenPrice)) {
+              tokenPrice = 1.0;
+            }
           }
           
           const balanceUSD = balanceNum * tokenPrice;
+          
+          // Debug: Log token balance calculation in development
+          if (import.meta.env.DEV && balanceNum > 0) {
+            console.log(`[useMultichainTokenBalances] Token ${normalizedSymbol} (${chainId}):`, {
+              address: tokenInfo.address,
+              balance: balanceNum,
+              tokenPrice,
+              balanceUSD,
+              isStablecoin: isStablecoin(normalizedSymbol)
+            });
+          }
 
           return {
             address: tokenInfo.address,

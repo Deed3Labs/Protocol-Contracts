@@ -403,34 +403,47 @@ export function getNativeTokenCoinGeckoId(chainId: number): string | null {
  */
 export async function getNativeTokenPrice(chainId: number): Promise<number | null> {
   try {
-    // Try server API first
+    // For native tokens, prefer CoinGecko directly (more reliable for MATIC, xDAI, etc.)
+    // Only use wrapped token address for chains where native = wrapped (like ETH chains)
+    const coinGeckoId = getNativeTokenCoinGeckoId(chainId);
+    if (coinGeckoId) {
+      try {
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=usd`,
+          { method: 'GET' }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          const price = data[coinGeckoId]?.usd;
+          if (price && price > 0 && isFinite(price)) {
+            // Debug: Log price in development
+            if (import.meta.env.DEV) {
+              console.log(`[getNativeTokenPrice] Chain ${chainId} (${coinGeckoId}): $${price}`);
+            }
+            return price;
+          }
+        }
+      } catch (coinGeckoError) {
+        // CoinGecko failed, try server API as fallback
+      }
+    }
+
+    // Fallback: Try server API with wrapped token address (for ETH-based chains)
     const nativeTokenAddress = getNativeTokenAddress(chainId);
     if (nativeTokenAddress) {
       try {
         const { getTokenPrice } = await import('@/utils/apiClient');
         const serverPrice = await getTokenPrice(chainId, nativeTokenAddress);
         if (serverPrice && serverPrice.price > 0 && isFinite(serverPrice.price)) {
+          // Debug: Log price in development
+          if (import.meta.env.DEV) {
+            console.log(`[getNativeTokenPrice] Chain ${chainId} (server API): $${serverPrice.price}`);
+          }
           return serverPrice.price;
         }
       } catch (error) {
-        // Server failed, continue to CoinGecko
-      }
-    }
-
-    // Fallback to CoinGecko for native token price
-    const coinGeckoId = getNativeTokenCoinGeckoId(chainId);
-    if (coinGeckoId) {
-      const response = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=usd`,
-        { method: 'GET' }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        const price = data[coinGeckoId]?.usd;
-        if (price && price > 0 && isFinite(price)) {
-          return price;
-        }
+        // Server failed, continue
       }
     }
 

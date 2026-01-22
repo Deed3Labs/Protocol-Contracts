@@ -259,8 +259,21 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
               const balanceWei = BigInt(result.balanceWei);
               
               // Use native token price for this chain, fallback to default ETH price
-              const nativePrice = nativePrices[index];
+              // Find the correct price by matching chainId (not index, in case order differs)
+              const networkIndex = SUPPORTED_NETWORKS.findIndex(n => n.chainId === result.chainId);
+              const nativePrice = networkIndex >= 0 ? nativePrices[networkIndex] : null;
               const price = nativePrice || defaultEthPrice || 0;
+              
+              // Debug: Log price calculation in development
+              if (import.meta.env.DEV && parseFloat(result.balance) > 0) {
+                console.log(`[useMultichainBalances] Chain ${result.chainId} (${network.name}):`, {
+                  balance: result.balance,
+                  nativePrice,
+                  defaultEthPrice,
+                  finalPrice: price,
+                  balanceUSD: parseFloat(result.balance) * price
+                });
+              }
               
               const balanceUSD = parseFloat(result.balance) * price;
               return {
