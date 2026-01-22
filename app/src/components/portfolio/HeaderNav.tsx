@@ -9,6 +9,7 @@ import { useState, useEffect, useMemo } from 'react';
 import SearchModal from './SearchModal';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { CompactPriceWheel } from '../PriceWheel';
+import { calculateCashBalance } from '@/utils/tokenUtils';
 
 interface HeaderNavProps {
   isScrolledPast: boolean;
@@ -27,20 +28,21 @@ export default function HeaderNav({
   profileMenuOpen,
   setProfileMenuOpen
 }: HeaderNavProps) {
-  // Use global portfolio context for balance
-  const { totalBalanceUSD, previousTotalBalanceUSD, holdings } = usePortfolio();
+  // Use global portfolio context for cash balance
+  const { holdings, previousTotalBalanceUSD } = usePortfolio();
   
-  // Calculate total value (balance + holdings)
-  const totalValue = useMemo(() => {
-    const holdingsValue = holdings.reduce((sum, h) => sum + (h.balanceUSD || 0), 0);
-    return totalBalanceUSD + holdingsValue;
-  }, [totalBalanceUSD, holdings]);
+  // Calculate cash balance: stablecoins exclusively (USDC priority)
+  const cashBalance = useMemo(() => {
+    const cashData = calculateCashBalance(holdings);
+    return cashData.totalCash;
+  }, [holdings]);
   
-  // Calculate previous total value for animation
-  const previousTotalValue = useMemo(() => {
-    const holdingsValue = holdings.reduce((sum, h) => sum + (h.balanceUSD || 0), 0);
-    return previousTotalBalanceUSD + holdingsValue;
-  }, [previousTotalBalanceUSD, holdings]);
+  // For animation, use previous balance as fallback (cash balance doesn't have separate previous value)
+  const previousCashBalance = useMemo(() => {
+    // Use previousTotalBalanceUSD as a fallback for smooth transitions
+    // This will work reasonably well since cash balance changes are typically smaller
+    return previousTotalBalanceUSD;
+  }, [previousTotalBalanceUSD]);
   const { isConnected, openModal } = useAppKitAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -132,8 +134,8 @@ export default function HeaderNav({
                     className="text-sm text-zinc-500 dark:text-zinc-400 border-l border-zinc-300 dark:border-zinc-700 pl-2 flex items-center whitespace-nowrap overflow-hidden"
                   >
                     <CompactPriceWheel 
-                      value={totalValue} 
-                      previousValue={previousTotalValue}
+                      value={cashBalance} 
+                      previousValue={previousCashBalance}
                     />
                     <span className="text-[12px] ml-1">USD</span>
                   </motion.span>

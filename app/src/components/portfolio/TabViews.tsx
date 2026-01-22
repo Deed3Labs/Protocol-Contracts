@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { TrendingUp, TrendingDown, Info, ChevronRight, Settings, Share2 } from 'lucide-react';
 import InteractiveChart from './InteractiveChart';
 import IncomeChart from './IncomeChart';
+import { isStablecoin } from '@/utils/tokenUtils';
 
 interface ChartPoint {
   time: number;
@@ -49,9 +50,22 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
   const periodLabels: Record<string, string> = { '1D': 'today', '1W': 'past week', '1M': 'past month', '3M': 'past quarter', '6M': 'past 6 months', 'YTD': 'year to date', '1Y': 'past year', 'All': 'all time' };
   
   // Memoize borrowing power calculation - only recalculate when holdings or balance changes
+  // Borrowing power = cash balance (stablecoins) + crypto tokens + NFTs
+  // Note: balanceUSD is cash balance (stablecoins only), native token balance should be included separately if needed
   const borrowingPower = useMemo(() => {
-    const holdingsValue = holdings?.reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0;
-    return holdingsValue + (balanceUSD || 0);
+    if (!holdings || holdings.length === 0) return balanceUSD || 0;
+    
+    // Calculate crypto tokens (non-stablecoin tokens) and NFTs
+    const cryptoAndNFTValue = holdings.reduce((sum, h) => {
+      // Exclude stablecoins (they're already in cash balance)
+      if (h.type === 'token' && isStablecoin(h.asset_symbol)) {
+        return sum;
+      }
+      return sum + (h.valueUSD || 0);
+    }, 0);
+    
+    // Borrowing power = cash (stablecoins) + crypto + NFTs
+    return (balanceUSD || 0) + cryptoAndNFTValue;
   }, [holdings, balanceUSD]);
   
   // Store previous values to detect changes
@@ -345,26 +359,30 @@ export function AllocationView({ totalValue, holdings, balanceUSD }: AllocationV
   }, [totalValue, holdings, balanceUSD]);
   
   // Memoize allocations calculation - only recalculate when holdings or balance changes
-  const tokenValue = useMemo(() => 
-    holdings?.filter(h => h.type === 'token').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0,
-    [holdings]
-  );
+  // Separate stablecoins (cash) from crypto tokens
+  const cryptoValue = useMemo(() => {
+    if (!holdings || holdings.length === 0) return 0;
+    // Filter to only token holdings and exclude stablecoins
+    const tokenHoldings = holdings.filter(h => (h.type === 'token' || h.type !== 'nft') && !isStablecoin(h.asset_symbol));
+    return tokenHoldings.reduce((sum, h) => sum + (h.valueUSD || 0), 0);
+  }, [holdings]);
   const nftValue = useMemo(() => 
     holdings?.filter(h => h.type === 'nft').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0,
     [holdings]
   );
+  // Cash value is stablecoins only, passed as balanceUSD
   const cashValue = useMemo(() => balanceUSD || 0, [balanceUSD]);
   
   const rawAllocations = useMemo(() => [
     { name: 'Equities', value: 0, color: 'bg-white dark:bg-white bg-zinc-900', hasInfo: false },
     { name: 'Options', value: 0, color: 'bg-blue-500', hasInfo: false },
     { name: 'Bonds', value: 0, color: 'bg-blue-500', hasInfo: false },
-    { name: 'Crypto', value: tokenValue, color: 'bg-blue-500', hasInfo: false },
+    { name: 'Crypto', value: cryptoValue, color: 'bg-blue-500', hasInfo: false },
     { name: 'NFTs', value: nftValue, color: 'bg-purple-500', hasInfo: false },
     { name: 'High-Yield Cash', value: 0, color: 'bg-blue-500', hasInfo: false },
     { name: 'Cash', value: cashValue, color: 'bg-green-500', hasInfo: true },
     { name: 'Margin Usage', value: 0, color: 'bg-zinc-600', hasInfo: false },
-  ], [tokenValue, nftValue, cashValue]);
+  ], [cryptoValue, nftValue, cashValue]);
 
   const allocations = useMemo(() => rawAllocations.map(item => ({
     ...item,

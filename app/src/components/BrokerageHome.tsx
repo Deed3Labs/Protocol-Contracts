@@ -16,6 +16,7 @@ import { getNetworkByChainId } from '@/config/networks';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { LargePriceWheel } from './PriceWheel';
 import type { MultichainDeedNFT } from '@/hooks/useMultichainDeedNFTs';
+import { calculateCashBalance } from '@/utils/tokenUtils';
 
 // Types
 interface User {
@@ -308,6 +309,13 @@ export default function BrokerageHome() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
   
+  // Calculate cash balance: stablecoins exclusively (USDC priority)
+  const cashBalance = useMemo(() => {
+    if (!isConnected) return 0;
+    const cashData = calculateCashBalance(portfolioHoldings);
+    return cashData.totalCash;
+  }, [isConnected, portfolioHoldings]);
+  
   // Calculate total value from wallet balance and holdings across all chains
   const totalValue = useMemo(() => {
     if (!isConnected) return 0;
@@ -383,7 +391,7 @@ export default function BrokerageHome() {
             dailyChangePercent={dailyChangePercent}
             isNegative={isNegative}
             holdings={allHoldings}
-            balanceUSD={totalBalanceUSD}
+            balanceUSD={cashBalance}
           />
         );
       case 'Income':
@@ -395,12 +403,12 @@ export default function BrokerageHome() {
             selectedRange={selectedRange}
             onRangeChange={handleRangeChange}
             totalValue={totalValue}
-            balanceUSD={totalBalanceUSD}
+            balanceUSD={cashBalance}
             holdings={allHoldings}
           />
         );
       case 'Allocations':
-        return <AllocationView totalValue={totalValue} holdings={allHoldings} balanceUSD={totalBalanceUSD} />;
+        return <AllocationView totalValue={totalValue} holdings={allHoldings} balanceUSD={cashBalance} />;
       default:
         return null;
     }
@@ -457,7 +465,7 @@ export default function BrokerageHome() {
                      <div className="group relative">
                         <Info className="h-4 w-4 cursor-help" />
                         <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
-                          Native token balance from connected wallet
+                          Stablecoins only (USDC priority)
                         </div>
                      </div>
                      {!isConnected && (
@@ -472,7 +480,7 @@ export default function BrokerageHome() {
                        {isConnected ? (
                          <>
                            <LargePriceWheel 
-                             value={totalBalanceUSD || 0} 
+                             value={cashBalance || 0} 
                              previousValue={previousTotalBalanceUSD}
                              className="font-light"
                            />
