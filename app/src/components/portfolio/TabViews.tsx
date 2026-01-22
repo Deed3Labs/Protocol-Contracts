@@ -388,10 +388,17 @@ export function AllocationView({ totalValue, holdings, balanceUSD }: AllocationV
     { name: 'Margin Usage', value: 0, color: 'bg-zinc-600', hasInfo: false },
   ], [cryptoValue, nftValue, cashValue]);
 
+  // Calculate the actual total from allocations to ensure percentages total 100%
+  const actualTotal = useMemo(() => {
+    return rawAllocations.reduce((sum, item) => sum + item.value, 0);
+  }, [rawAllocations]);
+
+  // Use the actual total (sum of all allocations) instead of the passed totalValue
+  // This ensures percentages always total 100%
   const allocations = useMemo(() => rawAllocations.map(item => ({
     ...item,
-    percent: totalValue > 0 ? (item.value / totalValue) * 100 : 0
-  })), [rawAllocations, totalValue]);
+    percent: actualTotal > 0 ? (item.value / actualTotal) * 100 : 0
+  })), [rawAllocations, actualTotal]);
   
   return (
     <div>

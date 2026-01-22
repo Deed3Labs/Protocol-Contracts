@@ -106,24 +106,29 @@ async function getPoolPrice(
     // We need: (token1_raw / 10^decimals1) / (token0_raw / 10^decimals0)
     // = (token1_raw / token0_raw) * (10^decimals0 / 10^decimals1)
     
-    let adjustedRatio = scaledRatio;
+    // Calculate decimal adjustment factor
+    // We need to multiply by 10^(decimals0 - decimals1)
+    const decimalDiff = decimals0 - decimals1;
     
-    if (decimals0 > decimals1) {
-      // decimals0 > decimals1: multiply by 10^(decimals0 - decimals1)
-      const decimalDiff = decimals0 - decimals1;
+    // Calculate price with decimal adjustment
+    // To maintain precision, we'll do the calculation in steps
+    let price: number;
+    
+    if (decimalDiff === 0) {
+      // No decimal adjustment needed
+      price = Number(scaledRatio) / Number(INTERMEDIATE_SCALE);
+    } else if (decimalDiff > 0) {
+      // decimals0 > decimals1: multiply by 10^decimalDiff
       const decimalFactor = 10n ** BigInt(decimalDiff);
-      adjustedRatio = adjustedRatio * decimalFactor;
-    } else if (decimals1 > decimals0) {
-      // decimals1 > decimals0: divide by 10^(decimals1 - decimals0)
-      const decimalDiff = decimals1 - decimals0;
-      const decimalFactor = 10n ** BigInt(decimalDiff);
-      adjustedRatio = adjustedRatio / decimalFactor;
+      const adjustedRatio = scaledRatio * decimalFactor;
+      price = Number(adjustedRatio) / Number(INTERMEDIATE_SCALE);
+    } else {
+      // decimals1 > decimals0: divide by 10^|decimalDiff|
+      // To avoid precision loss with BigInt division, we'll do the division after converting to number
+      const decimalFactor = 10 ** (-decimalDiff); // Use regular number for division
+      const basePrice = Number(scaledRatio) / Number(INTERMEDIATE_SCALE);
+      price = basePrice / decimalFactor;
     }
-    // If decimals0 === decimals1, no adjustment needed
-    
-    // Convert to JavaScript number
-    // adjustedRatio is scaled by INTERMEDIATE_SCALE, so divide by it
-    let price = Number(adjustedRatio) / Number(INTERMEDIATE_SCALE);
     
     // Safety check - prices should be reasonable (between 1e-10 and 1e10 for most tokens)
     if (!isFinite(price) || price <= 0 || price > 1e10 || price < 1e-10) {
