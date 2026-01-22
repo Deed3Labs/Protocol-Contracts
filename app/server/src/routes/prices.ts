@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
-import { getUniswapPrice, getCoinGeckoPrice } from '../services/priceService.js';
+import { getUniswapPrice, getCoinGeckoPrice, getCoinbasePrice } from '../services/priceService.js';
 
 const router = Router();
 const cacheServicePromise = getRedisClient().then((client) => new CacheService(client));
@@ -30,14 +30,23 @@ router.get('/:chainId/:tokenAddress', async (req: Request, res: Response) => {
     // Fetch from external APIs
     let price: number | null = null;
 
-    // Try Uniswap first
+    // Try Uniswap first (primary on-chain source)
     try {
       price = await getUniswapPrice(chainId, tokenAddress);
     } catch (error) {
       console.error('Uniswap price fetch error:', error);
     }
 
-    // Fallback to CoinGecko
+    // Fast fallback to Coinbase if Uniswap fails (free, no auth, usually faster)
+    if (!price || price === 0) {
+      try {
+        price = await getCoinbasePrice(chainId, tokenAddress);
+      } catch (error) {
+        console.error('Coinbase price fetch error:', error);
+      }
+    }
+
+    // Final fallback to CoinGecko if Uniswap and Coinbase fail
     if (!price || price === 0) {
       try {
         price = await getCoinGeckoPrice(chainId, tokenAddress);
@@ -49,7 +58,7 @@ router.get('/:chainId/:tokenAddress', async (req: Request, res: Response) => {
     if (!price || price === 0) {
       return res.status(404).json({
         error: 'Price not available',
-        message: 'Could not fetch price from Uniswap or CoinGecko',
+        message: 'Could not fetch price from Uniswap, Coinbase, or CoinGecko',
       });
     }
 
@@ -117,12 +126,23 @@ router.post('/batch', async (req: Request, res: Response) => {
     for (const { chainId, tokenAddress, index } of uncached) {
       let price: number | null = null;
 
+      // Try Uniswap first (primary on-chain source)
       try {
         price = await getUniswapPrice(chainId, tokenAddress);
       } catch (error) {
         console.error('Uniswap price fetch error:', error);
       }
 
+      // Fast fallback to Coinbase if Uniswap fails
+      if (!price || price === 0) {
+        try {
+          price = await getCoinbasePrice(chainId, tokenAddress);
+        } catch (error) {
+          console.error('Coinbase price fetch error:', error);
+        }
+      }
+
+      // Final fallback to CoinGecko if Uniswap and Coinbase fail
       if (!price || price === 0) {
         try {
           price = await getCoinGeckoPrice(chainId, tokenAddress);

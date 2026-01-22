@@ -3,7 +3,8 @@ import { useAppKitNetwork } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { getRpcUrlForNetwork } from '@/config/networks';
 import { getEthereumProvider } from '@/utils/providerUtils';
-import { getTokenPrice, checkServerHealth } from '@/utils/apiClient';
+import { getTokenPrice } from '@/utils/apiClient';
+import { withTimeout } from './utils/multichainHelpers';
 
 interface PricingData {
   price: number; // Price in USD
@@ -17,6 +18,9 @@ const UNISWAP_V3_FACTORY: Record<number, string> = {
   8453: '0x33128a8fC17869897dcE68Ed026d694621f6FDfD', // Base Mainnet
   11155111: '0x0227628f3F023bb0B980b67D528571c95c6DaC1c', // Sepolia
   84532: '0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24', // Base Sepolia
+  42161: '0x1F98431c8aD98523631AE4a59f267346ea31F984', // Arbitrum One (same as Ethereum)
+  137: '0x1F98431c8aD98523631AE4a59f267346ea31F984', // Polygon (Uniswap V3)
+  100: '0x1F98431c8aD98523631AE4a59f267346ea31F984', // Gnosis (Uniswap V3)
 };
 
 // Common stablecoin addresses
@@ -25,6 +29,9 @@ const USDC_ADDRESSES: Record<number, string> = {
   8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Base Mainnet
   11155111: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Sepolia
   84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia
+  42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // Arbitrum One
+  137: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', // Polygon
+  100: '0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83', // Gnosis
 };
 
 const WETH_ADDRESSES: Record<number, string> = {
@@ -32,6 +39,9 @@ const WETH_ADDRESSES: Record<number, string> = {
   8453: '0x4200000000000000000000000000000000000006', // Base Mainnet (WETH)
   11155111: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14', // Sepolia
   84532: '0x4200000000000000000000000000000000000006', // Base Sepolia
+  42161: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // Arbitrum One
+  137: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // Polygon
+  100: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8', // Gnosis (WXDAI)
 };
 
 // Uniswap V3 Pool ABI (minimal interface for slot0)
@@ -84,73 +94,73 @@ async function getPoolPrice(
     const Q96 = 2n ** 96n;
     
     // Calculate price = (sqrtPriceX96 / 2^96)^2 = token1/token0
-    // To avoid overflow, we'll calculate this step by step
     // price = (sqrtPriceX96^2) / (2^192)
     
-    // First, calculate numerator and denominator
-    const numerator = sqrtPrice * sqrtPrice;
-    const denominator = Q96 * Q96;
+    // Use a more precise calculation method
+    // We'll work with scaled integers to maintain precision
+    const PRECISION_SCALE = 10n ** 18n; // 18 decimal places for precision
     
-    // To get a human-readable ratio, we need to:
-    // 1. Account for the Q64.96 format (divide by 2^192)
-    // 2. Account for token decimals
+    // Calculate: (sqrtPrice^2 * PRECISION_SCALE) / (Q96^2)
+    // This gives us price scaled by PRECISION_SCALE
+    const sqrtPriceSquared = sqrtPrice * sqrtPrice;
+    const q96Squared = Q96 * Q96;
     
-    // Use a large scale for intermediate calculation to maintain precision
-    const INTERMEDIATE_SCALE = 10n ** 36n; // Very large scale for precision
+    // Scale up numerator before division to maintain precision
+    const scaledPrice = (sqrtPriceSquared * PRECISION_SCALE) / q96Squared;
     
-    // Calculate: (numerator * INTERMEDIATE_SCALE) / denominator
-    // This gives us the ratio scaled by INTERMEDIATE_SCALE
-    const scaledRatio = (numerator * INTERMEDIATE_SCALE) / denominator;
-    
-    // Now adjust for token decimals
-    // Following the logic from AssuranceOracle.sol:
-    // The price from sqrtPriceX96 is in Q64.96 format (token1_raw / token0_raw)
+    // Adjust for token decimals
+    // The price from sqrtPriceX96 is in terms of raw token amounts (token1_raw / token0_raw)
     // We need to adjust for decimals to get human-readable price
-    // Solidity logic: if decimals0 > decimals1: divide by 10^(decimals0 - decimals1)
-    //                 if decimals1 > decimals0: multiply by 10^(decimals1 - decimals0)
-    
-    let adjustedRatio = scaledRatio;
+    let adjustedPrice = scaledPrice;
     
     if (decimals0 > decimals1) {
-      // decimals0 > decimals1: divide by 10^(decimals0 - decimals1)
+      // token0 has more decimals, so we need to divide
+      // Example: USDC (6) / WETH (18) -> divide by 10^12
       const decimalDiff = decimals0 - decimals1;
       const decimalFactor = 10n ** BigInt(decimalDiff);
-      adjustedRatio = adjustedRatio / decimalFactor;
+      adjustedPrice = adjustedPrice / decimalFactor;
     } else if (decimals1 > decimals0) {
-      // decimals1 > decimals0: multiply by 10^(decimals1 - decimals0)
+      // token1 has more decimals, so we need to multiply
+      // Example: WETH (18) / USDC (6) -> multiply by 10^12
       const decimalDiff = decimals1 - decimals0;
       const decimalFactor = 10n ** BigInt(decimalDiff);
-      adjustedRatio = adjustedRatio * decimalFactor;
+      adjustedPrice = adjustedPrice * decimalFactor;
     }
-    // If decimals0 === decimals1, no adjustment needed
+    // If decimals are equal, no adjustment needed
     
     // Convert to JavaScript number
-    // adjustedRatio is scaled by INTERMEDIATE_SCALE, so divide by it
-    // Check if adjustedRatio is valid before conversion
-    if (adjustedRatio === 0n) {
+    // adjustedPrice is scaled by PRECISION_SCALE, so divide by it
+    if (adjustedPrice === 0n) {
       return 0;
     }
     
-    let price = Number(adjustedRatio) / Number(INTERMEDIATE_SCALE);
+    // Convert BigInt to number safely
+    // For very large numbers, we'll scale down first
+    let price: number;
+    if (adjustedPrice > Number.MAX_SAFE_INTEGER) {
+      // Scale down to safe integer range
+      const scaleDown = 10n ** 12n; // Scale down by 10^12
+      const scaled = adjustedPrice / scaleDown;
+      price = Number(scaled) / (Number(PRECISION_SCALE) / Number(scaleDown));
+    } else {
+      price = Number(adjustedPrice) / Number(PRECISION_SCALE);
+    }
     
     // Safety check - prices should be reasonable (between 1e-10 and 1e10 for most tokens)
     if (!isFinite(price) || price <= 0 || price > 1e10 || price < 1e-10) {
-      // Only log if price is clearly invalid (not just very small)
-      if (!isFinite(price) || price <= 0 || price > 1e10) {
-        console.error('Price calculation error: invalid price', price, {
-          sqrtPriceX96: sqrtPriceX96.toString(),
-          decimals0,
-          decimals1,
-          decimalDiff: decimals0 - decimals1,
-          adjustedRatio: adjustedRatio.toString()
-        });
-      }
+      // Silent error - don't log to avoid noise
+      // The fallback to CoinGecko will handle it
       return 0;
     }
     
     return price;
-  } catch (error) {
-    console.error('Error getting pool price:', error);
+  } catch (error: any) {
+    // Silent error handling - don't log RPC rate limit errors or other expected failures
+    // The fallback to CoinGecko will handle it
+    // Only log unexpected errors in development
+    if (import.meta.env.DEV && error?.code !== 'CALL_EXCEPTION' && !error?.info?.error?.message?.includes('rate limit')) {
+      console.warn('Error getting pool price:', error);
+    }
     return 0;
   }
 }
@@ -292,7 +302,12 @@ export async function getUniswapPrice(
 
 /**
  * Get price from CoinGecko API (fallback)
- * Exported for use in other hooks
+ * 
+ * @deprecated Use server API instead. This is kept for emergency fallback only.
+ * Coinbase pricing is now handled by the server API.
+ * All pricing should go through the server API endpoint.
+ * 
+ * Exported for use in other hooks as emergency fallback.
  */
 export async function getCoinGeckoPrice(
   tokenAddress: string,
@@ -305,22 +320,28 @@ export async function getCoinGeckoPrice(
       8453: 'base',
       11155111: 'ethereum', // Sepolia uses Ethereum platform
       84532: 'base', // Base Sepolia uses Base platform
+      42161: 'arbitrum-one',
+      137: 'polygon-pos',
+      100: 'xdai', // Gnosis Chain
     };
 
     const platform = platformMap[chainId];
     if (!platform) return null;
 
-    // For native tokens (ETH), use the native token ID
+    // For native tokens, use the native token CoinGecko ID
     const wethAddress = WETH_ADDRESSES[chainId];
     if (tokenAddress.toLowerCase() === wethAddress.toLowerCase()) {
-      const response = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd`,
-        { method: 'GET' }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        return data.ethereum?.usd || null;
+      const nativeTokenId = getNativeTokenCoinGeckoId(chainId);
+      if (nativeTokenId) {
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${nativeTokenId}&vs_currencies=usd`,
+          { method: 'GET' }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          return data[nativeTokenId]?.usd || null;
+        }
       }
     }
 
@@ -356,15 +377,118 @@ export async function getExplorerPrice(
 }
 
 /**
- * Get native token address (WETH/Wrapped ETH) for a chain
+ * Get native token address (WETH/Wrapped ETH/MATIC/xDAI) for a chain
  */
 function getNativeTokenAddress(chainId: number): string | null {
   return WETH_ADDRESSES[chainId] || null;
 }
 
 /**
+ * Get native token CoinGecko ID for price fetching
+ * Used for native tokens that aren't ETH
+ * @param chainId - The chain ID
+ * @returns CoinGecko ID for the native token, or null if not found
+ */
+export function getNativeTokenCoinGeckoId(chainId: number): string | null {
+  const nativeTokenIds: Record<number, string> = {
+    1: 'ethereum', // ETH
+    8453: 'ethereum', // ETH (Base uses ETH)
+    11155111: 'ethereum', // ETH (Sepolia)
+    84532: 'ethereum', // ETH (Base Sepolia)
+    42161: 'ethereum', // ETH (Arbitrum uses ETH)
+    137: 'matic-network', // MATIC
+    100: 'xdai', // xDAI (Gnosis)
+  };
+  return nativeTokenIds[chainId] || null;
+}
+
+/**
+ * Get native token price for a specific chain
+ * Handles different native tokens (ETH, MATIC, xDAI, etc.)
+ */
+export async function getNativeTokenPrice(chainId: number): Promise<number | null> {
+  try {
+    // For native tokens, prefer CoinGecko directly (more reliable for MATIC, xDAI, etc.)
+    // Only use wrapped token address for chains where native = wrapped (like ETH chains)
+    const coinGeckoId = getNativeTokenCoinGeckoId(chainId);
+    if (coinGeckoId) {
+      try {
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=usd`,
+          { method: 'GET' }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          const price = data[coinGeckoId]?.usd;
+          if (price && price > 0 && isFinite(price)) {
+            // Debug: Log price in development
+            if (import.meta.env.DEV) {
+              console.log(`[getNativeTokenPrice] Chain ${chainId} (${coinGeckoId}): $${price}`);
+            }
+            return price;
+          }
+        }
+      } catch (coinGeckoError) {
+        // CoinGecko failed, try server API as fallback
+      }
+    }
+
+    // Fallback: Try server API with wrapped token address (for ETH-based chains)
+    const nativeTokenAddress = getNativeTokenAddress(chainId);
+    if (nativeTokenAddress) {
+      try {
+        const { getTokenPrice } = await import('@/utils/apiClient');
+        const serverPrice = await getTokenPrice(chainId, nativeTokenAddress);
+        if (serverPrice && serverPrice.price > 0 && isFinite(serverPrice.price)) {
+          // Debug: Log price in development
+          if (import.meta.env.DEV) {
+            console.log(`[getNativeTokenPrice] Chain ${chainId} (server API): $${serverPrice.price}`);
+          }
+          return serverPrice.price;
+        }
+      } catch (error) {
+        // Server failed, continue
+      }
+    }
+
+    // For xDAI (Gnosis), default to $1 if price fetch fails (it's a stablecoin)
+    if (chainId === 100) {
+      return 1.0;
+    }
+
+    return null;
+  } catch (error) {
+    // Silent error - return null
+    return null;
+  }
+}
+
+/**
  * Hook to fetch token prices using Uniswap and CoinGecko
- * Priority: Uniswap V3 > CoinGecko
+ * 
+ * Fetches token prices with the following priority:
+ * 1. Server API (with Redis caching)
+ * 2. Uniswap V3 pools (primary on-chain source)
+ * 3. CoinGecko API (fallback)
+ * 
+ * If no token address is provided, fetches the native token price (ETH, BASE, etc.) for the current chain.
+ * 
+ * @param tokenAddress - Optional token contract address. If not provided, fetches native token price.
+ * 
+ * @example
+ * ```tsx
+ * // Get native token price (ETH, BASE, etc.)
+ * const { price, isLoading } = usePricingData();
+ * 
+ * // Get specific token price
+ * const { price: usdcPrice } = usePricingData('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48');
+ * ```
+ * 
+ * @returns Object containing:
+ * - `price`: Token price in USD
+ * - `isLoading`: Whether price is currently loading
+ * - `error`: Error message, if any
  */
 export function usePricingData(tokenAddress?: string): PricingData {
   const { caipNetworkId } = useAppKitNetwork();
@@ -395,24 +519,43 @@ export function usePricingData(tokenAddress?: string): PricingData {
     setError(null);
 
     try {
-      // Try server API first (with Redis caching)
-      const isServerAvailable = await checkServerHealth();
-      if (isServerAvailable) {
-        try {
-          const serverPrice = await getTokenPrice(chainId, targetTokenAddress);
-          if (serverPrice && serverPrice.price > 0 && isFinite(serverPrice.price)) {
-            setPrice(serverPrice.price);
-            setIsLoading(false);
-            return; // Successfully fetched from server
-          }
-        } catch (serverError) {
-          // Server failed, fall through to direct API calls
-          console.log('Server API unavailable, using direct calls');
+      // Try server API first (with Redis caching) - don't wait for health check
+      // This is faster and more resilient - if server is down, API call will fail quickly
+      try {
+        const serverPrice = await withTimeout(
+          getTokenPrice(chainId, targetTokenAddress),
+          3000
+        ) as Awaited<ReturnType<typeof getTokenPrice>> | null;
+        
+        if (serverPrice && serverPrice.price > 0 && isFinite(serverPrice.price)) {
+          setPrice(serverPrice.price);
+          setIsLoading(false);
+          return; // Successfully fetched from server
+        }
+      } catch (serverError) {
+        // Server failed or timed out - log details in development
+        if (import.meta.env.DEV) {
+          console.warn('[usePricingData] Server API failed:', {
+            error: serverError instanceof Error ? serverError.message : serverError,
+            chainId,
+            tokenAddress: targetTokenAddress,
+            apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
+          });
         }
       }
 
-      // Fallback to direct API calls if server is unavailable or returns no price
-      // Get provider
+      // Server API is the primary source - if it fails, log error details
+      // In production, the server should always be available
+      if (import.meta.env.PROD) {
+        console.error('[usePricingData] Server API failed in production!', {
+          chainId,
+          tokenAddress: targetTokenAddress,
+          apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'NOT SET',
+          error: 'Check VITE_API_BASE_URL environment variable and server status'
+        });
+      }
+      
+      // Get provider for fallback
       let provider: ethers.Provider;
       try {
         provider = await getEthereumProvider();
@@ -424,10 +567,10 @@ export function usePricingData(tokenAddress?: string): PricingData {
         provider = new ethers.JsonRpcProvider(rpcUrl);
       }
 
-      // Try Uniswap first (primary source)
+      // Fallback: Try Uniswap directly (only if server is down)
       let tokenPrice = await getUniswapPrice(provider, targetTokenAddress, chainId);
 
-      // Fallback to CoinGecko if Uniswap fails
+      // Fallback: Try CoinGecko if Uniswap fails (only if server is down)
       if (!tokenPrice || tokenPrice === 0 || !isFinite(tokenPrice)) {
         tokenPrice = await getCoinGeckoPrice(targetTokenAddress, chainId);
       }
@@ -474,6 +617,10 @@ export function usePricingData(tokenAddress?: string): PricingData {
 
 /**
  * Hook specifically for native token price (backward compatibility)
+ * 
+ * @deprecated Use `usePricingData()` instead. This hook is kept for backward compatibility.
+ * 
+ * @returns Pricing data for the native token of the current chain
  */
 export function useTokenPrice(): PricingData {
   return usePricingData();

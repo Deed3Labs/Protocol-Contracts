@@ -7,6 +7,11 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
+// Log API base URL in development to help debug
+if (import.meta.env.DEV) {
+  console.log('[apiClient] API_BASE_URL:', API_BASE_URL);
+}
+
 interface ApiResponse<T> {
   data?: T;
   error?: string;
@@ -16,6 +21,7 @@ interface ApiResponse<T> {
 
 /**
  * Generic API request function
+ * Handles errors gracefully, including HTML responses (server down, wrong endpoint, etc.)
  */
 async function apiRequest<T>(
   endpoint: string,
@@ -30,17 +36,60 @@ async function apiRequest<T>(
       },
     });
 
+    // Check if response is actually JSON before trying to parse
+    const contentType = response.headers.get('content-type');
+    const isJson = contentType?.includes('application/json');
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      // Try to parse error as JSON, but handle HTML/other responses
+      if (isJson) {
+        try {
+          const errorData = await response.json();
+          throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        } catch (parseError) {
+          // If JSON parsing fails, it's likely HTML or other non-JSON response
+          throw new Error(`HTTP ${response.status}: ${response.statusText} (Server may be down or endpoint incorrect)`);
+        }
+      } else {
+        // Non-JSON response (likely HTML error page)
+        throw new Error(`HTTP ${response.status}: Server returned non-JSON response (Server may be down or endpoint incorrect)`);
+      }
+    }
+
+    // Parse response as JSON only if content-type indicates JSON
+    if (!isJson) {
+      // If we expected JSON but got something else, it's likely an error
+      const text = await response.text();
+      // Check if it's HTML (common when server is down or wrong endpoint)
+      if (text.trim().startsWith('<!doctype') || text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) {
+        throw new Error('Server returned HTML instead of JSON (Server may be down or endpoint incorrect)');
+      }
+      throw new Error(`Server returned non-JSON response: ${contentType || 'unknown'}`);
     }
 
     const data = await response.json();
     return { data: data as T, cached: data.cached, timestamp: data.timestamp };
   } catch (error) {
-    console.error(`API request error for ${endpoint}:`, error);
+    // Log errors in development and production for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    if (import.meta.env.DEV) {
+      console.warn('[apiClient] Request failed:', {
+        endpoint,
+        error: errorMessage,
+        apiBaseUrl: API_BASE_URL
+      });
+    } else if (import.meta.env.PROD) {
+      // In production, log errors to help diagnose issues
+      console.error('[apiClient] Production API request failed:', {
+        endpoint,
+        error: errorMessage,
+        apiBaseUrl: API_BASE_URL || 'NOT SET - Check VITE_API_BASE_URL environment variable'
+      });
+    }
+    
     return {
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
     };
   }
 }
@@ -201,15 +250,56 @@ export async function getTransactionsBatch(
 }
 
 /**
- * Check server health
+ * Get token balance from server
+ */
+export async function getTokenBalance(
+  chainId: number,
+  userAddress: string,
+  tokenAddress: string
+): Promise<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string; cached: boolean } | null> {
+  const response = await apiRequest<{
+    address: string;
+    symbol: string;
+    name: string;
+    decimals: number;
+    balance: string;
+    balanceRaw: string;
+    cached: boolean;
+  }>(`/api/token-balances/${chainId}/${userAddress}/${tokenAddress}`);
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
+ * Get multiple token balances in batch
+ */
+export async function getTokenBalancesBatch(
+  requests: Array<{ chainId: number; tokenAddress: string; userAddress: string }>
+): Promise<Array<{ chainId: number; tokenAddress: string; userAddress: string; data: any | null; cached: boolean; error?: string }>> {
+  const response = await apiRequest<{
+    results: Array<{ chainId: number; tokenAddress: string; userAddress: string; data: any | null; cached: boolean; error?: string }>;
+  }>('/api/token-balances/batch', {
+    method: 'POST',
+    body: JSON.stringify({ requests }),
+  });
+
+  if (response.error || !response.data) {
+    return requests.map((r) => ({ ...r, data: null, cached: false }));
+  }
+
+  return response.data.results;
+}
+
+/**
+ * Check server health (uses cached version to avoid race conditions)
+ * @deprecated Use checkServerHealthCached from serverHealth.ts instead
  */
 export async function checkServerHealth(): Promise<boolean> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/health`);
-    const data = await response.json();
-    return data.status === 'ok' && data.redis === 'connected';
-  } catch (error) {
-    console.error('Server health check failed:', error);
-    return false;
-  }
+  // Import dynamically to avoid circular dependencies
+  const { checkServerHealthCached } = await import('./serverHealth.js');
+  return checkServerHealthCached();
 }

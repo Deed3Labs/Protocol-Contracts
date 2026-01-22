@@ -34,8 +34,8 @@ const rateLimiters = new Map<number, RateLimitState>();
 
 // Configuration
 const RATE_LIMIT_WINDOW = 1000; // 1 second window
-const MAX_REQUESTS_PER_WINDOW = 10; // Max 10 requests per second per chain
-const CACHE_TTL = 5000; // Cache for 5 seconds
+const MAX_REQUESTS_PER_WINDOW = 5; // Reduced to 5 requests per second per chain to avoid Infura rate limits
+const CACHE_TTL = 10000; // Increased cache to 10 seconds to reduce API calls
 
 /**
  * Get or create a cached provider for a chain

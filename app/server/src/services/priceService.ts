@@ -165,6 +165,135 @@ export async function getUniswapPrice(
 }
 
 /**
+ * Map token symbols to Coinbase currency pairs
+ * Coinbase uses format like ETH-USD, MATIC-USD, etc.
+ */
+function getCoinbaseCurrencyPair(symbol: string): string | null {
+  const normalizedSymbol = symbol?.toUpperCase() || '';
+  
+  // Map common tokens to Coinbase pairs
+  const symbolMap: Record<string, string> = {
+    'ETH': 'ETH-USD',
+    'WETH': 'ETH-USD', // Wrapped ETH uses ETH price
+    'MATIC': 'MATIC-USD',
+    'WMATIC': 'MATIC-USD', // Wrapped MATIC uses MATIC price
+    'XDAI': 'XDAI-USD',
+    'WXDAI': 'XDAI-USD', // Wrapped xDAI uses xDAI price
+    'BTC': 'BTC-USD',
+    'WBTC': 'BTC-USD',
+    'USDC': 'USDC-USD',
+    'USDT': 'USDT-USD',
+    'DAI': 'DAI-USD',
+    'LINK': 'LINK-USD',
+    'UNI': 'UNI-USD',
+    'AAVE': 'AAVE-USD',
+    'CRV': 'CRV-USD',
+    'MKR': 'MKR-USD',
+    'SNX': 'SNX-USD',
+    'COMP': 'COMP-USD',
+    'YFI': 'YFI-USD',
+    'SUSHI': 'SUSHI-USD',
+    '1INCH': '1INCH-USD',
+    'BAL': 'BAL-USD',
+    'ZRX': 'ZRX-USD',
+  };
+  
+  // Check direct mapping first
+  if (symbolMap[normalizedSymbol]) {
+    return symbolMap[normalizedSymbol];
+  }
+  
+  // For other tokens, return null (Coinbase may not support them)
+  return null;
+}
+
+/**
+ * Get token symbol from contract address
+ */
+async function getTokenSymbol(
+  chainId: number,
+  tokenAddress: string
+): Promise<string | null> {
+  try {
+    const rpcUrl = getRpcUrl(chainId);
+    if (!rpcUrl) {
+      return null;
+    }
+
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+    const symbol = await tokenContract.symbol();
+    return symbol || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Get price from Coinbase API
+ * Fast, free, no authentication required
+ * Returns spot price for currency pair
+ */
+export async function getCoinbasePrice(
+  chainId: number,
+  tokenAddress: string
+): Promise<number | null> {
+  try {
+    // Get token symbol first
+    const symbol = await getTokenSymbol(chainId, tokenAddress);
+    if (!symbol) {
+      return null; // Can't get symbol, can't use Coinbase
+    }
+
+    const currencyPair = getCoinbaseCurrencyPair(symbol);
+    if (!currencyPair) {
+      return null; // Symbol not supported by Coinbase
+    }
+    
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    
+    try {
+      const response = await fetch(
+        `https://api.coinbase.com/v2/prices/${currencyPair}/spot`,
+        { 
+          method: 'GET',
+          signal: controller.signal
+        }
+      );
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        return null;
+      }
+      
+      const data = await response.json() as { data?: { amount?: string } };
+      const price = parseFloat(data?.data?.amount || '0');
+      
+      if (price && price > 0 && isFinite(price)) {
+        return price;
+      }
+      
+      return null;
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      // Handle timeout or other fetch errors silently
+      if (fetchError.name === 'AbortError') {
+        // Timeout - silent error
+        return null;
+      }
+      // Other fetch errors - return null to fall back
+      return null;
+    }
+  } catch (error) {
+    // Silent error - Coinbase API might be down or symbol not supported
+    return null;
+  }
+}
+
+/**
  * Get price from CoinGecko API
  */
 export async function getCoinGeckoPrice(

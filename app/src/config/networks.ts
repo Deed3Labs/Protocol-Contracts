@@ -87,6 +87,54 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
       decimals: 18,
     },
   },
+  {
+    id: 42161,
+    name: 'Arbitrum One',
+    chainId: 42161,
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://arbitrum-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://arb1.arbitrum.io/rpc',
+    alchemyUrl: import.meta.env.VITE_ALCHEMY_ARBITRUM_MAINNET,
+    infuraUrl: import.meta.env.VITE_INFURA_ARBITRUM_MAINNET || (INFURA_PROJECT_ID ? `https://arbitrum-mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
+    blockExplorer: 'https://arbiscan.io',
+    contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
+    nativeCurrency: {
+      name: 'Ether',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+  },
+  {
+    id: 137,
+    name: 'Polygon',
+    chainId: 137,
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://polygon-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://polygon-rpc.com',
+    alchemyUrl: import.meta.env.VITE_ALCHEMY_POLYGON_MAINNET,
+    infuraUrl: import.meta.env.VITE_INFURA_POLYGON_MAINNET || (INFURA_PROJECT_ID ? `https://polygon-mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
+    blockExplorer: 'https://polygonscan.com',
+    contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
+    nativeCurrency: {
+      name: 'MATIC',
+      symbol: 'MATIC',
+      decimals: 18,
+    },
+  },
+  {
+    id: 100,
+    name: 'Gnosis',
+    chainId: 100,
+    rpcUrl: 'https://rpc.gnosischain.com',
+    alchemyUrl: import.meta.env.VITE_ALCHEMY_GNOSIS_MAINNET,
+    blockExplorer: 'https://gnosisscan.io',
+    contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
+    nativeCurrency: {
+      name: 'xDAI',
+      symbol: 'xDAI',
+      decimals: 18,
+    },
+  },
 ];
 
 // Network configuration with additional contract addresses
@@ -172,6 +220,67 @@ export const networks = {
       MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
     },
   },
+  // Arbitrum One
+  42161: {
+    name: 'Arbitrum One',
+    chainId: 42161,
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://arbitrum-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://arb1.arbitrum.io/rpc',
+    blockExplorer: 'https://arbiscan.io',
+    nativeCurrency: {
+      name: 'ETH',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      Validator: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+    },
+  },
+  // Polygon
+  137: {
+    name: 'Polygon',
+    chainId: 137,
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://polygon-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://polygon-rpc.com',
+    blockExplorer: 'https://polygonscan.com',
+    nativeCurrency: {
+      name: 'MATIC',
+      symbol: 'MATIC',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      Validator: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+    },
+  },
+  // Gnosis
+  100: {
+    name: 'Gnosis',
+    chainId: 100,
+    rpcUrl: 'https://rpc.gnosischain.com',
+    blockExplorer: 'https://gnosisscan.io',
+    nativeCurrency: {
+      name: 'xDAI',
+      symbol: 'xDAI',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      Validator: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+    },
+  },
 };
 
 export const getNetworkByChainId = (chainId: number): NetworkConfig | undefined => {
@@ -236,6 +345,9 @@ export const getAbiPathForNetwork = (chainId: number, contractName: string): str
     11155111: 'sepolia',
     8453: 'base',
     1: 'ethereum',
+    42161: 'arbitrum',
+    137: 'polygon',
+    100: 'gnosis',
   };
 
   const dirName = chainIdToDir[chainId];

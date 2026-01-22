@@ -12,18 +12,65 @@ let redisClient: RedisClientType | null = null;
  * - REDIS_HOST + REDIS_PORT (for traditional Redis)
  */
 export async function getRedisClient(): Promise<RedisClientType> {
+  // If client exists and is connected, return it
   if (redisClient && redisClient.isOpen) {
     return redisClient;
+  }
+
+  // If client exists but is closed, clean it up
+  if (redisClient && !redisClient.isOpen) {
+    try {
+      await redisClient.quit().catch(() => {});
+    } catch (e) {
+      // Ignore errors during cleanup
+    }
+    redisClient = null;
   }
 
   // Check if REDIS_URL is provided (common for cloud providers)
   const redisUrl = process.env.REDIS_URL;
   
   if (redisUrl) {
-    // Parse Redis URL (format: redis://[:password@]host[:port][/database])
-    // or rediss:// for TLS
+    // For Upstash and other cloud providers, ensure TLS is enabled
+    // Upstash URLs are typically: redis://default:password@host:6379
+    // But they require TLS, so we need to configure it properly
+    let urlObj: URL;
+    try {
+      urlObj = new URL(redisUrl);
+    } catch (e) {
+      throw new Error(`Invalid REDIS_URL format: ${redisUrl}`);
+    }
+    
+    const isSecure = urlObj.protocol === 'rediss:' || urlObj.port === '6380';
+    const isUpstash = urlObj.hostname.includes('upstash.io');
+    
+    // Upstash requires TLS even with redis:// protocol
+    // Convert redis:// to rediss:// for Upstash if needed
+    let finalUrl = redisUrl;
+    if (isUpstash && urlObj.protocol === 'redis:') {
+      finalUrl = redisUrl.replace('redis://', 'rediss://');
+      console.log('Upstash detected: Converting to TLS connection (rediss://)');
+    }
+    
     redisClient = createClient({
-      url: redisUrl,
+      url: finalUrl,
+      socket: {
+        // Enable TLS for Upstash and secure connections
+        tls: isSecure || isUpstash,
+        reconnectStrategy: (retries: number) => {
+          if (retries > 10) {
+            console.error('Redis: Max reconnection attempts reached');
+            return new Error('Max reconnection attempts reached');
+          }
+          // Exponential backoff: 50ms, 100ms, 200ms, 400ms, etc.
+          const delay = Math.min(50 * Math.pow(2, retries), 3000);
+          if (retries < 3) { // Only log first few attempts
+            console.log(`Redis: Reconnecting in ${delay}ms (attempt ${retries + 1})`);
+          }
+          return delay;
+        },
+        keepAlive: 30000, // Send keepalive every 30 seconds
+      },
     });
   } else {
     // Fallback to individual host/port configuration
@@ -36,27 +83,53 @@ export async function getRedisClient(): Promise<RedisClientType> {
       socket: {
         host,
         port,
-        // Enable TLS if using cloud providers that require it
         tls: process.env.REDIS_TLS === 'true',
+        reconnectStrategy: (retries: number) => {
+          if (retries > 10) {
+            return new Error('Max reconnection attempts reached');
+          }
+          return Math.min(50 * Math.pow(2, retries), 3000);
+        },
+        keepAlive: 30000,
       },
       password,
       database: db,
     });
   }
 
+  // Error handler - don't crash on errors, just log
   redisClient.on('error', (err) => {
-    console.error('Redis Client Error:', err);
+    // Only log if it's not a connection error (those are handled by reconnect)
+    if (!err.message.includes('Socket closed') && !err.message.includes('ECONNREFUSED')) {
+      console.error('Redis Client Error:', err.message);
+    }
   });
 
   redisClient.on('connect', () => {
     console.log('✅ Redis Client Connected');
   });
 
-  redisClient.on('disconnect', () => {
-    console.log('⚠️ Redis Client Disconnected');
+  redisClient.on('ready', () => {
+    console.log('✅ Redis Client Ready');
   });
 
-  await redisClient.connect();
+  redisClient.on('reconnecting', () => {
+    console.log('🔄 Redis Client Reconnecting...');
+  });
+
+  redisClient.on('end', () => {
+    console.log('⚠️ Redis Client Connection Ended');
+  });
+
+  // Connect with retry logic
+  try {
+    await redisClient.connect();
+  } catch (error) {
+    console.error('Failed to connect to Redis:', error);
+    // Don't throw - let the app continue without Redis
+    // The health check will show redis as disconnected
+    throw error;
+  }
 
   return redisClient;
 }
@@ -86,10 +159,18 @@ export class CacheService {
    */
   async get<T>(key: string): Promise<T | null> {
     try {
+      // Check if client is connected
+      if (!this.client.isOpen) {
+        return null;
+      }
       const value = await this.client.get(key);
       return value ? (JSON.parse(value) as T) : null;
-    } catch (error) {
-      console.error(`Error getting cache key ${key}:`, error);
+    } catch (error: any) {
+      // Silently fail if connection is closed (will retry on next request)
+      if (error?.message?.includes('Socket closed') || error?.message?.includes('Connection')) {
+        return null;
+      }
+      console.error(`Error getting cache key ${key}:`, error?.message || error);
       return null;
     }
   }
@@ -99,9 +180,17 @@ export class CacheService {
    */
   async set(key: string, value: any, ttlSeconds: number = 300): Promise<void> {
     try {
+      // Check if client is connected
+      if (!this.client.isOpen) {
+        return;
+      }
       await this.client.setEx(key, ttlSeconds, JSON.stringify(value));
-    } catch (error) {
-      console.error(`Error setting cache key ${key}:`, error);
+    } catch (error: any) {
+      // Silently fail if connection is closed (will retry on next request)
+      if (error?.message?.includes('Socket closed') || error?.message?.includes('Connection')) {
+        return;
+      }
+      console.error(`Error setting cache key ${key}:`, error?.message || error);
     }
   }
 
@@ -164,14 +253,22 @@ export class CacheService {
    */
   async incr(key: string, ttlSeconds?: number): Promise<number> {
     try {
+      // Check if client is connected
+      if (!this.client.isOpen) {
+        return 0; // Fail open for rate limiting
+      }
       const count = await this.client.incr(key);
       if (ttlSeconds && count === 1) {
         // Set TTL only on first increment
         await this.client.expire(key, ttlSeconds);
       }
       return count;
-    } catch (error) {
-      console.error(`Error incrementing cache key ${key}:`, error);
+    } catch (error: any) {
+      // Fail open for rate limiting - allow request through if Redis is down
+      if (error?.message?.includes('Socket closed') || error?.message?.includes('Connection')) {
+        return 0;
+      }
+      console.error(`Error incrementing cache key ${key}:`, error?.message || error);
       return 0;
     }
   }
