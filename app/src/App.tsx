@@ -23,6 +23,7 @@ import { DeedNFTProvider } from "@/context/DeedNFTContext";
 import { XMTPProvider } from "@/context/XMTPContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { ModalProvider, useModal } from "@/context/ModalContext";
+import { PortfolioProvider } from "@/context/PortfolioContext";
 import Faucet from "@/components/Faucet";
 import BurnerBondPage from "@/components/BurnerBondPage";
 import PullToRefresh from "@/components/ui/PullToRefresh";
@@ -107,7 +108,8 @@ function App() {
       <NotificationProvider>
             <DeedNFTProvider>
               <XMTPProvider>
-                <ModalProvider>
+                <PortfolioProvider>
+                  <ModalProvider>
                   <ScrollToTop />
                 <AnimatePresence>
                   {showSplash && <SplashScreen />}
@@ -142,7 +144,8 @@ function App() {
                   <Route path="/faucet" element={<Faucet />} />
               </Route>
                 </Routes>
-                </ModalProvider>
+                  </ModalProvider>
+                </PortfolioProvider>
               </XMTPProvider>
             </DeedNFTProvider>
       </NotificationProvider>

@@ -9,14 +9,12 @@ import DepositModal from './portfolio/DepositModal';
 import WithdrawModal from './portfolio/WithdrawModal';
 import ActionModal from './portfolio/ActionModal';
 import CTAStack from './portfolio/CTAStack';
-import { useMultichainBalances } from '@/hooks/useMultichainBalances';
-import { useMultichainActivity } from '@/hooks/useMultichainActivity';
-import { useMultichainDeedNFTs } from '@/hooks/useMultichainDeedNFTs';
-import { useMultichainTokenBalances } from '@/hooks/useMultichainTokenBalances';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useDeedName } from '@/hooks/useDeedName';
 import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
 import { getNetworkByChainId } from '@/config/networks';
+import { usePortfolio } from '@/context/PortfolioContext';
+import { LargePriceWheel } from './PriceWheel';
 import type { MultichainDeedNFT } from '@/hooks/useMultichainDeedNFTs';
 
 // Types
@@ -185,11 +183,18 @@ export default function BrokerageHome() {
   // Wallet connection
   const { address, isConnected } = useAppKitAccount();
   
-  // Multichain hooks - aggregate data across all networks
-  const { totalBalance, totalBalanceUSD, balances: multichainBalances, error: balanceError } = useMultichainBalances();
-  const { transactions: walletTransactions, isLoading: activityLoading, error: activityError, refresh: refreshActivity } = useMultichainActivity(10);
-  const { nfts: multichainNFTs } = useMultichainDeedNFTs();
-  const { tokens: tokenBalances } = useMultichainTokenBalances();
+  // Global portfolio context - provides balances, holdings, and activity
+  const {
+    balances: multichainBalances,
+    totalBalance,
+    totalBalanceUSD,
+    previousTotalBalanceUSD,
+    holdings: portfolioHoldings,
+    transactions: walletTransactions,
+    isLoading: portfolioLoading,
+    activityLoading,
+    refreshAll,
+  } = usePortfolio();
   
   // Portfolio history tracking
   const { addSnapshot, getSnapshotsForRange, fetchAndMergeHistory } = usePortfolioHistory();
@@ -210,16 +215,6 @@ export default function BrokerageHome() {
     return 'https://basescan.org';
   }, [multichainBalances]);
   
-  // Helper to get asset type label (simplified - you may want to enhance this)
-  const getAssetTypeLabel = (assetType: number): string => {
-    const labels: Record<number, string> = {
-      0: 'Unknown',
-      1: 'Real Estate',
-      2: 'Vehicle',
-      3: 'Equipment',
-    };
-    return labels[assetType] || 'Unknown';
-  };
   
   const [user, setUser] = useState<User | null>(null);
   const [selectedTab, setSelectedTab] = useState('Return');
@@ -235,44 +230,23 @@ export default function BrokerageHome() {
   // State for tracking scroll position relative to portfolio value header
   const [isScrolledPast, setIsScrolledPast] = useState(false);
   
-  // Combine DeedNFTs with token balances across all chains
+  // Convert portfolio holdings to Holding format for compatibility
   const allHoldings = useMemo<Holding[]>(() => {
-    const holdings: Holding[] = [];
-    
-    // Add DeedNFTs from all chains
-    const deedNFTHoldings: Holding[] = multichainNFTs.map((deed) => ({
-      id: `deed-${deed.chainId}-${deed.tokenId}`,
-      asset_symbol: `T-Deed #${deed.tokenId} (${deed.chainName})`,
-      asset_name: deed.definition || getAssetTypeLabel(deed.assetType) || 'T-Deed',
-      quantity: 1,
-      average_cost: 0,
-      current_price: 0,
-      valueUSD: 0, // NFTs don't have USD value yet
-      type: 'nft' as const
-    }));
-    holdings.push(...deedNFTHoldings);
-    
-    // Add token balances from all chains
-    const tokenHoldings: Holding[] = tokenBalances.map((token) => ({
-      id: `token-${token.chainId}-${token.address}`,
-      asset_symbol: token.symbol,
-      asset_name: `${token.name} (${token.chainName})`,
-      quantity: parseFloat(token.balance),
-      average_cost: 0,
-      current_price: token.balanceUSD / parseFloat(token.balance) || 0,
-      valueUSD: token.balanceUSD,
-      type: 'token' as const
-    }));
-    holdings.push(...tokenHoldings);
-    
-    // Sort by USD value (highest first), then by type
-    return holdings.sort((a, b) => {
-      if (a.valueUSD !== b.valueUSD) {
-        return (b.valueUSD || 0) - (a.valueUSD || 0);
-      }
-      return a.type.localeCompare(b.type);
+    return portfolioHoldings.map((holding) => {
+      const baseHolding: Holding = {
+        id: holding.id,
+        asset_symbol: holding.asset_symbol,
+        asset_name: holding.asset_name,
+        quantity: holding.type === 'nft' ? 1 : parseFloat(holding.balance || '0'),
+        average_cost: 0,
+        current_price: holding.balanceUSD / (holding.type === 'nft' ? 1 : parseFloat(holding.balance || '1')),
+        valueUSD: holding.balanceUSD,
+        type: holding.type === 'nft' ? 'nft' as const : 'token' as const,
+      };
+      // Add additional properties if needed
+      return baseHolding;
     });
-  }, [multichainNFTs, tokenBalances, getAssetTypeLabel]);
+  }, [portfolioHoldings]);
 
   // Filter holdings based on selected filter
   const filteredHoldings = useMemo(() => {
@@ -295,16 +269,14 @@ export default function BrokerageHome() {
         balancesCount: multichainBalances.length,
         balances: multichainBalances.map(b => ({ chain: b.chainName, balance: b.balance, usd: b.balanceUSD })),
         totalBalanceUSD,
-        nftsCount: multichainNFTs.length,
-        nfts: multichainNFTs.map(n => ({ chain: n.chainName, tokenId: n.tokenId })),
-        tokensCount: tokenBalances.length,
-        tokens: tokenBalances.map(t => ({ chain: t.chainName, symbol: t.symbol, balance: t.balance, usd: t.balanceUSD })),
+        holdingsCount: portfolioHoldings.length,
+        holdings: portfolioHoldings.map(h => ({ type: h.type, name: h.asset_name, usd: h.balanceUSD })),
         allHoldingsCount: allHoldings.length,
         filteredHoldingsCount: filteredHoldings.length,
         displayedHoldingsCount: displayedHoldings.length
       });
     }
-  }, [isConnected, address, multichainBalances, totalBalanceUSD, multichainNFTs, tokenBalances, allHoldings, filteredHoldings, displayedHoldings]);
+  }, [isConnected, address, multichainBalances, totalBalanceUSD, portfolioHoldings, allHoldings, filteredHoldings, displayedHoldings]);
   
   useEffect(() => {
     // Mock API calls for user info
@@ -484,13 +456,14 @@ export default function BrokerageHome() {
                      )}
                    </div>
                    <div className="min-h-[60px] flex items-center">
-                     {balanceError ? (
-                       <div className="text-red-500 text-sm">{balanceError}</div>
-                     ) : (
+                     {(
                        <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
                          {isConnected ? (
                            <>
-                             ${totalBalanceUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                             <LargePriceWheel 
+                               value={totalBalanceUSD} 
+                               previousValue={previousTotalBalanceUSD}
+                             />
                              <span className="text-lg text-zinc-500 font-normal">USD</span>
                            </>
                          ) : (
@@ -594,13 +567,34 @@ export default function BrokerageHome() {
                           const nftHoldingsWithDeeds = displayedHoldings
                             .filter(h => h.type === 'nft')
                             .map(holding => {
-                              // Extract chainId and tokenId from id format: "deed-{chainId}-{tokenId}"
-                              const parts = holding.id.toString().replace('deed-', '').split('-');
-                              const chainId = parts.length > 1 ? parseInt(parts[0]) : undefined;
-                              const tokenId = parts.length > 1 ? parts.slice(1).join('-') : parts[0];
-                              const deed = multichainNFTs.find(d => 
-                                d.tokenId === tokenId && (!chainId || d.chainId === chainId)
-                              );
+                              // Extract tokenId and chainId from holding id format: "{chainId}-nft-{tokenId}"
+                              const parts = holding.id.toString().split('-');
+                              let tokenId: string | undefined;
+                              let chainId: number | undefined;
+                              
+                              if (parts.length >= 3 && parts[1] === 'nft') {
+                                chainId = parseInt(parts[0]);
+                                tokenId = parts.slice(2).join('-');
+                              }
+                              
+                              // Create a minimal deed object for NFTHoldingItem
+                              const deed: MultichainDeedNFT | undefined = tokenId && chainId ? ({
+                                tokenId,
+                                chainId,
+                                chainName: getNetworkByChainId(chainId)?.name || '',
+                                name: holding.asset_name,
+                                owner: address || '',
+                                assetType: 0,
+                                uri: '',
+                                definition: holding.asset_name,
+                                valueUSD: holding.valueUSD || 0,
+                                configuration: {},
+                                validatorAddress: '',
+                                token: '',
+                                salt: '',
+                                isMinted: true,
+                              } as unknown as MultichainDeedNFT) : undefined;
+                              
                               return { holding, deed };
                             });
                           const tokenHoldings = displayedHoldings.filter(h => h.type === 'token');
@@ -696,11 +690,11 @@ export default function BrokerageHome() {
                   <div className="p-4 flex items-center justify-between">
                     <h2 className="text-xl font-light text-black dark:text-white">Activity</h2>
                     <button 
-                      onClick={refreshActivity}
+                      onClick={refreshAll}
                       className="text-zinc-500 text-sm hover:text-black dark:hover:text-white transition-colors flex items-center gap-1.5"
                       disabled={activityLoading}
                     >
-                      {activityLoading ? (
+                      {portfolioLoading ? (
                         <>
                           <Loader2 className="w-3 h-3 animate-spin" />
                           <span>Refreshing...</span>
@@ -719,10 +713,6 @@ export default function BrokerageHome() {
                       <div className="py-8 text-center text-zinc-500 text-sm">
                         Connect wallet to view activity
                       </div>
-                    ) : activityError ? (
-                      <div className="py-8 text-center text-red-500 text-sm">
-                        {activityError}
-                      </div>
                     ) : walletTransactions.length > 0 ? (
                       walletTransactions.map((item) => (
                         <div 
@@ -731,7 +721,7 @@ export default function BrokerageHome() {
                           onClick={() => {
                             if (item.hash) {
                               // Get the correct block explorer URL for this transaction's chain
-                              const txChainId = 'chainId' in item ? item.chainId : undefined;
+                              const txChainId = 'chainId' in item && typeof item.chainId === 'number' ? item.chainId : undefined;
                               let explorerUrl = blockExplorerUrl;
                               if (txChainId) {
                                 const network = getNetworkByChainId(txChainId);
@@ -769,13 +759,18 @@ export default function BrokerageHome() {
                               <div className="flex items-center gap-1.5 text-zinc-500 text-xs">
                                 <span>{item.date}</span>
                                 <span className="w-0.5 h-0.5 bg-zinc-400 dark:bg-zinc-600 rounded-full"></span>
-                                <span className="capitalize">{item.status}</span>
-                                {'chainName' in item && item.chainName && (
-                                  <>
-                                    <span className="w-0.5 h-0.5 bg-zinc-400 dark:bg-zinc-600 rounded-full"></span>
-                                    <span>{item.chainName}</span>
-                                  </>
-                                )}
+                                <span className="capitalize">{item.status || 'completed'}</span>
+                                {(() => {
+                                  if ('chainName' in item && item.chainName && typeof item.chainName === 'string') {
+                                    return (
+                                      <>
+                                        <span className="w-0.5 h-0.5 bg-zinc-400 dark:bg-zinc-600 rounded-full"></span>
+                                        <span>{String(item.chainName)}</span>
+                                      </>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                             </div>
                           </div>
