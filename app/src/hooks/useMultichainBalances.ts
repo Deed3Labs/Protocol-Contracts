@@ -97,7 +97,10 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
           // Get native token price for this chain
           const { getNativeTokenPrice } = await import('./usePricingData');
           const nativePrice = await getNativeTokenPrice(chainId);
-          const price = nativePrice || defaultEthPrice || 0;
+          // Only use ETH price as fallback for ETH-based chains (1, 8453, 11155111, 84532, 42161)
+          // For other chains (POL, xDAI, etc.), don't fall back to ETH price
+          const isEthChain = [1, 8453, 11155111, 84532, 42161].includes(chainId);
+          const price = nativePrice || (isEthChain ? defaultEthPrice : null) || 0;
           
           const balanceUSD = parseFloat(serverBalance.balance) * price;
           return {
@@ -123,7 +126,10 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
       // Get native token price for this chain
       const { getNativeTokenPrice } = await import('./usePricingData');
       const nativePrice = await getNativeTokenPrice(chainId);
-      const price = nativePrice || defaultEthPrice || 0;
+      // Only use ETH price as fallback for ETH-based chains (1, 8453, 11155111, 84532, 42161)
+      // For other chains (POL, xDAI, etc.), don't fall back to ETH price
+      const isEthChain = [1, 8453, 11155111, 84532, 42161].includes(chainId);
+      const price = nativePrice || (isEthChain ? defaultEthPrice : null) || 0;
       
       const balanceUSD = parseFloat(balance) * price;
 
@@ -262,7 +268,9 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
               // Find the correct price by matching chainId (not index, in case order differs)
               const networkIndex = SUPPORTED_NETWORKS.findIndex(n => n.chainId === result.chainId);
               const nativePrice = networkIndex >= 0 ? nativePrices[networkIndex] : null;
-              const price = nativePrice || defaultEthPrice || 0;
+              // Only use ETH price as fallback for ETH-based chains
+              const isEthChain = [1, 8453, 11155111, 84532, 42161].includes(result.chainId);
+              const price = nativePrice || (isEthChain ? defaultEthPrice : null) || 0;
               
               // Debug: Log price calculation in development
               if (import.meta.env.DEV && parseFloat(result.balance) > 0) {
