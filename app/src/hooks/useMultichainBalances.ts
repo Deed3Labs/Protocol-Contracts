@@ -65,7 +65,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
   const [error, setError] = useState<string | null>(null);
   
   // Get native token prices for each chain
-  // Different chains have different native tokens (ETH, MATIC, xDAI)
+  // Different chains have different native tokens (ETH, POL, xDAI)
   // We'll fetch prices per-chain when needed
   const { price: defaultEthPrice } = usePricingData(); // Fallback ETH price
 
