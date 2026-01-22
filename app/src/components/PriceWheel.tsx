@@ -6,11 +6,13 @@ interface PriceWheelProps {
   formatter?: (value: number) => string;
   className?: string;
   duration?: number;
+  colorResetDelay?: number; // Delay in ms before resetting color to default (default: 2000ms)
 }
 
 /**
  * PriceWheel component - Smoothly animates number changes with a rolling effect
  * Similar to stock ticker displays
+ * Color changes (red/green) automatically reset to default after a few seconds
  */
 export const PriceWheel: React.FC<PriceWheelProps> = ({
   value,
@@ -18,14 +20,18 @@ export const PriceWheel: React.FC<PriceWheelProps> = ({
   formatter = (v) => v.toFixed(2),
   className = '',
   duration = 500,
+  colorResetDelay = 2000, // Default 2 seconds
 }) => {
   const [displayValue, setDisplayValue] = useState(value);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [showColorChange, setShowColorChange] = useState(false);
+  const [colorDirection, setColorDirection] = useState<'up' | 'down' | null>(null);
   const animationRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const startValueRef = useRef<number>(value);
   const targetValueRef = useRef<number>(value);
   const isInitialMountRef = useRef<boolean>(true);
+  const colorResetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // On initial mount, set the value immediately
@@ -58,6 +64,16 @@ export const PriceWheel: React.FC<PriceWheelProps> = ({
       return;
     }
 
+    // Determine color change direction
+    const direction = value > previousValue ? 'up' : 'down';
+    setColorDirection(direction);
+    setShowColorChange(true);
+
+    // Clear any existing color reset timeout
+    if (colorResetTimeoutRef.current) {
+      clearTimeout(colorResetTimeoutRef.current);
+    }
+
     // Start animation
     startValueRef.current = previousValue;
     targetValueRef.current = value;
@@ -86,6 +102,12 @@ export const PriceWheel: React.FC<PriceWheelProps> = ({
         setDisplayValue(targetValueRef.current);
         setIsAnimating(false);
         startValueRef.current = targetValueRef.current;
+
+        // Set timeout to reset color after animation completes
+        colorResetTimeoutRef.current = setTimeout(() => {
+          setShowColorChange(false);
+          setColorDirection(null);
+        }, colorResetDelay);
       }
     };
 
@@ -95,21 +117,33 @@ export const PriceWheel: React.FC<PriceWheelProps> = ({
       if (animationRef.current !== null) {
         cancelAnimationFrame(animationRef.current);
       }
+      if (colorResetTimeoutRef.current) {
+        clearTimeout(colorResetTimeoutRef.current);
+      }
     };
-  }, [value, previousValue, duration]);
+  }, [value, previousValue, duration, colorResetDelay]);
 
-  // Determine color based on change direction
+  // Determine color based on change direction (only show when showColorChange is true)
   const getColorClass = () => {
-    if (!previousValue || previousValue === value || isAnimating) {
+    if (!showColorChange || isAnimating) {
       return '';
     }
-    if (value > previousValue) {
+    if (colorDirection === 'up') {
       return 'text-green-500';
-    } else if (value < previousValue) {
+    } else if (colorDirection === 'down') {
       return 'text-red-500';
     }
     return '';
   };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (colorResetTimeoutRef.current) {
+        clearTimeout(colorResetTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <span className={`transition-colors duration-300 ${getColorClass()} ${className}`}>
