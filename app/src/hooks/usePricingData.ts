@@ -106,16 +106,20 @@ async function getPoolPrice(
     // We need: (token1_raw / 10^decimals1) / (token0_raw / 10^decimals0)
     // = (token1_raw / token0_raw) * (10^decimals0 / 10^decimals1)
     
-    const decimalFactor = 10n ** BigInt(decimals0 - decimals1);
     let adjustedRatio = scaledRatio;
     
     if (decimals0 > decimals1) {
-      // Divide by the factor (equivalent to multiplying by 10^(decimals1-decimals0))
-      adjustedRatio = adjustedRatio / decimalFactor;
-    } else if (decimals1 > decimals0) {
-      // Multiply by the factor
+      // decimals0 > decimals1: multiply by 10^(decimals0 - decimals1)
+      const decimalDiff = decimals0 - decimals1;
+      const decimalFactor = 10n ** BigInt(decimalDiff);
       adjustedRatio = adjustedRatio * decimalFactor;
+    } else if (decimals1 > decimals0) {
+      // decimals1 > decimals0: divide by 10^(decimals1 - decimals0)
+      const decimalDiff = decimals1 - decimals0;
+      const decimalFactor = 10n ** BigInt(decimalDiff);
+      adjustedRatio = adjustedRatio / decimalFactor;
     }
+    // If decimals0 === decimals1, no adjustment needed
     
     // Convert to JavaScript number
     // adjustedRatio is scaled by INTERMEDIATE_SCALE, so divide by it
