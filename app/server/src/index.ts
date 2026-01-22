@@ -17,18 +17,58 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(compression());
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+
+// CORS configuration - handle Vercel preview URLs
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = process.env.CORS_ORIGIN 
+      ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+      : ['*'];
+    
+    // If '*' is specified, allow all origins
+    if (allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+    
+    // Check if origin matches any allowed origin
+    // Also allow Vercel preview URLs (pattern: *.vercel.app)
+    const isVercelPreview = origin.endsWith('.vercel.app');
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed.includes('*')) {
+        // Handle wildcard patterns like https://*.vercel.app
+        const pattern = allowed.replace(/\*/g, '.*');
+        return new RegExp(`^${pattern}$`).test(origin);
+      }
+      return origin === allowed;
+    });
+    
+    if (isAllowed || isVercelPreview) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-}));
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Health check (before rate limiter so it's always accessible)
 app.get('/health', async (req: express.Request, res: express.Response) => {
   try {
-    const redisClient = await getRedisClient();
-    const isRedisConnected = redisClient.isOpen;
+    let isRedisConnected = false;
+    try {
+      const redisClient = await getRedisClient();
+      isRedisConnected = redisClient.isOpen;
+    } catch (redisError) {
+      // Redis connection failed, but server is still running
+      console.error('Redis health check failed:', redisError);
+    }
 
     res.json({
       status: 'ok',
@@ -65,11 +105,16 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 // Start server
 async function startServer() {
   try {
-    // Initialize Redis connection
-    await getRedisClient();
-    console.log('✅ Redis connection established');
+    // Try to initialize Redis connection (non-blocking)
+    getRedisClient()
+      .then(() => {
+        console.log('✅ Redis connection established');
+      })
+      .catch((error) => {
+        console.error('⚠️ Redis connection failed (server will continue without cache):', error);
+      });
 
-    // Set up rate limiter middleware
+    // Set up rate limiter middleware (will work even if Redis fails)
     const windowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10);
     const maxRequests = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10);
     const rateLimiterMiddleware = await rateLimiter(windowMs, maxRequests);
@@ -83,14 +128,16 @@ async function startServer() {
     app.use('/api/nfts', nftsRouter);
     app.use('/api/transactions', transactionsRouter);
 
-    // Start background jobs
-    await startPriceUpdater();
-    console.log('✅ Background jobs started');
+    // Start background jobs (non-blocking)
+    startPriceUpdater().catch((error) => {
+      console.error('⚠️ Background jobs failed to start:', error);
+    });
 
     // Start Express server
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🌐 CORS enabled for: ${process.env.CORS_ORIGIN || 'all origins (*)'}`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
