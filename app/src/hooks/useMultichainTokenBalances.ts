@@ -5,6 +5,12 @@ import { SUPPORTED_NETWORKS, getRpcUrlForNetwork } from '@/config/networks';
 import { getEthereumProvider } from '@/utils/providerUtils';
 import { getUniswapPrice } from './usePricingData';
 
+// Detect mobile device
+const isMobileDevice = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
 export interface MultichainTokenBalance {
   address: string;
   symbol: string;
@@ -67,6 +73,11 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
   // Get provider for a specific chain
   const getChainProvider = useCallback(async (chainId: number): Promise<ethers.Provider> => {
     try {
+      // On mobile, add a small delay
+      if (isMobileDevice()) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
       const provider = await getEthereumProvider();
       const network = await provider.getNetwork();
       
@@ -81,7 +92,16 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
     if (!rpcUrl) {
       throw new Error(`No RPC URL available for chain ${chainId}`);
     }
-    return new ethers.JsonRpcProvider(rpcUrl);
+    
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    if (isMobileDevice()) {
+      (provider as any).connection = {
+        ...(provider as any).connection,
+        timeout: 10000,
+      };
+    }
+    
+    return provider;
   }, []);
 
   // Get token price
@@ -181,10 +201,28 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
     setError(null);
 
     try {
-      // Fetch all chains in parallel
-      const tokenPromises = SUPPORTED_NETWORKS.map(network => fetchChainTokens(network.chainId));
-      const results = await Promise.all(tokenPromises);
-      setTokens(results.flat());
+      const isMobile = isMobileDevice();
+      
+      if (isMobile) {
+        // On mobile, fetch sequentially with delays
+        const allTokens: MultichainTokenBalance[] = [];
+        for (let i = 0; i < SUPPORTED_NETWORKS.length; i++) {
+          const network = SUPPORTED_NETWORKS[i];
+          const chainTokens = await fetchChainTokens(network.chainId);
+          allTokens.push(...chainTokens);
+          
+          // Add delay between chains on mobile (except for the last one)
+          if (i < SUPPORTED_NETWORKS.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+        setTokens(allTokens);
+      } else {
+        // On desktop, fetch all chains in parallel
+        const tokenPromises = SUPPORTED_NETWORKS.map(network => fetchChainTokens(network.chainId));
+        const results = await Promise.all(tokenPromises);
+        setTokens(results.flat());
+      }
     } catch (err) {
       console.error('Error fetching multichain token balances:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch token balances');

@@ -5,6 +5,12 @@ import { SUPPORTED_NETWORKS, getRpcUrlForNetwork, getContractAddressForNetwork, 
 import { getEthereumProvider } from '@/utils/providerUtils';
 import type { DeedNFT } from '@/context/DeedNFTContext';
 
+// Detect mobile device
+const isMobileDevice = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
 export interface MultichainDeedNFT extends DeedNFT {
   chainId: number;
   chainName: string;
@@ -44,6 +50,11 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
   // Get provider for a specific chain
   const getChainProvider = useCallback(async (chainId: number): Promise<ethers.Provider> => {
     try {
+      // On mobile, add a small delay
+      if (isMobileDevice()) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
       const provider = await getEthereumProvider();
       const network = await provider.getNetwork();
       
@@ -58,7 +69,16 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     if (!rpcUrl) {
       throw new Error(`No RPC URL available for chain ${chainId}`);
     }
-    return new ethers.JsonRpcProvider(rpcUrl);
+    
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    if (isMobileDevice()) {
+      (provider as any).connection = {
+        ...(provider as any).connection,
+        timeout: 10000,
+      };
+    }
+    
+    return provider;
   }, []);
 
   // Fetch NFTs for a specific chain
@@ -178,10 +198,28 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     setError(null);
 
     try {
-      // Fetch all chains in parallel
-      const nftPromises = SUPPORTED_NETWORKS.map(network => fetchChainNFTs(network.chainId));
-      const results = await Promise.all(nftPromises);
-      setNfts(results.flat());
+      const isMobile = isMobileDevice();
+      
+      if (isMobile) {
+        // On mobile, fetch sequentially with delays
+        const allNFTs: MultichainDeedNFT[] = [];
+        for (let i = 0; i < SUPPORTED_NETWORKS.length; i++) {
+          const network = SUPPORTED_NETWORKS[i];
+          const chainNFTs = await fetchChainNFTs(network.chainId);
+          allNFTs.push(...chainNFTs);
+          
+          // Add delay between chains on mobile (except for the last one)
+          if (i < SUPPORTED_NETWORKS.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+        setNfts(allNFTs);
+      } else {
+        // On desktop, fetch all chains in parallel
+        const nftPromises = SUPPORTED_NETWORKS.map(network => fetchChainNFTs(network.chainId));
+        const results = await Promise.all(nftPromises);
+        setNfts(results.flat());
+      }
     } catch (err) {
       console.error('Error fetching multichain NFTs:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch NFTs');

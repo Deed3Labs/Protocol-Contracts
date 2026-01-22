@@ -6,6 +6,12 @@ import { SUPPORTED_NETWORKS, getRpcUrlForNetwork, getNetworkByChainId, getNetwor
 import { getEthereumProvider } from '@/utils/providerUtils';
 import type { WalletTransaction } from './useWalletActivity';
 
+// Detect mobile device
+const isMobileDevice = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
 export interface MultichainTransaction extends WalletTransaction {
   chainId: number;
   chainName: string;
@@ -31,6 +37,11 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
   // Get provider for a specific chain
   const getChainProvider = useCallback(async (chainId: number): Promise<ethers.Provider> => {
     try {
+      // On mobile, add a small delay
+      if (isMobileDevice()) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
       const provider = await getEthereumProvider();
       const network = await provider.getNetwork();
       
@@ -45,7 +56,16 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
     if (!rpcUrl) {
       throw new Error(`No RPC URL available for chain ${chainId}`);
     }
-    return new ethers.JsonRpcProvider(rpcUrl);
+    
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    if (isMobileDevice()) {
+      (provider as any).connection = {
+        ...(provider as any).connection,
+        timeout: 10000,
+      };
+    }
+    
+    return provider;
   }, []);
 
   // Fetch transactions for a specific chain
@@ -164,14 +184,35 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
     setError(null);
 
     try {
-      // Fetch all chains in parallel
-      const transactionPromises = SUPPORTED_NETWORKS.map(network => fetchChainTransactions(network.chainId));
-      const results = await Promise.all(transactionPromises);
-      const allTransactions = results.flat();
+      const isMobile = isMobileDevice();
       
-      // Sort by timestamp (newest first) and limit
-      allTransactions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      setTransactions(allTransactions.slice(0, limit));
+      if (isMobile) {
+        // On mobile, fetch sequentially with delays
+        const allTransactions: MultichainTransaction[] = [];
+        for (let i = 0; i < SUPPORTED_NETWORKS.length; i++) {
+          const network = SUPPORTED_NETWORKS[i];
+          const chainTransactions = await fetchChainTransactions(network.chainId);
+          allTransactions.push(...chainTransactions);
+          
+          // Add delay between chains on mobile (except for the last one)
+          if (i < SUPPORTED_NETWORKS.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+        
+        // Sort by timestamp (newest first) and limit
+        allTransactions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setTransactions(allTransactions.slice(0, limit));
+      } else {
+        // On desktop, fetch all chains in parallel
+        const transactionPromises = SUPPORTED_NETWORKS.map(network => fetchChainTransactions(network.chainId));
+        const results = await Promise.all(transactionPromises);
+        const allTransactions = results.flat();
+        
+        // Sort by timestamp (newest first) and limit
+        allTransactions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setTransactions(allTransactions.slice(0, limit));
+      }
     } catch (err) {
       console.error('Error fetching multichain activity:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch transactions');
