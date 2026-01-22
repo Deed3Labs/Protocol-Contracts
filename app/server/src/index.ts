@@ -107,23 +107,7 @@ app.get('/health', async (req: express.Request, res: express.Response) => {
 });
 
 // API Routes will be set up in startServer after rate limiter is initialized
-
-// 404 handler
-app.use((req: express.Request, res: express.Response) => {
-  res.status(404).json({
-    error: 'Not found',
-    message: `Route ${req.path} not found`,
-  });
-});
-
-// Error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred',
-  });
-});
+// 404 and error handlers will be set up after routes
 
 // Start server
 async function startServer() {
@@ -151,6 +135,30 @@ async function startServer() {
     app.use('/api/token-balances', tokenBalancesRouter);
     app.use('/api/nfts', nftsRouter);
     app.use('/api/transactions', transactionsRouter);
+    
+    console.log('✅ API routes registered:');
+    console.log('  - /api/prices');
+    console.log('  - /api/balances');
+    console.log('  - /api/token-balances');
+    console.log('  - /api/nfts');
+    console.log('  - /api/transactions');
+
+    // 404 handler (must be after all routes)
+    app.use((req: express.Request, res: express.Response) => {
+      res.status(404).json({
+        error: 'Not found',
+        message: `Route ${req.path} not found`,
+      });
+    });
+
+    // Error handler (must be after all routes and 404 handler)
+    app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      console.error('Unhandled error:', err);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred',
+      });
+    });
 
     // Start background jobs (non-blocking)
     startPriceUpdater().catch((error) => {
@@ -159,11 +167,13 @@ async function startServer() {
 
     // Start Express server
     // Bind to 0.0.0.0 to accept connections from Railway/external hosts
+    // IMPORTANT: Routes are registered BEFORE server starts listening
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🌐 CORS enabled for: ${process.env.CORS_ORIGIN || 'all origins (*)'}`);
       console.log(`🌍 Listening on: 0.0.0.0:${PORT}`);
+      console.log(`✅ All routes are ready to handle requests`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
