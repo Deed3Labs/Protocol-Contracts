@@ -302,7 +302,12 @@ export async function getUniswapPrice(
 
 /**
  * Get price from CoinGecko API (fallback)
- * Exported for use in other hooks
+ * 
+ * @deprecated Use server API instead. This is kept for emergency fallback only.
+ * Coinbase pricing is now handled by the server API.
+ * All pricing should go through the server API endpoint.
+ * 
+ * Exported for use in other hooks as emergency fallback.
  */
 export async function getCoinGeckoPrice(
   tokenAddress: string,
@@ -532,8 +537,12 @@ export function usePricingData(tokenAddress?: string): PricingData {
         // Don't log - this is expected if server is unavailable
       }
 
-      // Fallback to direct API calls if server is unavailable or returns no price
-      // Get provider
+      // Server API is the primary source - if it fails, we should log an error
+      // In production, the server should always be available
+      // Fallback to direct API calls only if server is completely unavailable
+      console.warn('[usePricingData] Server API failed, falling back to direct calls. This should not happen in production.');
+      
+      // Get provider for fallback
       let provider: ethers.Provider;
       try {
         provider = await getEthereumProvider();
@@ -545,10 +554,10 @@ export function usePricingData(tokenAddress?: string): PricingData {
         provider = new ethers.JsonRpcProvider(rpcUrl);
       }
 
-      // Try Uniswap first (primary source)
+      // Fallback: Try Uniswap directly (only if server is down)
       let tokenPrice = await getUniswapPrice(provider, targetTokenAddress, chainId);
 
-      // Fallback to CoinGecko if Uniswap fails
+      // Fallback: Try CoinGecko if Uniswap fails (only if server is down)
       if (!tokenPrice || tokenPrice === 0 || !isFinite(tokenPrice)) {
         tokenPrice = await getCoinGeckoPrice(targetTokenAddress, chainId);
       }

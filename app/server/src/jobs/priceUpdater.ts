@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
-import { getUniswapPrice, getCoinGeckoPrice } from '../services/priceService.js';
+import { getUniswapPrice, getCoinGeckoPrice, getCoinbasePrice } from '../services/priceService.js';
 
 /**
  * Background job to update popular token prices
@@ -25,14 +25,23 @@ export async function startPriceUpdater() {
       try {
         let price: number | null = null;
 
-        // Try Uniswap first
+        // Try Uniswap first (primary on-chain source)
         try {
           price = await getUniswapPrice(chainId, tokenAddress);
         } catch (error) {
           console.error(`Error fetching Uniswap price for ${tokenAddress}:`, error);
         }
 
-        // Fallback to CoinGecko
+        // Fast fallback to Coinbase if Uniswap fails
+        if (!price || price === 0) {
+          try {
+            price = await getCoinbasePrice(chainId, tokenAddress);
+          } catch (error) {
+            console.error(`Error fetching Coinbase price for ${tokenAddress}:`, error);
+          }
+        }
+
+        // Final fallback to CoinGecko if Uniswap and Coinbase fail
         if (!price || price === 0) {
           try {
             price = await getCoinGeckoPrice(chainId, tokenAddress);

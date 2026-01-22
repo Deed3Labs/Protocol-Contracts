@@ -4,7 +4,8 @@ import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS } from '@/config/networks';
 import { getCommonTokens } from '@/config/tokens';
 import { isStablecoin } from '@/utils/tokenUtils';
-import { getUniswapPrice, getCoinGeckoPrice } from './usePricingData';
+// Pricing is now handled entirely by the server API
+// No need to import pricing functions from usePricingData
 import { getCachedProvider, executeBatchRpcCalls } from '@/utils/rpcOptimizer';
 import { getTokenBalancesBatch } from '@/utils/apiClient';
 import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
@@ -72,8 +73,9 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
 
   // Note: Provider is now managed by rpcOptimizer for better efficiency
 
-  // Get token price with fallback to CoinGecko
-  const getTokenPrice = useCallback(async (symbol: string, address: string, provider: ethers.Provider, chainId: number): Promise<number> => {
+  // Get token price from server API only
+  // Server handles: Uniswap -> Coinbase -> CoinGecko fallback chain
+  const getTokenPrice = useCallback(async (symbol: string, address: string, _provider: ethers.Provider, chainId: number): Promise<number> => {
     // Stablecoins are always $1 - check this FIRST before any API calls
     // Normalize symbol to uppercase for comparison
     const normalizedSymbol = symbol?.toUpperCase() || '';
@@ -81,20 +83,16 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
       return 1.0;
     }
     
-    // Try Uniswap first (primary source)
+    // Use server API for all pricing (server handles Uniswap/Coinbase/CoinGecko)
     try {
-      const price = await getUniswapPrice(provider, address, chainId);
-      if (price && price > 0 && isFinite(price)) return price;
+      const { getTokenPrice } = await import('@/utils/apiClient');
+      const priceData = await getTokenPrice(chainId, address);
+      if (priceData && priceData.price > 0 && isFinite(priceData.price)) {
+        return priceData.price;
+      }
     } catch (error) {
-      // Continue to fallback
-    }
-    
-    // Fallback to CoinGecko if Uniswap fails
-    try {
-      const price = await getCoinGeckoPrice(address, chainId);
-      if (price && price > 0 && isFinite(price)) return price;
-    } catch (error) {
-      // Silent fallback - price will default to 0
+      // Server API failed - price will default to 0
+      // In production, server should always be available
     }
     
     return 0;
