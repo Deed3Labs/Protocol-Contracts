@@ -42,6 +42,12 @@ interface ChartPoint {
 // Transaction type is now imported from useWalletActivity
 
 // Component to display NFT holding with name from metadata
+// Helper function to get asset type label (same as DeedNFTContext)
+const getAssetTypeLabel = (assetType: number): string => {
+  const types = ["Land", "Vehicle", "Estate", "Commercial Equipment"];
+  return types[assetType] || "Unknown";
+};
+
 const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: MultichainDeedNFT | undefined }) => {
   const deedName = useDeedName(deed || null);
   
@@ -51,11 +57,15 @@ const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: MultichainD
     return text.substring(0, maxLength - 3) + '...';
   };
   
-  // Main text: name from metadata, fallback to asset_symbol
+  // Get asset type label for fallback
+  const assetTypeLabel = deed?.assetType !== undefined ? getAssetTypeLabel(deed.assetType) : 'T-Deed';
+  const fallbackName = `${assetTypeLabel} #${deed?.tokenId || holding.id}`;
+  
+  // Main text: name from metadata renderer (via useDeedName), fallback to asset type + token ID (same as Explore/DeedCard)
   const mainText = deedName 
     ? truncateText(deedName, 25) 
-    : truncateText(holding.asset_symbol, 25);
-  const mainTextFull = deedName || holding.asset_symbol;
+    : truncateText(fallbackName, 25);
+  const mainTextFull = deedName || fallbackName;
   
   // Secondary text: description or configuration, fallback to asset_name
   // Truncate at the end (not beginning) to show start of text
@@ -580,21 +590,20 @@ export default function BrokerageHome() {
                                 tokenId = parts.slice(2).join('-');
                               }
                               
-                              // Create a minimal deed object for NFTHoldingItem
-                              const deed: MultichainDeedNFT | undefined = tokenId && chainId ? ({
-                                tokenId,
-                                chainId,
-                                chainName: getNetworkByChainId(chainId)?.name || '',
-                                name: holding.asset_name,
-                                owner: address || '',
-                                assetType: 0,
-                                uri: '',
-                                definition: holding.asset_name,
-                                valueUSD: holding.valueUSD || 0,
-                                configuration: {},
-                                validatorAddress: '',
-                                token: '',
-                                salt: '',
+                              // Get the full deed data from portfolio holdings (includes all properties from multichainNFTs)
+                              const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && h.type === 'nft');
+                              const deed: MultichainDeedNFT | undefined = portfolioHolding && tokenId && chainId ? ({
+                                tokenId: (portfolioHolding.tokenId as string) || tokenId,
+                                chainId: portfolioHolding.chainId || chainId,
+                                chainName: portfolioHolding.chainName || getNetworkByChainId(chainId)?.name || '',
+                                owner: (portfolioHolding.owner as string) || address || '',
+                                assetType: (portfolioHolding.assetType as number) || 0,
+                                uri: (portfolioHolding.uri as string) || '',
+                                definition: (portfolioHolding.definition as string) || holding.asset_name,
+                                configuration: (portfolioHolding.configuration as string) || '',
+                                validatorAddress: (portfolioHolding.validatorAddress as string) || '',
+                                token: (portfolioHolding.token as string) || '',
+                                salt: (portfolioHolding.salt as string) || '',
                                 isMinted: true,
                               } as unknown as MultichainDeedNFT) : undefined;
                               

@@ -145,19 +145,26 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     setIsLoading(true);
     setError(null);
 
-    // Initialize balances for all networks
-    const initialBalances: MultichainBalance[] = SUPPORTED_NETWORKS.map(network => ({
-      chainId: network.chainId,
-      chainName: network.name,
-      balance: '0.00',
-      balanceWei: 0n,
-      balanceUSD: 0,
-      currencySymbol: network.nativeCurrency.symbol,
-      currencyName: network.nativeCurrency.name,
-      isLoading: true,
-      error: null,
-    }));
-    setBalances(initialBalances);
+    // Don't reset balances to 0 during refresh - keep existing balances and mark as loading
+    // This prevents the balance from flashing to 0.00 during refresh
+    setBalances(prev => {
+      // If we have existing balances, update them to show loading state
+      if (prev.length > 0) {
+        return prev.map(b => ({ ...b, isLoading: true }));
+      }
+      // Only initialize to 0 if we don't have any balances yet (first load)
+      return SUPPORTED_NETWORKS.map(network => ({
+        chainId: network.chainId,
+        chainName: network.name,
+        balance: '0.00',
+        balanceWei: 0n,
+        balanceUSD: 0,
+        currencySymbol: network.nativeCurrency.symbol,
+        currencyName: network.nativeCurrency.name,
+        isLoading: true,
+        error: null,
+      }));
+    });
 
     try {
       const isMobile = isMobileDevice();

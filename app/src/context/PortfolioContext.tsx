@@ -56,6 +56,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     balances: multichainBalances,
     totalBalance,
     totalBalanceUSD,
+    isLoading: balancesLoadingFromHook,
     refresh: refreshBalancesHook,
   } = useMultichainBalances();
   
@@ -82,21 +83,37 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Track if this is the first load
   const isFirstLoadRef = useRef<boolean>(true);
   
-  // Update previous balance when totalBalanceUSD changes (but not on first load)
+  // Track if we're currently refreshing to prevent resetting to 0
+  const isRefreshingRef = useRef<boolean>(false);
+  
+  // Update previous balance when totalBalanceUSD changes (but not on first load or during refresh)
   useEffect(() => {
+    // If we're refreshing and the new value is 0, don't update - preserve the previous value
+    // This prevents the balance from resetting to 0.00 during refresh
+    if (isRefreshingRef.current && totalBalanceUSD === 0) {
+      return;
+    }
+    
     if (isFirstLoadRef.current) {
       // On first load, set both current and previous to the same value
       // Even if it's 0, we need to initialize it
       previousTotalBalanceUSDRef.current = totalBalanceUSD;
       setPreviousTotalBalanceUSD(totalBalanceUSD);
-      // Only mark as not first load once we have a non-zero value or after a delay
+      // Only mark as not first load once we have a non-zero value
       if (totalBalanceUSD > 0) {
         isFirstLoadRef.current = false;
       }
     } else {
       // On subsequent updates, preserve the old value for animation
-      setPreviousTotalBalanceUSD(previousTotalBalanceUSDRef.current);
-      previousTotalBalanceUSDRef.current = totalBalanceUSD;
+      // Only update if the new value is different from the current stored value
+      // This ensures animation triggers when balance changes
+      const currentStoredValue = previousTotalBalanceUSDRef.current;
+      if (totalBalanceUSD !== currentStoredValue) {
+        // Preserve the old value for animation
+        setPreviousTotalBalanceUSD(currentStoredValue);
+        // Update the ref to the new value
+        previousTotalBalanceUSDRef.current = totalBalanceUSD;
+      }
     }
   }, [totalBalanceUSD]);
   
@@ -173,15 +190,25 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   
   // Determine loading states
   const balancesLoading = useMemo(() => {
-    // Consider loading if we're connected but have no balances yet
-    return isConnected && multichainBalances.length === 0 && totalBalanceUSD === 0;
-  }, [isConnected, multichainBalances.length, totalBalanceUSD]);
+    // Use the loading state from the hook, or consider loading if we're connected but have no balances yet
+    return balancesLoadingFromHook || (isConnected && multichainBalances.length === 0 && totalBalanceUSD === 0);
+  }, [balancesLoadingFromHook, isConnected, multichainBalances.length, totalBalanceUSD]);
   
   const holdingsLoading = useMemo(() => {
     return isConnected && holdings.length === 0 && multichainNFTs.length === 0 && tokenBalances.length === 0;
   }, [isConnected, holdings.length, multichainNFTs.length, tokenBalances.length]);
   
   const isLoading = balancesLoading || holdingsLoading || activityLoading;
+  
+  // Track when refresh starts and ends (must be after loading states are defined)
+  useEffect(() => {
+    if (balancesLoading || holdingsLoading || activityLoading) {
+      isRefreshingRef.current = true;
+    } else {
+      // When refresh completes, mark as not refreshing
+      isRefreshingRef.current = false;
+    }
+  }, [balancesLoading, holdingsLoading, activityLoading]);
   
   // Refresh functions
   const refreshBalances = useCallback(async () => {
