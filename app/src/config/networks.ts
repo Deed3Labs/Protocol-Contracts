@@ -15,6 +15,13 @@ export interface NetworkConfig {
 }
 
 // Get Infura project ID from environment variable
+// ⚠️ SECURITY NOTE: VITE_ prefixed variables are exposed to the browser
+// Infura Project IDs are safe to expose, but you MUST:
+// 1. Enable domain/origin restrictions in Infura dashboard
+// 2. Enable rate limiting
+// 3. Enable method allowlists
+// 4. Never expose the Project Secret (only use Project ID)
+// See docs/security-rpc-providers.md for details
 const INFURA_PROJECT_ID = import.meta.env.VITE_INFURA_PROJECT_ID || '';
 
 export const SUPPORTED_NETWORKS: NetworkConfig[] = [

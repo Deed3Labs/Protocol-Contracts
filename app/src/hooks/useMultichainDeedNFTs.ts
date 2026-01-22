@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
-import { SUPPORTED_NETWORKS, getRpcUrlForNetwork, getContractAddressForNetwork, getAbiPathForNetwork } from '@/config/networks';
+import { SUPPORTED_NETWORKS, getContractAddressForNetwork, getAbiPathForNetwork } from '@/config/networks';
+import { getCachedProvider, executeRpcCall } from '@/utils/rpcOptimizer';
 import type { DeedNFT } from '@/context/DeedNFTContext';
 
 // Detect mobile device
@@ -46,30 +47,7 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Get provider for a specific chain
-  const getChainProvider = useCallback(async (chainId: number): Promise<ethers.Provider> => {
-    // Always use RPC provider for multichain queries
-    // The wallet provider is only for the connected chain, but we need to query all chains
-    const rpcUrl = getRpcUrlForNetwork(chainId);
-    if (!rpcUrl) {
-      throw new Error(`No RPC URL available for chain ${chainId}`);
-    }
-    
-    // On mobile, add a small delay
-    if (isMobileDevice()) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-    
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    if (isMobileDevice()) {
-      (provider as any).connection = {
-        ...(provider as any).connection,
-        timeout: 10000,
-      };
-    }
-    
-    return provider;
-  }, []);
+  // Note: Provider is now managed by rpcOptimizer for better efficiency
 
   // Fetch NFTs for a specific chain
   const fetchChainNFTs = useCallback(async (chainId: number): Promise<MultichainDeedNFT[]> => {
@@ -85,12 +63,19 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     }
 
     try {
-      const provider = await getChainProvider(chainId);
+      const provider = getCachedProvider(chainId);
       const abi = await getDeedNFTAbi(chainId);
       const contract = new ethers.Contract(contractAddress, abi, provider);
 
-      // Get total supply
-      const totalSupply = await contract.totalSupply().catch(() => 0n);
+      // Get total supply using optimized RPC call
+      const totalSupplyResult = await executeRpcCall(
+        chainId,
+        'eth_call',
+        [{ to: contractAddress, data: '0x18160ddd' }, 'latest'], // totalSupply() selector
+        { useCache: true, cacheTTL: 30000 } // Cache for 30 seconds
+      ).catch(() => '0x0');
+      
+      const totalSupply = BigInt(totalSupplyResult || '0x0');
       if (totalSupply === 0n) return [];
 
       // Get all token IDs owned by the user
@@ -161,7 +146,7 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
       // Silent error - return empty array
       return [];
     }
-  }, [address, getChainProvider]);
+  }, [address]);
 
   // Refresh a specific chain
   const refreshChain = useCallback(async (chainId: number) => {

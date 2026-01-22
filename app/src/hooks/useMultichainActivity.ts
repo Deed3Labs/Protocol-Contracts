@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { formatDistanceToNow } from 'date-fns';
-import { SUPPORTED_NETWORKS, getRpcUrlForNetwork, getNetworkByChainId, getNetworkInfo } from '@/config/networks';
+import { SUPPORTED_NETWORKS, getNetworkByChainId, getNetworkInfo } from '@/config/networks';
+import { getCachedProvider } from '@/utils/rpcOptimizer';
 import type { WalletTransaction } from './useWalletActivity';
 
 // Detect mobile device
@@ -33,30 +34,7 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Get provider for a specific chain
-  const getChainProvider = useCallback(async (chainId: number): Promise<ethers.Provider> => {
-    // Always use RPC provider for multichain queries
-    // The wallet provider is only for the connected chain, but we need to query all chains
-    const rpcUrl = getRpcUrlForNetwork(chainId);
-    if (!rpcUrl) {
-      throw new Error(`No RPC URL available for chain ${chainId}`);
-    }
-    
-    // On mobile, add a small delay
-    if (isMobileDevice()) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-    
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    if (isMobileDevice()) {
-      (provider as any).connection = {
-        ...(provider as any).connection,
-        timeout: 10000,
-      };
-    }
-    
-    return provider;
-  }, []);
+  // Note: Provider is now managed by rpcOptimizer for better efficiency
 
   // Fetch transactions for a specific chain
   const fetchChainTransactions = useCallback(async (chainId: number): Promise<MultichainTransaction[]> => {
@@ -67,7 +45,7 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
     const currencySymbol = networkConfig?.nativeCurrency.symbol || networkInfo?.nativeCurrency.symbol || 'ETH';
 
     try {
-      const provider = await getChainProvider(chainId);
+      const provider = getCachedProvider(chainId);
       const blockNumber = await provider.getBlockNumber();
       const parsedTransactions: MultichainTransaction[] = [];
 
@@ -145,7 +123,7 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
       // Silent error - return empty array
       return [];
     }
-  }, [address, getChainProvider, limit]);
+  }, [address, limit]);
 
   // Refresh a specific chain
   const refreshChain = useCallback(async (chainId: number) => {

@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
-import { SUPPORTED_NETWORKS, getRpcUrlForNetwork } from '@/config/networks';
+import { SUPPORTED_NETWORKS } from '@/config/networks';
 import { getUniswapPrice } from './usePricingData';
+import { getCachedProvider, executeBatchRpcCalls } from '@/utils/rpcOptimizer';
 
 // Detect mobile device
 const isMobileDevice = (): boolean => {
@@ -69,30 +70,7 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Get provider for a specific chain
-  const getChainProvider = useCallback(async (chainId: number): Promise<ethers.Provider> => {
-    // Always use RPC provider for multichain queries
-    // The wallet provider is only for the connected chain, but we need to query all chains
-    const rpcUrl = getRpcUrlForNetwork(chainId);
-    if (!rpcUrl) {
-      throw new Error(`No RPC URL available for chain ${chainId}`);
-    }
-    
-    // On mobile, add a small delay
-    if (isMobileDevice()) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-    
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    if (isMobileDevice()) {
-      (provider as any).connection = {
-        ...(provider as any).connection,
-        timeout: 10000,
-      };
-    }
-    
-    return provider;
-  }, []);
+  // Note: Provider is now managed by rpcOptimizer for better efficiency
 
   // Get token price
   const getTokenPrice = useCallback(async (symbol: string, address: string, provider: ethers.Provider, chainId: number): Promise<number> => {
@@ -119,52 +97,82 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
     if (tokenList.length === 0) return [];
 
     try {
-      const provider = await getChainProvider(chainId);
+      const provider = getCachedProvider(chainId);
       const tokenBalances: MultichainTokenBalance[] = [];
 
-      // Fetch balances for each token in parallel
-      const balancePromises = tokenList.map(async (tokenInfo) => {
+      // Batch fetch balances for all tokens at once (much more efficient)
+      const balanceOfInterface = new ethers.Interface(['function balanceOf(address) view returns (uint256)']);
+      const balanceOfData = balanceOfInterface.encodeFunctionData('balanceOf', [address]);
+      
+      // Prepare batch calls for balances
+      const balanceCalls = tokenList.map((tokenInfo, index) => ({
+        method: 'eth_call',
+        params: [{
+          to: tokenInfo.address,
+          data: balanceOfData
+        }, 'latest'],
+        id: index
+      }));
+      
+      // Execute batch call
+      const balanceResults = await executeBatchRpcCalls(chainId, balanceCalls, { useCache: true });
+      
+      // Process results - use contracts for metadata (simpler than batch decoding)
+      const tokenPromises = tokenList.map(async (tokenInfo, index) => {
         try {
+          const balanceHex = balanceResults[index];
+          if (!balanceHex || balanceHex === '0x' || balanceHex === '0x0') {
+            return null;
+          }
+          
+          const balance = BigInt(balanceHex);
+          if (balance === 0n) return null;
+          
+          // Use contract for metadata (cached provider, so still efficient)
           const contract = new ethers.Contract(tokenInfo.address, ERC20_ABI, provider);
           
-          const [balance, symbol, name, decimals] = await Promise.all([
-            contract.balanceOf(address),
+          const [symbol, name, decimals] = await Promise.all([
             contract.symbol().catch(() => tokenInfo.symbol),
             contract.name().catch(() => tokenInfo.name),
             contract.decimals().catch(() => tokenInfo.decimals),
           ]);
+          
+          const formattedBalance = ethers.formatUnits(balance, decimals);
+          const balanceNum = parseFloat(formattedBalance);
+          const tokenPrice = await getTokenPrice(symbol, tokenInfo.address, provider, chainId);
+          const balanceUSD = balanceNum * tokenPrice;
 
-          if (balance > 0n) {
-            const formattedBalance = ethers.formatUnits(balance, decimals);
-            const balanceNum = parseFloat(formattedBalance);
-            const tokenPrice = await getTokenPrice(symbol, tokenInfo.address, provider, chainId);
-            const balanceUSD = balanceNum * tokenPrice;
-
-            tokenBalances.push({
-              address: tokenInfo.address,
-              symbol,
-              name,
-              decimals,
-              balance: formattedBalance,
-              balanceRaw: balance,
-              balanceUSD,
-              chainId,
-              chainName: networkConfig.name,
-              logoUrl: tokenInfo.logoUrl,
-            });
-          }
+          return {
+            address: tokenInfo.address,
+            symbol,
+            name,
+            decimals,
+            balance: formattedBalance,
+            balanceRaw: balance,
+            balanceUSD,
+            chainId,
+            chainName: networkConfig.name,
+            logoUrl: tokenInfo.logoUrl,
+          } as MultichainTokenBalance;
         } catch (err) {
           // Silent error - skip this token
+          return null;
+        }
+      });
+      
+      const results = await Promise.all(tokenPromises);
+      results.forEach(result => {
+        if (result !== null) {
+          tokenBalances.push(result);
         }
       });
 
-      await Promise.all(balancePromises);
       return tokenBalances.sort((a, b) => b.balanceUSD - a.balanceUSD);
     } catch (err) {
       // Silent error - return empty array
       return [];
     }
-  }, [address, getChainProvider, getTokenPrice]);
+  }, [address, getTokenPrice]);
 
   // Refresh a specific chain
   const refreshChain = useCallback(async (chainId: number) => {

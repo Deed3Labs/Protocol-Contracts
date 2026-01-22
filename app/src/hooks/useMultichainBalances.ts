@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
-import { SUPPORTED_NETWORKS, getRpcUrlForNetwork, getNetworkByChainId } from '@/config/networks';
+import { SUPPORTED_NETWORKS, getNetworkByChainId } from '@/config/networks';
 import { usePricingData } from './usePricingData';
+import { getBalanceOptimized } from '@/utils/rpcOptimizer';
 
 // Detect mobile device
 const isMobileDevice = (): boolean => {
@@ -44,36 +45,10 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
   // Get ETH price for USD conversion (using mainnet price as reference)
   const { price: ethPrice } = usePricingData();
 
-  // Get provider for a specific chain
-  const getChainProvider = useCallback(async (chainId: number, retryCount = 0): Promise<ethers.Provider> => {
-    // Always use RPC provider for multichain queries
-    // The wallet provider is only for the connected chain, but we need to query all chains
-    const rpcUrl = getRpcUrlForNetwork(chainId);
-    if (!rpcUrl) {
-      throw new Error(`No RPC URL available for chain ${chainId}`);
-    }
-    
-    // On mobile, add a small delay to avoid overwhelming the provider
-    if (isMobileDevice() && retryCount === 0) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-    
-    // Create RPC provider with timeout for mobile
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    
-    // On mobile, set a longer timeout
-    if (isMobileDevice()) {
-      (provider as any).connection = {
-        ...(provider as any).connection,
-        timeout: 10000, // 10 second timeout
-      };
-    }
-    
-    return provider;
-  }, []);
+  // Note: Provider is now managed by rpcOptimizer for better efficiency
 
-  // Fetch balance for a specific chain with retry logic
-  const fetchChainBalance = useCallback(async (chainId: number, retryCount = 0): Promise<MultichainBalance> => {
+  // Fetch balance for a specific chain (retry logic handled by rpcOptimizer)
+  const fetchChainBalance = useCallback(async (chainId: number): Promise<MultichainBalance> => {
     if (!address) {
       throw new Error('No address available');
     }
@@ -83,18 +58,9 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
       throw new Error(`Network ${chainId} not supported`);
     }
 
-    const maxRetries = isMobileDevice() ? 2 : 1;
-    
     try {
-      const provider = await getChainProvider(chainId, retryCount);
-      
-      // Add timeout for balance fetch on mobile
-      const balancePromise = provider.getBalance(address);
-      const timeoutPromise = new Promise<bigint>((_, reject) => 
-        setTimeout(() => reject(new Error('Balance fetch timeout')), isMobileDevice() ? 10000 : 5000)
-      );
-      
-      const balanceWei = await Promise.race([balancePromise, timeoutPromise]);
+      // Use optimized RPC call with caching and rate limiting
+      const balanceWei = await getBalanceOptimized(chainId, address, true);
       const balance = parseFloat(ethers.formatEther(balanceWei)).toFixed(4);
       const balanceUSD = parseFloat(balance) * (ethPrice || 0);
 
@@ -110,12 +76,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
         error: null,
       };
     } catch (err) {
-      // Retry logic for mobile
-      if (retryCount < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
-        return fetchChainBalance(chainId, retryCount + 1);
-      }
-      
+      // Error handling is done in rpcOptimizer with retry logic
       // Silent error handling - return zero balance without logging
       return {
         chainId,
@@ -129,7 +90,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
         error: err instanceof Error ? err.message : 'Failed to fetch balance',
       };
     }
-  }, [address, getChainProvider, ethPrice]);
+  }, [address, ethPrice]);
 
   // Refresh a specific chain
   const refreshChain = useCallback(async (chainId: number) => {
