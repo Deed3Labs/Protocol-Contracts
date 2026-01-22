@@ -85,73 +85,73 @@ async function getPoolPrice(
     const Q96 = 2n ** 96n;
     
     // Calculate price = (sqrtPriceX96 / 2^96)^2 = token1/token0
-    // To avoid overflow, we'll calculate this step by step
     // price = (sqrtPriceX96^2) / (2^192)
     
-    // First, calculate numerator and denominator
-    const numerator = sqrtPrice * sqrtPrice;
-    const denominator = Q96 * Q96;
+    // Use a more precise calculation method
+    // We'll work with scaled integers to maintain precision
+    const PRECISION_SCALE = 10n ** 18n; // 18 decimal places for precision
     
-    // To get a human-readable ratio, we need to:
-    // 1. Account for the Q64.96 format (divide by 2^192)
-    // 2. Account for token decimals
+    // Calculate: (sqrtPrice^2 * PRECISION_SCALE) / (Q96^2)
+    // This gives us price scaled by PRECISION_SCALE
+    const sqrtPriceSquared = sqrtPrice * sqrtPrice;
+    const q96Squared = Q96 * Q96;
     
-    // Use a large scale for intermediate calculation to maintain precision
-    const INTERMEDIATE_SCALE = 10n ** 36n; // Very large scale for precision
+    // Scale up numerator before division to maintain precision
+    const scaledPrice = (sqrtPriceSquared * PRECISION_SCALE) / q96Squared;
     
-    // Calculate: (numerator * INTERMEDIATE_SCALE) / denominator
-    // This gives us the ratio scaled by INTERMEDIATE_SCALE
-    const scaledRatio = (numerator * INTERMEDIATE_SCALE) / denominator;
-    
-    // Now adjust for token decimals
-    // Following the logic from AssuranceOracle.sol:
-    // The price from sqrtPriceX96 is in Q64.96 format (token1_raw / token0_raw)
+    // Adjust for token decimals
+    // The price from sqrtPriceX96 is in terms of raw token amounts (token1_raw / token0_raw)
     // We need to adjust for decimals to get human-readable price
-    // Solidity logic: if decimals0 > decimals1: divide by 10^(decimals0 - decimals1)
-    //                 if decimals1 > decimals0: multiply by 10^(decimals1 - decimals0)
-    
-    let adjustedRatio = scaledRatio;
+    let adjustedPrice = scaledPrice;
     
     if (decimals0 > decimals1) {
-      // decimals0 > decimals1: divide by 10^(decimals0 - decimals1)
+      // token0 has more decimals, so we need to divide
+      // Example: USDC (6) / WETH (18) -> divide by 10^12
       const decimalDiff = decimals0 - decimals1;
       const decimalFactor = 10n ** BigInt(decimalDiff);
-      adjustedRatio = adjustedRatio / decimalFactor;
+      adjustedPrice = adjustedPrice / decimalFactor;
     } else if (decimals1 > decimals0) {
-      // decimals1 > decimals0: multiply by 10^(decimals1 - decimals0)
+      // token1 has more decimals, so we need to multiply
+      // Example: WETH (18) / USDC (6) -> multiply by 10^12
       const decimalDiff = decimals1 - decimals0;
       const decimalFactor = 10n ** BigInt(decimalDiff);
-      adjustedRatio = adjustedRatio * decimalFactor;
+      adjustedPrice = adjustedPrice * decimalFactor;
     }
-    // If decimals0 === decimals1, no adjustment needed
+    // If decimals are equal, no adjustment needed
     
     // Convert to JavaScript number
-    // adjustedRatio is scaled by INTERMEDIATE_SCALE, so divide by it
-    // Check if adjustedRatio is valid before conversion
-    if (adjustedRatio === 0n) {
+    // adjustedPrice is scaled by PRECISION_SCALE, so divide by it
+    if (adjustedPrice === 0n) {
       return 0;
     }
     
-    let price = Number(adjustedRatio) / Number(INTERMEDIATE_SCALE);
+    // Convert BigInt to number safely
+    // For very large numbers, we'll scale down first
+    let price: number;
+    if (adjustedPrice > Number.MAX_SAFE_INTEGER) {
+      // Scale down to safe integer range
+      const scaleDown = 10n ** 12n; // Scale down by 10^12
+      const scaled = adjustedPrice / scaleDown;
+      price = Number(scaled) / (Number(PRECISION_SCALE) / Number(scaleDown));
+    } else {
+      price = Number(adjustedPrice) / Number(PRECISION_SCALE);
+    }
     
     // Safety check - prices should be reasonable (between 1e-10 and 1e10 for most tokens)
     if (!isFinite(price) || price <= 0 || price > 1e10 || price < 1e-10) {
-      // Only log if price is clearly invalid (not just very small)
-      if (!isFinite(price) || price <= 0 || price > 1e10) {
-        console.error('Price calculation error: invalid price', price, {
-          sqrtPriceX96: sqrtPriceX96.toString(),
-          decimals0,
-          decimals1,
-          decimalDiff: decimals0 - decimals1,
-          adjustedRatio: adjustedRatio.toString()
-        });
-      }
+      // Silent error - don't log to avoid noise
+      // The fallback to CoinGecko will handle it
       return 0;
     }
     
     return price;
-  } catch (error) {
-    console.error('Error getting pool price:', error);
+  } catch (error: any) {
+    // Silent error handling - don't log RPC rate limit errors or other expected failures
+    // The fallback to CoinGecko will handle it
+    // Only log unexpected errors in development
+    if (import.meta.env.DEV && error?.code !== 'CALL_EXCEPTION' && !error?.info?.error?.message?.includes('rate limit')) {
+      console.warn('Error getting pool price:', error);
+    }
     return 0;
   }
 }
