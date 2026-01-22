@@ -190,7 +190,7 @@ export async function getCoinGeckoPrice(
       );
 
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json() as { ethereum?: { usd?: number } };
         return data.ethereum?.usd || null;
       }
     }
@@ -203,7 +203,7 @@ export async function getCoinGeckoPrice(
     const response = await fetch(url, { method: 'GET' });
 
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json() as Record<string, { usd?: number }>;
       const tokenData = data[tokenAddress.toLowerCase()];
       return tokenData?.usd || null;
     }
