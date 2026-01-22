@@ -102,41 +102,48 @@ async function getPoolPrice(
     const scaledRatio = (numerator * INTERMEDIATE_SCALE) / denominator;
     
     // Now adjust for token decimals
-    // The ratio from Uniswap is in raw units: token1_raw / token0_raw
-    // We need: (token1_raw / 10^decimals1) / (token0_raw / 10^decimals0)
-    // = (token1_raw / token0_raw) * (10^decimals0 / 10^decimals1)
+    // Following the logic from AssuranceOracle.sol:
+    // The price from sqrtPriceX96 is in Q64.96 format (token1_raw / token0_raw)
+    // We need to adjust for decimals to get human-readable price
+    // Solidity logic: if decimals0 > decimals1: divide by 10^(decimals0 - decimals1)
+    //                 if decimals1 > decimals0: multiply by 10^(decimals1 - decimals0)
     
-    // Calculate decimal adjustment factor
-    // We need to multiply by 10^(decimals0 - decimals1)
-    const decimalDiff = decimals0 - decimals1;
+    let adjustedRatio = scaledRatio;
     
-    // Calculate price with decimal adjustment
-    // To maintain precision, we'll do the calculation in steps
-    let price: number;
-    
-    if (decimalDiff === 0) {
-      // No decimal adjustment needed
-      price = Number(scaledRatio) / Number(INTERMEDIATE_SCALE);
-    } else if (decimalDiff > 0) {
-      // decimals0 > decimals1: multiply by 10^decimalDiff
+    if (decimals0 > decimals1) {
+      // decimals0 > decimals1: divide by 10^(decimals0 - decimals1)
+      const decimalDiff = decimals0 - decimals1;
       const decimalFactor = 10n ** BigInt(decimalDiff);
-      const adjustedRatio = scaledRatio * decimalFactor;
-      price = Number(adjustedRatio) / Number(INTERMEDIATE_SCALE);
-    } else {
-      // decimals1 > decimals0: divide by 10^|decimalDiff|
-      // To avoid precision loss with BigInt division, we'll do the division after converting to number
-      const decimalFactor = 10 ** (-decimalDiff); // Use regular number for division
-      const basePrice = Number(scaledRatio) / Number(INTERMEDIATE_SCALE);
-      price = basePrice / decimalFactor;
+      adjustedRatio = adjustedRatio / decimalFactor;
+    } else if (decimals1 > decimals0) {
+      // decimals1 > decimals0: multiply by 10^(decimals1 - decimals0)
+      const decimalDiff = decimals1 - decimals0;
+      const decimalFactor = 10n ** BigInt(decimalDiff);
+      adjustedRatio = adjustedRatio * decimalFactor;
     }
+    // If decimals0 === decimals1, no adjustment needed
+    
+    // Convert to JavaScript number
+    // adjustedRatio is scaled by INTERMEDIATE_SCALE, so divide by it
+    // Check if adjustedRatio is valid before conversion
+    if (adjustedRatio === 0n) {
+      return 0;
+    }
+    
+    let price = Number(adjustedRatio) / Number(INTERMEDIATE_SCALE);
     
     // Safety check - prices should be reasonable (between 1e-10 and 1e10 for most tokens)
     if (!isFinite(price) || price <= 0 || price > 1e10 || price < 1e-10) {
-      console.error('Price calculation error: invalid price', price, {
-        sqrtPriceX96: sqrtPriceX96.toString(),
-        decimals0,
-        decimals1
-      });
+      // Only log if price is clearly invalid (not just very small)
+      if (!isFinite(price) || price <= 0 || price > 1e10) {
+        console.error('Price calculation error: invalid price', price, {
+          sqrtPriceX96: sqrtPriceX96.toString(),
+          decimals0,
+          decimals1,
+          decimalDiff: decimals0 - decimals1,
+          adjustedRatio: adjustedRatio.toString()
+        });
+      }
       return 0;
     }
     
