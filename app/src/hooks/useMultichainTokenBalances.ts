@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS } from '@/config/networks';
-import { getUniswapPrice } from './usePricingData';
+import { getUniswapPrice, getCoinGeckoPrice } from './usePricingData';
 import { getCachedProvider, executeBatchRpcCalls } from '@/utils/rpcOptimizer';
 
 // Detect mobile device
@@ -72,13 +72,23 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
 
   // Note: Provider is now managed by rpcOptimizer for better efficiency
 
-  // Get token price
+  // Get token price with fallback to CoinGecko
   const getTokenPrice = useCallback(async (symbol: string, address: string, provider: ethers.Provider, chainId: number): Promise<number> => {
+    // Stablecoins are always $1
     if (['USDC', 'USDT', 'DAI'].includes(symbol)) return 1.0;
     
+    // Try Uniswap first (primary source)
     try {
       const price = await getUniswapPrice(provider, address, chainId);
-      if (price && price > 0) return price;
+      if (price && price > 0 && isFinite(price)) return price;
+    } catch (error) {
+      // Continue to fallback
+    }
+    
+    // Fallback to CoinGecko if Uniswap fails
+    try {
+      const price = await getCoinGeckoPrice(address, chainId);
+      if (price && price > 0 && isFinite(price)) return price;
     } catch (error) {
       // Silent fallback - price will default to 0
     }

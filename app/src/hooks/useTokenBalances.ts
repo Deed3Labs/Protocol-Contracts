@@ -3,7 +3,7 @@ import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { getRpcUrlForNetwork } from '@/config/networks';
 import { getEthereumProvider } from '@/utils/providerUtils';
-import { usePricingData, getUniswapPrice, getExplorerPrice } from './usePricingData';
+import { usePricingData, getUniswapPrice, getCoinGeckoPrice } from './usePricingData';
 
 export interface TokenBalance {
   address: string;
@@ -78,16 +78,20 @@ export function useTokenBalances(): UseTokenBalancesReturn {
     // WETH uses ETH price
     if (symbol === 'WETH') return ethPrice;
     
-    // For other tokens, fetch from Uniswap
+    // For other tokens, fetch from Uniswap first, then fallback to CoinGecko
     try {
       const price = await getUniswapPrice(provider, address, chainId);
-      if (price && price > 0) return price;
-      
-      // Fallback to explorer if Uniswap fails
-      const explorerPrice = await getExplorerPrice(address, chainId);
-      if (explorerPrice && explorerPrice > 0) return explorerPrice;
+      if (price && price > 0 && isFinite(price)) return price;
     } catch (error) {
-      console.error(`Error fetching price for ${symbol}:`, error);
+      // Continue to fallback
+    }
+    
+    // Fallback to CoinGecko if Uniswap fails
+    try {
+      const price = await getCoinGeckoPrice(address, chainId);
+      if (price && price > 0 && isFinite(price)) return price;
+    } catch (error) {
+      // Silent fallback
     }
     
     return 0; // Default to 0 if price can't be determined

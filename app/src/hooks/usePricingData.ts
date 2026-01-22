@@ -291,8 +291,9 @@ export async function getUniswapPrice(
 
 /**
  * Get price from CoinGecko API (fallback)
+ * Exported for use in other hooks
  */
-async function getCoinGeckoPrice(
+export async function getCoinGeckoPrice(
   tokenAddress: string,
   chainId: number
 ): Promise<number | null> {
@@ -440,13 +441,10 @@ export function usePricingData(tokenAddress?: string): PricingData {
     }
   }, [chainId, targetTokenAddress]);
 
+  // Initial price fetch only - no auto-refresh
+  // Price updates are now controlled by PortfolioContext (once per hour)
   useEffect(() => {
     fetchPrice();
-
-    // Refresh price every 60 seconds
-    const interval = setInterval(fetchPrice, 60000);
-
-    return () => clearInterval(interval);
   }, [fetchPrice]);
 
   return {
