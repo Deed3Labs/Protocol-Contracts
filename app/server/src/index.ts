@@ -19,15 +19,27 @@ const PORT: number = parseInt(process.env.PORT || '3001', 10);
 // Middleware
 app.use(compression());
 
-// CORS configuration - handle Vercel preview URLs
+// CORS configuration - handle Vercel preview URLs and production
+// IMPORTANT: CORS must be set up BEFORE routes
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      return callback(null, true);
+    }
     
     const allowedOrigins = process.env.CORS_ORIGIN 
       ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-      : ['*'];
+      : [];
+    
+    // Always allow Vercel preview URLs (pattern: *.vercel.app)
+    const isVercelPreview = origin.endsWith('.vercel.app');
+    
+    // If no CORS_ORIGIN is set, allow all origins (development mode)
+    if (allowedOrigins.length === 0) {
+      console.log(`[CORS] Allowing origin (no CORS_ORIGIN set): ${origin}`);
+      return callback(null, true);
+    }
     
     // If '*' is specified, allow all origins
     if (allowedOrigins.includes('*')) {
@@ -35,8 +47,6 @@ const corsOptions = {
     }
     
     // Check if origin matches any allowed origin
-    // Also allow Vercel preview URLs (pattern: *.vercel.app)
-    const isVercelPreview = origin.endsWith('.vercel.app');
     const isAllowed = allowedOrigins.some(allowed => {
       if (allowed.includes('*')) {
         // Handle wildcard patterns like https://*.vercel.app
@@ -46,13 +56,25 @@ const corsOptions = {
       return origin === allowed;
     });
     
+    // Allow if explicitly allowed OR if it's a Vercel preview URL
     if (isAllowed || isVercelPreview) {
+      if (isVercelPreview) {
+        console.log(`[CORS] Allowing Vercel preview URL: ${origin}`);
+      }
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      // Log the blocked origin for debugging
+      console.warn(`[CORS] Blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
+      callback(new Error(`Not allowed by CORS: ${origin}`));
     }
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
