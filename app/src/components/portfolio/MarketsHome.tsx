@@ -61,7 +61,6 @@ export default function MarketsHome() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Mock values
-  const totalValue = 13.76;
   const buyingPower = 8513.76; // Cash available for trading
 
   useEffect(() => {
@@ -91,7 +90,6 @@ export default function MarketsHome() {
       <WithdrawModal
         isOpen={withdrawModalOpen}
         onClose={() => setWithdrawModalOpen(false)}
-        withdrawableBalance={totalValue}
       />
       <ActionModal
         isOpen={actionModalOpen}

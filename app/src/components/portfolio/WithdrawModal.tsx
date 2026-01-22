@@ -1,14 +1,19 @@
 import { useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Building2, Wallet, CreditCard, ArrowUpRight, ChevronRight } from 'lucide-react';
+import { usePortfolio } from '@/context/PortfolioContext';
+import { calculateCashBalance } from '@/utils/tokenUtils';
 
 interface WithdrawModalProps {
   isOpen: boolean;
   onClose: () => void;
-  withdrawableBalance?: number;
 }
 
-const WithdrawModal = ({ isOpen, onClose, withdrawableBalance = 0 }: WithdrawModalProps) => {
+const WithdrawModal = ({ isOpen, onClose }: WithdrawModalProps) => {
+  const { holdings } = usePortfolio();
+  
+  // Calculate cash balance (stablecoins only)
+  const { totalCash } = calculateCashBalance(holdings);
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -102,7 +107,7 @@ const WithdrawModal = ({ isOpen, onClose, withdrawableBalance = 0 }: WithdrawMod
               <div className="mb-2 px-4 py-3 rounded-sm bg-zinc-50 dark:bg-zinc-900/30 border border-zinc-100 dark:border-zinc-800/50 flex justify-between items-center">
                 <span className="text-sm text-zinc-500 dark:text-zinc-400">Withdrawable cash</span>
                 <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100 flex items-center gap-1">
-                  ${withdrawableBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ${totalCash.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   <span className="text-xs text-zinc-500 font-normal">USD</span>
                 </span>
               </div>

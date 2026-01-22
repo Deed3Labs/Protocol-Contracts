@@ -63,7 +63,6 @@ export default function BorrowHome() {
   const [isScrolledPast, setIsScrolledPast] = useState(false);
 
   // Mock values
-  const totalValue = 13.76;
   const borrowingPower = 8500.00;
   const usedPower = 1250.00;
   const totalLimit = 15000.00;
@@ -96,7 +95,6 @@ export default function BorrowHome() {
       <WithdrawModal
         isOpen={withdrawModalOpen}
         onClose={() => setWithdrawModalOpen(false)}
-        withdrawableBalance={totalValue}
       />
       <ActionModal
         isOpen={actionModalOpen}

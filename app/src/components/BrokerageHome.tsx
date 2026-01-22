@@ -433,7 +433,6 @@ export default function BrokerageHome() {
       <WithdrawModal
         isOpen={withdrawModalOpen}
         onClose={() => setWithdrawModalOpen(false)}
-        withdrawableBalance={isConnected ? parseFloat(totalBalance) : 0}
       />
 
       {/* Action Modal */}
