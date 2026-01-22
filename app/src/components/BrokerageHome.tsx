@@ -92,6 +92,9 @@ const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: MultichainD
       <div className="flex items-center gap-3 shrink-0">
         <div className="text-right">
           <p className="text-black dark:text-white font-medium text-sm">
+            ${(holding.valueUSD || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-zinc-500 text-xs">
             {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
           </p>
         </div>
@@ -231,6 +234,7 @@ export default function BrokerageHome() {
   const [selectedRange, setSelectedRange] = useState('1D');
   const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'NFTs' | 'Tokens'>('All');
   const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
+  const [showZeroValueAssets, setShowZeroValueAssets] = useState(true); // Show assets with $0 value by default
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
@@ -258,13 +262,29 @@ export default function BrokerageHome() {
     });
   }, [portfolioHoldings]);
 
-  // Filter holdings based on selected filter
+  // Filter holdings based on selected filter and zero value toggle
   const filteredHoldings = useMemo(() => {
-    if (portfolioFilter === 'All') return allHoldings;
-    if (portfolioFilter === 'NFTs') return allHoldings.filter(h => h.type === 'nft');
-    if (portfolioFilter === 'Tokens') return allHoldings.filter(h => h.type === 'token');
-    return allHoldings;
-  }, [allHoldings, portfolioFilter]);
+    let holdings = allHoldings;
+    
+    // Apply type filter
+    if (portfolioFilter === 'NFTs') {
+      holdings = holdings.filter(h => h.type === 'nft');
+    } else if (portfolioFilter === 'Tokens') {
+      holdings = holdings.filter(h => h.type === 'token');
+    }
+    
+    // Filter by value: Always show NFTs, optionally filter tokens with 0 value
+    if (!showZeroValueAssets) {
+      holdings = holdings.filter(h => {
+        // Always show NFTs regardless of value
+        if (h.type === 'nft') return true;
+        // For tokens, only show if value > 0
+        return (h.valueUSD || 0) > 0;
+      });
+    }
+    
+    return holdings;
+  }, [allHoldings, portfolioFilter, showZeroValueAssets]);
 
   // Limit displayed holdings when not expanded
   const displayedHoldings = useMemo(() => {
@@ -554,21 +574,49 @@ export default function BrokerageHome() {
                     </button>
                   </div>
                   
-                  {/* Filter Pills */}
-                  <div className="flex gap-2 mb-2 px-4">
-                    {(['All', 'NFTs', 'Tokens'] as const).map((filter) => (
+                  {/* Filter Pills and Zero Value Toggle */}
+                  <div className="px-4 mb-2 space-y-2">
+                    <div className="flex gap-2">
+                      {(['All', 'NFTs', 'Tokens'] as const).map((filter) => (
+                        <button
+                          key={filter}
+                          onClick={() => setPortfolioFilter(filter)}
+                          className={`px-3 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
+                            portfolioFilter === filter
+                              ? 'bg-zinc-900 dark:bg-zinc-800 text-white'
+                              : 'bg-transparent text-zinc-500 dark:text-zinc-500 border border-zinc-300 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'
+                          }`}
+                        >
+                          {filter}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* Zero Value Assets Toggle */}
+                    <div className="flex items-center gap-2">
                       <button
-                        key={filter}
-                        onClick={() => setPortfolioFilter(filter)}
-                        className={`px-3 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
-                          portfolioFilter === filter
-                            ? 'bg-zinc-900 dark:bg-zinc-800 text-white'
-                            : 'bg-transparent text-zinc-500 dark:text-zinc-500 border border-zinc-300 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'
+                        onClick={() => setShowZeroValueAssets(!showZeroValueAssets)}
+                        className={`flex items-center gap-2 px-2 py-1 rounded text-xs transition-all ${
+                          showZeroValueAssets
+                            ? 'text-zinc-700 dark:text-zinc-300'
+                            : 'text-zinc-500 dark:text-zinc-500'
                         }`}
+                        title={showZeroValueAssets ? 'Hide assets with $0 value' : 'Show assets with $0 value'}
                       >
-                        {filter}
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
+                          showZeroValueAssets
+                            ? 'border-zinc-700 dark:border-zinc-300 bg-zinc-700 dark:bg-zinc-300'
+                            : 'border-zinc-400 dark:border-zinc-600'
+                        }`}>
+                          {showZeroValueAssets && (
+                            <svg className="w-3 h-3 text-white dark:text-zinc-900" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="text-xs">Show $0 assets</span>
                       </button>
-                    ))}
+                    </div>
                   </div>
                   
                   {/* Holdings Section */}
