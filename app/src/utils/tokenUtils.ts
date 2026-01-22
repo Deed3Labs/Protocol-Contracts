@@ -10,6 +10,8 @@ const STABLECOIN_SYMBOLS = [
   'USDC', // Priority stablecoin
   'USDT',
   'DAI',
+  'XDAI', // Gnosis native token (pegged to USD)
+  'WXDAI', // Wrapped xDAI
   'BUSD',
   'TUSD',
   'USDP',

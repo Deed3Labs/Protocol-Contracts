@@ -82,6 +82,87 @@ export const COMMON_TOKENS: Record<number, TokenConfig[]> = {
       decimals: 18 
     },
   ],
+  // Arbitrum One
+  42161: [
+    { 
+      address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 
+      symbol: 'USDC', 
+      name: 'USD Coin', 
+      decimals: 6 
+    },
+    { 
+      address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', 
+      symbol: 'USDT', 
+      name: 'Tether USD', 
+      decimals: 6 
+    },
+    { 
+      address: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', 
+      symbol: 'DAI', 
+      name: 'Dai Stablecoin', 
+      decimals: 18 
+    },
+    { 
+      address: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', 
+      symbol: 'WETH', 
+      name: 'Wrapped Ether', 
+      decimals: 18 
+    },
+  ],
+  // Polygon
+  137: [
+    { 
+      address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', 
+      symbol: 'USDC', 
+      name: 'USD Coin', 
+      decimals: 6 
+    },
+    { 
+      address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', 
+      symbol: 'USDT', 
+      name: 'Tether USD', 
+      decimals: 6 
+    },
+    { 
+      address: '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063', 
+      symbol: 'DAI', 
+      name: 'Dai Stablecoin', 
+      decimals: 18 
+    },
+    { 
+      address: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', 
+      symbol: 'WETH', 
+      name: 'Wrapped Ether', 
+      decimals: 18 
+    },
+    { 
+      address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', 
+      symbol: 'WMATIC', 
+      name: 'Wrapped MATIC', 
+      decimals: 18 
+    },
+  ],
+  // Gnosis
+  100: [
+    { 
+      address: '0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83', 
+      symbol: 'USDC', 
+      name: 'USD Coin', 
+      decimals: 6 
+    },
+    { 
+      address: '0x4ECaBa5870353805a9F068101A40E0f32ed605C6', 
+      symbol: 'USDT', 
+      name: 'Tether USD', 
+      decimals: 6 
+    },
+    { 
+      address: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8', 
+      symbol: 'WXDAI', 
+      name: 'Wrapped xDAI', 
+      decimals: 18 
+    },
+  ],
 };
 
 /**
@@ -93,11 +174,3 @@ export const getCommonTokens = (chainId: number): TokenConfig[] => {
   return COMMON_TOKENS[chainId] || [];
 };
 
-/**
- * Check if a token is a stablecoin
- * @param symbol - Token symbol
- * @returns true if the token is a stablecoin
- */
-export const isStablecoin = (symbol: string): boolean => {
-  return ['USDC', 'USDT', 'DAI'].includes(symbol);
-};

@@ -64,8 +64,10 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Get ETH price for USD conversion (using mainnet price as reference)
-  const { price: ethPrice } = usePricingData();
+  // Get native token prices for each chain
+  // Different chains have different native tokens (ETH, MATIC, xDAI)
+  // We'll fetch prices per-chain when needed
+  const { price: defaultEthPrice } = usePricingData(); // Fallback ETH price
 
   /**
    * Fetch balance for a specific chain
@@ -91,7 +93,13 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
         
         if (serverBalance && serverBalance.balance) {
           const balanceWei = BigInt(serverBalance.balanceWei);
-          const balanceUSD = parseFloat(serverBalance.balance) * (ethPrice || 0);
+          
+          // Get native token price for this chain
+          const { getNativeTokenPrice } = await import('./usePricingData');
+          const nativePrice = await getNativeTokenPrice(chainId);
+          const price = nativePrice || defaultEthPrice || 0;
+          
+          const balanceUSD = parseFloat(serverBalance.balance) * price;
           return {
             chainId,
             chainName: networkConfig.name,
@@ -111,7 +119,13 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
       // Fallback to direct RPC call if server is unavailable
       const balanceWei = await getBalanceOptimized(chainId, address, true);
       const balance = parseFloat(ethers.formatEther(balanceWei)).toFixed(4);
-      const balanceUSD = parseFloat(balance) * (ethPrice || 0);
+      
+      // Get native token price for this chain
+      const { getNativeTokenPrice } = await import('./usePricingData');
+      const nativePrice = await getNativeTokenPrice(chainId);
+      const price = nativePrice || defaultEthPrice || 0;
+      
+      const balanceUSD = parseFloat(balance) * price;
 
       return {
         chainId,
@@ -138,7 +152,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
         error: err instanceof Error ? err.message : 'Failed to fetch balance',
       };
     }
-  }, [address, ethPrice]);
+  }, [address, defaultEthPrice]);
 
   /**
    * Refresh a specific chain
@@ -232,11 +246,23 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
         
         if (batchResults && Array.isArray(batchResults) && batchResults.length > 0) {
           // Convert batch results to MultichainBalance format
+          // Fetch native token prices for all chains in parallel
+          const { getNativeTokenPrice } = await import('./usePricingData');
+          const pricePromises = SUPPORTED_NETWORKS.map(network => 
+            getNativeTokenPrice(network.chainId)
+          );
+          const nativePrices = await Promise.all(pricePromises);
+          
           const results: MultichainBalance[] = batchResults.map((result, index) => {
             const network = SUPPORTED_NETWORKS[index];
             if (result.balance && result.balanceWei) {
               const balanceWei = BigInt(result.balanceWei);
-              const balanceUSD = parseFloat(result.balance) * (ethPrice || 0);
+              
+              // Use native token price for this chain, fallback to default ETH price
+              const nativePrice = nativePrices[index];
+              const price = nativePrice || defaultEthPrice || 0;
+              
+              const balanceUSD = parseFloat(result.balance) * price;
               return {
                 chainId: result.chainId,
                 chainName: network.name,
@@ -324,7 +350,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, address, fetchChainBalance, ethPrice]);
+  }, [isConnected, address, fetchChainBalance, defaultEthPrice]);
 
   // Calculate totals
   const totalBalance = useMemo(() => {

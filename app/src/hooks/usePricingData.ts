@@ -18,6 +18,9 @@ const UNISWAP_V3_FACTORY: Record<number, string> = {
   8453: '0x33128a8fC17869897dcE68Ed026d694621f6FDfD', // Base Mainnet
   11155111: '0x0227628f3F023bb0B980b67D528571c95c6DaC1c', // Sepolia
   84532: '0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24', // Base Sepolia
+  42161: '0x1F98431c8aD98523631AE4a59f267346ea31F984', // Arbitrum One (same as Ethereum)
+  137: '0x1F98431c8aD98523631AE4a59f267346ea31F984', // Polygon (Uniswap V3)
+  100: '0x1F98431c8aD98523631AE4a59f267346ea31F984', // Gnosis (Uniswap V3)
 };
 
 // Common stablecoin addresses
@@ -26,6 +29,9 @@ const USDC_ADDRESSES: Record<number, string> = {
   8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Base Mainnet
   11155111: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Sepolia
   84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia
+  42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // Arbitrum One
+  137: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', // Polygon
+  100: '0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83', // Gnosis
 };
 
 const WETH_ADDRESSES: Record<number, string> = {
@@ -33,6 +39,9 @@ const WETH_ADDRESSES: Record<number, string> = {
   8453: '0x4200000000000000000000000000000000000006', // Base Mainnet (WETH)
   11155111: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14', // Sepolia
   84532: '0x4200000000000000000000000000000000000006', // Base Sepolia
+  42161: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // Arbitrum One
+  137: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // Polygon
+  100: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8', // Gnosis (WXDAI)
 };
 
 // Uniswap V3 Pool ABI (minimal interface for slot0)
@@ -306,22 +315,28 @@ export async function getCoinGeckoPrice(
       8453: 'base',
       11155111: 'ethereum', // Sepolia uses Ethereum platform
       84532: 'base', // Base Sepolia uses Base platform
+      42161: 'arbitrum-one',
+      137: 'polygon-pos',
+      100: 'xdai', // Gnosis Chain
     };
 
     const platform = platformMap[chainId];
     if (!platform) return null;
 
-    // For native tokens (ETH), use the native token ID
+    // For native tokens, use the native token CoinGecko ID
     const wethAddress = WETH_ADDRESSES[chainId];
     if (tokenAddress.toLowerCase() === wethAddress.toLowerCase()) {
-      const response = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd`,
-        { method: 'GET' }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        return data.ethereum?.usd || null;
+      const nativeTokenId = getNativeTokenCoinGeckoId(chainId);
+      if (nativeTokenId) {
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${nativeTokenId}&vs_currencies=usd`,
+          { method: 'GET' }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          return data[nativeTokenId]?.usd || null;
+        }
       }
     }
 
@@ -357,10 +372,78 @@ export async function getExplorerPrice(
 }
 
 /**
- * Get native token address (WETH/Wrapped ETH) for a chain
+ * Get native token address (WETH/Wrapped ETH/MATIC/xDAI) for a chain
  */
 function getNativeTokenAddress(chainId: number): string | null {
   return WETH_ADDRESSES[chainId] || null;
+}
+
+/**
+ * Get native token CoinGecko ID for price fetching
+ * Used for native tokens that aren't ETH
+ * @param chainId - The chain ID
+ * @returns CoinGecko ID for the native token, or null if not found
+ */
+export function getNativeTokenCoinGeckoId(chainId: number): string | null {
+  const nativeTokenIds: Record<number, string> = {
+    1: 'ethereum', // ETH
+    8453: 'ethereum', // ETH (Base uses ETH)
+    11155111: 'ethereum', // ETH (Sepolia)
+    84532: 'ethereum', // ETH (Base Sepolia)
+    42161: 'ethereum', // ETH (Arbitrum uses ETH)
+    137: 'matic-network', // MATIC
+    100: 'xdai', // xDAI (Gnosis)
+  };
+  return nativeTokenIds[chainId] || null;
+}
+
+/**
+ * Get native token price for a specific chain
+ * Handles different native tokens (ETH, MATIC, xDAI, etc.)
+ */
+export async function getNativeTokenPrice(chainId: number): Promise<number | null> {
+  try {
+    // Try server API first
+    const nativeTokenAddress = getNativeTokenAddress(chainId);
+    if (nativeTokenAddress) {
+      try {
+        const { getTokenPrice } = await import('@/utils/apiClient');
+        const serverPrice = await getTokenPrice(chainId, nativeTokenAddress);
+        if (serverPrice && serverPrice.price > 0 && isFinite(serverPrice.price)) {
+          return serverPrice.price;
+        }
+      } catch (error) {
+        // Server failed, continue to CoinGecko
+      }
+    }
+
+    // Fallback to CoinGecko for native token price
+    const coinGeckoId = getNativeTokenCoinGeckoId(chainId);
+    if (coinGeckoId) {
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=usd`,
+        { method: 'GET' }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        const price = data[coinGeckoId]?.usd;
+        if (price && price > 0 && isFinite(price)) {
+          return price;
+        }
+      }
+    }
+
+    // For xDAI (Gnosis), default to $1 if price fetch fails (it's a stablecoin)
+    if (chainId === 100) {
+      return 1.0;
+    }
+
+    return null;
+  } catch (error) {
+    // Silent error - return null
+    return null;
+  }
 }
 
 /**
