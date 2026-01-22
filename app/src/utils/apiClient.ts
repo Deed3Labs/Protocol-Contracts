@@ -201,6 +201,51 @@ export async function getTransactionsBatch(
 }
 
 /**
+ * Get token balance from server
+ */
+export async function getTokenBalance(
+  chainId: number,
+  userAddress: string,
+  tokenAddress: string
+): Promise<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string; cached: boolean } | null> {
+  const response = await apiRequest<{
+    address: string;
+    symbol: string;
+    name: string;
+    decimals: number;
+    balance: string;
+    balanceRaw: string;
+    cached: boolean;
+  }>(`/api/token-balances/${chainId}/${userAddress}/${tokenAddress}`);
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
+ * Get multiple token balances in batch
+ */
+export async function getTokenBalancesBatch(
+  requests: Array<{ chainId: number; tokenAddress: string; userAddress: string }>
+): Promise<Array<{ chainId: number; tokenAddress: string; userAddress: string; data: any | null; cached: boolean; error?: string }>> {
+  const response = await apiRequest<{
+    results: Array<{ chainId: number; tokenAddress: string; userAddress: string; data: any | null; cached: boolean; error?: string }>;
+  }>('/api/token-balances/batch', {
+    method: 'POST',
+    body: JSON.stringify({ requests }),
+  });
+
+  if (response.error || !response.data) {
+    return requests.map((r) => ({ ...r, data: null, cached: false }));
+  }
+
+  return response.data.results;
+}
+
+/**
  * Check server health
  */
 export async function checkServerHealth(): Promise<boolean> {

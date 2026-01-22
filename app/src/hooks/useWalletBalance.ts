@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { getNetworkByChainId, getRpcUrlForNetwork } from '@/config/networks';
 import { getEthereumProvider } from '@/utils/providerUtils';
 import { usePricingData } from './usePricingData';
+import { getBalance, checkServerHealth } from '@/utils/apiClient';
 
 interface WalletBalance {
   balance: string; // Formatted balance string
@@ -70,6 +71,22 @@ export function useWalletBalance(): WalletBalance {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       try {
+        // Try server API first (with Redis caching)
+        const isServerAvailable = await checkServerHealth();
+        if (isServerAvailable && chainId) {
+          try {
+            const serverBalance = await getBalance(chainId, address);
+            if (serverBalance && serverBalance.balance) {
+              setBalanceWei(BigInt(serverBalance.balanceWei));
+              setBalance(parseFloat(serverBalance.balance).toFixed(4));
+              return; // Successfully fetched from server
+            }
+          } catch (serverError) {
+            // Server failed, fall through to direct RPC call
+          }
+        }
+
+        // Fallback to direct RPC call if server is unavailable
         let provider: ethers.Provider;
 
         // For read operations, always use a standard ethers provider

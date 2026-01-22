@@ -6,6 +6,7 @@ import { getRedisClient, closeRedisConnection } from './config/redis.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import pricesRouter from './routes/prices.js';
 import balancesRouter from './routes/balances.js';
+import tokenBalancesRouter from './routes/tokenBalances.js';
 import nftsRouter from './routes/nfts.js';
 import transactionsRouter from './routes/transactions.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
@@ -125,6 +126,7 @@ async function startServer() {
     // Set up API routes (after rate limiter)
     app.use('/api/prices', pricesRouter);
     app.use('/api/balances', balancesRouter);
+    app.use('/api/token-balances', tokenBalancesRouter);
     app.use('/api/nfts', nftsRouter);
     app.use('/api/transactions', transactionsRouter);
 

@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS } from '@/config/networks';
 import { getUniswapPrice, getCoinGeckoPrice } from './usePricingData';
 import { getCachedProvider, executeBatchRpcCalls } from '@/utils/rpcOptimizer';
+import { getTokenBalancesBatch, checkServerHealth } from '@/utils/apiClient';
 
 // Detect mobile device
 const isMobileDevice = (): boolean => {
@@ -107,6 +108,70 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
     if (tokenList.length === 0) return [];
 
     try {
+      // Try server API first (with Redis caching)
+      const isServerAvailable = await checkServerHealth();
+      if (isServerAvailable) {
+        try {
+          const batchRequests = tokenList.map(tokenInfo => ({
+            chainId,
+            tokenAddress: tokenInfo.address,
+            userAddress: address,
+          }));
+
+          const serverResults = await getTokenBalancesBatch(batchRequests);
+          
+          if (serverResults && serverResults.length > 0) {
+            const provider = getCachedProvider(chainId);
+            const tokenBalances: MultichainTokenBalance[] = [];
+
+            // Process server results and get prices
+            const tokenPromises = tokenList.map(async (tokenInfo, index) => {
+              const serverResult = serverResults[index];
+              if (!serverResult || !serverResult.data) {
+                return null;
+              }
+
+              try {
+                const { symbol, name, decimals, balance, balanceRaw } = serverResult.data;
+                const balanceNum = parseFloat(balance);
+                if (balanceNum === 0) return null;
+
+                // Get token price
+                const tokenPrice = await getTokenPrice(symbol, tokenInfo.address, provider, chainId);
+                const balanceUSD = balanceNum * tokenPrice;
+
+                return {
+                  address: tokenInfo.address,
+                  symbol,
+                  name,
+                  decimals,
+                  balance,
+                  balanceRaw: BigInt(balanceRaw),
+                  balanceUSD,
+                  chainId,
+                  chainName: networkConfig.name,
+                  logoUrl: tokenInfo.logoUrl,
+                } as MultichainTokenBalance;
+              } catch (err) {
+                return null;
+              }
+            });
+
+            const results = await Promise.all(tokenPromises);
+            results.forEach(result => {
+              if (result !== null) {
+                tokenBalances.push(result);
+              }
+            });
+
+            return tokenBalances.sort((a, b) => b.balanceUSD - a.balanceUSD);
+          }
+        } catch (serverError) {
+          // Server failed, fall through to direct RPC calls
+        }
+      }
+
+      // Fallback to direct RPC calls if server is unavailable
       const provider = getCachedProvider(chainId);
       const tokenBalances: MultichainTokenBalance[] = [];
 

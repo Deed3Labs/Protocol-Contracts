@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { getRpcUrlForNetwork } from '@/config/networks';
 import { getEthereumProvider } from '@/utils/providerUtils';
 import { usePricingData, getUniswapPrice, getCoinGeckoPrice } from './usePricingData';
+import { getTokenBalancesBatch, checkServerHealth } from '@/utils/apiClient';
 
 export interface TokenBalance {
   address: string;
@@ -112,6 +113,82 @@ export function useTokenBalances(): UseTokenBalancesReturn {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     try {
+      const tokenList = COMMON_TOKENS[chainId] || [];
+      const tokenBalances: TokenBalance[] = [];
+
+      // Try server API first (with Redis caching)
+      const isServerAvailable = await checkServerHealth();
+      if (isServerAvailable && chainId) {
+        try {
+          const batchRequests = tokenList.map(tokenInfo => ({
+            chainId,
+            tokenAddress: tokenInfo.address,
+            userAddress: address,
+          }));
+
+          const serverResults = await getTokenBalancesBatch(batchRequests);
+          
+          if (serverResults && serverResults.length > 0) {
+            let provider: ethers.Provider;
+            try {
+              provider = await getEthereumProvider();
+            } catch (providerError) {
+              const rpcUrl = getRpcUrlForNetwork(chainId);
+              if (!rpcUrl) {
+                throw new Error(`No RPC URL available for chain ${chainId}`);
+              }
+              provider = new ethers.JsonRpcProvider(rpcUrl);
+            }
+
+            // Process server results and get prices
+            const balancePromises = tokenList.map(async (tokenInfo, index) => {
+              const serverResult = serverResults[index];
+              if (!serverResult || !serverResult.data) {
+                return null;
+              }
+
+              try {
+                const { symbol, name, decimals, balance, balanceRaw } = serverResult.data;
+                const balanceNum = parseFloat(balance);
+                if (balanceNum === 0) return null;
+
+                // Get token price
+                const tokenPrice = await getTokenPrice(symbol, tokenInfo.address, provider, chainId);
+                const balanceUSD = balanceNum * tokenPrice;
+
+                return {
+                  address: tokenInfo.address,
+                  symbol,
+                  name,
+                  decimals,
+                  balance,
+                  balanceRaw: BigInt(balanceRaw),
+                  balanceUSD,
+                  logoUrl: tokenInfo.logoUrl,
+                } as TokenBalance;
+              } catch (err) {
+                return null;
+              }
+            });
+
+            const results = await Promise.all(balancePromises);
+            results.forEach(result => {
+              if (result !== null) {
+                tokenBalances.push(result);
+              }
+            });
+
+            // Sort by USD value (highest first)
+            tokenBalances.sort((a, b) => b.balanceUSD - a.balanceUSD);
+            setTokens(tokenBalances);
+            return; // Successfully fetched from server
+          }
+        } catch (serverError) {
+          // Server failed, fall through to direct RPC calls
+        }
+      }
+
+      // Fallback to direct RPC calls if server is unavailable
       let provider: ethers.Provider;
 
       try {
@@ -128,9 +205,6 @@ export function useTokenBalances(): UseTokenBalancesReturn {
         
         provider = new ethers.JsonRpcProvider(rpcUrl);
       }
-
-      const tokenList = COMMON_TOKENS[chainId] || [];
-      const tokenBalances: TokenBalance[] = [];
 
       // Fetch balances for each token in parallel
       const balancePromises = tokenList.map(async (tokenInfo) => {
