@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { TrendingUp, TrendingDown, Info, ChevronRight, Settings, Share2 } from 'lucide-react';
 import InteractiveChart from './InteractiveChart';
 import IncomeChart from './IncomeChart';
@@ -48,6 +48,30 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
   const timeRanges = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', 'All'];
   const periodLabels: Record<string, string> = { '1D': 'today', '1W': 'past week', '1M': 'past month', '3M': 'past quarter', '6M': 'past 6 months', 'YTD': 'year to date', '1Y': 'past year', 'All': 'all time' };
   
+  // Memoize borrowing power calculation - only recalculate when holdings or balance changes
+  const borrowingPower = useMemo(() => {
+    const holdingsValue = holdings?.reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0;
+    return holdingsValue + (balanceUSD || 0);
+  }, [holdings, balanceUSD]);
+  
+  // Store previous values to detect changes
+  const prevChartDataRef = useRef<ChartPoint[]>(chartData);
+  const prevDailyChangeRef = useRef<number>(dailyChange);
+  const prevDailyChangePercentRef = useRef<number>(dailyChangePercent);
+  
+  // Only update if data actually changed
+  useEffect(() => {
+    const chartChanged = JSON.stringify(chartData) !== JSON.stringify(prevChartDataRef.current);
+    const changeChanged = dailyChange !== prevDailyChangeRef.current;
+    const percentChanged = dailyChangePercent !== prevDailyChangePercentRef.current;
+    
+    if (chartChanged || changeChanged || percentChanged) {
+      prevChartDataRef.current = chartData;
+      prevDailyChangeRef.current = dailyChange;
+      prevDailyChangePercentRef.current = dailyChangePercent;
+    }
+  }, [chartData, dailyChange, dailyChangePercent]);
+  
   return (
     <div>
       {/* Daily Change */}
@@ -92,7 +116,7 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
       <button className="w-full flex items-center justify-between py-4 border-t border-b border-zinc-200 dark:border-zinc-800 mt-4">
         <span className="text-black dark:text-white">Borrowing power</span>
         <div className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
-          <span>${((holdings?.reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0) + (balanceUSD || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span>${borrowingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           <ChevronRight className="w-5 h-5 text-zinc-500" />
         </div>
       </button>
@@ -110,8 +134,18 @@ export function IncomeView({ totalValue: _totalValue, transactions }: IncomeView
   const years = ['Next 12M', '2026', '2025', '2024', '2023', '2022'];
   const [selectedYear, setSelectedYear] = useState('2026');
   
-  // Calculate income from transactions
-  const getIncomeData = (year: string) => {
+  // Store previous transactions to detect changes
+  const prevTransactionsRef = useRef<WalletTransaction[] | undefined>(transactions);
+  
+  // Only recalculate if transactions actually changed
+  useEffect(() => {
+    if (JSON.stringify(transactions) !== JSON.stringify(prevTransactionsRef.current)) {
+      prevTransactionsRef.current = transactions;
+    }
+  }, [transactions]);
+  
+  // Memoize income calculation - only recalculate when transactions or year changes
+  const getIncomeData = useCallback((year: string) => {
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     const currentYear = new Date().getFullYear();
     const targetYear = year === 'Next 12M' ? currentYear + 1 : parseInt(year);
@@ -139,11 +173,11 @@ export function IncomeView({ totalValue: _totalValue, transactions }: IncomeView
     }
     
     return monthlyData;
-  };
+  }, [transactions]);
   
-  const incomeData = getIncomeData(selectedYear);
-  const totalIncome = incomeData.reduce((acc, curr) => acc + curr.inflow, 0);
-  const estIncome = totalIncome * 1.1; // Projection estimate
+  const incomeData = useMemo(() => getIncomeData(selectedYear), [getIncomeData, selectedYear]);
+  const totalIncome = useMemo(() => incomeData.reduce((acc: number, curr: { month: string; inflow: number; outflow: number }) => acc + curr.inflow, 0), [incomeData]);
+  const estIncome = useMemo(() => totalIncome * 1.1, [totalIncome]); // Projection estimate
   
   return (
     <div>
@@ -206,6 +240,34 @@ interface AccountValueViewProps {
 export function AccountValueView({ chartData, selectedRange, onRangeChange, totalValue, balanceUSD, holdings }: AccountValueViewProps) {
   const timeRanges = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', 'All'];
   
+  // Store previous values to detect changes
+  const prevChartDataRef = useRef<ChartPoint[]>(chartData);
+  const prevTotalValueRef = useRef<number>(totalValue);
+  const prevHoldingsRef = useRef<Holding[] | undefined>(holdings);
+  const prevBalanceUSDRef = useRef<number | undefined>(balanceUSD);
+  
+  // Only update if data actually changed
+  useEffect(() => {
+    const chartChanged = JSON.stringify(chartData) !== JSON.stringify(prevChartDataRef.current);
+    const valueChanged = totalValue !== prevTotalValueRef.current;
+    const holdingsChanged = JSON.stringify(holdings) !== JSON.stringify(prevHoldingsRef.current);
+    const balanceChanged = balanceUSD !== prevBalanceUSDRef.current;
+    
+    if (chartChanged || valueChanged || holdingsChanged || balanceChanged) {
+      prevChartDataRef.current = chartData;
+      prevTotalValueRef.current = totalValue;
+      prevHoldingsRef.current = holdings;
+      prevBalanceUSDRef.current = balanceUSD;
+    }
+  }, [chartData, totalValue, holdings, balanceUSD]);
+  
+  // Memoize net deposits calculation - only recalculate when holdings or balance changes
+  const netDeposits = useMemo(() => {
+    if (!holdings || holdings.length === 0) return 0;
+    const totalHoldingsValue = holdings.reduce((sum, h) => sum + (h.valueUSD || 0), 0);
+    return totalHoldingsValue + (balanceUSD || 0);
+  }, [holdings, balanceUSD]);
+  
   return (
     <div>
       <div className="mb-4">
@@ -216,13 +278,7 @@ export function AccountValueView({ chartData, selectedRange, onRangeChange, tota
         </div>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-[#30D158] font-medium">
-            ${(() => {
-              // Calculate net deposits from transactions
-              if (!holdings || holdings.length === 0) return '0.00';
-              const totalHoldingsValue = holdings.reduce((sum, h) => sum + (h.valueUSD || 0), 0);
-              const netDeposits = totalHoldingsValue + (balanceUSD || 0);
-              return netDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            })()}
+            ${netDeposits.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
           <span className="text-zinc-500">net deposits</span>
           <Info className="w-4 h-4 text-zinc-600" />
@@ -270,12 +326,36 @@ interface AllocationViewProps {
 }
 
 export function AllocationView({ totalValue, holdings, balanceUSD }: AllocationViewProps) {
-  // Calculate allocations from actual holdings
-  const tokenValue = holdings?.filter(h => h.type === 'token').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0;
-  const nftValue = holdings?.filter(h => h.type === 'nft').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0;
-  const cashValue = balanceUSD || 0;
+  // Store previous values to detect changes
+  const prevTotalValueRef = useRef<number>(totalValue);
+  const prevHoldingsRef = useRef<Holding[] | undefined>(holdings);
+  const prevBalanceUSDRef = useRef<number | undefined>(balanceUSD);
   
-  const rawAllocations = [
+  // Only update if data actually changed
+  useEffect(() => {
+    const valueChanged = totalValue !== prevTotalValueRef.current;
+    const holdingsChanged = JSON.stringify(holdings) !== JSON.stringify(prevHoldingsRef.current);
+    const balanceChanged = balanceUSD !== prevBalanceUSDRef.current;
+    
+    if (valueChanged || holdingsChanged || balanceChanged) {
+      prevTotalValueRef.current = totalValue;
+      prevHoldingsRef.current = holdings;
+      prevBalanceUSDRef.current = balanceUSD;
+    }
+  }, [totalValue, holdings, balanceUSD]);
+  
+  // Memoize allocations calculation - only recalculate when holdings or balance changes
+  const tokenValue = useMemo(() => 
+    holdings?.filter(h => h.type === 'token').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0,
+    [holdings]
+  );
+  const nftValue = useMemo(() => 
+    holdings?.filter(h => h.type === 'nft').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0,
+    [holdings]
+  );
+  const cashValue = useMemo(() => balanceUSD || 0, [balanceUSD]);
+  
+  const rawAllocations = useMemo(() => [
     { name: 'Equities', value: 0, color: 'bg-white dark:bg-white bg-zinc-900', hasInfo: false },
     { name: 'Options', value: 0, color: 'bg-blue-500', hasInfo: false },
     { name: 'Bonds', value: 0, color: 'bg-blue-500', hasInfo: false },
@@ -284,12 +364,12 @@ export function AllocationView({ totalValue, holdings, balanceUSD }: AllocationV
     { name: 'High-Yield Cash', value: 0, color: 'bg-blue-500', hasInfo: false },
     { name: 'Cash', value: cashValue, color: 'bg-green-500', hasInfo: true },
     { name: 'Margin Usage', value: 0, color: 'bg-zinc-600', hasInfo: false },
-  ];
+  ], [tokenValue, nftValue, cashValue]);
 
-  const allocations = rawAllocations.map(item => ({
+  const allocations = useMemo(() => rawAllocations.map(item => ({
     ...item,
     percent: totalValue > 0 ? (item.value / totalValue) * 100 : 0
-  }));
+  })), [rawAllocations, totalValue]);
   
   return (
     <div>

@@ -5,11 +5,12 @@ import ClearPathLogo from '../../assets/ClearPath-Logo.png';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useNavigate, useLocation } from 'react-router-dom';
 import XMTPMessaging from '@/components/XMTPMessaging';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import SearchModal from './SearchModal';
+import { usePortfolio } from '@/context/PortfolioContext';
+import { CompactPriceWheel } from '../PriceWheel';
 
 interface HeaderNavProps {
-  totalValue: number;
   isScrolledPast: boolean;
   onMenuOpen: () => void;
   onActionOpen: () => void;
@@ -19,7 +20,6 @@ interface HeaderNavProps {
 }
 
 export default function HeaderNav({
-  totalValue,
   isScrolledPast,
   onMenuOpen,
   onActionOpen,
@@ -27,6 +27,20 @@ export default function HeaderNav({
   profileMenuOpen,
   setProfileMenuOpen
 }: HeaderNavProps) {
+  // Use global portfolio context for balance
+  const { totalBalanceUSD, previousTotalBalanceUSD, holdings } = usePortfolio();
+  
+  // Calculate total value (balance + holdings)
+  const totalValue = useMemo(() => {
+    const holdingsValue = holdings.reduce((sum, h) => sum + (h.balanceUSD || 0), 0);
+    return totalBalanceUSD + holdingsValue;
+  }, [totalBalanceUSD, holdings]);
+  
+  // Calculate previous total value for animation
+  const previousTotalValue = useMemo(() => {
+    const holdingsValue = holdings.reduce((sum, h) => sum + (h.balanceUSD || 0), 0);
+    return previousTotalBalanceUSD + holdingsValue;
+  }, [previousTotalBalanceUSD, holdings]);
   const { isConnected, openModal } = useAppKitAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -117,7 +131,11 @@ export default function HeaderNav({
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                     className="text-sm text-zinc-500 dark:text-zinc-400 border-l border-zinc-300 dark:border-zinc-700 pl-2 flex items-center whitespace-nowrap overflow-hidden"
                   >
-                    ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[12px] ml-1">USD</span>
+                    <CompactPriceWheel 
+                      value={totalValue} 
+                      previousValue={previousTotalValue}
+                    />
+                    <span className="text-[12px] ml-1">USD</span>
                   </motion.span>
                 )}
               </AnimatePresence>

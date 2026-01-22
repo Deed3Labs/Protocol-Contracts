@@ -413,7 +413,6 @@ export default function BrokerageHome() {
         isOpen={menuOpen} 
         onClose={() => setMenuOpen(false)} 
         user={user}
-        totalValue={totalValue}
       />
       
       {/* Deposit Modal */}
@@ -437,7 +436,6 @@ export default function BrokerageHome() {
       
       {/* Header */}
       <HeaderNav
-        totalValue={totalValue}
         isScrolledPast={isScrolledPast}
         onMenuOpen={() => setMenuOpen(true)}
         onActionOpen={() => setActionModalOpen(true)}

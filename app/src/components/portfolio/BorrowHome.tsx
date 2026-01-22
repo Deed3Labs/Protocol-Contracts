@@ -86,7 +86,6 @@ export default function BorrowHome() {
         isOpen={menuOpen} 
         onClose={() => setMenuOpen(false)} 
         user={user}
-        totalValue={totalValue}
       />
       
       {/* Modals - keeping consistent with BrokerageHome */}
@@ -106,7 +105,6 @@ export default function BorrowHome() {
       
       {/* Header */}
       <HeaderNav
-        totalValue={totalValue}
         isScrolledPast={isScrolledPast}
         onMenuOpen={() => setMenuOpen(true)}
         onActionOpen={() => setActionModalOpen(true)}

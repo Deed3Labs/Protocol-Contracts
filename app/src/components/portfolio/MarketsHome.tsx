@@ -81,7 +81,6 @@ export default function MarketsHome() {
         isOpen={menuOpen} 
         onClose={() => setMenuOpen(false)} 
         user={user}
-        totalValue={totalValue}
       />
       
       {/* Modals */}
@@ -101,7 +100,6 @@ export default function MarketsHome() {
       
       {/* Header */}
       <HeaderNav
-        totalValue={totalValue}
         isScrolledPast={isScrolledPast}
         onMenuOpen={() => setMenuOpen(true)}
         onActionOpen={() => setActionModalOpen(true)}

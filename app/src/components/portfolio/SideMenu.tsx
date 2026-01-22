@@ -4,7 +4,7 @@ import { useDisconnect } from 'wagmi';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: any; totalValue: number }) => {
+const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: any }) => {
   const { theme, setTheme } = useTheme();
   const { disconnect } = useDisconnect();
   const navigate = useNavigate();
