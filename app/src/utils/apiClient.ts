@@ -7,6 +7,11 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
+// Log API base URL in development to help debug
+if (import.meta.env.DEV) {
+  console.log('[apiClient] API_BASE_URL:', API_BASE_URL);
+}
+
 interface ApiResponse<T> {
   data?: T;
   error?: string;
@@ -65,10 +70,26 @@ async function apiRequest<T>(
     const data = await response.json();
     return { data: data as T, cached: data.cached, timestamp: data.timestamp };
   } catch (error) {
-    // Silent error handling - don't log to console to avoid noise
-    // The hooks will handle the error gracefully and fall back to RPC calls
+    // Log errors in development and production for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    if (import.meta.env.DEV) {
+      console.warn('[apiClient] Request failed:', {
+        endpoint,
+        error: errorMessage,
+        apiBaseUrl: API_BASE_URL
+      });
+    } else if (import.meta.env.PROD) {
+      // In production, log errors to help diagnose issues
+      console.error('[apiClient] Production API request failed:', {
+        endpoint,
+        error: errorMessage,
+        apiBaseUrl: API_BASE_URL || 'NOT SET - Check VITE_API_BASE_URL environment variable'
+      });
+    }
+    
     return {
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
     };
   }
 }

@@ -533,14 +533,27 @@ export function usePricingData(tokenAddress?: string): PricingData {
           return; // Successfully fetched from server
         }
       } catch (serverError) {
-        // Server failed or timed out, fall through to direct API calls
-        // Don't log - this is expected if server is unavailable
+        // Server failed or timed out - log details in development
+        if (import.meta.env.DEV) {
+          console.warn('[usePricingData] Server API failed:', {
+            error: serverError instanceof Error ? serverError.message : serverError,
+            chainId,
+            tokenAddress: targetTokenAddress,
+            apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
+          });
+        }
       }
 
-      // Server API is the primary source - if it fails, we should log an error
+      // Server API is the primary source - if it fails, log error details
       // In production, the server should always be available
-      // Fallback to direct API calls only if server is completely unavailable
-      console.warn('[usePricingData] Server API failed, falling back to direct calls. This should not happen in production.');
+      if (import.meta.env.PROD) {
+        console.error('[usePricingData] Server API failed in production!', {
+          chainId,
+          tokenAddress: targetTokenAddress,
+          apiBaseUrl: import.meta.env.VITE_API_BASE_URL || 'NOT SET',
+          error: 'Check VITE_API_BASE_URL environment variable and server status'
+        });
+      }
       
       // Get provider for fallback
       let provider: ethers.Provider;
