@@ -192,7 +192,6 @@ export default function BrokerageHome() {
     holdings: portfolioHoldings,
     transactions: walletTransactions,
     isLoading: portfolioLoading,
-    activityLoading,
     refreshAll,
   } = usePortfolio();
   
@@ -265,15 +264,20 @@ export default function BrokerageHome() {
   // Debug: Verify data is being fetched (remove in production)
   useEffect(() => {
     if (isConnected && address) {
+      const nftHoldings = portfolioHoldings.filter(h => h.type === 'nft');
+      const tokenHoldings = portfolioHoldings.filter(h => h.type === 'token');
       console.log('[BrokerageHome] Data check:', {
         balancesCount: multichainBalances.length,
-        balances: multichainBalances.map(b => ({ chain: b.chainName, balance: b.balance, usd: b.balanceUSD })),
         totalBalanceUSD,
-        holdingsCount: portfolioHoldings.length,
-        holdings: portfolioHoldings.map(h => ({ type: h.type, name: h.asset_name, usd: h.balanceUSD })),
+        portfolioHoldingsCount: portfolioHoldings.length,
+        nftHoldingsCount: nftHoldings.length,
+        tokenHoldingsCount: tokenHoldings.length,
+        nftHoldings: nftHoldings.map(h => ({ id: h.id, name: h.asset_name, chain: h.chainName })),
         allHoldingsCount: allHoldings.length,
         filteredHoldingsCount: filteredHoldings.length,
-        displayedHoldingsCount: displayedHoldings.length
+        displayedHoldingsCount: displayedHoldings.length,
+        displayedNFTs: displayedHoldings.filter(h => h.type === 'nft').length,
+        displayedTokens: displayedHoldings.filter(h => h.type === 'token').length,
       });
     }
   }, [isConnected, address, multichainBalances, totalBalanceUSD, portfolioHoldings, allHoldings, filteredHoldings, displayedHoldings]);
@@ -693,7 +697,7 @@ export default function BrokerageHome() {
                     <button 
                       onClick={refreshAll}
                       className="text-zinc-500 text-sm hover:text-black dark:hover:text-white transition-colors flex items-center gap-1.5"
-                      disabled={activityLoading}
+                      disabled={portfolioLoading}
                     >
                       {portfolioLoading ? (
                         <>

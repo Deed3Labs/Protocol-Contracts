@@ -102,6 +102,11 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const holdings = useMemo(() => {
     const allHoldings: PortfolioContextType['holdings'] = [];
     
+    // Debug: Log NFT data
+    if (multichainNFTs.length > 0) {
+      console.log('[PortfolioContext] NFTs found:', multichainNFTs.length, multichainNFTs.map(n => ({ chain: n.chainName, tokenId: n.tokenId })));
+    }
+    
     // Add NFTs
     multichainNFTs.forEach((nft) => {
       allHoldings.push({
@@ -146,8 +151,26 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       allHoldings.push(holding);
     });
     
-    // Sort by USD value (descending)
-    return allHoldings.sort((a, b) => b.balanceUSD - a.balanceUSD);
+    // Sort by USD value (descending), then by type (NFTs first if same value)
+    const sorted = allHoldings.sort((a, b) => {
+      if (b.balanceUSD !== a.balanceUSD) {
+        return b.balanceUSD - a.balanceUSD;
+      }
+      // If same value, show NFTs first
+      if (a.type === 'nft' && b.type === 'token') return -1;
+      if (a.type === 'token' && b.type === 'nft') return 1;
+      return 0;
+    });
+    
+    // Debug: Log final holdings
+    if (sorted.length > 0) {
+      console.log('[PortfolioContext] Total holdings:', sorted.length, {
+        nfts: sorted.filter(h => h.type === 'nft').length,
+        tokens: sorted.filter(h => h.type === 'token').length,
+      });
+    }
+    
+    return sorted;
   }, [multichainNFTs, tokenBalances]);
   
   // Determine loading states
@@ -194,6 +217,26 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isFirstLoadRef.current = true;
     }
   }, [isConnected]);
+
+  // Auto-refresh balances every hour after initial load
+  useEffect(() => {
+    if (!isConnected) return;
+
+    // Initial load - refresh all data
+    const initialRefresh = async () => {
+      await refreshAll();
+    };
+    initialRefresh();
+
+    // Set up hourly auto-refresh
+    const intervalId = setInterval(() => {
+      refreshAll();
+    }, 60 * 60 * 1000); // 1 hour in milliseconds
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isConnected, refreshAll]);
   
   const contextValue: PortfolioContextType = {
     balances: multichainBalances,
