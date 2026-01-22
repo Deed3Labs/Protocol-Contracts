@@ -3,7 +3,6 @@ import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { formatDistanceToNow } from 'date-fns';
 import { SUPPORTED_NETWORKS, getRpcUrlForNetwork, getNetworkByChainId, getNetworkInfo } from '@/config/networks';
-import { getEthereumProvider } from '@/utils/providerUtils';
 import type { WalletTransaction } from './useWalletActivity';
 
 // Detect mobile device
@@ -36,25 +35,16 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
 
   // Get provider for a specific chain
   const getChainProvider = useCallback(async (chainId: number): Promise<ethers.Provider> => {
-    try {
-      // On mobile, add a small delay
-      if (isMobileDevice()) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-
-      const provider = await getEthereumProvider();
-      const network = await provider.getNetwork();
-      
-      if (network.chainId === BigInt(chainId)) {
-        return provider;
-      }
-    } catch (error) {
-      // Fall through to RPC provider
-    }
-
+    // Always use RPC provider for multichain queries
+    // The wallet provider is only for the connected chain, but we need to query all chains
     const rpcUrl = getRpcUrlForNetwork(chainId);
     if (!rpcUrl) {
       throw new Error(`No RPC URL available for chain ${chainId}`);
+    }
+    
+    // On mobile, add a small delay
+    if (isMobileDevice()) {
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
     
     const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -134,12 +124,12 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
 
                       foundCount++;
                     } catch (receiptError) {
-                      console.warn(`Failed to fetch receipt for ${transaction.hash}:`, receiptError);
+                      // Silent error - skip this transaction
                     }
                   }
                 }
               } catch (blockError) {
-                console.warn(`Failed to fetch block ${blockNumber - i}:`, blockError);
+                // Silent error - skip this block
               }
             })()
           );
@@ -152,7 +142,7 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
       parsedTransactions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       return parsedTransactions;
     } catch (err) {
-      console.error(`Error fetching transactions for chain ${chainId}:`, err);
+      // Silent error - return empty array
       return [];
     }
   }, [address, getChainProvider, limit]);
@@ -214,7 +204,7 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
         setTransactions(allTransactions.slice(0, limit));
       }
     } catch (err) {
-      console.error('Error fetching multichain activity:', err);
+      // Silent error handling
       setError(err instanceof Error ? err.message : 'Failed to fetch transactions');
     } finally {
       setIsLoading(false);

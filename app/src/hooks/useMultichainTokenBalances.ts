@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS, getRpcUrlForNetwork } from '@/config/networks';
-import { getEthereumProvider } from '@/utils/providerUtils';
 import { getUniswapPrice } from './usePricingData';
 
 // Detect mobile device
@@ -72,25 +71,16 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
 
   // Get provider for a specific chain
   const getChainProvider = useCallback(async (chainId: number): Promise<ethers.Provider> => {
-    try {
-      // On mobile, add a small delay
-      if (isMobileDevice()) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-
-      const provider = await getEthereumProvider();
-      const network = await provider.getNetwork();
-      
-      if (network.chainId === BigInt(chainId)) {
-        return provider;
-      }
-    } catch (error) {
-      // Fall through to RPC provider
-    }
-
+    // Always use RPC provider for multichain queries
+    // The wallet provider is only for the connected chain, but we need to query all chains
     const rpcUrl = getRpcUrlForNetwork(chainId);
     if (!rpcUrl) {
       throw new Error(`No RPC URL available for chain ${chainId}`);
+    }
+    
+    // On mobile, add a small delay
+    if (isMobileDevice()) {
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
     
     const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -112,7 +102,7 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
       const price = await getUniswapPrice(provider, address, chainId);
       if (price && price > 0) return price;
     } catch (error) {
-      console.error(`Error fetching price for ${symbol}:`, error);
+      // Silent fallback - price will default to 0
     }
     
     return 0;
@@ -164,14 +154,14 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
             });
           }
         } catch (err) {
-          console.warn(`Failed to fetch balance for ${tokenInfo.symbol} on chain ${chainId}:`, err);
+          // Silent error - skip this token
         }
       });
 
       await Promise.all(balancePromises);
       return tokenBalances.sort((a, b) => b.balanceUSD - a.balanceUSD);
     } catch (err) {
-      console.error(`Error fetching tokens for chain ${chainId}:`, err);
+      // Silent error - return empty array
       return [];
     }
   }, [address, getChainProvider, getTokenPrice]);
@@ -224,7 +214,7 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
         setTokens(results.flat());
       }
     } catch (err) {
-      console.error('Error fetching multichain token balances:', err);
+      // Silent error handling
       setError(err instanceof Error ? err.message : 'Failed to fetch token balances');
     } finally {
       setIsLoading(false);

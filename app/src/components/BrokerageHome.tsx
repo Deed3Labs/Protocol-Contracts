@@ -186,7 +186,7 @@ export default function BrokerageHome() {
   const { address, isConnected } = useAppKitAccount();
   
   // Multichain hooks - aggregate data across all networks
-  const { totalBalance, totalBalanceUSD, balances: multichainBalances, isLoading: balanceLoading, error: balanceError } = useMultichainBalances();
+  const { totalBalance, totalBalanceUSD, balances: multichainBalances, error: balanceError } = useMultichainBalances();
   const { transactions: walletTransactions, isLoading: activityLoading, error: activityError, refresh: refreshActivity } = useMultichainActivity(10);
   const { nfts: multichainNFTs } = useMultichainDeedNFTs();
   const { tokens: tokenBalances } = useMultichainTokenBalances();
@@ -272,7 +272,7 @@ export default function BrokerageHome() {
       }
       return a.type.localeCompare(b.type);
     });
-  }, [multichainNFTs, tokenBalances]);
+  }, [multichainNFTs, tokenBalances, getAssetTypeLabel]);
 
   // Filter holdings based on selected filter
   const filteredHoldings = useMemo(() => {
@@ -287,6 +287,24 @@ export default function BrokerageHome() {
     if (isPortfolioExpanded) return filteredHoldings;
     return filteredHoldings.slice(0, 5); // Show 5 holdings initially
   }, [filteredHoldings, isPortfolioExpanded]);
+  
+  // Debug: Verify data is being fetched (remove in production)
+  useEffect(() => {
+    if (isConnected && address) {
+      console.log('[BrokerageHome] Data check:', {
+        balancesCount: multichainBalances.length,
+        balances: multichainBalances.map(b => ({ chain: b.chainName, balance: b.balance, usd: b.balanceUSD })),
+        totalBalanceUSD,
+        nftsCount: multichainNFTs.length,
+        nfts: multichainNFTs.map(n => ({ chain: n.chainName, tokenId: n.tokenId })),
+        tokensCount: tokenBalances.length,
+        tokens: tokenBalances.map(t => ({ chain: t.chainName, symbol: t.symbol, balance: t.balance, usd: t.balanceUSD })),
+        allHoldingsCount: allHoldings.length,
+        filteredHoldingsCount: filteredHoldings.length,
+        displayedHoldingsCount: displayedHoldings.length
+      });
+    }
+  }, [isConnected, address, multichainBalances, totalBalanceUSD, multichainNFTs, tokenBalances, allHoldings, filteredHoldings, displayedHoldings]);
   
   useEffect(() => {
     // Mock API calls for user info
@@ -468,8 +486,6 @@ export default function BrokerageHome() {
                    <div className="min-h-[60px] flex items-center">
                      {balanceError ? (
                        <div className="text-red-500 text-sm">{balanceError}</div>
-                     ) : balanceLoading ? (
-                       <div className="text-zinc-500 text-sm">Loading balances...</div>
                      ) : (
                        <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
                          {isConnected ? (

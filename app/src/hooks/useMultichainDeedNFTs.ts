@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS, getRpcUrlForNetwork, getContractAddressForNetwork, getAbiPathForNetwork } from '@/config/networks';
-import { getEthereumProvider } from '@/utils/providerUtils';
 import type { DeedNFT } from '@/context/DeedNFTContext';
 
 // Detect mobile device
@@ -32,7 +31,7 @@ const getDeedNFTAbi = async (chainId: number) => {
     const abiModule = await import(abiPath);
     return JSON.parse(abiModule.default.abi);
   } catch (error) {
-    console.error('Error loading DeedNFT ABI:', error);
+    // Silent fallback to base-sepolia ABI
     const fallbackModule = await import('@/contracts/base-sepolia/DeedNFT.json');
     return JSON.parse(fallbackModule.default.abi);
   }
@@ -49,25 +48,16 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
 
   // Get provider for a specific chain
   const getChainProvider = useCallback(async (chainId: number): Promise<ethers.Provider> => {
-    try {
-      // On mobile, add a small delay
-      if (isMobileDevice()) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-
-      const provider = await getEthereumProvider();
-      const network = await provider.getNetwork();
-      
-      if (network.chainId === BigInt(chainId)) {
-        return provider;
-      }
-    } catch (error) {
-      // Fall through to RPC provider
-    }
-
+    // Always use RPC provider for multichain queries
+    // The wallet provider is only for the connected chain, but we need to query all chains
     const rpcUrl = getRpcUrlForNetwork(chainId);
     if (!rpcUrl) {
       throw new Error(`No RPC URL available for chain ${chainId}`);
+    }
+    
+    // On mobile, add a small delay
+    if (isMobileDevice()) {
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
     
     const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -137,7 +127,7 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
                       configuration = metadata.configuration || '';
                       assetType = metadata.assetType || 0;
                     } catch (e) {
-                      console.warn(`Failed to fetch metadata for token ${tokenId}:`, e);
+                      // Silent error - metadata will be empty
                     }
                   }
 
@@ -168,7 +158,7 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
 
       return userNFTs;
     } catch (err) {
-      console.error(`Error fetching NFTs for chain ${chainId}:`, err);
+      // Silent error - return empty array
       return [];
     }
   }, [address, getChainProvider]);
@@ -221,7 +211,7 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
         setNfts(results.flat());
       }
     } catch (err) {
-      console.error('Error fetching multichain NFTs:', err);
+      // Silent error handling
       setError(err instanceof Error ? err.message : 'Failed to fetch NFTs');
     } finally {
       setIsLoading(false);

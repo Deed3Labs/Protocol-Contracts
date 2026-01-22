@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS, getRpcUrlForNetwork, getNetworkByChainId } from '@/config/networks';
-import { getEthereumProvider } from '@/utils/providerUtils';
 import { usePricingData } from './usePricingData';
 
 // Detect mobile device
@@ -47,28 +46,16 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
 
   // Get provider for a specific chain
   const getChainProvider = useCallback(async (chainId: number, retryCount = 0): Promise<ethers.Provider> => {
-    try {
-      // On mobile, add a small delay to avoid overwhelming the provider
-      if (isMobileDevice() && retryCount === 0) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-
-      // Try to use the wallet provider if it's on the correct chain
-      const provider = await getEthereumProvider();
-      const network = await provider.getNetwork();
-      
-      if (network.chainId === BigInt(chainId)) {
-        return provider;
-      }
-    } catch (error) {
-      // Fall through to RPC provider
-      console.log(`Wallet provider not available for chain ${chainId}, using RPC`);
-    }
-
-    // Fallback to RPC provider for the specific chain
+    // Always use RPC provider for multichain queries
+    // The wallet provider is only for the connected chain, but we need to query all chains
     const rpcUrl = getRpcUrlForNetwork(chainId);
     if (!rpcUrl) {
       throw new Error(`No RPC URL available for chain ${chainId}`);
+    }
+    
+    // On mobile, add a small delay to avoid overwhelming the provider
+    if (isMobileDevice() && retryCount === 0) {
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
     
     // Create RPC provider with timeout for mobile
@@ -125,12 +112,11 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     } catch (err) {
       // Retry logic for mobile
       if (retryCount < maxRetries) {
-        console.log(`Retrying balance fetch for chain ${chainId} (attempt ${retryCount + 1})`);
         await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
         return fetchChainBalance(chainId, retryCount + 1);
       }
       
-      console.error(`Error fetching balance for chain ${chainId} after ${retryCount + 1} attempts:`, err);
+      // Silent error handling - return zero balance without logging
       return {
         chainId,
         chainName: networkConfig.name,
@@ -214,14 +200,12 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
 
     try {
       const isMobile = isMobileDevice();
-      console.log(`[MultichainBalances] Starting refresh (mobile: ${isMobile}, chains: ${SUPPORTED_NETWORKS.length})`);
       
       if (isMobile) {
         // On mobile, fetch sequentially with delays to avoid overwhelming the browser
         const results: MultichainBalance[] = [];
         for (let i = 0; i < SUPPORTED_NETWORKS.length; i++) {
           const network = SUPPORTED_NETWORKS[i];
-          console.log(`[MultichainBalances] Fetching chain ${network.chainId} (${i + 1}/${SUPPORTED_NETWORKS.length})`);
           
           // Update loading state for current chain
           setBalances(prev => {
@@ -236,7 +220,6 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
           try {
             const balance = await fetchChainBalance(network.chainId);
             results.push(balance);
-            console.log(`[MultichainBalances] Chain ${network.chainId} balance: ${balance.balance} ${balance.currencySymbol}`);
             
             // Update state with this chain's result
             setBalances(prev => {
@@ -248,7 +231,6 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
               return updated;
             });
           } catch (err) {
-            console.error(`[MultichainBalances] Failed to fetch chain ${network.chainId}:`, err);
             // Continue with other chains even if one fails
             const errorBalance: MultichainBalance = {
               chainId: network.chainId,
@@ -262,6 +244,16 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
               error: err instanceof Error ? err.message : 'Failed to fetch',
             };
             results.push(errorBalance);
+            
+            // Update state with error
+            setBalances(prev => {
+              const updated = [...prev];
+              const index = updated.findIndex(b => b.chainId === network.chainId);
+              if (index >= 0) {
+                updated[index] = errorBalance;
+              }
+              return updated;
+            });
           }
           
           // Add delay between chains on mobile (except for the last one)
@@ -269,16 +261,14 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
             await new Promise(resolve => setTimeout(resolve, 300));
           }
         }
-        console.log(`[MultichainBalances] Completed: ${results.length} chains, total USD: $${results.reduce((sum, b) => sum + b.balanceUSD, 0).toFixed(2)}`);
       } else {
         // On desktop, fetch all chains in parallel
         const balancePromises = SUPPORTED_NETWORKS.map(network => fetchChainBalance(network.chainId));
         const results = await Promise.all(balancePromises);
         setBalances(results);
-        console.log(`[MultichainBalances] Completed: ${results.length} chains, total USD: $${results.reduce((sum, b) => sum + b.balanceUSD, 0).toFixed(2)}`);
       }
     } catch (err) {
-      console.error('[MultichainBalances] Error fetching multichain balances:', err);
+      // Silent error handling - only set error state, don't log
       setError(err instanceof Error ? err.message : 'Failed to fetch balances');
     } finally {
       setIsLoading(false);
