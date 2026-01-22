@@ -463,6 +463,7 @@ export default function BrokerageHome() {
                              <LargePriceWheel 
                                value={totalBalanceUSD} 
                                previousValue={previousTotalBalanceUSD}
+                               className="font-light"
                              />
                              <span className="text-lg text-zinc-500 font-normal">USD</span>
                            </>

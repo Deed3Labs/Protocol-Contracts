@@ -122,7 +122,7 @@ export const LargePriceWheel: React.FC<PriceWheelProps> = (props) => {
         }
         return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       }}
-      className="text-3xl font-bold"
+      className={props.className || ""}
       duration={600}
     />
   );
