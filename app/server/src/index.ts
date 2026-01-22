@@ -14,7 +14,7 @@ import { startPriceUpdater } from './jobs/priceUpdater.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT: number = parseInt(process.env.PORT || '3001', 10);
 
 // Middleware
 app.use(compression());
@@ -136,10 +136,12 @@ async function startServer() {
     });
 
     // Start Express server
-    app.listen(PORT, () => {
+    // Bind to 0.0.0.0 to accept connections from Railway/external hosts
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🌐 CORS enabled for: ${process.env.CORS_ORIGIN || 'all origins (*)'}`);
+      console.log(`🌍 Listening on: 0.0.0.0:${PORT}`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
@@ -160,4 +162,8 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-startServer();
+// Start server with error handling
+startServer().catch((error) => {
+  console.error('❌ Failed to start server:', error);
+  process.exit(1);
+});
