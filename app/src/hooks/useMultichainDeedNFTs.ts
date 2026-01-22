@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS, getContractAddressForNetwork, getAbiPathForNetwork } from '@/config/networks';
-import { getCachedProvider, executeRpcCall } from '@/utils/rpcOptimizer';
+import { getCachedProvider } from '@/utils/rpcOptimizer';
 import type { DeedNFT } from '@/context/DeedNFTContext';
 
 // Detect mobile device
@@ -49,6 +49,110 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
 
   // Note: Provider is now managed by rpcOptimizer for better efficiency
 
+  // Get DeedNFT data for a specific token (same approach as DeedNFTContext)
+  const getDeedNFTData = useCallback(async (
+    contractAddress: string,
+    abi: any,
+    tokenId: string,
+    chainId: number
+  ): Promise<MultichainDeedNFT | null> => {
+    try {
+      const provider = getCachedProvider(chainId);
+      const contract = new ethers.Contract(contractAddress, abi, provider);
+      const networkConfig = SUPPORTED_NETWORKS.find(n => n.chainId === chainId);
+      
+      // Get owner
+      const owner = await contract.ownerOf(tokenId);
+      
+      // Only return if owned by user
+      if (owner.toLowerCase() !== address?.toLowerCase()) {
+        return null;
+      }
+      
+      // Get token URI
+      const uri = await contract.tokenURI(tokenId).catch(() => '');
+      
+      // Get validation status
+      let validatorAddress = ethers.ZeroAddress;
+      try {
+        const [isValidated, validator] = await contract.getValidationStatus(tokenId);
+        if (isValidated) {
+          validatorAddress = validator;
+        }
+      } catch (err) {
+        // Silent error - validation status not available
+      }
+      
+      // Get asset type from contract traits
+      let assetType = 0; // Default to Land
+      try {
+        const assetTypeKey = ethers.keccak256(ethers.toUtf8Bytes("assetType"));
+        const assetTypeBytes = await contract.getTraitValue(tokenId, assetTypeKey);
+        if (assetTypeBytes && assetTypeBytes.length > 0) {
+          assetType = Number(ethers.AbiCoder.defaultAbiCoder().decode(["uint8"], assetTypeBytes)[0]);
+        }
+      } catch (err) {
+        // Silent error - use default asset type
+      }
+      
+      // Get definition from contract traits
+      let definition = `T-Deed #${tokenId}`;
+      try {
+        const definitionBytes = await contract.getTraitValue(
+          tokenId,
+          ethers.keccak256(ethers.toUtf8Bytes("definition"))
+        );
+        if (definitionBytes && definitionBytes.length > 0) {
+          definition = ethers.AbiCoder.defaultAbiCoder().decode(["string"], definitionBytes)[0];
+        }
+      } catch (err) {
+        // Silent error - use default definition
+      }
+      
+      // Get configuration from contract traits
+      let configuration = "";
+      try {
+        const configurationBytes = await contract.getTraitValue(
+          tokenId,
+          ethers.keccak256(ethers.toUtf8Bytes("configuration"))
+        );
+        if (configurationBytes && configurationBytes.length > 0) {
+          configuration = ethers.AbiCoder.defaultAbiCoder().decode(["string"], configurationBytes)[0];
+        }
+      } catch (err) {
+        // Silent error - configuration will be empty
+      }
+      
+      // Get token and salt (if available)
+      let token = ethers.ZeroAddress;
+      let salt = "0";
+      try {
+        token = await contract.token(tokenId).catch(() => ethers.ZeroAddress);
+        salt = await contract.salt(tokenId).catch(() => "0");
+      } catch (err) {
+        // Silent error - use defaults
+      }
+      
+      return {
+        tokenId,
+        owner,
+        assetType,
+        uri,
+        definition,
+        configuration,
+        validatorAddress,
+        token,
+        salt,
+        isMinted: true,
+        chainId,
+        chainName: networkConfig?.name || `Chain ${chainId}`,
+      };
+    } catch (err) {
+      // Silent error - return null
+      return null;
+    }
+  }, [address]);
+
   // Fetch NFTs for a specific chain
   const fetchChainNFTs = useCallback(async (chainId: number): Promise<MultichainDeedNFT[]> => {
     if (!address) return [];
@@ -67,23 +171,16 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
       const abi = await getDeedNFTAbi(chainId);
       const contract = new ethers.Contract(contractAddress, abi, provider);
 
-      // Get total supply using optimized RPC call
-      const totalSupplyResult = await executeRpcCall(
-        chainId,
-        'eth_call',
-        [{ to: contractAddress, data: '0x18160ddd' }, 'latest'], // totalSupply() selector
-        { useCache: true, cacheTTL: 30000 } // Cache for 30 seconds
-      ).catch(() => '0x0');
-      
-      const totalSupply = BigInt(totalSupplyResult || '0x0');
+      // Get total supply
+      const totalSupply = await contract.totalSupply().catch(() => 0n);
       if (totalSupply === 0n) return [];
 
-      // Get all token IDs owned by the user
+      // Get all token IDs owned by the user using tokenByIndex (same as DeedNFTContext)
       const userNFTs: MultichainDeedNFT[] = [];
-      
-      // Check tokens in batches (to avoid overwhelming the provider)
-      const batchSize = 50;
       const maxTokens = Number(totalSupply);
+      
+      // Process tokens in batches to avoid overwhelming the provider
+      const batchSize = 10; // Smaller batches since we're doing more contract calls per token
       
       for (let i = 0; i < Math.min(maxTokens, 1000); i += batchSize) {
         const batchPromises: Promise<void>[] = [];
@@ -92,44 +189,14 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
           batchPromises.push(
             (async () => {
               try {
-                const tokenId = j.toString();
-                const owner = await contract.ownerOf(tokenId).catch(() => null);
+                // Use tokenByIndex to get token ID (same as DeedNFTContext)
+                const tokenId = await contract.tokenByIndex(j);
+                const tokenIdString = tokenId.toString();
                 
-                if (owner && owner.toLowerCase() === address.toLowerCase()) {
-                  // Get token URI and other data
-                  const uri = await contract.tokenURI(tokenId).catch(() => '');
-                  
-                  // Parse metadata from URI if available
-                  let definition = '';
-                  let configuration = '';
-                  let assetType = 0;
-                  
-                  if (uri) {
-                    try {
-                      const response = await fetch(uri);
-                      const metadata = await response.json();
-                      definition = metadata.definition || '';
-                      configuration = metadata.configuration || '';
-                      assetType = metadata.assetType || 0;
-                    } catch (e) {
-                      // Silent error - metadata will be empty
-                    }
-                  }
-
-                  userNFTs.push({
-                    tokenId,
-                    owner: owner,
-                    assetType,
-                    uri,
-                    definition,
-                    configuration,
-                    validatorAddress: await contract.validator(tokenId).catch(() => ''),
-                    token: await contract.token(tokenId).catch(() => ''),
-                    salt: await contract.salt(tokenId).catch(() => ''),
-                    isMinted: true,
-                    chainId,
-                    chainName: networkConfig.name,
-                  });
+                // Get full DeedNFT data using the same approach as DeedNFTContext
+                const deedNFTData = await getDeedNFTData(contractAddress, abi, tokenIdString, chainId);
+                if (deedNFTData) {
+                  userNFTs.push(deedNFTData);
                 }
               } catch (err) {
                 // Token doesn't exist or other error - skip
@@ -146,7 +213,7 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
       // Silent error - return empty array
       return [];
     }
-  }, [address]);
+  }, [address, getDeedNFTData]);
 
   // Refresh a specific chain
   const refreshChain = useCallback(async (chainId: number) => {

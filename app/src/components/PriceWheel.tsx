@@ -25,15 +25,33 @@ export const PriceWheel: React.FC<PriceWheelProps> = ({
   const startTimeRef = useRef<number | null>(null);
   const startValueRef = useRef<number>(value);
   const targetValueRef = useRef<number>(value);
+  const isInitialMountRef = useRef<boolean>(true);
 
   useEffect(() => {
+    // On initial mount, set the value immediately
+    if (isInitialMountRef.current) {
+      setDisplayValue(value);
+      targetValueRef.current = value;
+      startValueRef.current = value;
+      isInitialMountRef.current = false;
+      return;
+    }
+
     // If value hasn't changed, don't animate
     if (value === targetValueRef.current) {
       return;
     }
 
-    // If this is the first render or previousValue is undefined, just set the value
-    if (previousValue === undefined || previousValue === value) {
+    // If previousValue is undefined, just set the value immediately
+    if (previousValue === undefined) {
+      setDisplayValue(value);
+      targetValueRef.current = value;
+      startValueRef.current = value;
+      return;
+    }
+
+    // If previousValue equals current value, no animation needed
+    if (previousValue === value) {
       setDisplayValue(value);
       targetValueRef.current = value;
       startValueRef.current = value;

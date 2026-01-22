@@ -86,9 +86,11 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     if (isFirstLoadRef.current) {
       // On first load, set both current and previous to the same value
+      // Even if it's 0, we need to initialize it
+      previousTotalBalanceUSDRef.current = totalBalanceUSD;
+      setPreviousTotalBalanceUSD(totalBalanceUSD);
+      // Only mark as not first load once we have a non-zero value or after a delay
       if (totalBalanceUSD > 0) {
-        previousTotalBalanceUSDRef.current = totalBalanceUSD;
-        setPreviousTotalBalanceUSD(totalBalanceUSD);
         isFirstLoadRef.current = false;
       }
     } else {
@@ -98,14 +100,20 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [totalBalanceUSD]);
   
+  // Mark first load as complete after initial data fetch (even if balance is 0)
+  useEffect(() => {
+    if (isConnected && multichainBalances.length > 0) {
+      // Data has been fetched, mark first load as complete
+      const timer = setTimeout(() => {
+        isFirstLoadRef.current = false;
+      }, 1000); // Give it 1 second to load initial data
+      return () => clearTimeout(timer);
+    }
+  }, [isConnected, multichainBalances.length]);
+  
   // Combine NFTs and tokens into holdings
   const holdings = useMemo(() => {
     const allHoldings: PortfolioContextType['holdings'] = [];
-    
-    // Debug: Log NFT data
-    if (multichainNFTs.length > 0) {
-      console.log('[PortfolioContext] NFTs found:', multichainNFTs.length, multichainNFTs.map(n => ({ chain: n.chainName, tokenId: n.tokenId })));
-    }
     
     // Add NFTs
     multichainNFTs.forEach((nft) => {
@@ -152,7 +160,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
     
     // Sort by USD value (descending), then by type (NFTs first if same value)
-    const sorted = allHoldings.sort((a, b) => {
+    return allHoldings.sort((a, b) => {
       if (b.balanceUSD !== a.balanceUSD) {
         return b.balanceUSD - a.balanceUSD;
       }
@@ -161,16 +169,6 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (a.type === 'token' && b.type === 'nft') return 1;
       return 0;
     });
-    
-    // Debug: Log final holdings
-    if (sorted.length > 0) {
-      console.log('[PortfolioContext] Total holdings:', sorted.length, {
-        nfts: sorted.filter(h => h.type === 'nft').length,
-        tokens: sorted.filter(h => h.type === 'token').length,
-      });
-    }
-    
-    return sorted;
   }, [multichainNFTs, tokenBalances]);
   
   // Determine loading states

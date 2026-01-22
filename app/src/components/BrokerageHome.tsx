@@ -460,25 +460,23 @@ export default function BrokerageHome() {
                      )}
                    </div>
                    <div className="min-h-[60px] flex items-center">
-                     {(
-                       <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
-                         {isConnected ? (
-                           <>
-                             <LargePriceWheel 
-                               value={totalBalanceUSD} 
-                               previousValue={previousTotalBalanceUSD}
-                               className="font-light"
-                             />
-                             <span className="text-lg text-zinc-500 font-normal">USD</span>
-                           </>
-                         ) : (
-                           <>
-                             $0.00
-                             <span className="text-lg text-zinc-500 font-normal">USD</span>
-                           </>
-                         )}
-                       </h1>
-                     )}
+                     <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
+                       {isConnected ? (
+                         <>
+                           <LargePriceWheel 
+                             value={totalBalanceUSD || 0} 
+                             previousValue={previousTotalBalanceUSD}
+                             className="font-light"
+                           />
+                           <span className="text-lg text-zinc-500 font-normal">USD</span>
+                         </>
+                       ) : (
+                         <>
+                           $0.00
+                           <span className="text-lg text-zinc-500 font-normal">USD</span>
+                         </>
+                       )}
+                     </h1>
                    </div>
                    
                    <div className="mt-6 flex flex-wrap gap-3">
