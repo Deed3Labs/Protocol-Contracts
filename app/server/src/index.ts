@@ -14,20 +14,32 @@ import { startPriceUpdater } from './jobs/priceUpdater.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT: number = parseInt(process.env.PORT || '3001', 10);
 
 // Middleware
 app.use(compression());
 
-// CORS configuration - handle Vercel preview URLs
+// CORS configuration - handle Vercel preview URLs and production
+// IMPORTANT: CORS must be set up BEFORE routes
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      return callback(null, true);
+    }
     
     const allowedOrigins = process.env.CORS_ORIGIN 
       ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-      : ['*'];
+      : [];
+    
+    // Always allow Vercel preview URLs (pattern: *.vercel.app)
+    const isVercelPreview = origin.endsWith('.vercel.app');
+    
+    // If no CORS_ORIGIN is set, allow all origins (development mode)
+    if (allowedOrigins.length === 0) {
+      console.log(`[CORS] Allowing origin (no CORS_ORIGIN set): ${origin}`);
+      return callback(null, true);
+    }
     
     // If '*' is specified, allow all origins
     if (allowedOrigins.includes('*')) {
@@ -35,8 +47,6 @@ const corsOptions = {
     }
     
     // Check if origin matches any allowed origin
-    // Also allow Vercel preview URLs (pattern: *.vercel.app)
-    const isVercelPreview = origin.endsWith('.vercel.app');
     const isAllowed = allowedOrigins.some(allowed => {
       if (allowed.includes('*')) {
         // Handle wildcard patterns like https://*.vercel.app
@@ -46,13 +56,25 @@ const corsOptions = {
       return origin === allowed;
     });
     
+    // Allow if explicitly allowed OR if it's a Vercel preview URL
     if (isAllowed || isVercelPreview) {
+      if (isVercelPreview) {
+        console.log(`[CORS] Allowing Vercel preview URL: ${origin}`);
+      }
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      // Log the blocked origin for debugging
+      console.warn(`[CORS] Blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
+      callback(new Error(`Not allowed by CORS: ${origin}`));
     }
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
@@ -85,23 +107,7 @@ app.get('/health', async (req: express.Request, res: express.Response) => {
 });
 
 // API Routes will be set up in startServer after rate limiter is initialized
-
-// 404 handler
-app.use((req: express.Request, res: express.Response) => {
-  res.status(404).json({
-    error: 'Not found',
-    message: `Route ${req.path} not found`,
-  });
-});
-
-// Error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred',
-  });
-});
+// 404 and error handlers will be set up after routes
 
 // Start server
 async function startServer() {
@@ -129,6 +135,30 @@ async function startServer() {
     app.use('/api/token-balances', tokenBalancesRouter);
     app.use('/api/nfts', nftsRouter);
     app.use('/api/transactions', transactionsRouter);
+    
+    console.log('✅ API routes registered:');
+    console.log('  - /api/prices');
+    console.log('  - /api/balances');
+    console.log('  - /api/token-balances');
+    console.log('  - /api/nfts');
+    console.log('  - /api/transactions');
+
+    // 404 handler (must be after all routes)
+    app.use((req: express.Request, res: express.Response) => {
+      res.status(404).json({
+        error: 'Not found',
+        message: `Route ${req.path} not found`,
+      });
+    });
+
+    // Error handler (must be after all routes and 404 handler)
+    app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      console.error('Unhandled error:', err);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred',
+      });
+    });
 
     // Start background jobs (non-blocking)
     startPriceUpdater().catch((error) => {
@@ -136,10 +166,14 @@ async function startServer() {
     });
 
     // Start Express server
-    app.listen(PORT, () => {
+    // Bind to 0.0.0.0 to accept connections from Railway/external hosts
+    // IMPORTANT: Routes are registered BEFORE server starts listening
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🌐 CORS enabled for: ${process.env.CORS_ORIGIN || 'all origins (*)'}`);
+      console.log(`🌍 Listening on: 0.0.0.0:${PORT}`);
+      console.log(`✅ All routes are ready to handle requests`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
@@ -160,4 +194,8 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-startServer();
+// Start server with error handling
+startServer().catch((error) => {
+  console.error('❌ Failed to start server:', error);
+  process.exit(1);
+});

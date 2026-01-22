@@ -377,7 +377,7 @@ export async function getExplorerPrice(
 }
 
 /**
- * Get native token address (WETH/Wrapped ETH/MATIC/xDAI) for a chain
+ * Get native token address (WETH/Wrapped ETH/POL/xDAI) for a chain
  */
 function getNativeTokenAddress(chainId: number): string | null {
   return WETH_ADDRESSES[chainId] || null;
@@ -396,7 +396,7 @@ export function getNativeTokenCoinGeckoId(chainId: number): string | null {
     11155111: 'ethereum', // ETH (Sepolia)
     84532: 'ethereum', // ETH (Base Sepolia)
     42161: 'ethereum', // ETH (Arbitrum uses ETH)
-    137: 'matic-network', // MATIC
+    137: 'pol-ex-matic', // POL (Polygon native token, upgraded from MATIC)
     100: 'xdai', // xDAI (Gnosis)
   };
   return nativeTokenIds[chainId] || null;
@@ -404,11 +404,11 @@ export function getNativeTokenCoinGeckoId(chainId: number): string | null {
 
 /**
  * Get native token price for a specific chain
- * Handles different native tokens (ETH, MATIC, xDAI, etc.)
+ * Handles different native tokens (ETH, POL, xDAI, etc.)
  */
 export async function getNativeTokenPrice(chainId: number): Promise<number | null> {
   try {
-    // For native tokens, prefer CoinGecko directly (more reliable for MATIC, xDAI, etc.)
+    // For native tokens, prefer CoinGecko directly (more reliable for POL, xDAI, etc.)
     // Only use wrapped token address for chains where native = wrapped (like ETH chains)
     const coinGeckoId = getNativeTokenCoinGeckoId(chainId);
     if (coinGeckoId) {

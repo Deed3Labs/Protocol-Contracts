@@ -116,8 +116,8 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     blockExplorer: 'https://polygonscan.com',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
     nativeCurrency: {
-      name: 'MATIC',
-      symbol: 'MATIC',
+      name: 'POL',
+      symbol: 'POL',
       decimals: 18,
     },
   },
@@ -250,8 +250,8 @@ export const networks = {
       : 'https://polygon-rpc.com',
     blockExplorer: 'https://polygonscan.com',
     nativeCurrency: {
-      name: 'MATIC',
-      symbol: 'MATIC',
+      name: 'POL',
+      symbol: 'POL',
       decimals: 18,
     },
     contracts: {
