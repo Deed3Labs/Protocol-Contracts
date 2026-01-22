@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { formatDistanceToNow } from 'date-fns';
 import { SUPPORTED_NETWORKS, getNetworkByChainId, getNetworkInfo } from '@/config/networks';
-import { getCachedProvider } from '@/utils/rpcOptimizer';
+import { executeRpcCall } from '@/utils/rpcOptimizer';
 import type { WalletTransaction } from './useWalletActivity';
 
 // Detect mobile device
@@ -45,13 +45,19 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
     const currencySymbol = networkConfig?.nativeCurrency.symbol || networkInfo?.nativeCurrency.symbol || 'ETH';
 
     try {
-      const provider = getCachedProvider(chainId);
-      const blockNumber = await provider.getBlockNumber();
+      // Use optimized RPC call for getBlockNumber with longer cache (block numbers change slowly)
+      const blockNumber = await executeRpcCall(
+        chainId,
+        'eth_blockNumber',
+        [],
+        { useCache: true, cacheTTL: 12000 } // Cache for 12 seconds (longer than default)
+      ).then(result => parseInt(result, 16));
+      
       const parsedTransactions: MultichainTransaction[] = [];
 
       // Limit blocks to check
       const blocksToCheck = Math.min(limit * 3, 50);
-      const batchSize = 10;
+      const batchSize = 5; // Reduced batch size to avoid overwhelming RPC
       let foundCount = 0;
 
       for (let batchStart = 0; batchStart < blocksToCheck && foundCount < limit; batchStart += batchSize) {
@@ -61,29 +67,58 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
           batchPromises.push(
             (async () => {
               try {
-                const block = await provider.getBlock(blockNumber - i, true);
-                if (!block || !block.transactions) return;
+                // Use optimized RPC call for getBlock with caching
+                const blockNumberHex = `0x${(blockNumber - i).toString(16)}`;
+                const blockData = await executeRpcCall(
+                  chainId,
+                  'eth_getBlockByNumber',
+                  [blockNumberHex, true], // true = include full transaction objects
+                  { useCache: true, cacheTTL: 30000 } // Cache blocks for 30 seconds (they don't change)
+                );
+                
+                // Convert RPC response to ethers Block format
+                if (!blockData || !blockData.transactions) return;
+                
+                // Convert transaction hashes/objects
+                const transactions = blockData.transactions.map((tx: any) => {
+                  if (typeof tx === 'string') return { hash: tx };
+                  return tx;
+                });
 
-                for (const tx of block.transactions) {
+                for (const tx of transactions) {
                   if (foundCount >= limit) return;
 
-                  if (typeof tx === 'string') continue;
+                  if (typeof tx === 'string' || !tx.hash) continue;
 
-                  const transaction = tx as ethers.TransactionResponse;
+                  const transaction = tx;
+                  const txHash = typeof tx === 'string' ? tx : tx.hash;
                   const isFromAddress = transaction.from?.toLowerCase() === address.toLowerCase();
                   const isToAddress = transaction.to?.toLowerCase() === address.toLowerCase();
 
                   if (isFromAddress || isToAddress) {
                     try {
-                      const receipt = await provider.getTransactionReceipt(transaction.hash);
-                      const status = receipt?.status === 1 ? 'completed' : receipt?.status === 0 ? 'failed' : 'pending';
+                      // Use optimized RPC call for transaction receipt
+                      const receiptData = await executeRpcCall(
+                        chainId,
+                        'eth_getTransactionReceipt',
+                        [txHash],
+                        { useCache: true, cacheTTL: 60000 } // Cache receipts for 60 seconds (they never change)
+                      );
+                      
+                      const receipt = receiptData;
+                      const txStatus = receipt?.status === '0x1' || receipt?.status === 1 ? 'completed' : receipt?.status === '0x0' || receipt?.status === 0 ? 'failed' : 'pending';
 
-                      const value = transaction.value ? parseFloat(ethers.formatEther(transaction.value)) : 0;
-                      const timestamp = block.timestamp ? Number(block.timestamp) * 1000 : Date.now();
+                      // Parse value (handle both hex and decimal)
+                      const valueHex = transaction.value || '0x0';
+                      const value = parseFloat(ethers.formatEther(BigInt(valueHex)));
+                      
+                      // Parse timestamp (handle both hex and decimal)
+                      const timestampHex = blockData.timestamp || '0x0';
+                      const timestamp = Number(BigInt(timestampHex)) * 1000;
                       const date = formatDistanceToNow(new Date(timestamp), { addSuffix: true });
 
                       parsedTransactions.push({
-                        id: `${chainId}-${transaction.hash}`,
+                        id: `${chainId}-${txHash}`,
                         type: isFromAddress
                           ? (value > 0 ? 'withdraw' : transaction.to ? 'transfer' : 'contract')
                           : (value > 0 ? 'deposit' : 'transfer'),
@@ -91,8 +126,8 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
                         amount: value,
                         currency: currencySymbol,
                         date,
-                        status,
-                        hash: transaction.hash,
+                        status: txStatus,
+                        hash: txHash,
                         from: transaction.from,
                         to: transaction.to || undefined,
                         timestamp,
@@ -189,18 +224,8 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
     }
   }, [isConnected, address, fetchChainTransactions, limit]);
 
-  // Initial load
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  // Refresh every 30 seconds
-  useEffect(() => {
-    if (!isConnected || !address) return;
-
-    const interval = setInterval(refresh, 30000);
-    return () => clearInterval(interval);
-  }, [isConnected, address, refresh]);
+  // Note: Automatic refresh is now controlled by PortfolioContext
+  // This hook only provides the refresh function - it does not auto-refresh
 
   return {
     transactions,
