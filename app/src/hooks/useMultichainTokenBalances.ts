@@ -2,15 +2,11 @@ import { useState, useMemo, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS } from '@/config/networks';
+import { getCommonTokens, isStablecoin } from '@/config/tokens';
 import { getUniswapPrice, getCoinGeckoPrice } from './usePricingData';
 import { getCachedProvider, executeBatchRpcCalls } from '@/utils/rpcOptimizer';
-import { getTokenBalancesBatch, checkServerHealth } from '@/utils/apiClient';
-
-// Detect mobile device
-const isMobileDevice = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-};
+import { getTokenBalancesBatch } from '@/utils/apiClient';
+import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
 
 export interface MultichainTokenBalance {
   address: string;
@@ -34,26 +30,6 @@ interface UseMultichainTokenBalancesReturn {
   refreshChain: (chainId: number) => Promise<void>;
 }
 
-// Common token addresses by chain ID (same as useTokenBalances)
-const COMMON_TOKENS: Record<number, Array<{ address: string; symbol: string; name: string; decimals: number; logoUrl?: string }>> = {
-  1: [
-    { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
-    { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', symbol: 'USDT', name: 'Tether USD', decimals: 6 },
-    { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', symbol: 'DAI', name: 'Dai Stablecoin', decimals: 18 },
-    { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
-  ],
-  8453: [
-    { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
-    { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
-  ],
-  11155111: [
-    { address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
-  ],
-  84532: [
-    { address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
-    { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
-  ],
-};
 
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
@@ -64,6 +40,28 @@ const ERC20_ABI = [
 
 /**
  * Hook to fetch ERC20 token balances across all supported networks
+ * 
+ * Fetches balances for common ERC20 tokens (USDC, USDT, DAI, WETH, etc.) across all configured chains.
+ * Uses server API with Redis caching when available, falls back to direct RPC calls.
+ * Automatically fetches token prices and calculates USD values.
+ * 
+ * @example
+ * ```tsx
+ * const { tokens, totalValueUSD, refresh } = useMultichainTokenBalances();
+ * 
+ * // Display tokens
+ * tokens.forEach(token => {
+ *   console.log(`${token.symbol} on ${token.chainName}: ${token.balance} ($${token.balanceUSD})`);
+ * });
+ * ```
+ * 
+ * @returns Object containing:
+ * - `tokens`: Array of token balances across all chains
+ * - `totalValueUSD`: Total USD value of all tokens
+ * - `isLoading`: Whether data is currently loading
+ * - `error`: Error message, if any
+ * - `refresh`: Function to refresh all chains
+ * - `refreshChain`: Function to refresh a specific chain
  */
 export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
   const { address, isConnected } = useAppKitAccount();
@@ -76,7 +74,7 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
   // Get token price with fallback to CoinGecko
   const getTokenPrice = useCallback(async (symbol: string, address: string, provider: ethers.Provider, chainId: number): Promise<number> => {
     // Stablecoins are always $1
-    if (['USDC', 'USDT', 'DAI'].includes(symbol)) return 1.0;
+    if (isStablecoin(symbol)) return 1.0;
     
     // Try Uniswap first (primary source)
     try {
@@ -104,72 +102,74 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
     const networkConfig = SUPPORTED_NETWORKS.find(n => n.chainId === chainId);
     if (!networkConfig) return [];
 
-    const tokenList = COMMON_TOKENS[chainId] || [];
+    const tokenList = getCommonTokens(chainId);
     if (tokenList.length === 0) return [];
 
     try {
-      // Try server API first (with Redis caching)
-      const isServerAvailable = await checkServerHealth();
-      if (isServerAvailable) {
-        try {
-          const batchRequests = tokenList.map(tokenInfo => ({
-            chainId,
-            tokenAddress: tokenInfo.address,
-            userAddress: address,
-          }));
+      // Try server API first (with Redis caching) - don't wait for health check
+      // This is faster and more resilient - if server is down, API call will fail quickly
+      try {
+        const batchRequests = tokenList.map(tokenInfo => ({
+          chainId,
+          tokenAddress: tokenInfo.address,
+          userAddress: address,
+        }));
 
-          const serverResults = await getTokenBalancesBatch(batchRequests);
-          
-          if (serverResults && serverResults.length > 0) {
-            const provider = getCachedProvider(chainId);
-            const tokenBalances: MultichainTokenBalance[] = [];
+        const serverResults = await withTimeout(
+          getTokenBalancesBatch(batchRequests),
+          3000
+        ) as Awaited<ReturnType<typeof getTokenBalancesBatch>> | null;
+        
+        if (serverResults && Array.isArray(serverResults) && serverResults.length > 0) {
+          const provider = getCachedProvider(chainId);
+          const tokenBalances: MultichainTokenBalance[] = [];
 
-            // Process server results and get prices
-            const tokenPromises = tokenList.map(async (tokenInfo, index) => {
-              const serverResult = serverResults[index];
-              if (!serverResult || !serverResult.data) {
-                return null;
-              }
+          // Process server results and get prices
+          const tokenPromises = tokenList.map(async (tokenInfo, index) => {
+            const serverResult = serverResults[index];
+            if (!serverResult || !serverResult.data) {
+              return null;
+            }
 
-              try {
-                const { symbol, name, decimals, balance, balanceRaw } = serverResult.data;
-                const balanceNum = parseFloat(balance);
-                if (balanceNum === 0) return null;
+            try {
+              const { symbol, name, decimals, balance, balanceRaw } = serverResult.data;
+              const balanceNum = parseFloat(balance);
+              if (balanceNum === 0) return null;
 
-                // Get token price
-                const tokenPrice = await getTokenPrice(symbol, tokenInfo.address, provider, chainId);
-                const balanceUSD = balanceNum * tokenPrice;
+              // Get token price
+              const tokenPrice = await getTokenPrice(symbol, tokenInfo.address, provider, chainId);
+              const balanceUSD = balanceNum * tokenPrice;
 
-                return {
-                  address: tokenInfo.address,
-                  symbol,
-                  name,
-                  decimals,
-                  balance,
-                  balanceRaw: BigInt(balanceRaw),
-                  balanceUSD,
-                  chainId,
-                  chainName: networkConfig.name,
-                  logoUrl: tokenInfo.logoUrl,
-                } as MultichainTokenBalance;
-              } catch (err) {
-                return null;
-              }
-            });
+              return {
+                address: tokenInfo.address,
+                symbol,
+                name,
+                decimals,
+                balance,
+                balanceRaw: BigInt(balanceRaw),
+                balanceUSD,
+                chainId,
+                chainName: networkConfig.name,
+                logoUrl: tokenInfo.logoUrl,
+              } as MultichainTokenBalance;
+            } catch (err) {
+              return null;
+            }
+          });
 
-            const results = await Promise.all(tokenPromises);
-            results.forEach(result => {
-              if (result !== null) {
-                tokenBalances.push(result);
-              }
-            });
+          const results = await Promise.all(tokenPromises);
+          results.forEach(result => {
+            if (result !== null) {
+              tokenBalances.push(result);
+            }
+          });
 
-            return tokenBalances.sort((a, b) => b.balanceUSD - a.balanceUSD);
-          }
-        } catch (serverError) {
-          // Server failed, fall through to direct RPC calls
+          return tokenBalances.sort((a, b) => b.balanceUSD - a.balanceUSD);
         }
-      }
+        } catch (serverError) {
+          // Server failed or timed out, fall through to direct RPC calls
+          // Don't log - this is expected if server is unavailable
+        }
 
       // Fallback to direct RPC calls if server is unavailable
       const provider = getCachedProvider(chainId);
@@ -274,28 +274,12 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
     setError(null);
 
     try {
-      const isMobile = isMobileDevice();
-      
-      if (isMobile) {
-        // On mobile, fetch sequentially with delays
-        const allTokens: MultichainTokenBalance[] = [];
-        for (let i = 0; i < SUPPORTED_NETWORKS.length; i++) {
-          const network = SUPPORTED_NETWORKS[i];
-          const chainTokens = await fetchChainTokens(network.chainId);
-          allTokens.push(...chainTokens);
-          
-          // Add delay between chains on mobile (except for the last one)
-          if (i < SUPPORTED_NETWORKS.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-        }
-        setTokens(allTokens);
-      } else {
-        // On desktop, fetch all chains in parallel
-        const tokenPromises = SUPPORTED_NETWORKS.map(network => fetchChainTokens(network.chainId));
-        const results = await Promise.all(tokenPromises);
-        setTokens(results.flat());
-      }
+      // Use device-optimized fetching (sequential for mobile, parallel for desktop)
+      const allTokens = await fetchWithDeviceOptimization(
+        SUPPORTED_NETWORKS,
+        async (network) => await fetchChainTokens(network.chainId)
+      );
+      setTokens(allTokens);
     } catch (err) {
       // Silent error handling
       setError(err instanceof Error ? err.message : 'Failed to fetch token balances');

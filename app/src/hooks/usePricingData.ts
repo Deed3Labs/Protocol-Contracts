@@ -3,7 +3,8 @@ import { useAppKitNetwork } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { getRpcUrlForNetwork } from '@/config/networks';
 import { getEthereumProvider } from '@/utils/providerUtils';
-import { getTokenPrice, checkServerHealth } from '@/utils/apiClient';
+import { getTokenPrice } from '@/utils/apiClient';
+import { withTimeout } from './utils/multichainHelpers';
 
 interface PricingData {
   price: number; // Price in USD
@@ -364,7 +365,29 @@ function getNativeTokenAddress(chainId: number): string | null {
 
 /**
  * Hook to fetch token prices using Uniswap and CoinGecko
- * Priority: Uniswap V3 > CoinGecko
+ * 
+ * Fetches token prices with the following priority:
+ * 1. Server API (with Redis caching)
+ * 2. Uniswap V3 pools (primary on-chain source)
+ * 3. CoinGecko API (fallback)
+ * 
+ * If no token address is provided, fetches the native token price (ETH, BASE, etc.) for the current chain.
+ * 
+ * @param tokenAddress - Optional token contract address. If not provided, fetches native token price.
+ * 
+ * @example
+ * ```tsx
+ * // Get native token price (ETH, BASE, etc.)
+ * const { price, isLoading } = usePricingData();
+ * 
+ * // Get specific token price
+ * const { price: usdcPrice } = usePricingData('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48');
+ * ```
+ * 
+ * @returns Object containing:
+ * - `price`: Token price in USD
+ * - `isLoading`: Whether price is currently loading
+ * - `error`: Error message, if any
  */
 export function usePricingData(tokenAddress?: string): PricingData {
   const { caipNetworkId } = useAppKitNetwork();
@@ -395,20 +418,22 @@ export function usePricingData(tokenAddress?: string): PricingData {
     setError(null);
 
     try {
-      // Try server API first (with Redis caching)
-      const isServerAvailable = await checkServerHealth();
-      if (isServerAvailable) {
-        try {
-          const serverPrice = await getTokenPrice(chainId, targetTokenAddress);
-          if (serverPrice && serverPrice.price > 0 && isFinite(serverPrice.price)) {
-            setPrice(serverPrice.price);
-            setIsLoading(false);
-            return; // Successfully fetched from server
-          }
-        } catch (serverError) {
-          // Server failed, fall through to direct API calls
-          console.log('Server API unavailable, using direct calls');
+      // Try server API first (with Redis caching) - don't wait for health check
+      // This is faster and more resilient - if server is down, API call will fail quickly
+      try {
+        const serverPrice = await withTimeout(
+          getTokenPrice(chainId, targetTokenAddress),
+          3000
+        ) as Awaited<ReturnType<typeof getTokenPrice>> | null;
+        
+        if (serverPrice && serverPrice.price > 0 && isFinite(serverPrice.price)) {
+          setPrice(serverPrice.price);
+          setIsLoading(false);
+          return; // Successfully fetched from server
         }
+      } catch (serverError) {
+        // Server failed or timed out, fall through to direct API calls
+        // Don't log - this is expected if server is unavailable
       }
 
       // Fallback to direct API calls if server is unavailable or returns no price
@@ -474,6 +499,10 @@ export function usePricingData(tokenAddress?: string): PricingData {
 
 /**
  * Hook specifically for native token price (backward compatibility)
+ * 
+ * @deprecated Use `usePricingData()` instead. This hook is kept for backward compatibility.
+ * 
+ * @returns Pricing data for the native token of the current chain
  */
 export function useTokenPrice(): PricingData {
   return usePricingData();

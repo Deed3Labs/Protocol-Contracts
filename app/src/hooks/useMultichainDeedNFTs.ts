@@ -1,16 +1,11 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS, getContractAddressForNetwork, getAbiPathForNetwork } from '@/config/networks';
 import { getCachedProvider } from '@/utils/rpcOptimizer';
 import type { DeedNFT } from '@/context/DeedNFTContext';
-import { getNFTs, checkServerHealth } from '@/utils/apiClient';
-
-// Detect mobile device
-const isMobileDevice = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-};
+import { getNFTs } from '@/utils/apiClient';
+import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
 
 export interface MultichainDeedNFT extends DeedNFT {
   chainId: number;
@@ -41,6 +36,27 @@ const getDeedNFTAbi = async (chainId: number) => {
 
 /**
  * Hook to fetch DeedNFTs across all supported networks
+ * 
+ * Fetches DeedNFT tokens owned by the connected wallet across all configured chains.
+ * Uses server API with Redis caching when available, falls back to direct contract calls.
+ * 
+ * @example
+ * ```tsx
+ * const { nfts, totalCount, refresh } = useMultichainDeedNFTs();
+ * 
+ * // Display NFTs
+ * nfts.forEach(nft => {
+ *   console.log(`${nft.definition} on ${nft.chainName} (Token ID: ${nft.tokenId})`);
+ * });
+ * ```
+ * 
+ * @returns Object containing:
+ * - `nfts`: Array of DeedNFT objects with chain information
+ * - `totalCount`: Total number of NFTs across all chains
+ * - `isLoading`: Whether data is currently loading
+ * - `error`: Error message, if any
+ * - `refresh`: Function to refresh all chains
+ * - `refreshChain`: Function to refresh a specific chain
  */
 export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
   const { address, isConnected } = useAppKitAccount();
@@ -168,22 +184,25 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     }
 
     try {
-      // Try server API first (with Redis caching)
-      const isServerAvailable = await checkServerHealth();
-      if (isServerAvailable) {
-        try {
-          const serverNFTs = await getNFTs(chainId, address, contractAddress);
-          if (serverNFTs && serverNFTs.nfts) {
-            // Map server response to MultichainDeedNFT format
-            return serverNFTs.nfts.map((nft: any) => ({
-              ...nft,
-              chainId,
-              chainName: networkConfig.name,
-            }));
-          }
-        } catch (serverError) {
-          // Server failed, fall through to direct contract calls
+      // Try server API first (with Redis caching) - don't wait for health check
+      // This is faster and more resilient - if server is down, API call will fail quickly
+      try {
+        const serverNFTs = await withTimeout(
+          getNFTs(chainId, address, contractAddress),
+          3000
+        ) as Awaited<ReturnType<typeof getNFTs>> | null;
+        
+        if (serverNFTs && serverNFTs.nfts) {
+          // Map server response to MultichainDeedNFT format
+          return serverNFTs.nfts.map((nft: any) => ({
+            ...nft,
+            chainId,
+            chainName: networkConfig.name,
+          }));
         }
+      } catch (serverError) {
+        // Server failed or timed out, fall through to direct contract calls
+        // Don't log - this is expected if server is unavailable
       }
 
       // Fallback to direct contract calls if server is unavailable
@@ -260,28 +279,12 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     setError(null);
 
     try {
-      const isMobile = isMobileDevice();
-      
-      if (isMobile) {
-        // On mobile, fetch sequentially with delays
-        const allNFTs: MultichainDeedNFT[] = [];
-        for (let i = 0; i < SUPPORTED_NETWORKS.length; i++) {
-          const network = SUPPORTED_NETWORKS[i];
-          const chainNFTs = await fetchChainNFTs(network.chainId);
-          allNFTs.push(...chainNFTs);
-          
-          // Add delay between chains on mobile (except for the last one)
-          if (i < SUPPORTED_NETWORKS.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-        }
-        setNfts(allNFTs);
-      } else {
-        // On desktop, fetch all chains in parallel
-        const nftPromises = SUPPORTED_NETWORKS.map(network => fetchChainNFTs(network.chainId));
-        const results = await Promise.all(nftPromises);
-        setNfts(results.flat());
-      }
+      // Use device-optimized fetching (sequential for mobile, parallel for desktop)
+      const allNFTs = await fetchWithDeviceOptimization(
+        SUPPORTED_NETWORKS,
+        async (network) => await fetchChainNFTs(network.chainId)
+      );
+      setNfts(allNFTs);
     } catch (err) {
       // Silent error handling
       setError(err instanceof Error ? err.message : 'Failed to fetch NFTs');

@@ -5,13 +5,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { SUPPORTED_NETWORKS, getNetworkByChainId, getNetworkInfo } from '@/config/networks';
 import { executeRpcCall } from '@/utils/rpcOptimizer';
 import type { WalletTransaction } from './useWalletActivity';
-import { getTransactions, checkServerHealth } from '@/utils/apiClient';
-
-// Detect mobile device
-const isMobileDevice = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-};
+import { getTransactions } from '@/utils/apiClient';
+import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
 
 export interface MultichainTransaction extends WalletTransaction {
   chainId: number;
@@ -28,6 +23,29 @@ interface UseMultichainActivityReturn {
 
 /**
  * Hook to fetch wallet transaction history across all supported networks
+ * 
+ * Fetches transaction history for the connected wallet across all configured chains.
+ * Uses server API with Redis caching when available, falls back to direct RPC calls.
+ * Transactions are sorted by timestamp (newest first) and limited to the specified count.
+ * 
+ * @param limit - Maximum number of transactions to return (default: 20)
+ * 
+ * @example
+ * ```tsx
+ * const { transactions, refresh } = useMultichainActivity(10);
+ * 
+ * // Display recent transactions
+ * transactions.forEach(tx => {
+ *   console.log(`${tx.type} on ${tx.chainName}: ${tx.amount} ${tx.currencySymbol}`);
+ * });
+ * ```
+ * 
+ * @returns Object containing:
+ * - `transactions`: Array of transactions across all chains (sorted by timestamp)
+ * - `isLoading`: Whether data is currently loading
+ * - `error`: Error message, if any
+ * - `refresh`: Function to refresh all chains
+ * - `refreshChain`: Function to refresh a specific chain
  */
 export function useMultichainActivity(limit: number = 20): UseMultichainActivityReturn {
   const { address, isConnected } = useAppKitAccount();
@@ -46,23 +64,26 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
     const currencySymbol = networkConfig?.nativeCurrency.symbol || networkInfo?.nativeCurrency.symbol || 'ETH';
 
     try {
-      // Try server API first (with Redis caching)
-      const isServerAvailable = await checkServerHealth();
-      if (isServerAvailable) {
-        try {
-          const serverTransactions = await getTransactions(chainId, address, limit);
-          if (serverTransactions && serverTransactions.transactions) {
-            // Map server response to MultichainTransaction format
-            return serverTransactions.transactions.map((tx: any) => ({
-              ...tx,
-              date: formatDistanceToNow(new Date(tx.timestamp), { addSuffix: true }),
-              chainId,
-              chainName: networkConfig?.name || networkInfo?.name || `Chain ${chainId}`,
-            }));
-          }
-        } catch (serverError) {
-          // Server failed, fall through to direct RPC calls
+      // Try server API first (with Redis caching) - don't wait for health check
+      // This is faster and more resilient - if server is down, API call will fail quickly
+      try {
+        const serverTransactions = await withTimeout(
+          getTransactions(chainId, address, limit),
+          3000
+        ) as Awaited<ReturnType<typeof getTransactions>> | null;
+        
+        if (serverTransactions && serverTransactions.transactions) {
+          // Map server response to MultichainTransaction format
+          return serverTransactions.transactions.map((tx: any) => ({
+            ...tx,
+            date: formatDistanceToNow(new Date(tx.timestamp), { addSuffix: true }),
+            chainId,
+            chainName: networkConfig?.name || networkInfo?.name || `Chain ${chainId}`,
+          }));
         }
+      } catch (serverError) {
+        // Server failed or timed out, fall through to direct RPC calls
+        // Don't log - this is expected if server is unavailable
       }
 
       // Fallback to direct RPC calls if server is unavailable
@@ -208,35 +229,15 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
     setError(null);
 
     try {
-      const isMobile = isMobileDevice();
+      // Use device-optimized fetching (sequential for mobile, parallel for desktop)
+      const allTransactions = await fetchWithDeviceOptimization(
+        SUPPORTED_NETWORKS,
+        async (network) => await fetchChainTransactions(network.chainId)
+      );
       
-      if (isMobile) {
-        // On mobile, fetch sequentially with delays
-        const allTransactions: MultichainTransaction[] = [];
-        for (let i = 0; i < SUPPORTED_NETWORKS.length; i++) {
-          const network = SUPPORTED_NETWORKS[i];
-          const chainTransactions = await fetchChainTransactions(network.chainId);
-          allTransactions.push(...chainTransactions);
-          
-          // Add delay between chains on mobile (except for the last one)
-          if (i < SUPPORTED_NETWORKS.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-        }
-        
-        // Sort by timestamp (newest first) and limit
-        allTransactions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-        setTransactions(allTransactions.slice(0, limit));
-      } else {
-        // On desktop, fetch all chains in parallel
-        const transactionPromises = SUPPORTED_NETWORKS.map(network => fetchChainTransactions(network.chainId));
-        const results = await Promise.all(transactionPromises);
-        const allTransactions = results.flat();
-        
-        // Sort by timestamp (newest first) and limit
-        allTransactions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-        setTransactions(allTransactions.slice(0, limit));
-      }
+      // Sort by timestamp (newest first) and limit
+      allTransactions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      setTransactions(allTransactions.slice(0, limit));
     } catch (err) {
       // Silent error handling
       setError(err instanceof Error ? err.message : 'Failed to fetch transactions');
