@@ -31,11 +31,14 @@ interface RateLimitState {
 }
 
 const rateLimiters = new Map<number, RateLimitState>();
+// Global rate limiter - tracks requests across all chains to prevent overwhelming RPC providers
+let globalRateLimiter: RateLimitState = { requests: [], windowStart: Date.now() };
 
 // Configuration
 const RATE_LIMIT_WINDOW = 1000; // 1 second window
-const MAX_REQUESTS_PER_WINDOW = 5; // Reduced to 5 requests per second per chain to avoid Infura rate limits
-const CACHE_TTL = 10000; // Increased cache to 10 seconds to reduce API calls
+const MAX_REQUESTS_PER_WINDOW = 3; // Reduced to 3 requests per second per chain to avoid rate limits
+const GLOBAL_MAX_REQUESTS_PER_WINDOW = 10; // Global limit across all chains (prevents overwhelming RPC providers)
+const CACHE_TTL = 30000; // Increased cache to 30 seconds to reduce API calls (balances freshness vs rate limits)
 
 /**
  * Get or create a cached provider for a chain
@@ -57,22 +60,34 @@ export function getCachedProvider(chainId: number): ethers.JsonRpcProvider {
 
 /**
  * Check if we should throttle requests for a chain
+ * Implements both per-chain and global rate limiting
  */
 function shouldThrottle(chainId: number): boolean {
   const now = Date.now();
+  
+  // Check global rate limit first (prevents overwhelming RPC providers across all chains)
+  globalRateLimiter.requests = globalRateLimiter.requests.filter(
+    timestamp => now - timestamp < RATE_LIMIT_WINDOW
+  );
+  if (globalRateLimiter.requests.length >= GLOBAL_MAX_REQUESTS_PER_WINDOW) {
+    return true; // Global limit reached
+  }
+  
+  // Check per-chain rate limit
   const limiter = rateLimiters.get(chainId) || { requests: [], windowStart: now };
   
   // Remove old requests outside the window
   limiter.requests = limiter.requests.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
   
-  // Check if we're at the limit
+  // Check if we're at the per-chain limit
   if (limiter.requests.length >= MAX_REQUESTS_PER_WINDOW) {
     return true;
   }
   
-  // Record this request
+  // Record this request for both global and per-chain limiters
   limiter.requests.push(now);
   rateLimiters.set(chainId, limiter);
+  globalRateLimiter.requests.push(now);
   
   return false;
 }
