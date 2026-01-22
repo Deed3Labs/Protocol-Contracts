@@ -73,8 +73,12 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
 
   // Get token price with fallback to CoinGecko
   const getTokenPrice = useCallback(async (symbol: string, address: string, provider: ethers.Provider, chainId: number): Promise<number> => {
-    // Stablecoins are always $1
-    if (isStablecoin(symbol)) return 1.0;
+    // Stablecoins are always $1 - check this FIRST before any API calls
+    // Normalize symbol to uppercase for comparison
+    const normalizedSymbol = symbol?.toUpperCase() || '';
+    if (isStablecoin(normalizedSymbol)) {
+      return 1.0;
+    }
     
     // Try Uniswap first (primary source)
     try {
@@ -136,8 +140,15 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
               const balanceNum = parseFloat(balance);
               if (balanceNum === 0) return null;
 
-              // Get token price
-              const tokenPrice = await getTokenPrice(symbol, tokenInfo.address, provider, chainId);
+              // Get token price - ensure stablecoins always get $1
+              const normalizedSymbol = (symbol || tokenInfo.symbol || '').toUpperCase();
+              let tokenPrice = await getTokenPrice(normalizedSymbol, tokenInfo.address, provider, chainId);
+              
+              // Double-check: if price is 0 but it's a stablecoin, force to $1
+              if (tokenPrice === 0 && isStablecoin(normalizedSymbol)) {
+                tokenPrice = 1.0;
+              }
+              
               const balanceUSD = balanceNum * tokenPrice;
 
               return {
@@ -214,7 +225,16 @@ export function useMultichainTokenBalances(): UseMultichainTokenBalancesReturn {
           
           const formattedBalance = ethers.formatUnits(balance, decimals);
           const balanceNum = parseFloat(formattedBalance);
-          const tokenPrice = await getTokenPrice(symbol, tokenInfo.address, provider, chainId);
+          
+          // Get token price - ensure stablecoins always get $1
+          const normalizedSymbol = (symbol || tokenInfo.symbol || '').toUpperCase();
+          let tokenPrice = await getTokenPrice(normalizedSymbol, tokenInfo.address, provider, chainId);
+          
+          // Double-check: if price is 0 but it's a stablecoin, force to $1
+          if (tokenPrice === 0 && isStablecoin(normalizedSymbol)) {
+            tokenPrice = 1.0;
+          }
+          
           const balanceUSD = balanceNum * tokenPrice;
 
           return {
