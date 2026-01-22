@@ -360,11 +360,15 @@ export function AllocationView({ totalValue, holdings, balanceUSD }: AllocationV
   
   // Memoize allocations calculation - only recalculate when holdings or balance changes
   // Separate stablecoins (cash) from crypto tokens
+  // Crypto includes native tokens (ETH, BASE, etc.) and non-stablecoin ERC20 tokens
   const cryptoValue = useMemo(() => {
     if (!holdings || holdings.length === 0) return 0;
-    // Filter to only token holdings and exclude stablecoins
-    const tokenHoldings = holdings.filter(h => (h.type === 'token' || h.type !== 'nft') && !isStablecoin(h.asset_symbol));
-    return tokenHoldings.reduce((sum, h) => sum + (h.valueUSD || 0), 0);
+    // Filter to only token holdings (native + ERC20) and exclude stablecoins
+    const tokenHoldings = holdings.filter(h => 
+      h.type === 'token' && !isStablecoin(h.asset_symbol)
+    );
+    // Use balanceUSD (from PortfolioContext) or valueUSD (from Holding interface) - both should work
+    return tokenHoldings.reduce((sum, h) => sum + ((h as any).balanceUSD || (h as any).valueUSD || 0), 0);
   }, [holdings]);
   const nftValue = useMemo(() => 
     holdings?.filter(h => h.type === 'nft').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0,

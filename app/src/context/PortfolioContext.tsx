@@ -128,7 +128,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [isConnected, multichainBalances.length]);
   
-  // Combine NFTs and tokens into holdings
+  // Combine NFTs, tokens, and native balances into holdings
   const holdings = useMemo(() => {
     const allHoldings: PortfolioContextType['holdings'] = [];
     
@@ -156,7 +156,29 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
     });
     
-    // Add tokens
+    // Add native token balances (ETH, BASE, etc.) as crypto holdings
+    multichainBalances.forEach((balance) => {
+      // Only add if balance is greater than 0
+      if (parseFloat(balance.balance) > 0 && balance.balanceUSD > 0) {
+        const holding: PortfolioContextType['holdings'][0] = {
+          id: `${balance.chainId}-native-${balance.currencySymbol}`,
+          type: 'token', // Native tokens are treated as crypto tokens
+          asset_name: balance.currencyName,
+          asset_symbol: balance.currencySymbol,
+          balanceUSD: balance.balanceUSD,
+          chainId: balance.chainId,
+          chainName: balance.chainName,
+          // Additional properties for native tokens
+          balance: balance.balance,
+          address: 'native', // Native tokens don't have a contract address
+          decimals: 18, // Most native tokens use 18 decimals
+          isNative: true, // Flag to identify native tokens
+        };
+        allHoldings.push(holding);
+      }
+    });
+    
+    // Add ERC20 tokens
     tokenBalances.forEach((token) => {
       const holding: PortfolioContextType['holdings'][0] = {
         id: `${token.chainId}-token-${token.address}`,
@@ -186,7 +208,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (a.type === 'token' && b.type === 'nft') return 1;
       return 0;
     });
-  }, [multichainNFTs, tokenBalances]);
+  }, [multichainNFTs, multichainBalances, tokenBalances]);
   
   // Determine loading states
   const balancesLoading = useMemo(() => {
