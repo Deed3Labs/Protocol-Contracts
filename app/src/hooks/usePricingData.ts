@@ -15,7 +15,7 @@ const UNISWAP_V3_FACTORY: Record<number, string> = {
   1: '0x1F98431c8aD98523631AE4a59f267346ea31F984', // Ethereum Mainnet
   8453: '0x33128a8fC17869897dcE68Ed026d694621f6FDfD', // Base Mainnet
   11155111: '0x0227628f3F023bb0B980b67D528571c95c6DaC1c', // Sepolia
-  84532: '0x4200000000000000000000000000000000000006', // Base Sepolia (using WETH address as placeholder)
+  84532: '0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24', // Base Sepolia
 };
 
 // Common stablecoin addresses
@@ -142,7 +142,18 @@ export async function getUniswapPrice(
     const factory = new ethers.Contract(factoryAddress, UNISWAP_V3_FACTORY_ABI, provider);
 
     // Try direct USDC pair first
-    const usdcPoolAddress = await factory.getPool(tokenAddress, usdcAddress, FEE_TIER);
+    let usdcPoolAddress: string = ethers.ZeroAddress;
+    try {
+      const result = await factory.getPool(tokenAddress, usdcAddress, FEE_TIER);
+      // Check if result is valid (not zero address and not empty)
+      if (result && result !== ethers.ZeroAddress && result !== '0x') {
+        usdcPoolAddress = result;
+      }
+    } catch (error) {
+      // Pool doesn't exist or call failed - this is normal, continue to next option
+      usdcPoolAddress = ethers.ZeroAddress;
+    }
+    
     if (usdcPoolAddress && usdcPoolAddress !== ethers.ZeroAddress) {
       // Check which token is token0 in the pool
       const pool = new ethers.Contract(usdcPoolAddress, UNISWAP_V3_POOL_ABI, provider);
@@ -168,7 +179,15 @@ export async function getUniswapPrice(
     }
 
     // Try via WETH if no direct USDC pair
-    const wethPoolAddress = await factory.getPool(tokenAddress, wethAddress, FEE_TIER);
+    let wethPoolAddress: string = ethers.ZeroAddress;
+    try {
+      const result = await factory.getPool(tokenAddress, wethAddress, FEE_TIER);
+      wethPoolAddress = result && result !== ethers.ZeroAddress ? result : ethers.ZeroAddress;
+    } catch (error) {
+      // Pool doesn't exist or call failed - this is normal, continue to next option
+      wethPoolAddress = ethers.ZeroAddress;
+    }
+    
     if (wethPoolAddress && wethPoolAddress !== ethers.ZeroAddress) {
       const pool = new ethers.Contract(wethPoolAddress, UNISWAP_V3_POOL_ABI, provider);
       const token0Address = await pool.token0();
@@ -177,7 +196,15 @@ export async function getUniswapPrice(
       const tokenWethPrice = await getPoolPrice(provider, wethPoolAddress, token0Address, token1Address);
       if (tokenWethPrice > 0) {
         // Get WETH/USDC price
-        const wethUsdcPoolAddress = await factory.getPool(wethAddress, usdcAddress, FEE_TIER);
+        let wethUsdcPoolAddress: string = ethers.ZeroAddress;
+        try {
+          const result = await factory.getPool(wethAddress, usdcAddress, FEE_TIER);
+          wethUsdcPoolAddress = result && result !== ethers.ZeroAddress ? result : ethers.ZeroAddress;
+        } catch (error) {
+          // Pool doesn't exist or call failed - this is normal
+          wethUsdcPoolAddress = ethers.ZeroAddress;
+        }
+        
         if (wethUsdcPoolAddress && wethUsdcPoolAddress !== ethers.ZeroAddress) {
           const wethUsdcPool = new ethers.Contract(wethUsdcPoolAddress, UNISWAP_V3_POOL_ABI, provider);
           const wethUsdcToken0 = await wethUsdcPool.token0();
