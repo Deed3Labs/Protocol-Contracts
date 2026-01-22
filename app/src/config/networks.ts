@@ -313,18 +313,21 @@ export const getNetworkInfo = (chainId: number) => {
 
 // Get the best available RPC URL for a network
 // Priority: Alchemy > Infura > Public RPC
+// Alchemy is preferred by default because it has better free tier limits (300M compute units/month vs Infura's ~100k requests/day)
 // Environment variables needed:
 // - VITE_INFURA_PROJECT_ID: Your Infura project ID (used for Infura RPC URLs)
 // - VITE_ALCHEMY_ETH_MAINNET, VITE_ALCHEMY_ETH_SEPOLIA, etc.: Alchemy API keys (optional)
 // - VITE_INFURA_ETH_MAINNET, VITE_INFURA_ETH_SEPOLIA, etc.: Full Infura URLs (optional, overrides project ID)
-export const getRpcUrlForNetwork = (chainId: number, preferAlchemy = false): string | null => {
+export const getRpcUrlForNetwork = (chainId: number): string | null => {
   const network = getNetworkByChainId(chainId);
   if (!network) return null;
 
   // Priority: Alchemy > Infura > Public RPC
-  if (preferAlchemy && network.alchemyUrl) {
+  // Alchemy is preferred (better free tier limits: 300M compute units/month vs Infura's ~100k requests/day)
+  if (network.alchemyUrl) {
     return network.alchemyUrl;
   }
+  // Only use Infura if Alchemy is not available
   if (network.infuraUrl) {
     return network.infuraUrl;
   }
