@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { MapPin, Plus, Users, CheckCircle, AlertCircle } from 'lucide-react';
+import { MapPin, Plus, Users, CheckCircle, AlertCircle, RefreshCw, Maximize2, Minimize2, X } from 'lucide-react';
 import { ethers } from 'ethers';
 import { getContractAddressForNetwork } from '@/config/networks';
 import type { DeedNFT } from '@/hooks/useDeedNFTData';
@@ -52,6 +52,8 @@ const SubdivideModal = ({ deedNFT, isOpen, onClose, getAssetTypeLabel }: Subdivi
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [isFullPage, setIsFullPage] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Clear messages when modal closes or tab changes
   const clearMessages = () => {
@@ -398,19 +400,64 @@ const SubdivideModal = ({ deedNFT, isOpen, onClose, getAssetTypeLabel }: Subdivi
     }
   };
 
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    // Refresh logic - reload component state
+    setTimeout(() => {
+      setIsRefreshing(false);
+      clearMessages();
+    }, 500);
+  };
+
+  const toggleFullPage = () => {
+    setIsFullPage(!isFullPage);
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
       if (!open) {
         clearMessages();
+        setIsFullPage(false);
         onClose();
       }
     }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className={`${isFullPage ? 'max-w-[95vw] md:max-w-[95vw] max-h-[95vh]' : 'max-w-4xl max-h-[90vh]'} overflow-y-auto`}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
             <MapPin className="w-5 h-5" />
-            Subdivide T-Deed #{deedNFT.tokenId}
-          </DialogTitle>
+              <DialogTitle>Subdivide T-Deed #{deedNFT.tokenId}</DialogTitle>
+            </div>
+            <div className="flex items-center space-x-1 md:space-x-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRefresh}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                title="Refresh"
+              >
+                <RefreshCw className={`w-4 h-4 md:w-5 md:h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleFullPage}
+                className="hidden md:block text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                title={isFullPage ? 'Minimize' : 'Expand'}
+              >
+                {isFullPage ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                title="Close"
+              >
+                <X className="w-4 h-4 md:w-5 md:h-5" />
+              </Button>
+            </div>
+          </div>
           <DialogDescription>
             Create subdivisions and manage units/parcels for your {getAssetTypeLabel(deedNFT.assetType)}
           </DialogDescription>
@@ -449,7 +496,7 @@ const SubdivideModal = ({ deedNFT, isOpen, onClose, getAssetTypeLabel }: Subdivi
           )}
 
           {/* Tab Navigation */}
-          <div className="flex space-x-1 bg-gray-100 dark:bg-[#0e0e0e] p-1 rounded-lg border border-gray-200 dark:border-white/10">
+          <div className="flex space-x-1 bg-gray-100 dark:bg-[#0e0e0e] p-1 rounded-lg border border-black/10 dark:border-white/10">
             <button
               onClick={() => {
                 setActiveTab('create');

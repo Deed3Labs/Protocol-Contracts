@@ -19,6 +19,12 @@ Key components of the protocol include:
 - **Fractionalize**: Fractional ownership via ERC20 tokens for REIT functionality.
 - **FractionToken**: ERC20 tokens representing fractional asset shares.
 - **FractionTokenFactory**: Factory for deploying fraction token contracts.
+- **BurnerBondFactory**: Factory for creating token-specific bond collections.
+- **BurnerBond**: ERC-1155 NFT bonds with discounted pricing and maturity dates.
+- **BurnerBondDeposit**: Unified deposit contract for multi-token bond creation.
+- **AssurancePool**: Multi-token reserve management for protocol liquidity.
+- **AssuranceOracle**: Price oracle and token validation system.
+- **TokenRegistry**: Centralized token whitelist and metadata registry.
 
 ## Project Structure
 
@@ -28,7 +34,8 @@ contracts/
 │   ├── interfaces/    # Contract interfaces
 │   ├── factories/     # Factory contracts
 │   │   ├── ValidatorFactory.sol
-│   │   └── FractionTokenFactory.sol
+│   │   ├── FractionTokenFactory.sol
+│   │   └── BurnerBondFactory.sol
 │   ├── DeedNFT.sol    # Main ERC721 NFT contract
 │   ├── Validator.sol  # Asset validation logic
 │   ├── ValidatorRegistry.sol
@@ -38,6 +45,12 @@ contracts/
 ├── extensions/        # Extension contracts
 │   ├── Fractionalize.sol
 │   └── Subdivide.sol
+├── peripherals/       # Peripheral contracts
+│   ├── BurnerBond.sol
+│   ├── BurnerBondDeposit.sol
+│   ├── AssurancePool.sol
+│   ├── AssuranceOracle.sol
+│   └── TokenRegistry.sol
 └── libraries/         # Shared libraries
 ```
 

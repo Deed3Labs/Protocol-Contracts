@@ -14,14 +14,26 @@ export interface NetworkConfig {
   };
 }
 
+// Get Infura project ID from environment variable
+// ⚠️ SECURITY NOTE: VITE_ prefixed variables are exposed to the browser
+// Infura Project IDs are safe to expose, but you MUST:
+// 1. Enable domain/origin restrictions in Infura dashboard
+// 2. Enable rate limiting
+// 3. Enable method allowlists
+// 4. Never expose the Project Secret (only use Project ID)
+// See docs/security-rpc-providers.md for details
+const INFURA_PROJECT_ID = import.meta.env.VITE_INFURA_PROJECT_ID || '';
+
 export const SUPPORTED_NETWORKS: NetworkConfig[] = [
   {
     id: 1,
     name: 'Ethereum Mainnet',
     chainId: 1,
-    rpcUrl: 'https://mainnet.infura.io/v3/your-project-id',
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://eth.llamarpc.com', // Fallback to public RPC
     alchemyUrl: import.meta.env.VITE_ALCHEMY_ETH_MAINNET,
-    infuraUrl: import.meta.env.VITE_INFURA_ETH_MAINNET,
+    infuraUrl: import.meta.env.VITE_INFURA_ETH_MAINNET || (INFURA_PROJECT_ID ? `https://mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
     blockExplorer: 'https://etherscan.io',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
     nativeCurrency: {
@@ -48,9 +60,11 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     id: 11155111,
     name: 'Sepolia',
     chainId: 11155111,
-    rpcUrl: 'https://sepolia.infura.io/v3/your-project-id',
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://sepolia.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://sepolia.infura.io/v3/your-project-id', // Fallback placeholder
     alchemyUrl: import.meta.env.VITE_ALCHEMY_ETH_SEPOLIA,
-    infuraUrl: import.meta.env.VITE_INFURA_ETH_SEPOLIA,
+    infuraUrl: import.meta.env.VITE_INFURA_ETH_SEPOLIA || (INFURA_PROJECT_ID ? `https://sepolia.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
     blockExplorer: 'https://sepolia.etherscan.io',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
     nativeCurrency: {
@@ -70,6 +84,54 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     nativeCurrency: {
       name: 'Sepolia Ether',
       symbol: 'ETH',
+      decimals: 18,
+    },
+  },
+  {
+    id: 42161,
+    name: 'Arbitrum One',
+    chainId: 42161,
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://arbitrum-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://arb1.arbitrum.io/rpc',
+    alchemyUrl: import.meta.env.VITE_ALCHEMY_ARBITRUM_MAINNET,
+    infuraUrl: import.meta.env.VITE_INFURA_ARBITRUM_MAINNET || (INFURA_PROJECT_ID ? `https://arbitrum-mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
+    blockExplorer: 'https://arbiscan.io',
+    contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
+    nativeCurrency: {
+      name: 'Ether',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+  },
+  {
+    id: 137,
+    name: 'Polygon',
+    chainId: 137,
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://polygon-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://polygon-rpc.com',
+    alchemyUrl: import.meta.env.VITE_ALCHEMY_POLYGON_MAINNET,
+    infuraUrl: import.meta.env.VITE_INFURA_POLYGON_MAINNET || (INFURA_PROJECT_ID ? `https://polygon-mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
+    blockExplorer: 'https://polygonscan.com',
+    contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
+    nativeCurrency: {
+      name: 'POL',
+      symbol: 'POL',
+      decimals: 18,
+    },
+  },
+  {
+    id: 100,
+    name: 'Gnosis',
+    chainId: 100,
+    rpcUrl: 'https://rpc.gnosischain.com',
+    alchemyUrl: import.meta.env.VITE_ALCHEMY_GNOSIS_MAINNET,
+    blockExplorer: 'https://gnosisscan.io',
+    contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
+    nativeCurrency: {
+      name: 'xDAI',
+      symbol: 'xDAI',
       decimals: 18,
     },
   },
@@ -103,7 +165,9 @@ export const networks = {
   11155111: {
     name: 'Sepolia',
     chainId: 11155111,
-    rpcUrl: 'https://sepolia.infura.io/v3/your-project-id',
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://sepolia.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://sepolia.infura.io/v3/your-project-id', // Fallback placeholder
     blockExplorer: 'https://sepolia.etherscan.io',
     nativeCurrency: {
       name: 'ETH',
@@ -156,6 +220,67 @@ export const networks = {
       MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
     },
   },
+  // Arbitrum One
+  42161: {
+    name: 'Arbitrum One',
+    chainId: 42161,
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://arbitrum-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://arb1.arbitrum.io/rpc',
+    blockExplorer: 'https://arbiscan.io',
+    nativeCurrency: {
+      name: 'ETH',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      Validator: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+    },
+  },
+  // Polygon
+  137: {
+    name: 'Polygon',
+    chainId: 137,
+    rpcUrl: INFURA_PROJECT_ID 
+      ? `https://polygon-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://polygon-rpc.com',
+    blockExplorer: 'https://polygonscan.com',
+    nativeCurrency: {
+      name: 'POL',
+      symbol: 'POL',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      Validator: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+    },
+  },
+  // Gnosis
+  100: {
+    name: 'Gnosis',
+    chainId: 100,
+    rpcUrl: 'https://rpc.gnosischain.com',
+    blockExplorer: 'https://gnosisscan.io',
+    nativeCurrency: {
+      name: 'xDAI',
+      symbol: 'xDAI',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      Validator: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+    },
+  },
 };
 
 export const getNetworkByChainId = (chainId: number): NetworkConfig | undefined => {
@@ -187,6 +312,11 @@ export const getNetworkInfo = (chainId: number) => {
 };
 
 // Get the best available RPC URL for a network
+// Priority: Alchemy > Infura > Public RPC
+// Environment variables needed:
+// - VITE_INFURA_PROJECT_ID: Your Infura project ID (used for Infura RPC URLs)
+// - VITE_ALCHEMY_ETH_MAINNET, VITE_ALCHEMY_ETH_SEPOLIA, etc.: Alchemy API keys (optional)
+// - VITE_INFURA_ETH_MAINNET, VITE_INFURA_ETH_SEPOLIA, etc.: Full Infura URLs (optional, overrides project ID)
 export const getRpcUrlForNetwork = (chainId: number, preferAlchemy = false): string | null => {
   const network = getNetworkByChainId(chainId);
   if (!network) return null;
@@ -215,6 +345,9 @@ export const getAbiPathForNetwork = (chainId: number, contractName: string): str
     11155111: 'sepolia',
     8453: 'base',
     1: 'ethereum',
+    42161: 'arbitrum',
+    137: 'polygon',
+    100: 'gnosis',
   };
 
   const dirName = chainIdToDir[chainId];

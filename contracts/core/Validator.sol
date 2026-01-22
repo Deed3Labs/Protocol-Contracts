@@ -22,6 +22,7 @@ import "./interfaces/IValidator.sol";
 import "./interfaces/IDeedNFT.sol";
 import "./interfaces/IFundManager.sol";
 import "./interfaces/ISubdivide.sol";
+import "./interfaces/ITokenRegistry.sol";
 
 /**
  * @title Validator
@@ -122,6 +123,9 @@ contract Validator is
 
     /// @notice Address of the FundManager contract
     address public fundManager;
+
+    /// @notice Centralized token registry (optional)
+    ITokenRegistry public tokenRegistry;
 
     // ============ Upgrade Gap ============
 
@@ -773,7 +777,11 @@ contract Validator is
      * @return Boolean indicating if the token is whitelisted
      */
     function isTokenWhitelisted(address token) external view returns (bool) {
-        return isWhitelisted[token];
+        bool local = isWhitelisted[token];
+        if (address(tokenRegistry) != address(0)) {
+            return local || tokenRegistry.getIsWhitelisted(token);
+        }
+        return local;
     }
 
     /**
@@ -783,6 +791,14 @@ contract Validator is
      */
     function getServiceFee(address token) external view returns (uint256) {
         return serviceFee[token];
+    }
+
+    /**
+     * @dev Sets the TokenRegistry contract address
+     * @param _tokenRegistry New TokenRegistry contract address
+     */
+    function setTokenRegistry(address _tokenRegistry) external onlyOwner {
+        tokenRegistry = ITokenRegistry(_tokenRegistry);
     }
 
     /**

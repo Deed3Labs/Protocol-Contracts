@@ -23,6 +23,7 @@ interface MessageOwnerModalProps {
   ownerAddress: string;
   tokenId: string;
   assetType: string;
+  isBond?: boolean; // New prop to determine if this is for a bond
 }
 
 // Custom DialogContent for mobile slide-up animation
@@ -59,6 +60,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
   ownerAddress,
   tokenId,
   assetType,
+  isBond = false,
 }) => {
   const [copied, setCopied] = useState(false);
   const [showXMTPMessaging, setShowXMTPMessaging] = useState(false);
@@ -80,8 +82,8 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
   };
 
   const handleOpenEmail = () => {
-    const subject = `Inquiry about T-Deed (${assetType} #${tokenId})`;
-    const body = `Hi! I'm interested in your T-Deed (${assetType} #${tokenId}). Could you tell me more about this asset and whether it's available for purchase or collaboration?`;
+    const subject = `Inquiry about ${isBond ? 'Bond' : 'T-Deed'} (${assetType} #${tokenId})`;
+    const body = `Hi! I'm interested in your ${isBond ? 'Bond' : 'T-Deed'} (${assetType} #${tokenId}). Could you tell me more about this asset and whether it's available for purchase or collaboration?`;
     const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.open(mailtoUrl, '_blank');
   };
@@ -99,7 +101,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
           <div>
             <DialogTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center space-x-2">
               <MessageCircle className="w-5 h-5" />
-              <span>Message T-Deed Owner</span>
+              <span>{isBond ? 'Message Bondholder' : 'Message T-Deed Owner'}</span>
             </DialogTitle>
             <p className="text-gray-600 dark:text-gray-300 mt-1">
               Contact the owner of {assetType} #{tokenId}
@@ -126,7 +128,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
                 <Card className="border-black/10 dark:border-white/10 bg-white/50 dark:bg-[#141414]/50 backdrop-blur-sm">
                   <CardHeader className="pb-0">
                     <CardTitle className="text-lg text-gray-900 dark:text-white">
-                      T-Deed Information
+                      {isBond ? 'Bond Information' : 'T-Deed Information'}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -180,7 +182,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
                       Messaging Options
                     </CardTitle>
                     <CardDescription className="text-gray-600 dark:text-gray-300">
-                      Choose how you'd like to contact the T-Deed owner
+                      Choose how you'd like to contact the {isBond ? 'bondholder' : 'T-Deed owner'}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -225,7 +227,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
                     <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                       <p className="text-blue-800 dark:text-blue-200 text-sm">
                         <strong>Note:</strong> XMTP provides end-to-end encrypted messaging directly in the app. 
-                        Blockscan Chat allows you to send encrypted messages to the T-Deed owner. 
+                        Blockscan Chat allows you to send encrypted messages to the {isBond ? 'bondholder' : 'T-Deed owner'}. 
                         You'll need to connect your wallet and sign in to start messaging. Email option opens your default email client.
                       </p>
                     </div>
@@ -244,7 +246,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
                   </CardHeader>
                   <CardContent>
                     <Textarea
-                      value={`Hi! I'm interested in your T-Deed (${assetType} #${tokenId}). Could you tell me more about this asset and whether it's available for purchase or collaboration?`}
+                      value={`Hi! I'm interested in your ${isBond ? 'Bond' : 'T-Deed'} (${assetType} #${tokenId}). Could you tell me more about this asset and whether it's available for purchase or collaboration?`}
                       readOnly
                       className="border-black/10 dark:border-white/10 bg-gray-50 dark:bg-[#141414] text-gray-900 dark:text-white min-h-[100px]"
                     />
@@ -253,7 +255,7 @@ const MessageOwnerModal: React.FC<MessageOwnerModalProps> = ({
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          const template = `Hi! I'm interested in your T-Deed (${assetType} #${tokenId}). Could you tell me more about this asset and whether it's available for purchase or collaboration?`;
+                          const template = `Hi! I'm interested in your ${isBond ? 'Bond' : 'T-Deed'} (${assetType} #${tokenId}). Could you tell me more about this asset and whether it's available for purchase or collaboration?`;
                           navigator.clipboard.writeText(template);
                           setCopied(true);
                           setTimeout(() => setCopied(false), 2000);
