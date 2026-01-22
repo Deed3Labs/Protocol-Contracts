@@ -7,7 +7,6 @@ import { useState, useCallback, useRef } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { SUPPORTED_NETWORKS } from '@/config/networks';
 import { 
-  isMobileDevice, 
   fetchWithDeviceOptimization,
   handleMultichainError 
 } from './multichainHelpers';
@@ -108,7 +107,8 @@ export function useBaseMultichain<T extends { chainId?: number }>(
         chainId,
       })) as T[];
     } catch (err) {
-      const errorMessage = handleMultichainError(
+      // Handle error (logging is done inside handleMultichainError)
+      handleMultichainError(
         err,
         chainId,
         networkConfig.name,
