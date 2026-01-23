@@ -62,9 +62,10 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
 
     try {
       // Use server API (with Redis caching)
+      // Increased timeout for transaction fetching (15 seconds) - can be slow for many transactions
       const serverTransactions = await withTimeout(
         getTransactions(chainId, address, limit),
-        5000 // 5 second timeout for production
+        15000
       ) as Awaited<ReturnType<typeof getTransactions>> | null;
       
       if (!serverTransactions || !serverTransactions.transactions) {

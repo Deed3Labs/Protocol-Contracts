@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { getRpcUrl } from '../utils/rpc.js';
+import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
@@ -30,8 +31,9 @@ export async function getBalance(
       return null;
     }
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const balanceWei = await provider.getBalance(address);
+    // Use retry provider to handle rate limits and network issues
+    const provider = createRetryProvider(rpcUrl, chainId);
+    const balanceWei = await withRetry(() => provider.getBalance(address));
     const balance = parseFloat(ethers.formatEther(balanceWei)).toFixed(4);
 
     // Note: balanceUSD calculation should be done on the client side with current price
@@ -61,14 +63,16 @@ export async function getTokenBalance(
       return null;
     }
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    // Use retry provider to handle rate limits and network issues
+    const provider = createRetryProvider(rpcUrl, chainId);
     const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
 
+    // Use retry logic for all contract calls
     const [balance, symbol, name, decimals] = await Promise.all([
-      contract.balanceOf(userAddress),
-      contract.symbol().catch(() => 'UNKNOWN'),
-      contract.name().catch(() => 'Unknown Token'),
-      contract.decimals().catch(() => 18),
+      withRetry(() => contract.balanceOf(userAddress)),
+      withRetry(() => contract.symbol()).catch(() => 'UNKNOWN'),
+      withRetry(() => contract.name()).catch(() => 'Unknown Token'),
+      withRetry(() => contract.decimals()).catch(() => 18),
     ]);
 
     if (balance === 0n) {

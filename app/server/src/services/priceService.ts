@@ -53,6 +53,7 @@ const FEE_TIER = 3000; // 0.3% fee tier
  * Get RPC URL for a chain
  */
 import { getRpcUrl } from '../utils/rpc.js';
+import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 
 /**
  * Get price from Uniswap V3 pool
@@ -75,13 +76,14 @@ export async function getUniswapPrice(
       return null;
     }
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    // Use retry provider to handle rate limits and network issues
+    const provider = createRetryProvider(rpcUrl, chainId);
     const factory = new ethers.Contract(factoryAddress, UNISWAP_V3_FACTORY_ABI, provider);
 
     // Try direct USDC pair first
     let usdcPoolAddress: string = ethers.ZeroAddress;
     try {
-      const result = await factory.getPool(tokenAddress, usdcAddress, FEE_TIER);
+      const result = await withRetry(() => factory.getPool(tokenAddress, usdcAddress, FEE_TIER));
       if (result && result !== ethers.ZeroAddress && result !== '0x') {
         usdcPoolAddress = result;
       }
@@ -91,8 +93,11 @@ export async function getUniswapPrice(
 
     if (usdcPoolAddress && usdcPoolAddress !== ethers.ZeroAddress) {
       const pool = new ethers.Contract(usdcPoolAddress, UNISWAP_V3_POOL_ABI, provider);
-      const token0Address = await pool.token0();
-      const token1Address = await pool.token1();
+      // Use retry logic for RPC calls
+      const [token0Address, token1Address] = await Promise.all([
+        withRetry(() => pool.token0()),
+        withRetry(() => pool.token1()),
+      ]);
 
       const price = await getPoolPrice(provider, usdcPoolAddress, token0Address, token1Address);
       if (price > 0 && isFinite(price)) {
@@ -107,7 +112,7 @@ export async function getUniswapPrice(
     // Try via WETH if no direct USDC pair
     let wethPoolAddress: string = ethers.ZeroAddress;
     try {
-      const result = await factory.getPool(tokenAddress, wethAddress, FEE_TIER);
+      const result = await withRetry(() => factory.getPool(tokenAddress, wethAddress, FEE_TIER));
       wethPoolAddress = result && result !== ethers.ZeroAddress ? result : ethers.ZeroAddress;
     } catch (error) {
       wethPoolAddress = ethers.ZeroAddress;
@@ -115,14 +120,17 @@ export async function getUniswapPrice(
 
     if (wethPoolAddress && wethPoolAddress !== ethers.ZeroAddress) {
       const pool = new ethers.Contract(wethPoolAddress, UNISWAP_V3_POOL_ABI, provider);
-      const token0Address = await pool.token0();
-      const token1Address = await pool.token1();
+      // Use retry logic for RPC calls
+      const [token0Address, token1Address] = await Promise.all([
+        withRetry(() => pool.token0()),
+        withRetry(() => pool.token1()),
+      ]);
 
       const tokenWethPrice = await getPoolPrice(provider, wethPoolAddress, token0Address, token1Address);
       if (tokenWethPrice > 0) {
         let wethUsdcPoolAddress: string = ethers.ZeroAddress;
         try {
-          const result = await factory.getPool(wethAddress, usdcAddress, FEE_TIER);
+          const result = await withRetry(() => factory.getPool(wethAddress, usdcAddress, FEE_TIER));
           wethUsdcPoolAddress = result && result !== ethers.ZeroAddress ? result : ethers.ZeroAddress;
         } catch (error) {
           wethUsdcPoolAddress = ethers.ZeroAddress;
@@ -130,8 +138,11 @@ export async function getUniswapPrice(
 
         if (wethUsdcPoolAddress && wethUsdcPoolAddress !== ethers.ZeroAddress) {
           const wethUsdcPool = new ethers.Contract(wethUsdcPoolAddress, UNISWAP_V3_POOL_ABI, provider);
-          const wethUsdcToken0 = await wethUsdcPool.token0();
-          const wethUsdcToken1 = await wethUsdcPool.token1();
+          // Use retry logic for RPC calls
+          const [wethUsdcToken0, wethUsdcToken1] = await Promise.all([
+            withRetry(() => wethUsdcPool.token0()),
+            withRetry(() => wethUsdcPool.token1()),
+          ]);
 
           const wethUsdcPrice = await getPoolPrice(provider, wethUsdcPoolAddress, wethUsdcToken0, wethUsdcToken1);
           if (wethUsdcPrice > 0 && isFinite(wethUsdcPrice)) {
@@ -221,9 +232,10 @@ async function getTokenSymbol(
       return null;
     }
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    // Use retry provider to handle rate limits and network issues
+    const provider = createRetryProvider(rpcUrl, chainId);
     const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-    const symbol = await tokenContract.symbol();
+    const symbol = await withRetry(() => tokenContract.symbol());
     return symbol || null;
   } catch (error) {
     return null;
@@ -374,13 +386,17 @@ async function getPoolPrice(
 ): Promise<number> {
   try {
     const pool = new ethers.Contract(poolAddress, UNISWAP_V3_POOL_ABI, provider);
-    const slot0 = await pool.slot0();
+    // Use retry logic for RPC calls
+    const slot0 = await withRetry(() => pool.slot0());
     const sqrtPriceX96 = slot0[0];
 
     const token0 = new ethers.Contract(token0Address, ERC20_ABI, provider);
     const token1 = new ethers.Contract(token1Address, ERC20_ABI, provider);
-    const decimals0 = Number(await token0.decimals());
-    const decimals1 = Number(await token1.decimals());
+    // Use retry logic for RPC calls
+    const [decimals0, decimals1] = await Promise.all([
+      withRetry(() => token0.decimals()).then(d => Number(d)),
+      withRetry(() => token1.decimals()).then(d => Number(d)),
+    ]);
 
     const sqrtPrice = BigInt(sqrtPriceX96.toString());
     const Q96 = 2n ** 96n;
@@ -407,12 +423,35 @@ async function getPoolPrice(
       return 0;
     }
 
-    let price = Number(adjustedRatio) / Number(INTERMEDIATE_SCALE);
+    // Convert BigInt to number safely to avoid precision loss
+    // Use string conversion to handle large numbers properly
+    const ratioString = adjustedRatio.toString();
+    const scaleString = INTERMEDIATE_SCALE.toString();
+    
+    // Calculate price using string division to maintain precision
+    // For very large numbers, we need to be careful with division
+    const ratioNum = parseFloat(ratioString);
+    const scaleNum = parseFloat(scaleString);
+    
+    // If the number is too large, we need to scale it down first
+    if (ratioNum > Number.MAX_SAFE_INTEGER) {
+      // Scale down by dividing both numerator and denominator
+      const scaleDown = 1e18; // Scale down by 1e18
+      const scaledRatio = ratioNum / scaleDown;
+      const scaledScale = scaleNum / scaleDown;
+      const price = scaledRatio / scaledScale;
+      
+      if (!isFinite(price) || price <= 0 || price > 1e10 || price < 1e-10) {
+        console.error('Price calculation error: invalid price after scaling', price, 'raw ratio:', ratioString);
+        return 0;
+      }
+      return price;
+    }
+    
+    const price = ratioNum / scaleNum;
 
     if (!isFinite(price) || price <= 0 || price > 1e10 || price < 1e-10) {
-      if (!isFinite(price) || price <= 0 || price > 1e10) {
-        console.error('Price calculation error: invalid price', price);
-      }
+      console.error('Price calculation error: invalid price', price, 'raw ratio:', ratioString);
       return 0;
     }
 
