@@ -147,9 +147,10 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     }
 
     try {
+      // Single balance requests are faster, but still need reasonable timeout
       const serverBalance = await withTimeout(
         getBalance(chainId, address),
-        5000
+        10000
       ) as Awaited<ReturnType<typeof getBalance>> | null;
       
       if (!serverBalance || !serverBalance.balance) {
@@ -227,9 +228,10 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
         userAddress: address,
       }));
 
+      // Increased timeout for batch requests (15 seconds) - batch operations take longer
       const serverResults = await withTimeout(
         getTokenBalancesBatch(batchRequests),
-        5000
+        15000
       ) as Awaited<ReturnType<typeof getTokenBalancesBatch>> | null;
       
       if (!serverResults || !Array.isArray(serverResults) || serverResults.length === 0) {
@@ -338,9 +340,10 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
           address: address,
         }));
         
+        // Increased timeout for batch requests (15 seconds) - batch operations take longer
         const batchResults = await withTimeout(
           getBalancesBatch(batchRequests),
-          3000
+          15000
         ) as Awaited<ReturnType<typeof getBalancesBatch>> | null;
         
         if (batchResults && Array.isArray(batchResults) && batchResults.length > 0) {

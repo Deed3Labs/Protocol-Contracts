@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { getRpcUrl } from '../utils/rpc.js';
+import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 
 export interface TransactionData {
   id: string;
@@ -29,8 +30,9 @@ export async function getTransactions(
       return [];
     }
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const blockNumber = await provider.getBlockNumber();
+    // Use retry provider to handle rate limits and network issues
+    const provider = createRetryProvider(rpcUrl, chainId);
+    const blockNumber = await withRetry(() => provider.getBlockNumber());
 
     const transactions: TransactionData[] = [];
     const blocksToCheck = Math.min(limit * 3, 50);
@@ -38,7 +40,8 @@ export async function getTransactions(
 
     for (let i = 0; i < blocksToCheck && foundCount < limit; i++) {
       try {
-        const block = await provider.getBlock(blockNumber - i, true);
+        // Use retry logic for RPC calls
+        const block = await withRetry(() => provider.getBlock(blockNumber - i, true));
         if (!block || !block.transactions) continue;
 
         // Type guard: when getBlock is called with true, transactions are TransactionResponse objects

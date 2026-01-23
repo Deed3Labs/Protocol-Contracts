@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { getRpcUrl } from '../utils/rpc.js';
+import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 
 /**
  * Get contract address for a chain
@@ -63,12 +64,18 @@ export async function getDeedNFTs(
       return [];
     }
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    // Use retry provider to handle rate limits and network issues
+    const provider = createRetryProvider(rpcUrl, chainId);
+    
+    // Normalize contract address to proper checksum format
+    const normalizedContractAddr = ethers.getAddress(contractAddr.toLowerCase());
+    const normalizedAddress = ethers.getAddress(address.toLowerCase());
+    
     const abi = getDeedNFTAbi();
-    const contract = new ethers.Contract(contractAddr, abi, provider);
+    const contract = new ethers.Contract(normalizedContractAddr, abi, provider);
 
-    // Get total supply
-    const totalSupply = await contract.totalSupply().catch(() => 0n);
+    // Get total supply with retry logic
+    const totalSupply = await withRetry(() => contract.totalSupply()).catch(() => 0n);
     if (totalSupply === 0n) return [];
 
     const nfts: DeedNFTData[] = [];
@@ -83,22 +90,24 @@ export async function getDeedNFTs(
         batchPromises.push(
           (async () => {
             try {
-              const tokenId = await contract.tokenByIndex(j);
+              // Use retry logic for RPC calls
+              const tokenId = await withRetry(() => contract.tokenByIndex(j));
               const tokenIdString = tokenId.toString();
-              const owner = await contract.ownerOf(tokenId);
+              const owner = await withRetry(() => contract.ownerOf(tokenId));
 
-              // Only include if owned by the address
-              if (owner.toLowerCase() !== address.toLowerCase()) {
+              // Normalize owner address for comparison
+              const normalizedOwner = ethers.getAddress(owner.toLowerCase());
+              if (normalizedOwner !== normalizedAddress) {
                 return;
               }
 
-              // Get token URI
-              const uri = await contract.tokenURI(tokenId).catch(() => '');
+              // Get token URI with retry logic
+              const uri = await withRetry(() => contract.tokenURI(tokenId)).catch(() => '');
 
-              // Get validation status
+              // Get validation status with retry logic
               let validatorAddress = ethers.ZeroAddress;
               try {
-                const [isValidated, validator] = await contract.getValidationStatus(tokenId);
+                const [isValidated, validator] = await withRetry(() => contract.getValidationStatus(tokenId));
                 if (isValidated) {
                   validatorAddress = validator;
                 }
@@ -110,7 +119,7 @@ export async function getDeedNFTs(
               let assetType = 0;
               try {
                 const assetTypeKey = ethers.keccak256(ethers.toUtf8Bytes('assetType'));
-                const assetTypeBytes = await contract.getTraitValue(tokenId, assetTypeKey);
+                const assetTypeBytes = await withRetry(() => contract.getTraitValue(tokenId, assetTypeKey));
                 if (assetTypeBytes && assetTypeBytes.length > 0) {
                   assetType = Number(ethers.AbiCoder.defaultAbiCoder().decode(['uint8'], assetTypeBytes)[0]);
                 }
@@ -122,7 +131,7 @@ export async function getDeedNFTs(
               let definition = `T-Deed #${tokenIdString}`;
               try {
                 const definitionKey = ethers.keccak256(ethers.toUtf8Bytes('definition'));
-                const definitionBytes = await contract.getTraitValue(tokenId, definitionKey);
+                const definitionBytes = await withRetry(() => contract.getTraitValue(tokenId, definitionKey));
                 if (definitionBytes && definitionBytes.length > 0) {
                   definition = ethers.AbiCoder.defaultAbiCoder().decode(['string'], definitionBytes)[0];
                 }
@@ -134,7 +143,7 @@ export async function getDeedNFTs(
               let configuration = '';
               try {
                 const configurationKey = ethers.keccak256(ethers.toUtf8Bytes('configuration'));
-                const configurationBytes = await contract.getTraitValue(tokenId, configurationKey);
+                const configurationBytes = await withRetry(() => contract.getTraitValue(tokenId, configurationKey));
                 if (configurationBytes && configurationBytes.length > 0) {
                   configuration = ethers.AbiCoder.defaultAbiCoder().decode(['string'], configurationBytes)[0];
                 }
@@ -146,8 +155,8 @@ export async function getDeedNFTs(
               let token = ethers.ZeroAddress;
               let salt = '0';
               try {
-                token = await contract.token(tokenId).catch(() => ethers.ZeroAddress);
-                salt = (await contract.salt(tokenId).catch(() => 0n)).toString();
+                token = await withRetry(() => contract.token(tokenId)).catch(() => ethers.ZeroAddress);
+                salt = (await withRetry(() => contract.salt(tokenId)).catch(() => 0n)).toString();
               } catch (err) {
                 // Silent error
               }
