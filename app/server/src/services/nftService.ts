@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 import { getRpcUrl } from '../utils/rpc.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 import { getContractAddress } from '../config/contracts.js';
-import { getOpenSeaNFTPrice } from './priceService.js';
+import { getNFTFloorPrice } from './priceService.js';
 
 /**
  * Standard ERC721 ABI for general NFTs
@@ -195,9 +195,10 @@ export async function getDeedNFTs(
               }
 
               // Fetch price for T-Deed (optional - can be slow)
+              // Uses Alchemy NFT API first, falls back to OpenSea
               let priceUSD: number | undefined;
               try {
-                const price = await getOpenSeaNFTPrice(chainId, normalizedContractAddr);
+                const price = await getNFTFloorPrice(chainId, normalizedContractAddr);
                 priceUSD = price !== null ? price : undefined;
               } catch (error) {
                 // Silent error - pricing is optional
@@ -355,9 +356,10 @@ export async function getGeneralNFTs(
     }
 
     // Fetch floor price for the collection (optional, can be slow)
+    // Uses Alchemy NFT API first, falls back to OpenSea
     let floorPrice: number | undefined;
     try {
-      const price = await getOpenSeaNFTPrice(chainId, normalizedContractAddr);
+      const price = await getNFTFloorPrice(chainId, normalizedContractAddr);
       floorPrice = price !== null ? price : undefined;
     } catch (error) {
       // Silent error - pricing is optional

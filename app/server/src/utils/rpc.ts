@@ -117,3 +117,26 @@ export function getAlchemyRestUrl(chainId: number): string | null {
 
   return restUrls[chainId] || null;
 }
+
+/**
+ * Get Alchemy NFT API base URL for a chain
+ * Used for Alchemy's NFT API endpoints (different from REST API)
+ * Note: getFloorPrice endpoint is only available on Ethereum mainnet
+ * Other chains may have different NFT API endpoints or need to use OpenSea
+ */
+export function getAlchemyNFTUrl(chainId: number): string | null {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  if (!alchemyApiKey) {
+    return null;
+  }
+
+  // getFloorPrice is only available on Ethereum mainnet
+  // For other chains, we'll fall back to OpenSea
+  if (chainId === 1) {
+    return `https://eth-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`;
+  }
+
+  // Other chains may have NFT API but with different endpoints
+  // For now, we only support getFloorPrice on Ethereum mainnet
+  return null;
+}
