@@ -600,7 +600,7 @@ export default function BrokerageHome() {
                         value={portfolioFilter} 
                         onValueChange={(value: 'All' | 'RWAs' | 'NFTs' | 'Tokens') => setPortfolioFilter(value)}
                       >
-                        <SelectTrigger className="h-8 w-32 text-xs text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-3 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                        <SelectTrigger className="h-6 w-28 text-sm text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-3 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
                           <SelectValue placeholder="Filter" />
                         </SelectTrigger>
                         <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
