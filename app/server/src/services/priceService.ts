@@ -23,12 +23,12 @@ const USDC_ADDRESSES: Record<number, string> = {
 };
 
 const WETH_ADDRESSES: Record<number, string> = {
-  1: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // Ethereum Mainnet
-  8453: '0x4200000000000000000000000000000000000006', // Base Mainnet
-  11155111: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14', // Sepolia
-  84532: '0x4200000000000000000000000000000000000006', // Base Sepolia
-  42161: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // Arbitrum One
-  137: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // Polygon (WETH)
+  1: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // Ethereum Mainnet (WETH)
+  8453: '0x4200000000000000000000000000000000000006', // Base Mainnet (WETH)
+  11155111: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14', // Sepolia (WETH)
+  84532: '0x4200000000000000000000000000000000000006', // Base Sepolia (WETH)
+  42161: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // Arbitrum One (WETH)
+  137: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // Polygon (WPOL - wrapped POL, not WETH!)
   100: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8'.toLowerCase(), // Gnosis (WXDAI) - lowercase to avoid checksum issues
 };
 
@@ -54,6 +54,80 @@ const FEE_TIER = 3000; // 0.3% fee tier
  */
 import { getRpcUrl } from '../utils/rpc.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
+
+/**
+ * Get token price with Ethereum mainnet fallback
+ * Tries chain-specific pricing first, then falls back to Ethereum mainnet (chainId: 1)
+ * 
+ * Note: Native tokens (POL, xDAI) use their correct wrapped addresses (WPOL, WXDAI),
+ * so they won't accidentally match WETH on Ethereum when falling back.
+ */
+export async function getTokenPrice(
+  chainId: number,
+  tokenAddress: string
+): Promise<number | null> {
+  // First, try chain-specific pricing
+  let price: number | null = null;
+
+  // Try Uniswap first (primary on-chain source)
+  try {
+    price = await getUniswapPrice(chainId, tokenAddress);
+  } catch (error) {
+    // Silent error, continue to next source
+  }
+
+  // Fast fallback to Coinbase if Uniswap fails
+  if (!price || price === 0) {
+    try {
+      price = await getCoinbasePrice(chainId, tokenAddress);
+    } catch (error) {
+      // Silent error, continue to next source
+    }
+  }
+
+  // Final fallback to CoinGecko if Uniswap and Coinbase fail
+  // CoinGecko has special handling for native tokens (POL, xDAI, etc.)
+  if (!price || price === 0) {
+    try {
+      price = await getCoinGeckoPrice(chainId, tokenAddress);
+    } catch (error) {
+      // Silent error, continue to Ethereum fallback
+    }
+  }
+
+  // If we still don't have a price and we're not already on Ethereum mainnet,
+  // try fetching from Ethereum mainnet as a fallback
+  // Note: Native tokens use correct wrapped addresses (WPOL, WXDAI) so they won't
+  // accidentally match WETH on Ethereum
+  if ((!price || price === 0) && chainId !== 1) {
+    try {
+      // Try Ethereum mainnet Uniswap
+      price = await getUniswapPrice(1, tokenAddress);
+    } catch (error) {
+      // Silent error, continue
+    }
+
+    // Try Ethereum mainnet Coinbase
+    if (!price || price === 0) {
+      try {
+        price = await getCoinbasePrice(1, tokenAddress);
+      } catch (error) {
+        // Silent error, continue
+      }
+    }
+
+    // Try Ethereum mainnet CoinGecko
+    if (!price || price === 0) {
+      try {
+        price = await getCoinGeckoPrice(1, tokenAddress);
+      } catch (error) {
+        // Silent error
+      }
+    }
+  }
+
+  return price && price > 0 ? price : null;
+}
 
 /**
  * Get price from Uniswap V3 pool
