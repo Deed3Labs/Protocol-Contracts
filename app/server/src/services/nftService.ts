@@ -66,8 +66,13 @@ export async function getDeedNFTs(
 
     // Use retry provider to handle rate limits and network issues
     const provider = createRetryProvider(rpcUrl, chainId);
+    
+    // Normalize contract address to proper checksum format
+    const normalizedContractAddr = ethers.getAddress(contractAddr.toLowerCase());
+    const normalizedAddress = ethers.getAddress(address.toLowerCase());
+    
     const abi = getDeedNFTAbi();
-    const contract = new ethers.Contract(contractAddr, abi, provider);
+    const contract = new ethers.Contract(normalizedContractAddr, abi, provider);
 
     // Get total supply with retry logic
     const totalSupply = await withRetry(() => contract.totalSupply()).catch(() => 0n);
@@ -90,8 +95,9 @@ export async function getDeedNFTs(
               const tokenIdString = tokenId.toString();
               const owner = await withRetry(() => contract.ownerOf(tokenId));
 
-              // Only include if owned by the address
-              if (owner.toLowerCase() !== address.toLowerCase()) {
+              // Normalize owner address for comparison
+              const normalizedOwner = ethers.getAddress(owner.toLowerCase());
+              if (normalizedOwner !== normalizedAddress) {
                 return;
               }
 

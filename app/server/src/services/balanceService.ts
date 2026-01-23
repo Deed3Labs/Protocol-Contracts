@@ -65,11 +65,16 @@ export async function getTokenBalance(
 
     // Use retry provider to handle rate limits and network issues
     const provider = createRetryProvider(rpcUrl, chainId);
-    const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+    
+    // Normalize addresses to lowercase to avoid checksum errors
+    const normalizedTokenAddress = ethers.getAddress(tokenAddress.toLowerCase());
+    const normalizedUserAddress = ethers.getAddress(userAddress.toLowerCase());
+    
+    const contract = new ethers.Contract(normalizedTokenAddress, ERC20_ABI, provider);
 
     // Use retry logic for all contract calls
     const [balance, symbol, name, decimals] = await Promise.all([
-      withRetry(() => contract.balanceOf(userAddress)),
+      withRetry(() => contract.balanceOf(normalizedUserAddress)),
       withRetry(() => contract.symbol()).catch(() => 'UNKNOWN'),
       withRetry(() => contract.name()).catch(() => 'Unknown Token'),
       withRetry(() => contract.decimals()).catch(() => 18),
@@ -80,7 +85,7 @@ export async function getTokenBalance(
     }
 
     return {
-      address: tokenAddress.toLowerCase(),
+      address: normalizedTokenAddress.toLowerCase(),
       symbol,
       name,
       decimals: Number(decimals),
