@@ -205,7 +205,7 @@ export async function getDeedNFTs(
 
               nfts.push({
                 tokenId: tokenIdString,
-                owner,
+                owner: normalizedAddress,
                 assetType,
                 uri,
                 definition,

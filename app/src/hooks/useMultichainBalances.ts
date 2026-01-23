@@ -3,7 +3,7 @@ import { useAppKitAccount } from '@reown/appkit/react';
 import { SUPPORTED_NETWORKS, getNetworkByChainId } from '@/config/networks';
 import { getCommonTokens } from '@/config/tokens';
 import { isStablecoin } from '@/utils/tokenUtils';
-import { getBalance, getBalancesBatch, getTokenBalancesBatch, getTokenPrice as getTokenPriceFromApi, getTokenPricesBatch } from '@/utils/apiClient';
+import { getBalance, getBalancesBatch, getTokenBalancesBatch, getAllTokenBalances, getTokenPrice as getTokenPriceFromApi, getTokenPricesBatch } from '@/utils/apiClient';
 import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
 import { getNativeTokenAddress } from './usePricingData';
 
@@ -211,6 +211,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
 
   /**
    * Fetch ERC20 token balances for a specific chain
+   * Uses Alchemy's getAllTokenBalances API to get ALL tokens, with fallback to COMMON_TOKENS
    */
   const fetchChainTokens = useCallback(async (chainId: number): Promise<MultichainTokenBalance[]> => {
     if (!address) return [];
@@ -218,43 +219,83 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     const networkConfig = SUPPORTED_NETWORKS.find(n => n.chainId === chainId);
     if (!networkConfig) return [];
 
-    const tokenList = getCommonTokens(chainId);
-    if (tokenList.length === 0) return [];
-
     try {
-      const batchRequests = tokenList.map(tokenInfo => ({
-        chainId,
-        tokenAddress: tokenInfo.address,
-        userAddress: address,
-      }));
+      // First, try to get ALL tokens using Alchemy API
+      const allTokens = await withTimeout(
+        getAllTokenBalances(chainId, address),
+        30000 // 30 second timeout
+      ) as Awaited<ReturnType<typeof getAllTokenBalances>> | null;
 
-      // Increased timeout for batch requests (15 seconds) - batch operations take longer
-      const serverResults = await withTimeout(
-        getTokenBalancesBatch(batchRequests),
-        15000
-      ) as Awaited<ReturnType<typeof getTokenBalancesBatch>> | null;
-      
-      if (!serverResults || !Array.isArray(serverResults) || serverResults.length === 0) {
-        throw new Error(`Server API returned no token balance data for chain ${chainId}`);
+      let tokensToProcess: Array<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string }> = [];
+
+      if (allTokens && allTokens.length > 0) {
+        // Use Alchemy API results (ALL tokens)
+        tokensToProcess = allTokens;
+      } else {
+        // Fallback to COMMON_TOKENS approach if Alchemy API is not available
+        const tokenList = getCommonTokens(chainId);
+        if (tokenList.length === 0) return [];
+
+        const batchRequests = tokenList.map(tokenInfo => ({
+          chainId,
+          tokenAddress: tokenInfo.address,
+          userAddress: address,
+        }));
+
+        const serverResults = await withTimeout(
+          getTokenBalancesBatch(batchRequests),
+          15000
+        ) as Awaited<ReturnType<typeof getTokenBalancesBatch>> | null;
+        
+        if (!serverResults || !Array.isArray(serverResults) || serverResults.length === 0) {
+          return [];
+        }
+
+        // Convert to same format as Alchemy API results
+        tokensToProcess = serverResults
+          .map((result, index) => {
+            if (result.data) {
+              return {
+                address: tokenList[index].address,
+                symbol: result.data.symbol,
+                name: result.data.name,
+                decimals: result.data.decimals,
+                balance: result.data.balance,
+                balanceRaw: result.data.balanceRaw,
+              };
+            }
+            return null;
+          })
+          .filter((t): t is NonNullable<typeof t> => t !== null);
       }
+
+      if (tokensToProcess.length === 0) {
+        return [];
+      }
+
+      // Get COMMON_TOKENS for metadata (logoUrl) and to prioritize known tokens
+      const commonTokens = getCommonTokens(chainId);
+      const commonTokensMap = new Map(
+        commonTokens.map(t => [t.address.toLowerCase(), t])
+      );
 
       const tokenBalances: MultichainTokenBalance[] = [];
 
-      // Process server results and get prices
-      const tokenPromises = tokenList.map(async (tokenInfo, index) => {
-        const serverResult = serverResults[index];
-        if (!serverResult || !serverResult.data) {
-          return null;
-        }
-
+      // Process all tokens and get prices
+      const tokenPromises = tokensToProcess.map(async (tokenData) => {
         try {
-          const { symbol, name, decimals, balance, balanceRaw } = serverResult.data;
-          const balanceNum = parseFloat(balance);
+          const balanceNum = parseFloat(tokenData.balance);
           if (balanceNum === 0) return null;
 
+          // Get metadata from COMMON_TOKENS if available
+          const commonToken = commonTokensMap.get(tokenData.address.toLowerCase());
+          const symbol = tokenData.symbol || commonToken?.symbol || 'UNKNOWN';
+          const name = tokenData.name || commonToken?.name || 'Unknown Token';
+          const logoUrl = commonToken?.logoUrl;
+
           // Get token price - ensure stablecoins always get $1
-          const normalizedSymbol = (symbol || tokenInfo.symbol || '').toUpperCase();
-          let tokenPrice = await getTokenPrice(normalizedSymbol, tokenInfo.address, chainId);
+          const normalizedSymbol = symbol.toUpperCase();
+          let tokenPrice = await getTokenPrice(normalizedSymbol, tokenData.address, chainId);
           
           // Force stablecoins to $1 if price is missing or 0
           if (isStablecoin(normalizedSymbol)) {
@@ -266,20 +307,20 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
           const balanceUSD = balanceNum * tokenPrice;
 
           return {
-            address: tokenInfo.address,
+            address: tokenData.address,
             symbol,
             name,
-            decimals,
-            balance,
-            balanceRaw: BigInt(balanceRaw),
+            decimals: tokenData.decimals,
+            balance: tokenData.balance,
+            balanceRaw: BigInt(tokenData.balanceRaw),
             balanceUSD,
             chainId,
             chainName: networkConfig.name,
-            logoUrl: tokenInfo.logoUrl,
+            logoUrl,
           } as MultichainTokenBalance;
         } catch (err) {
           if (import.meta.env.PROD) {
-            console.error(`[useMultichainBalances] Error processing token ${tokenInfo.address}:`, err);
+            console.error(`[useMultichainBalances] Error processing token ${tokenData.address}:`, err);
           }
           return null;
         }
@@ -292,11 +333,20 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
         }
       });
 
-      return tokenBalances.sort((a, b) => b.balanceUSD - a.balanceUSD);
+      // Sort by USD value (descending), with known tokens (from COMMON_TOKENS) prioritized
+      return tokenBalances.sort((a, b) => {
+        const aIsKnown = commonTokensMap.has(a.address.toLowerCase());
+        const bIsKnown = commonTokensMap.has(b.address.toLowerCase());
+        
+        // Known tokens first, then by USD value
+        if (aIsKnown && !bIsKnown) return -1;
+        if (!aIsKnown && bIsKnown) return 1;
+        return b.balanceUSD - a.balanceUSD;
+      });
     } catch (err) {
       if (import.meta.env.PROD) {
         console.error(`[useMultichainBalances] Server API failed for chain ${chainId}:`, err);
-        throw new Error(`Server API is required but unavailable for chain ${chainId}`);
+        // Don't throw - return empty array to allow other chains to continue
       }
       return [];
     }

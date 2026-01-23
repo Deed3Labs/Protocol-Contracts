@@ -90,3 +90,30 @@ export function getRpcUrl(chainId: number): string {
 export function hasRpcUrl(chainId: number): boolean {
   return !!getRpcUrl(chainId);
 }
+
+/**
+ * Get Alchemy REST API base URL for a chain
+ * Used for Alchemy's REST API endpoints (not RPC)
+ */
+export function getAlchemyRestUrl(chainId: number): string | null {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  if (!alchemyApiKey) {
+    return null;
+  }
+
+  const restUrls: Record<number, string> = {
+    // Mainnets
+    1: `https://eth-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+    8453: `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+    137: `https://polygon-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+    42161: `https://arb-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+    100: `https://gnosis-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+    
+    // Testnets
+    11155111: `https://eth-sepolia.g.alchemy.com/v2/${alchemyApiKey}`,
+    84532: `https://base-sepolia.g.alchemy.com/v2/${alchemyApiKey}`,
+    80001: `https://polygon-mumbai.g.alchemy.com/v2/${alchemyApiKey}`,
+  };
+
+  return restUrls[chainId] || null;
+}

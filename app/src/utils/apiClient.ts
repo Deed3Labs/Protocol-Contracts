@@ -340,6 +340,51 @@ export async function getTokenBalancesBatch(
 }
 
 /**
+ * Get ALL ERC20 token balances for an address using Alchemy API
+ * This is more efficient than checking individual tokens
+ */
+export async function getAllTokenBalances(
+  chainId: number,
+  userAddress: string
+): Promise<Array<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string }>> {
+  const response = await apiRequest<{
+    tokens: Array<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string }>;
+    cached: boolean;
+    timestamp: number;
+    fallback?: string;
+  }>(`/api/token-balances/all/${chainId}/${userAddress}`, {
+    timeout: 30000, // 30 second timeout for fetching all tokens
+  });
+
+  if (response.error || !response.data) {
+    return [];
+  }
+
+  return response.data.tokens || [];
+}
+
+/**
+ * Get ALL token balances for multiple chains in batch
+ */
+export async function getAllTokenBalancesBatch(
+  requests: Array<{ chainId: number; userAddress: string }>
+): Promise<Array<{ chainId: number; userAddress: string; tokens: Array<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string }>; cached: boolean; error?: string }>> {
+  const response = await apiRequest<{
+    results: Array<{ chainId: number; userAddress: string; tokens: any[]; cached: boolean; error?: string }>;
+  }>('/api/token-balances/all/batch', {
+    method: 'POST',
+    body: JSON.stringify({ requests }),
+    timeout: 60000, // 60 second timeout for batch fetching all tokens
+  });
+
+  if (response.error || !response.data) {
+    return requests.map((r) => ({ ...r, tokens: [], cached: false }));
+  }
+
+  return response.data.results;
+}
+
+/**
  * Get unified portfolio data (balances, tokens, NFTs, cash balance)
  * This is an optimized endpoint that fetches everything in one call
  * Note: This endpoint may not be available on all server versions
