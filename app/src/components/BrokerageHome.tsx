@@ -593,7 +593,7 @@ export default function BrokerageHome() {
                   </div>
                   
                   {/* Filter Selector and Zero Value Toggle */}
-                  <div className="px-4 mb-2">
+                  <div className="px-3 mb-2">
                     <div className="flex items-center justify-between gap-2">
                       {/* Single Filter Selector */}
                       <Select 
