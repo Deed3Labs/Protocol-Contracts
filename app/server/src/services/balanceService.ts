@@ -286,9 +286,14 @@ export async function getAllTokenBalances(
     const results: TokenBalanceData[] = [];
 
     // Process tokens in parallel batches to avoid overwhelming the RPC
-    const batchSize = 10;
+    const batchSize = 5; // Reduced from 10 to prevent overwhelming RPC
     for (let i = 0; i < tokenBalances.length; i += batchSize) {
       const batch = tokenBalances.slice(i, i + batchSize);
+      
+      // Add delay between batches to prevent rate limiting
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay between batches
+      }
       
       const batchPromises = batch.map(async (tokenBalance: {
         contractAddress: string;

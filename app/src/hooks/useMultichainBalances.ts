@@ -281,9 +281,9 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
 
       const tokenBalances: MultichainTokenBalance[] = [];
 
-      // Process all tokens and get prices
-      const tokenPromises = tokensToProcess.map(async (tokenData) => {
-        try {
+      // Prepare tokens with metadata
+      const tokensWithMetadata = tokensToProcess
+        .map(tokenData => {
           const balanceNum = parseFloat(tokenData.balance);
           if (balanceNum === 0) return null;
 
@@ -293,9 +293,58 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
           const name = tokenData.name || commonToken?.name || 'Unknown Token';
           const logoUrl = commonToken?.logoUrl;
 
-          // Get token price - ensure stablecoins always get $1
+          return {
+            tokenData,
+            symbol,
+            name,
+            logoUrl,
+            balanceNum,
+          };
+        })
+        .filter((t): t is NonNullable<typeof t> => t !== null);
+
+      if (tokensWithMetadata.length === 0) {
+        return [];
+      }
+
+      // Batch fetch prices for all tokens at once (much more efficient!)
+      const priceRequests = tokensWithMetadata.map(({ tokenData }) => ({
+        chainId,
+        tokenAddress: tokenData.address,
+      }));
+
+      let prices: Map<string, number> = new Map();
+      try {
+        const priceResults = await getTokenPricesBatch(priceRequests);
+        priceResults.forEach((result, index) => {
+          const { tokenData, symbol } = tokensWithMetadata[index];
           const normalizedSymbol = symbol.toUpperCase();
-          let tokenPrice = await getTokenPrice(normalizedSymbol, tokenData.address, chainId);
+          const tokenAddressLower = tokenData.address.toLowerCase();
+          
+          // Handle stablecoins first (always $1)
+          if (isStablecoin(normalizedSymbol)) {
+            prices.set(tokenAddressLower, 1.0);
+          } else if (result.price && result.price > 0 && isFinite(result.price)) {
+            prices.set(tokenAddressLower, result.price);
+          }
+        });
+      } catch (err) {
+        // If batch pricing fails, fall back to individual calls (but this shouldn't happen)
+        console.warn(`[useMultichainBalances] Batch pricing failed for chain ${chainId}, falling back to individual calls`);
+      }
+
+      // Process tokens with prices
+      for (const { tokenData, symbol, name, logoUrl, balanceNum } of tokensWithMetadata) {
+        try {
+          const normalizedSymbol = symbol.toUpperCase();
+          
+          // Get price from batch results or fallback to individual call
+          let tokenPrice = prices.get(tokenData.address.toLowerCase());
+          
+          if (tokenPrice === undefined) {
+            // Fallback to individual price call (should be rare)
+            tokenPrice = await getTokenPrice(normalizedSymbol, tokenData.address, chainId);
+          }
           
           // Force stablecoins to $1 if price is missing or 0
           if (isStablecoin(normalizedSymbol)) {
@@ -304,9 +353,9 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
             }
           }
           
-          const balanceUSD = balanceNum * tokenPrice;
+          const balanceUSD = balanceNum * (tokenPrice || 0);
 
-          return {
+          tokenBalances.push({
             address: tokenData.address,
             symbol,
             name,
@@ -317,21 +366,13 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
             chainId,
             chainName: networkConfig.name,
             logoUrl,
-          } as MultichainTokenBalance;
+          });
         } catch (err) {
           if (import.meta.env.PROD) {
             console.error(`[useMultichainBalances] Error processing token ${tokenData.address}:`, err);
           }
-          return null;
         }
-      });
-
-      const results = await Promise.all(tokenPromises);
-      results.forEach(result => {
-        if (result !== null) {
-          tokenBalances.push(result);
-        }
-      });
+      }
 
       // Sort by USD value (descending), with known tokens (from COMMON_TOKENS) prioritized
       return tokenBalances.sort((a, b) => {

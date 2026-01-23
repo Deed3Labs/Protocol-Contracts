@@ -4,7 +4,7 @@ import { useMultichainBalances } from '@/hooks/useMultichainBalances';
 import { useMultichainActivity } from '@/hooks/useMultichainActivity';
 import { usePortfolioHoldings } from '@/hooks/usePortfolioHoldings';
 import type { MultichainBalance } from '@/hooks/useMultichainBalances';
-import type { WalletTransaction } from '@/hooks/useWalletActivity';
+import type { WalletTransaction } from '@/types/transactions';
 
 interface PortfolioContextType {
   // Balances
@@ -191,21 +191,38 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     if (!isConnected) return;
 
+    let intervalId: NodeJS.Timeout | null = null;
+    let isMounted = true;
+
     // Initial load - refresh all data
     const initialRefresh = async () => {
-      await refreshAll();
+      if (isMounted) {
+        await refreshAll();
+      }
     };
     initialRefresh();
 
-    // Set up hourly auto-refresh
-    const intervalId = setInterval(() => {
-      refreshAll();
-    }, 60 * 60 * 1000); // 1 hour in milliseconds
+    // Set up hourly auto-refresh (only after initial load completes)
+    // Use a ref to prevent dependency issues
+    const setupInterval = () => {
+      intervalId = setInterval(() => {
+        if (isMounted) {
+          refreshAll();
+        }
+      }, 60 * 60 * 1000); // 1 hour in milliseconds
+    };
+
+    // Delay interval setup to avoid immediate refresh after initial load
+    const timeoutId = setTimeout(setupInterval, 60000); // Wait 1 minute before setting up interval
 
     return () => {
-      clearInterval(intervalId);
+      isMounted = false;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      clearTimeout(timeoutId);
     };
-  }, [isConnected, refreshAll]);
+  }, [isConnected]); // Remove refreshAll from dependencies to prevent re-renders
   
   const contextValue: PortfolioContextType = {
     balances: multichainBalances,
