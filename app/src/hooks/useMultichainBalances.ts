@@ -1,11 +1,11 @@
 import { useMemo, useCallback, useState } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
-import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS, getNetworkByChainId } from '@/config/networks';
-import { usePricingData } from './usePricingData';
-import { getBalanceOptimized } from '@/utils/rpcOptimizer';
-import { getBalance, getBalancesBatch } from '@/utils/apiClient';
+import { getCommonTokens } from '@/config/tokens';
+import { isStablecoin } from '@/utils/tokenUtils';
+import { getBalance, getBalancesBatch, getTokenBalancesBatch, getTokenPrice as getTokenPriceFromApi, getTokenPricesBatch } from '@/utils/apiClient';
 import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
+import { getNativeTokenAddress } from './usePricingData';
 
 /**
  * Native token balance for a specific chain
@@ -22,56 +22,119 @@ export interface MultichainBalance {
   error: string | null;
 }
 
+/**
+ * ERC20 token balance
+ */
+export interface MultichainTokenBalance {
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  balance: string;
+  balanceRaw: bigint;
+  balanceUSD: number;
+  chainId: number;
+  chainName: string;
+  logoUrl?: string;
+}
+
 interface UseMultichainBalancesReturn {
+  // Native token balances
   balances: MultichainBalance[];
   totalBalance: string;
   totalBalanceUSD: number;
+  
+  // ERC20 token balances
+  tokens: MultichainTokenBalance[];
+  totalTokenValueUSD: number;
+  
+  // Combined totals
+  totalValueUSD: number;
+  
+  // Loading and error states
   isLoading: boolean;
+  balancesLoading: boolean;
+  tokensLoading: boolean;
   error: string | null;
+  
+  // Refresh functions
   refresh: () => Promise<void>;
   refreshChain: (chainId: number) => Promise<void>;
+  refreshBalances: () => Promise<void>;
+  refreshTokens: () => Promise<void>;
 }
 
 /**
- * Hook to fetch native token balances across all supported networks
+ * Unified hook to fetch both native token balances and ERC20 token balances across all supported networks
  * 
- * Fetches native cryptocurrency balances (ETH, BASE, etc.) for all configured chains.
- * Uses server API with Redis caching when available, falls back to direct RPC calls.
- * Optimizes for mobile (sequential) vs desktop (parallel) fetching.
+ * This hook consolidates the functionality of fetching both native cryptocurrency balances (ETH, BASE, etc.)
+ * and ERC20 token balances (USDC, USDT, DAI, WETH, etc.) across all configured chains.
+ * Uses server API with Redis caching for optimal performance.
  * 
  * @example
  * ```tsx
- * const { balances, totalBalanceUSD, refresh } = useMultichainBalances();
+ * const { balances, tokens, totalValueUSD, refresh } = useMultichainBalances();
  * 
- * // Display balances
+ * // Display native balances
  * balances.forEach(balance => {
  *   console.log(`${balance.chainName}: ${balance.balance} ${balance.currencySymbol}`);
+ * });
+ * 
+ * // Display ERC20 tokens
+ * tokens.forEach(token => {
+ *   console.log(`${token.symbol} on ${token.chainName}: ${token.balance} ($${token.balanceUSD})`);
  * });
  * ```
  * 
  * @returns Object containing:
- * - `balances`: Array of balance objects, one per chain
+ * - `balances`: Array of native token balances, one per chain
+ * - `tokens`: Array of ERC20 token balances across all chains
  * - `totalBalance`: Sum of all native balances as formatted string
- * - `totalBalanceUSD`: Total USD value of all balances
- * - `isLoading`: Whether data is currently loading
+ * - `totalBalanceUSD`: Total USD value of native balances
+ * - `totalTokenValueUSD`: Total USD value of ERC20 tokens
+ * - `totalValueUSD`: Combined total USD value of all balances
+ * - `isLoading`: Whether any data is currently loading
+ * - `balancesLoading`: Whether native balances are loading
+ * - `tokensLoading`: Whether ERC20 tokens are loading
  * - `error`: Error message, if any
- * - `refresh`: Function to refresh all chains
+ * - `refresh`: Function to refresh all data
  * - `refreshChain`: Function to refresh a specific chain
+ * - `refreshBalances`: Function to refresh only native balances
+ * - `refreshTokens`: Function to refresh only ERC20 tokens
  */
 export function useMultichainBalances(): UseMultichainBalancesReturn {
   const { address, isConnected } = useAppKitAccount();
   const [balances, setBalances] = useState<MultichainBalance[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [tokens, setTokens] = useState<MultichainTokenBalance[]>([]);
+  const [balancesLoading, setBalancesLoading] = useState(false);
+  const [tokensLoading, setTokensLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Get native token prices for each chain
-  // Different chains have different native tokens (ETH, POL, xDAI)
-  // We'll fetch prices per-chain when needed
-  const { price: defaultEthPrice } = usePricingData(); // Fallback ETH price
 
   /**
-   * Fetch balance for a specific chain
-   * Tries server API first, falls back to direct RPC call
+   * Get token price from server API
+   */
+  const getTokenPrice = useCallback(async (symbol: string, address: string, chainId: number): Promise<number> => {
+    // Stablecoins are always $1 - check this FIRST before any API calls
+    const normalizedSymbol = symbol?.toUpperCase() || '';
+    if (isStablecoin(normalizedSymbol)) {
+      return 1.0;
+    }
+    
+    // Use server API for all pricing
+    const priceData = await getTokenPriceFromApi(chainId, address);
+    if (priceData && priceData.price > 0 && isFinite(priceData.price)) {
+      return priceData.price;
+    }
+    
+    if (import.meta.env.PROD && (!priceData || !priceData.price)) {
+      console.error(`[useMultichainBalances] Server API returned no price for token ${address} on chain ${chainId}`);
+    }
+    
+    return 0;
+  }, []);
+
+  /**
+   * Fetch native balance for a specific chain
    */
   const fetchChainBalance = useCallback(async (chainId: number): Promise<MultichainBalance> => {
     if (!address) {
@@ -84,59 +147,38 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     }
 
     try {
-      // Try server API first (with Redis caching)
-      try {
-        const serverBalance = await withTimeout(
-          getBalance(chainId, address),
-          3000
-        ) as Awaited<ReturnType<typeof getBalance>> | null;
-        
-        if (serverBalance && serverBalance.balance) {
-          const balanceWei = BigInt(serverBalance.balanceWei);
-          
-          // Get native token price for this chain
-          const { getNativeTokenPrice } = await import('./usePricingData');
-          const nativePrice = await getNativeTokenPrice(chainId);
-          // Only use ETH price as fallback for ETH-based chains (1, 8453, 11155111, 84532, 42161)
-          // For other chains (POL, xDAI, etc.), don't fall back to ETH price
-          const isEthChain = [1, 8453, 11155111, 84532, 42161].includes(chainId);
-          const price = nativePrice || (isEthChain ? defaultEthPrice : null) || 0;
-          
-          const balanceUSD = parseFloat(serverBalance.balance) * price;
-          return {
-            chainId,
-            chainName: networkConfig.name,
-            balance: serverBalance.balance,
-            balanceWei,
-            balanceUSD,
-            currencySymbol: networkConfig.nativeCurrency.symbol,
-            currencyName: networkConfig.nativeCurrency.name,
-            isLoading: false,
-            error: null,
-          };
-        }
-      } catch (serverError) {
-        // Server failed or timed out, fall through to direct RPC call
+      // Single balance requests are faster, but still need reasonable timeout
+      const serverBalance = await withTimeout(
+        getBalance(chainId, address),
+        10000
+      ) as Awaited<ReturnType<typeof getBalance>> | null;
+      
+      if (!serverBalance || !serverBalance.balance) {
+        throw new Error(`Server API returned no balance data for chain ${chainId}`);
       }
 
-      // Fallback to direct RPC call if server is unavailable
-      const balanceWei = await getBalanceOptimized(chainId, address, true);
-      const balance = parseFloat(ethers.formatEther(balanceWei)).toFixed(4);
+      const balanceWei = BigInt(serverBalance.balanceWei);
       
-      // Get native token price for this chain
-      const { getNativeTokenPrice } = await import('./usePricingData');
-      const nativePrice = await getNativeTokenPrice(chainId);
-      // Only use ETH price as fallback for ETH-based chains (1, 8453, 11155111, 84532, 42161)
-      // For other chains (POL, xDAI, etc.), don't fall back to ETH price
-      const isEthChain = [1, 8453, 11155111, 84532, 42161].includes(chainId);
-      const price = nativePrice || (isEthChain ? defaultEthPrice : null) || 0;
+      // Get native token price using wrapped token address
+      const nativeTokenAddress = getNativeTokenAddress(chainId);
       
-      const balanceUSD = parseFloat(balance) * price;
-
+      let price = 0;
+      if (nativeTokenAddress) {
+        // For xDAI (Gnosis), default to $1 (it's a stablecoin)
+        if (chainId === 100) {
+          price = 1.0;
+        } else {
+          const priceData = await getTokenPriceFromApi(chainId, nativeTokenAddress);
+          price = (priceData?.price && isFinite(priceData.price) && priceData.price > 0) ? priceData.price : 0;
+        }
+      }
+      
+      const balanceUSD = parseFloat(serverBalance.balance) * price;
+      
       return {
         chainId,
         chainName: networkConfig.name,
-        balance,
+        balance: serverBalance.balance,
         balanceWei,
         balanceUSD,
         currencySymbol: networkConfig.nativeCurrency.symbol,
@@ -145,7 +187,14 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
         error: null,
       };
     } catch (err) {
-      // Silent error handling - return zero balance without logging
+      const errorMessage = err instanceof Error 
+        ? `Server API error: ${err.message}` 
+        : 'Failed to fetch balance from server';
+      
+      if (import.meta.env.PROD) {
+        console.error(`[useMultichainBalances] Server API failed for chain ${chainId}:`, errorMessage);
+      }
+      
       return {
         chainId,
         chainName: networkConfig.name,
@@ -155,75 +204,121 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
         currencySymbol: networkConfig.nativeCurrency.symbol,
         currencyName: networkConfig.nativeCurrency.name,
         isLoading: false,
-        error: err instanceof Error ? err.message : 'Failed to fetch balance',
+        error: errorMessage,
       };
     }
-  }, [address, defaultEthPrice]);
+  }, [address]);
 
   /**
-   * Refresh a specific chain
+   * Fetch ERC20 token balances for a specific chain
    */
-  const refreshChain = useCallback(async (chainId: number) => {
-    if (!isConnected || !address) return;
+  const fetchChainTokens = useCallback(async (chainId: number): Promise<MultichainTokenBalance[]> => {
+    if (!address) return [];
 
-    setBalances(prev => {
-      const updated = [...prev];
-      const index = updated.findIndex(b => b.chainId === chainId);
-      if (index >= 0) {
-        updated[index] = { ...updated[index], isLoading: true, error: null };
-      }
-      return updated;
-    });
+    const networkConfig = SUPPORTED_NETWORKS.find(n => n.chainId === chainId);
+    if (!networkConfig) return [];
+
+    const tokenList = getCommonTokens(chainId);
+    if (tokenList.length === 0) return [];
 
     try {
-      const balance = await fetchChainBalance(chainId);
-      setBalances(prev => {
-        const updated = [...prev];
-        const index = updated.findIndex(b => b.chainId === chainId);
-        if (index >= 0) {
-          updated[index] = balance;
-        } else {
-          updated.push(balance);
+      const batchRequests = tokenList.map(tokenInfo => ({
+        chainId,
+        tokenAddress: tokenInfo.address,
+        userAddress: address,
+      }));
+
+      // Increased timeout for batch requests (15 seconds) - batch operations take longer
+      const serverResults = await withTimeout(
+        getTokenBalancesBatch(batchRequests),
+        15000
+      ) as Awaited<ReturnType<typeof getTokenBalancesBatch>> | null;
+      
+      if (!serverResults || !Array.isArray(serverResults) || serverResults.length === 0) {
+        throw new Error(`Server API returned no token balance data for chain ${chainId}`);
+      }
+
+      const tokenBalances: MultichainTokenBalance[] = [];
+
+      // Process server results and get prices
+      const tokenPromises = tokenList.map(async (tokenInfo, index) => {
+        const serverResult = serverResults[index];
+        if (!serverResult || !serverResult.data) {
+          return null;
         }
-        return updated;
+
+        try {
+          const { symbol, name, decimals, balance, balanceRaw } = serverResult.data;
+          const balanceNum = parseFloat(balance);
+          if (balanceNum === 0) return null;
+
+          // Get token price - ensure stablecoins always get $1
+          const normalizedSymbol = (symbol || tokenInfo.symbol || '').toUpperCase();
+          let tokenPrice = await getTokenPrice(normalizedSymbol, tokenInfo.address, chainId);
+          
+          // Force stablecoins to $1 if price is missing or 0
+          if (isStablecoin(normalizedSymbol)) {
+            if (!tokenPrice || tokenPrice === 0 || !isFinite(tokenPrice)) {
+              tokenPrice = 1.0;
+            }
+          }
+          
+          const balanceUSD = balanceNum * tokenPrice;
+
+          return {
+            address: tokenInfo.address,
+            symbol,
+            name,
+            decimals,
+            balance,
+            balanceRaw: BigInt(balanceRaw),
+            balanceUSD,
+            chainId,
+            chainName: networkConfig.name,
+            logoUrl: tokenInfo.logoUrl,
+          } as MultichainTokenBalance;
+        } catch (err) {
+          if (import.meta.env.PROD) {
+            console.error(`[useMultichainBalances] Error processing token ${tokenInfo.address}:`, err);
+          }
+          return null;
+        }
       });
+
+      const results = await Promise.all(tokenPromises);
+      results.forEach(result => {
+        if (result !== null) {
+          tokenBalances.push(result);
+        }
+      });
+
+      return tokenBalances.sort((a, b) => b.balanceUSD - a.balanceUSD);
     } catch (err) {
-      setBalances(prev => {
-        const updated = [...prev];
-        const index = updated.findIndex(b => b.chainId === chainId);
-        if (index >= 0) {
-          updated[index] = {
-            ...updated[index],
-            isLoading: false,
-            error: err instanceof Error ? err.message : 'Failed to fetch balance',
-          };
-        }
-        return updated;
-      });
+      if (import.meta.env.PROD) {
+        console.error(`[useMultichainBalances] Server API failed for chain ${chainId}:`, err);
+        throw new Error(`Server API is required but unavailable for chain ${chainId}`);
+      }
+      return [];
     }
-  }, [isConnected, address, fetchChainBalance]);
+  }, [address, getTokenPrice]);
 
   /**
-   * Refresh all chains
-   * Tries batch API first for efficiency, falls back to individual fetches
+   * Refresh native balances for all chains
    */
-  const refresh = useCallback(async () => {
+  const refreshBalances = useCallback(async () => {
     if (!isConnected || !address) {
       setBalances([]);
-      setIsLoading(false);
-      setError(null);
+      setBalancesLoading(false);
       return;
     }
 
-    setIsLoading(true);
+    setBalancesLoading(true);
     setError(null);
 
-    // Don't reset balances to 0 during refresh - keep existing balances and mark as loading
     setBalances(prev => {
       if (prev.length > 0) {
         return prev.map(b => ({ ...b, isLoading: true }));
       }
-      // Only initialize to 0 if we don't have any balances yet (first load)
       return SUPPORTED_NETWORKS.map(network => ({
         chainId: network.chainId,
         chainName: network.name,
@@ -238,49 +333,55 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     });
 
     try {
-      // Try batch API first (more efficient)
+      // Try batch API first
       try {
         const batchRequests = SUPPORTED_NETWORKS.map(network => ({
           chainId: network.chainId,
           address: address,
         }));
         
+        // Increased timeout for batch requests (15 seconds) - batch operations take longer
         const batchResults = await withTimeout(
           getBalancesBatch(batchRequests),
-          3000
+          15000
         ) as Awaited<ReturnType<typeof getBalancesBatch>> | null;
         
         if (batchResults && Array.isArray(batchResults) && batchResults.length > 0) {
-          // Convert batch results to MultichainBalance format
-          // Fetch native token prices for all chains in parallel
-          const { getNativeTokenPrice } = await import('./usePricingData');
-          const pricePromises = SUPPORTED_NETWORKS.map(network => 
-            getNativeTokenPrice(network.chainId)
-          );
-          const nativePrices = await Promise.all(pricePromises);
+          // Prepare price requests for all native tokens
+          const priceRequests = SUPPORTED_NETWORKS.map(network => {
+            const nativeTokenAddress = getNativeTokenAddress(network.chainId);
+            return {
+              chainId: network.chainId,
+              tokenAddress: nativeTokenAddress || '',
+            };
+          }).filter(req => req.tokenAddress);
+          
+          // Fetch prices in batch
+          const priceResults = priceRequests.length > 0 
+            ? await getTokenPricesBatch(priceRequests)
+            : [];
+          
+          // Create a map of chainId -> price
+          const priceMap = new Map<number, number>();
+          priceResults.forEach((result) => {
+            if (result && result.price && result.price > 0 && isFinite(result.price)) {
+              priceMap.set(result.chainId, result.price);
+            }
+          });
+          
+          // For xDAI (Gnosis), always use $1
+          if (priceMap.has(100)) {
+            priceMap.set(100, 1.0);
+          }
           
           const results: MultichainBalance[] = batchResults.map((result, index) => {
             const network = SUPPORTED_NETWORKS[index];
             if (result.balance && result.balanceWei) {
               const balanceWei = BigInt(result.balanceWei);
+              let price = priceMap.get(result.chainId) || 0;
               
-              // Use native token price for this chain, fallback to default ETH price
-              // Find the correct price by matching chainId (not index, in case order differs)
-              const networkIndex = SUPPORTED_NETWORKS.findIndex(n => n.chainId === result.chainId);
-              const nativePrice = networkIndex >= 0 ? nativePrices[networkIndex] : null;
-              // Only use ETH price as fallback for ETH-based chains
-              const isEthChain = [1, 8453, 11155111, 84532, 42161].includes(result.chainId);
-              const price = nativePrice || (isEthChain ? defaultEthPrice : null) || 0;
-              
-              // Debug: Log price calculation in development
-              if (import.meta.env.DEV && parseFloat(result.balance) > 0) {
-                console.log(`[useMultichainBalances] Chain ${result.chainId} (${network.name}):`, {
-                  balance: result.balance,
-                  nativePrice,
-                  defaultEthPrice,
-                  finalPrice: price,
-                  balanceUSD: parseFloat(result.balance) * price
-                });
+              if (result.chainId === 100 && price === 0) {
+                price = 1.0;
               }
               
               const balanceUSD = parseFloat(result.balance) * price;
@@ -310,37 +411,18 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
             }
           });
           
-          // For any failed batch results, try individual fetch
-          const failedIndices = batchResults
-            .map((result, index) => (!result.balance || result.error ? index : -1))
-            .filter(index => index !== -1);
-          
-          if (failedIndices.length > 0) {
-            const individualPromises = failedIndices.map(async (index) => {
-              const network = SUPPORTED_NETWORKS[index];
-              try {
-                return await fetchChainBalance(network.chainId);
-              } catch (err) {
-                return results[index]; // Keep the error result
-              }
-            });
-            
-            const individualResults = await Promise.all(individualPromises);
-            failedIndices.forEach((originalIndex, i) => {
-              results[originalIndex] = individualResults[i];
-            });
-          }
-          
           setBalances(results);
-          setIsLoading(false);
+          setBalancesLoading(false);
           return;
         }
       } catch (batchError) {
-        // Batch API failed or timed out, fall through to individual fetches
+        if (import.meta.env.PROD) {
+          console.error('[useMultichainBalances] Batch API failed:', batchError);
+          throw new Error('Server API batch endpoint failed - server is required in production');
+        }
       }
 
-      // Fallback to individual fetches
-      // Use device-optimized fetching from helpers
+      // Fallback to individual fetches (dev only)
       const results = await fetchWithDeviceOptimization(
         SUPPORTED_NETWORKS,
         async (network) => {
@@ -348,7 +430,6 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
             const balance = await fetchChainBalance(network.chainId);
             return [balance];
           } catch (err) {
-            // Return error balance
             const networkConfig = getNetworkByChainId(network.chainId);
             return [{
               chainId: network.chainId,
@@ -359,7 +440,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
               currencySymbol: networkConfig?.nativeCurrency.symbol || 'ETH',
               currencyName: networkConfig?.nativeCurrency.name || 'Ether',
               isLoading: false,
-              error: err instanceof Error ? err.message : 'Failed to fetch',
+              error: err instanceof Error ? err.message : 'Failed to fetch from server',
             }];
           }
         }
@@ -369,9 +450,73 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch balances');
     } finally {
-      setIsLoading(false);
+      setBalancesLoading(false);
     }
-  }, [isConnected, address, fetchChainBalance, defaultEthPrice]);
+  }, [isConnected, address, fetchChainBalance]);
+
+  /**
+   * Refresh ERC20 tokens for all chains
+   */
+  const refreshTokens = useCallback(async () => {
+    if (!isConnected || !address) {
+      setTokens([]);
+      setTokensLoading(false);
+      return;
+    }
+
+    setTokensLoading(true);
+    setError(null);
+
+    try {
+      const allTokens = await fetchWithDeviceOptimization(
+        SUPPORTED_NETWORKS,
+        async (network) => await fetchChainTokens(network.chainId)
+      );
+      setTokens(allTokens);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch token balances');
+    } finally {
+      setTokensLoading(false);
+    }
+  }, [isConnected, address, fetchChainTokens]);
+
+  /**
+   * Refresh a specific chain (both native and ERC20)
+   */
+  const refreshChain = useCallback(async (chainId: number) => {
+    if (!isConnected || !address) return;
+
+    const [chainBalance, chainTokens] = await Promise.all([
+      fetchChainBalance(chainId),
+      fetchChainTokens(chainId),
+    ]);
+
+    setBalances(prev => {
+      const updated = [...prev];
+      const index = updated.findIndex(b => b.chainId === chainId);
+      if (index >= 0) {
+        updated[index] = chainBalance;
+      } else {
+        updated.push(chainBalance);
+      }
+      return updated;
+    });
+
+    setTokens(prev => {
+      const filtered = prev.filter(t => t.chainId !== chainId);
+      return [...filtered, ...chainTokens];
+    });
+  }, [isConnected, address, fetchChainBalance, fetchChainTokens]);
+
+  /**
+   * Refresh all data (both native and ERC20)
+   */
+  const refresh = useCallback(async () => {
+    await Promise.all([
+      refreshBalances(),
+      refreshTokens(),
+    ]);
+  }, [refreshBalances, refreshTokens]);
 
   // Calculate totals
   const totalBalance = useMemo(() => {
@@ -383,13 +528,30 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     return balances.reduce((sum, b) => sum + (b.balanceUSD || 0), 0);
   }, [balances]);
 
+  const totalTokenValueUSD = useMemo(() => {
+    return tokens.reduce((sum, t) => sum + (t.balanceUSD || 0), 0);
+  }, [tokens]);
+
+  const totalValueUSD = useMemo(() => {
+    return totalBalanceUSD + totalTokenValueUSD;
+  }, [totalBalanceUSD, totalTokenValueUSD]);
+
+  const isLoading = balancesLoading || tokensLoading;
+
   return {
     balances,
     totalBalance,
     totalBalanceUSD,
+    tokens,
+    totalTokenValueUSD,
+    totalValueUSD,
     isLoading,
+    balancesLoading,
+    tokensLoading,
     error,
     refresh,
     refreshChain,
+    refreshBalances,
+    refreshTokens,
   };
 }

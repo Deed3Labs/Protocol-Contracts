@@ -67,6 +67,16 @@ NODE_ENV=production
 # CORS (your Vercel domain)
 CORS_ORIGIN=https://your-app.vercel.app
 
+# Alchemy API Key (RECOMMENDED - prevents RPC errors)
+# Get your free API key at: https://dashboard.alchemy.com/
+# This will automatically use Alchemy for all supported chains
+ALCHEMY_API_KEY=your_alchemy_api_key_here
+
+# Optional: Override specific RPC URLs (only if needed)
+# If ALCHEMY_API_KEY is set, these are optional
+# SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+# BASE_SEPOLIA_RPC_URL=https://base-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+
 # Optional: Cache TTLs
 CACHE_TTL_PRICE=300
 CACHE_TTL_BALANCE=10

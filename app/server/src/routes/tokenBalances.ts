@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
-import { getTokenBalance, getTokenBalancesBatch } from '../services/tokenBalanceService.js';
+import { getTokenBalance, getTokenBalancesBatch } from '../services/balanceService.js';
 
 const router = Router();
 const cacheServicePromise = getRedisClient().then((client) => new CacheService(client));

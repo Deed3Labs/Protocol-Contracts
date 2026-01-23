@@ -23,13 +23,13 @@ const USDC_ADDRESSES: Record<number, string> = {
 };
 
 const WETH_ADDRESSES: Record<number, string> = {
-  1: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // Ethereum Mainnet
-  8453: '0x4200000000000000000000000000000000000006', // Base Mainnet
-  11155111: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14', // Sepolia
-  84532: '0x4200000000000000000000000000000000000006', // Base Sepolia
-  42161: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // Arbitrum One
-  137: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // Polygon (WETH)
-  100: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8', // Gnosis (WXDAI)
+  1: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // Ethereum Mainnet (WETH)
+  8453: '0x4200000000000000000000000000000000000006', // Base Mainnet (WETH)
+  11155111: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14', // Sepolia (WETH)
+  84532: '0x4200000000000000000000000000000000000006', // Base Sepolia (WETH)
+  42161: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // Arbitrum One (WETH)
+  137: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // Polygon (WPOL - wrapped POL, not WETH!)
+  100: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8'.toLowerCase(), // Gnosis (WXDAI) - lowercase to avoid checksum issues
 };
 
 const UNISWAP_V3_POOL_ABI = [
@@ -52,19 +52,81 @@ const FEE_TIER = 3000; // 0.3% fee tier
 /**
  * Get RPC URL for a chain
  */
-function getRpcUrl(chainId: number): string {
-  // You can add your RPC URLs here or use environment variables
-  const rpcUrls: Record<number, string> = {
-    1: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
-    8453: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-    11155111: process.env.SEPOLIA_RPC_URL || 'https://rpc.sepolia.org',
-    84532: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
-    42161: process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc',
-    137: process.env.POLYGON_RPC_URL || 'https://polygon-rpc.com',
-    100: process.env.GNOSIS_RPC_URL || 'https://rpc.gnosischain.com',
-  };
+import { getRpcUrl } from '../utils/rpc.js';
+import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 
-  return rpcUrls[chainId] || '';
+/**
+ * Get token price with Ethereum mainnet fallback
+ * Tries chain-specific pricing first, then falls back to Ethereum mainnet (chainId: 1)
+ * 
+ * Note: Native tokens (POL, xDAI) use their correct wrapped addresses (WPOL, WXDAI),
+ * so they won't accidentally match WETH on Ethereum when falling back.
+ */
+export async function getTokenPrice(
+  chainId: number,
+  tokenAddress: string
+): Promise<number | null> {
+  // First, try chain-specific pricing
+  let price: number | null = null;
+
+  // Try Uniswap first (primary on-chain source)
+  try {
+    price = await getUniswapPrice(chainId, tokenAddress);
+  } catch (error) {
+    // Silent error, continue to next source
+  }
+
+  // Fast fallback to Coinbase if Uniswap fails
+  if (!price || price === 0) {
+    try {
+      price = await getCoinbasePrice(chainId, tokenAddress);
+    } catch (error) {
+      // Silent error, continue to next source
+    }
+  }
+
+  // Final fallback to CoinGecko if Uniswap and Coinbase fail
+  // CoinGecko has special handling for native tokens (POL, xDAI, etc.)
+  if (!price || price === 0) {
+    try {
+      price = await getCoinGeckoPrice(chainId, tokenAddress);
+    } catch (error) {
+      // Silent error, continue to Ethereum fallback
+    }
+  }
+
+  // If we still don't have a price and we're not already on Ethereum mainnet,
+  // try fetching from Ethereum mainnet as a fallback
+  // Note: Native tokens use correct wrapped addresses (WPOL, WXDAI) so they won't
+  // accidentally match WETH on Ethereum
+  if ((!price || price === 0) && chainId !== 1) {
+    try {
+      // Try Ethereum mainnet Uniswap
+      price = await getUniswapPrice(1, tokenAddress);
+    } catch (error) {
+      // Silent error, continue
+    }
+
+    // Try Ethereum mainnet Coinbase
+    if (!price || price === 0) {
+      try {
+        price = await getCoinbasePrice(1, tokenAddress);
+      } catch (error) {
+        // Silent error, continue
+      }
+    }
+
+    // Try Ethereum mainnet CoinGecko
+    if (!price || price === 0) {
+      try {
+        price = await getCoinGeckoPrice(1, tokenAddress);
+      } catch (error) {
+        // Silent error
+      }
+    }
+  }
+
+  return price && price > 0 ? price : null;
 }
 
 /**
@@ -88,15 +150,22 @@ export async function getUniswapPrice(
       return null;
     }
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const factory = new ethers.Contract(factoryAddress, UNISWAP_V3_FACTORY_ABI, provider);
+    // Normalize addresses to proper checksum format
+    const normalizedTokenAddress = ethers.getAddress(tokenAddress.toLowerCase());
+    const normalizedUsdcAddress = ethers.getAddress(usdcAddress.toLowerCase());
+    const normalizedWethAddress = ethers.getAddress(wethAddress.toLowerCase());
+    const normalizedFactoryAddress = ethers.getAddress(factoryAddress.toLowerCase());
+
+    // Use retry provider to handle rate limits and network issues
+    const provider = createRetryProvider(rpcUrl, chainId);
+    const factory = new ethers.Contract(normalizedFactoryAddress, UNISWAP_V3_FACTORY_ABI, provider);
 
     // Try direct USDC pair first
     let usdcPoolAddress: string = ethers.ZeroAddress;
     try {
-      const result = await factory.getPool(tokenAddress, usdcAddress, FEE_TIER);
+      const result = await withRetry(() => factory.getPool(normalizedTokenAddress, normalizedUsdcAddress, FEE_TIER));
       if (result && result !== ethers.ZeroAddress && result !== '0x') {
-        usdcPoolAddress = result;
+        usdcPoolAddress = ethers.getAddress(result.toLowerCase());
       }
     } catch (error) {
       usdcPoolAddress = ethers.ZeroAddress;
@@ -104,12 +173,15 @@ export async function getUniswapPrice(
 
     if (usdcPoolAddress && usdcPoolAddress !== ethers.ZeroAddress) {
       const pool = new ethers.Contract(usdcPoolAddress, UNISWAP_V3_POOL_ABI, provider);
-      const token0Address = await pool.token0();
-      const token1Address = await pool.token1();
+      // Use retry logic for RPC calls
+      const [token0Address, token1Address] = await Promise.all([
+        withRetry(() => pool.token0()).then(addr => ethers.getAddress(addr.toLowerCase())),
+        withRetry(() => pool.token1()).then(addr => ethers.getAddress(addr.toLowerCase())),
+      ]);
 
       const price = await getPoolPrice(provider, usdcPoolAddress, token0Address, token1Address);
       if (price > 0 && isFinite(price)) {
-        if (token0Address.toLowerCase() === tokenAddress.toLowerCase()) {
+        if (token0Address.toLowerCase() === normalizedTokenAddress.toLowerCase()) {
           return 1 / price;
         } else {
           return price;
@@ -120,43 +192,49 @@ export async function getUniswapPrice(
     // Try via WETH if no direct USDC pair
     let wethPoolAddress: string = ethers.ZeroAddress;
     try {
-      const result = await factory.getPool(tokenAddress, wethAddress, FEE_TIER);
-      wethPoolAddress = result && result !== ethers.ZeroAddress ? result : ethers.ZeroAddress;
+      const result = await withRetry(() => factory.getPool(normalizedTokenAddress, normalizedWethAddress, FEE_TIER));
+      wethPoolAddress = result && result !== ethers.ZeroAddress ? ethers.getAddress(result.toLowerCase()) : ethers.ZeroAddress;
     } catch (error) {
       wethPoolAddress = ethers.ZeroAddress;
     }
 
     if (wethPoolAddress && wethPoolAddress !== ethers.ZeroAddress) {
       const pool = new ethers.Contract(wethPoolAddress, UNISWAP_V3_POOL_ABI, provider);
-      const token0Address = await pool.token0();
-      const token1Address = await pool.token1();
+      // Use retry logic for RPC calls
+      const [token0Address, token1Address] = await Promise.all([
+        withRetry(() => pool.token0()).then(addr => ethers.getAddress(addr.toLowerCase())),
+        withRetry(() => pool.token1()).then(addr => ethers.getAddress(addr.toLowerCase())),
+      ]);
 
       const tokenWethPrice = await getPoolPrice(provider, wethPoolAddress, token0Address, token1Address);
       if (tokenWethPrice > 0) {
         let wethUsdcPoolAddress: string = ethers.ZeroAddress;
         try {
-          const result = await factory.getPool(wethAddress, usdcAddress, FEE_TIER);
-          wethUsdcPoolAddress = result && result !== ethers.ZeroAddress ? result : ethers.ZeroAddress;
+          const result = await withRetry(() => factory.getPool(normalizedWethAddress, normalizedUsdcAddress, FEE_TIER));
+          wethUsdcPoolAddress = result && result !== ethers.ZeroAddress ? ethers.getAddress(result.toLowerCase()) : ethers.ZeroAddress;
         } catch (error) {
           wethUsdcPoolAddress = ethers.ZeroAddress;
         }
 
         if (wethUsdcPoolAddress && wethUsdcPoolAddress !== ethers.ZeroAddress) {
           const wethUsdcPool = new ethers.Contract(wethUsdcPoolAddress, UNISWAP_V3_POOL_ABI, provider);
-          const wethUsdcToken0 = await wethUsdcPool.token0();
-          const wethUsdcToken1 = await wethUsdcPool.token1();
+          // Use retry logic for RPC calls
+          const [wethUsdcToken0, wethUsdcToken1] = await Promise.all([
+            withRetry(() => wethUsdcPool.token0()).then(addr => ethers.getAddress(addr.toLowerCase())),
+            withRetry(() => wethUsdcPool.token1()).then(addr => ethers.getAddress(addr.toLowerCase())),
+          ]);
 
           const wethUsdcPrice = await getPoolPrice(provider, wethUsdcPoolAddress, wethUsdcToken0, wethUsdcToken1);
           if (wethUsdcPrice > 0 && isFinite(wethUsdcPrice)) {
             let tokenWethRatio: number;
-            if (token0Address.toLowerCase() === tokenAddress.toLowerCase()) {
+            if (token0Address.toLowerCase() === normalizedTokenAddress.toLowerCase()) {
               tokenWethRatio = 1 / tokenWethPrice;
             } else {
               tokenWethRatio = tokenWethPrice;
             }
 
             let wethUsdcRatio: number;
-            if (wethUsdcToken0.toLowerCase() === wethAddress.toLowerCase()) {
+            if (wethUsdcToken0.toLowerCase() === normalizedWethAddress.toLowerCase()) {
               wethUsdcRatio = 1 / wethUsdcPrice;
             } else {
               wethUsdcRatio = wethUsdcPrice;
@@ -234,9 +312,13 @@ async function getTokenSymbol(
       return null;
     }
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-    const symbol = await tokenContract.symbol();
+    // Normalize address to proper checksum format
+    const normalizedTokenAddress = ethers.getAddress(tokenAddress.toLowerCase());
+
+    // Use retry provider to handle rate limits and network issues
+    const provider = createRetryProvider(rpcUrl, chainId);
+    const tokenContract = new ethers.Contract(normalizedTokenAddress, ERC20_ABI, provider);
+    const symbol = await withRetry(() => tokenContract.symbol());
     return symbol || null;
   } catch (error) {
     return null;
@@ -386,14 +468,23 @@ async function getPoolPrice(
   token1Address: string
 ): Promise<number> {
   try {
-    const pool = new ethers.Contract(poolAddress, UNISWAP_V3_POOL_ABI, provider);
-    const slot0 = await pool.slot0();
+    // Normalize addresses to proper checksum format
+    const normalizedPoolAddress = ethers.getAddress(poolAddress.toLowerCase());
+    const normalizedToken0Address = ethers.getAddress(token0Address.toLowerCase());
+    const normalizedToken1Address = ethers.getAddress(token1Address.toLowerCase());
+    
+    const pool = new ethers.Contract(normalizedPoolAddress, UNISWAP_V3_POOL_ABI, provider);
+    // Use retry logic for RPC calls
+    const slot0 = await withRetry(() => pool.slot0());
     const sqrtPriceX96 = slot0[0];
 
-    const token0 = new ethers.Contract(token0Address, ERC20_ABI, provider);
-    const token1 = new ethers.Contract(token1Address, ERC20_ABI, provider);
-    const decimals0 = Number(await token0.decimals());
-    const decimals1 = Number(await token1.decimals());
+    const token0 = new ethers.Contract(normalizedToken0Address, ERC20_ABI, provider);
+    const token1 = new ethers.Contract(normalizedToken1Address, ERC20_ABI, provider);
+    // Use retry logic for RPC calls
+    const [decimals0, decimals1] = await Promise.all([
+      withRetry(() => token0.decimals()).then(d => Number(d)),
+      withRetry(() => token1.decimals()).then(d => Number(d)),
+    ]);
 
     const sqrtPrice = BigInt(sqrtPriceX96.toString());
     const Q96 = 2n ** 96n;
@@ -420,12 +511,40 @@ async function getPoolPrice(
       return 0;
     }
 
-    let price = Number(adjustedRatio) / Number(INTERMEDIATE_SCALE);
+    // Convert BigInt to number safely
+    // Price = adjustedRatio / INTERMEDIATE_SCALE
+    // To avoid overflow, we'll scale down both values proportionally before converting to numbers
+    
+    // Scale down factor: we'll divide both by 10^18 to bring them into safe number range
+    const SCALE_DOWN = 10n ** 18n;
+    const SCALED_INTERMEDIATE = INTERMEDIATE_SCALE / SCALE_DOWN; // Should be 10^18
+    
+    // Scale down adjustedRatio
+    const scaledDownRatio = adjustedRatio / SCALE_DOWN;
+    
+    // Now both values should be in a safe range for number conversion
+    // But we need to handle the case where adjustedRatio < SCALE_DOWN
+    // In that case, we'll use a different approach
+    
+    let price: number;
+    
+    if (adjustedRatio < SCALE_DOWN) {
+      // If adjustedRatio is small, we can convert directly and divide
+      const ratioNum = Number(adjustedRatio);
+      const scaleNum = Number(INTERMEDIATE_SCALE);
+      price = ratioNum / scaleNum;
+    } else {
+      // Scale down both numerator and denominator
+      const scaledRatioNum = Number(scaledDownRatio);
+      const scaledScaleNum = Number(SCALED_INTERMEDIATE);
+      price = scaledRatioNum / scaledScaleNum;
+    }
 
+    // Validate the result
     if (!isFinite(price) || price <= 0 || price > 1e10 || price < 1e-10) {
-      if (!isFinite(price) || price <= 0 || price > 1e10) {
-        console.error('Price calculation error: invalid price', price);
-      }
+      // Log the raw values for debugging
+      const ratioString = adjustedRatio.toString();
+      console.error('Price calculation error: invalid price', price, 'raw ratio:', ratioString);
       return 0;
     }
 

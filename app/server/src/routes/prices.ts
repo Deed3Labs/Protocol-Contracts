@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
-import { getUniswapPrice, getCoinGeckoPrice, getCoinbasePrice } from '../services/priceService.js';
+import { getTokenPrice } from '../services/priceService.js';
 
 const router = Router();
 const cacheServicePromise = getRedisClient().then((client) => new CacheService(client));
@@ -27,38 +27,14 @@ router.get('/:chainId/:tokenAddress', async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch from external APIs
-    let price: number | null = null;
-
-    // Try Uniswap first (primary on-chain source)
-    try {
-      price = await getUniswapPrice(chainId, tokenAddress);
-    } catch (error) {
-      console.error('Uniswap price fetch error:', error);
-    }
-
-    // Fast fallback to Coinbase if Uniswap fails (free, no auth, usually faster)
-    if (!price || price === 0) {
-      try {
-        price = await getCoinbasePrice(chainId, tokenAddress);
-      } catch (error) {
-        console.error('Coinbase price fetch error:', error);
-      }
-    }
-
-    // Final fallback to CoinGecko if Uniswap and Coinbase fail
-    if (!price || price === 0) {
-      try {
-        price = await getCoinGeckoPrice(chainId, tokenAddress);
-      } catch (error) {
-        console.error('CoinGecko price fetch error:', error);
-      }
-    }
+    // Fetch price with Ethereum mainnet fallback
+    // This tries chain-specific pricing first, then falls back to Ethereum mainnet
+    const price = await getTokenPrice(chainId, tokenAddress);
 
     if (!price || price === 0) {
       return res.status(404).json({
         error: 'Price not available',
-        message: 'Could not fetch price from Uniswap, Coinbase, or CoinGecko',
+        message: 'Could not fetch price from any source (including Ethereum mainnet fallback)',
       });
     }
 
@@ -122,34 +98,10 @@ router.post('/batch', async (req: Request, res: Response) => {
       }
     }
 
-    // Fetch uncached prices
+    // Fetch uncached prices with Ethereum mainnet fallback
     for (const { chainId, tokenAddress, index } of uncached) {
-      let price: number | null = null;
-
-      // Try Uniswap first (primary on-chain source)
-      try {
-        price = await getUniswapPrice(chainId, tokenAddress);
-      } catch (error) {
-        console.error('Uniswap price fetch error:', error);
-      }
-
-      // Fast fallback to Coinbase if Uniswap fails
-      if (!price || price === 0) {
-        try {
-          price = await getCoinbasePrice(chainId, tokenAddress);
-        } catch (error) {
-          console.error('Coinbase price fetch error:', error);
-        }
-      }
-
-      // Final fallback to CoinGecko if Uniswap and Coinbase fail
-      if (!price || price === 0) {
-        try {
-          price = await getCoinGeckoPrice(chainId, tokenAddress);
-        } catch (error) {
-          console.error('CoinGecko price fetch error:', error);
-        }
-      }
+      // Use unified price function with Ethereum mainnet fallback
+      const price = await getTokenPrice(chainId, tokenAddress);
 
       const cacheKey = CacheKeys.tokenPrice(chainId, tokenAddress.toLowerCase());
       const cacheTTL = parseInt(process.env.CACHE_TTL_PRICE || '300', 10);

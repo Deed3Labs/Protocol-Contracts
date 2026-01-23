@@ -1,17 +1,21 @@
 import { ethers } from 'ethers';
+import { getRpcUrl } from '../utils/rpc.js';
+import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 
-/**
- * Get RPC URL for a chain
- */
-function getRpcUrl(chainId: number): string {
-  const rpcUrls: Record<number, string> = {
-    1: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
-    8453: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-    11155111: process.env.SEPOLIA_RPC_URL || 'https://rpc.sepolia.org',
-    84532: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
-  };
+const ERC20_ABI = [
+  'function balanceOf(address owner) view returns (uint256)',
+  'function symbol() view returns (string)',
+  'function name() view returns (string)',
+  'function decimals() view returns (uint8)',
+];
 
-  return rpcUrls[chainId] || '';
+export interface TokenBalanceData {
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  balance: string;
+  balanceRaw: string;
 }
 
 /**
@@ -27,8 +31,9 @@ export async function getBalance(
       return null;
     }
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const balanceWei = await provider.getBalance(address);
+    // Use retry provider to handle rate limits and network issues
+    const provider = createRetryProvider(rpcUrl, chainId);
+    const balanceWei = await withRetry(() => provider.getBalance(address));
     const balance = parseFloat(ethers.formatEther(balanceWei)).toFixed(4);
 
     // Note: balanceUSD calculation should be done on the client side with current price
@@ -45,7 +50,104 @@ export async function getBalance(
 }
 
 /**
- * Get multiple balances in batch
+ * Get ERC20 token balance for an address
+ */
+export async function getTokenBalance(
+  chainId: number,
+  tokenAddress: string,
+  userAddress: string
+): Promise<TokenBalanceData | null> {
+  try {
+    const rpcUrl = getRpcUrl(chainId);
+    if (!rpcUrl) {
+      return null;
+    }
+
+    // Use retry provider to handle rate limits and network issues
+    const provider = createRetryProvider(rpcUrl, chainId);
+    
+    // Normalize addresses to lowercase to avoid checksum errors
+    const normalizedTokenAddress = ethers.getAddress(tokenAddress.toLowerCase());
+    const normalizedUserAddress = ethers.getAddress(userAddress.toLowerCase());
+    
+    // Check if contract has code (exists and is a contract)
+    try {
+      const code = await withRetry(() => provider.getCode(normalizedTokenAddress));
+      if (!code || code === '0x') {
+        // Contract doesn't exist at this address
+        return null;
+      }
+    } catch (error) {
+      // If we can't check code, continue anyway
+    }
+    
+    const contract = new ethers.Contract(normalizedTokenAddress, ERC20_ABI, provider);
+
+    // First, try to get decimals to verify it's an ERC20 token
+    // If this fails, the contract likely isn't an ERC20 token
+    let decimals: bigint;
+    try {
+      decimals = await withRetry(() => contract.decimals());
+    } catch (error: any) {
+      // If decimals() fails, check if it's a BAD_DATA error (contract doesn't have the function)
+      if (error?.code === 'BAD_DATA' || error?.shortMessage?.includes('could not decode')) {
+        // Contract exists but doesn't have ERC20 functions
+        return null;
+      }
+      // For other errors, default to 18
+      decimals = 18n;
+    }
+
+    // Now try to get balance - handle BAD_DATA errors specifically
+    let balance: bigint;
+    try {
+      balance = await withRetry(() => contract.balanceOf(normalizedUserAddress));
+    } catch (error: any) {
+      // If balanceOf returns 0x (BAD_DATA), the contract doesn't have this function
+      if (error?.code === 'BAD_DATA' || error?.shortMessage?.includes('could not decode')) {
+        // Contract exists but doesn't have balanceOf function (not ERC20)
+        return null;
+      }
+      // Re-throw other errors
+      throw error;
+    }
+
+    if (balance === 0n) {
+      return null; // Zero balance
+    }
+
+    // Get symbol and name with error handling
+    let symbol: string;
+    let name: string;
+    try {
+      [symbol, name] = await Promise.all([
+        withRetry(() => contract.symbol()).catch(() => 'UNKNOWN'),
+        withRetry(() => contract.name()).catch(() => 'Unknown Token'),
+      ]);
+    } catch (error) {
+      symbol = 'UNKNOWN';
+      name = 'Unknown Token';
+    }
+
+    return {
+      address: normalizedTokenAddress.toLowerCase(),
+      symbol,
+      name,
+      decimals: Number(decimals),
+      balance: ethers.formatUnits(balance, decimals),
+      balanceRaw: balance.toString(),
+    };
+  } catch (error) {
+    // Only log non-BAD_DATA errors to avoid spam
+    if (error && typeof error === 'object' && 'code' in error && error.code !== 'BAD_DATA') {
+      console.error(`Error fetching token balance for ${tokenAddress} on chain ${chainId}:`, error);
+    }
+    return null;
+  }
+}
+
+/**
+ * Get multiple native balances in batch
  */
 export async function getBalancesBatch(
   requests: Array<{ chainId: number; address: string }>
@@ -71,6 +173,39 @@ export async function getBalancesBatch(
         address: requests[index].address,
         balance: null,
         balanceWei: null,
+        error: result.reason?.message || 'Unknown error',
+      };
+    }
+  });
+}
+
+/**
+ * Get multiple token balances in batch
+ */
+export async function getTokenBalancesBatch(
+  requests: Array<{ chainId: number; tokenAddress: string; userAddress: string }>
+): Promise<Array<{ chainId: number; tokenAddress: string; userAddress: string; data: TokenBalanceData | null; error?: string }>> {
+  const results = await Promise.allSettled(
+    requests.map(async ({ chainId, tokenAddress, userAddress }) => {
+      const data = await getTokenBalance(chainId, tokenAddress, userAddress);
+      return {
+        chainId,
+        tokenAddress,
+        userAddress,
+        data,
+      };
+    })
+  );
+
+  return results.map((result, index) => {
+    if (result.status === 'fulfilled') {
+      return result.value;
+    } else {
+      return {
+        chainId: requests[index].chainId,
+        tokenAddress: requests[index].tokenAddress,
+        userAddress: requests[index].userAddress,
+        data: null,
         error: result.reason?.message || 'Unknown error',
       };
     }

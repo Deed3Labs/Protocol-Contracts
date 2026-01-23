@@ -54,6 +54,7 @@ export function isUSDC(symbol: string): boolean {
 /**
  * Calculate cash balance from holdings
  * Cash = all stablecoins exclusively (USDC prioritized)
+ * Optimized single-pass calculation
  * @param holdings Array of token holdings
  * @returns Object with cash balance breakdown
  */
@@ -64,50 +65,37 @@ export function calculateCashBalance(
   usdcBalance: number;
   otherStablecoinsBalance: number;
 } {
-  // Filter to only token holdings (exclude NFTs)
-  const tokenHoldings = holdings.filter(h => h.type === 'token');
-  
-  // Separate USDC from other stablecoins
+  // Single-pass calculation - more efficient than filtering + looping
   let usdcBalance = 0;
   let otherStablecoinsBalance = 0;
   
-  // Debug: Log stablecoin holdings in development
-  if (import.meta.env.DEV) {
-    const stablecoinHoldings = tokenHoldings.filter(h => {
-      const symbol = (h.asset_symbol || '').toUpperCase();
-      return isStablecoin(symbol);
-    });
-    if (stablecoinHoldings.length > 0) {
-      console.log('[calculateCashBalance] Stablecoin holdings found:', stablecoinHoldings.map(h => ({
-        symbol: h.asset_symbol,
-        balanceUSD: h.balanceUSD,
-        type: h.type
-      })));
+  for (const holding of holdings) {
+    // Skip NFTs - only process tokens
+    if (holding.type !== 'token') continue;
+    
+    const balanceUSD = holding.balanceUSD || 0;
+    // Skip zero balances
+    if (balanceUSD <= 0) continue;
+    
+    const symbol = (holding.asset_symbol || '').toUpperCase();
+    
+    if (isUSDC(symbol)) {
+      usdcBalance += balanceUSD;
+    } else if (isStablecoin(symbol)) {
+      otherStablecoinsBalance += balanceUSD;
     }
   }
   
-  tokenHoldings.forEach(holding => {
-    const balanceUSD = holding.balanceUSD || 0;
-    const symbol = (holding.asset_symbol || '').toUpperCase();
-    
-    // Only count if balance is greater than 0
-    if (balanceUSD > 0) {
-      if (isUSDC(symbol)) {
-        usdcBalance += balanceUSD;
-      } else if (isStablecoin(symbol)) {
-        otherStablecoinsBalance += balanceUSD;
-      }
-    } else if (isStablecoin(symbol) && import.meta.env.DEV) {
-      // Debug: Log stablecoins with 0 balanceUSD
-      console.warn('[calculateCashBalance] Stablecoin with 0 balanceUSD:', {
-        symbol: holding.asset_symbol,
-        balanceUSD,
-        holding
-      });
-    }
-  });
-  
   const totalCash = usdcBalance + otherStablecoinsBalance;
+  
+  // Debug logging in development
+  if (import.meta.env.DEV && totalCash > 0) {
+    console.log('[calculateCashBalance]', {
+      totalCash,
+      usdcBalance,
+      otherStablecoinsBalance,
+    });
+  }
   
   return {
     totalCash,

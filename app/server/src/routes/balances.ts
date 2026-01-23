@@ -65,7 +65,7 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
 
 /**
  * POST /api/balances/batch
- * Get multiple balances in one request
+ * Get multiple native balances in one request
  * Body: { balances: [{ chainId, address }] }
  */
 router.post('/batch', async (req: Request, res: Response) => {

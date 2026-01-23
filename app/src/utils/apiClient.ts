@@ -295,6 +295,41 @@ export async function getTokenBalancesBatch(
 }
 
 /**
+ * Get unified portfolio data (balances, tokens, NFTs, cash balance)
+ * This is an optimized endpoint that fetches everything in one call
+ * Note: This endpoint may not be available on all server versions
+ */
+export async function getPortfolio(
+  address: string
+): Promise<{
+  holdings: any[];
+  cashBalance: {
+    totalCash: number;
+    usdcBalance: number;
+    otherStablecoinsBalance: number;
+  };
+  totalValueUSD: number;
+  cached: boolean;
+} | null> {
+  const response = await apiRequest<{
+    holdings: any[];
+    cashBalance: {
+      totalCash: number;
+      usdcBalance: number;
+      otherStablecoinsBalance: number;
+    };
+    totalValueUSD: number;
+    cached: boolean;
+  }>(`/api/portfolio/${address}`);
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
  * Check server health (uses cached version to avoid race conditions)
  * @deprecated Use checkServerHealthCached from serverHealth.ts instead
  */
