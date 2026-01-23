@@ -54,37 +54,55 @@ export const fetchSequentially = async <T, I>(
 };
 
 /**
- * Fetches data in parallel (for desktop devices)
+ * Fetches data in parallel with concurrency limit (for desktop devices)
+ * Limits the number of simultaneous requests to prevent browser resource exhaustion
  * @param items - Array of items to fetch
  * @param fetchFn - Function to fetch data for each item
+ * @param concurrency - Maximum number of parallel requests (default: 3)
  * @returns Array of all fetched results
  */
 export const fetchInParallel = async <T, I>(
   items: I[],
-  fetchFn: (item: I) => Promise<T[]>
+  fetchFn: (item: I) => Promise<T[]>,
+  concurrency: number = 3
 ): Promise<T[]> => {
-  const promises = items.map(item => fetchFn(item));
-  const results = await Promise.all(promises);
-  return results.flat();
+  const results: T[] = [];
+  
+  // Process items in batches to limit concurrent requests
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const batchPromises = batch.map(item => fetchFn(item));
+    const batchResults = await Promise.all(batchPromises);
+    results.push(...batchResults.flat());
+  }
+  
+  return results;
 };
 
 /**
  * Fetches data with mobile/desktop optimization
- * Automatically chooses sequential (mobile) or parallel (desktop) fetching
+ * Uses sequential fetching by default to prevent browser resource exhaustion (ERR_INSUFFICIENT_RESOURCES)
+ * Can be configured for limited parallel fetching if needed
  * @param items - Array of items to fetch
  * @param fetchFn - Function to fetch data for each item
- * @param delayMs - Delay between fetches for mobile (default: 300)
+ * @param delayMs - Delay between fetches (default: 200ms to balance speed and resource usage)
+ * @param useParallel - Whether to use limited parallel fetching (default: false for safety)
+ * @param concurrency - Maximum parallel requests if useParallel is true (default: 2)
  * @returns Array of all fetched results
  */
 export const fetchWithDeviceOptimization = async <T, I>(
   items: I[],
   fetchFn: (item: I) => Promise<T[]>,
-  delayMs: number = 300
+  delayMs: number = 200,
+  useParallel: boolean = false,
+  concurrency: number = 2
 ): Promise<T[]> => {
-  if (isMobileDevice()) {
+  if (isMobileDevice() || !useParallel) {
+    // Sequential fetching is safer and prevents ERR_INSUFFICIENT_RESOURCES
     return fetchSequentially(items, fetchFn, delayMs);
   } else {
-    return fetchInParallel(items, fetchFn);
+    // Limited parallel fetching with very low concurrency
+    return fetchInParallel(items, fetchFn, concurrency);
   }
 };
 
