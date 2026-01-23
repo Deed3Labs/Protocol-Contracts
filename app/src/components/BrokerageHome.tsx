@@ -571,47 +571,45 @@ export default function BrokerageHome() {
                   </div>
                   
                   {/* Filter Pills and Zero Value Toggle */}
-                  <div className="px-4 mb-2 space-y-2">
-                    <div className="flex gap-2">
-                      {(['All', 'NFTs', 'Tokens'] as const).map((filter) => (
+                  <div className="px-4 mb-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex gap-2">
+                        {(['All', 'NFTs', 'Tokens'] as const).map((filter) => (
+                          <button
+                            key={filter}
+                            onClick={() => setPortfolioFilter(filter)}
+                            className={`px-3 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
+                              portfolioFilter === filter
+                                ? 'bg-zinc-900 dark:bg-zinc-800 text-white'
+                                : 'bg-transparent text-zinc-500 dark:text-zinc-500 border border-zinc-300 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'
+                            }`}
+                          >
+                            {filter}
+                          </button>
+                        ))}
+                      </div>
+                      
+                      {/* Zero Value Assets Toggle Switch */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500 dark:text-zinc-500">Show $0 assets</span>
                         <button
-                          key={filter}
-                          onClick={() => setPortfolioFilter(filter)}
-                          className={`px-3 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
-                            portfolioFilter === filter
-                              ? 'bg-zinc-900 dark:bg-zinc-800 text-white'
-                              : 'bg-transparent text-zinc-500 dark:text-zinc-500 border border-zinc-300 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'
+                          onClick={() => setShowZeroValueAssets(!showZeroValueAssets)}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 ${
+                            showZeroValueAssets
+                              ? 'bg-zinc-900 dark:bg-zinc-700'
+                              : 'bg-zinc-300 dark:bg-zinc-600'
                           }`}
+                          role="switch"
+                          aria-checked={showZeroValueAssets}
+                          title={showZeroValueAssets ? 'Hide assets with $0 value' : 'Show assets with $0 value'}
                         >
-                          {filter}
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              showZeroValueAssets ? 'translate-x-5' : 'translate-x-0.5'
+                            }`}
+                          />
                         </button>
-                      ))}
-                    </div>
-                    
-                    {/* Zero Value Assets Toggle */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setShowZeroValueAssets(!showZeroValueAssets)}
-                        className={`flex items-center gap-2 px-2 py-1 rounded text-xs transition-all ${
-                          showZeroValueAssets
-                            ? 'text-zinc-700 dark:text-zinc-300'
-                            : 'text-zinc-500 dark:text-zinc-500'
-                        }`}
-                        title={showZeroValueAssets ? 'Hide assets with $0 value' : 'Show assets with $0 value'}
-                      >
-                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
-                          showZeroValueAssets
-                            ? 'border-zinc-700 dark:border-zinc-300 bg-zinc-700 dark:bg-zinc-300'
-                            : 'border-zinc-400 dark:border-zinc-600'
-                        }`}>
-                          {showZeroValueAssets && (
-                            <svg className="w-3 h-3 text-white dark:text-zinc-900" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                        </div>
-                        <span className="text-xs">Show $0 assets</span>
-                      </button>
+                      </div>
                     </div>
                   </div>
                   
