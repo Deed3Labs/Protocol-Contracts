@@ -5,7 +5,7 @@
 /**
  * Get Alchemy RPC URL for a chain using API key
  */
-function getAlchemyUrl(chainId: number, apiKey: string): string | null {
+function getAlchemyUrl(chainId: number, apiKey: string): string | undefined {
   const alchemyUrls: Record<number, string> = {
     // Mainnets
     1: `https://eth-mainnet.g.alchemy.com/v2/${apiKey}`,
@@ -20,7 +20,7 @@ function getAlchemyUrl(chainId: number, apiKey: string): string | null {
     80001: `https://polygon-mumbai.g.alchemy.com/v2/${apiKey}`,
   };
 
-  return alchemyUrls[chainId] || null;
+  return alchemyUrls[chainId] || undefined;
 }
 
 /**
