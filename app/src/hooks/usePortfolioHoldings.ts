@@ -245,13 +245,13 @@ export function usePortfolioHoldings(
       });
     });
     
-    // Sort by USD value (descending), then by type (RWAs first, then NFTs, then tokens)
+    // Sort by USD value (descending), then by type (Tokens first, then RWAs, then NFTs)
     return allHoldings.sort((a, b) => {
       if (b.balanceUSD !== a.balanceUSD) {
         return b.balanceUSD - a.balanceUSD;
       }
-      // Priority: RWAs > NFTs > Tokens
-      const typePriority = { rwa: 3, nft: 2, token: 1 };
+      // Priority: Tokens > RWAs > NFTs
+      const typePriority = { token: 3, rwa: 2, nft: 1 };
       const aPriority = typePriority[a.type] || 0;
       const bPriority = typePriority[b.type] || 0;
       return bPriority - aPriority;

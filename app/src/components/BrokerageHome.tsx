@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ReturnView, IncomeView, AccountValueView, AllocationView } from './portfolio/TabViews';
 import SideMenu from './portfolio/SideMenu';
 import HeaderNav from './portfolio/HeaderNav';
@@ -591,24 +592,24 @@ export default function BrokerageHome() {
                     </button>
                   </div>
                   
-                  {/* Filter Pills and Zero Value Toggle */}
+                  {/* Filter Selector and Zero Value Toggle */}
                   <div className="px-4 mb-2">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex gap-2">
-                        {(['All', 'RWAs', 'NFTs', 'Tokens'] as const).map((filter) => (
-                          <button
-                            key={filter}
-                            onClick={() => setPortfolioFilter(filter)}
-                            className={`px-3 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
-                              portfolioFilter === filter
-                                ? 'bg-zinc-900 dark:bg-zinc-800 text-white'
-                                : 'bg-transparent text-zinc-500 dark:text-zinc-500 border border-zinc-300 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'
-                            }`}
-                          >
-                            {filter}
-                          </button>
-                        ))}
-                      </div>
+                      {/* Single Filter Selector */}
+                      <Select 
+                        value={portfolioFilter} 
+                        onValueChange={(value: 'All' | 'RWAs' | 'NFTs' | 'Tokens') => setPortfolioFilter(value)}
+                      >
+                        <SelectTrigger className="h-8 w-32 text-xs border-zinc-300 dark:border-zinc-800 bg-transparent dark:bg-transparent">
+                          <SelectValue placeholder="Filter" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="All">All</SelectItem>
+                          <SelectItem value="Tokens">Tokens</SelectItem>
+                          <SelectItem value="RWAs">RWAs</SelectItem>
+                          <SelectItem value="NFTs">NFTs</SelectItem>
+                        </SelectContent>
+                      </Select>
                       
                       {/* Zero Value Assets Toggle Switch */}
                       <div className="flex items-center gap-2">
@@ -690,38 +691,9 @@ export default function BrokerageHome() {
                           
                           return (
                             <>
-                              {/* RWAs (T-Deeds) - Protocol-controlled Real World Assets */}
-                              {rwaHoldingsWithDeeds.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'RWAs') && (
-                                <div className="mb-4">
-                                  <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
-                                    <span>RWAs (T-Deeds)</span>
-                                    <span>Value</span>
-                                  </div>
-                                  <div className="space-y-1">
-                                    {rwaHoldingsWithDeeds.map(({ holding, deed }) => (
-                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} />
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {/* General NFTs (for future expansion) */}
-                              {nftHoldingsWithDeeds.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'NFTs') && (
-                                <div className="mb-4">
-                                  <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
-                                    <span>NFTs</span>
-                                    <span>Value</span>
-                                  </div>
-                                  <div className="space-y-1">
-                                    {nftHoldingsWithDeeds.map(({ holding, deed }) => (
-                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} />
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              
+                              {/* Tokens - Display first */}
                               {tokenHoldings.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'Tokens') && (
-                                <div>
+                                <div className="mb-4">
                                   <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
                                     <span>Tokens</span>
                                     <span>Value</span>
@@ -760,6 +732,36 @@ export default function BrokerageHome() {
                                         </div>
                                       );
                                     })}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* RWAs (T-Deeds) - Protocol-controlled Real World Assets - Display after Tokens */}
+                              {rwaHoldingsWithDeeds.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'RWAs') && (
+                                <div className="mb-4">
+                                  <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
+                                    <span>RWAs (T-Deeds)</span>
+                                    <span>Value</span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {rwaHoldingsWithDeeds.map(({ holding, deed }) => (
+                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* General NFTs (for future expansion) */}
+                              {nftHoldingsWithDeeds.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'NFTs') && (
+                                <div className="mb-4">
+                                  <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
+                                    <span>NFTs</span>
+                                    <span>Value</span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {nftHoldingsWithDeeds.map(({ holding, deed }) => (
+                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} />
+                                    ))}
                                   </div>
                                 </div>
                               )}
