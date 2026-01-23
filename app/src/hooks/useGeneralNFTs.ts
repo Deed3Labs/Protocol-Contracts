@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { SUPPORTED_NETWORKS } from '@/config/networks';
 import { getNFTs } from '@/utils/apiClient';
@@ -160,35 +160,8 @@ export function useGeneralNFTs(
     }
   }, [isConnected, address, contractAddresses, fetchContractNFTs]);
 
-  // Auto-fetch on mount and when address or contractAddresses change
-  useEffect(() => {
-    if (!isConnected || !address || contractAddresses.length === 0) {
-      setNfts([]);
-      setIsLoading(false);
-      setError(null);
-      return;
-    }
-
-    // Initial load - fetch NFTs automatically
-    const initialFetch = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Use device-optimized fetching (sequential for mobile, parallel for desktop)
-        const allNFTs = await fetchWithDeviceOptimization(
-          contractAddresses,
-          async (contract) => await fetchContractNFTs(contract.chainId, contract.contractAddress)
-        );
-        setNfts(allNFTs);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch NFTs');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    initialFetch();
-  }, [isConnected, address, contractAddresses, fetchContractNFTs]);
+  // Note: Auto-fetch is handled by PortfolioContext to avoid duplicate requests
+  // This hook only fetches when refresh() or refreshContract() is explicitly called
 
   // Calculate total count
   const totalCount = useMemo(() => {
