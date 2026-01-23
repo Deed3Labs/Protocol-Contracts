@@ -146,14 +146,16 @@ export function useGeneralNFTs(
     setError(null);
 
     try {
+      console.log('[useGeneralNFTs] Refreshing general NFTs for address:', address, 'contracts:', contractAddresses.length);
       // Use device-optimized fetching (sequential for mobile, parallel for desktop)
       const allNFTs = await fetchWithDeviceOptimization(
         contractAddresses,
         async (contract) => await fetchContractNFTs(contract.chainId, contract.contractAddress)
       );
+      console.log('[useGeneralNFTs] Fetched general NFTs:', allNFTs.length);
       setNfts(allNFTs);
     } catch (err) {
-      // Silent error handling
+      console.error('[useGeneralNFTs] Error fetching general NFTs:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch NFTs');
     } finally {
       setIsLoading(false);

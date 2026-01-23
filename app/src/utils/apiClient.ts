@@ -214,10 +214,10 @@ export async function getNFTs(
   }
   if (type) {
     params.append('type', type);
-  } else if (contractAddress) {
-    // If contractAddress provided but no type, default to general
-    params.append('type', 'general');
   }
+  // Note: If contractAddress is provided but no type, server will default based on contractAddress
+  // For T-Deeds, explicitly pass type='t-deed'
+  // For general NFTs, explicitly pass type='general'
   
   const query = params.toString() ? `?${params.toString()}` : '';
   // NFT requests can take longer, use 60 second timeout

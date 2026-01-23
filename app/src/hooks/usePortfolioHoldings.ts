@@ -4,6 +4,7 @@ import { useMultichainDeedNFTs } from './useMultichainDeedNFTs';
 import { useGeneralNFTs } from './useGeneralNFTs';
 import { calculateCashBalance } from '@/utils/tokenUtils';
 import { getAllNFTContracts } from '@/config/nfts';
+import { SUPPORTED_NETWORKS, getContractAddressForNetwork } from '@/config/networks';
 
 export interface UnifiedHolding {
   id: string;
@@ -85,13 +86,30 @@ export function usePortfolioHoldings(
   // Get NFT contracts from config (includes RWA, Collectible, and General NFTs)
   const configNFTContracts = getAllNFTContracts();
   
+  // Get T-Deed contract addresses to exclude them from general NFT fetching
+  // (T-Deeds are fetched separately via useMultichainDeedNFTs)
+  const tDeedContracts = new Set<string>();
+  SUPPORTED_NETWORKS.forEach(network => {
+    const tDeedAddress = getContractAddressForNetwork(network.chainId);
+    if (tDeedAddress && tDeedAddress !== '0x0000000000000000000000000000000000000000') {
+      tDeedContracts.add(tDeedAddress.toLowerCase());
+    }
+  });
+  
   // Combine config NFTs with user-provided contracts
+  // Filter out T-Deed contracts (they're handled by useMultichainDeedNFTs)
   // Convert config NFTs to GeneralNFTContractConfig format
   const allNFTContracts: GeneralNFTContractConfig[] = [
-    ...configNFTContracts.map(nft => ({
-      chainId: nft.chainId,
-      contractAddress: nft.address,
-    })),
+    ...configNFTContracts
+      .filter(nft => {
+        // Exclude T-Deed contracts - they're fetched via useMultichainDeedNFTs
+        const isTDeed = tDeedContracts.has(nft.address.toLowerCase());
+        return !isTDeed;
+      })
+      .map(nft => ({
+        chainId: nft.chainId,
+        contractAddress: nft.address,
+      })),
     ...generalNFTContracts,
   ];
   
