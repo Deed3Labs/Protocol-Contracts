@@ -3,6 +3,7 @@ import { useMultichainBalances } from './useMultichainBalances';
 import { useMultichainDeedNFTs } from './useMultichainDeedNFTs';
 import { useGeneralNFTs } from './useGeneralNFTs';
 import { calculateCashBalance } from '@/utils/tokenUtils';
+import { getAllNFTContracts } from '@/config/nfts';
 
 export interface UnifiedHolding {
   id: string;
@@ -35,6 +36,9 @@ export interface PortfolioHoldings {
  * Optional configuration for general NFT contracts to fetch
  * Format: Array of { chainId, contractAddress }
  * 
+ * @deprecated Use NFT_CONTRACTS from @/config/nfts instead
+ * This interface is kept for backward compatibility
+ * 
  * @example
  * const generalNFTContracts = [
  *   { chainId: 84532, contractAddress: '0x1234...' },
@@ -53,16 +57,18 @@ export interface GeneralNFTContractConfig {
  * - Using existing optimized hooks (which already use server API with batching)
  * - Calculating cash balance once from all holdings
  * - Providing a single source of truth for portfolio data
+ * - Automatically fetches NFTs from NFT_CONTRACTS config (RWA, Collectible, General)
  * 
- * @param generalNFTContracts - Optional array of general NFT contracts to fetch.
- *                               If not provided, only T-Deeds (RWAs) will be fetched.
+ * @param generalNFTContracts - Optional array of additional NFT contracts to fetch.
+ *                               If not provided, uses NFT_CONTRACTS from config.
+ *                               This parameter is for backward compatibility and custom contracts.
  * 
  * @example
  * ```tsx
- * // Basic usage (only T-Deeds)
+ * // Basic usage (uses NFT_CONTRACTS from config automatically)
  * const { holdings, cashBalance, totalValueUSD, refresh } = usePortfolioHoldings();
  * 
- * // With general NFTs
+ * // With additional custom NFT contracts
  * const { holdings } = usePortfolioHoldings([
  *   { chainId: 84532, contractAddress: '0x1234...' },
  *   { chainId: 1, contractAddress: '0x5678...' }
@@ -76,6 +82,26 @@ export interface GeneralNFTContractConfig {
 export function usePortfolioHoldings(
   generalNFTContracts: GeneralNFTContractConfig[] = []
 ): PortfolioHoldings {
+  // Get NFT contracts from config (includes RWA, Collectible, and General NFTs)
+  const configNFTContracts = getAllNFTContracts();
+  
+  // Combine config NFTs with user-provided contracts
+  // Convert config NFTs to GeneralNFTContractConfig format
+  const allNFTContracts: GeneralNFTContractConfig[] = [
+    ...configNFTContracts.map(nft => ({
+      chainId: nft.chainId,
+      contractAddress: nft.address,
+    })),
+    ...generalNFTContracts,
+  ];
+  
+  // Remove duplicates (same chainId + contractAddress)
+  const uniqueNFTContracts = allNFTContracts.filter((contract, index, self) =>
+    index === self.findIndex(c => 
+      c.chainId === contract.chainId && 
+      c.contractAddress.toLowerCase() === contract.contractAddress.toLowerCase()
+    )
+  );
   // Use unified hook that fetches both native and ERC20 token balances
   const {
     balances: nativeBalances,
@@ -91,12 +117,12 @@ export function usePortfolioHoldings(
     refresh: refreshNFTs,
   } = useMultichainDeedNFTs();
 
-  // Fetch general NFTs if contracts are provided
+  // Fetch all NFTs (from config + user-provided contracts)
   const {
     nfts: generalNFTs,
     isLoading: generalNFTsLoading,
     refresh: refreshGeneralNFTs,
-  } = useGeneralNFTs(generalNFTContracts);
+  } = useGeneralNFTs(uniqueNFTContracts);
 
   // Combine all holdings into unified format
   const holdings = useMemo<UnifiedHolding[]>(() => {
@@ -124,8 +150,20 @@ export function usePortfolioHoldings(
       });
     });
 
-    // Add general NFTs (ERC721/ERC1155)
+    // Add general NFTs (ERC721/ERC1155) - categorized by type from config
     generalNFTs.forEach((nft) => {
+      // Find the NFT config to determine type (rwa, collectible, general)
+      const nftConfig = configNFTContracts.find(
+        config => config.chainId === nft.chainId && 
+        config.address.toLowerCase() === nft.contractAddress.toLowerCase()
+      );
+      
+      // Determine type: if it's in config as 'rwa', use 'rwa', otherwise use 'nft'
+      // Note: T-Deeds are already handled above, so config RWAs are separate protocol RWAs
+      const nftType = nftConfig?.type === 'rwa' ? 'rwa' : 
+                     nftConfig?.type === 'collectible' ? 'nft' : 
+                     'nft';
+      
       // Calculate USD value from priceUSD if available
       const priceUSD = nft.priceUSD || 0;
       const amount = parseFloat(nft.amount || '1');
@@ -134,9 +172,9 @@ export function usePortfolioHoldings(
       allHoldings.push({
         ...nft, // Include all NFT properties
         id: `${nft.chainId}-nft-${nft.contractAddress}-${nft.tokenId}`,
-        type: 'nft' as const, // Mark as general NFT
-        asset_name: nft.name || `NFT #${nft.tokenId}`,
-        asset_symbol: nft.symbol || 'NFT',
+        type: nftType as 'nft' | 'rwa', // Use type from config
+        asset_name: nft.name || nftConfig?.name || `NFT #${nft.tokenId}`,
+        asset_symbol: nft.symbol || nftConfig?.symbol || 'NFT',
         balanceUSD,
         chainId: nft.chainId,
         chainName: nft.chainName,
@@ -144,6 +182,11 @@ export function usePortfolioHoldings(
         contractAddress: nft.contractAddress,
         standard: nft.standard,
         amount: nft.amount,
+        // Add metadata from config if available
+        ...(nftConfig && {
+          nftType: nftConfig.type, // 'rwa' | 'collectible' | 'general'
+          nftDescription: nftConfig.description,
+        }),
       });
     });
     
@@ -218,13 +261,13 @@ export function usePortfolioHoldings(
       refreshNFTs(),
     ];
     
-    // Only refresh general NFTs if contracts are provided
-    if (generalNFTContracts.length > 0) {
+    // Refresh general NFTs if we have contracts (from config or user-provided)
+    if (uniqueNFTContracts.length > 0) {
       refreshPromises.push(refreshGeneralNFTs());
     }
     
     await Promise.all(refreshPromises);
-  }, [refreshAllBalances, refreshNFTs, refreshGeneralNFTs, generalNFTContracts.length]);
+  }, [refreshAllBalances, refreshNFTs, refreshGeneralNFTs, uniqueNFTContracts.length]);
 
   return {
     holdings,
