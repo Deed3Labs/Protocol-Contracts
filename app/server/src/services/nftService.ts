@@ -34,10 +34,10 @@ const ERC1155_ABI = [
  * Get DeedNFT ABI (simplified - you may want to load from file)
  */
 function getDeedNFTAbi(): any[] {
-  // Minimal ABI for DeedNFT
+  // Minimal ABI for DeedNFT (extends ERC721Enumerable, so has balanceOf and tokenOfOwnerByIndex)
   return [
-    'function totalSupply() external view returns (uint256)',
-    'function tokenByIndex(uint256 index) external view returns (uint256)',
+    'function balanceOf(address owner) external view returns (uint256)',
+    'function tokenOfOwnerByIndex(address owner, uint256 index) external view returns (uint256)',
     'function ownerOf(uint256 tokenId) external view returns (address)',
     'function tokenURI(uint256 tokenId) external view returns (string)',
     'function getValidationStatus(uint256 tokenId) external view returns (bool, address)',
@@ -102,12 +102,24 @@ export async function getDeedNFTs(
     const abi = getDeedNFTAbi();
     const contract = new ethers.Contract(normalizedContractAddr, abi, provider);
 
-    // Get total supply with retry logic
-    const totalSupply = await withRetry(() => contract.totalSupply()).catch(() => 0n);
-    if (totalSupply === 0n) return [];
+    // Get user's balance first (much more efficient than checking all tokens)
+    let balance: bigint;
+    try {
+      balance = await withRetry(() => contract.balanceOf(normalizedAddress));
+    } catch (error: any) {
+      if (error?.code === 'BAD_DATA' || error?.shortMessage?.includes('could not decode')) {
+        return [];
+      }
+      throw error;
+    }
+
+    if (balance === 0n) {
+      return []; // User owns no T-Deeds
+    }
 
     const nfts: DeedNFTData[] = [];
-    const maxTokens = Math.min(Number(totalSupply), 100); // Limit to 100 tokens to prevent timeouts
+    const balanceNum = Number(balance);
+    const maxTokens = Math.min(balanceNum, 100); // Limit to 100 tokens to prevent timeouts
 
     // Process in smaller batches to reduce concurrent RPC calls
     const batchSize = 5;
@@ -118,16 +130,9 @@ export async function getDeedNFTs(
         batchPromises.push(
           (async () => {
             try {
-              // Use retry logic for RPC calls
-              const tokenId = await withRetry(() => contract.tokenByIndex(j));
+              // Use tokenOfOwnerByIndex to get only user-owned tokens (much more efficient!)
+              const tokenId = await withRetry(() => contract.tokenOfOwnerByIndex(normalizedAddress, j));
               const tokenIdString = tokenId.toString();
-              const owner = await withRetry(() => contract.ownerOf(tokenId));
-
-              // Normalize owner address for comparison
-              const normalizedOwner = ethers.getAddress(owner.toLowerCase());
-              if (normalizedOwner !== normalizedAddress) {
-                return;
-              }
 
               // Get token URI with retry logic
               const uri = await withRetry(() => contract.tokenURI(tokenId)).catch(() => '');
