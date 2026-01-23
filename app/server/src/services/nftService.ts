@@ -107,10 +107,10 @@ export async function getDeedNFTs(
     if (totalSupply === 0n) return [];
 
     const nfts: DeedNFTData[] = [];
-    const maxTokens = Math.min(Number(totalSupply), 1000); // Limit to 1000 tokens
+    const maxTokens = Math.min(Number(totalSupply), 100); // Limit to 100 tokens to prevent timeouts
 
-    // Process in batches
-    const batchSize = 10;
+    // Process in smaller batches to reduce concurrent RPC calls
+    const batchSize = 5;
     for (let i = 0; i < maxTokens; i += batchSize) {
       const batchPromises: Promise<void>[] = [];
 
@@ -375,10 +375,10 @@ export async function getGeneralNFTs(
       }
 
       const balanceNum = Number(balance);
-      const maxTokens = Math.min(balanceNum, 100); // Limit to 100 NFTs per contract
+      const maxTokens = Math.min(balanceNum, 50); // Limit to 50 NFTs per contract to prevent timeouts
 
-      // Process in batches
-      const batchSize = 10;
+      // Process in smaller batches to reduce concurrent RPC calls
+      const batchSize = 5;
       for (let i = 0; i < maxTokens; i += batchSize) {
         const batchPromises: Promise<void>[] = [];
 
@@ -426,10 +426,11 @@ export async function getGeneralNFTs(
       
       // Note: ERC1155 doesn't have a standard way to enumerate owned tokens
       // This is a limitation - we'd need to use indexed events or a service like Alchemy
-      // For now, we'll try a limited range of tokenIds (0-1000) to find owned tokens
+      // For now, we'll try a limited range of tokenIds (0-100) to find owned tokens
+      // Reduced from 1000 to 100 to prevent excessive RPC calls and request timeouts
       
-      const maxTokenId = 1000; // Limit search range
-      const batchSize = 50;
+      const maxTokenId = 100; // Limit search range to prevent timeouts
+      const batchSize = 20; // Smaller batches to reduce concurrent RPC calls
       
       for (let startId = 0; startId < maxTokenId; startId += batchSize) {
         const batchPromises: Promise<void>[] = [];

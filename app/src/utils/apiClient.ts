@@ -19,22 +19,36 @@ interface ApiResponse<T> {
   timestamp?: number;
 }
 
+interface RequestInitWithTimeout extends RequestInit {
+  timeout?: number; // Custom timeout in milliseconds (overrides default 30s)
+}
+
 /**
  * Generic API request function
  * Handles errors gracefully, including HTML responses (server down, wrong endpoint, etc.)
+ * Includes timeout and abort handling to prevent resource exhaustion
  */
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInitWithTimeout = {}
 ): Promise<ApiResponse<T>> {
+  // Create abort controller for timeout
+  const timeoutController = new AbortController();
+  const timeoutMs = options.timeout || 30000; // Default 30 seconds, longer for NFT requests
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+
   try {
+    const { timeout: _, ...fetchOptions } = options; // Remove timeout from fetch options
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
+      ...fetchOptions,
+      signal: timeoutController.signal, // Use timeout signal (user signal will be ignored if provided)
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
       },
     });
+
+    clearTimeout(timeoutId);
 
     // Check if response is actually JSON before trying to parse
     const contentType = response.headers.get('content-type');
@@ -70,6 +84,15 @@ async function apiRequest<T>(
     const data = await response.json();
     return { data: data as T, cached: data.cached, timestamp: data.timestamp };
   } catch (error) {
+    clearTimeout(timeoutId);
+    
+    // Handle abort errors gracefully
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        error: 'Request timeout - the server took too long to respond',
+      };
+    }
+    
     // Log errors in development and production for debugging
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
@@ -197,8 +220,10 @@ export async function getNFTs(
   }
   
   const query = params.toString() ? `?${params.toString()}` : '';
+  // NFT requests can take longer, use 60 second timeout
   const response = await apiRequest<{ nfts: any[]; cached: boolean }>(
-    `/api/nfts/${chainId}/${address}${query}`
+    `/api/nfts/${chainId}/${address}${query}`,
+    { timeout: 60000 }
   );
 
   if (response.error || !response.data) {
@@ -214,11 +239,13 @@ export async function getNFTs(
 export async function getNFTsBatch(
   requests: Array<{ chainId: number; address: string; contractAddress?: string }>
 ): Promise<Array<{ chainId: number; address: string; nfts: any[]; cached: boolean; error?: string }>> {
+  // Batch NFT requests can take even longer, use 90 second timeout
   const response = await apiRequest<{
     results: Array<{ chainId: number; address: string; nfts: any[]; cached: boolean; error?: string }>;
   }>('/api/nfts/batch', {
     method: 'POST',
     body: JSON.stringify({ requests }),
+    timeout: 90000, // 90 seconds for batch requests
   });
 
   if (response.error || !response.data) {

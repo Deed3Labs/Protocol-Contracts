@@ -15,6 +15,21 @@ const cacheServicePromise = getRedisClient().then((client) => new CacheService(c
  * - type: Optional. 't-deed' or 'general'. Defaults to 't-deed' if contractAddress not provided.
  */
 router.get('/:chainId/:address', async (req: Request, res: Response) => {
+  // Set timeout for this request (60 seconds)
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({
+        error: 'Request timeout',
+        message: 'NFT fetch took too long',
+      });
+    }
+  }, 60000);
+
+  // Handle request abort
+  req.on('close', () => {
+    clearTimeout(timeout);
+  });
+
   try {
     const chainId = parseInt(req.params.chainId, 10);
     const address = req.params.address.toLowerCase();
@@ -29,6 +44,7 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     const cached = await cacheService.get<{ nfts: any[]; timestamp: number }>(cacheKey);
 
     if (cached) {
+      clearTimeout(timeout);
       return res.json({
         nfts: cached.nfts,
         cached: true,
@@ -54,17 +70,28 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
       cacheTTL
     );
 
+    clearTimeout(timeout);
     res.json({
       nfts,
       cached: false,
       timestamp: Date.now(),
     });
   } catch (error) {
+    clearTimeout(timeout);
+    
+    // Handle request abort gracefully
+    if (error instanceof Error && (error.message.includes('aborted') || error.message.includes('ECONNABORTED'))) {
+      // Request was aborted by client - don't log as error
+      return;
+    }
+    
     console.error('NFT fetch error:', error);
-    res.status(500).json({
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 });
 
@@ -74,12 +101,28 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
  * Body: { requests: [{ chainId, address, contractAddress? }] }
  */
 router.post('/batch', async (req: Request, res: Response) => {
+  // Set timeout for batch requests (90 seconds)
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({
+        error: 'Request timeout',
+        message: 'Batch NFT fetch took too long',
+      });
+    }
+  }, 90000);
+
+  // Handle request abort
+  req.on('close', () => {
+    clearTimeout(timeout);
+  });
+
   try {
     const { requests } = req.body as {
       requests: Array<{ chainId: number; address: string; contractAddress?: string }>;
     };
 
     if (!Array.isArray(requests) || requests.length === 0) {
+      clearTimeout(timeout);
       return res.status(400).json({
         error: 'Invalid request',
         message: 'requests must be a non-empty array',
@@ -154,13 +197,24 @@ router.post('/batch', async (req: Request, res: Response) => {
       }
     }
 
+    clearTimeout(timeout);
     res.json({ results });
   } catch (error) {
+    clearTimeout(timeout);
+    
+    // Handle request abort gracefully
+    if (error instanceof Error && (error.message.includes('aborted') || error.message.includes('ECONNABORTED'))) {
+      // Request was aborted by client - don't log as error
+      return;
+    }
+    
     console.error('Batch NFT fetch error:', error);
-    res.status(500).json({
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 });
 
