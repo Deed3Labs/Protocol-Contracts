@@ -9,7 +9,6 @@ import { useState, useEffect, useMemo } from 'react';
 import SearchModal from './SearchModal';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { CompactPriceWheel } from '../PriceWheel';
-import { calculateCashBalance } from '@/utils/tokenUtils';
 
 interface HeaderNavProps {
   isScrolledPast: boolean;
@@ -29,13 +28,10 @@ export default function HeaderNav({
   setProfileMenuOpen
 }: HeaderNavProps) {
   // Use global portfolio context for cash balance
-  const { holdings, previousTotalBalanceUSD } = usePortfolio();
+  const { cashBalance: portfolioCashBalance, previousTotalBalanceUSD } = usePortfolio();
   
-  // Calculate cash balance: stablecoins exclusively (USDC priority)
-  const cashBalance = useMemo(() => {
-    const cashData = calculateCashBalance(holdings);
-    return cashData.totalCash;
-  }, [holdings]);
+  // Cash balance is automatically calculated from stablecoin holdings in PortfolioContext
+  const cashBalance = portfolioCashBalance?.totalCash || 0;
   
   // For animation, use previous balance as fallback (cash balance doesn't have separate previous value)
   const previousCashBalance = useMemo(() => {

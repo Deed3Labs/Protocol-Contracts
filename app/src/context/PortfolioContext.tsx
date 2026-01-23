@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useMultichainBalances } from '@/hooks/useMultichainBalances';
-import { useMultichainTokenBalances } from '@/hooks/useMultichainTokenBalances';
-import { useMultichainDeedNFTs } from '@/hooks/useMultichainDeedNFTs';
 import { useMultichainActivity } from '@/hooks/useMultichainActivity';
+import { usePortfolioHoldings } from '@/hooks/usePortfolioHoldings';
 import type { MultichainBalance } from '@/hooks/useMultichainBalances';
 import type { WalletTransaction } from '@/hooks/useWalletActivity';
 
@@ -26,6 +25,13 @@ interface PortfolioContextType {
     chainName: string;
     [key: string]: any;
   }>;
+  
+  // Cash balance (automatically calculated from stablecoin holdings)
+  cashBalance: {
+    totalCash: number;
+    usdcBalance: number;
+    otherStablecoinsBalance: number;
+  };
   
   // Activity
   transactions: WalletTransaction[];
@@ -51,7 +57,15 @@ const PortfolioContext = createContext<PortfolioContextType | null>(null);
 export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isConnected } = useAppKitAccount();
   
-  // Use multichain hooks
+  // Use unified portfolio holdings hook (optimized - handles tokens + NFTs + cash balance)
+  const {
+    holdings: portfolioHoldings,
+    cashBalance,
+    isLoading: holdingsLoadingFromHook,
+    refresh: refreshHoldingsHook,
+  } = usePortfolioHoldings();
+  
+  // Use multichain hooks for balances and activity (not covered by usePortfolioHoldings)
   const {
     balances: multichainBalances,
     totalBalance,
@@ -59,16 +73,6 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     isLoading: balancesLoadingFromHook,
     refresh: refreshBalancesHook,
   } = useMultichainBalances();
-  
-  const {
-    tokens: tokenBalances,
-    refresh: refreshTokensHook,
-  } = useMultichainTokenBalances();
-  
-  const {
-    nfts: multichainNFTs,
-    refresh: refreshNFTsHook,
-  } = useMultichainDeedNFTs();
   
   const {
     transactions: walletTransactions,
@@ -128,87 +132,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [isConnected, multichainBalances.length]);
   
-  // Combine NFTs, tokens, and native balances into holdings
-  const holdings = useMemo(() => {
-    const allHoldings: PortfolioContextType['holdings'] = [];
-    
-    // Add NFTs
-    multichainNFTs.forEach((nft) => {
-      allHoldings.push({
-        id: `${nft.chainId}-nft-${nft.tokenId}`,
-        type: 'nft',
-        asset_name: nft.definition || `T-Deed #${nft.tokenId}`,
-        asset_symbol: 'T-Deed',
-        balanceUSD: 0, // NFTs don't have USD value yet
-        chainId: nft.chainId,
-        chainName: nft.chainName,
-        tokenId: nft.tokenId,
-        // Include all NFT properties
-        owner: nft.owner,
-        assetType: nft.assetType,
-        uri: nft.uri,
-        definition: nft.definition,
-        configuration: nft.configuration,
-        validatorAddress: nft.validatorAddress,
-        token: nft.token,
-        salt: nft.salt,
-        isMinted: nft.isMinted,
-      });
-    });
-    
-    // Add native token balances (ETH, BASE, etc.) as crypto holdings
-    multichainBalances.forEach((balance) => {
-      // Only add if balance is greater than 0
-      if (parseFloat(balance.balance) > 0 && balance.balanceUSD > 0) {
-        const holding: PortfolioContextType['holdings'][0] = {
-          id: `${balance.chainId}-native-${balance.currencySymbol}`,
-          type: 'token', // Native tokens are treated as crypto tokens
-          asset_name: balance.currencyName,
-          asset_symbol: balance.currencySymbol,
-          balanceUSD: balance.balanceUSD,
-          chainId: balance.chainId,
-          chainName: balance.chainName,
-          // Additional properties for native tokens
-          balance: balance.balance,
-          address: 'native', // Native tokens don't have a contract address
-          decimals: 18, // Most native tokens use 18 decimals
-          isNative: true, // Flag to identify native tokens
-        };
-        allHoldings.push(holding);
-      }
-    });
-    
-    // Add ERC20 tokens
-    tokenBalances.forEach((token) => {
-      const holding: PortfolioContextType['holdings'][0] = {
-        id: `${token.chainId}-token-${token.address}`,
-        type: 'token',
-        asset_name: token.name,
-        asset_symbol: token.symbol,
-        balanceUSD: token.balanceUSD,
-        chainId: token.chainId,
-        chainName: token.chainName,
-        // Additional properties
-        balance: token.balance,
-        address: token.address,
-        decimals: token.decimals,
-        balanceRaw: token.balanceRaw,
-        logoUrl: token.logoUrl,
-      };
-      allHoldings.push(holding);
-    });
-    
-    // Sort by USD value (descending), then by type (NFTs first if same value)
-    return allHoldings.sort((a, b) => {
-      if (b.balanceUSD !== a.balanceUSD) {
-        return b.balanceUSD - a.balanceUSD;
-      }
-      // If same value, show NFTs first
-      if (a.type === 'nft' && b.type === 'token') return -1;
-      if (a.type === 'token' && b.type === 'nft') return 1;
-      return 0;
-    });
-  }, [multichainNFTs, multichainBalances, tokenBalances]);
+  // Holdings are now provided by usePortfolioHoldings hook (optimized)
+  const holdings = portfolioHoldings;
   
   // Determine loading states
   const balancesLoading = useMemo(() => {
@@ -217,8 +142,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [balancesLoadingFromHook, isConnected, multichainBalances.length, totalBalanceUSD]);
   
   const holdingsLoading = useMemo(() => {
-    return isConnected && holdings.length === 0 && multichainNFTs.length === 0 && tokenBalances.length === 0;
-  }, [isConnected, holdings.length, multichainNFTs.length, tokenBalances.length]);
+    return holdingsLoadingFromHook || (isConnected && holdings.length === 0);
+  }, [holdingsLoadingFromHook, isConnected, holdings.length]);
   
   const isLoading = balancesLoading || holdingsLoading || activityLoading;
   
@@ -238,11 +163,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [refreshBalancesHook]);
   
   const refreshHoldings = useCallback(async () => {
-    await Promise.all([
-      refreshTokensHook(),
-      refreshNFTsHook(),
-    ]);
-  }, [refreshTokensHook, refreshNFTsHook]);
+    await refreshHoldingsHook();
+  }, [refreshHoldingsHook]);
   
   const refreshActivity = useCallback(async () => {
     await refreshActivityHook();
@@ -291,6 +213,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     totalBalanceUSD,
     previousTotalBalanceUSD,
     holdings,
+    cashBalance, // Automatically calculated from stablecoin holdings
     transactions: walletTransactions,
     isLoading,
     balancesLoading,

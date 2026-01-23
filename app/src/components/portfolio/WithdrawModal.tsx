@@ -2,7 +2,6 @@ import { useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Building2, Wallet, CreditCard, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
-import { calculateCashBalance } from '@/utils/tokenUtils';
 
 interface WithdrawModalProps {
   isOpen: boolean;
@@ -10,10 +9,10 @@ interface WithdrawModalProps {
 }
 
 const WithdrawModal = ({ isOpen, onClose }: WithdrawModalProps) => {
-  const { holdings } = usePortfolio();
+  const { cashBalance } = usePortfolio();
   
-  // Calculate cash balance (stablecoins only)
-  const { totalCash } = calculateCashBalance(holdings);
+  // Cash balance is automatically calculated from stablecoin holdings in PortfolioContext
+  const totalCash = cashBalance?.totalCash || 0;
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

@@ -52,20 +52,7 @@ const FEE_TIER = 3000; // 0.3% fee tier
 /**
  * Get RPC URL for a chain
  */
-function getRpcUrl(chainId: number): string {
-  // You can add your RPC URLs here or use environment variables
-  const rpcUrls: Record<number, string> = {
-    1: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
-    8453: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-    11155111: process.env.SEPOLIA_RPC_URL || 'https://rpc.sepolia.org',
-    84532: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
-    42161: process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc',
-    137: process.env.POLYGON_RPC_URL || 'https://polygon-rpc.com',
-    100: process.env.GNOSIS_RPC_URL || 'https://rpc.gnosischain.com',
-  };
-
-  return rpcUrls[chainId] || '';
-}
+import { getRpcUrl } from '../utils/rpc.js';
 
 /**
  * Get price from Uniswap V3 pool

@@ -16,7 +16,6 @@ import { getNetworkByChainId } from '@/config/networks';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { LargePriceWheel } from './PriceWheel';
 import type { MultichainDeedNFT } from '@/hooks/useMultichainDeedNFTs';
-import { calculateCashBalance } from '@/utils/tokenUtils';
 
 // Types
 interface User {
@@ -197,13 +196,14 @@ export default function BrokerageHome() {
   // Wallet connection
   const { address, isConnected } = useAppKitAccount();
   
-  // Global portfolio context - provides balances, holdings, and activity
+  // Global portfolio context - provides balances, holdings, cash balance, and activity
   const {
     balances: multichainBalances,
     totalBalance,
     totalBalanceUSD,
     previousTotalBalanceUSD,
     holdings: portfolioHoldings,
+    cashBalance: portfolioCashBalance,
     transactions: walletTransactions,
     isLoading: portfolioLoading,
     refreshAll,
@@ -329,12 +329,8 @@ export default function BrokerageHome() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
   
-  // Calculate cash balance: stablecoins exclusively (USDC priority)
-  const cashBalance = useMemo(() => {
-    if (!isConnected) return 0;
-    const cashData = calculateCashBalance(portfolioHoldings);
-    return cashData.totalCash;
-  }, [isConnected, portfolioHoldings]);
+  // Cash balance is automatically calculated from stablecoin holdings in PortfolioContext
+  const cashBalance = portfolioCashBalance?.totalCash || 0;
   
   // Calculate total value from wallet balance and holdings across all chains
   const totalValue = useMemo(() => {
