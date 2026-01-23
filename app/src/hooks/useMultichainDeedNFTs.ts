@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { SUPPORTED_NETWORKS, getContractAddressForNetwork } from '@/config/networks';
 import type { DeedNFT } from '@/context/DeedNFTContext';
@@ -135,9 +135,35 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     }
   }, [isConnected, address, fetchChainNFTs]);
 
-  // Initial load
-  // Note: Automatic refresh is now controlled by PortfolioContext
-  // This hook only provides the refresh function - it does not auto-refresh
+  // Auto-fetch on mount and when address changes (like useMultichainBalances)
+  useEffect(() => {
+    if (!isConnected || !address) {
+      setNfts([]);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
+    // Initial load - fetch NFTs automatically
+    const initialFetch = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        // Use device-optimized fetching (sequential for mobile, parallel for desktop)
+        const allNFTs = await fetchWithDeviceOptimization(
+          SUPPORTED_NETWORKS,
+          async (network) => await fetchChainNFTs(network.chainId)
+        );
+        setNfts(allNFTs);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch NFTs');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    initialFetch();
+  }, [isConnected, address, fetchChainNFTs]);
 
   // Calculate total count
   const totalCount = useMemo(() => {

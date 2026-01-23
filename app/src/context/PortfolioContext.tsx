@@ -16,7 +16,7 @@ interface PortfolioContextType {
   // Holdings
   holdings: Array<{
     id: string;
-    type: 'nft' | 'token';
+    type: 'nft' | 'rwa' | 'token'; // 'rwa' for T-Deeds (Real World Assets)
     asset_name: string;
     asset_symbol: string;
     balance?: string;

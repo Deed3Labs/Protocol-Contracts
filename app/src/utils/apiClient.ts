@@ -172,13 +172,31 @@ export async function getBalancesBatch(
 
 /**
  * Get NFTs from server
+ * 
+ * @param chainId - Chain ID
+ * @param address - User address
+ * @param contractAddress - Optional contract address. If provided with type='general', fetches general NFTs.
+ *                          If not provided, fetches T-Deeds (DeedNFT protocol contracts).
+ * @param type - Optional. 't-deed' or 'general'. Defaults based on contractAddress.
  */
 export async function getNFTs(
   chainId: number,
   address: string,
-  contractAddress?: string
+  contractAddress?: string,
+  type?: 't-deed' | 'general'
 ): Promise<{ nfts: any[]; cached: boolean } | null> {
-  const query = contractAddress ? `?contractAddress=${contractAddress}` : '';
+  const params = new URLSearchParams();
+  if (contractAddress) {
+    params.append('contractAddress', contractAddress);
+  }
+  if (type) {
+    params.append('type', type);
+  } else if (contractAddress) {
+    // If contractAddress provided but no type, default to general
+    params.append('type', 'general');
+  }
+  
+  const query = params.toString() ? `?${params.toString()}` : '';
   const response = await apiRequest<{ nfts: any[]; cached: boolean }>(
     `/api/nfts/${chainId}/${address}${query}`
   );

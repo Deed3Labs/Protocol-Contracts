@@ -30,7 +30,7 @@ interface Holding {
   average_cost: number;
   current_price: number;
   valueUSD?: number; // USD value for sorting/filtering
-  type: 'equity' | 'nft' | 'token' | 'crypto';
+  type: 'equity' | 'nft' | 'rwa' | 'token' | 'crypto';
 }
 
 interface ChartPoint {
@@ -232,7 +232,7 @@ export default function BrokerageHome() {
   const [user, setUser] = useState<User | null>(null);
   const [selectedTab, setSelectedTab] = useState('Return');
   const [selectedRange, setSelectedRange] = useState('1D');
-  const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'NFTs' | 'Tokens'>('All');
+  const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'RWAs' | 'NFTs' | 'Tokens'>('All');
   const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
   const [showZeroValueAssets, setShowZeroValueAssets] = useState(true); // Show assets with $0 value by default
   const [menuOpen, setMenuOpen] = useState(false);
@@ -247,15 +247,30 @@ export default function BrokerageHome() {
   // Convert portfolio holdings to Holding format for compatibility
   const allHoldings = useMemo<Holding[]>(() => {
     return portfolioHoldings.map((holding) => {
+      // Type guard to check if holding is NFT or RWA
+      // Use type assertion to help TypeScript understand the union type
+      const holdingType = holding.type as 'nft' | 'rwa' | 'token';
+      const isNFTOrRWA = holdingType === 'nft' || holdingType === 'rwa';
+      
+      // Map UnifiedHolding type to Holding type
+      let mappedType: Holding['type'];
+      if (holdingType === 'rwa') {
+        mappedType = 'rwa';
+      } else if (holdingType === 'nft') {
+        mappedType = 'nft';
+      } else {
+        mappedType = 'token';
+      }
+      
       const baseHolding: Holding = {
         id: holding.id,
         asset_symbol: holding.asset_symbol,
         asset_name: holding.asset_name,
-        quantity: holding.type === 'nft' ? 1 : parseFloat(holding.balance || '0'),
+        quantity: isNFTOrRWA ? 1 : parseFloat(holding.balance || '0'),
         average_cost: 0,
-        current_price: holding.balanceUSD / (holding.type === 'nft' ? 1 : parseFloat(holding.balance || '1')),
+        current_price: holding.balanceUSD / (isNFTOrRWA ? 1 : parseFloat(holding.balance || '1')),
         valueUSD: holding.balanceUSD,
-        type: holding.type === 'nft' ? 'nft' as const : 'token' as const,
+        type: mappedType,
       };
       // Add additional properties if needed
       return baseHolding;
@@ -267,17 +282,19 @@ export default function BrokerageHome() {
     let holdings = allHoldings;
     
     // Apply type filter
-    if (portfolioFilter === 'NFTs') {
-      holdings = holdings.filter(h => h.type === 'nft');
+    if (portfolioFilter === 'RWAs') {
+      holdings = holdings.filter(h => h.type === 'rwa'); // T-Deeds (Real World Assets)
+    } else if (portfolioFilter === 'NFTs') {
+      holdings = holdings.filter(h => h.type === 'nft'); // General NFTs
     } else if (portfolioFilter === 'Tokens') {
       holdings = holdings.filter(h => h.type === 'token');
     }
     
-    // Filter by value: Always show NFTs, optionally filter tokens with 0 value
+    // Filter by value: Always show NFTs and RWAs, optionally filter tokens with 0 value
     if (!showZeroValueAssets) {
       holdings = holdings.filter(h => {
-        // Always show NFTs regardless of value
-        if (h.type === 'nft') return true;
+        // Always show NFTs and RWAs regardless of value
+        if (h.type === 'nft' || h.type === 'rwa') return true;
         // For tokens, only show if value > 0
         return (h.valueUSD || 0) > 0;
       });
@@ -295,18 +312,22 @@ export default function BrokerageHome() {
   // Debug: Verify data is being fetched (remove in production)
   useEffect(() => {
     if (isConnected && address) {
-      const nftHoldings = portfolioHoldings.filter(h => h.type === 'nft');
+      const rwaHoldings = portfolioHoldings.filter(h => h.type === 'rwa' as any);
+      const nftHoldings = portfolioHoldings.filter(h => h.type === 'nft' as any);
       const tokenHoldings = portfolioHoldings.filter(h => h.type === 'token');
       console.log('[BrokerageHome] Data check:', {
         balancesCount: multichainBalances.length,
         totalBalanceUSD,
         portfolioHoldingsCount: portfolioHoldings.length,
+        rwaHoldingsCount: rwaHoldings.length,
         nftHoldingsCount: nftHoldings.length,
         tokenHoldingsCount: tokenHoldings.length,
-        nftHoldings: nftHoldings.map(h => ({ id: h.id, name: h.asset_name, chain: h.chainName })),
+        rwaHoldings: (rwaHoldings as any[]).map((h: any) => ({ id: h.id, name: h.asset_name, chain: h.chainName })),
+        nftHoldings: (nftHoldings as any[]).map((h: any) => ({ id: h.id, name: h.asset_name, chain: h.chainName })),
         allHoldingsCount: allHoldings.length,
         filteredHoldingsCount: filteredHoldings.length,
         displayedHoldingsCount: displayedHoldings.length,
+        displayedRWAs: displayedHoldings.filter(h => h.type === 'rwa').length,
         displayedNFTs: displayedHoldings.filter(h => h.type === 'nft').length,
         displayedTokens: displayedHoldings.filter(h => h.type === 'token').length,
       });
@@ -574,7 +595,7 @@ export default function BrokerageHome() {
                   <div className="px-4 mb-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex gap-2">
-                        {(['All', 'NFTs', 'Tokens'] as const).map((filter) => (
+                        {(['All', 'RWAs', 'NFTs', 'Tokens'] as const).map((filter) => (
                           <button
                             key={filter}
                             onClick={() => setPortfolioFilter(filter)}
@@ -624,21 +645,22 @@ export default function BrokerageHome() {
                         {/* Group holdings by type for display */}
                         {(() => {
                           // Map displayed holdings back to their original DeedNFT objects for name fetching
-                          const nftHoldingsWithDeeds = displayedHoldings
-                            .filter(h => h.type === 'nft')
+                          // Handle both RWAs (T-Deeds) and general NFTs separately
+                          const rwaHoldingsWithDeeds = displayedHoldings
+                            .filter(h => h.type === 'rwa')
                             .map(holding => {
-                              // Extract tokenId and chainId from holding id format: "{chainId}-nft-{tokenId}"
+                              // Extract tokenId and chainId from holding id format: "{chainId}-rwa-{tokenId}"
                               const parts = holding.id.toString().split('-');
                               let tokenId: string | undefined;
                               let chainId: number | undefined;
                               
-                              if (parts.length >= 3 && parts[1] === 'nft') {
+                              if (parts.length >= 3 && parts[1] === 'rwa') {
                                 chainId = parseInt(parts[0]);
                                 tokenId = parts.slice(2).join('-');
                               }
                               
                               // Get the full deed data from portfolio holdings (includes all properties from multichainNFTs)
-                              const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && h.type === 'nft');
+                              const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && (h.type as string) === 'rwa');
                               const deed: MultichainDeedNFT | undefined = portfolioHolding && tokenId && chainId ? ({
                                 tokenId: (portfolioHolding.tokenId as string) || tokenId,
                                 chainId: portfolioHolding.chainId || chainId,
@@ -656,10 +678,34 @@ export default function BrokerageHome() {
                               
                               return { holding, deed };
                             });
+                          // General NFTs (for future expansion - currently empty)
+                          const nftHoldingsWithDeeds = displayedHoldings
+                            .filter(h => h.type === 'nft')
+                            .map(holding => {
+                              // For general NFTs, we don't have DeedNFT data yet
+                              return { holding, deed: undefined as MultichainDeedNFT | undefined };
+                            });
+                          
                           const tokenHoldings = displayedHoldings.filter(h => h.type === 'token');
                           
                           return (
                             <>
+                              {/* RWAs (T-Deeds) - Protocol-controlled Real World Assets */}
+                              {rwaHoldingsWithDeeds.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'RWAs') && (
+                                <div className="mb-4">
+                                  <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
+                                    <span>RWAs (T-Deeds)</span>
+                                    <span>Value</span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {rwaHoldingsWithDeeds.map(({ holding, deed }) => (
+                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* General NFTs (for future expansion) */}
                               {nftHoldingsWithDeeds.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'NFTs') && (
                                 <div className="mb-4">
                                   <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
