@@ -600,14 +600,14 @@ export default function BrokerageHome() {
                         value={portfolioFilter} 
                         onValueChange={(value: 'All' | 'RWAs' | 'NFTs' | 'Tokens') => setPortfolioFilter(value)}
                       >
-                        <SelectTrigger className="h-8 w-32 text-xs border-zinc-300 dark:border-zinc-800 bg-transparent dark:bg-transparent">
+                        <SelectTrigger className="h-8 w-32 text-xs text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-3 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
                           <SelectValue placeholder="Filter" />
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="All">All</SelectItem>
-                          <SelectItem value="Tokens">Tokens</SelectItem>
-                          <SelectItem value="RWAs">RWAs</SelectItem>
-                          <SelectItem value="NFTs">NFTs</SelectItem>
+                        <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                          <SelectItem value="All" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">All</SelectItem>
+                          <SelectItem value="Tokens" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Tokens</SelectItem>
+                          <SelectItem value="RWAs" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">RWAs</SelectItem>
+                          <SelectItem value="NFTs" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">NFTs</SelectItem>
                         </SelectContent>
                       </Select>
                       
