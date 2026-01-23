@@ -132,14 +132,14 @@ async function startServer() {
     // Set up API routes (after rate limiter)
     app.use('/api/prices', pricesRouter);
     app.use('/api/balances', balancesRouter);
-    app.use('/api/token-balances', tokenBalancesRouter);
+    app.use('/api/token-balances', tokenBalancesRouter); // Uses same service as balances (consolidated)
     app.use('/api/nfts', nftsRouter);
     app.use('/api/transactions', transactionsRouter);
     
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');
-    console.log('  - /api/balances');
-    console.log('  - /api/token-balances');
+    console.log('  - /api/balances (native token balances)');
+    console.log('  - /api/token-balances (ERC20 token balances - uses same service)');
     console.log('  - /api/nfts');
     console.log('  - /api/transactions');
 

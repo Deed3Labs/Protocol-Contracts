@@ -1,6 +1,5 @@
 import { useMemo, useCallback } from 'react';
 import { useMultichainBalances } from './useMultichainBalances';
-import { useMultichainTokenBalances } from './useMultichainTokenBalances';
 import { useMultichainDeedNFTs } from './useMultichainDeedNFTs';
 import { calculateCashBalance } from '@/utils/tokenUtils';
 
@@ -49,18 +48,14 @@ export interface PortfolioHoldings {
  * ```
  */
 export function usePortfolioHoldings(): PortfolioHoldings {
-  // Use existing optimized hooks (they already handle server API + batching)
+  // Use unified hook that fetches both native and ERC20 token balances
   const {
     balances: nativeBalances,
-    isLoading: balancesLoading,
-    refresh: refreshBalances,
-  } = useMultichainBalances();
-  
-  const {
     tokens: tokenBalances,
-    isLoading: tokensLoading,
-    refresh: refreshTokens,
-  } = useMultichainTokenBalances();
+    isLoading: balancesLoading,
+    tokensLoading,
+    refresh: refreshAllBalances, // This refreshes both native and ERC20 tokens
+  } = useMultichainBalances();
   
   const {
     nfts: nftHoldings,
@@ -151,12 +146,12 @@ export function usePortfolioHoldings(): PortfolioHoldings {
 
   // Unified refresh function
   const refresh = useCallback(async () => {
+    // refreshAllBalances() refreshes both native and ERC20 tokens
     await Promise.all([
-      refreshBalances(),
-      refreshTokens(),
+      refreshAllBalances(),
       refreshNFTs(),
     ]);
-  }, [refreshBalances, refreshTokens, refreshNFTs]);
+  }, [refreshAllBalances, refreshNFTs]);
 
   return {
     holdings,

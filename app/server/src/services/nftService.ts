@@ -1,18 +1,5 @@
 import { ethers } from 'ethers';
-
-/**
- * Get RPC URL for a chain
- */
-function getRpcUrl(chainId: number): string {
-  const rpcUrls: Record<number, string> = {
-    1: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
-    8453: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-    11155111: process.env.SEPOLIA_RPC_URL || 'https://rpc.sepolia.org',
-    84532: process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org',
-  };
-
-  return rpcUrls[chainId] || '';
-}
+import { getRpcUrl } from '../utils/rpc.js';
 
 /**
  * Get contract address for a chain
