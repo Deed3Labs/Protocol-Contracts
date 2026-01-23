@@ -70,18 +70,63 @@ export async function getTokenBalance(
     const normalizedTokenAddress = ethers.getAddress(tokenAddress.toLowerCase());
     const normalizedUserAddress = ethers.getAddress(userAddress.toLowerCase());
     
+    // Check if contract has code (exists and is a contract)
+    try {
+      const code = await withRetry(() => provider.getCode(normalizedTokenAddress));
+      if (!code || code === '0x') {
+        // Contract doesn't exist at this address
+        return null;
+      }
+    } catch (error) {
+      // If we can't check code, continue anyway
+    }
+    
     const contract = new ethers.Contract(normalizedTokenAddress, ERC20_ABI, provider);
 
-    // Use retry logic for all contract calls
-    const [balance, symbol, name, decimals] = await Promise.all([
-      withRetry(() => contract.balanceOf(normalizedUserAddress)),
-      withRetry(() => contract.symbol()).catch(() => 'UNKNOWN'),
-      withRetry(() => contract.name()).catch(() => 'Unknown Token'),
-      withRetry(() => contract.decimals()).catch(() => 18),
-    ]);
+    // First, try to get decimals to verify it's an ERC20 token
+    // If this fails, the contract likely isn't an ERC20 token
+    let decimals: bigint;
+    try {
+      decimals = await withRetry(() => contract.decimals());
+    } catch (error: any) {
+      // If decimals() fails, check if it's a BAD_DATA error (contract doesn't have the function)
+      if (error?.code === 'BAD_DATA' || error?.shortMessage?.includes('could not decode')) {
+        // Contract exists but doesn't have ERC20 functions
+        return null;
+      }
+      // For other errors, default to 18
+      decimals = 18n;
+    }
+
+    // Now try to get balance - handle BAD_DATA errors specifically
+    let balance: bigint;
+    try {
+      balance = await withRetry(() => contract.balanceOf(normalizedUserAddress));
+    } catch (error: any) {
+      // If balanceOf returns 0x (BAD_DATA), the contract doesn't have this function
+      if (error?.code === 'BAD_DATA' || error?.shortMessage?.includes('could not decode')) {
+        // Contract exists but doesn't have balanceOf function (not ERC20)
+        return null;
+      }
+      // Re-throw other errors
+      throw error;
+    }
 
     if (balance === 0n) {
       return null; // Zero balance
+    }
+
+    // Get symbol and name with error handling
+    let symbol: string;
+    let name: string;
+    try {
+      [symbol, name] = await Promise.all([
+        withRetry(() => contract.symbol()).catch(() => 'UNKNOWN'),
+        withRetry(() => contract.name()).catch(() => 'Unknown Token'),
+      ]);
+    } catch (error) {
+      symbol = 'UNKNOWN';
+      name = 'Unknown Token';
     }
 
     return {
@@ -93,7 +138,10 @@ export async function getTokenBalance(
       balanceRaw: balance.toString(),
     };
   } catch (error) {
-    console.error(`Error fetching token balance for ${tokenAddress} on chain ${chainId}:`, error);
+    // Only log non-BAD_DATA errors to avoid spam
+    if (error && typeof error === 'object' && 'code' in error && error.code !== 'BAD_DATA') {
+      console.error(`Error fetching token balance for ${tokenAddress} on chain ${chainId}:`, error);
+    }
     return null;
   }
 }

@@ -437,34 +437,39 @@ async function getPoolPrice(
       return 0;
     }
 
-    // Convert BigInt to number safely to avoid precision loss
-    // Use string conversion to handle large numbers properly
-    const ratioString = adjustedRatio.toString();
-    const scaleString = INTERMEDIATE_SCALE.toString();
+    // Convert BigInt to number safely
+    // Price = adjustedRatio / INTERMEDIATE_SCALE
+    // To avoid overflow, we'll scale down both values proportionally before converting to numbers
     
-    // Calculate price using string division to maintain precision
-    // For very large numbers, we need to be careful with division
-    const ratioNum = parseFloat(ratioString);
-    const scaleNum = parseFloat(scaleString);
+    // Scale down factor: we'll divide both by 10^18 to bring them into safe number range
+    const SCALE_DOWN = 10n ** 18n;
+    const SCALED_INTERMEDIATE = INTERMEDIATE_SCALE / SCALE_DOWN; // Should be 10^18
     
-    // If the number is too large, we need to scale it down first
-    if (ratioNum > Number.MAX_SAFE_INTEGER) {
-      // Scale down by dividing both numerator and denominator
-      const scaleDown = 1e18; // Scale down by 1e18
-      const scaledRatio = ratioNum / scaleDown;
-      const scaledScale = scaleNum / scaleDown;
-      const price = scaledRatio / scaledScale;
-      
-      if (!isFinite(price) || price <= 0 || price > 1e10 || price < 1e-10) {
-        console.error('Price calculation error: invalid price after scaling', price, 'raw ratio:', ratioString);
-        return 0;
-      }
-      return price;
+    // Scale down adjustedRatio
+    const scaledDownRatio = adjustedRatio / SCALE_DOWN;
+    
+    // Now both values should be in a safe range for number conversion
+    // But we need to handle the case where adjustedRatio < SCALE_DOWN
+    // In that case, we'll use a different approach
+    
+    let price: number;
+    
+    if (adjustedRatio < SCALE_DOWN) {
+      // If adjustedRatio is small, we can convert directly and divide
+      const ratioNum = Number(adjustedRatio);
+      const scaleNum = Number(INTERMEDIATE_SCALE);
+      price = ratioNum / scaleNum;
+    } else {
+      // Scale down both numerator and denominator
+      const scaledRatioNum = Number(scaledDownRatio);
+      const scaledScaleNum = Number(SCALED_INTERMEDIATE);
+      price = scaledRatioNum / scaledScaleNum;
     }
-    
-    const price = ratioNum / scaleNum;
 
+    // Validate the result
     if (!isFinite(price) || price <= 0 || price > 1e10 || price < 1e-10) {
+      // Log the raw values for debugging
+      const ratioString = adjustedRatio.toString();
       console.error('Price calculation error: invalid price', price, 'raw ratio:', ratioString);
       return 0;
     }
