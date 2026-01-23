@@ -78,27 +78,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-// Handle request aborted errors from body parsing
-app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-  // Listen for request abort events
-  req.on('aborted', () => {
-    // Request was aborted - this is expected, don't treat as error
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[Request aborted] ${req.method} ${req.path}`);
-    }
-  });
-
-  // Listen for close events
-  req.on('close', () => {
-    if (req.aborted && process.env.NODE_ENV === 'development') {
-      console.log(`[Request closed] ${req.method} ${req.path}`);
-    }
-  });
-
-  next();
-});
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -173,33 +152,8 @@ async function startServer() {
     });
 
     // Error handler (must be after all routes and 404 handler)
-    app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-      // Handle request aborted errors gracefully (client disconnected)
-      // These are expected when clients disconnect before request completes
-      if (err.type === 'request.aborted' || err.code === 'ECONNABORTED' || 
-          (err.message && err.message.includes('request aborted'))) {
-        // Client disconnected before request completed - this is expected behavior
-        // Silently handle - don't log as error or send response
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`[Request aborted] Client disconnected: ${req.method} ${req.path}`);
-        }
-        // Don't try to send response if connection is already closed
-        return;
-      }
-
-      // Handle other errors
+    app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
       console.error('Unhandled error:', err);
-      
-      // Don't send response if connection is already closed or headers already sent
-      if (res.headersSent || req.aborted) {
-        return next(err);
-      }
-      
-      // Check if response is still writable
-      if (res.writableEnded) {
-        return next(err);
-      }
-      
       res.status(500).json({
         error: 'Internal server error',
         message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred',
