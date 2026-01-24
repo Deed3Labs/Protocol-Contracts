@@ -140,3 +140,46 @@ export function getAlchemyNFTUrl(chainId: number): string | null {
   // For now, we only support getFloorPrice on Ethereum mainnet
   return null;
 }
+
+/**
+ * Get Alchemy Prices API base URL
+ * Used for Alchemy's Prices API endpoints (unified pricing across chains)
+ * https://www.alchemy.com/docs/reference/prices-api-quickstart
+ */
+export function getAlchemyPricesApiUrl(): string | null {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  if (!alchemyApiKey) {
+    return null;
+  }
+  // Prices API uses a unified endpoint: https://api.g.alchemy.com/prices/v1
+  return 'https://api.g.alchemy.com/prices/v1';
+}
+
+/**
+ * Get Alchemy API key for authentication
+ */
+export function getAlchemyApiKey(): string | null {
+  return process.env.ALCHEMY_API_KEY || null;
+}
+
+/**
+ * Map chain ID to Alchemy network identifier for Prices API
+ * Used for the "by-address" endpoint which requires network parameter
+ */
+export function getAlchemyNetworkName(chainId: number): string | null {
+  const networkMap: Record<number, string> = {
+    // Mainnets
+    1: 'eth-mainnet',
+    8453: 'base-mainnet',
+    137: 'polygon-mainnet',
+    42161: 'arb-mainnet',
+    100: 'gnosis-mainnet',
+    
+    // Testnets
+    11155111: 'eth-sepolia',
+    84532: 'base-sepolia',
+    80001: 'polygon-mumbai',
+  };
+
+  return networkMap[chainId] || null;
+}

@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
-import { getUniswapPrice, getCoinGeckoPrice, getCoinbasePrice } from '../services/priceService.js';
+import { getTokenPrice } from '../services/priceService.js';
 import { websocketService } from '../services/websocketService.js';
 
 /**
@@ -49,32 +49,8 @@ export async function startPriceUpdater() {
 
     for (const { chainId, tokenAddress } of allTokens) {
       try {
-        let price: number | null = null;
-
-        // Try Uniswap first (primary on-chain source)
-        try {
-          price = await getUniswapPrice(chainId, tokenAddress);
-        } catch (error) {
-          console.error(`Error fetching Uniswap price for ${tokenAddress}:`, error);
-        }
-
-        // Fast fallback to Coinbase if Uniswap fails
-        if (!price || price === 0) {
-          try {
-            price = await getCoinbasePrice(chainId, tokenAddress);
-          } catch (error) {
-            console.error(`Error fetching Coinbase price for ${tokenAddress}:`, error);
-          }
-        }
-
-        // Final fallback to CoinGecko if Uniswap and Coinbase fail
-        if (!price || price === 0) {
-          try {
-            price = await getCoinGeckoPrice(chainId, tokenAddress);
-          } catch (error) {
-            console.error(`Error fetching CoinGecko price for ${tokenAddress}:`, error);
-          }
-        }
+        // Use Alchemy Prices API (simplified - handles all fallbacks internally)
+        const price = await getTokenPrice(chainId, tokenAddress);
 
         if (price && price > 0) {
           const cacheKey = CacheKeys.tokenPrice(chainId, tokenAddress);

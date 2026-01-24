@@ -4,7 +4,8 @@ import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { getBalance } from './balanceService.js';
 import { getDeedNFTs } from './nftService.js';
 import { getTransactions } from './transactionService.js';
-import { getUniswapPrice, getCoinbasePrice, getCoinGeckoPrice } from './priceService.js';
+import { getTokenPrice } from './priceService.js';
+import { transfersService } from './transfersService.js';
 
 interface ClientSubscription {
   address: string;
@@ -45,18 +46,47 @@ class WebSocketService {
 
         console.log(`[WebSocket] Client ${socket.id} subscribed to ${address} on chains ${chainIds.join(', ')}`);
         
+        // Start monitoring transfers for this address (using Alchemy Transfers API)
+        transfersService.startMonitoring(address).catch(error => {
+          console.error(`[WebSocket] Failed to start transfer monitoring for ${address}:`, error);
+        });
+        
         // Send initial data
         await this.sendInitialData(socket, address, chainIds, subscriptions);
       });
 
       // Unsubscribe
       socket.on('unsubscribe', () => {
+        const subscription = this.clients.get(socket.id);
+        if (subscription) {
+          // Check if any other clients are monitoring this address
+          const otherClientsMonitoring = Array.from(this.clients.values())
+            .some(sub => sub.address === subscription.address && sub !== subscription);
+          
+          // Only stop monitoring if no other clients are monitoring this address
+          if (!otherClientsMonitoring) {
+            transfersService.stopMonitoring(subscription.address);
+          }
+        }
+        
         this.clients.delete(socket.id);
         console.log(`[WebSocket] Client ${socket.id} unsubscribed`);
       });
 
       // Handle disconnection
       socket.on('disconnect', () => {
+        const subscription = this.clients.get(socket.id);
+        if (subscription) {
+          // Check if any other clients are monitoring this address
+          const otherClientsMonitoring = Array.from(this.clients.values())
+            .some(sub => sub.address === subscription.address && sub !== subscription);
+          
+          // Only stop monitoring if no other clients are monitoring this address
+          if (!otherClientsMonitoring) {
+            transfersService.stopMonitoring(subscription.address);
+          }
+        }
+        
         this.clients.delete(socket.id);
         console.log(`[WebSocket] Client disconnected: ${socket.id}`);
       });
@@ -350,22 +380,8 @@ class WebSocketService {
             timestamp: cached.timestamp,
           });
         } else {
-          // Fetch fresh price
-          let price: number | null = null;
-          
-          try {
-            price = await getUniswapPrice(chainId, tokenAddress);
-          } catch (error) {
-            try {
-              price = await getCoinbasePrice(chainId, tokenAddress);
-            } catch (error) {
-              try {
-                price = await getCoinGeckoPrice(chainId, tokenAddress);
-              } catch (error) {
-                console.error(`Error fetching price for ${tokenAddress}:`, error);
-              }
-            }
-          }
+          // Fetch fresh price using Alchemy Prices API
+          const price = await getTokenPrice(chainId, tokenAddress);
           
           if (price && price > 0) {
             const cacheTTL = parseInt(process.env.CACHE_TTL_PRICE || '300', 10);
