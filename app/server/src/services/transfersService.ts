@@ -397,7 +397,7 @@ class TransfersService {
         excludeZeroValue: options.excludeZeroValue ?? false,
         category: options.category || ['external', 'erc20', 'erc721', 'erc1155'],
         pageKey: options.pageKey,
-        withMetadata: true,
+        withMetadata: true, // Request block timestamp metadata
       };
 
       // We need to fetch both incoming and outgoing transfers

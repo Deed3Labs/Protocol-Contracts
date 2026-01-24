@@ -898,11 +898,10 @@ export default function BrokerageHome() {
                                     const tx = item as any;
                                     if (tx.timestamp) {
                                       const date = new Date(tx.timestamp);
-                                      // Format: "Jan. 24 2026 : 7:07am"
-                                      const monthNames = ["Jan.", "Feb.", "Mar.", "Apr.", "May", "Jun.", "Jul.", "Aug.", "Sep.", "Oct.", "Nov.", "Dec."];
-                                      const month = monthNames[date.getMonth()];
-                                      const day = date.getDate();
-                                      const year = date.getFullYear();
+                                      // Format: "MM/DD/YY : H:MMam/pm" (e.g., "01/01/26 : 7:18am")
+                                      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                                      const day = date.getDate().toString().padStart(2, '0');
+                                      const year = date.getFullYear().toString().slice(-2);
                                       
                                       let hours = date.getHours();
                                       const minutes = date.getMinutes().toString().padStart(2, '0');
@@ -911,7 +910,7 @@ export default function BrokerageHome() {
                                       hours = hours % 12;
                                       hours = hours ? hours : 12; // the hour '0' should be '12'
                                       
-                                      return `${month} ${day} ${year} : ${hours}:${minutes}${ampm}`;
+                                      return `${month}/${day}/${year} : ${hours}:${minutes}${ampm}`;
                                     }
                                     return item.date;
                                   })()}
