@@ -891,7 +891,30 @@ export default function BrokerageHome() {
                                  item.type}
                               </p>
                               <div className="flex items-center gap-1.5 text-zinc-500 text-xs">
-                                <span>{item.date}</span>
+                                <span>
+                                  {(() => {
+                                    // Try to use timestamp if available, otherwise fallback to date string
+                                    // Use type assertion to access timestamp which might be on the object but not in the type definition used here
+                                    const tx = item as any;
+                                    if (tx.timestamp) {
+                                      const date = new Date(tx.timestamp);
+                                      // Format: "MM/DD/YY : H:MMam/pm" (e.g., "01/01/26 : 7:18am")
+                                      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                                      const day = date.getDate().toString().padStart(2, '0');
+                                      const year = date.getFullYear().toString().slice(-2);
+                                      
+                                      let hours = date.getHours();
+                                      const minutes = date.getMinutes().toString().padStart(2, '0');
+                                      const ampm = hours >= 12 ? 'pm' : 'am';
+                                      
+                                      hours = hours % 12;
+                                      hours = hours ? hours : 12; // the hour '0' should be '12'
+                                      
+                                      return `${month}/${day}/${year} : ${hours}:${minutes}${ampm}`;
+                                    }
+                                    return item.date;
+                                  })()}
+                                </span>
                                 <span className="w-0.5 h-0.5 bg-zinc-400 dark:bg-zinc-600 rounded-full"></span>
                                 <span className="capitalize">{item.status || 'completed'}</span>
                                 {(() => {
