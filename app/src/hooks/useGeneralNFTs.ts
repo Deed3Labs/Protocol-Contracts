@@ -145,6 +145,14 @@ export function useGeneralNFTs(
     setIsLoading(true);
     setError(null);
 
+    // Capture previous NFTs to preserve during refresh
+    let previousNFTs: GeneralNFT[] = [];
+    setNfts(prev => {
+      previousNFTs = prev;
+      // Keep previous NFTs visible while loading (don't clear them)
+      return prev;
+    });
+
     try {
       console.log('[useGeneralNFTs] Refreshing general NFTs for address:', address, 'contracts:', contractAddresses.length);
       // Use device-optimized fetching (sequential for mobile, parallel for desktop)
@@ -153,10 +161,15 @@ export function useGeneralNFTs(
         async (contract) => await fetchContractNFTs(contract.chainId, contract.contractAddress)
       );
       console.log('[useGeneralNFTs] Fetched general NFTs:', allNFTs.length);
+      // Only update with new data - this prevents clearing to empty array during refresh
       setNfts(allNFTs);
     } catch (err) {
       console.error('[useGeneralNFTs] Error fetching general NFTs:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch NFTs');
+      // On error, restore previous NFTs to prevent UI from showing empty state
+      if (previousNFTs.length > 0) {
+        setNfts(previousNFTs);
+      }
     } finally {
       setIsLoading(false);
     }

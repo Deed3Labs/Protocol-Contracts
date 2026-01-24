@@ -558,14 +558,27 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     setTokensLoading(true);
     setError(null);
 
+    // Capture previous tokens to preserve during refresh
+    let previousTokens: MultichainTokenBalance[] = [];
+    setTokens(prev => {
+      previousTokens = prev;
+      // Keep previous tokens visible while loading (don't clear them)
+      return prev;
+    });
+
     try {
       const allTokens = await fetchWithDeviceOptimization(
         SUPPORTED_NETWORKS,
         async (network) => await fetchChainTokens(network.chainId)
       );
+      // Only update with new data - this prevents clearing to empty array during refresh
       setTokens(allTokens);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch token balances');
+      // On error, restore previous tokens to prevent UI from showing empty state
+      if (previousTokens.length > 0) {
+        setTokens(previousTokens);
+      }
     } finally {
       setTokensLoading(false);
     }
