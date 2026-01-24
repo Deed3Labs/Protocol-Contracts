@@ -101,7 +101,11 @@ export async function getRedisClient(): Promise<RedisClientType> {
   redisClient.on('error', (err) => {
     // Only log if it's not a connection error (those are handled by reconnect)
     if (!err.message.includes('Socket closed') && !err.message.includes('ECONNREFUSED')) {
-      console.error('Redis Client Error:', err.message);
+      if (err.message.includes('max requests limit exceeded')) {
+         console.warn('Redis Warning: Upstash daily request limit exceeded');
+      } else {
+         console.error('Redis Client Error:', err.message);
+      }
     }
   });
 
@@ -166,6 +170,12 @@ export class CacheService {
       const value = await this.client.get(key);
       return value ? (JSON.parse(value) as T) : null;
     } catch (error: any) {
+      // Check for max requests limit error specifically
+      if (error?.message?.includes('max requests limit exceeded')) {
+        console.warn('Redis max requests limit exceeded. Skipping cache read.');
+        return null; // Skip cache read, proceed to source
+      }
+
       // Silently fail if connection is closed (will retry on next request)
       if (error?.message?.includes('Socket closed') || error?.message?.includes('Connection')) {
         return null;
@@ -186,6 +196,12 @@ export class CacheService {
       }
       await this.client.setEx(key, ttlSeconds, JSON.stringify(value));
     } catch (error: any) {
+      // Check for max requests limit error specifically
+      if (error?.message?.includes('max requests limit exceeded')) {
+        console.warn('Redis max requests limit exceeded. Skipping cache write.');
+        return; // Skip cache write
+      }
+
       // Silently fail if connection is closed (will retry on next request)
       if (error?.message?.includes('Socket closed') || error?.message?.includes('Connection')) {
         return;
@@ -264,6 +280,12 @@ export class CacheService {
       }
       return count;
     } catch (error: any) {
+      // Check for max requests limit error specifically
+      if (error?.message?.includes('max requests limit exceeded')) {
+        console.warn('Redis max requests limit exceeded. Failing open for rate limiting.');
+        return 0; // Fail open: allow request even if we can't track it
+      }
+      
       // Fail open for rate limiting - allow request through if Redis is down
       if (error?.message?.includes('Socket closed') || error?.message?.includes('Connection')) {
         return 0;
