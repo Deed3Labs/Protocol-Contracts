@@ -18,6 +18,7 @@ export type TransferType =
  */
 export interface TransferData {
   blockNum: string;
+  uniqueId: string;
   hash: string;
   from: string;
   to: string;
@@ -159,13 +160,14 @@ class TransfersService {
       }
 
       // Determine categories based on chain support
-      // 'internal' category is only supported for Ethereum (1) and Polygon (137)
+      // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
       const categories = ['external', 'erc20', 'erc721', 'erc1155'];
-      if (chainId === 1 || chainId === 137) {
+      if (chainId === 1 || chainId === 137 || chainId === 8453 || chainId === 42161 || chainId === 10) {
         categories.push('internal');
       }
 
       // Fetch transfers using Alchemy Transfers API
+      // We fetch both incoming and outgoing transfers by making two requests
       const transfers = await this.fetchTransfers(
         chainId,
         address,
@@ -357,20 +359,23 @@ class TransfersService {
         }
       }
       
-      // Ensure maxCount is a number (not a string)
-      let maxCount: number = 100;
+      // Ensure maxCount is a number (not a string) for internal logic
+      let maxCountNum: number = 100;
       if (options.maxCount !== undefined && options.maxCount !== null) {
         if (typeof options.maxCount === 'number') {
-          maxCount = options.maxCount > 0 ? options.maxCount : 100;
+          maxCountNum = options.maxCount > 0 ? options.maxCount : 100;
         } else if (typeof options.maxCount === 'string') {
           // Handle string maxCount (defensive)
           const parsed = parseInt(options.maxCount, 10);
-          maxCount = !isNaN(parsed) && parsed > 0 ? parsed : 100;
+          maxCountNum = !isNaN(parsed) && parsed > 0 ? parsed : 100;
         } else {
           console.warn(`[TransfersService] Invalid maxCount type: ${typeof options.maxCount}, using default 100`);
-          maxCount = 100;
+          maxCountNum = 100;
         }
       }
+      
+      // Convert maxCount to hex string for Alchemy API
+      const maxCountHex = `0x${maxCountNum.toString(16)}`;
       
       // Final validation: ensure fromBlock and toBlock are strings (never numbers)
       if (typeof fromBlock !== 'string') {
@@ -382,81 +387,109 @@ class TransfersService {
         toBlock = 'latest';
       }
       
-      const requestBody = {
-        id: 1,
-        jsonrpc: '2.0',
-        method: 'alchemy_getAssetTransfers',
-        params: [
-          {
-            fromBlock: String(fromBlock), // Explicit string conversion
-            toBlock: String(toBlock), // Explicit string conversion
-            fromAddress: address,
-            maxCount: Number(maxCount), // Explicit number conversion
-            excludeZeroValue: options.excludeZeroValue ?? false,
-            category: options.category || ['external', 'erc20', 'erc721', 'erc1155'],
-            pageKey: options.pageKey,
-          },
-        ],
+      // Prepare base params
+      const baseParams = {
+        fromBlock: String(fromBlock), // Explicit string conversion
+        toBlock: String(toBlock), // Explicit string conversion
+        maxCount: maxCountHex, // Hex string
+        excludeZeroValue: options.excludeZeroValue ?? false,
+        category: options.category || ['external', 'erc20', 'erc721', 'erc1155'],
+        pageKey: options.pageKey,
+        withMetadata: true,
       };
+
+      // We need to fetch both incoming and outgoing transfers
+      // Alchemy doesn't support OR logic for fromAddress/toAddress in a single request
+      const requests = [
+        { ...baseParams, fromAddress: address },
+        { ...baseParams, toAddress: address }
+      ];
       
-      // Debug logging to catch invalid values before sending
-      if (typeof requestBody.params[0].fromBlock !== 'string' || 
-          typeof requestBody.params[0].toBlock !== 'string' ||
-          typeof requestBody.params[0].maxCount !== 'number') {
-        console.error(`[TransfersService] CRITICAL: Invalid request body types:`, {
-          fromBlock: { value: requestBody.params[0].fromBlock, type: typeof requestBody.params[0].fromBlock },
-          toBlock: { value: requestBody.params[0].toBlock, type: typeof requestBody.params[0].toBlock },
-          maxCount: { value: requestBody.params[0].maxCount, type: typeof requestBody.params[0].maxCount },
-          originalOptions: options
-        });
+      const responses = await Promise.all(requests.map(async (params) => {
+        const requestBody = {
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'alchemy_getAssetTransfers',
+          params: [params],
+        };
+
+        try {
+          const response = await fetch(alchemyRestUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!response.ok) {
+            return [];
+          }
+
+          const data = await response.json() as {
+            result?: {
+              transfers?: Array<{
+                blockNum: string;
+                uniqueId: string;
+                hash: string;
+                from: string;
+                to: string;
+                value?: number;
+                asset: string;
+                category: string;
+                rawContract?: {
+                  address?: string;
+                  decimal?: string;
+                  symbol?: string;
+                };
+                metadata?: {
+                  blockTimestamp?: string;
+                };
+              }>;
+              pageKey?: string;
+            };
+            error?: {
+              message?: string;
+            };
+          };
+
+          if (data.error) {
+            console.error(`[TransfersService] Alchemy API error:`, data.error.message);
+            return [];
+          }
+
+          return data.result?.transfers || [];
+        } catch (error) {
+          console.error(`[TransfersService] Error fetching transfers subset:`, error);
+          return [];
+        }
+      }));
+
+      // Merge and deduplicate transfers
+      // We use a Map keyed by uniqueId (or fallback) to deduplicate self-transfers or overlaps
+      const uniqueTransfers = new Map<string, any>();
+      
+      // Combine results from both requests
+      const allTransfers = [...responses[0], ...responses[1]];
+      
+      for (const t of allTransfers) {
+        // Use uniqueId from Alchemy if available, otherwise construct a unique key
+        const key = t.uniqueId || `${t.hash}-${t.category}-${t.value}-${t.asset}`;
+        uniqueTransfers.set(key, t);
       }
       
-      const response = await fetch(alchemyRestUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
+      // Convert back to array and sort by block number
+      const transfers = Array.from(uniqueTransfers.values());
+      
+      transfers.sort((a, b) => {
+        const blockA = parseInt(a.blockNum, 16);
+        const blockB = parseInt(b.blockNum, 16);
+        return blockA - blockB;
       });
 
-      if (!response.ok) {
-        return [];
-      }
-
-      const data = await response.json() as {
-        result?: {
-          transfers?: Array<{
-            blockNum: string;
-            hash: string;
-            from: string;
-            to: string;
-            value?: number;
-            asset: string;
-            category: string;
-            rawContract?: {
-              address?: string;
-              decimal?: string;
-              symbol?: string;
-            };
-            metadata?: {
-              blockTimestamp?: string;
-            };
-          }>;
-          pageKey?: string;
-        };
-        error?: {
-          message?: string;
-        };
-      };
-
-      if (data.error) {
-        console.error(`[TransfersService] Alchemy API error:`, data.error.message);
-        return [];
-      }
-
-      const transfers = data.result?.transfers || [];
       return transfers.map(t => ({
         blockNum: t.blockNum,
+        uniqueId: t.uniqueId,
         hash: t.hash,
         from: t.from,
         to: t.to,
@@ -564,9 +597,9 @@ class TransfersService {
     limit: number = 50
   ): Promise<TransferData[]> {
     // Determine categories based on chain support
-    // 'internal' category is only supported for Ethereum (1) and Polygon (137)
+    // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
     const categories = ['external', 'erc20', 'erc721', 'erc1155'];
-    if (chainId === 1 || chainId === 137) {
+    if (chainId === 1 || chainId === 137 || chainId === 8453 || chainId === 42161 || chainId === 10) {
       categories.push('internal');
     }
 
@@ -603,9 +636,9 @@ class TransfersService {
   }>> {
     try {
       // Determine categories based on chain support
-      // 'internal' category is only supported for Ethereum (1) and Polygon (137)
+      // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
       const categories = ['external', 'erc20', 'erc721', 'erc1155'];
-      if (chainId === 1 || chainId === 137) {
+      if (chainId === 1 || chainId === 137 || chainId === 8453 || chainId === 42161 || chainId === 10) {
         categories.push('internal');
       }
 
