@@ -23,7 +23,7 @@ import { DeedNFTProvider } from "@/context/DeedNFTContext";
 import { XMTPProvider } from "@/context/XMTPContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { ModalProvider, useModal } from "@/context/ModalContext";
-import { PortfolioProvider } from "@/context/PortfolioContext";
+import { PortfolioProvider, usePortfolio } from "@/context/PortfolioContext";
 import Faucet from "@/components/Faucet";
 import BurnerBondPage from "@/components/BurnerBondPage";
 import PullToRefresh from "@/components/ui/PullToRefresh";
@@ -44,10 +44,14 @@ const LegacyLayout = () => {
 
 const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean }) => {
   const { isModalOpen } = useModal();
+  const { refreshAll } = usePortfolio();
+  
   const handleRefresh = async () => {
     // Wait for animation (increased to 800ms to show skeleton)
     await new Promise(resolve => setTimeout(resolve, 800));
-    window.location.reload();
+    // Soft refresh: refresh all portfolio data without reloading the page
+    // This preserves previous data during refresh (no flashing to 0.00)
+    await refreshAll();
   };
 
   return (
