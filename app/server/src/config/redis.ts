@@ -301,6 +301,10 @@ export const CacheKeys = {
   tokenBalance: (chainId: number, address: string, tokenAddress: string) =>
     `token_balance:${chainId}:${address.toLowerCase()}:${tokenAddress.toLowerCase()}`,
   
+  // Token metadata (cached longer as it doesn't change)
+  tokenMetadata: (chainId: number, tokenAddress: string) =>
+    `token_metadata:${chainId}:${tokenAddress.toLowerCase()}`,
+  
   // NFTs
   nft: (chainId: number, contractAddress: string, tokenId: string) =>
     `nft:${chainId}:${contractAddress.toLowerCase()}:${tokenId}`,

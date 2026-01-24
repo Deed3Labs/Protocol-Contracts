@@ -223,7 +223,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
       // First, try to get ALL tokens using Alchemy API
       const allTokens = await withTimeout(
         getAllTokenBalances(chainId, address),
-        30000 // 30 second timeout
+        65000 // 65 second timeout (slightly more than apiClient timeout)
       ) as Awaited<ReturnType<typeof getAllTokenBalances>> | null;
 
       let tokensToProcess: Array<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string }> = [];

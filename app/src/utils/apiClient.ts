@@ -353,7 +353,7 @@ export async function getAllTokenBalances(
     timestamp: number;
     fallback?: string;
   }>(`/api/token-balances/all/${chainId}/${userAddress}`, {
-    timeout: 30000, // 30 second timeout for fetching all tokens
+    timeout: 60000, // Increased to 60 seconds for fetching all tokens
   });
 
   if (response.error || !response.data) {

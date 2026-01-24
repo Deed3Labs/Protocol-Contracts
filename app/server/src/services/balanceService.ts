@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { getRpcUrl, getAlchemyRestUrl } from '../utils/rpc.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
+import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
@@ -213,6 +214,57 @@ export async function getTokenBalancesBatch(
 }
 
 /**
+ * Get token metadata using Alchemy's API or cache
+ */
+async function getTokenMetadata(
+  chainId: number, 
+  tokenAddress: string, 
+  cacheService: CacheService,
+  alchemyRestUrl: string
+): Promise<{ symbol: string; name: string; decimals: number } | null> {
+  const cacheKey = CacheKeys.tokenMetadata(chainId, tokenAddress);
+  
+  // Try cache first (metadata is cached for 30 days as it rarely changes)
+  const cached = await cacheService.get<{ symbol: string; name: string; decimals: number }>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    // Use Alchemy's optimized metadata API
+    const response = await fetch(alchemyRestUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'alchemy_getTokenMetadata',
+        params: [tokenAddress],
+      }),
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json() as { result?: { symbol: string; name: string; decimals: number } };
+    if (data.result) {
+      const metadata = {
+        symbol: data.result.symbol || 'UNKNOWN',
+        name: data.result.name || 'Unknown Token',
+        decimals: data.result.decimals || 18,
+      };
+      
+      // Cache for 30 days (2592000 seconds)
+      await cacheService.set(cacheKey, metadata, 2592000);
+      return metadata;
+    }
+  } catch (error) {
+    console.error(`Error fetching metadata for ${tokenAddress} on chain ${chainId}:`, error);
+  }
+
+  return null;
+}
+
+/**
  * Get ALL ERC20 token balances for an address using Alchemy's API
  * This is much more efficient than checking individual tokens
  * 
@@ -227,8 +279,6 @@ export async function getAllTokenBalances(
   try {
     const alchemyRestUrl = getAlchemyRestUrl(chainId);
     if (!alchemyRestUrl) {
-      // Alchemy API not available, return empty array
-      // Fallback to COMMON_TOKENS approach will be used
       return [];
     }
 
@@ -245,7 +295,7 @@ export async function getAllTokenBalances(
         id: 1,
         jsonrpc: '2.0',
         method: 'alchemy_getTokenBalances',
-        params: [normalizedAddress, 'erc20'], // "erc20" returns ALL tokens
+        params: [normalizedAddress, 'erc20'],
       }),
     });
 
@@ -262,7 +312,6 @@ export async function getAllTokenBalances(
           tokenBalance: string;
           error?: any;
         }>;
-        pageKey?: string;
       };
     };
     
@@ -276,83 +325,55 @@ export async function getAllTokenBalances(
       return [];
     }
 
-    // Get RPC provider for fetching token metadata
-    const rpcUrl = getRpcUrl(chainId);
-    if (!rpcUrl) {
-      return [];
-    }
-
-    const provider = createRetryProvider(rpcUrl, chainId);
+    const cacheService = await getRedisClient().then(client => new CacheService(client));
     const results: TokenBalanceData[] = [];
 
-    // Process tokens in parallel batches to avoid overwhelming the RPC
-    const batchSize = 5; // Reduced from 10 to prevent overwhelming RPC
+    // Process tokens in larger batches for speed
+    // alchemy_getTokenMetadata is much faster than standard RPC calls
+    const batchSize = 15; 
+    
     for (let i = 0; i < tokenBalances.length; i += batchSize) {
+      // Safety check: if we've already spent too much time, stop processing more tokens
+      // and return what we have to avoid overall request timeout
       const batch = tokenBalances.slice(i, i + batchSize);
       
-      // Add delay between batches to prevent rate limiting
-      if (i > 0) {
-        await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay between batches
-      }
-      
-      const batchPromises = batch.map(async (tokenBalance: {
-        contractAddress: string;
-        tokenBalance: string;
-        error?: any;
-      }) => {
+      const batchPromises = batch.map(async (tokenBalance) => {
         try {
-          const contractAddress = tokenBalance.contractAddress;
           const balanceHex = tokenBalance.tokenBalance;
-
-          // Skip if balance is 0 or error
           if (!balanceHex || balanceHex === '0x' || tokenBalance.error) {
             return null;
           }
 
-          // Normalize address
-          const normalizedTokenAddress = ethers.getAddress(contractAddress.toLowerCase());
+          const balanceRaw = BigInt(balanceHex);
+          if (balanceRaw === 0n) return null;
 
-          // Create contract to fetch metadata
-          const contract = new ethers.Contract(normalizedTokenAddress, ERC20_ABI, provider);
+          const metadata = await getTokenMetadata(
+            chainId, 
+            tokenBalance.contractAddress, 
+            cacheService, 
+            alchemyRestUrl
+          );
 
-          // Fetch metadata in parallel
-          let decimals: bigint;
-          let symbol: string;
-          let name: string;
-
-          try {
-            [decimals, symbol, name] = await Promise.all([
-              withRetry(() => contract.decimals()).catch(() => 18n),
-              withRetry(() => contract.symbol()).catch(() => 'UNKNOWN'),
-              withRetry(() => contract.name()).catch(() => 'Unknown Token'),
-            ]);
-          } catch (error) {
-            // If metadata fetch fails, skip this token
-            return null;
-          }
-
-          // Parse balance
-          const balance = BigInt(balanceHex);
-          if (balance === 0n) {
-            return null;
-          }
+          if (!metadata) return null;
 
           return {
-            address: normalizedTokenAddress.toLowerCase(),
-            symbol,
-            name,
-            decimals: Number(decimals),
-            balance: ethers.formatUnits(balance, decimals),
-            balanceRaw: balance.toString(),
+            address: tokenBalance.contractAddress.toLowerCase(),
+            symbol: metadata.symbol,
+            name: metadata.name,
+            decimals: metadata.decimals,
+            balance: ethers.formatUnits(balanceRaw, metadata.decimals),
+            balanceRaw: balanceRaw.toString(),
           };
         } catch (error) {
-          // Skip tokens that fail to process
           return null;
         }
       });
 
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults.filter((r): r is TokenBalanceData => r !== null));
+      
+      // Limit total tokens processed to prevent massive responses and timeouts
+      if (results.length >= 50) break;
     }
 
     return results;
@@ -361,3 +382,4 @@ export async function getAllTokenBalances(
     return [];
   }
 }
+
