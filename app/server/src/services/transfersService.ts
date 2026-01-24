@@ -134,13 +134,27 @@ class TransfersService {
       
       // Ensure block number is in hex format if it's not 'latest'
       // Alchemy expects hex strings (0x...) or 'latest', not decimal numbers
-      if (lastBlock !== 'latest' && !lastBlock.startsWith('0x')) {
-        // Convert decimal to hex if needed
-        const blockNum = parseInt(lastBlock, 10);
-        if (!isNaN(blockNum)) {
-          lastBlock = `0x${blockNum.toString(16)}`;
+      // Note: lastCheckedBlocks stores block numbers as strings (hex or 'latest')
+      if (lastBlock !== 'latest') {
+        if (lastBlock.startsWith('0x')) {
+          // Already hex, validate it's a valid hex number
+          const blockNum = parseInt(lastBlock, 16);
+          if (isNaN(blockNum) || blockNum < 0) {
+            console.warn(`[TransfersService] Invalid hex block number stored: ${lastBlock}, using 'latest'`);
+            lastBlock = 'latest'; // Invalid hex, fallback
+          } else {
+            // Normalize to lowercase hex
+            lastBlock = lastBlock.toLowerCase();
+          }
         } else {
-          lastBlock = 'latest'; // Fallback to latest if invalid
+          // Try parsing as decimal string (defensive: handle if somehow stored incorrectly)
+          const blockNum = parseInt(lastBlock, 10);
+          if (!isNaN(blockNum) && blockNum >= 0) {
+            lastBlock = `0x${blockNum.toString(16)}`;
+          } else {
+            console.warn(`[TransfersService] Invalid block number format stored: ${lastBlock}, using 'latest'`);
+            lastBlock = 'latest'; // Invalid, fallback
+          }
         }
       }
 
@@ -176,20 +190,52 @@ class TransfersService {
       // Update last checked block (ensure it's a hex string)
       if (transfers.length > 0) {
         const latestBlock = transfers[transfers.length - 1].blockNum;
-        // Alchemy returns blockNum as hex string (e.g., "0x12345")
-        // Ensure it's properly formatted as hex
-        const latestBlockHex = latestBlock.startsWith('0x') 
-          ? latestBlock 
-          : `0x${parseInt(latestBlock, 10).toString(16)}`;
         
+        // Alchemy returns blockNum as hex string (e.g., "0x12345")
+        // Ensure it's properly formatted as hex string
+        // Note: blockNum is typed as string in TransferData interface
+        let latestBlockHex: string;
+        if (latestBlock.startsWith('0x')) {
+          // Validate hex string
+          const blockNum = parseInt(latestBlock, 16);
+          if (!isNaN(blockNum) && blockNum >= 0) {
+            latestBlockHex = latestBlock.toLowerCase(); // Normalize to lowercase
+          } else {
+            console.warn(`[TransfersService] Invalid hex block number from Alchemy: ${latestBlock}`);
+            return; // Skip update if invalid
+          }
+        } else {
+          // Try parsing as decimal string (defensive programming in case API returns unexpected format)
+          const blockNum = parseInt(latestBlock, 10);
+          if (!isNaN(blockNum) && blockNum >= 0) {
+            latestBlockHex = `0x${blockNum.toString(16)}`;
+          } else {
+            console.warn(`[TransfersService] Invalid block number format from Alchemy: ${latestBlock}`);
+            return; // Skip update if invalid
+          }
+        }
+        
+        // Get current block and normalize to hex
+        // Note: lastCheckedBlocks stores block numbers as strings (hex or 'latest')
         const currentBlock = addressBlocks.get(chainId);
-        const currentBlockHex = currentBlock && currentBlock !== 'latest' && !currentBlock.startsWith('0x')
-          ? `0x${parseInt(currentBlock, 10).toString(16)}`
-          : currentBlock || '0x0';
+        let currentBlockHex: string;
+        if (!currentBlock || currentBlock === 'latest') {
+          currentBlockHex = '0x0';
+        } else if (currentBlock.startsWith('0x')) {
+          currentBlockHex = currentBlock.toLowerCase();
+        } else {
+          // Defensive: handle decimal string if somehow stored incorrectly
+          const blockNum = parseInt(currentBlock, 10);
+          if (!isNaN(blockNum) && blockNum >= 0) {
+            currentBlockHex = `0x${blockNum.toString(16)}`;
+          } else {
+            currentBlockHex = '0x0';
+          }
+        }
         
         // Compare block numbers (convert to number for comparison)
         const latestBlockNum = parseInt(latestBlockHex, 16);
-        const currentBlockNum = currentBlockHex === 'latest' ? 0 : parseInt(currentBlockHex, 16);
+        const currentBlockNum = parseInt(currentBlockHex, 16);
         
         if (!addressBlocks.has(chainId) || latestBlockNum > currentBlockNum) {
           addressBlocks.set(chainId, latestBlockHex);
@@ -225,27 +271,91 @@ class TransfersService {
     }
 
     try {
+      // Validate and normalize block parameters
+      // Alchemy expects hex strings (0x...) or 'latest' for block numbers
+      let fromBlock = options.fromBlock || 'latest';
+      let toBlock = options.toBlock || 'latest';
+      
+      // Ensure fromBlock is valid hex string or 'latest'
+      if (fromBlock !== 'latest') {
+        if (typeof fromBlock === 'string') {
+          if (!fromBlock.startsWith('0x')) {
+            // Try to convert decimal string to hex
+            const blockNum = parseInt(fromBlock, 10);
+            if (!isNaN(blockNum) && blockNum >= 0) {
+              fromBlock = `0x${blockNum.toString(16)}`;
+            } else {
+              console.warn(`[TransfersService] Invalid fromBlock format: ${fromBlock}, using 'latest'`);
+              fromBlock = 'latest';
+            }
+          } else {
+            // Validate hex string
+            const blockNum = parseInt(fromBlock, 16);
+            if (isNaN(blockNum) || blockNum < 0) {
+              console.warn(`[TransfersService] Invalid hex fromBlock: ${fromBlock}, using 'latest'`);
+              fromBlock = 'latest';
+            }
+          }
+        } else {
+          console.warn(`[TransfersService] Invalid fromBlock type: ${typeof fromBlock}, using 'latest'`);
+          fromBlock = 'latest';
+        }
+      }
+      
+      // Ensure toBlock is valid hex string or 'latest'
+      if (toBlock !== 'latest') {
+        if (typeof toBlock === 'string') {
+          if (!toBlock.startsWith('0x')) {
+            // Try to convert decimal string to hex
+            const blockNum = parseInt(toBlock, 10);
+            if (!isNaN(blockNum) && blockNum >= 0) {
+              toBlock = `0x${blockNum.toString(16)}`;
+            } else {
+              console.warn(`[TransfersService] Invalid toBlock format: ${toBlock}, using 'latest'`);
+              toBlock = 'latest';
+            }
+          } else {
+            // Validate hex string
+            const blockNum = parseInt(toBlock, 16);
+            if (isNaN(blockNum) || blockNum < 0) {
+              console.warn(`[TransfersService] Invalid hex toBlock: ${toBlock}, using 'latest'`);
+              toBlock = 'latest';
+            }
+          }
+        } else {
+          console.warn(`[TransfersService] Invalid toBlock type: ${typeof toBlock}, using 'latest'`);
+          toBlock = 'latest';
+        }
+      }
+      
+      // Ensure maxCount is a number
+      const maxCount = typeof options.maxCount === 'number' && options.maxCount > 0 
+        ? options.maxCount 
+        : 100;
+      
+      const requestBody = {
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'alchemy_getAssetTransfers',
+        params: [
+          {
+            fromBlock,
+            toBlock,
+            fromAddress: address,
+            maxCount,
+            excludeZeroValue: options.excludeZeroValue ?? false,
+            category: options.category || ['external', 'erc20', 'erc721', 'erc1155'],
+            pageKey: options.pageKey,
+          },
+        ],
+      };
+      
       const response = await fetch(alchemyRestUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'alchemy_getAssetTransfers',
-          params: [
-            {
-              fromBlock: options.fromBlock || 'latest',
-              toBlock: options.toBlock || 'latest',
-              fromAddress: address,
-              maxCount: options.maxCount || 100,
-              excludeZeroValue: options.excludeZeroValue ?? false,
-              category: options.category || ['external', 'erc20', 'erc721', 'erc1155'],
-              pageKey: options.pageKey,
-            },
-          ],
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
