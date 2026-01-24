@@ -638,8 +638,8 @@ class TransfersService {
     date: string;
     status: string;
     hash: string;
-    from?: string;
-    to?: string;
+    from?: string | null;
+    to?: string | null;
     timestamp: number;
   }>> {
     try {
