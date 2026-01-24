@@ -18,6 +18,7 @@ export type TransferType =
  */
 export interface TransferData {
   blockNum: string;
+  uniqueId: string;
   hash: string;
   from: string;
   to: string;
@@ -159,13 +160,14 @@ class TransfersService {
       }
 
       // Determine categories based on chain support
-      // 'internal' category is only supported for Ethereum (1) and Polygon (137)
+      // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
       const categories = ['external', 'erc20', 'erc721', 'erc1155'];
-      if (chainId === 1 || chainId === 137) {
+      if (chainId === 1 || chainId === 137 || chainId === 8453 || chainId === 42161 || chainId === 10) {
         categories.push('internal');
       }
 
       // Fetch transfers using Alchemy Transfers API
+      // We fetch both incoming and outgoing transfers by making two requests
       const transfers = await this.fetchTransfers(
         chainId,
         address,
@@ -273,129 +275,221 @@ class TransfersService {
     try {
       // Validate and normalize block parameters
       // Alchemy expects hex strings (0x...) or 'latest' for block numbers
-      let fromBlock = options.fromBlock || 'latest';
-      let toBlock = options.toBlock || 'latest';
+      // CRITICAL: Never pass numbers - always convert to hex strings
+      let fromBlock: string = 'latest';
+      let toBlock: string = 'latest';
       
-      // Ensure fromBlock is valid hex string or 'latest'
-      if (fromBlock !== 'latest') {
-        if (typeof fromBlock === 'string') {
-          if (!fromBlock.startsWith('0x')) {
-            // Try to convert decimal string to hex
-            const blockNum = parseInt(fromBlock, 10);
+      // Normalize fromBlock - handle all possible input types
+      if (options.fromBlock !== undefined && options.fromBlock !== null) {
+        if (typeof options.fromBlock === 'string') {
+          const trimmed = options.fromBlock.trim();
+          if (trimmed === 'latest' || trimmed === 'earliest' || trimmed === 'pending') {
+            fromBlock = trimmed;
+          } else if (trimmed.startsWith('0x')) {
+            // Validate hex string
+            const blockNum = parseInt(trimmed, 16);
             if (!isNaN(blockNum) && blockNum >= 0) {
-              fromBlock = `0x${blockNum.toString(16)}`;
+              fromBlock = trimmed.toLowerCase();
             } else {
-              console.warn(`[TransfersService] Invalid fromBlock format: ${fromBlock}, using 'latest'`);
+              console.warn(`[TransfersService] Invalid hex fromBlock: ${trimmed}, using 'latest'`);
               fromBlock = 'latest';
             }
           } else {
-            // Validate hex string
-            const blockNum = parseInt(fromBlock, 16);
-            if (isNaN(blockNum) || blockNum < 0) {
-              console.warn(`[TransfersService] Invalid hex fromBlock: ${fromBlock}, using 'latest'`);
+            // Try to convert decimal string to hex
+            const blockNum = parseInt(trimmed, 10);
+            if (!isNaN(blockNum) && blockNum >= 0) {
+              fromBlock = `0x${blockNum.toString(16)}`;
+            } else {
+              console.warn(`[TransfersService] Invalid fromBlock format: ${trimmed}, using 'latest'`);
               fromBlock = 'latest';
             }
           }
+        } else if (typeof options.fromBlock === 'number') {
+          // Convert number to hex string
+          const blockNum: number = Number(options.fromBlock);
+          if (!isNaN(blockNum) && blockNum >= 0 && isFinite(blockNum)) {
+            fromBlock = `0x${Math.floor(blockNum).toString(16)}`;
+          } else {
+            console.warn(`[TransfersService] Invalid fromBlock number: ${blockNum}, using 'latest'`);
+            fromBlock = 'latest';
+          }
         } else {
-          console.warn(`[TransfersService] Invalid fromBlock type: ${typeof fromBlock}, using 'latest'`);
+          console.warn(`[TransfersService] Invalid fromBlock type: ${typeof options.fromBlock}, using 'latest'`);
           fromBlock = 'latest';
         }
       }
       
-      // Ensure toBlock is valid hex string or 'latest'
-      if (toBlock !== 'latest') {
-        if (typeof toBlock === 'string') {
-          if (!toBlock.startsWith('0x')) {
-            // Try to convert decimal string to hex
-            const blockNum = parseInt(toBlock, 10);
+      // Normalize toBlock - handle all possible input types
+      if (options.toBlock !== undefined && options.toBlock !== null) {
+        if (typeof options.toBlock === 'string') {
+          const trimmed = options.toBlock.trim();
+          if (trimmed === 'latest' || trimmed === 'earliest' || trimmed === 'pending') {
+            toBlock = trimmed;
+          } else if (trimmed.startsWith('0x')) {
+            // Validate hex string
+            const blockNum = parseInt(trimmed, 16);
             if (!isNaN(blockNum) && blockNum >= 0) {
-              toBlock = `0x${blockNum.toString(16)}`;
+              toBlock = trimmed.toLowerCase();
             } else {
-              console.warn(`[TransfersService] Invalid toBlock format: ${toBlock}, using 'latest'`);
+              console.warn(`[TransfersService] Invalid hex toBlock: ${trimmed}, using 'latest'`);
               toBlock = 'latest';
             }
           } else {
-            // Validate hex string
-            const blockNum = parseInt(toBlock, 16);
-            if (isNaN(blockNum) || blockNum < 0) {
-              console.warn(`[TransfersService] Invalid hex toBlock: ${toBlock}, using 'latest'`);
+            // Try to convert decimal string to hex
+            const blockNum = parseInt(trimmed, 10);
+            if (!isNaN(blockNum) && blockNum >= 0) {
+              toBlock = `0x${blockNum.toString(16)}`;
+            } else {
+              console.warn(`[TransfersService] Invalid toBlock format: ${trimmed}, using 'latest'`);
               toBlock = 'latest';
             }
           }
+        } else if (typeof options.toBlock === 'number') {
+          // Convert number to hex string
+          const blockNum: number = Number(options.toBlock);
+          if (!isNaN(blockNum) && blockNum >= 0 && isFinite(blockNum)) {
+            toBlock = `0x${Math.floor(blockNum).toString(16)}`;
+          } else {
+            console.warn(`[TransfersService] Invalid toBlock number: ${blockNum}, using 'latest'`);
+            toBlock = 'latest';
+          }
         } else {
-          console.warn(`[TransfersService] Invalid toBlock type: ${typeof toBlock}, using 'latest'`);
+          console.warn(`[TransfersService] Invalid toBlock type: ${typeof options.toBlock}, using 'latest'`);
           toBlock = 'latest';
         }
       }
       
-      // Ensure maxCount is a number
-      const maxCount = typeof options.maxCount === 'number' && options.maxCount > 0 
-        ? options.maxCount 
-        : 100;
+      // Ensure maxCount is a number (not a string) for internal logic
+      let maxCountNum: number = 100;
+      if (options.maxCount !== undefined && options.maxCount !== null) {
+        if (typeof options.maxCount === 'number') {
+          maxCountNum = options.maxCount > 0 ? options.maxCount : 100;
+        } else if (typeof options.maxCount === 'string') {
+          // Handle string maxCount (defensive)
+          const parsed = parseInt(options.maxCount, 10);
+          maxCountNum = !isNaN(parsed) && parsed > 0 ? parsed : 100;
+        } else {
+          console.warn(`[TransfersService] Invalid maxCount type: ${typeof options.maxCount}, using default 100`);
+          maxCountNum = 100;
+        }
+      }
       
-      const requestBody = {
-        id: 1,
-        jsonrpc: '2.0',
-        method: 'alchemy_getAssetTransfers',
-        params: [
-          {
-            fromBlock,
-            toBlock,
-            fromAddress: address,
-            maxCount,
-            excludeZeroValue: options.excludeZeroValue ?? false,
-            category: options.category || ['external', 'erc20', 'erc721', 'erc1155'],
-            pageKey: options.pageKey,
-          },
-        ],
+      // Convert maxCount to hex string for Alchemy API
+      const maxCountHex = `0x${maxCountNum.toString(16)}`;
+      
+      // Final validation: ensure fromBlock and toBlock are strings (never numbers)
+      if (typeof fromBlock !== 'string') {
+        console.error(`[TransfersService] CRITICAL: fromBlock is not a string: ${typeof fromBlock}, value: ${fromBlock}`);
+        fromBlock = 'latest';
+      }
+      if (typeof toBlock !== 'string') {
+        console.error(`[TransfersService] CRITICAL: toBlock is not a string: ${typeof toBlock}, value: ${toBlock}`);
+        toBlock = 'latest';
+      }
+      
+      // Prepare base params
+      const baseParams = {
+        fromBlock: String(fromBlock), // Explicit string conversion
+        toBlock: String(toBlock), // Explicit string conversion
+        maxCount: maxCountHex, // Hex string
+        excludeZeroValue: options.excludeZeroValue ?? false,
+        category: options.category || ['external', 'erc20', 'erc721', 'erc1155'],
+        pageKey: options.pageKey,
+        withMetadata: true,
       };
+
+      // We need to fetch both incoming and outgoing transfers
+      // Alchemy doesn't support OR logic for fromAddress/toAddress in a single request
+      const requests = [
+        { ...baseParams, fromAddress: address },
+        { ...baseParams, toAddress: address }
+      ];
       
-      const response = await fetch(alchemyRestUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
+      const responses = await Promise.all(requests.map(async (params) => {
+        const requestBody = {
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'alchemy_getAssetTransfers',
+          params: [params],
+        };
+
+        try {
+          const response = await fetch(alchemyRestUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!response.ok) {
+            return [];
+          }
+
+          const data = await response.json() as {
+            result?: {
+              transfers?: Array<{
+                blockNum: string;
+                uniqueId: string;
+                hash: string;
+                from: string;
+                to: string;
+                value?: number;
+                asset: string;
+                category: string;
+                rawContract?: {
+                  address?: string;
+                  decimal?: string;
+                  symbol?: string;
+                };
+                metadata?: {
+                  blockTimestamp?: string;
+                };
+              }>;
+              pageKey?: string;
+            };
+            error?: {
+              message?: string;
+            };
+          };
+
+          if (data.error) {
+            console.error(`[TransfersService] Alchemy API error:`, data.error.message);
+            return [];
+          }
+
+          return data.result?.transfers || [];
+        } catch (error) {
+          console.error(`[TransfersService] Error fetching transfers subset:`, error);
+          return [];
+        }
+      }));
+
+      // Merge and deduplicate transfers
+      // We use a Map keyed by uniqueId (or fallback) to deduplicate self-transfers or overlaps
+      const uniqueTransfers = new Map<string, any>();
+      
+      // Combine results from both requests
+      const allTransfers = [...responses[0], ...responses[1]];
+      
+      for (const t of allTransfers) {
+        // Use uniqueId from Alchemy if available, otherwise construct a unique key
+        const key = t.uniqueId || `${t.hash}-${t.category}-${t.value}-${t.asset}`;
+        uniqueTransfers.set(key, t);
+      }
+      
+      // Convert back to array and sort by block number
+      const transfers = Array.from(uniqueTransfers.values());
+      
+      transfers.sort((a, b) => {
+        const blockA = parseInt(a.blockNum, 16);
+        const blockB = parseInt(b.blockNum, 16);
+        return blockA - blockB;
       });
 
-      if (!response.ok) {
-        return [];
-      }
-
-      const data = await response.json() as {
-        result?: {
-          transfers?: Array<{
-            blockNum: string;
-            hash: string;
-            from: string;
-            to: string;
-            value?: number;
-            asset: string;
-            category: string;
-            rawContract?: {
-              address?: string;
-              decimal?: string;
-              symbol?: string;
-            };
-            metadata?: {
-              blockTimestamp?: string;
-            };
-          }>;
-          pageKey?: string;
-        };
-        error?: {
-          message?: string;
-        };
-      };
-
-      if (data.error) {
-        console.error(`[TransfersService] Alchemy API error:`, data.error.message);
-        return [];
-      }
-
-      const transfers = data.result?.transfers || [];
       return transfers.map(t => ({
         blockNum: t.blockNum,
+        uniqueId: t.uniqueId,
         hash: t.hash,
         from: t.from,
         to: t.to,
@@ -503,9 +597,9 @@ class TransfersService {
     limit: number = 50
   ): Promise<TransferData[]> {
     // Determine categories based on chain support
-    // 'internal' category is only supported for Ethereum (1) and Polygon (137)
+    // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
     const categories = ['external', 'erc20', 'erc721', 'erc1155'];
-    if (chainId === 1 || chainId === 137) {
+    if (chainId === 1 || chainId === 137 || chainId === 8453 || chainId === 42161 || chainId === 10) {
       categories.push('internal');
     }
 
@@ -542,9 +636,9 @@ class TransfersService {
   }>> {
     try {
       // Determine categories based on chain support
-      // 'internal' category is only supported for Ethereum (1) and Polygon (137)
+      // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
       const categories = ['external', 'erc20', 'erc721', 'erc1155'];
-      if (chainId === 1 || chainId === 137) {
+      if (chainId === 1 || chainId === 137 || chainId === 8453 || chainId === 42161 || chainId === 10) {
         categories.push('internal');
       }
 
