@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { getRpcUrl } from '../utils/rpc.js';
+import { getRpcUrl, getAlchemyRestUrl } from '../utils/rpc.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 
 const ERC20_ABI = [
@@ -210,4 +210,154 @@ export async function getTokenBalancesBatch(
       };
     }
   });
+}
+
+/**
+ * Get ALL ERC20 token balances for an address using Alchemy's API
+ * This is much more efficient than checking individual tokens
+ * 
+ * @param chainId - The chain ID
+ * @param userAddress - The user's wallet address
+ * @returns Array of token balances, or empty array if Alchemy API is not available
+ */
+export async function getAllTokenBalances(
+  chainId: number,
+  userAddress: string
+): Promise<TokenBalanceData[]> {
+  try {
+    const alchemyRestUrl = getAlchemyRestUrl(chainId);
+    if (!alchemyRestUrl) {
+      // Alchemy API not available, return empty array
+      // Fallback to COMMON_TOKENS approach will be used
+      return [];
+    }
+
+    // Normalize address
+    const normalizedAddress = ethers.getAddress(userAddress.toLowerCase());
+
+    // Call Alchemy's getTokenBalances API with "erc20" to get ALL tokens
+    const response = await fetch(alchemyRestUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'alchemy_getTokenBalances',
+        params: [normalizedAddress, 'erc20'], // "erc20" returns ALL tokens
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`Alchemy API error for chain ${chainId}: ${response.statusText}`);
+      return [];
+    }
+
+    const data = await response.json() as {
+      error?: any;
+      result?: {
+        tokenBalances?: Array<{
+          contractAddress: string;
+          tokenBalance: string;
+          error?: any;
+        }>;
+        pageKey?: string;
+      };
+    };
+    
+    if (data.error) {
+      console.error(`Alchemy API error for chain ${chainId}:`, data.error);
+      return [];
+    }
+
+    const tokenBalances = data.result?.tokenBalances || [];
+    if (tokenBalances.length === 0) {
+      return [];
+    }
+
+    // Get RPC provider for fetching token metadata
+    const rpcUrl = getRpcUrl(chainId);
+    if (!rpcUrl) {
+      return [];
+    }
+
+    const provider = createRetryProvider(rpcUrl, chainId);
+    const results: TokenBalanceData[] = [];
+
+    // Process tokens in parallel batches to avoid overwhelming the RPC
+    const batchSize = 5; // Reduced from 10 to prevent overwhelming RPC
+    for (let i = 0; i < tokenBalances.length; i += batchSize) {
+      const batch = tokenBalances.slice(i, i + batchSize);
+      
+      // Add delay between batches to prevent rate limiting
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay between batches
+      }
+      
+      const batchPromises = batch.map(async (tokenBalance: {
+        contractAddress: string;
+        tokenBalance: string;
+        error?: any;
+      }) => {
+        try {
+          const contractAddress = tokenBalance.contractAddress;
+          const balanceHex = tokenBalance.tokenBalance;
+
+          // Skip if balance is 0 or error
+          if (!balanceHex || balanceHex === '0x' || tokenBalance.error) {
+            return null;
+          }
+
+          // Normalize address
+          const normalizedTokenAddress = ethers.getAddress(contractAddress.toLowerCase());
+
+          // Create contract to fetch metadata
+          const contract = new ethers.Contract(normalizedTokenAddress, ERC20_ABI, provider);
+
+          // Fetch metadata in parallel
+          let decimals: bigint;
+          let symbol: string;
+          let name: string;
+
+          try {
+            [decimals, symbol, name] = await Promise.all([
+              withRetry(() => contract.decimals()).catch(() => 18n),
+              withRetry(() => contract.symbol()).catch(() => 'UNKNOWN'),
+              withRetry(() => contract.name()).catch(() => 'Unknown Token'),
+            ]);
+          } catch (error) {
+            // If metadata fetch fails, skip this token
+            return null;
+          }
+
+          // Parse balance
+          const balance = BigInt(balanceHex);
+          if (balance === 0n) {
+            return null;
+          }
+
+          return {
+            address: normalizedTokenAddress.toLowerCase(),
+            symbol,
+            name,
+            decimals: Number(decimals),
+            balance: ethers.formatUnits(balance, decimals),
+            balanceRaw: balance.toString(),
+          };
+        } catch (error) {
+          // Skip tokens that fail to process
+          return null;
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults.filter((r): r is TokenBalanceData => r !== null));
+    }
+
+    return results;
+  } catch (error) {
+    console.error(`Error fetching all token balances for chain ${chainId}:`, error);
+    return [];
+  }
 }

@@ -52,7 +52,7 @@ const FEE_TIER = 3000; // 0.3% fee tier
 /**
  * Get RPC URL for a chain
  */
-import { getRpcUrl } from '../utils/rpc.js';
+import { getRpcUrl, getAlchemyNFTUrl } from '../utils/rpc.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 
 /**
@@ -553,4 +553,299 @@ async function getPoolPrice(
     console.error('Error getting pool price:', error);
     return 0;
   }
+}
+
+/**
+ * Map chain IDs to OpenSea chain identifiers
+ */
+const OPENSEA_CHAIN_MAP: Record<number, string> = {
+  1: 'ethereum',
+  8453: 'base',
+  11155111: 'ethereum-sepolia',
+  84532: 'base-sepolia',
+  42161: 'arbitrum',
+  137: 'matic',
+  100: 'gnosis',
+};
+
+/**
+ * Get NFT collection floor price from Alchemy NFT API
+ * @param chainId - Chain ID
+ * @param contractAddress - NFT contract address
+ * @returns Floor price in USD, or null if not available
+ */
+export async function getAlchemyNFTFloorPrice(
+  chainId: number,
+  contractAddress: string
+): Promise<number | null> {
+  try {
+    const alchemyNFTUrl = getAlchemyNFTUrl(chainId);
+    if (!alchemyNFTUrl) {
+      return null; // Alchemy NFT API not available for this chain
+    }
+
+    // Normalize contract address
+    const normalizedAddress = ethers.getAddress(contractAddress.toLowerCase());
+
+    // Alchemy NFT API v3: Get floor price
+    // Note: This endpoint is primarily available on Ethereum mainnet
+    // For other chains, we may need to use different endpoints or fallback to OpenSea
+    const url = `${alchemyNFTUrl}/getFloorPrice?contractAddress=${normalizedAddress}`;
+
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json() as {
+        openSea?: {
+          floorPrice?: number;
+          priceCurrency?: string;
+        };
+        looksRare?: {
+          floorPrice?: number;
+          priceCurrency?: string;
+        };
+      };
+
+      // Get floor price from OpenSea (primary) or LooksRare (fallback)
+      const marketplace = data.openSea || data.looksRare;
+      if (!marketplace || !marketplace.floorPrice || marketplace.floorPrice === 0) {
+        return null;
+      }
+
+      // Floor price is in ETH (or native token)
+      // Convert to USD using native token price
+      const floorPriceNative = marketplace.floorPrice;
+      
+      // Get native token price (ETH, BASE, etc.)
+      const nativeTokenAddress = WETH_ADDRESSES[chainId];
+      if (!nativeTokenAddress) {
+        return null;
+      }
+
+      const nativeTokenPrice = await getTokenPrice(chainId, nativeTokenAddress);
+      if (!nativeTokenPrice || nativeTokenPrice === 0) {
+        return null;
+      }
+
+      // Floor price in USD = floor price in native token * native token price
+      const floorPriceUSD = floorPriceNative * nativeTokenPrice;
+
+      return floorPriceUSD > 0 && isFinite(floorPriceUSD) ? floorPriceUSD : null;
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      // Handle timeout or other fetch errors silently
+      if (fetchError.name === 'AbortError') {
+        // Timeout - silent error
+        return null;
+      }
+      // Other fetch errors - return null to fall back
+      return null;
+    }
+  } catch (error) {
+    // Silent error - Alchemy NFT API might be down or collection not listed
+    return null;
+  }
+}
+
+/**
+ * Get NFT collection floor price from OpenSea API (fallback)
+ * @param chainId - Chain ID
+ * @param contractAddress - NFT contract address
+ * @returns Floor price in USD, or null if not available
+ */
+export async function getOpenSeaNFTPrice(
+  chainId: number,
+  contractAddress: string
+): Promise<number | null> {
+  try {
+    const openseaChain = OPENSEA_CHAIN_MAP[chainId];
+    if (!openseaChain) {
+      return null; // Chain not supported by OpenSea
+    }
+
+    const apiKey = process.env.OPENSEA_API_KEY;
+    if (!apiKey) {
+      // OpenSea API requires an API key for production use
+      // Free tier: https://docs.opensea.io/reference/api-overview
+      return null;
+    }
+
+    // Normalize contract address
+    const normalizedAddress = ethers.getAddress(contractAddress.toLowerCase());
+
+    // OpenSea API v2 endpoint for collection stats
+    // Note: We need the collection slug, but we can try to get it from the contract address
+    // Alternative: Use the contract address directly if OpenSea supports it
+    
+    // Try to get collection stats using contract address
+    // OpenSea API v2: https://api.opensea.io/api/v2/chain/{chain}/contract/{contract_address}/nfts/{identifier}/listings
+    // For floor price, we can use: https://api.opensea.io/api/v2/chain/{chain}/collection/{collection_slug}/stats
+    
+    // Since we don't have the collection slug, we'll use a different approach:
+    // Get the floor price from the collection's stats endpoint
+    // But we need the collection slug, which requires an additional lookup
+    
+    // Alternative: Use OpenSea's collection endpoint with contract address
+    // https://api.opensea.io/api/v2/chain/{chain}/contract/{contract_address}/nfts?limit=1
+    // Then get collection slug from the response
+    
+    // For now, let's use a simpler approach: get collection stats if we can determine the slug
+    // Or use the contract address directly in a collection lookup
+    
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    try {
+      // OpenSea API v2: Get collection stats by contract address
+      // First, try to get collection identifier from contract
+      // OpenSea v2 supports direct contract lookup for some chains
+      
+      // Method 1: Try to get collection stats directly using contract address
+      // Note: OpenSea API v2 structure may vary by chain
+      // For Ethereum mainnet, we can use: /api/v2/chain/ethereum/contract/{address}/nfts?limit=1
+      // Then extract collection slug from the response
+      
+      // Try to get a sample NFT from the collection to find the collection slug
+      const sampleNftUrl = `https://api.opensea.io/api/v2/chain/${openseaChain}/contract/${normalizedAddress}/nfts?limit=1`;
+      const sampleResponse = await fetch(sampleNftUrl, {
+        method: 'GET',
+        headers: {
+          'X-API-KEY': apiKey,
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!sampleResponse.ok) {
+        return null;
+      }
+
+      const sampleData = await sampleResponse.json() as {
+        nfts?: Array<{ collection?: string }>;
+        next?: string;
+      };
+
+      // Extract collection identifier from the first NFT
+      const collectionIdentifier = sampleData.nfts?.[0]?.collection;
+      if (!collectionIdentifier) {
+        return null;
+      }
+
+      // Get collection stats (includes floor price)
+      // OpenSea API v2: /api/v2/collections/{collection_identifier}/stats
+      const statsUrl = `https://api.opensea.io/api/v2/collections/${collectionIdentifier}/stats`;
+      const statsController = new AbortController();
+      const statsTimeoutId = setTimeout(() => statsController.abort(), 5000);
+
+      try {
+        const statsResponse = await fetch(statsUrl, {
+          method: 'GET',
+          headers: {
+            'X-API-KEY': apiKey,
+            'Accept': 'application/json',
+          },
+          signal: statsController.signal,
+        });
+
+        clearTimeout(statsTimeoutId);
+
+        if (!statsResponse.ok) {
+          return null;
+        }
+
+        const statsData = await statsResponse.json() as {
+          total?: { floor_price?: number };
+          floor_price?: number;
+          statistics?: { floor_price?: number };
+        };
+
+        // OpenSea returns floor price in native token, we need to convert to USD
+        // The floor_price might be in ETH or other native tokens
+        const floorPriceNative = statsData.total?.floor_price 
+          || statsData.floor_price 
+          || statsData.statistics?.floor_price;
+        
+        if (!floorPriceNative || floorPriceNative === 0) {
+          return null;
+        }
+
+        // Convert native token price to USD
+        // Get native token price (ETH, POL, etc.)
+        const nativeTokenAddress = WETH_ADDRESSES[chainId];
+        if (!nativeTokenAddress) {
+          return null;
+        }
+
+        const nativeTokenPrice = await getTokenPrice(chainId, nativeTokenAddress);
+        if (!nativeTokenPrice || nativeTokenPrice === 0) {
+          return null;
+        }
+
+        // Floor price in USD = floor price in native token * native token price
+        const floorPriceUSD = floorPriceNative * nativeTokenPrice;
+
+        return floorPriceUSD > 0 && isFinite(floorPriceUSD) ? floorPriceUSD : null;
+      } catch (statsError: any) {
+        clearTimeout(statsTimeoutId);
+        if (statsError.name !== 'AbortError') {
+          // Silent error for timeout, log others
+          console.error('OpenSea stats fetch error:', statsError);
+        }
+        return null;
+      }
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      // Handle timeout or other fetch errors silently
+      if (fetchError.name === 'AbortError') {
+        // Timeout - silent error
+        return null;
+      }
+      // Other fetch errors - return null to fall back
+      return null;
+    }
+  } catch (error) {
+    // Silent error - OpenSea API might be down or collection not listed
+    return null;
+  }
+}
+
+/**
+ * Get NFT collection floor price (primary: Alchemy, fallback: OpenSea)
+ * This is the main function to use for NFT pricing
+ * @param chainId - Chain ID
+ * @param contractAddress - NFT contract address
+ * @returns Floor price in USD, or null if not available
+ */
+export async function getNFTFloorPrice(
+  chainId: number,
+  contractAddress: string
+): Promise<number | null> {
+  // Try Alchemy NFT API first (faster, more reliable, works on Ethereum mainnet)
+  let price = await getAlchemyNFTFloorPrice(chainId, contractAddress);
+  
+  // Fallback to OpenSea if Alchemy fails or not available
+  if (!price || price === 0) {
+    price = await getOpenSeaNFTPrice(chainId, contractAddress);
+  }
+  
+  return price;
 }

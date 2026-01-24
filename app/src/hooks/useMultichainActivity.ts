@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { formatDistanceToNow } from 'date-fns';
 import { SUPPORTED_NETWORKS, getNetworkByChainId, getNetworkInfo } from '@/config/networks';
-import type { WalletTransaction } from './useWalletActivity';
+import type { WalletTransaction } from '@/types/transactions';
 import { getTransactions } from '@/utils/apiClient';
 import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
 

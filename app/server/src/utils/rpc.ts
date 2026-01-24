@@ -90,3 +90,53 @@ export function getRpcUrl(chainId: number): string {
 export function hasRpcUrl(chainId: number): boolean {
   return !!getRpcUrl(chainId);
 }
+
+/**
+ * Get Alchemy REST API base URL for a chain
+ * Used for Alchemy's REST API endpoints (not RPC)
+ */
+export function getAlchemyRestUrl(chainId: number): string | null {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  if (!alchemyApiKey) {
+    return null;
+  }
+
+  const restUrls: Record<number, string> = {
+    // Mainnets
+    1: `https://eth-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+    8453: `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+    137: `https://polygon-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+    42161: `https://arb-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+    100: `https://gnosis-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+    
+    // Testnets
+    11155111: `https://eth-sepolia.g.alchemy.com/v2/${alchemyApiKey}`,
+    84532: `https://base-sepolia.g.alchemy.com/v2/${alchemyApiKey}`,
+    80001: `https://polygon-mumbai.g.alchemy.com/v2/${alchemyApiKey}`,
+  };
+
+  return restUrls[chainId] || null;
+}
+
+/**
+ * Get Alchemy NFT API base URL for a chain
+ * Used for Alchemy's NFT API endpoints (different from REST API)
+ * Note: getFloorPrice endpoint is only available on Ethereum mainnet
+ * Other chains may have different NFT API endpoints or need to use OpenSea
+ */
+export function getAlchemyNFTUrl(chainId: number): string | null {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  if (!alchemyApiKey) {
+    return null;
+  }
+
+  // getFloorPrice is only available on Ethereum mainnet
+  // For other chains, we'll fall back to OpenSea
+  if (chainId === 1) {
+    return `https://eth-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`;
+  }
+
+  // Other chains may have NFT API but with different endpoints
+  // For now, we only support getFloorPrice on Ethereum mainnet
+  return null;
+}

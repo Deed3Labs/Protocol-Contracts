@@ -305,8 +305,10 @@ export const CacheKeys = {
   nft: (chainId: number, contractAddress: string, tokenId: string) =>
     `nft:${chainId}:${contractAddress.toLowerCase()}:${tokenId}`,
   
-  nftList: (chainId: number, address: string) =>
-    `nft_list:${chainId}:${address.toLowerCase()}`,
+  nftList: (chainId: number, address: string, contractAddress?: string) =>
+    contractAddress
+      ? `nft_list:${chainId}:${address.toLowerCase()}:${contractAddress.toLowerCase()}`
+      : `nft_list:${chainId}:${address.toLowerCase()}`,
   
   // Transactions
   transactions: (chainId: number, address: string, limit: number) =>

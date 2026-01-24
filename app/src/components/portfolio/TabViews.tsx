@@ -19,7 +19,7 @@ interface Holding {
   average_cost: number;
   current_price: number;
   valueUSD?: number;
-  type: 'equity' | 'nft' | 'token' | 'crypto';
+  type: 'equity' | 'nft' | 'rwa' | 'token' | 'crypto';
 }
 
 interface WalletTransaction {
@@ -364,6 +364,7 @@ export function AllocationView({ totalValue, holdings, balanceUSD }: AllocationV
   const cryptoValue = useMemo(() => {
     if (!holdings || holdings.length === 0) return 0;
     // Filter to only token holdings (native + ERC20) and exclude stablecoins
+    // RWAs and NFTs are not included in crypto value
     const tokenHoldings = holdings.filter(h => 
       h.type === 'token' && !isStablecoin(h.asset_symbol)
     );

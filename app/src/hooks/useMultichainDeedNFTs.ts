@@ -66,8 +66,9 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
 
     try {
       // Use server API (with Redis caching)
+      // Explicitly pass type='t-deed' to ensure we fetch T-Deeds, not general NFTs
       const serverNFTs = await withTimeout(
-        getNFTs(chainId, address, contractAddress),
+        getNFTs(chainId, address, contractAddress, 't-deed'),
         5000 // 5 second timeout for production
       ) as Awaited<ReturnType<typeof getNFTs>> | null;
       
@@ -121,23 +122,24 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     setError(null);
 
     try {
+      console.log('[useMultichainDeedNFTs] Refreshing T-Deeds for address:', address);
       // Use device-optimized fetching (sequential for mobile, parallel for desktop)
       const allNFTs = await fetchWithDeviceOptimization(
         SUPPORTED_NETWORKS,
         async (network) => await fetchChainNFTs(network.chainId)
       );
+      console.log('[useMultichainDeedNFTs] Fetched T-Deeds:', allNFTs.length);
       setNfts(allNFTs);
     } catch (err) {
-      // Silent error handling
+      console.error('[useMultichainDeedNFTs] Error fetching T-Deeds:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch NFTs');
     } finally {
       setIsLoading(false);
     }
   }, [isConnected, address, fetchChainNFTs]);
 
-  // Initial load
-  // Note: Automatic refresh is now controlled by PortfolioContext
-  // This hook only provides the refresh function - it does not auto-refresh
+  // Note: Auto-fetch is handled by PortfolioContext to avoid duplicate requests
+  // This hook only fetches when refresh() or refreshChain() is explicitly called
 
   // Calculate total count
   const totalCount = useMemo(() => {
