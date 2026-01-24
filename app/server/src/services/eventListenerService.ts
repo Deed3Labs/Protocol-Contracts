@@ -11,7 +11,7 @@ import { getContractAddress } from '../config/contracts.js';
 class EventListenerService {
   private providers: Map<number, ethers.JsonRpcProvider> = new Map();
   private isRunning = false;
-  private restartTimeouts: Map<number, NodeJS.Timeout> = new Map();
+  private restartTimeouts: Map<number, number> = new Map();
 
   // Supported chain IDs
   private readonly SUPPORTED_CHAINS = [1, 8453, 100, 11155111, 84532, 42161, 137];
@@ -82,7 +82,7 @@ class EventListenerService {
       this.initChain(chainId);
     }, 10000);
     
-    this.restartTimeouts.set(chainId, timeout);
+    this.restartTimeouts.set(chainId, timeout as unknown as number);
   }
 
   /**
