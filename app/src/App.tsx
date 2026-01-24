@@ -112,56 +112,56 @@ function App() {
   return (
     <BrowserRouter>
       <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <NotificationProvider>
+        <PortfolioProvider>
+          <NotificationProvider>
             <DeedNFTProvider>
               <XMTPProvider>
-                <PortfolioProvider>
-                  <ModalProvider>
+                <ModalProvider>
                   <ScrollToTop />
-                <AnimatePresence>
-                  {showSplash && <SplashScreen />}
-                </AnimatePresence>
-                
-                <OfflineIndicator />
-                <PWAInitializer />
-                
-                <Routes>
-              {/* Login Page - Public */}
-              <Route path="/login" element={<LoginPage />} />
-              
-              {/* Share Target - Public */}
-              <Route path="/share" element={<ShareTarget />} />
-              
-              {/* App Routes wrapped in PullToRefresh Layout - Protected */}
-              {/* Pass true if splash was skipped OR if splash just finished */}
-              <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} />}>
-                <Route path="/" element={<BrokerageHome />} />
-                <Route path="/markets" element={<MarketsHome />} />
-                <Route path="/borrow" element={<BorrowHome />} />
-              </Route>
-              
-              {/* Redirect unknown routes to login */}
-              <Route path="*" element={<Navigate to="/login" replace />} />
+                  <AnimatePresence>
+                    {showSplash && <SplashScreen />}
+                  </AnimatePresence>
+                  
+                  <OfflineIndicator />
+                  <PWAInitializer />
+                  
+                  <Routes>
+                    {/* Login Page - Public */}
+                    <Route path="/login" element={<LoginPage />} />
+                    
+                    {/* Share Target - Public */}
+                    <Route path="/share" element={<ShareTarget />} />
+                    
+                    {/* App Routes wrapped in PullToRefresh Layout - Protected */}
+                    {/* Pass true if splash was skipped OR if splash just finished */}
+                    <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} />}>
+                      <Route path="/" element={<BrokerageHome />} />
+                      <Route path="/markets" element={<MarketsHome />} />
+                      <Route path="/borrow" element={<BorrowHome />} />
+                    </Route>
+                    
+                    {/* Redirect unknown routes to login */}
+                    <Route path="*" element={<Navigate to="/login" replace />} />
 
-              {/* Legacy Routes wrapped in Layout */}
-              <Route element={<LegacyLayout />}>
-                <Route path="/legacy-home" element={<Home />} />
-                  <Route path="/mint" element={<MintForm />} />
-                  <Route path="/explore" element={<Explore />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/validation" element={<Validation />} />
-                  <Route path="/bonds" element={<BurnerBondPage />} />
-                  <Route path="/admin" element={<AdminPanel />} />
-                  <Route path="/auth" element={<SWIXAuth />} />
-                  <Route path="/profile" element={<SWIXDemo />} />
-                  <Route path="/faucet" element={<Faucet />} />
-              </Route>
-                </Routes>
-                  </ModalProvider>
-                </PortfolioProvider>
+                    {/* Legacy Routes wrapped in Layout */}
+                    <Route element={<LegacyLayout />}>
+                      <Route path="/legacy-home" element={<Home />} />
+                      <Route path="/mint" element={<MintForm />} />
+                      <Route path="/explore" element={<Explore />} />
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/validation" element={<Validation />} />
+                      <Route path="/bonds" element={<BurnerBondPage />} />
+                      <Route path="/admin" element={<AdminPanel />} />
+                      <Route path="/auth" element={<SWIXAuth />} />
+                      <Route path="/profile" element={<SWIXDemo />} />
+                      <Route path="/faucet" element={<Faucet />} />
+                    </Route>
+                  </Routes>
+                </ModalProvider>
               </XMTPProvider>
             </DeedNFTProvider>
-      </NotificationProvider>
+          </NotificationProvider>
+        </PortfolioProvider>
       </ThemeProvider>
     </BrowserRouter>
   );
