@@ -20,8 +20,8 @@ export interface TransferData {
   blockNum: string;
   uniqueId: string;
   hash: string;
-  from: string;
-  to: string;
+  from: string | null;
+  to: string | null;
   value?: number;
   asset: string;
   category: TransferType;
@@ -162,6 +162,7 @@ class TransfersService {
       // Determine categories based on chain support
       // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
       const categories = ['external', 'erc20', 'erc721', 'erc1155'];
+      // Alchemy supports internal transfers on these chains
       if (chainId === 1 || chainId === 137 || chainId === 8453 || chainId === 42161 || chainId === 10) {
         categories.push('internal');
       }
@@ -514,8 +515,8 @@ class TransfersService {
     monitoredAddress: string
   ): Promise<void> {
     const normalizedAddress = monitoredAddress.toLowerCase();
-    const fromLower = transfer.from.toLowerCase();
-    const toLower = transfer.to.toLowerCase();
+    const fromLower = transfer.from ? transfer.from.toLowerCase() : '';
+    const toLower = transfer.to ? transfer.to.toLowerCase() : '';
 
     // Check if this transfer involves the monitored address
     const isRelevant = fromLower === normalizedAddress || toLower === normalizedAddress;
@@ -524,8 +525,10 @@ class TransfersService {
     }
 
     // Invalidate cache for affected addresses
-    await this.invalidateCacheForAddress(chainId, transfer.from);
-    if (transfer.from !== transfer.to) {
+    if (transfer.from) {
+      await this.invalidateCacheForAddress(chainId, transfer.from);
+    }
+    if (transfer.to && transfer.from !== transfer.to) {
       await this.invalidateCacheForAddress(chainId, transfer.to);
     }
 
@@ -533,7 +536,7 @@ class TransfersService {
     const isIncoming = toLower === normalizedAddress;
     const isOutgoing = fromLower === normalizedAddress;
 
-    if (isIncoming) {
+    if (isIncoming && transfer.to) {
       await websocketService.broadcastToAddress(transfer.to, 'transfer_received', {
         chainId,
         transfer,
@@ -542,7 +545,7 @@ class TransfersService {
       });
     }
 
-    if (isOutgoing) {
+    if (isOutgoing && transfer.from) {
       await websocketService.broadcastToAddress(transfer.from, 'transfer_sent', {
         chainId,
         transfer,
@@ -552,13 +555,15 @@ class TransfersService {
     }
 
     // Also send a general balance update
-    await websocketService.broadcastToAddress(transfer.from, 'balance_update', {
-      chainId,
-      address: transfer.from,
-      timestamp: Date.now(),
-    });
+    if (transfer.from) {
+      await websocketService.broadcastToAddress(transfer.from, 'balance_update', {
+        chainId,
+        address: transfer.from,
+        timestamp: Date.now(),
+      });
+    }
 
-    if (transfer.from !== transfer.to) {
+    if (transfer.to && transfer.from !== transfer.to) {
       await websocketService.broadcastToAddress(transfer.to, 'balance_update', {
         chainId,
         address: transfer.to,
@@ -598,8 +603,11 @@ class TransfersService {
   ): Promise<TransferData[]> {
     // Determine categories based on chain support
     // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
+    // Note: Some RPC providers might limit this further, so we'll be defensive
     const categories = ['external', 'erc20', 'erc721', 'erc1155'];
-    if (chainId === 1 || chainId === 137 || chainId === 8453 || chainId === 42161 || chainId === 10) {
+    
+    // Alchemy supports internal transfers on these chains
+    if (chainId === 1 || chainId === 137 || chainId === 42161 || chainId === 10 || chainId === 8453) {
       categories.push('internal');
     }
 
@@ -630,15 +638,16 @@ class TransfersService {
     date: string;
     status: string;
     hash: string;
-    from?: string;
-    to?: string;
+    from?: string | null;
+    to?: string | null;
     timestamp: number;
   }>> {
     try {
       // Determine categories based on chain support
       // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
       const categories = ['external', 'erc20', 'erc721', 'erc1155'];
-      if (chainId === 1 || chainId === 137 || chainId === 8453 || chainId === 42161 || chainId === 10) {
+      // Alchemy supports internal transfers on these chains
+      if (chainId === 1 || chainId === 137 || chainId === 42161 || chainId === 10 || chainId === 8453) {
         categories.push('internal');
       }
 
@@ -662,8 +671,10 @@ class TransfersService {
             // Determine transaction type (must match WalletTransaction type)
             // Valid types: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'mint' | 'trade' | 'transfer' | 'contract'
             let type: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'mint' | 'trade' | 'transfer' | 'contract' = 'transfer';
-            const isFromAddress = transfer.from.toLowerCase() === address.toLowerCase();
-            const isToAddress = transfer.to.toLowerCase() === address.toLowerCase();
+            const fromLower = transfer.from ? transfer.from.toLowerCase() : '';
+            const toLower = transfer.to ? transfer.to.toLowerCase() : '';
+            const isFromAddress = fromLower === address.toLowerCase();
+            const isToAddress = toLower === address.toLowerCase();
             const value = transfer.value || 0;
 
             if (isFromAddress && value > 0) {
