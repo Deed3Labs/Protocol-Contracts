@@ -24,6 +24,16 @@ const STABLECOIN_ADDRESSES = new Set([
  * Primary method: Alchemy Prices API (by address)
  * Fallback: Alchemy Prices API (by symbol) if we can get token symbol
  * 
+ * NOTE: This service is used for:
+ * - Standalone price queries (/api/prices endpoint)
+ * - Background price updater job (caching common token prices)
+ * - WebSocket price updates
+ * - When Portfolio API isn't used (old endpoints)
+ * 
+ * For Portfolio API endpoints (/api/token-balances/portfolio), prices are
+ * already included in the response via tokenPrices field, so this service
+ * is not needed for those queries.
+ * 
  * @param chainId - Chain ID
  * @param tokenAddress - Token contract address
  * @returns Price in USD, or null if not available

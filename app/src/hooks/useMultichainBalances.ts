@@ -3,9 +3,27 @@ import { useAppKitAccount } from '@reown/appkit/react';
 import { SUPPORTED_NETWORKS, getNetworkByChainId } from '@/config/networks';
 import { getCommonTokens } from '@/config/tokens';
 import { isStablecoin } from '@/utils/tokenUtils';
-import { getBalance, getBalancesBatch, getTokenBalancesBatch, getAllTokenBalances, getTokenPrice as getTokenPriceFromApi, getTokenPricesBatch } from '@/utils/apiClient';
+import { getBalance, getBalancesBatch, getTokenBalancesBatch, getAllTokenBalances, getTokenPrice as getTokenPriceFromApi, getTokenPricesBatch, getTokensByAddressPortfolio } from '@/utils/apiClient';
 import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
 import { getNativeTokenAddress } from './usePricingData';
+import { ethers } from 'ethers';
+
+/**
+ * Map chain ID to Alchemy network identifier
+ */
+function getAlchemyNetworkName(chainId: number): string {
+  const networkMap: Record<number, string> = {
+    1: 'eth-mainnet',
+    8453: 'base-mainnet',
+    137: 'polygon-mainnet',
+    42161: 'arb-mainnet',
+    100: 'gnosis-mainnet',
+    11155111: 'eth-sepolia',
+    84532: 'base-sepolia',
+    80001: 'polygon-mumbai',
+  };
+  return networkMap[chainId] || `chain-${chainId}`;
+}
 
 /**
  * Native token balance for a specific chain
@@ -23,19 +41,40 @@ export interface MultichainBalance {
 }
 
 /**
- * ERC20 token balance
+ * ERC20 token balance - Portfolio API format with chain info
+ * Based on Alchemy Portfolio API format for richer data
  */
 export interface MultichainTokenBalance {
-  address: string;
-  symbol: string;
-  name: string;
-  decimals: number;
-  balance: string;
-  balanceRaw: bigint;
-  balanceUSD: number;
-  chainId: number;
-  chainName: string;
-  logoUrl?: string;
+  // Portfolio API fields
+  address: string; // Wallet address
+  network: string; // Network identifier (e.g., "eth-mainnet")
+  tokenAddress: string | null; // Token address (null for native tokens)
+  tokenBalance: string; // Balance in raw format
+  tokenMetadata?: {
+    decimals: number;
+    logo?: string;
+    name?: string;
+    symbol?: string;
+  };
+  tokenPrices?: Array<{
+    currency: string;
+    value: string;
+    lastUpdatedAt: string;
+  }>;
+  error?: string | null;
+  
+  // Additional fields for compatibility
+  chainId: number; // Chain ID (derived from network)
+  chainName: string; // Chain name (derived from network)
+  
+  // Computed fields for convenience
+  balance?: string; // Formatted balance (computed from tokenBalance)
+  balanceRaw?: bigint; // Balance as BigInt (computed from tokenBalance)
+  balanceUSD?: number; // USD value (computed from tokenPrices)
+  symbol?: string; // Token symbol (from tokenMetadata)
+  name?: string; // Token name (from tokenMetadata)
+  decimals?: number; // Token decimals (from tokenMetadata)
+  logoUrl?: string; // Logo URL (from tokenMetadata.logo)
 }
 
 interface UseMultichainBalancesReturn {
@@ -355,16 +394,35 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
           
           const balanceUSD = balanceNum * (tokenPrice || 0);
 
+          // Convert old format to Portfolio API format
+          const networkName = getAlchemyNetworkName(chainId);
           tokenBalances.push({
-            address: tokenData.address,
-            symbol,
-            name,
-            decimals: tokenData.decimals,
+            // Portfolio API format
+            address: address.toLowerCase(), // Wallet address
+            network: networkName,
+            tokenAddress: tokenData.address, // Token address (null would be for native)
+            tokenBalance: tokenData.balanceRaw, // Raw balance
+            tokenMetadata: {
+              decimals: tokenData.decimals,
+              logo: logoUrl,
+              name,
+              symbol,
+            },
+            tokenPrices: tokenPrice ? [{
+              currency: 'USD',
+              value: tokenPrice.toString(),
+              lastUpdatedAt: new Date().toISOString(),
+            }] : undefined,
+            // Additional fields
+            chainId,
+            chainName: networkConfig.name,
+            // Computed convenience fields
             balance: tokenData.balance,
             balanceRaw: BigInt(tokenData.balanceRaw),
             balanceUSD,
-            chainId,
-            chainName: networkConfig.name,
+            symbol,
+            name,
+            decimals: tokenData.decimals,
             logoUrl,
           });
         } catch (err) {
@@ -376,13 +434,15 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
 
       // Sort by USD value (descending), with known tokens (from COMMON_TOKENS) prioritized
       return tokenBalances.sort((a, b) => {
-        const aIsKnown = commonTokensMap.has(a.address.toLowerCase());
-        const bIsKnown = commonTokensMap.has(b.address.toLowerCase());
+        const aAddress = (a.tokenAddress || '').toLowerCase();
+        const bAddress = (b.tokenAddress || '').toLowerCase();
+        const aIsKnown = commonTokensMap.has(aAddress);
+        const bIsKnown = commonTokensMap.has(bAddress);
         
         // Known tokens first, then by USD value
         if (aIsKnown && !bIsKnown) return -1;
         if (!aIsKnown && bIsKnown) return 1;
-        return b.balanceUSD - a.balanceUSD;
+        return (b.balanceUSD || 0) - (a.balanceUSD || 0);
       });
     } catch (err) {
       if (import.meta.env.PROD) {
@@ -547,6 +607,8 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
 
   /**
    * Refresh ERC20 tokens for all chains
+   * Uses Portfolio API for multi-chain queries (more efficient)
+   * Falls back to old method for single chain or if Portfolio API fails
    */
   const refreshTokens = useCallback(async () => {
     if (!isConnected || !address) {
@@ -559,27 +621,123 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     setError(null);
 
     // Capture previous tokens to preserve during refresh
-    // Note: On initial load (prev.length === 0), this returns [] which is correct
-    // - Loading states will still show because they check length === 0
-    // - Only after initial load does this preserve data to prevent UI flashing
     let previousTokens: MultichainTokenBalance[] = [];
     setTokens(prev => {
       previousTokens = prev;
-      // Keep previous tokens visible while loading (don't clear them)
-      // If prev is empty (initial load), it stays empty - loading states will show
       return prev;
     });
 
     try {
+      // Use Portfolio API when fetching multiple chains (more efficient)
+      if (SUPPORTED_NETWORKS.length > 1) {
+        try {
+          const chainIds = SUPPORTED_NETWORKS.map(n => n.chainId);
+          
+          // Portfolio API limits: max 2 addresses, 5 networks per address
+          // Split into batches if needed
+          const maxNetworksPerRequest = 5;
+          const batches: number[][] = [];
+          for (let i = 0; i < chainIds.length; i += maxNetworksPerRequest) {
+            batches.push(chainIds.slice(i, i + maxNetworksPerRequest));
+          }
+
+          const allTokens: MultichainTokenBalance[] = [];
+
+          for (const batchChainIds of batches) {
+            const portfolioResult = await withTimeout(
+              getTokensByAddressPortfolio(
+                [{ address, chainIds: batchChainIds }],
+                {
+                  withMetadata: true,
+                  withPrices: true,
+                  includeNativeTokens: true,
+                  includeErc20Tokens: true,
+                }
+              ),
+              60000 // 60 second timeout
+            );
+
+            if (portfolioResult && portfolioResult.results) {
+              for (const result of portfolioResult.results) {
+                if (result.tokens && result.tokens.length > 0) {
+                  const networkConfig = getNetworkByChainId(result.chainId);
+                  if (!networkConfig) continue;
+
+                  for (const token of result.tokens) {
+                    // Skip if error or no metadata
+                    if (token.error || !token.tokenMetadata) continue;
+
+                    const balanceRaw = BigInt(token.tokenBalance || '0');
+                    if (balanceRaw === 0n) continue;
+
+                    // Compute convenience fields
+                    const metadata = token.tokenMetadata;
+                    const decimals = metadata.decimals || 18;
+                    const balance = ethers.formatUnits(balanceRaw, decimals);
+                    
+                    // Get USD price from Portfolio API response
+                    let priceUSD = 0;
+                    if (token.tokenPrices && token.tokenPrices.length > 0) {
+                      const usdPrice = token.tokenPrices.find((p: { currency: string; value: string }) => p.currency === 'USD') || token.tokenPrices[0];
+                      if (usdPrice && usdPrice.value) {
+                        priceUSD = parseFloat(usdPrice.value);
+                      }
+                    }
+                    const balanceUSD = parseFloat(balance) * priceUSD;
+
+                    // Return Portfolio API format with computed convenience fields
+                    allTokens.push({
+                      ...token, // Portfolio API format
+                      chainId: result.chainId,
+                      chainName: networkConfig.name,
+                      // Computed convenience fields
+                      balance,
+                      balanceRaw,
+                      balanceUSD,
+                      symbol: metadata.symbol,
+                      name: metadata.name,
+                      decimals,
+                      logoUrl: metadata.logo,
+                    });
+                  }
+                }
+              }
+            }
+          }
+
+          if (allTokens.length > 0) {
+            // Sort tokens: known tokens first, then by USD value
+            const commonTokensMap = new Set(
+              SUPPORTED_NETWORKS.flatMap(n => getCommonTokens(n.chainId).map(t => t.address.toLowerCase()))
+            );
+
+            allTokens.sort((a, b) => {
+              const aIsKnown = commonTokensMap.has((a.tokenAddress || '').toLowerCase());
+              const bIsKnown = commonTokensMap.has((b.tokenAddress || '').toLowerCase());
+              
+              if (aIsKnown && !bIsKnown) return -1;
+              if (!aIsKnown && bIsKnown) return 1;
+              return (b.balanceUSD || 0) - (a.balanceUSD || 0);
+            });
+
+            setTokens(allTokens);
+            setTokensLoading(false);
+            return;
+          }
+        } catch (portfolioError) {
+          // Portfolio API failed, fall back to old method
+          console.warn('[useMultichainBalances] Portfolio API failed, falling back to old method:', portfolioError);
+        }
+      }
+
+      // Fallback to old method (single chain or Portfolio API failed)
       const allTokens = await fetchWithDeviceOptimization(
         SUPPORTED_NETWORKS,
         async (network) => await fetchChainTokens(network.chainId)
       );
-      // Only update with new data - this prevents clearing to empty array during refresh
       setTokens(allTokens);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch token balances');
-      // On error, restore previous tokens to prevent UI from showing empty state
       if (previousTokens.length > 0) {
         setTokens(previousTokens);
       }

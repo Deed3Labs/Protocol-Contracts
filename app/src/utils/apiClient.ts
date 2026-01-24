@@ -385,6 +385,124 @@ export async function getAllTokenBalancesBatch(
 }
 
 /**
+ * Get tokens (ERC20, Native, SPL) across multiple chains using Alchemy Portfolio API
+ * This is the most efficient way to fetch tokens across multiple chains
+ * 
+ * @param requests - Array of { address, chainIds[] } to fetch tokens for
+ *                   Maximum 2 addresses, 5 networks per address
+ * @param options - Optional parameters
+ * @returns Map of address -> chainId -> tokens (Portfolio API format)
+ */
+export async function getTokensByAddressPortfolio(
+  requests: Array<{ address: string; chainIds: number[] }>,
+  options: {
+    withMetadata?: boolean;
+    withPrices?: boolean;
+    includeNativeTokens?: boolean;
+    includeErc20Tokens?: boolean;
+  } = {}
+): Promise<{
+  results: Array<{
+    address: string;
+    chainId: number;
+    tokens: any[]; // Portfolio API format - includes metadata, prices, logos
+    cached: boolean;
+    error?: string;
+  }>;
+}> {
+  const response = await apiRequest<{
+    results: Array<{
+      address: string;
+      chainId: number;
+      tokens: any[];
+      cached: boolean;
+      error?: string;
+    }>;
+  }>('/api/token-balances/portfolio', {
+    method: 'POST',
+    body: JSON.stringify({
+      requests,
+      withMetadata: options.withMetadata ?? true,
+      withPrices: options.withPrices ?? true,
+      includeNativeTokens: options.includeNativeTokens ?? true,
+      includeErc20Tokens: options.includeErc20Tokens ?? true,
+    }),
+    timeout: 60000, // 60 second timeout
+  });
+
+  if (response.error || !response.data) {
+    return { results: [] };
+  }
+
+  return response.data;
+}
+
+/**
+ * Get NFTs (ERC721, ERC1155) across multiple chains using Alchemy Portfolio API
+ * This is the most efficient way to fetch NFTs across multiple chains
+ * 
+ * @param requests - Array of { address, chainIds[] } to fetch NFTs for
+ *                   Maximum 2 addresses, 15 networks per address
+ * @param options - Optional parameters
+ * @returns Map of address -> chainId -> { nfts, totalCount?, pageKey? } (Portfolio API format)
+ */
+export async function getNFTsByAddressPortfolio(
+  requests: Array<{ address: string; chainIds: number[] }>,
+  options: {
+    withMetadata?: boolean;
+    pageKey?: string;
+    pageSize?: number;
+    orderBy?: 'transferTime';
+    sortOrder?: 'asc' | 'desc';
+    excludeFilters?: Array<'SPAM' | 'AIRDROPS'>;
+    includeFilters?: Array<'SPAM' | 'AIRDROPS'>;
+    spamConfidenceLevel?: 'VERY_HIGH' | 'HIGH' | 'MEDIUM' | 'LOW';
+  } = {}
+): Promise<{
+  results: Array<{
+    address: string;
+    chainId: number;
+    nfts: any[]; // Portfolio API format - includes full metadata, images, attributes
+    totalCount?: number;
+    pageKey?: string;
+    cached: boolean;
+    error?: string;
+  }>;
+}> {
+  const response = await apiRequest<{
+    results: Array<{
+      address: string;
+      chainId: number;
+      nfts: any[];
+      totalCount?: number;
+      pageKey?: string;
+      cached: boolean;
+      error?: string;
+    }>;
+  }>('/api/nfts/portfolio', {
+    method: 'POST',
+    body: JSON.stringify({
+      requests,
+      withMetadata: options.withMetadata ?? true,
+      pageKey: options.pageKey,
+      pageSize: options.pageSize,
+      orderBy: options.orderBy,
+      sortOrder: options.sortOrder,
+      excludeFilters: options.excludeFilters,
+      includeFilters: options.includeFilters,
+      spamConfidenceLevel: options.spamConfidenceLevel,
+    }),
+    timeout: 90000, // 90 second timeout for NFT requests
+  });
+
+  if (response.error || !response.data) {
+    return { results: [] };
+  }
+
+  return response.data;
+}
+
+/**
  * Get unified portfolio data (balances, tokens, NFTs, cash balance)
  * This is an optimized endpoint that fetches everything in one call
  * Note: This endpoint may not be available on all server versions

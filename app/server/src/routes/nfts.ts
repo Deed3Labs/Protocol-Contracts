@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
-import { getDeedNFTs, getGeneralNFTs } from '../services/nftService.js';
+import { getDeedNFTs, getGeneralNFTs, getAllNFTsMultiChain } from '../services/nftService.js';
 
 const router = Router();
 const cacheServicePromise = getRedisClient().then((client) => new CacheService(client));
@@ -210,6 +210,200 @@ router.post('/batch', async (req: Request, res: Response) => {
     }
     
     console.error('Batch NFT fetch error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+});
+
+/**
+ * POST /api/nfts/portfolio
+ * Get ALL NFTs (ERC721, ERC1155) for multiple addresses and chains using Alchemy Portfolio API
+ * This is the most efficient way to fetch NFTs across multiple chains in a single request
+ * 
+ * Body: { 
+ *   requests: [{ address: string, chainIds: number[] }],
+ *   withMetadata?: boolean,
+ *   pageKey?: string,
+ *   pageSize?: number,
+ *   orderBy?: 'transferTime',
+ *   sortOrder?: 'asc' | 'desc',
+ *   excludeFilters?: Array<'SPAM' | 'AIRDROPS'>,
+ *   includeFilters?: Array<'SPAM' | 'AIRDROPS'>,
+ *   spamConfidenceLevel?: 'VERY_HIGH' | 'HIGH' | 'MEDIUM' | 'LOW'
+ * }
+ * 
+ * Limits: Maximum 2 addresses, 15 networks per address
+ */
+router.post('/portfolio', async (req: Request, res: Response) => {
+  // Set timeout for portfolio requests (90 seconds)
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({
+        error: 'Request timeout',
+        message: 'Portfolio NFT fetch took too long',
+      });
+    }
+  }, 90000);
+
+  // Handle request abort
+  req.on('close', () => {
+    clearTimeout(timeout);
+  });
+
+  try {
+    const { 
+      requests,
+      withMetadata,
+      pageKey,
+      pageSize,
+      orderBy,
+      sortOrder,
+      excludeFilters,
+      includeFilters,
+      spamConfidenceLevel
+    } = req.body as {
+      requests: Array<{ address: string; chainIds: number[] }>;
+      withMetadata?: boolean;
+      pageKey?: string;
+      pageSize?: number;
+      orderBy?: 'transferTime';
+      sortOrder?: 'asc' | 'desc';
+      excludeFilters?: Array<'SPAM' | 'AIRDROPS'>;
+      includeFilters?: Array<'SPAM' | 'AIRDROPS'>;
+      spamConfidenceLevel?: 'VERY_HIGH' | 'HIGH' | 'MEDIUM' | 'LOW';
+    };
+
+    if (!Array.isArray(requests) || requests.length === 0) {
+      clearTimeout(timeout);
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'requests must be a non-empty array',
+      });
+    }
+
+    // Validate limits: max 2 addresses, 15 networks per address
+    if (requests.length > 2) {
+      clearTimeout(timeout);
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'Maximum 2 addresses allowed per request',
+      });
+    }
+
+    for (const req of requests) {
+      if (req.chainIds.length > 15) {
+        clearTimeout(timeout);
+        return res.status(400).json({
+          error: 'Invalid request',
+          message: 'Maximum 15 networks per address allowed',
+        });
+      }
+    }
+
+    const cacheService = await cacheServicePromise;
+    const results: Array<{
+      address: string;
+      chainId: number;
+      nfts: any[];
+      totalCount?: number;
+      pageKey?: string;
+      cached: boolean;
+      error?: string;
+    }> = [];
+
+    // Check cache for all address/chain combinations
+    const uncached: Array<{ address: string; chainIds: number[] }> = [];
+
+    for (const { address, chainIds } of requests) {
+      const addressLower = address.toLowerCase();
+      const uncachedChainIds: number[] = [];
+
+      for (const chainId of chainIds) {
+        const cacheKey = CacheKeys.nftList(chainId, addressLower);
+        const cached = await cacheService.get<{ nfts: any[]; timestamp: number }>(cacheKey);
+
+        if (cached) {
+          results.push({
+            address: addressLower,
+            chainId,
+            nfts: cached.nfts,
+            cached: true,
+          });
+        } else {
+          uncachedChainIds.push(chainId);
+        }
+      }
+
+      if (uncachedChainIds.length > 0) {
+        uncached.push({ address: addressLower, chainIds: uncachedChainIds });
+      }
+    }
+
+    // Fetch uncached NFTs using Portfolio API
+    if (uncached.length > 0) {
+      // Import Portfolio API service directly to get native format
+      const { getNFTsByAddress } = await import('../services/portfolioService.js');
+      
+      const portfolioResults = await getNFTsByAddress(uncached, {
+        withMetadata: withMetadata ?? true,
+        pageKey,
+        pageSize,
+        orderBy,
+        sortOrder,
+        excludeFilters,
+        includeFilters,
+        spamConfidenceLevel,
+      });
+
+      // Process results and cache them - return Portfolio API format directly
+      for (const { address, chainIds } of uncached) {
+        const addressMap = portfolioResults.get(address);
+        if (!addressMap) continue;
+
+        for (const chainId of chainIds) {
+          const chainData = addressMap.get(chainId);
+          if (!chainData) continue;
+
+          const { nfts, totalCount, pageKey: resultPageKey } = chainData;
+          
+          if (nfts.length > 0 || totalCount !== undefined) {
+            // Cache the result (Portfolio API format)
+            const cacheKey = CacheKeys.nftList(chainId, address);
+            const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '600', 10);
+            await cacheService.set(
+              cacheKey,
+              { nfts, timestamp: Date.now() },
+              cacheTTL
+            );
+
+            results.push({
+              address,
+              chainId,
+              nfts, // Portfolio API format - includes full metadata, images, attributes, etc.
+              totalCount,
+              pageKey: resultPageKey,
+              cached: false,
+            });
+          }
+        }
+      }
+    }
+
+    clearTimeout(timeout);
+    res.json({ results });
+  } catch (error) {
+    clearTimeout(timeout);
+    
+    // Handle request abort gracefully
+    if (error instanceof Error && (error.message.includes('aborted') || error.message.includes('ECONNABORTED'))) {
+      return;
+    }
+    
+    console.error('Portfolio NFT fetch error:', error);
     if (!res.headersSent) {
       res.status(500).json({
         error: 'Internal server error',

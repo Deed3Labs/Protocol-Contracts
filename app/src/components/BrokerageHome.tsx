@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { ReturnView, IncomeView, AccountValueView, AllocationView } from './portfolio/TabViews';
 import SideMenu from './portfolio/SideMenu';
 import HeaderNav from './portfolio/HeaderNav';
@@ -19,10 +20,6 @@ import { LargePriceWheel } from './PriceWheel';
 import type { MultichainDeedNFT } from '@/hooks/useMultichainDeedNFTs';
 
 // Types
-interface User {
-  name: string;
-}
-
 interface Holding {
   id: string | number;
   asset_symbol: string;
@@ -49,7 +46,7 @@ const getAssetTypeLabel = (assetType: number): string => {
   return types[assetType] || "Unknown";
 };
 
-const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: MultichainDeedNFT | undefined }) => {
+const NFTHoldingItem = ({ holding, deed, chainId, chainName }: { holding: Holding; deed: MultichainDeedNFT | undefined; chainId?: number; chainName?: string }) => {
   const deedName = useDeedName(deed || null);
   
   // Truncate text to prevent wrapping (max ~25 chars for main, ~20 for secondary)
@@ -78,6 +75,9 @@ const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: MultichainD
   const secondaryText = truncateText(secondaryTextRaw, 20);
   const secondaryTextFull = secondaryTextRaw;
   
+  // Get chain display name: prefer chainName, fallback to network name from chainId, then chainId itself
+  const displayChainName = chainName || (chainId ? getNetworkByChainId(chainId)?.name : null) || (chainId ? `Chain ${chainId}` : null) || (deed?.chainName || (deed?.chainId ? getNetworkByChainId(deed.chainId)?.name : null) || (deed?.chainId ? `Chain ${deed.chainId}` : null));
+  
   return (
     <div className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
       <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -85,7 +85,14 @@ const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: MultichainD
           <span className="font-bold text-xs text-black dark:text-white">N</span>
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
+            {displayChainName && (
+              <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 bg-transparent">
+                {displayChainName}
+              </Badge>
+            )}
+          </div>
           <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
         </div>
       </div>
@@ -102,13 +109,6 @@ const NFTHoldingItem = ({ holding, deed }: { holding: Holding; deed: MultichainD
       </div>
     </div>
   );
-};
-
-// Mock base44 client (since it's not available in this env)
-const base44 = {
-  auth: {
-    me: async (): Promise<User> => ({ name: 'Isaiah Litt' })
-  }
 };
 
 // Generate chart data from historical portfolio values or show flat line at current value
@@ -230,7 +230,7 @@ export default function BrokerageHome() {
   }, [multichainBalances]);
   
   
-  const [user, setUser] = useState<User | null>(null);
+  const [user] = useState(null);
   const [selectedTab, setSelectedTab] = useState('Return');
   const [selectedRange, setSelectedRange] = useState('1D');
   const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'RWAs' | 'NFTs' | 'Tokens'>('All');
@@ -335,11 +335,6 @@ export default function BrokerageHome() {
     }
   }, [isConnected, address, multichainBalances, totalBalanceUSD, portfolioHoldings, allHoldings, filteredHoldings, displayedHoldings]);
   
-  useEffect(() => {
-    // Mock API calls for user info
-    base44.auth.me().then(setUser).catch(() => {});
-  }, []);
-
   useEffect(() => {
     const handleScroll = () => {
       // Show mini-portfolio value when user scrolls past 100px (approx height of large header area)
@@ -677,14 +672,20 @@ export default function BrokerageHome() {
                                 isMinted: true,
                               } as unknown as MultichainDeedNFT) : undefined;
                               
-                              return { holding, deed };
+                              return { holding, deed, chainId: portfolioHolding?.chainId || chainId, chainName: portfolioHolding?.chainName };
                             });
                           // General NFTs (for future expansion - currently empty)
                           const nftHoldingsWithDeeds = displayedHoldings
                             .filter(h => h.type === 'nft')
                             .map(holding => {
                               // For general NFTs, we don't have DeedNFT data yet
-                              return { holding, deed: undefined as MultichainDeedNFT | undefined };
+                              const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && (h.type as string) === 'nft');
+                              return { 
+                                holding, 
+                                deed: undefined as MultichainDeedNFT | undefined,
+                                chainId: portfolioHolding?.chainId,
+                                chainName: portfolioHolding?.chainName
+                              };
                             });
                           
                           const tokenHoldings = displayedHoldings.filter(h => h.type === 'token');
@@ -701,6 +702,11 @@ export default function BrokerageHome() {
                                   <div className="space-y-1">
                                     {tokenHoldings.map((holding) => {
                                       const valueUSD = holding.valueUSD || 0;
+                                      
+                                      // Get chain information from portfolio holdings
+                                      const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && h.type === 'token');
+                                      const chainId = portfolioHolding?.chainId;
+                                      const chainName = portfolioHolding?.chainName || (chainId ? getNetworkByChainId(chainId)?.name : null) || (chainId ? `Chain ${chainId}` : null);
                                       
                                       // Truncate text to prevent wrapping (max ~25 chars for main, ~20 for secondary)
                                       const truncateText = (text: string, maxLength: number): string => {
@@ -725,7 +731,14 @@ export default function BrokerageHome() {
                                               </span>
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                              <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
+                                              <div className="flex items-center gap-2">
+                                                <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
+                                                {chainName && (
+                                                  <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 bg-transparent">
+                                                    {chainName}
+                                                  </Badge>
+                                                )}
+                                              </div>
                                               <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
                                             </div>
                                           </div>
@@ -758,8 +771,8 @@ export default function BrokerageHome() {
                                     <span>Value</span>
                                   </div>
                                   <div className="space-y-1">
-                                    {rwaHoldingsWithDeeds.map(({ holding, deed }) => (
-                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} />
+                                    {rwaHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => (
+                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} chainId={chainId} chainName={chainName} />
                                     ))}
                                   </div>
                                 </div>
@@ -773,8 +786,8 @@ export default function BrokerageHome() {
                                     <span>Value</span>
                                   </div>
                                   <div className="space-y-1">
-                                    {nftHoldingsWithDeeds.map(({ holding, deed }) => (
-                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} />
+                                    {nftHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => (
+                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} chainId={chainId} chainName={chainName} />
                                     ))}
                                   </div>
                                 </div>

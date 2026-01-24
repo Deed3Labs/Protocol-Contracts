@@ -6,6 +6,18 @@ import { websocketService } from '../services/websocketService.js';
 /**
  * Background job to update token prices
  * Runs every 5 minutes
+ * 
+ * Purpose:
+ * - Caches prices for common tokens in Redis for fast access
+ * - Provides real-time price updates via WebSocket
+ * - Used by standalone price queries (/api/prices endpoint)
+ * 
+ * NOTE: Portfolio API endpoints (/api/token-balances/portfolio) include prices
+ * in their response, so this job is primarily for:
+ * - Standalone price lookups
+ * - WebSocket real-time updates
+ * - Caching common token prices for quick access
+ * 
  * Now covers all common tokens across all chains, not just popular ones
  */
 export async function startPriceUpdater() {

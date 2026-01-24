@@ -183,3 +183,17 @@ export function getAlchemyNetworkName(chainId: number): string | null {
 
   return networkMap[chainId] || null;
 }
+
+/**
+ * Get Alchemy Portfolio API base URL
+ * Used for Alchemy's Portfolio API endpoints (unified multi-chain asset fetching)
+ * https://www.alchemy.com/docs/reference/portfolio-apis
+ */
+export function getAlchemyPortfolioApiUrl(): string | null {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  if (!alchemyApiKey) {
+    return null;
+  }
+  // Portfolio API uses: https://api.g.alchemy.com/data/v1/{apiKey}
+  return `https://api.g.alchemy.com/data/v1/${alchemyApiKey}`;
+}

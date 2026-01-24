@@ -2,6 +2,10 @@ import { ethers } from 'ethers';
 import { getRpcUrl, getAlchemyRestUrl } from '../utils/rpc.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { 
+  getTokensByAddress, 
+  convertPortfolioTokenToBalanceData 
+} from './portfolioService.js';
 
 /**
  * Rate limiter for Alchemy API calls
@@ -503,6 +507,67 @@ export async function getAllTokenBalances(
   } catch (error) {
     console.error(`Error fetching all token balances for chain ${chainId}:`, error);
     return [];
+  }
+}
+
+/**
+ * Get ALL token balances (ERC20, Native) for multiple addresses and chains using Alchemy Portfolio API
+ * This is the most efficient way to fetch tokens across multiple chains in a single request
+ * 
+ * @param requests - Array of { address, chainIds[] } to fetch tokens for
+ * @param options - Optional parameters
+ * @returns Map of address -> chainId -> tokens
+ */
+export async function getAllTokenBalancesMultiChain(
+  requests: Array<{ address: string; chainIds: number[] }>,
+  options: {
+    withMetadata?: boolean;
+    withPrices?: boolean;
+    includeNativeTokens?: boolean;
+    includeErc20Tokens?: boolean;
+  } = {}
+): Promise<Map<string, Map<number, TokenBalanceData[]>>> {
+  try {
+    // Use Portfolio API for multi-chain fetching
+    const portfolioResults = await getTokensByAddress(requests, options);
+    
+    // Convert Portfolio API format to TokenBalanceData format
+    const resultMap: Map<string, Map<number, TokenBalanceData[]>> = new Map();
+    
+    for (const [address, chainMap] of portfolioResults.entries()) {
+      const addressResultMap: Map<number, TokenBalanceData[]> = new Map();
+      
+      for (const [chainId, tokens] of chainMap.entries()) {
+        const convertedTokens: TokenBalanceData[] = [];
+        
+        for (const token of tokens) {
+          const converted = convertPortfolioTokenToBalanceData(token, chainId);
+          if (converted) {
+            convertedTokens.push({
+              address: converted.address,
+              symbol: converted.symbol,
+              name: converted.name,
+              decimals: converted.decimals,
+              balance: converted.balance,
+              balanceRaw: converted.balanceRaw,
+            });
+          }
+        }
+        
+        if (convertedTokens.length > 0) {
+          addressResultMap.set(chainId, convertedTokens);
+        }
+      }
+      
+      if (addressResultMap.size > 0) {
+        resultMap.set(address, addressResultMap);
+      }
+    }
+    
+    return resultMap;
+  } catch (error) {
+    console.error(`Error fetching multi-chain token balances:`, error);
+    return new Map();
   }
 }
 
