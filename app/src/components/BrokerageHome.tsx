@@ -702,20 +702,34 @@ export default function BrokerageHome() {
                                     {tokenHoldings.map((holding) => {
                                       const valueUSD = holding.valueUSD || 0;
                                       
+                                      // Truncate text to prevent wrapping (max ~25 chars for main, ~20 for secondary)
+                                      const truncateText = (text: string, maxLength: number): string => {
+                                        if (text.length <= maxLength) return text;
+                                        return text.substring(0, maxLength - 3) + '...';
+                                      };
+                                      
+                                      // Main text: asset symbol (truncate to 25 chars like NFTs)
+                                      const mainText = truncateText(holding.asset_symbol, 25);
+                                      const mainTextFull = holding.asset_symbol;
+                                      
+                                      // Secondary text: asset name (truncate to 20 chars like NFTs)
+                                      const secondaryText = truncateText(holding.asset_name, 20);
+                                      const secondaryTextFull = holding.asset_name;
+                                      
                                       return (
                                         <div key={holding.id} className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
-                                          <div className="flex items-center gap-3">
+                                          <div className="flex items-center gap-3 min-w-0 flex-1">
                                             <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
                                               <span className="font-bold text-xs text-black dark:text-white">
                                                 {holding.asset_symbol[0]}
                                               </span>
                                             </div>
-                                            <div>
-                                              <p className="text-black dark:text-white font-medium text-sm">{holding.asset_symbol}</p>
-                                              <p className="text-zinc-500 text-xs">{holding.asset_name}</p>
+                                            <div className="min-w-0 flex-1">
+                                              <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
+                                              <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
                                             </div>
                                           </div>
-                                          <div className="flex items-center gap-3">
+                                          <div className="flex items-center gap-3 shrink-0">
                                             <div className="text-right">
                                               <p className="text-black dark:text-white font-medium text-sm">
                                                 ${valueUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
