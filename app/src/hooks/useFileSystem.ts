@@ -32,6 +32,10 @@ export function useFileSystem() {
     }
 
     try {
+      if (!window.showSaveFilePicker) {
+        throw new Error('File System Access API not supported');
+      }
+      
       const fileHandle = await window.showSaveFilePicker({
         suggestedName: options.suggestedName || 'file.txt',
         types: options.types || [{
@@ -71,6 +75,10 @@ export function useFileSystem() {
     }
 
     try {
+      if (!window.showOpenFilePicker) {
+        throw new Error('File System Access API not supported');
+      }
+      
       const [fileHandle] = await window.showOpenFilePicker({
         types: options.types || [{
           description: 'Text files',
