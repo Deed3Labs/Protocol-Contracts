@@ -130,7 +130,26 @@ class TransfersService {
     try {
       // Get last checked block for this address/chain
       const addressBlocks = this.lastCheckedBlocks.get(normalizedAddress) || new Map();
-      const lastBlock = addressBlocks.get(chainId) || 'latest';
+      let lastBlock = addressBlocks.get(chainId) || 'latest';
+      
+      // Ensure block number is in hex format if it's not 'latest'
+      // Alchemy expects hex strings (0x...) or 'latest', not decimal numbers
+      if (lastBlock !== 'latest' && !lastBlock.startsWith('0x')) {
+        // Convert decimal to hex if needed
+        const blockNum = parseInt(lastBlock, 10);
+        if (!isNaN(blockNum)) {
+          lastBlock = `0x${blockNum.toString(16)}`;
+        } else {
+          lastBlock = 'latest'; // Fallback to latest if invalid
+        }
+      }
+
+      // Determine categories based on chain support
+      // 'internal' category is only supported for Ethereum (1) and Polygon (137)
+      const categories = ['external', 'erc20', 'erc721', 'erc1155'];
+      if (chainId === 1 || chainId === 137) {
+        categories.push('internal');
+      }
 
       // Fetch transfers using Alchemy Transfers API
       const transfers = await this.fetchTransfers(
@@ -141,7 +160,7 @@ class TransfersService {
           toBlock: 'latest',
           maxCount: 100,
           excludeZeroValue: false,
-          category: ['external', 'erc20', 'erc721', 'erc1155', 'internal'],
+          category: categories,
         }
       );
 
@@ -154,11 +173,26 @@ class TransfersService {
         await this.processTransfer(transfer, chainId, address);
       }
 
-      // Update last checked block
+      // Update last checked block (ensure it's a hex string)
       if (transfers.length > 0) {
         const latestBlock = transfers[transfers.length - 1].blockNum;
-        if (!addressBlocks.has(chainId) || latestBlock > addressBlocks.get(chainId)!) {
-          addressBlocks.set(chainId, latestBlock);
+        // Alchemy returns blockNum as hex string (e.g., "0x12345")
+        // Ensure it's properly formatted as hex
+        const latestBlockHex = latestBlock.startsWith('0x') 
+          ? latestBlock 
+          : `0x${parseInt(latestBlock, 10).toString(16)}`;
+        
+        const currentBlock = addressBlocks.get(chainId);
+        const currentBlockHex = currentBlock && currentBlock !== 'latest' && !currentBlock.startsWith('0x')
+          ? `0x${parseInt(currentBlock, 10).toString(16)}`
+          : currentBlock || '0x0';
+        
+        // Compare block numbers (convert to number for comparison)
+        const latestBlockNum = parseInt(latestBlockHex, 16);
+        const currentBlockNum = currentBlockHex === 'latest' ? 0 : parseInt(currentBlockHex, 16);
+        
+        if (!addressBlocks.has(chainId) || latestBlockNum > currentBlockNum) {
+          addressBlocks.set(chainId, latestBlockHex);
           this.lastCheckedBlocks.set(normalizedAddress, addressBlocks);
         }
       }
@@ -207,7 +241,7 @@ class TransfersService {
               fromAddress: address,
               maxCount: options.maxCount || 100,
               excludeZeroValue: options.excludeZeroValue ?? false,
-              category: options.category || ['external', 'erc20', 'erc721', 'erc1155', 'internal'],
+              category: options.category || ['external', 'erc20', 'erc721', 'erc1155'],
               pageKey: options.pageKey,
             },
           ],
@@ -358,12 +392,19 @@ class TransfersService {
     address: string,
     limit: number = 50
   ): Promise<TransferData[]> {
+    // Determine categories based on chain support
+    // 'internal' category is only supported for Ethereum (1) and Polygon (137)
+    const categories = ['external', 'erc20', 'erc721', 'erc1155'];
+    if (chainId === 1 || chainId === 137) {
+      categories.push('internal');
+    }
+
     return this.fetchTransfers(chainId, address, {
       fromBlock: '0x0',
       toBlock: 'latest',
       maxCount: limit,
       excludeZeroValue: false,
-      category: ['external', 'erc20', 'erc721', 'erc1155', 'internal'],
+      category: categories,
     });
   }
 
@@ -390,13 +431,20 @@ class TransfersService {
     timestamp: number;
   }>> {
     try {
+      // Determine categories based on chain support
+      // 'internal' category is only supported for Ethereum (1) and Polygon (137)
+      const categories = ['external', 'erc20', 'erc721', 'erc1155'];
+      if (chainId === 1 || chainId === 137) {
+        categories.push('internal');
+      }
+
       // Fetch transfers using Alchemy Transfers API
       const transfers = await this.fetchTransfers(chainId, address, {
         fromBlock: '0x0',
         toBlock: 'latest',
         maxCount: limit * 2, // Get more than needed to filter and sort
         excludeZeroValue: false,
-        category: ['external', 'erc20', 'erc721', 'erc1155', 'internal'],
+        category: categories,
       });
 
       if (transfers.length === 0) {
