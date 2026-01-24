@@ -424,6 +424,17 @@ class WebSocketService {
   }
 
   /**
+   * Get all unique addresses currently connected
+   */
+  getActiveAddresses(): Set<string> {
+    const addresses = new Set<string>();
+    for (const subscription of this.clients.values()) {
+      addresses.add(subscription.address.toLowerCase());
+    }
+    return addresses;
+  }
+
+  /**
    * Cleanup
    */
   cleanup() {
