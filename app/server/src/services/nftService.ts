@@ -3,6 +3,10 @@ import { getRpcUrl } from '../utils/rpc.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 import { getContractAddress } from '../config/contracts.js';
 import { getNFTFloorPrice } from './priceService.js';
+import { 
+  getNFTsByAddress, 
+  convertPortfolioNFTToGeneralNFT 
+} from './portfolioService.js';
 
 /**
  * Standard ERC721 ABI for general NFTs
@@ -489,5 +493,77 @@ export async function getGeneralNFTs(
   } catch (error) {
     console.error(`Error fetching general NFTs for ${address} on chain ${chainId}:`, error);
     return [];
+  }
+}
+
+/**
+ * Get ALL NFTs (ERC721, ERC1155) for multiple addresses and chains using Alchemy Portfolio API
+ * This is the most efficient way to fetch NFTs across multiple chains in a single request
+ * 
+ * @param requests - Array of { address, chainIds[] } to fetch NFTs for
+ * @param options - Optional parameters
+ * @returns Map of address -> chainId -> { nfts, totalCount?, pageKey? }
+ */
+export async function getAllNFTsMultiChain(
+  requests: Array<{ address: string; chainIds: number[] }>,
+  options: {
+    withMetadata?: boolean;
+    pageKey?: string;
+    pageSize?: number;
+    orderBy?: 'transferTime';
+    sortOrder?: 'asc' | 'desc';
+    excludeFilters?: Array<'SPAM' | 'AIRDROPS'>;
+    includeFilters?: Array<'SPAM' | 'AIRDROPS'>;
+    spamConfidenceLevel?: 'VERY_HIGH' | 'HIGH' | 'MEDIUM' | 'LOW';
+  } = {}
+): Promise<Map<string, Map<number, { nfts: GeneralNFTData[]; totalCount?: number; pageKey?: string }>>> {
+  try {
+    // Use Portfolio API for multi-chain fetching
+    const portfolioResults = await getNFTsByAddress(requests, options);
+    
+    // Convert Portfolio API format to GeneralNFTData format
+    const resultMap = new Map<string, Map<number, { nfts: GeneralNFTData[]; totalCount?: number; pageKey?: string }>>();
+    
+    for (const [address, chainMap] of portfolioResults.entries()) {
+      const addressResultMap = new Map<number, { nfts: GeneralNFTData[]; totalCount?: number; pageKey?: string }>();
+      
+      for (const [chainId, portfolioData] of chainMap.entries()) {
+        const convertedNFTs: GeneralNFTData[] = [];
+        
+        for (const nft of portfolioData.nfts) {
+          const converted = convertPortfolioNFTToGeneralNFT(nft, chainId);
+          if (converted) {
+            convertedNFTs.push({
+              tokenId: converted.tokenId,
+              owner: converted.owner,
+              contractAddress: converted.contractAddress,
+              uri: converted.uri,
+              name: converted.name,
+              symbol: converted.symbol,
+              priceUSD: converted.priceUSD,
+              standard: converted.standard,
+              amount: converted.amount,
+            });
+          }
+        }
+        
+        if (convertedNFTs.length > 0 || portfolioData.totalCount !== undefined) {
+          addressResultMap.set(chainId, {
+            nfts: convertedNFTs,
+            totalCount: portfolioData.totalCount,
+            pageKey: portfolioData.pageKey,
+          });
+        }
+      }
+      
+      if (addressResultMap.size > 0) {
+        resultMap.set(address, addressResultMap);
+      }
+    }
+    
+    return resultMap;
+  } catch (error) {
+    console.error(`Error fetching multi-chain NFTs:`, error);
+    return new Map();
   }
 }

@@ -40,7 +40,8 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     }
 
     // Cache the result
-    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+    // Aligned with refresh interval: 10 minutes (600s) for better cache efficiency
+    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '600', 10);
     await cacheService.set(
       cacheKey,
       { balance: result.balance, balanceWei: result.balanceWei, timestamp: Date.now() },
@@ -121,7 +122,7 @@ router.post('/batch', async (req: Request, res: Response) => {
 
         if (result.balance && result.balanceWei) {
           const cacheKey = CacheKeys.balance(chainId, address.toLowerCase());
-          const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+          const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '600', 10);
           await cacheService.set(
             cacheKey,
             { balance: result.balance, balanceWei: result.balanceWei, timestamp: Date.now() },

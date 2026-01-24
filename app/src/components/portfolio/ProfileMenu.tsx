@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useXMTP } from '@/context/XMTPContext';
+import { useNotifications } from '@/context/NotificationContext';
+import { formatDistanceToNow } from 'date-fns';
 
 interface ProfileMenuProps {
   isOpen: boolean;
@@ -28,6 +30,7 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
   const { disconnect } = useDisconnect();
   const navigate = useNavigate();
   const { conversations, messages, isConnected, isLoading } = useXMTP();
+  const { notifications, unreadCount, markAsRead } = useNotifications();
 
   // Close when clicking outside
   useEffect(() => {
@@ -42,12 +45,6 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, onClose]);
-
-  const notifications = [
-    { id: 1, title: 'Deposit Successful', time: '2m ago', read: false, type: 'success' },
-    { id: 2, title: 'TSLA down 5%', time: '1h ago', read: true, type: 'alert' },
-    { id: 3, title: 'New Feature: Income Hub', time: '2d ago', read: true, type: 'info' },
-  ];
 
   const formatTimestamp = (date: Date) => {
     const now = new Date();
@@ -116,7 +113,9 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
               <div className="flex items-center justify-center gap-2">
                 <Bell className="w-4 h-4" />
                 <span>Notifications</span>
-                <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">3</span>
+                {unreadCount > 0 && (
+                  <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">{unreadCount}</span>
+                )}
               </div>
             </button>
             <div className="w-[1px] bg-zinc-200 dark:bg-zinc-800" />
@@ -142,18 +141,46 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
           <div className="max-h-64 overflow-y-auto">
             {activeTab === 'notifications' ? (
               <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
-                {notifications.map((item) => (
-                  <div key={item.id} className={`p-3 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors flex gap-3 ${!item.read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}>
-                    <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${!item.read ? 'bg-blue-500' : 'bg-transparent'}`} />
-                    <div className="flex-1">
-                      <p className="text-sm text-zinc-800 dark:text-zinc-200">{item.title}</p>
-                      <p className="text-xs text-zinc-500 mt-1">{item.time}</p>
-                    </div>
+                {notifications.length === 0 ? (
+                  <div className="p-8 text-center text-zinc-500 dark:text-zinc-400">
+                    <p className="text-sm">No notifications</p>
                   </div>
-                ))}
-                <button className="w-full py-2 text-xs text-center text-blue-600 dark:text-blue-400 hover:underline">
-                  View all notifications
-                </button>
+                ) : (
+                  <>
+                    {notifications.slice(0, 10).map((item) => (
+                      <div 
+                        key={item.id} 
+                        className={`p-3 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors flex gap-3 cursor-pointer ${!item.read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}
+                        onClick={() => {
+                          if (!item.read) {
+                            markAsRead(item.id);
+                          }
+                          if (item.action?.onClick) {
+                            item.action.onClick();
+                            onClose();
+                          }
+                        }}
+                      >
+                        <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${!item.read ? 'bg-blue-500' : 'bg-transparent'}`} />
+                        <div className="flex-1">
+                          <p className="text-sm text-zinc-800 dark:text-zinc-200">{item.title}</p>
+                          <p className="text-xs text-zinc-500 mt-1">{formatDistanceToNow(item.timestamp, { addSuffix: true })}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {notifications.length > 10 && (
+                      <button 
+                        onClick={() => {
+                          navigate('/notifications');
+                          onClose();
+                        }}
+                        className="w-full py-2 text-xs text-center text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        View all {notifications.length} notifications
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             ) : (
               <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">

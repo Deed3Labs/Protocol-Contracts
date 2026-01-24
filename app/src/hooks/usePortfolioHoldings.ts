@@ -5,6 +5,7 @@ import { useGeneralNFTs } from './useGeneralNFTs';
 import { calculateCashBalance } from '@/utils/tokenUtils';
 import { getAllNFTContracts } from '@/config/nfts';
 import { SUPPORTED_NETWORKS, getContractAddressForNetwork } from '@/config/networks';
+import { ethers } from 'ethers';
 
 export interface UnifiedHolding {
   id: string;
@@ -170,10 +171,13 @@ export function usePortfolioHoldings(
 
     // Add general NFTs (ERC721/ERC1155) - categorized by type from config
     generalNFTs.forEach((nft) => {
+      // Get contract address from Portfolio API format
+      const contractAddress = nft.contractAddress || nft.contract?.address || '';
+      
       // Find the NFT config to determine type (rwa, collectible, general)
       const nftConfig = configNFTContracts.find(
         config => config.chainId === nft.chainId && 
-        config.address.toLowerCase() === nft.contractAddress.toLowerCase()
+        config.address.toLowerCase() === contractAddress.toLowerCase()
       );
       
       // Determine type: if it's in config as 'rwa', use 'rwa', otherwise use 'nft'
@@ -182,23 +186,23 @@ export function usePortfolioHoldings(
                      nftConfig?.type === 'collectible' ? 'nft' : 
                      'nft';
       
-      // Calculate USD value from priceUSD if available
-      const priceUSD = nft.priceUSD || 0;
+      // Calculate USD value from priceUSD if available (from Portfolio API openseaMetadata)
+      const priceUSD = nft.priceUSD || nft.contract?.openseaMetadata?.floorPrice || 0;
       const amount = parseFloat(nft.amount || '1');
       const balanceUSD = priceUSD * amount; // For ERC1155, multiply by amount
       
       allHoldings.push({
-        ...nft, // Include all NFT properties
-        id: `${nft.chainId}-nft-${nft.contractAddress}-${nft.tokenId}`,
+        ...nft, // Include all NFT properties (Portfolio API format)
+        id: `${nft.chainId}-nft-${contractAddress}-${nft.tokenId}`,
         type: nftType as 'nft' | 'rwa', // Use type from config
-        asset_name: nft.name || nftConfig?.name || `NFT #${nft.tokenId}`,
-        asset_symbol: nft.symbol || nftConfig?.symbol || 'NFT',
+        asset_name: nft.name || nft.raw?.metadata?.name || nftConfig?.name || `NFT #${nft.tokenId}`,
+        asset_symbol: nft.symbol || nft.contract?.symbol || nftConfig?.symbol || 'NFT',
         balanceUSD,
         chainId: nft.chainId,
         chainName: nft.chainName,
         tokenId: nft.tokenId,
-        contractAddress: nft.contractAddress,
-        standard: nft.standard,
+        contractAddress,
+        standard: nft.standard || (nft.contract?.tokenType === 'ERC1155' ? 'ERC1155' : 'ERC721'),
         amount: nft.amount,
         // Add metadata from config if available
         ...(nftConfig && {
@@ -227,21 +231,36 @@ export function usePortfolioHoldings(
       }
     });
     
-    // Add ERC20 tokens
+    // Add ERC20 tokens (Portfolio API format)
     tokenBalances.forEach((token) => {
+      // Get token address from Portfolio API format
+      const tokenAddress = token.tokenAddress || token.address || '';
+      const balance = token.balance || (token.tokenBalance ? ethers.formatUnits(BigInt(token.tokenBalance), token.decimals || token.tokenMetadata?.decimals || 18) : '0');
+      const balanceUSD = token.balanceUSD || (() => {
+        // Calculate from Portfolio API prices if available
+        if (token.tokenPrices && token.tokenPrices.length > 0) {
+          const usdPrice = token.tokenPrices.find(p => p.currency === 'USD') || token.tokenPrices[0];
+          if (usdPrice && usdPrice.value) {
+            return parseFloat(balance) * parseFloat(usdPrice.value);
+          }
+        }
+        return 0;
+      })();
+      
       allHoldings.push({
-        id: `${token.chainId}-token-${token.address}`,
+        ...token, // Include all token properties (Portfolio API format)
+        id: `${token.chainId}-token-${tokenAddress}`,
         type: 'token',
-        asset_name: token.name,
-        asset_symbol: token.symbol,
-        balanceUSD: token.balanceUSD,
+        asset_name: token.name || token.tokenMetadata?.name || 'Unknown Token',
+        asset_symbol: token.symbol || token.tokenMetadata?.symbol || 'UNKNOWN',
+        balanceUSD,
         chainId: token.chainId,
         chainName: token.chainName,
-        balance: token.balance,
-        address: token.address,
-        decimals: token.decimals,
-        balanceRaw: token.balanceRaw,
-        logoUrl: token.logoUrl,
+        balance,
+        address: tokenAddress,
+        decimals: token.decimals || token.tokenMetadata?.decimals || 18,
+        balanceRaw: token.balanceRaw || (token.tokenBalance ? BigInt(token.tokenBalance) : 0n),
+        logoUrl: token.logoUrl || token.tokenMetadata?.logo,
       });
     });
     

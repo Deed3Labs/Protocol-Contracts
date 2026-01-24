@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
-import { getTransactions } from '../services/transactionService.js';
+import { transfersService } from '../services/transfersService.js';
 
 const router = Router();
 const cacheServicePromise = getRedisClient().then((client) => new CacheService(client));
@@ -28,11 +28,13 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch from blockchain
-    const transactions = await getTransactions(chainId, address, limit);
+    // Fetch from Alchemy Transfers API
+    const transactions = await transfersService.getTransactions(chainId, address, limit);
 
     // Cache the result
-    const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '60', 10);
+    // Aligned with refresh interval: 5 minutes (300s) - transactions update more frequently
+    // Using Alchemy Transfers API for fast, comprehensive transaction fetching
+    const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '300', 10);
     await cacheService.set(
       cacheKey,
       { transactions, timestamp: Date.now() },
@@ -99,13 +101,15 @@ router.post('/batch', async (req: Request, res: Response) => {
       }
     }
 
-    // Fetch uncached transactions
+    // Fetch uncached transactions sequentially to respect Alchemy rate limits
+    // Alchemy Transfers API doesn't support true batching, so we process one at a time
+    // with a small delay between requests to avoid rate limiting
     for (const { chainId, address, limit, index } of uncached) {
       try {
-        const transactions = await getTransactions(chainId, address, limit);
+        const transactions = await transfersService.getTransactions(chainId, address, limit);
 
         const cacheKey = CacheKeys.transactions(chainId, address.toLowerCase(), limit);
-        const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '60', 10);
+        const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '300', 10);
         await cacheService.set(
           cacheKey,
           { transactions, timestamp: Date.now() },
@@ -118,6 +122,11 @@ router.post('/batch', async (req: Request, res: Response) => {
           transactions,
           cached: false,
         };
+
+        // Small delay between requests to avoid rate limiting (100ms = ~10 req/sec)
+        if (index < uncached.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       } catch (error) {
         results[index] = {
           chainId,
