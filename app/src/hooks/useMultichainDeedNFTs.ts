@@ -121,6 +121,18 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     setIsLoading(true);
     setError(null);
 
+    // Capture previous NFTs to preserve during refresh
+    // Note: On initial load (prev.length === 0), this returns [] which is correct
+    // - Loading states will still show because they check length === 0
+    // - Only after initial load does this preserve data to prevent UI flashing
+    let previousNFTs: MultichainDeedNFT[] = [];
+    setNfts(prev => {
+      previousNFTs = prev;
+      // Keep previous NFTs visible while loading (don't clear them)
+      // If prev is empty (initial load), it stays empty - loading states will show
+      return prev;
+    });
+
     try {
       console.log('[useMultichainDeedNFTs] Refreshing T-Deeds for address:', address);
       // Use device-optimized fetching (sequential for mobile, parallel for desktop)
@@ -129,10 +141,15 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
         async (network) => await fetchChainNFTs(network.chainId)
       );
       console.log('[useMultichainDeedNFTs] Fetched T-Deeds:', allNFTs.length);
+      // Only update with new data - this prevents clearing to empty array during refresh
       setNfts(allNFTs);
     } catch (err) {
       console.error('[useMultichainDeedNFTs] Error fetching T-Deeds:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch NFTs');
+      // On error, restore previous NFTs to prevent UI from showing empty state
+      if (previousNFTs.length > 0) {
+        setNfts(previousNFTs);
+      }
     } finally {
       setIsLoading(false);
     }
