@@ -1,10 +1,10 @@
 services:
   - type: web
     name: protocol-server
-    env: node
+    env: bun
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: curl -fsSL https://bun.sh/install | bash && export PATH="$HOME/.bun/bin:$PATH" && bun install
+    startCommand: bun src/index.ts
     envVars:
       - key: NODE_ENV
         value: production

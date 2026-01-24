@@ -12,7 +12,7 @@ npm run test
 Or manually:
 
 ```bash
-npx tsx test-api.ts
+bun test-api.ts
 ```
 
 ## Manual Testing

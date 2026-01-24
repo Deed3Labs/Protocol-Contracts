@@ -2,7 +2,7 @@
  * API Test Script
  * 
  * Tests all server API endpoints to ensure they're working correctly
- * Run with: npx tsx test-api.ts
+ * Run with: bun test-api.ts
  */
 
 import dotenv from 'dotenv';
