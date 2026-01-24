@@ -41,7 +41,7 @@ export interface TransferData {
 class TransfersService {
   private isRunning = false;
   private monitoringAddresses: Set<string> = new Set();
-  private monitoringIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private monitoringIntervals: Map<string, number> = new Map();
   private lastCheckedBlocks: Map<string, Map<number, string>> = new Map(); // address -> chainId -> blockNum
 
   /**
@@ -107,7 +107,7 @@ class TransfersService {
       }
     }, 30000); // 30 seconds
 
-    this.monitoringIntervals.set(intervalKey, interval);
+    this.monitoringIntervals.set(intervalKey, interval as unknown as number);
 
     // Initial check
     this.checkTransfers(address, chainId).catch(error => {

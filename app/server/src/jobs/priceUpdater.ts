@@ -1,11 +1,10 @@
-import cron from 'node-cron';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { getTokenPrice } from '../services/priceService.js';
 import { websocketService } from '../services/websocketService.js';
 
 /**
  * Background job to update token prices
- * Runs every 5 minutes
+ * Runs every 5 minutes using Bun's built-in cron
  * 
  * Purpose:
  * - Caches prices for common tokens in Redis for fast access
@@ -55,8 +54,8 @@ export async function startPriceUpdater() {
     { chainId: 100, tokenAddress: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8' }, // WXDAI
   ];
 
-  // Run every 5 minutes
-  cron.schedule('*/5 * * * *', async () => {
+  // Price update function
+  async function updatePrices() {
     console.log(`🔄 Updating token prices for ${allTokens.length} tokens...`);
 
     for (const { chainId, tokenAddress } of allTokens) {
@@ -88,7 +87,15 @@ export async function startPriceUpdater() {
     }
 
     console.log(`✅ Price update complete for ${allTokens.length} tokens`);
-  });
+  }
+
+  // Run every 5 minutes using setInterval (5 minutes = 300000ms)
+  setInterval(async () => {
+    await updatePrices();
+  }, 5 * 60 * 1000); // 5 minutes
+
+  // Run initial update immediately
+  await updatePrices();
 
   console.log(`✅ Price updater job started (runs every 5 minutes, updating ${allTokens.length} tokens)`);
 }

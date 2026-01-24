@@ -15,7 +15,7 @@ interface ClientSubscription {
 class WebSocketService {
   private io: SocketIOServer | null = null;
   private clients: Map<string, ClientSubscription> = new Map();
-  private priceUpdateInterval: NodeJS.Timeout | null = null;
+  private priceUpdateInterval: number | null = null;
 
   /**
    * Initialize WebSocket server
@@ -207,7 +207,7 @@ class WebSocketService {
           }
         }
       }
-    }, 60000); // 1 minute
+    }, 60000) as unknown as number; // 1 minute
   }
 
   /**
