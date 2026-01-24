@@ -1,6 +1,35 @@
 import { ethers } from 'ethers';
 import { getRpcUrl, getAlchemyRestUrl } from '../utils/rpc.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
+import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { 
+  getTokensByAddress, 
+  convertPortfolioTokenToBalanceData 
+} from './portfolioService.js';
+
+/**
+ * Rate limiter for Alchemy API calls
+ * Limits to ~10 requests per second per chain to avoid rate limits
+ */
+class AlchemyRateLimiter {
+  private lastRequestTime: Map<number, number> = new Map();
+  private readonly minDelayMs = 100; // 100ms between requests = ~10 req/sec max
+
+  async waitForRateLimit(chainId: number): Promise<void> {
+    const now = Date.now();
+    const lastRequest = this.lastRequestTime.get(chainId) || 0;
+    const timeSinceLastRequest = now - lastRequest;
+
+    if (timeSinceLastRequest < this.minDelayMs) {
+      const waitTime = this.minDelayMs - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+
+    this.lastRequestTime.set(chainId, Date.now());
+  }
+}
+
+const alchemyRateLimiter = new AlchemyRateLimiter();
 
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
@@ -213,6 +242,99 @@ export async function getTokenBalancesBatch(
 }
 
 /**
+ * Get token metadata using Alchemy's API or cache
+ */
+async function getTokenMetadata(
+  chainId: number, 
+  tokenAddress: string, 
+  cacheService: CacheService,
+  alchemyRestUrl: string
+): Promise<{ symbol: string; name: string; decimals: number } | null> {
+  const cacheKey = CacheKeys.tokenMetadata(chainId, tokenAddress);
+  
+  // Try cache first (metadata is cached for 30 days as it rarely changes)
+  const cached = await cacheService.get<{ symbol: string; name: string; decimals: number }>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  // Rate limit: wait before making request
+  await alchemyRateLimiter.waitForRateLimit(chainId);
+
+  // Retry up to 3 times with exponential backoff for rate limit errors
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      // Use Alchemy's optimized metadata API
+      const response = await fetch(alchemyRestUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'alchemy_getTokenMetadata',
+          params: [tokenAddress],
+        }),
+      });
+
+      // Handle rate limit errors
+      if (response.status === 429 || response.status === 503) {
+        const retryAfter = response.headers.get('Retry-After');
+        const waitTime = retryAfter 
+          ? parseInt(retryAfter, 10) * 1000 
+          : Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
+        
+        if (attempt < 2) {
+          console.warn(`[Alchemy] Rate limited for chain ${chainId}, retrying in ${waitTime}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+        return null;
+      }
+
+      if (!response.ok) return null;
+
+      const data = await response.json() as { 
+        error?: { code?: number; message?: string };
+        result?: { symbol: string; name: string; decimals: number };
+      };
+
+      // Check for rate limit in error response
+      if (data.error) {
+        const errorMessage = (data.error.message || '').toLowerCase();
+        if (errorMessage.includes('too many requests') || errorMessage.includes('rate limit')) {
+          const waitTime = Math.pow(2, attempt) * 1000;
+          if (attempt < 2) {
+            console.warn(`[Alchemy] Rate limited for chain ${chainId}, retrying in ${waitTime}ms...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          return null;
+        }
+        return null;
+      }
+
+      if (data.result) {
+        const metadata = {
+          symbol: data.result.symbol || 'UNKNOWN',
+          name: data.result.name || 'Unknown Token',
+          decimals: data.result.decimals || 18,
+        };
+        
+        // Cache for 30 days (2592000 seconds)
+        await cacheService.set(cacheKey, metadata, 2592000);
+        return metadata;
+      }
+    } catch (error) {
+      if (attempt === 2) {
+        console.error(`Error fetching metadata for ${tokenAddress} on chain ${chainId}:`, error);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Get ALL ERC20 token balances for an address using Alchemy's API
  * This is much more efficient than checking individual tokens
  * 
@@ -227,132 +349,158 @@ export async function getAllTokenBalances(
   try {
     const alchemyRestUrl = getAlchemyRestUrl(chainId);
     if (!alchemyRestUrl) {
-      // Alchemy API not available, return empty array
-      // Fallback to COMMON_TOKENS approach will be used
       return [];
     }
 
     // Normalize address
     const normalizedAddress = ethers.getAddress(userAddress.toLowerCase());
 
-    // Call Alchemy's getTokenBalances API with "erc20" to get ALL tokens
-    const response = await fetch(alchemyRestUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        id: 1,
-        jsonrpc: '2.0',
-        method: 'alchemy_getTokenBalances',
-        params: [normalizedAddress, 'erc20'], // "erc20" returns ALL tokens
-      }),
-    });
+    // Rate limit: wait before making request
+    await alchemyRateLimiter.waitForRateLimit(chainId);
 
-    if (!response.ok) {
-      console.error(`Alchemy API error for chain ${chainId}: ${response.statusText}`);
-      return [];
-    }
-
-    const data = await response.json() as {
-      error?: any;
-      result?: {
-        tokenBalances?: Array<{
-          contractAddress: string;
-          tokenBalance: string;
-          error?: any;
-        }>;
-        pageKey?: string;
-      };
-    };
+    // Retry up to 3 times with exponential backoff for rate limit errors
+    let tokenBalances: Array<{ contractAddress: string; tokenBalance: string; error?: any }> = [];
     
-    if (data.error) {
-      console.error(`Alchemy API error for chain ${chainId}:`, data.error);
-      return [];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        // Call Alchemy's getTokenBalances API with "erc20" to get ALL tokens
+        const response = await fetch(alchemyRestUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: 1,
+            jsonrpc: '2.0',
+            method: 'alchemy_getTokenBalances',
+            params: [normalizedAddress, 'erc20'],
+          }),
+        });
+
+        // Handle rate limit errors
+        if (response.status === 429 || response.status === 503) {
+          const retryAfter = response.headers.get('Retry-After');
+          const waitTime = retryAfter 
+            ? parseInt(retryAfter, 10) * 1000 
+            : Math.pow(2, attempt) * 2000; // Exponential backoff: 2s, 4s, 8s
+          
+          if (attempt < 2) {
+            console.warn(`[Alchemy] Rate limited for chain ${chainId} (getTokenBalances), retrying in ${waitTime}ms...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          return [];
+        }
+
+        if (!response.ok) {
+          // Only log non-rate-limit errors on final attempt
+          if (attempt === 2 && response.status !== 429 && response.status !== 503) {
+            console.error(`Alchemy API error for chain ${chainId}: ${response.statusText}`);
+          }
+          return [];
+        }
+
+        const data = await response.json() as {
+          error?: { code?: number; message?: string };
+          result?: {
+            tokenBalances?: Array<{
+              contractAddress: string;
+              tokenBalance: string;
+              error?: any;
+            }>;
+          };
+        };
+        
+        // Check for rate limit in error response
+        if (data.error) {
+          const errorMessage = (data.error.message || '').toLowerCase();
+          if (errorMessage.includes('too many requests') || errorMessage.includes('rate limit')) {
+            const waitTime = Math.pow(2, attempt) * 2000;
+            if (attempt < 2) {
+              console.warn(`[Alchemy] Rate limited for chain ${chainId} (getTokenBalances), retrying in ${waitTime}ms...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+              continue;
+            }
+            return [];
+          }
+          // Only log non-rate-limit errors on final attempt
+          if (attempt === 2) {
+            const errorMessage = (data.error.message || '').toLowerCase();
+            if (!errorMessage.includes('too many requests') && !errorMessage.includes('rate limit')) {
+              console.error(`Alchemy API error for chain ${chainId}:`, data.error);
+            }
+          }
+          return [];
+        }
+
+        tokenBalances = data.result?.tokenBalances || [];
+        break; // Success, exit retry loop
+      } catch (error) {
+        if (attempt === 2) {
+          console.error(`Error fetching token balances for chain ${chainId}:`, error);
+        }
+        if (attempt < 2) {
+          const waitTime = Math.pow(2, attempt) * 1000;
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
     }
 
-    const tokenBalances = data.result?.tokenBalances || [];
     if (tokenBalances.length === 0) {
       return [];
     }
 
-    // Get RPC provider for fetching token metadata
-    const rpcUrl = getRpcUrl(chainId);
-    if (!rpcUrl) {
-      return [];
-    }
-
-    const provider = createRetryProvider(rpcUrl, chainId);
+    const cacheService = await getRedisClient().then(client => new CacheService(client));
     const results: TokenBalanceData[] = [];
 
-    // Process tokens in parallel batches to avoid overwhelming the RPC
-    const batchSize = 5; // Reduced from 10 to prevent overwhelming RPC
+    // Process tokens in smaller batches with delays to avoid rate limits
+    // Reduced batch size to be more conservative with rate limits
+    const batchSize = 5; 
+    
     for (let i = 0; i < tokenBalances.length; i += batchSize) {
-      const batch = tokenBalances.slice(i, i + batchSize);
-      
-      // Add delay between batches to prevent rate limiting
+      // Add delay between batches to avoid rate limits
       if (i > 0) {
         await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay between batches
       }
       
-      const batchPromises = batch.map(async (tokenBalance: {
-        contractAddress: string;
-        tokenBalance: string;
-        error?: any;
-      }) => {
+      const batch = tokenBalances.slice(i, i + batchSize);
+      
+      // Process batch sequentially to respect rate limits
+      for (const tokenBalance of batch) {
         try {
-          const contractAddress = tokenBalance.contractAddress;
           const balanceHex = tokenBalance.tokenBalance;
-
-          // Skip if balance is 0 or error
           if (!balanceHex || balanceHex === '0x' || tokenBalance.error) {
-            return null;
+            continue;
           }
 
-          // Normalize address
-          const normalizedTokenAddress = ethers.getAddress(contractAddress.toLowerCase());
+          const balanceRaw = BigInt(balanceHex);
+          if (balanceRaw === 0n) continue;
 
-          // Create contract to fetch metadata
-          const contract = new ethers.Contract(normalizedTokenAddress, ERC20_ABI, provider);
+          const metadata = await getTokenMetadata(
+            chainId, 
+            tokenBalance.contractAddress, 
+            cacheService, 
+            alchemyRestUrl
+          );
 
-          // Fetch metadata in parallel
-          let decimals: bigint;
-          let symbol: string;
-          let name: string;
+          if (!metadata) continue;
 
-          try {
-            [decimals, symbol, name] = await Promise.all([
-              withRetry(() => contract.decimals()).catch(() => 18n),
-              withRetry(() => contract.symbol()).catch(() => 'UNKNOWN'),
-              withRetry(() => contract.name()).catch(() => 'Unknown Token'),
-            ]);
-          } catch (error) {
-            // If metadata fetch fails, skip this token
-            return null;
-          }
-
-          // Parse balance
-          const balance = BigInt(balanceHex);
-          if (balance === 0n) {
-            return null;
-          }
-
-          return {
-            address: normalizedTokenAddress.toLowerCase(),
-            symbol,
-            name,
-            decimals: Number(decimals),
-            balance: ethers.formatUnits(balance, decimals),
-            balanceRaw: balance.toString(),
-          };
+          results.push({
+            address: tokenBalance.contractAddress.toLowerCase(),
+            symbol: metadata.symbol,
+            name: metadata.name,
+            decimals: metadata.decimals,
+            balance: ethers.formatUnits(balanceRaw, metadata.decimals),
+            balanceRaw: balanceRaw.toString(),
+          });
         } catch (error) {
-          // Skip tokens that fail to process
-          return null;
+          // Continue processing other tokens
+          continue;
         }
-      });
-
-      const batchResults = await Promise.all(batchPromises);
-      results.push(...batchResults.filter((r): r is TokenBalanceData => r !== null));
+      }
+      
+      // Limit total tokens processed to prevent massive responses and timeouts
+      if (results.length >= 50) break;
     }
 
     return results;
@@ -361,3 +509,65 @@ export async function getAllTokenBalances(
     return [];
   }
 }
+
+/**
+ * Get ALL token balances (ERC20, Native) for multiple addresses and chains using Alchemy Portfolio API
+ * This is the most efficient way to fetch tokens across multiple chains in a single request
+ * 
+ * @param requests - Array of { address, chainIds[] } to fetch tokens for
+ * @param options - Optional parameters
+ * @returns Map of address -> chainId -> tokens
+ */
+export async function getAllTokenBalancesMultiChain(
+  requests: Array<{ address: string; chainIds: number[] }>,
+  options: {
+    withMetadata?: boolean;
+    withPrices?: boolean;
+    includeNativeTokens?: boolean;
+    includeErc20Tokens?: boolean;
+  } = {}
+): Promise<Map<string, Map<number, TokenBalanceData[]>>> {
+  try {
+    // Use Portfolio API for multi-chain fetching
+    const portfolioResults = await getTokensByAddress(requests, options);
+    
+    // Convert Portfolio API format to TokenBalanceData format
+    const resultMap: Map<string, Map<number, TokenBalanceData[]>> = new Map();
+    
+    for (const [address, chainMap] of portfolioResults.entries()) {
+      const addressResultMap: Map<number, TokenBalanceData[]> = new Map();
+      
+      for (const [chainId, tokens] of chainMap.entries()) {
+        const convertedTokens: TokenBalanceData[] = [];
+        
+        for (const token of tokens) {
+          const converted = convertPortfolioTokenToBalanceData(token, chainId);
+          if (converted) {
+            convertedTokens.push({
+              address: converted.address,
+              symbol: converted.symbol,
+              name: converted.name,
+              decimals: converted.decimals,
+              balance: converted.balance,
+              balanceRaw: converted.balanceRaw,
+            });
+          }
+        }
+        
+        if (convertedTokens.length > 0) {
+          addressResultMap.set(chainId, convertedTokens);
+        }
+      }
+      
+      if (addressResultMap.size > 0) {
+        resultMap.set(address, addressResultMap);
+      }
+    }
+    
+    return resultMap;
+  } catch (error) {
+    console.error(`Error fetching multi-chain token balances:`, error);
+    return new Map();
+  }
+}
+

@@ -1,6 +1,10 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useDeedNFTData } from '@/hooks/useDeedNFTData';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { useAppBadge } from '@/hooks/useAppBadge';
+import { useWebSocket } from '@/hooks/useWebSocket';
+import { usePortfolio } from '@/context/PortfolioContext';
 
 export interface Notification {
   id: string;
@@ -46,12 +50,22 @@ interface NotificationProviderProps {
 }
 
 const STORAGE_KEY = 'deed-protocol-notifications';
+const PRICE_STORAGE_KEY = 'deed-protocol-price-history';
 const ARCHIVE_DAYS = 30; // Archive notifications older than 30 days
+const PRICE_CHANGE_THRESHOLD = 5; // Notify when price changes by 5% or more
 
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [archivedNotifications, setArchivedNotifications] = useState<Notification[]>([]);
   const { address, isConnected } = useAppKitAccount();
+  const { showNotification, requestPermission } = usePushNotifications();
+  const { setBadge } = useAppBadge();
+  const { socket, isConnected: wsConnected } = useWebSocket(address, isConnected);
+  const { holdings } = usePortfolio();
+  
+  // Track previous prices for assets user holds
+  // Key format: `${chainId}-${tokenAddress.toLowerCase()}`
+  const previousPricesRef = useRef<Map<string, { price: number; timestamp: number }>>(new Map());
   
   // Get user's T-Deed data - simple and direct
   let userDeedNFTs: any[] = [];
@@ -88,6 +102,81 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       console.error('Error loading notifications from localStorage:', error);
     }
   }, []);
+
+  // Load previous prices from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(PRICE_STORAGE_KEY);
+      if (stored) {
+        const priceData = JSON.parse(stored);
+        const priceMap = new Map<string, { price: number; timestamp: number }>();
+        Object.entries(priceData).forEach(([key, value]: [string, any]) => {
+          priceMap.set(key, { price: value.price, timestamp: value.timestamp });
+        });
+        previousPricesRef.current = priceMap;
+      }
+    } catch (error) {
+      console.error('Error loading price history from localStorage:', error);
+    }
+  }, []);
+
+  // Initialize prices from current holdings when they load
+  // This establishes a baseline for price change detection
+  useEffect(() => {
+    if (holdings.length === 0) return;
+
+    holdings.forEach(holding => {
+      // Only track prices for assets that have a priceUSD value
+      if (holding.balanceUSD && holding.balanceUSD > 0 && holding.address) {
+        const priceKey = `${holding.chainId}-${holding.address.toLowerCase()}`;
+        
+        // Get price per unit (for tokens) or total value (for NFTs)
+        let currentPrice = 0;
+        if (holding.type === 'token' && holding.balance && parseFloat(holding.balance) > 0) {
+          // For tokens: price = balanceUSD / balance
+          currentPrice = holding.balanceUSD / parseFloat(holding.balance);
+        } else if (holding.type === 'nft' || holding.type === 'rwa') {
+          // For NFTs: use balanceUSD as the price (it's already the value per NFT)
+          currentPrice = holding.balanceUSD;
+        }
+
+        if (currentPrice > 0) {
+          // Only set if we don't already have a price for this asset
+          // This prevents overwriting existing price history
+          if (!previousPricesRef.current.has(priceKey)) {
+            previousPricesRef.current.set(priceKey, {
+              price: currentPrice,
+              timestamp: Date.now()
+            });
+          }
+        }
+      }
+    });
+
+    // Save updated price history
+    try {
+      const priceData: Record<string, { price: number; timestamp: number }> = {};
+      previousPricesRef.current.forEach((value, key) => {
+        priceData[key] = value;
+      });
+      localStorage.setItem(PRICE_STORAGE_KEY, JSON.stringify(priceData));
+    } catch (error) {
+      console.error('Error saving price history to localStorage:', error);
+    }
+  }, [holdings.length]); // Only run when holdings count changes (initial load)
+
+  // Save price history to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      const priceData: Record<string, { price: number; timestamp: number }> = {};
+      previousPricesRef.current.forEach((value, key) => {
+        priceData[key] = value;
+      });
+      localStorage.setItem(PRICE_STORAGE_KEY, JSON.stringify(priceData));
+    } catch (error) {
+      console.error('Error saving price history to localStorage:', error);
+    }
+  }, [holdings]); // Save when holdings change (which includes price updates)
 
   // Check for unvalidated T-Deeds and create notifications
   const checkValidationNotifications = useCallback(() => {
@@ -221,7 +310,21 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       archived: false,
     };
     setNotifications(prev => [newNotification, ...prev]);
-  }, []);
+
+    // Show push notification for important notifications
+    if (notification.type === 'error' || notification.type === 'warning' || notification.type === 'success') {
+      showNotification({
+        title: notification.title,
+        body: notification.message,
+        tag: `notification-${newNotification.id}`,
+        data: {
+          notificationId: newNotification.id,
+          type: notification.type,
+        },
+        requireInteraction: notification.type === 'error',
+      });
+    }
+  }, [showNotification]);
 
   const markAsRead = useCallback((id: string) => {
     setNotifications(prev =>
@@ -268,6 +371,178 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   }, []);
 
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  // Update app badge when unread count changes
+  useEffect(() => {
+    setBadge(unreadCount > 0 ? unreadCount : null);
+  }, [unreadCount, setBadge]);
+
+  // Request notification permission on mount
+  useEffect(() => {
+    if (isConnected) {
+      requestPermission();
+    }
+  }, [isConnected, requestPermission]);
+
+  // Listen to WebSocket events for transfer notifications
+  useEffect(() => {
+    if (!socket || !wsConnected || !address) return;
+
+    const handleTransferReceived = (data: any) => {
+      const transfer = data.transfer;
+      const asset = transfer.asset || 'asset';
+      const value = transfer.value ? `${transfer.value} ${asset}` : asset;
+      
+      addNotification({
+        type: 'success',
+        title: 'Transfer Received',
+        message: `You received ${value} on chain ${data.chainId}`,
+        action: transfer.hash ? {
+          label: 'View Transaction',
+          onClick: () => {
+            // Navigate to transaction details if available
+            window.open(`https://etherscan.io/tx/${transfer.hash}`, '_blank');
+          }
+        } : undefined
+      });
+    };
+
+    const handleTransferSent = (data: any) => {
+      const transfer = data.transfer;
+      const asset = transfer.asset || 'asset';
+      const value = transfer.value ? `${transfer.value} ${asset}` : asset;
+      
+      addNotification({
+        type: 'info',
+        title: 'Transfer Sent',
+        message: `You sent ${value} on chain ${data.chainId}`,
+        action: transfer.hash ? {
+          label: 'View Transaction',
+          onClick: () => {
+            // Navigate to transaction details if available
+            window.open(`https://etherscan.io/tx/${transfer.hash}`, '_blank');
+          }
+        } : undefined
+      });
+    };
+
+    const handleBalanceUpdate = (data: any) => {
+      // Only notify for significant balance changes, not every update
+      // This prevents notification spam
+      console.log('[NotificationContext] Balance update received:', data);
+    };
+
+    const handlePriceUpdate = (data: { chainId: number; tokenAddress: string; price: number; timestamp: number }) => {
+      if (!data || !data.chainId || !data.tokenAddress || !data.price || data.price <= 0) {
+        return;
+      }
+
+      const { chainId, tokenAddress, price } = data;
+      const normalizedAddress = tokenAddress.toLowerCase();
+      const priceKey = `${chainId}-${normalizedAddress}`;
+
+      // Find the holding that matches this asset
+      const holding = holdings.find(h => {
+        // For tokens, check by address and chainId
+        if (h.type === 'token' && h.address) {
+          return h.chainId === chainId && 
+                 h.address.toLowerCase() === normalizedAddress;
+        }
+        // For NFTs, check by contract address and chainId
+        if ((h.type === 'nft' || h.type === 'rwa') && h.address) {
+          return h.chainId === chainId && 
+                 h.address.toLowerCase() === normalizedAddress;
+        }
+        return false;
+      });
+
+      if (!holding) {
+        // User doesn't hold this asset, skip notification
+        return;
+      }
+
+      // Get previous price
+      const previousPriceData = previousPricesRef.current.get(priceKey);
+      
+      // If we have a previous price, check for significant change
+      if (previousPriceData && previousPriceData.price > 0) {
+        const previousPrice = previousPriceData.price;
+        const priceChange = ((price - previousPrice) / previousPrice) * 100;
+        const absPriceChange = Math.abs(priceChange);
+
+        // Only notify if price change is >= threshold (5%)
+        if (absPriceChange >= PRICE_CHANGE_THRESHOLD) {
+          const isIncrease = priceChange > 0;
+          const direction = isIncrease ? 'up' : 'down';
+          const changeEmoji = isIncrease ? '📈' : '📉';
+          
+          const assetName = holding.asset_symbol || holding.asset_name || 'Asset';
+          
+          // Format price based on asset type
+          let formattedPrice: string;
+          if (price >= 1) {
+            formattedPrice = price.toFixed(2);
+          } else if (price >= 0.01) {
+            formattedPrice = price.toFixed(4);
+          } else {
+            formattedPrice = price.toFixed(6);
+          }
+          
+          const formattedChange = Math.abs(priceChange).toFixed(2);
+          
+          // Calculate impact on user's position
+          const userValue = holding.balanceUSD || 0;
+          const valueChange = (userValue * absPriceChange) / 100;
+          const formattedValueChange = valueChange >= 1 
+            ? `$${valueChange.toFixed(2)}` 
+            : `$${valueChange.toFixed(4)}`;
+
+          addNotification({
+            type: isIncrease ? 'success' : 'warning',
+            title: `${changeEmoji} Price Alert: ${assetName}`,
+            message: `${assetName} ${direction} ${formattedChange}% ($${formattedPrice}). Your position ${isIncrease ? 'gained' : 'lost'} ${formattedValueChange}.`,
+            action: {
+              label: 'View Portfolio',
+              onClick: () => {
+                // Navigate to portfolio
+                window.location.href = '/';
+              }
+            }
+          });
+        }
+      }
+
+      // Always update previous price (even if we didn't notify)
+      // This ensures we have the latest price for future comparisons
+      previousPricesRef.current.set(priceKey, {
+        price,
+        timestamp: data.timestamp || Date.now()
+      });
+
+      // Save to localStorage
+      try {
+        const priceData: Record<string, { price: number; timestamp: number }> = {};
+        previousPricesRef.current.forEach((value, key) => {
+          priceData[key] = value;
+        });
+        localStorage.setItem(PRICE_STORAGE_KEY, JSON.stringify(priceData));
+      } catch (error) {
+        console.error('Error saving price history:', error);
+      }
+    };
+
+    socket.on('transfer_received', handleTransferReceived);
+    socket.on('transfer_sent', handleTransferSent);
+    socket.on('balance_update', handleBalanceUpdate);
+    socket.on('price_update', handlePriceUpdate);
+
+    return () => {
+      socket.off('transfer_received', handleTransferReceived);
+      socket.off('transfer_sent', handleTransferSent);
+      socket.off('balance_update', handleBalanceUpdate);
+      socket.off('price_update', handlePriceUpdate);
+    };
+  }, [socket, wsConnected, address, addNotification, holdings]);
 
   const value: NotificationContextType = {
     notifications,

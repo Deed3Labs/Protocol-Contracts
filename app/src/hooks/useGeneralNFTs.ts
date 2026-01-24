@@ -1,21 +1,105 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { SUPPORTED_NETWORKS } from '@/config/networks';
-import { getNFTs } from '@/utils/apiClient';
+import { getNFTs, getNFTsByAddressPortfolio } from '@/utils/apiClient';
 import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
 
+/**
+ * Map chain ID to Alchemy network identifier
+ */
+function getAlchemyNetworkName(chainId: number): string {
+  const networkMap: Record<number, string> = {
+    1: 'eth-mainnet',
+    8453: 'base-mainnet',
+    137: 'polygon-mainnet',
+    42161: 'arb-mainnet',
+    100: 'gnosis-mainnet',
+    11155111: 'eth-sepolia',
+    84532: 'base-sepolia',
+    80001: 'polygon-mumbai',
+  };
+  return networkMap[chainId] || `chain-${chainId}`;
+}
+
+/**
+ * General NFT - Portfolio API format with chain info
+ * Based on Alchemy Portfolio API format for richer data
+ */
 export interface GeneralNFT {
+  // Portfolio API fields
+  network: string; // Network identifier (e.g., "eth-mainnet")
+  address: string; // Wallet address
+  contract: {
+    address: string;
+    name?: string;
+    symbol?: string;
+    totalSupply?: string;
+    tokenType: 'ERC721' | 'ERC1155' | 'NO_SUPPORTED_NFT_STANDARD' | 'NOT_A_CONTRACT';
+    contractDeployer?: string;
+    deployedBlockNumber?: number;
+    openseaMetadata?: {
+      floorPrice?: number;
+      collectionName?: string;
+      imageUrl?: string;
+      description?: string;
+      externalUrl?: string;
+      twitterUsername?: string;
+      discordUrl?: string;
+      bannerImageUrl?: string;
+    };
+    isSpam?: string;
+    spamClassifications?: string[];
+  };
   tokenId: string;
-  owner: string;
-  contractAddress: string;
-  uri: string;
+  tokenType?: string;
   name?: string;
-  symbol?: string;
-  priceUSD?: number;
-  standard: 'ERC721' | 'ERC1155';
-  amount?: string; // For ERC1155: quantity owned
-  chainId: number;
-  chainName: string;
+  description?: string;
+  image?: {
+    cachedUrl?: string;
+    thumbnailUrl?: string;
+    pngUrl?: string;
+    contentType?: string;
+    size?: number;
+    originalUrl?: string;
+  };
+  raw?: {
+    tokenUri?: string;
+    metadata?: {
+      image?: string;
+      name?: string;
+      description?: string;
+      attributes?: Array<{
+        trait_type?: string;
+        value?: string;
+      }>;
+    };
+    error?: string;
+  };
+  collection?: {
+    name?: string;
+    slug?: string;
+    externalUrl?: string;
+    bannerImageUrl?: string;
+  };
+  tokenUri?: string;
+  timeLastUpdated?: string;
+  acquiredAt?: {
+    blockTimestamp?: string;
+    blockNumber?: string;
+  };
+  
+  // Additional fields for compatibility
+  chainId: number; // Chain ID (derived from network)
+  chainName: string; // Chain name (derived from network)
+  
+  // Computed convenience fields
+  owner?: string; // Wallet address (from address field)
+  contractAddress?: string; // Contract address (from contract.address)
+  uri?: string; // Token URI (from tokenUri or raw.tokenUri)
+  symbol?: string; // Collection symbol (from contract.symbol)
+  priceUSD?: number; // Floor price (from contract.openseaMetadata.floorPrice)
+  standard?: 'ERC721' | 'ERC1155'; // Token standard (from contract.tokenType)
+  amount?: string; // Quantity owned (defaults to "1")
 }
 
 interface UseGeneralNFTsReturn {
@@ -94,19 +178,32 @@ export function useGeneralNFTs(
         return [];
       }
 
-      // Map server response to GeneralNFT format
+      // Map server response to Portfolio API format
+      const networkName = getAlchemyNetworkName(chainId);
       return serverNFTs.nfts.map((nft: any) => ({
+        // Portfolio API format
+        network: networkName,
+        address: address.toLowerCase(),
+        contract: {
+          address: nft.contractAddress,
+          name: nft.name,
+          symbol: nft.symbol,
+          tokenType: (nft.standard || 'ERC721') as 'ERC721' | 'ERC1155',
+        },
         tokenId: nft.tokenId,
-        owner: nft.owner,
-        contractAddress: nft.contractAddress,
-        uri: nft.uri,
         name: nft.name,
-        symbol: nft.symbol,
-        priceUSD: nft.priceUSD,
-        standard: nft.standard || 'ERC721', // Default to ERC721 if not specified
-        amount: nft.amount || '1', // Default to 1 for ERC721
+        tokenUri: nft.uri,
+        // Additional fields
         chainId,
         chainName: networkConfig.name,
+        // Computed convenience fields
+        owner: address.toLowerCase(),
+        contractAddress: nft.contractAddress,
+        uri: nft.uri,
+        symbol: nft.symbol,
+        priceUSD: nft.priceUSD,
+        standard: nft.standard || 'ERC721',
+        amount: nft.amount || '1',
       }));
     } catch (err) {
       // Server is required in production
@@ -127,7 +224,7 @@ export function useGeneralNFTs(
     setNfts(prev => {
       // Remove old NFTs from this contract and add new ones
       const filtered = prev.filter(n => 
-        !(n.chainId === chainId && n.contractAddress.toLowerCase() === contractAddress.toLowerCase())
+        !(n.chainId === chainId && (n.contractAddress || n.contract?.address || '').toLowerCase() === contractAddress.toLowerCase())
       );
       return [...filtered, ...contractNFTs];
     });
@@ -146,31 +243,117 @@ export function useGeneralNFTs(
     setError(null);
 
     // Capture previous NFTs to preserve during refresh
-    // Note: On initial load (prev.length === 0), this returns [] which is correct
-    // - Loading states will still show because they check length === 0
-    // - Only after initial load does this preserve data to prevent UI flashing
     let previousNFTs: GeneralNFT[] = [];
     setNfts(prev => {
       previousNFTs = prev;
-      // Keep previous NFTs visible while loading (don't clear them)
-      // If prev is empty (initial load), it stays empty - loading states will show
       return prev;
     });
 
     try {
       console.log('[useGeneralNFTs] Refreshing general NFTs for address:', address, 'contracts:', contractAddresses.length);
-      // Use device-optimized fetching (sequential for mobile, parallel for desktop)
+      
+      // Use Portfolio API when fetching multiple chains (more efficient)
+      // Group contracts by chain to use Portfolio API
+      const chainsWithContracts = new Map<number, string[]>();
+      contractAddresses.forEach(({ chainId, contractAddress }) => {
+        if (!chainsWithContracts.has(chainId)) {
+          chainsWithContracts.set(chainId, []);
+        }
+        chainsWithContracts.get(chainId)!.push(contractAddress);
+      });
+
+      const uniqueChainIds = Array.from(chainsWithContracts.keys());
+
+      // Use Portfolio API if we have multiple chains
+      if (uniqueChainIds.length > 1) {
+        try {
+          // Portfolio API limits: max 2 addresses, 15 networks per address
+          // Split into batches if needed
+          const maxNetworksPerRequest = 15;
+          const batches: number[][] = [];
+          for (let i = 0; i < uniqueChainIds.length; i += maxNetworksPerRequest) {
+            batches.push(uniqueChainIds.slice(i, i + maxNetworksPerRequest));
+          }
+
+          const allNFTs: GeneralNFT[] = [];
+
+          for (const batchChainIds of batches) {
+            const portfolioResult = await withTimeout(
+              getNFTsByAddressPortfolio(
+                [{ address, chainIds: batchChainIds }],
+                {
+                  withMetadata: true,
+                  excludeFilters: ['SPAM'], // Filter out spam NFTs
+                }
+              ),
+              90000 // 90 second timeout
+            );
+
+            if (portfolioResult && portfolioResult.results) {
+              for (const result of portfolioResult.results) {
+                if (result.nfts && result.nfts.length > 0) {
+                  const networkConfig = SUPPORTED_NETWORKS.find(n => n.chainId === result.chainId);
+                  if (!networkConfig) continue;
+
+                  // Filter NFTs by contract addresses we're interested in
+                  const contractAddressesForChain = chainsWithContracts.get(result.chainId) || [];
+                  const contractAddressesLower = contractAddressesForChain.map(addr => addr.toLowerCase());
+
+                  for (const nft of result.nfts) {
+                    // Skip if not a supported NFT standard
+                    if (nft.contract.tokenType === 'NO_SUPPORTED_NFT_STANDARD' || 
+                        nft.contract.tokenType === 'NOT_A_CONTRACT') {
+                      continue;
+                    }
+
+                    // Filter by contract address if specified
+                    const nftContractAddress = (nft.contract?.address || '').toLowerCase();
+                    if (contractAddressesLower.length > 0 && !contractAddressesLower.includes(nftContractAddress)) {
+                      continue;
+                    }
+
+                    // Return Portfolio API format with computed convenience fields
+                    allNFTs.push({
+                      ...nft, // Portfolio API format
+                      chainId: result.chainId,
+                      chainName: networkConfig.name,
+                      // Computed convenience fields
+                      owner: nft.address.toLowerCase(),
+                      contractAddress: nftContractAddress,
+                      uri: nft.tokenUri || nft.raw?.tokenUri || '',
+                      symbol: nft.contract.symbol,
+                      priceUSD: nft.contract.openseaMetadata?.floorPrice,
+                      standard: nft.contract.tokenType === 'ERC1155' ? 'ERC1155' : 'ERC721',
+                      amount: '1', // Portfolio API doesn't return quantity for ERC1155 in this format
+                    });
+                  }
+                }
+              }
+            }
+          }
+
+          if (allNFTs.length > 0) {
+            console.log('[useGeneralNFTs] Fetched general NFTs via Portfolio API:', allNFTs.length);
+            setNfts(allNFTs);
+            setIsLoading(false);
+            return;
+          }
+        } catch (portfolioError) {
+          // Portfolio API failed, fall back to old method
+          console.warn('[useGeneralNFTs] Portfolio API failed, falling back to old method:', portfolioError);
+        }
+      }
+
+      // Fallback to old method (single chain or Portfolio API failed)
       const allNFTs = await fetchWithDeviceOptimization(
         contractAddresses,
         async (contract) => await fetchContractNFTs(contract.chainId, contract.contractAddress)
       );
-      console.log('[useGeneralNFTs] Fetched general NFTs:', allNFTs.length);
-      // Only update with new data - this prevents clearing to empty array during refresh
+      console.log('[useGeneralNFTs] Fetched general NFTs via old method:', allNFTs.length);
       setNfts(allNFTs);
     } catch (err) {
       console.error('[useGeneralNFTs] Error fetching general NFTs:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch NFTs');
-      // On error, restore previous NFTs to prevent UI from showing empty state
       if (previousNFTs.length > 0) {
         setNfts(previousNFTs);
       }

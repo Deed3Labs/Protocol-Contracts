@@ -24,6 +24,8 @@ const DEFAULT_CONFIG: Required<RetryConfig> = {
     'ETIMEDOUT',
     'no response',
     'CALL_EXCEPTION',
+    'filter not found',
+    'decode',
   ],
 };
 
@@ -104,8 +106,10 @@ export async function withRetry<T>(
       // Calculate delay with exponential backoff
       const delay = calculateDelay(attempt, baseDelay, maxDelay);
       
-      // Log retry attempt (only in development or for rate limits)
-      if (process.env.NODE_ENV === 'development' || error?.error?.code === -32016) {
+      // Log retry attempt (only in development or for specific errors)
+      const errorMessage = (error?.message || error?.error?.message || '').toLowerCase();
+      const isCriticalError = error?.error?.code === -32016 || errorMessage.includes('filter not found');
+      if (process.env.NODE_ENV === 'development' || isCriticalError) {
         console.warn(`[RPC Retry] Attempt ${attempt + 1}/${maxRetries + 1} failed, retrying in ${Math.round(delay)}ms:`, 
           error?.message || error?.error?.message || 'Unknown error');
       }

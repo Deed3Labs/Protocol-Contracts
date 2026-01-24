@@ -27,8 +27,8 @@ router.get('/:chainId/:tokenAddress', async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch price with Ethereum mainnet fallback
-    // This tries chain-specific pricing first, then falls back to Ethereum mainnet
+    // Fetch price using Alchemy Prices API (optimized service)
+    // Automatically handles chain-specific pricing and Ethereum mainnet fallback
     const price = await getTokenPrice(chainId, tokenAddress);
 
     if (!price || price === 0) {
@@ -98,28 +98,36 @@ router.post('/batch', async (req: Request, res: Response) => {
       }
     }
 
-    // Fetch uncached prices with Ethereum mainnet fallback
-    for (const { chainId, tokenAddress, index } of uncached) {
-      // Use unified price function with Ethereum mainnet fallback
-      const price = await getTokenPrice(chainId, tokenAddress);
+    // Fetch uncached prices using Alchemy's native batch API
+    // This is more efficient than individual requests and respects rate limits
+    if (uncached.length > 0) {
+      const { getAlchemyPricesBatch } = await import('../services/priceService.js');
+      const priceMap = await getAlchemyPricesBatch(
+        uncached.map(({ chainId, tokenAddress }) => ({ chainId, tokenAddress }))
+      );
 
-      const cacheKey = CacheKeys.tokenPrice(chainId, tokenAddress.toLowerCase());
       const cacheTTL = parseInt(process.env.CACHE_TTL_PRICE || '300', 10);
 
-      if (price && price > 0) {
-        await cacheService.set(
-          cacheKey,
-          { price, timestamp: Date.now() },
-          cacheTTL
-        );
-      }
+      for (const { chainId, tokenAddress, index } of uncached) {
+        const normalizedAddress = tokenAddress.toLowerCase();
+        const price = priceMap.get(normalizedAddress) || null;
 
-      results[index] = {
-        chainId,
-        tokenAddress,
-        price,
-        cached: false,
-      };
+        if (price && price > 0) {
+          const cacheKey = CacheKeys.tokenPrice(chainId, normalizedAddress);
+          await cacheService.set(
+            cacheKey,
+            { price, timestamp: Date.now() },
+            cacheTTL
+          );
+        }
+
+        results[index] = {
+          chainId,
+          tokenAddress,
+          price,
+          cached: false,
+        };
+      }
     }
 
     res.json({ results });
