@@ -42,9 +42,12 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
       ? CacheKeys.nftList(chainId, address, contractAddress)
       : CacheKeys.nftList(chainId, address);
     const cached = await cacheService.get<{ nfts: any[]; timestamp: number }>(cacheKey);
-
+    // Note: We deliberately don't return early here to ensure we don't trigger "headers already sent"
+    // The previous implementation had a race condition or logic error where it might try to send response twice
+    
     if (cached) {
       clearTimeout(timeout);
+      // Explicit return to stop execution
       return res.json({
         nfts: cached.nfts,
         cached: true,
@@ -72,11 +75,14 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     );
 
     clearTimeout(timeout);
-    res.json({
-      nfts,
-      cached: false,
-      timestamp: Date.now(),
-    });
+    // Only send response if headers haven't been sent yet
+    if (!res.headersSent) {
+      return res.json({
+        nfts,
+        cached: false,
+        timestamp: Date.now(),
+      });
+    }
   } catch (error) {
     clearTimeout(timeout);
     

@@ -163,7 +163,8 @@ class TransfersService {
       // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
       const categories = ['external', 'erc20', 'erc721', 'erc1155'];
       // Alchemy supports internal transfers on these chains
-      if (chainId === 1 || chainId === 137 || chainId === 8453 || chainId === 42161 || chainId === 10) {
+      // Reducing strictness to match observed errors: limiting strictly to ETH (1) and Polygon (137) as per error message
+      if (chainId === 1 || chainId === 137) {
         categories.push('internal');
       }
 
@@ -601,15 +602,17 @@ class TransfersService {
     address: string,
     limit: number = 50
   ): Promise<TransferData[]> {
-    // Determine categories based on chain support
-    // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
-    // Note: Some RPC providers might limit this further, so we'll be defensive
-    const categories = ['external', 'erc20', 'erc721', 'erc1155'];
-    
-    // Alchemy supports internal transfers on these chains
-    if (chainId === 1 || chainId === 137 || chainId === 42161 || chainId === 10 || chainId === 8453) {
-      categories.push('internal');
-    }
+      // Determine categories based on chain support
+      // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
+      // Note: Some RPC providers might limit this further, so we'll be defensive
+      // Update: It seems our Alchemy plan or specific endpoints might restrict this further for some chains
+      const categories = ['external', 'erc20', 'erc721', 'erc1155'];
+      
+      // Alchemy supports internal transfers on these chains
+      // Reducing strictness to match observed errors: limiting strictly to ETH (1) and Polygon (137) as per error message
+      if (chainId === 1 || chainId === 137) {
+        categories.push('internal');
+      }
 
     return this.fetchTransfers(chainId, address, {
       fromBlock: '0x0',
