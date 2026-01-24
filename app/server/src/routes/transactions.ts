@@ -33,6 +33,7 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
 
     // Cache the result
     // Aligned with refresh interval: 5 minutes (300s) - transactions update more frequently
+    // Using Alchemy Transfers API for fast, comprehensive transaction fetching
     const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '300', 10);
     await cacheService.set(
       cacheKey,
@@ -100,27 +101,30 @@ router.post('/batch', async (req: Request, res: Response) => {
       }
     }
 
-    // Fetch uncached transactions
-    for (const { chainId, address, limit, index } of uncached) {
+    // Fetch uncached transactions in parallel (much faster than sequential)
+    // Using Alchemy Transfers API which is optimized for batch requests
+    const fetchPromises = uncached.map(async ({ chainId, address, limit, index }) => {
       try {
         const transactions = await transfersService.getTransactions(chainId, address, limit);
 
         const cacheKey = CacheKeys.transactions(chainId, address.toLowerCase(), limit);
-        const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '60', 10);
+        const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '300', 10);
         await cacheService.set(
           cacheKey,
           { transactions, timestamp: Date.now() },
           cacheTTL
         );
 
-        results[index] = {
+        return {
+          index,
           chainId,
           address,
           transactions,
           cached: false,
         };
       } catch (error) {
-        results[index] = {
+        return {
+          index,
           chainId,
           address,
           transactions: [],
@@ -128,6 +132,17 @@ router.post('/batch', async (req: Request, res: Response) => {
           error: error instanceof Error ? error.message : 'Unknown error',
         };
       }
+    });
+
+    const fetchResults = await Promise.all(fetchPromises);
+    for (const result of fetchResults) {
+      results[result.index] = {
+        chainId: result.chainId,
+        address: result.address,
+        transactions: result.transactions,
+        cached: result.cached,
+        error: result.error,
+      };
     }
 
     res.json({ results });
