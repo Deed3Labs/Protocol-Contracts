@@ -179,7 +179,7 @@ export async function getUniswapPrice(
         withRetry(() => pool.token1()).then(addr => ethers.getAddress(addr.toLowerCase())),
       ]);
 
-      const price = await getPoolPrice(provider, usdcPoolAddress, token0Address, token1Address);
+      const price = await getPoolPrice(provider, usdcPoolAddress, token0Address, token1Address, chainId);
       if (price > 0 && isFinite(price)) {
         if (token0Address.toLowerCase() === normalizedTokenAddress.toLowerCase()) {
           return 1 / price;
@@ -206,7 +206,7 @@ export async function getUniswapPrice(
         withRetry(() => pool.token1()).then(addr => ethers.getAddress(addr.toLowerCase())),
       ]);
 
-      const tokenWethPrice = await getPoolPrice(provider, wethPoolAddress, token0Address, token1Address);
+      const tokenWethPrice = await getPoolPrice(provider, wethPoolAddress, token0Address, token1Address, chainId);
       if (tokenWethPrice > 0) {
         let wethUsdcPoolAddress: string = ethers.ZeroAddress;
         try {
@@ -224,7 +224,7 @@ export async function getUniswapPrice(
             withRetry(() => wethUsdcPool.token1()).then(addr => ethers.getAddress(addr.toLowerCase())),
           ]);
 
-          const wethUsdcPrice = await getPoolPrice(provider, wethUsdcPoolAddress, wethUsdcToken0, wethUsdcToken1);
+          const wethUsdcPrice = await getPoolPrice(provider, wethUsdcPoolAddress, wethUsdcToken0, wethUsdcToken1, chainId);
           if (wethUsdcPrice > 0 && isFinite(wethUsdcPrice)) {
             let tokenWethRatio: number;
             if (token0Address.toLowerCase() === normalizedTokenAddress.toLowerCase()) {
@@ -465,7 +465,8 @@ async function getPoolPrice(
   provider: ethers.Provider,
   poolAddress: string,
   token0Address: string,
-  token1Address: string
+  token1Address: string,
+  chainId: number
 ): Promise<number> {
   try {
     // Normalize addresses to proper checksum format
@@ -500,11 +501,11 @@ async function getPoolPrice(
     if (decimals0 > decimals1) {
       const decimalDiff = decimals0 - decimals1;
       const decimalFactor = 10n ** BigInt(decimalDiff);
-      adjustedRatio = adjustedRatio / decimalFactor;
+      adjustedRatio = adjustedRatio * decimalFactor;
     } else if (decimals1 > decimals0) {
       const decimalDiff = decimals1 - decimals0;
       const decimalFactor = 10n ** BigInt(decimalDiff);
-      adjustedRatio = adjustedRatio * decimalFactor;
+      adjustedRatio = adjustedRatio / decimalFactor;
     }
 
     if (adjustedRatio === 0n) {
@@ -541,11 +542,18 @@ async function getPoolPrice(
     }
 
     // Validate the result
-    if (!isFinite(price) || price <= 0 || price > 1e10 || price < 1e-10) {
+    if (!isFinite(price) || price <= 0 || price > 1e12 || price < 1e-12) {
       // Log the raw values for debugging
       const ratioString = adjustedRatio.toString();
-      console.error('Price calculation error: invalid price', price, 'raw ratio:', ratioString);
-      return 0;
+      const token0 = new ethers.Contract(normalizedToken0Address, ERC20_ABI, provider);
+      const token1 = new ethers.Contract(normalizedToken1Address, ERC20_ABI, provider);
+      const [symbol0, symbol1] = await Promise.all([
+        token0.symbol().catch(() => 'UNK'),
+        token1.symbol().catch(() => 'UNK'),
+      ]);
+      console.warn(`[PriceService] Suspicious price for ${symbol0}/${symbol1} (${chainId}):`, price, 'raw ratio:', ratioString);
+      // Don't return 0 if it's just very small/large, but keep the warning
+      if (!isFinite(price) || price <= 0) return 0;
     }
 
     return price;
