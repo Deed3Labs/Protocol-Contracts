@@ -71,6 +71,123 @@ export async function getTokenPrice(
 }
 
 /**
+ * Get token prices from Alchemy Prices API by address (supports batch)
+ * https://www.alchemy.com/docs/reference/get-token-prices-by-address
+ * 
+ * @param requests - Array of { chainId, tokenAddress } to fetch prices for
+ * @returns Map of tokenAddress -> price (normalized to lowercase)
+ */
+export async function getAlchemyPricesBatch(
+  requests: Array<{ chainId: number; tokenAddress: string }>
+): Promise<Map<string, number>> {
+  const priceMap = new Map<string, number>();
+  
+  if (requests.length === 0) {
+    return priceMap;
+  }
+
+  try {
+    const apiUrl = getAlchemyPricesApiUrl();
+    const apiKey = getAlchemyApiKey();
+
+    if (!apiUrl || !apiKey) {
+      return priceMap;
+    }
+
+    // Group requests by network (chainId -> networkName)
+    const requestsByNetwork = new Map<string, Array<{ address: string; originalRequest: { chainId: number; tokenAddress: string } }>>();
+    
+    for (const { chainId, tokenAddress } of requests) {
+      const networkName = getAlchemyNetworkName(chainId);
+      if (!networkName) continue;
+
+      const normalizedAddress = ethers.getAddress(tokenAddress.toLowerCase());
+      const key = `${networkName}`;
+      
+      if (!requestsByNetwork.has(key)) {
+        requestsByNetwork.set(key, []);
+      }
+      requestsByNetwork.get(key)!.push({
+        address: normalizedAddress,
+        originalRequest: { chainId, tokenAddress },
+      });
+    }
+
+    // Fetch prices for each network in parallel (but batch addresses per network)
+    const fetchPromises = Array.from(requestsByNetwork.entries()).map(async ([networkName, addressList]) => {
+      try {
+        // Alchemy Prices API supports batching multiple addresses in one request
+        const response = await fetch(`${apiUrl}/tokens/by-address`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            addresses: addressList.map(item => ({
+              network: networkName,
+              address: item.address,
+            })),
+          }),
+        });
+
+        if (!response.ok) {
+          return new Map<string, number>();
+        }
+
+        const data = await response.json() as {
+          data?: Array<{
+            address?: string;
+            network?: string;
+            prices?: Array<{
+              currency: string;
+              value: string;
+              lastUpdatedAt: string;
+            }>;
+            error?: string | null;
+          }>;
+        };
+
+        const networkPriceMap = new Map<string, number>();
+        if (data.data) {
+          for (let i = 0; i < data.data.length; i++) {
+            const tokenData = data.data[i];
+            const originalRequest = addressList[i]?.originalRequest;
+            
+            if (!originalRequest || tokenData.error || !tokenData.prices || tokenData.prices.length === 0) {
+              continue;
+            }
+
+            const usdPrice = tokenData.prices.find(p => p.currency === 'USD') || tokenData.prices[0];
+            if (usdPrice?.value) {
+              const price = parseFloat(usdPrice.value);
+              if (price && price > 0 && isFinite(price)) {
+                networkPriceMap.set(originalRequest.tokenAddress.toLowerCase(), price);
+              }
+            }
+          }
+        }
+        
+        return networkPriceMap;
+      } catch (error) {
+        return new Map<string, number>();
+      }
+    });
+
+    const networkResults = await Promise.all(fetchPromises);
+    for (const networkMap of networkResults) {
+      for (const [address, price] of networkMap.entries()) {
+        priceMap.set(address, price);
+      }
+    }
+
+    return priceMap;
+  } catch (error) {
+    return priceMap;
+  }
+}
+
+/**
  * Get token price from Alchemy Prices API by address
  * https://www.alchemy.com/docs/reference/get-token-prices-by-address
  */
@@ -90,7 +207,7 @@ async function getAlchemyPriceByAddress(
     // Normalize address
     const normalizedAddress = ethers.getAddress(tokenAddress.toLowerCase());
 
-    // Alchemy Prices API by address endpoint
+    // Alchemy Prices API by address endpoint (supports single or batch)
     const response = await fetch(`${apiUrl}/tokens/by-address`, {
       method: 'POST',
       headers: {

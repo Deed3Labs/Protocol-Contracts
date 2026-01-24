@@ -98,17 +98,22 @@ router.post('/batch', async (req: Request, res: Response) => {
       }
     }
 
-    // Fetch uncached prices in parallel (much faster than sequential)
-    // Using Alchemy Prices API which is optimized for batch requests
-    const fetchPromises = uncached.map(async ({ chainId, tokenAddress, index }) => {
-      try {
-        // Use Alchemy Prices API (optimized service)
-        const price = await getTokenPrice(chainId, tokenAddress);
+    // Fetch uncached prices using Alchemy's native batch API
+    // This is more efficient than individual requests and respects rate limits
+    if (uncached.length > 0) {
+      const { getAlchemyPricesBatch } = await import('../services/priceService.js');
+      const priceMap = await getAlchemyPricesBatch(
+        uncached.map(({ chainId, tokenAddress }) => ({ chainId, tokenAddress }))
+      );
 
-        const cacheKey = CacheKeys.tokenPrice(chainId, tokenAddress.toLowerCase());
-        const cacheTTL = parseInt(process.env.CACHE_TTL_PRICE || '300', 10);
+      const cacheTTL = parseInt(process.env.CACHE_TTL_PRICE || '300', 10);
+
+      for (const { chainId, tokenAddress, index } of uncached) {
+        const normalizedAddress = tokenAddress.toLowerCase();
+        const price = priceMap.get(normalizedAddress) || null;
 
         if (price && price > 0) {
+          const cacheKey = CacheKeys.tokenPrice(chainId, normalizedAddress);
           await cacheService.set(
             cacheKey,
             { price, timestamp: Date.now() },
@@ -116,32 +121,13 @@ router.post('/batch', async (req: Request, res: Response) => {
           );
         }
 
-        return {
-          index,
+        results[index] = {
           chainId,
           tokenAddress,
           price,
           cached: false,
         };
-      } catch (error) {
-        return {
-          index,
-          chainId,
-          tokenAddress,
-          price: null,
-          cached: false,
-        };
       }
-    });
-
-    const fetchResults = await Promise.all(fetchPromises);
-    for (const result of fetchResults) {
-      results[result.index] = {
-        chainId: result.chainId,
-        tokenAddress: result.tokenAddress,
-        price: result.price,
-        cached: result.cached,
-      };
     }
 
     res.json({ results });

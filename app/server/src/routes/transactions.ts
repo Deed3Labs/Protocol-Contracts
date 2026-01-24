@@ -101,9 +101,10 @@ router.post('/batch', async (req: Request, res: Response) => {
       }
     }
 
-    // Fetch uncached transactions in parallel (much faster than sequential)
-    // Using Alchemy Transfers API which is optimized for batch requests
-    const fetchPromises = uncached.map(async ({ chainId, address, limit, index }) => {
+    // Fetch uncached transactions sequentially to respect Alchemy rate limits
+    // Alchemy Transfers API doesn't support true batching, so we process one at a time
+    // with a small delay between requests to avoid rate limiting
+    for (const { chainId, address, limit, index } of uncached) {
       try {
         const transactions = await transfersService.getTransactions(chainId, address, limit);
 
@@ -115,16 +116,19 @@ router.post('/batch', async (req: Request, res: Response) => {
           cacheTTL
         );
 
-        return {
-          index,
+        results[index] = {
           chainId,
           address,
           transactions,
           cached: false,
         };
+
+        // Small delay between requests to avoid rate limiting (100ms = ~10 req/sec)
+        if (index < uncached.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       } catch (error) {
-        return {
-          index,
+        results[index] = {
           chainId,
           address,
           transactions: [],
@@ -132,17 +136,6 @@ router.post('/batch', async (req: Request, res: Response) => {
           error: error instanceof Error ? error.message : 'Unknown error',
         };
       }
-    });
-
-    const fetchResults = await Promise.all(fetchPromises);
-    for (const result of fetchResults) {
-      results[result.index] = {
-        chainId: result.chainId,
-        address: result.address,
-        transactions: result.transactions,
-        cached: result.cached,
-        error: result.error,
-      };
     }
 
     res.json({ results });
