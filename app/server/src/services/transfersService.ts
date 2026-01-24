@@ -171,7 +171,7 @@ class TransfersService {
    * Fetch transfers using Alchemy Transfers API
    * https://www.alchemy.com/docs/reference/transfers-api-quickstart
    */
-  private async fetchTransfers(
+  async fetchTransfers(
     chainId: number,
     address: string,
     options: {
@@ -365,6 +365,121 @@ class TransfersService {
       excludeZeroValue: false,
       category: ['external', 'erc20', 'erc721', 'erc1155', 'internal'],
     });
+  }
+
+  /**
+   * Get transactions for an address on a chain (formatted for REST API)
+   * Converts transfers to TransactionData format for backward compatibility
+   * This is used by routes/transactions.ts
+   */
+  async getTransactions(
+    chainId: number,
+    address: string,
+    limit: number = 20
+  ): Promise<Array<{
+    id: string;
+    type: string;
+    assetSymbol: string;
+    amount: number;
+    currency: string;
+    date: string;
+    status: string;
+    hash: string;
+    from?: string;
+    to?: string;
+    timestamp: number;
+  }>> {
+    try {
+      // Fetch transfers using Alchemy Transfers API
+      const transfers = await this.fetchTransfers(chainId, address, {
+        fromBlock: '0x0',
+        toBlock: 'latest',
+        maxCount: limit * 2, // Get more than needed to filter and sort
+        excludeZeroValue: false,
+        category: ['external', 'erc20', 'erc721', 'erc1155', 'internal'],
+      });
+
+      if (transfers.length === 0) {
+        return [];
+      }
+
+      // Convert Alchemy transfers to TransactionData format
+      const transactions = transfers
+        .map(transfer => {
+          try {
+            // Determine transaction type (must match WalletTransaction type)
+            // Valid types: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'mint' | 'trade' | 'transfer' | 'contract'
+            let type: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'mint' | 'trade' | 'transfer' | 'contract' = 'transfer';
+            const isFromAddress = transfer.from.toLowerCase() === address.toLowerCase();
+            const isToAddress = transfer.to.toLowerCase() === address.toLowerCase();
+            const value = transfer.value || 0;
+
+            if (isFromAddress && value > 0) {
+              type = 'withdraw';
+            } else if (isToAddress && value > 0) {
+              type = 'deposit';
+            } else if (transfer.category === 'ERC721' || transfer.category === 'ERC1155') {
+              // NFT transfers - use 'mint' for incoming, 'transfer' for outgoing
+              type = isToAddress ? 'mint' : 'transfer';
+            } else if (transfer.category === 'ERC20') {
+              // Token transfers - use 'trade' for swaps, 'transfer' for simple transfers
+              type = 'transfer';
+            } else if (transfer.category === 'INTERNAL') {
+              type = 'contract';
+            } else if (transfer.category === 'EXTERNAL') {
+              // External ETH transfers
+              if (isFromAddress && value > 0) {
+                type = 'withdraw';
+              } else if (isToAddress && value > 0) {
+                type = 'deposit';
+              } else {
+                type = 'transfer';
+              }
+            }
+
+            // Get asset symbol
+            let assetSymbol = 'ETH';
+            let currency = 'ETH';
+            if (transfer.rawContract?.symbol) {
+              assetSymbol = transfer.rawContract.symbol;
+              currency = transfer.rawContract.symbol;
+            } else if (transfer.category === 'ERC20' || transfer.category === 'ERC721' || transfer.category === 'ERC1155') {
+              assetSymbol = transfer.asset || 'TOKEN';
+              currency = transfer.asset || 'TOKEN';
+            }
+
+            // Get timestamp
+            const timestamp = transfer.metadata?.blockTimestamp 
+              ? new Date(transfer.metadata.blockTimestamp).getTime()
+              : Date.now();
+
+            return {
+              id: `${chainId}-${transfer.hash}`,
+              type,
+              assetSymbol,
+              amount: value,
+              currency,
+              date: new Date(timestamp).toISOString(),
+              status: 'completed', // Alchemy only returns confirmed transfers
+              hash: transfer.hash,
+              from: transfer.from,
+              to: transfer.to,
+              timestamp,
+            };
+          } catch (error) {
+            console.error(`[TransfersService] Error converting transfer:`, error);
+            return null;
+          }
+        })
+        .filter((tx): tx is NonNullable<typeof tx> => tx !== null);
+
+      // Sort by timestamp (newest first) and limit
+      transactions.sort((a, b) => b.timestamp - a.timestamp);
+      return transactions.slice(0, limit);
+    } catch (error) {
+      console.error(`[TransfersService] Error fetching transactions for ${address} on chain ${chainId}:`, error);
+      return [];
+    }
   }
 
   /**

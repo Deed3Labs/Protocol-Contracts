@@ -3,7 +3,6 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { getBalance } from './balanceService.js';
 import { getDeedNFTs } from './nftService.js';
-import { getTransactions } from './transactionService.js';
 import { getTokenPrice } from './priceService.js';
 import { transfersService } from './transfersService.js';
 
@@ -328,7 +327,7 @@ class WebSocketService {
             timestamp: cached.timestamp,
           });
         } else {
-          const result = await getTransactions(chainId, address, 20);
+          const result = await transfersService.getTransactions(chainId, address, 20);
           const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '60', 10);
           await cacheService.set(
             cacheKey,
