@@ -19,22 +19,36 @@ interface ApiResponse<T> {
   timestamp?: number;
 }
 
+interface RequestInitWithTimeout extends RequestInit {
+  timeout?: number; // Custom timeout in milliseconds (overrides default 30s)
+}
+
 /**
  * Generic API request function
  * Handles errors gracefully, including HTML responses (server down, wrong endpoint, etc.)
+ * Includes timeout and abort handling to prevent resource exhaustion
  */
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInitWithTimeout = {}
 ): Promise<ApiResponse<T>> {
+  // Create abort controller for timeout
+  const timeoutController = new AbortController();
+  const timeoutMs = options.timeout || 30000; // Default 30 seconds, longer for NFT requests
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+
   try {
+    const { timeout: _, ...fetchOptions } = options; // Remove timeout from fetch options
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
+      ...fetchOptions,
+      signal: timeoutController.signal, // Use timeout signal (user signal will be ignored if provided)
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
       },
     });
+
+    clearTimeout(timeoutId);
 
     // Check if response is actually JSON before trying to parse
     const contentType = response.headers.get('content-type');
@@ -70,6 +84,15 @@ async function apiRequest<T>(
     const data = await response.json();
     return { data: data as T, cached: data.cached, timestamp: data.timestamp };
   } catch (error) {
+    clearTimeout(timeoutId);
+    
+    // Handle abort errors gracefully
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        error: 'Request timeout - the server took too long to respond',
+      };
+    }
+    
     // Log errors in development and production for debugging
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
@@ -172,15 +195,35 @@ export async function getBalancesBatch(
 
 /**
  * Get NFTs from server
+ * 
+ * @param chainId - Chain ID
+ * @param address - User address
+ * @param contractAddress - Optional contract address. If provided with type='general', fetches general NFTs.
+ *                          If not provided, fetches T-Deeds (DeedNFT protocol contracts).
+ * @param type - Optional. 't-deed' or 'general'. Defaults based on contractAddress.
  */
 export async function getNFTs(
   chainId: number,
   address: string,
-  contractAddress?: string
+  contractAddress?: string,
+  type?: 't-deed' | 'general'
 ): Promise<{ nfts: any[]; cached: boolean } | null> {
-  const query = contractAddress ? `?contractAddress=${contractAddress}` : '';
+  const params = new URLSearchParams();
+  if (contractAddress) {
+    params.append('contractAddress', contractAddress);
+  }
+  if (type) {
+    params.append('type', type);
+  }
+  // Note: If contractAddress is provided but no type, server will default based on contractAddress
+  // For T-Deeds, explicitly pass type='t-deed'
+  // For general NFTs, explicitly pass type='general'
+  
+  const query = params.toString() ? `?${params.toString()}` : '';
+  // NFT requests can take longer, use 60 second timeout
   const response = await apiRequest<{ nfts: any[]; cached: boolean }>(
-    `/api/nfts/${chainId}/${address}${query}`
+    `/api/nfts/${chainId}/${address}${query}`,
+    { timeout: 60000 }
   );
 
   if (response.error || !response.data) {
@@ -196,11 +239,13 @@ export async function getNFTs(
 export async function getNFTsBatch(
   requests: Array<{ chainId: number; address: string; contractAddress?: string }>
 ): Promise<Array<{ chainId: number; address: string; nfts: any[]; cached: boolean; error?: string }>> {
+  // Batch NFT requests can take even longer, use 90 second timeout
   const response = await apiRequest<{
     results: Array<{ chainId: number; address: string; nfts: any[]; cached: boolean; error?: string }>;
   }>('/api/nfts/batch', {
     method: 'POST',
     body: JSON.stringify({ requests }),
+    timeout: 90000, // 90 seconds for batch requests
   });
 
   if (response.error || !response.data) {
@@ -289,6 +334,51 @@ export async function getTokenBalancesBatch(
 
   if (response.error || !response.data) {
     return requests.map((r) => ({ ...r, data: null, cached: false }));
+  }
+
+  return response.data.results;
+}
+
+/**
+ * Get ALL ERC20 token balances for an address using Alchemy API
+ * This is more efficient than checking individual tokens
+ */
+export async function getAllTokenBalances(
+  chainId: number,
+  userAddress: string
+): Promise<Array<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string }>> {
+  const response = await apiRequest<{
+    tokens: Array<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string }>;
+    cached: boolean;
+    timestamp: number;
+    fallback?: string;
+  }>(`/api/token-balances/all/${chainId}/${userAddress}`, {
+    timeout: 30000, // 30 second timeout for fetching all tokens
+  });
+
+  if (response.error || !response.data) {
+    return [];
+  }
+
+  return response.data.tokens || [];
+}
+
+/**
+ * Get ALL token balances for multiple chains in batch
+ */
+export async function getAllTokenBalancesBatch(
+  requests: Array<{ chainId: number; userAddress: string }>
+): Promise<Array<{ chainId: number; userAddress: string; tokens: Array<{ address: string; symbol: string; name: string; decimals: number; balance: string; balanceRaw: string }>; cached: boolean; error?: string }>> {
+  const response = await apiRequest<{
+    results: Array<{ chainId: number; userAddress: string; tokens: any[]; cached: boolean; error?: string }>;
+  }>('/api/token-balances/all/batch', {
+    method: 'POST',
+    body: JSON.stringify({ requests }),
+    timeout: 60000, // 60 second timeout for batch fetching all tokens
+  });
+
+  if (response.error || !response.data) {
+    return requests.map((r) => ({ ...r, tokens: [], cached: false }));
   }
 
   return response.data.results;

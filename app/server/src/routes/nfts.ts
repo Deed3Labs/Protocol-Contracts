@@ -1,26 +1,50 @@
 import { Router, Request, Response } from 'express';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
-import { getDeedNFTs } from '../services/nftService.js';
+import { getDeedNFTs, getGeneralNFTs } from '../services/nftService.js';
 
 const router = Router();
 const cacheServicePromise = getRedisClient().then((client) => new CacheService(client));
 
 /**
  * GET /api/nfts/:chainId/:address
- * Get DeedNFTs for an address with caching
+ * Get NFTs for an address with caching
+ * 
+ * Query parameters:
+ * - contractAddress: Optional. If provided, fetches general ERC721 NFTs from that contract.
+ *                     If not provided, fetches T-Deeds (DeedNFT protocol contracts).
+ * - type: Optional. 't-deed' or 'general'. Defaults to 't-deed' if contractAddress not provided.
  */
 router.get('/:chainId/:address', async (req: Request, res: Response) => {
+  // Set timeout for this request (60 seconds)
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({
+        error: 'Request timeout',
+        message: 'NFT fetch took too long',
+      });
+    }
+  }, 60000);
+
+  // Handle request abort
+  req.on('close', () => {
+    clearTimeout(timeout);
+  });
+
   try {
     const chainId = parseInt(req.params.chainId, 10);
     const address = req.params.address.toLowerCase();
     const contractAddress = req.query.contractAddress as string | undefined;
+    const nftType = (req.query.type as string) || (contractAddress ? 'general' : 't-deed');
     const cacheService = await cacheServicePromise;
 
     // Check cache first
-    const cacheKey = CacheKeys.nftList(chainId, address);
+    const cacheKey = contractAddress 
+      ? CacheKeys.nftList(chainId, address, contractAddress)
+      : CacheKeys.nftList(chainId, address);
     const cached = await cacheService.get<{ nfts: any[]; timestamp: number }>(cacheKey);
 
     if (cached) {
+      clearTimeout(timeout);
       return res.json({
         nfts: cached.nfts,
         cached: true,
@@ -29,7 +53,14 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     }
 
     // Fetch from blockchain
-    const nfts = await getDeedNFTs(chainId, address, contractAddress);
+    let nfts: any[];
+    if (contractAddress && nftType === 'general') {
+      // Fetch general ERC721 NFTs from specified contract
+      nfts = await getGeneralNFTs(chainId, address, contractAddress);
+    } else {
+      // Fetch T-Deeds (protocol-controlled DeedNFT contracts)
+      nfts = await getDeedNFTs(chainId, address, contractAddress);
+    }
 
     // Cache the result
     const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '600', 10);
@@ -39,17 +70,28 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
       cacheTTL
     );
 
+    clearTimeout(timeout);
     res.json({
       nfts,
       cached: false,
       timestamp: Date.now(),
     });
   } catch (error) {
+    clearTimeout(timeout);
+    
+    // Handle request abort gracefully
+    if (error instanceof Error && (error.message.includes('aborted') || error.message.includes('ECONNABORTED'))) {
+      // Request was aborted by client - don't log as error
+      return;
+    }
+    
     console.error('NFT fetch error:', error);
-    res.status(500).json({
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 });
 
@@ -59,12 +101,28 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
  * Body: { requests: [{ chainId, address, contractAddress? }] }
  */
 router.post('/batch', async (req: Request, res: Response) => {
+  // Set timeout for batch requests (90 seconds)
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({
+        error: 'Request timeout',
+        message: 'Batch NFT fetch took too long',
+      });
+    }
+  }, 90000);
+
+  // Handle request abort
+  req.on('close', () => {
+    clearTimeout(timeout);
+  });
+
   try {
     const { requests } = req.body as {
       requests: Array<{ chainId: number; address: string; contractAddress?: string }>;
     };
 
     if (!Array.isArray(requests) || requests.length === 0) {
+      clearTimeout(timeout);
       return res.status(400).json({
         error: 'Invalid request',
         message: 'requests must be a non-empty array',
@@ -102,9 +160,19 @@ router.post('/batch', async (req: Request, res: Response) => {
     // Fetch uncached NFTs
     for (const { chainId, address, contractAddress, index } of uncached) {
       try {
-        const nfts = await getDeedNFTs(chainId, address, contractAddress);
+        // Determine if this is a general NFT request or T-Deed request
+        const nftType = contractAddress ? 'general' : 't-deed';
+        let nfts: any[];
+        
+        if (contractAddress && nftType === 'general') {
+          // Fetch general ERC721 NFTs from specified contract
+          nfts = await getGeneralNFTs(chainId, address, contractAddress);
+        } else {
+          // Fetch T-Deeds (protocol-controlled DeedNFT contracts)
+          nfts = await getDeedNFTs(chainId, address, contractAddress);
+        }
 
-        const cacheKey = CacheKeys.nftList(chainId, address.toLowerCase());
+        const cacheKey = CacheKeys.nftList(chainId, address.toLowerCase(), contractAddress);
         const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '600', 10);
         await cacheService.set(
           cacheKey,
@@ -129,13 +197,24 @@ router.post('/batch', async (req: Request, res: Response) => {
       }
     }
 
+    clearTimeout(timeout);
     res.json({ results });
   } catch (error) {
+    clearTimeout(timeout);
+    
+    // Handle request abort gracefully
+    if (error instanceof Error && (error.message.includes('aborted') || error.message.includes('ECONNABORTED'))) {
+      // Request was aborted by client - don't log as error
+      return;
+    }
+    
     console.error('Batch NFT fetch error:', error);
-    res.status(500).json({
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 });
 
