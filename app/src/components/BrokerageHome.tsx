@@ -235,7 +235,7 @@ export default function BrokerageHome() {
   const [selectedRange, setSelectedRange] = useState('1D');
   const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'RWAs' | 'NFTs' | 'Tokens'>('All');
   const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
-  const [showZeroValueAssets, setShowZeroValueAssets] = useState(true); // Show assets with $0 value by default
+  const [showZeroValueAssets, setShowZeroValueAssets] = useState(false); // Hide assets with $0 value by default
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
