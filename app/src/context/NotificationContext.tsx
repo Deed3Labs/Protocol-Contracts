@@ -3,6 +3,7 @@ import { useAppKitAccount } from '@reown/appkit/react';
 import { useDeedNFTData } from '@/hooks/useDeedNFTData';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useAppBadge } from '@/hooks/useAppBadge';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 export interface Notification {
   id: string;
@@ -56,6 +57,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   const { address, isConnected } = useAppKitAccount();
   const { showNotification, requestPermission } = usePushNotifications();
   const { setBadge } = useAppBadge();
+  const { socket, isConnected: wsConnected } = useWebSocket(address, isConnected);
   
   // Get user's T-Deed data - simple and direct
   let userDeedNFTs: any[] = [];
@@ -298,6 +300,65 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       requestPermission();
     }
   }, [isConnected, requestPermission]);
+
+  // Listen to WebSocket events for transfer notifications
+  useEffect(() => {
+    if (!socket || !wsConnected || !address) return;
+
+    const handleTransferReceived = (data: any) => {
+      const transfer = data.transfer;
+      const asset = transfer.asset || 'asset';
+      const value = transfer.value ? `${transfer.value} ${asset}` : asset;
+      
+      addNotification({
+        type: 'success',
+        title: 'Transfer Received',
+        message: `You received ${value} on chain ${data.chainId}`,
+        action: transfer.hash ? {
+          label: 'View Transaction',
+          onClick: () => {
+            // Navigate to transaction details if available
+            window.open(`https://etherscan.io/tx/${transfer.hash}`, '_blank');
+          }
+        } : undefined
+      });
+    };
+
+    const handleTransferSent = (data: any) => {
+      const transfer = data.transfer;
+      const asset = transfer.asset || 'asset';
+      const value = transfer.value ? `${transfer.value} ${asset}` : asset;
+      
+      addNotification({
+        type: 'info',
+        title: 'Transfer Sent',
+        message: `You sent ${value} on chain ${data.chainId}`,
+        action: transfer.hash ? {
+          label: 'View Transaction',
+          onClick: () => {
+            // Navigate to transaction details if available
+            window.open(`https://etherscan.io/tx/${transfer.hash}`, '_blank');
+          }
+        } : undefined
+      });
+    };
+
+    const handleBalanceUpdate = (data: any) => {
+      // Only notify for significant balance changes, not every update
+      // This prevents notification spam
+      console.log('[NotificationContext] Balance update received:', data);
+    };
+
+    socket.on('transfer_received', handleTransferReceived);
+    socket.on('transfer_sent', handleTransferSent);
+    socket.on('balance_update', handleBalanceUpdate);
+
+    return () => {
+      socket.off('transfer_received', handleTransferReceived);
+      socket.off('transfer_sent', handleTransferSent);
+      socket.off('balance_update', handleBalanceUpdate);
+    };
+  }, [socket, wsConnected, address, addNotification]);
 
   const value: NotificationContextType = {
     notifications,

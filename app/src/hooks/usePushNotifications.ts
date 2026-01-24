@@ -153,16 +153,56 @@ export function usePushNotifications() {
       });
     };
 
+    const handleTransferReceived = (data: any) => {
+      const transfer = data.transfer;
+      const asset = transfer.asset || 'asset';
+      const value = transfer.value ? `${transfer.value} ${asset}` : asset;
+      showNotification({
+        title: 'Transfer Received',
+        body: `You received ${value}`,
+        tag: `transfer-${transfer.hash}`,
+        data: {
+          ...data,
+          type: 'transfer',
+          hash: transfer.hash,
+          chainId: data.chainId
+        },
+        requireInteraction: false
+      });
+    };
+
+    const handleTransferSent = (data: any) => {
+      const transfer = data.transfer;
+      const asset = transfer.asset || 'asset';
+      const value = transfer.value ? `${transfer.value} ${asset}` : asset;
+      showNotification({
+        title: 'Transfer Sent',
+        body: `You sent ${value}`,
+        tag: `transfer-${transfer.hash}`,
+        data: {
+          ...data,
+          type: 'transfer',
+          hash: transfer.hash,
+          chainId: data.chainId
+        },
+        requireInteraction: false
+      });
+    };
+
     socket.on('balance_update', handleBalanceUpdate);
     socket.on('transaction_update', handleTransactionUpdate);
     socket.on('nft_update', handleNFTUpdate);
     socket.on('price_update', handlePriceUpdate);
+    socket.on('transfer_received', handleTransferReceived);
+    socket.on('transfer_sent', handleTransferSent);
 
     return () => {
       socket.off('balance_update', handleBalanceUpdate);
       socket.off('transaction_update', handleTransactionUpdate);
       socket.off('nft_update', handleNFTUpdate);
       socket.off('price_update', handlePriceUpdate);
+      socket.off('transfer_received', handleTransferReceived);
+      socket.off('transfer_sent', handleTransferSent);
     };
   }, [socket, wsConnected, permission, showNotification]);
 
