@@ -25,4 +25,6 @@ export default defineConfig({
       },
     },
   },
+  // Service Worker configuration
+  publicDir: 'public',
 })

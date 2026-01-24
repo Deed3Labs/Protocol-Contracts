@@ -1,4 +1,5 @@
 import express from 'express';
+import { createServer } from 'http';
 import cors from 'cors';
 import compression from 'compression';
 import dotenv from 'dotenv';
@@ -10,10 +11,13 @@ import tokenBalancesRouter from './routes/tokenBalances.js';
 import nftsRouter from './routes/nfts.js';
 import transactionsRouter from './routes/transactions.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
+import { websocketService } from './services/websocketService.js';
+import { eventListenerService } from './services/eventListenerService.js';
 
 dotenv.config();
 
 const app = express();
+const httpServer = createServer(app);
 const PORT: number = parseInt(process.env.PORT || '3001', 10);
 
 // Middleware
@@ -160,20 +164,29 @@ async function startServer() {
       });
     });
 
+    // Initialize WebSocket server
+    websocketService.initialize(httpServer);
+
+    // Initialize blockchain event listeners
+    eventListenerService.initialize().catch((error) => {
+      console.error('⚠️ Event listeners failed to start:', error);
+    });
+
     // Start background jobs (non-blocking)
     startPriceUpdater().catch((error) => {
       console.error('⚠️ Background jobs failed to start:', error);
     });
 
-    // Start Express server
+    // Start HTTP server (Express + WebSocket)
     // Bind to 0.0.0.0 to accept connections from Railway/external hosts
     // IMPORTANT: Routes are registered BEFORE server starts listening
-    app.listen(PORT, '0.0.0.0', () => {
+    httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🌐 CORS enabled for: ${process.env.CORS_ORIGIN || 'all origins (*)'}`);
       console.log(`🌍 Listening on: 0.0.0.0:${PORT}`);
       console.log(`✅ All routes are ready to handle requests`);
+      console.log(`✅ WebSocket server ready for real-time updates`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
@@ -184,12 +197,16 @@ async function startServer() {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
+  eventListenerService.cleanup();
+  websocketService.cleanup();
   await closeRedisConnection();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully...');
+  eventListenerService.cleanup();
+  websocketService.cleanup();
   await closeRedisConnection();
   process.exit(0);
 });

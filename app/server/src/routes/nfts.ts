@@ -63,6 +63,7 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     }
 
     // Cache the result
+    // Aligned with refresh interval: 10 minutes (600s) - NFTs change less frequently
     const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '600', 10);
     await cacheService.set(
       cacheKey,

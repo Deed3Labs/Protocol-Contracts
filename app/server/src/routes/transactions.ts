@@ -32,7 +32,8 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     const transactions = await getTransactions(chainId, address, limit);
 
     // Cache the result
-    const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '60', 10);
+    // Aligned with refresh interval: 5 minutes (300s) - transactions update more frequently
+    const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '300', 10);
     await cacheService.set(
       cacheKey,
       { transactions, timestamp: Date.now() },
