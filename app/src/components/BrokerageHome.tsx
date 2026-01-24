@@ -85,10 +85,10 @@ const NFTHoldingItem = ({ holding, deed, chainId, chainName }: { holding: Holdin
           <span className="font-bold text-xs text-black dark:text-white">N</span>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
             {displayChainName && (
-              <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 bg-transparent">
+              <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 bg-transparent font-normal leading-tight">
                 {displayChainName}
               </Badge>
             )}
@@ -731,10 +731,10 @@ export default function BrokerageHome() {
                                               </span>
                                             </div>
                                             <div className="min-w-0 flex-1">
-                                              <div className="flex items-center gap-2">
+                                              <div className="flex items-center gap-1.5">
                                                 <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
                                                 {chainName && (
-                                                  <Badge variant="outline" className="text-xs px-1.5 py-0 h-5 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 bg-transparent">
+                                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 bg-transparent font-normal leading-tight">
                                                     {chainName}
                                                   </Badge>
                                                 )}
