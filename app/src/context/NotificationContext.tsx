@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useDeedNFTData } from '@/hooks/useDeedNFTData';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { useAppBadge } from '@/hooks/useAppBadge';
 
 export interface Notification {
   id: string;
@@ -52,6 +54,8 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [archivedNotifications, setArchivedNotifications] = useState<Notification[]>([]);
   const { address, isConnected } = useAppKitAccount();
+  const { showNotification, requestPermission } = usePushNotifications();
+  const { setBadge } = useAppBadge();
   
   // Get user's T-Deed data - simple and direct
   let userDeedNFTs: any[] = [];
@@ -221,7 +225,21 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       archived: false,
     };
     setNotifications(prev => [newNotification, ...prev]);
-  }, []);
+
+    // Show push notification for important notifications
+    if (notification.type === 'error' || notification.type === 'warning' || notification.type === 'success') {
+      showNotification({
+        title: notification.title,
+        body: notification.message,
+        tag: `notification-${newNotification.id}`,
+        data: {
+          notificationId: newNotification.id,
+          type: notification.type,
+        },
+        requireInteraction: notification.type === 'error',
+      });
+    }
+  }, [showNotification]);
 
   const markAsRead = useCallback((id: string) => {
     setNotifications(prev =>
@@ -268,6 +286,18 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   }, []);
 
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  // Update app badge when unread count changes
+  useEffect(() => {
+    setBadge(unreadCount > 0 ? unreadCount : null);
+  }, [unreadCount, setBadge]);
+
+  // Request notification permission on mount
+  useEffect(() => {
+    if (isConnected) {
+      requestPermission();
+    }
+  }, [isConnected, requestPermission]);
 
   const value: NotificationContextType = {
     notifications,

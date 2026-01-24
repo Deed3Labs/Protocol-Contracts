@@ -28,6 +28,9 @@ import Faucet from "@/components/Faucet";
 import BurnerBondPage from "@/components/BurnerBondPage";
 import PullToRefresh from "@/components/ui/PullToRefresh";
 import ScrollToTop from "@/components/ScrollToTop";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
+import { ShareTarget } from "@/pages/ShareTarget";
+import { PWAInitializer } from "@/components/PWAInitializer";
 
 const LegacyLayout = () => {
   return (
@@ -119,9 +122,15 @@ function App() {
                   {showSplash && <SplashScreen />}
                 </AnimatePresence>
                 
+                <OfflineIndicator />
+                <PWAInitializer />
+                
                 <Routes>
               {/* Login Page - Public */}
               <Route path="/login" element={<LoginPage />} />
+              
+              {/* Share Target - Public */}
+              <Route path="/share" element={<ShareTarget />} />
               
               {/* App Routes wrapped in PullToRefresh Layout - Protected */}
               {/* Pass true if splash was skipped OR if splash just finished */}
