@@ -273,65 +273,114 @@ class TransfersService {
     try {
       // Validate and normalize block parameters
       // Alchemy expects hex strings (0x...) or 'latest' for block numbers
-      let fromBlock = options.fromBlock || 'latest';
-      let toBlock = options.toBlock || 'latest';
+      // CRITICAL: Never pass numbers - always convert to hex strings
+      let fromBlock: string = 'latest';
+      let toBlock: string = 'latest';
       
-      // Ensure fromBlock is valid hex string or 'latest'
-      if (fromBlock !== 'latest') {
-        if (typeof fromBlock === 'string') {
-          if (!fromBlock.startsWith('0x')) {
-            // Try to convert decimal string to hex
-            const blockNum = parseInt(fromBlock, 10);
+      // Normalize fromBlock - handle all possible input types
+      if (options.fromBlock !== undefined && options.fromBlock !== null) {
+        if (typeof options.fromBlock === 'string') {
+          const trimmed = options.fromBlock.trim();
+          if (trimmed === 'latest' || trimmed === 'earliest' || trimmed === 'pending') {
+            fromBlock = trimmed;
+          } else if (trimmed.startsWith('0x')) {
+            // Validate hex string
+            const blockNum = parseInt(trimmed, 16);
             if (!isNaN(blockNum) && blockNum >= 0) {
-              fromBlock = `0x${blockNum.toString(16)}`;
+              fromBlock = trimmed.toLowerCase();
             } else {
-              console.warn(`[TransfersService] Invalid fromBlock format: ${fromBlock}, using 'latest'`);
+              console.warn(`[TransfersService] Invalid hex fromBlock: ${trimmed}, using 'latest'`);
               fromBlock = 'latest';
             }
           } else {
-            // Validate hex string
-            const blockNum = parseInt(fromBlock, 16);
-            if (isNaN(blockNum) || blockNum < 0) {
-              console.warn(`[TransfersService] Invalid hex fromBlock: ${fromBlock}, using 'latest'`);
+            // Try to convert decimal string to hex
+            const blockNum = parseInt(trimmed, 10);
+            if (!isNaN(blockNum) && blockNum >= 0) {
+              fromBlock = `0x${blockNum.toString(16)}`;
+            } else {
+              console.warn(`[TransfersService] Invalid fromBlock format: ${trimmed}, using 'latest'`);
               fromBlock = 'latest';
             }
           }
+        } else if (typeof options.fromBlock === 'number') {
+          // Convert number to hex string
+          const blockNum: number = Number(options.fromBlock);
+          if (!isNaN(blockNum) && blockNum >= 0 && isFinite(blockNum)) {
+            fromBlock = `0x${Math.floor(blockNum).toString(16)}`;
+          } else {
+            console.warn(`[TransfersService] Invalid fromBlock number: ${blockNum}, using 'latest'`);
+            fromBlock = 'latest';
+          }
         } else {
-          console.warn(`[TransfersService] Invalid fromBlock type: ${typeof fromBlock}, using 'latest'`);
+          console.warn(`[TransfersService] Invalid fromBlock type: ${typeof options.fromBlock}, using 'latest'`);
           fromBlock = 'latest';
         }
       }
       
-      // Ensure toBlock is valid hex string or 'latest'
-      if (toBlock !== 'latest') {
-        if (typeof toBlock === 'string') {
-          if (!toBlock.startsWith('0x')) {
-            // Try to convert decimal string to hex
-            const blockNum = parseInt(toBlock, 10);
+      // Normalize toBlock - handle all possible input types
+      if (options.toBlock !== undefined && options.toBlock !== null) {
+        if (typeof options.toBlock === 'string') {
+          const trimmed = options.toBlock.trim();
+          if (trimmed === 'latest' || trimmed === 'earliest' || trimmed === 'pending') {
+            toBlock = trimmed;
+          } else if (trimmed.startsWith('0x')) {
+            // Validate hex string
+            const blockNum = parseInt(trimmed, 16);
             if (!isNaN(blockNum) && blockNum >= 0) {
-              toBlock = `0x${blockNum.toString(16)}`;
+              toBlock = trimmed.toLowerCase();
             } else {
-              console.warn(`[TransfersService] Invalid toBlock format: ${toBlock}, using 'latest'`);
+              console.warn(`[TransfersService] Invalid hex toBlock: ${trimmed}, using 'latest'`);
               toBlock = 'latest';
             }
           } else {
-            // Validate hex string
-            const blockNum = parseInt(toBlock, 16);
-            if (isNaN(blockNum) || blockNum < 0) {
-              console.warn(`[TransfersService] Invalid hex toBlock: ${toBlock}, using 'latest'`);
+            // Try to convert decimal string to hex
+            const blockNum = parseInt(trimmed, 10);
+            if (!isNaN(blockNum) && blockNum >= 0) {
+              toBlock = `0x${blockNum.toString(16)}`;
+            } else {
+              console.warn(`[TransfersService] Invalid toBlock format: ${trimmed}, using 'latest'`);
               toBlock = 'latest';
             }
           }
+        } else if (typeof options.toBlock === 'number') {
+          // Convert number to hex string
+          const blockNum: number = Number(options.toBlock);
+          if (!isNaN(blockNum) && blockNum >= 0 && isFinite(blockNum)) {
+            toBlock = `0x${Math.floor(blockNum).toString(16)}`;
+          } else {
+            console.warn(`[TransfersService] Invalid toBlock number: ${blockNum}, using 'latest'`);
+            toBlock = 'latest';
+          }
         } else {
-          console.warn(`[TransfersService] Invalid toBlock type: ${typeof toBlock}, using 'latest'`);
+          console.warn(`[TransfersService] Invalid toBlock type: ${typeof options.toBlock}, using 'latest'`);
           toBlock = 'latest';
         }
       }
       
-      // Ensure maxCount is a number
-      const maxCount = typeof options.maxCount === 'number' && options.maxCount > 0 
-        ? options.maxCount 
-        : 100;
+      // Ensure maxCount is a number (not a string)
+      let maxCount: number = 100;
+      if (options.maxCount !== undefined && options.maxCount !== null) {
+        if (typeof options.maxCount === 'number') {
+          maxCount = options.maxCount > 0 ? options.maxCount : 100;
+        } else if (typeof options.maxCount === 'string') {
+          // Handle string maxCount (defensive)
+          const parsed = parseInt(options.maxCount, 10);
+          maxCount = !isNaN(parsed) && parsed > 0 ? parsed : 100;
+        } else {
+          console.warn(`[TransfersService] Invalid maxCount type: ${typeof options.maxCount}, using default 100`);
+          maxCount = 100;
+        }
+      }
+      
+      // Final validation: ensure fromBlock and toBlock are strings (never numbers)
+      if (typeof fromBlock !== 'string') {
+        console.error(`[TransfersService] CRITICAL: fromBlock is not a string: ${typeof fromBlock}, value: ${fromBlock}`);
+        fromBlock = 'latest';
+      }
+      if (typeof toBlock !== 'string') {
+        console.error(`[TransfersService] CRITICAL: toBlock is not a string: ${typeof toBlock}, value: ${toBlock}`);
+        toBlock = 'latest';
+      }
       
       const requestBody = {
         id: 1,
@@ -339,16 +388,28 @@ class TransfersService {
         method: 'alchemy_getAssetTransfers',
         params: [
           {
-            fromBlock,
-            toBlock,
+            fromBlock: String(fromBlock), // Explicit string conversion
+            toBlock: String(toBlock), // Explicit string conversion
             fromAddress: address,
-            maxCount,
+            maxCount: Number(maxCount), // Explicit number conversion
             excludeZeroValue: options.excludeZeroValue ?? false,
             category: options.category || ['external', 'erc20', 'erc721', 'erc1155'],
             pageKey: options.pageKey,
           },
         ],
       };
+      
+      // Debug logging to catch invalid values before sending
+      if (typeof requestBody.params[0].fromBlock !== 'string' || 
+          typeof requestBody.params[0].toBlock !== 'string' ||
+          typeof requestBody.params[0].maxCount !== 'number') {
+        console.error(`[TransfersService] CRITICAL: Invalid request body types:`, {
+          fromBlock: { value: requestBody.params[0].fromBlock, type: typeof requestBody.params[0].fromBlock },
+          toBlock: { value: requestBody.params[0].toBlock, type: typeof requestBody.params[0].toBlock },
+          maxCount: { value: requestBody.params[0].maxCount, type: typeof requestBody.params[0].maxCount },
+          originalOptions: options
+        });
+      }
       
       const response = await fetch(alchemyRestUrl, {
         method: 'POST',
