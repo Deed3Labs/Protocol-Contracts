@@ -559,10 +559,14 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     setError(null);
 
     // Capture previous tokens to preserve during refresh
+    // Note: On initial load (prev.length === 0), this returns [] which is correct
+    // - Loading states will still show because they check length === 0
+    // - Only after initial load does this preserve data to prevent UI flashing
     let previousTokens: MultichainTokenBalance[] = [];
     setTokens(prev => {
       previousTokens = prev;
       // Keep previous tokens visible while loading (don't clear them)
+      // If prev is empty (initial load), it stays empty - loading states will show
       return prev;
     });
 
