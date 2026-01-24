@@ -63,114 +63,59 @@ class EventListenerService {
    * Listen for Transfer events on ERC20 and ERC721 contracts
    */
   private startTransferListeners() {
-    const TESTNETS = [11155111, 84532];
-
     for (const [chainId, provider] of this.providers.entries()) {
       try {
         const transferTopic = ethers.id('Transfer(address,address,uint256)');
-        const isTestnet = TESTNETS.includes(chainId);
         
         // Get our protocol contract addresses for this chain
         const protocolContracts = new Set<string>();
         const deedNFT = getContractAddress(chainId, 'DeedNFT');
         if (deedNFT) protocolContracts.add(deedNFT.toLowerCase());
         
-        // On mainnets, ONLY listen to our protocol contracts to avoid overwhelming the server
-        // On testnets, we can be broader as volume is low
+        // Always scope the filter to our protocol contracts to ensure efficiency
+        // We rely on the websocketService's polling for non-protocol asset updates
         const filter: any = { topics: [transferTopic] };
-        if (!isTestnet && protocolContracts.size > 0) {
+        
+        if (protocolContracts.size > 0) {
           filter.address = Array.from(protocolContracts);
           console.log(`[EventListener] Scoped Transfer listener to protocol contracts on chain ${chainId}`);
-        } else if (!isTestnet && protocolContracts.size === 0) {
-          console.warn(`[EventListener] No protocol contracts for mainnet chain ${chainId}, skipping global listener`);
+        } else {
+          console.warn(`[EventListener] No protocol contracts for chain ${chainId}, skipping event listener`);
           continue;
         }
 
         provider.on(filter, async (log) => {
           try {
-            // Early exit if this isn't a protocol contract AND it doesn't involve an active user
-            const contractAddr = log.address.toLowerCase();
-            const isProtocolContract = protocolContracts.has(contractAddr);
+            // Since the filter is scoped, we know this is one of our protocol contracts
+            const fromLower = ethers.dataSlice(log.topics[1], 12).toLowerCase();
+            const toLower = ethers.dataSlice(log.topics[2], 12).toLowerCase();
             
-            // If it's not our contract, check if it's an active user
-            // This prevents us from doing expensive parsing for random transfers on the network
-            let activeAddresses: Set<string> | null = null;
+            // Convert to checksum addresses
+            const from = ethers.getAddress(fromLower);
+            const to = ethers.getAddress(toLower);
+
+            // Invalidate cache for affected addresses
+            await this.invalidateCacheForAddress(chainId, from);
+            await this.invalidateCacheForAddress(chainId, to);
             
-            if (!isProtocolContract) {
-              activeAddresses = websocketService.getActiveAddresses();
-              // If we have no users online and it's not our contract, ignore
-              if (activeAddresses.size === 0) return;
-            }
-
-            let from: string | undefined;
-            let to: string | undefined;
-
-            // Try to parse the log based on the number of topics
-            if (log.topics.length === 4) {
-              try {
-                const parsed = this.erc721Interface.parseLog(log);
-                if (parsed) {
-                  from = parsed.args[0];
-                  to = parsed.args[1];
-                }
-              } catch (e) {}
-            } 
+            // Broadcast update via WebSocket
+            await websocketService.broadcastToAddress(from, 'balance_update', {
+              chainId,
+              address: from,
+              timestamp: Date.now()
+            });
             
-            if (!from && log.topics.length === 3) {
-              try {
-                const parsed = this.erc20Interface.parseLog(log);
-                if (parsed) {
-                  from = parsed.args[0];
-                  to = parsed.args[1];
-                }
-              } catch (e) {}
-            }
-
-            // Fallback: raw address extraction
-            if (!from && log.topics.length >= 3) {
-              try {
-                from = ethers.getAddress(ethers.dataSlice(log.topics[1], 12));
-                to = ethers.getAddress(ethers.dataSlice(log.topics[2], 12));
-              } catch (e) {}
-            }
-
-            if (from && to) {
-              const fromLower = from.toLowerCase();
-              const toLower = to.toLowerCase();
-
-              // Only process if it involves our contract or an active user
-              const isRelevant = isProtocolContract || 
-                                (activeAddresses && (activeAddresses.has(fromLower) || activeAddresses.has(toLower)));
-
-              if (!isRelevant) return;
-
-              // Invalidate cache for affected addresses
-              await this.invalidateCacheForAddress(chainId, from);
-              await this.invalidateCacheForAddress(chainId, to);
-              
-              // Broadcast update via WebSocket
-              await websocketService.broadcastToAddress(from, 'balance_update', {
-                chainId,
-                address: from,
-                timestamp: Date.now()
-              });
-              
-              await websocketService.broadcastToAddress(to, 'balance_update', {
-                chainId,
-                address: to,
-                timestamp: Date.now()
-              });
-            }
+            await websocketService.broadcastToAddress(to, 'balance_update', {
+              chainId,
+              address: to,
+              timestamp: Date.now()
+            });
           } catch (error) {
             if (error instanceof Error && !error.message.includes('data out-of-bounds') && !error.message.includes('BUFFER_OVERRUN')) {
               console.warn(`[EventListener] Error processing Transfer event on chain ${chainId}:`, error.message);
             }
           }
         });
-
-        if (isTestnet) {
-          console.log(`[EventListener] Global Transfer listener started for testnet chain ${chainId}`);
-        }
       } catch (error) {
         console.error(`[EventListener] Failed to start Transfer listener for chain ${chainId}:`, error);
       }
