@@ -144,13 +144,10 @@ export function usePushNotifications() {
     };
 
     const handlePriceUpdate = (data: any) => {
-      // Only notify for significant price changes
-      showNotification({
-        title: 'Price Alert',
-        body: `Price update for ${data.tokenAddress?.substring(0, 10)}...`,
-        tag: `price-${data.tokenAddress}`,
-        data: data
-      });
+      // Price alerts are now handled by NotificationContext
+      // This handler is kept for backward compatibility but won't show notifications
+      // as NotificationContext handles price change detection and notifications
+      console.log('[PushNotifications] Price update received:', data);
     };
 
     const handleTransferReceived = (data: any) => {
