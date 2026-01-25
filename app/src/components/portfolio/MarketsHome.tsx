@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUpRight, ArrowDownLeft, TrendingUp, Newspaper, Calendar, FileText, ChevronRight, Info } from 'lucide-react';
 import SideMenu from './SideMenu';
@@ -9,6 +9,10 @@ import WithdrawModal from './WithdrawModal';
 import ActionModal from './ActionModal';
 import SearchResults from './SearchResults';
 import SearchBar from './SearchBar';
+import { useAppKitAccount } from '@reown/appkit/react';
+import { usePortfolio } from '@/context/PortfolioContext';
+import { LargePriceWheel } from '@/components/PriceWheel';
+import { isStablecoin } from '@/utils/tokenUtils';
 
 // Mock Data - Categories/Sectors/Themes
 const filterCategories = [
@@ -49,6 +53,17 @@ const reports = [
 ];
 
 export default function MarketsHome() {
+  // Wallet connection
+  const { isConnected } = useAppKitAccount();
+  
+  // Global portfolio context - provides balances, holdings, cash balance, and activity
+  const {
+    holdings: portfolioHoldings,
+    cashBalance: portfolioCashBalance,
+    previousTotalBalanceUSD,
+    balances: multichainBalances,
+  } = usePortfolio();
+  
   const [user] = useState<any>({ name: 'Isaiah Litt' });
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -60,8 +75,40 @@ export default function MarketsHome() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Mock values
-  const buyingPower = 8513.76; // Cash available for trading
+  // Cash balance is automatically calculated from stablecoin holdings in PortfolioContext
+  const cashBalance = portfolioCashBalance?.totalCash || 0;
+  
+  // Convert portfolio holdings to format compatible with buying power calculation
+  const holdings = useMemo(() => {
+    return portfolioHoldings.map((holding) => ({
+      id: holding.id,
+      asset_symbol: holding.asset_symbol,
+      asset_name: holding.asset_name,
+      quantity: holding.type === 'nft' || holding.type === 'rwa' ? 1 : parseFloat(holding.balance || '0'),
+      average_cost: 0,
+      current_price: holding.balanceUSD / (holding.type === 'nft' || holding.type === 'rwa' ? 1 : parseFloat(holding.balance || '1')),
+      valueUSD: holding.balanceUSD,
+      type: holding.type as 'equity' | 'nft' | 'rwa' | 'token' | 'crypto',
+    }));
+  }, [portfolioHoldings]);
+
+  // Calculate buying power - same formula as in TabViews.tsx
+  // Buying power = cash balance (stablecoins) + crypto tokens + NFTs
+  const buyingPower = useMemo(() => {
+    if (!holdings || holdings.length === 0) return cashBalance || 0;
+    
+    // Calculate crypto tokens (non-stablecoin tokens) and NFTs
+    const cryptoAndNFTValue = holdings.reduce((sum, h) => {
+      // Exclude stablecoins (they're already in cash balance)
+      if (h.type === 'token' && isStablecoin(h.asset_symbol)) {
+        return sum;
+      }
+      return sum + (h.valueUSD || 0);
+    }, 0);
+    
+    // Buying power = cash (stablecoins) + crypto + NFTs
+    return (cashBalance || 0) + cryptoAndNFTValue;
+  }, [holdings, cashBalance]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -113,18 +160,42 @@ export default function MarketsHome() {
            {/* Left Column (Main Feed) */}
            <div className="md:col-span-8 space-y-10">
               
-              {/* Buying Power Header */}
+              {/* Balance (Buying Power) Header */}
               <div>
                  <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
                    <span className="text-sm font-medium">Buying Power</span>
                    <div className="group relative">
                       <Info className="h-4 w-4 cursor-help" />
+                      <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+                        Cash (stablecoins) + crypto tokens + NFTs
+                      </div>
                    </div>
+                   {!isConnected && (
+                     <span className="text-xs text-amber-500">Connect wallet to view balance</span>
+                   )}
+                   {isConnected && multichainBalances.length > 1 && (
+                     <span className="text-xs text-zinc-400">Across {multichainBalances.length} networks</span>
+                   )}
                  </div>
-                 <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
-                   ${buyingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                   <span className="text-lg text-zinc-500 font-normal">USD</span>
-                 </h1>
+                 <div className="min-h-[60px] flex items-center">
+                   <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
+                     {isConnected ? (
+                       <>
+                         <LargePriceWheel 
+                           value={buyingPower || 0} 
+                           previousValue={previousTotalBalanceUSD}
+                           className="font-light"
+                         />
+                         <span className="text-lg text-zinc-500 font-normal">USD</span>
+                       </>
+                     ) : (
+                       <>
+                         $0.00
+                         <span className="text-lg text-zinc-500 font-normal">USD</span>
+                       </>
+                     )}
+                   </h1>
+                 </div>
                  
                  <div className="mt-6 flex flex-wrap gap-3">
                     <button 
@@ -132,11 +203,12 @@ export default function MarketsHome() {
                       className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-2"
                     >
                       <ArrowUpRight className="w-4 h-4" />
-                      Increase Power
+                      Add Funds
                     </button>
                     <button 
                       onClick={() => setWithdrawModalOpen(true)}
                       className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800"
+                      disabled={!isConnected || buyingPower === 0}
                     >
                       Withdraw Funds
                     </button>

@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { getAlchemyPortfolioApiUrl, getAlchemyNetworkName } from '../utils/rpc.js';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { computeUnitTracker } from '../utils/computeUnitTracker.js';
 
 /**
  * Rate limiter for Alchemy Portfolio API calls
@@ -152,6 +153,13 @@ export async function getTokensByAddress(
   // Retry up to 3 times with exponential backoff
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
+      // Track compute units before making the call
+      computeUnitTracker.logApiCall(
+        'alchemy_portfolio_tokens',
+        'getTokensByAddress',
+        { estimatedUnits: 30 }
+      );
+
       const response = await fetch(`${apiUrl}/assets/tokens/by-address`, {
         method: 'POST',
         headers: {
@@ -302,6 +310,13 @@ export async function getNFTsByAddress(
   // Retry up to 3 times with exponential backoff
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
+      // Track compute units before making the call
+      computeUnitTracker.logApiCall(
+        'alchemy_portfolio_nfts',
+        'getNFTsByAddress',
+        { estimatedUnits: 30 }
+      );
+
       const response = await fetch(`${apiUrl}/assets/nfts/by-address`, {
         method: 'POST',
         headers: {

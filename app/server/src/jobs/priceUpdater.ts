@@ -4,7 +4,8 @@ import { websocketService } from '../services/websocketService.js';
 
 /**
  * Background job to update token prices
- * Runs every 5 minutes using Bun's built-in cron
+ * Optimized: Runs every 15 minutes (increased from 5 minutes) to reduce Alchemy compute unit usage
+ * Prices don't change that frequently, so 15 minutes is sufficient for most use cases
  * 
  * Purpose:
  * - Caches prices for common tokens in Redis for fast access
@@ -89,13 +90,13 @@ export async function startPriceUpdater() {
     console.log(`✅ Price update complete for ${allTokens.length} tokens`);
   }
 
-  // Run every 5 minutes using setInterval (5 minutes = 300000ms)
+  // Run every 15 minutes using setInterval (optimized from 5 minutes to reduce Alchemy compute units)
   setInterval(async () => {
     await updatePrices();
-  }, 5 * 60 * 1000); // 5 minutes
+  }, 15 * 60 * 1000); // 15 minutes (optimized from 5 minutes)
 
   // Run initial update immediately
   await updatePrices();
 
-  console.log(`✅ Price updater job started (runs every 5 minutes, updating ${allTokens.length} tokens)`);
+  console.log(`✅ Price updater job started (runs every 15 minutes, updating ${allTokens.length} tokens)`);
 }

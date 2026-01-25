@@ -5,6 +5,7 @@ import {
   getAlchemyNetworkName,
   getAlchemyNFTUrl 
 } from '../utils/rpc.js';
+import { computeUnitTracker } from '../utils/computeUnitTracker.js';
 
 // Common stablecoin addresses for quick price checks
 const STABLECOIN_ADDRESSES = new Set([
@@ -217,6 +218,13 @@ async function getAlchemyPriceByAddress(
     // Normalize address
     const normalizedAddress = ethers.getAddress(tokenAddress.toLowerCase());
 
+    // Track compute units before making the call
+    computeUnitTracker.logApiCall(
+      'alchemy_prices_by_address',
+      'getAlchemyPriceByAddress',
+      { chainId, estimatedUnits: 15 }
+    );
+
     // Alchemy Prices API by address endpoint (supports single or batch)
     const response = await fetch(`${apiUrl}/tokens/by-address`, {
       method: 'POST',
@@ -285,6 +293,13 @@ async function getAlchemyPriceBySymbol(symbol: string): Promise<number | null> {
 
     // Normalize symbol
     const normalizedSymbol = symbol.toUpperCase();
+
+    // Track compute units before making the call
+    computeUnitTracker.logApiCall(
+      'alchemy_prices_by_symbol',
+      'getAlchemyPriceBySymbol',
+      { estimatedUnits: 15 }
+    );
 
     // Alchemy Prices API by symbol endpoint
     const response = await fetch(`${apiUrl}/tokens/by-symbol?symbols=${normalizedSymbol}`, {

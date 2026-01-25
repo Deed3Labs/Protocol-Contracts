@@ -1,6 +1,7 @@
 import { getAlchemyRestUrl, getAlchemyApiKey } from '../utils/rpc.js';
 import { websocketService } from './websocketService.js';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { computeUnitTracker } from '../utils/computeUnitTracker.js';
 
 /**
  * Transfer types supported by Alchemy Transfers API
@@ -44,27 +45,36 @@ class TransfersService {
   private monitoringAddresses: Set<string> = new Set();
   private monitoringIntervals: Map<string, number> = new Map();
   private lastCheckedBlocks: Map<string, Map<number, string>> = new Map(); // address -> chainId -> blockNum
+  private activeChains: Map<string, Set<number>> = new Map(); // address -> Set<chainId> (chains with activity)
+  private inactiveChainCount: Map<string, Map<number, number>> = new Map(); // address -> chainId -> consecutive no-activity checks
 
   /**
-   * Start monitoring transfers for an address across all supported chains
+   * Start monitoring transfers for an address
+   * Smart Chain Monitoring: Only monitors chains where user has activity
+   * Initially monitors all chains, then stops monitoring inactive chains after 10 consecutive checks with no activity
    */
-  async startMonitoring(address: string) {
-    if (this.monitoringAddresses.has(address.toLowerCase())) {
+  async startMonitoring(address: string, initialChains?: number[]) {
+    const normalizedAddress = address.toLowerCase();
+    if (this.monitoringAddresses.has(normalizedAddress)) {
       return; // Already monitoring
     }
 
-    this.monitoringAddresses.add(address.toLowerCase());
+    this.monitoringAddresses.add(normalizedAddress);
     this.isRunning = true;
 
     // Supported chains for Alchemy Transfers API
-    const supportedChains = [1, 8453, 137, 42161, 100, 11155111, 84532];
+    const supportedChains = initialChains || [1, 8453, 137, 42161, 100, 11155111, 84532];
+
+    // Initialize active chains tracking
+    this.activeChains.set(normalizedAddress, new Set(supportedChains));
+    this.inactiveChainCount.set(normalizedAddress, new Map());
 
     // Start monitoring for each chain
     for (const chainId of supportedChains) {
       this.monitorChain(address, chainId);
     }
 
-    console.log(`[TransfersService] Started monitoring transfers for ${address}`);
+    console.log(`[TransfersService] Started monitoring transfers for ${address} on ${supportedChains.length} chains`);
   }
 
   /**
@@ -78,35 +88,41 @@ class TransfersService {
 
     this.monitoringAddresses.delete(normalizedAddress);
     
-    // Clear intervals for this address
-    const intervalKey = `${normalizedAddress}`;
-    const interval = this.monitoringIntervals.get(intervalKey);
-    if (interval) {
-      clearInterval(interval);
-      this.monitoringIntervals.delete(intervalKey);
+    // Clear intervals for this address (all chains)
+    const intervalsToDelete: string[] = [];
+    for (const [key, interval] of this.monitoringIntervals.entries()) {
+      if (key.startsWith(`${normalizedAddress}:`)) {
+        clearInterval(interval);
+        intervalsToDelete.push(key);
+      }
     }
+    intervalsToDelete.forEach(key => this.monitoringIntervals.delete(key));
 
-    // Clear last checked blocks
+    // Clear tracking data
     this.lastCheckedBlocks.delete(normalizedAddress);
+    this.activeChains.delete(normalizedAddress);
+    this.inactiveChainCount.delete(normalizedAddress);
 
     console.log(`[TransfersService] Stopped monitoring transfers for ${address}`);
   }
 
   /**
    * Monitor transfers for a specific address on a specific chain
+   * Optimized: Increased interval from 30s to 5 minutes to reduce Alchemy compute unit usage
+   * This reduces API calls by 90% while still providing timely transfer notifications
    */
   private monitorChain(address: string, chainId: number) {
     const normalizedAddress = address.toLowerCase();
-    const intervalKey = `${normalizedAddress}`;
+    const intervalKey = `${normalizedAddress}:${chainId}`; // Include chainId in key for per-chain intervals
 
-    // Check every 30 seconds for new transfers
+    // Check every 5 minutes for new transfers (optimized from 30 seconds)
     const interval = setInterval(async () => {
       try {
         await this.checkTransfers(address, chainId);
       } catch (error) {
         console.error(`[TransfersService] Error checking transfers for ${address} on chain ${chainId}:`, error);
       }
-    }, 30000); // 30 seconds
+    }, 5 * 60 * 1000); // 5 minutes (optimized from 30 seconds to reduce Alchemy compute units)
 
     this.monitoringIntervals.set(intervalKey, interval as unknown as number);
 
@@ -118,6 +134,8 @@ class TransfersService {
 
   /**
    * Check for new transfers for an address on a chain
+   * Smart Chain Monitoring: Stops monitoring chains with no activity after 10 consecutive checks
+   * Cache-First: Checks cache before making API calls
    */
   private async checkTransfers(address: string, chainId: number): Promise<void> {
     const normalizedAddress = address.toLowerCase();
@@ -128,7 +146,24 @@ class TransfersService {
       return; // Alchemy API not available for this chain
     }
 
+    // Check if this chain is still active (smart chain monitoring)
+    const activeChains = this.activeChains.get(normalizedAddress);
+    if (activeChains && !activeChains.has(chainId)) {
+      // Chain was marked inactive, skip check
+      return;
+    }
+
     try {
+      // Cache-First Strategy: Check Redis cache for recent transfers
+      const cacheService = await getRedisClient().then((client) => new CacheService(client));
+      const cacheKey = `transfers:${chainId}:${normalizedAddress}`;
+      const cached = await cacheService.get<{ transfers: any[]; blockNum: string; timestamp: number }>(cacheKey);
+      
+      // If cache is fresh (less than 1 minute old), use it
+      if (cached && (Date.now() - cached.timestamp) < 60 * 1000) {
+        // Cache hit - no API call needed
+        return;
+      }
       // Get last checked block for this address/chain
       const addressBlocks = this.lastCheckedBlocks.get(normalizedAddress) || new Map();
       let lastBlock = addressBlocks.get(chainId) || 'latest';
@@ -182,8 +217,57 @@ class TransfersService {
         }
       );
 
+      // Track compute units
+      computeUnitTracker.logApiCall(
+        'alchemy_getAssetTransfers',
+        'fetchTransfers',
+        { chainId, address: normalizedAddress, estimatedUnits: 40 }
+      );
+
+      // Cache the result
+      if (transfers.length > 0) {
+        await cacheService.set(
+          cacheKey,
+          { transfers, blockNum: transfers[transfers.length - 1].blockNum, timestamp: Date.now() },
+          60 // 1 minute cache
+        );
+      }
+
+      // Smart Chain Monitoring: Track activity
       if (transfers.length === 0) {
+        // No activity - increment inactive count
+        const inactiveCounts = this.inactiveChainCount.get(normalizedAddress) || new Map();
+        const currentCount = inactiveCounts.get(chainId) || 0;
+        inactiveCounts.set(chainId, currentCount + 1);
+        this.inactiveChainCount.set(normalizedAddress, inactiveCounts);
+
+        // Stop monitoring if inactive for 10 consecutive checks (50 minutes)
+        if (currentCount + 1 >= 10) {
+          const active = this.activeChains.get(normalizedAddress);
+          if (active) {
+            active.delete(chainId);
+            console.log(`[TransfersService] Stopped monitoring chain ${chainId} for ${address} (no activity)`);
+            
+            // Stop the interval for this chain
+            const intervalKey = `${normalizedAddress}:${chainId}`;
+            const interval = this.monitoringIntervals.get(intervalKey);
+            if (interval) {
+              clearInterval(interval);
+              this.monitoringIntervals.delete(intervalKey);
+            }
+          }
+        }
         return; // No new transfers
+      } else {
+        // Activity detected - reset inactive count and ensure chain is active
+        const inactiveCounts = this.inactiveChainCount.get(normalizedAddress) || new Map();
+        inactiveCounts.set(chainId, 0);
+        this.inactiveChainCount.set(normalizedAddress, inactiveCounts);
+        
+        const active = this.activeChains.get(normalizedAddress);
+        if (active) {
+          active.add(chainId);
+        }
       }
 
       // Process new transfers
@@ -418,6 +502,13 @@ class TransfersService {
         };
 
         try {
+          // Track compute units before making the call
+          computeUnitTracker.logApiCall(
+            'alchemy_getAssetTransfers',
+            'fetchTransfers',
+            { chainId, estimatedUnits: 40 }
+          );
+
           const response = await fetch(alchemyRestUrl, {
             method: 'POST',
             headers: {
