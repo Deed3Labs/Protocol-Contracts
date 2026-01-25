@@ -9,23 +9,37 @@ import {
 
 /**
  * Rate limiter for Alchemy API calls
- * Limits to ~10 requests per second per chain to avoid rate limits
+ * Uses both per-chain and global rate limiting to avoid hitting Alchemy's limits
+ * Alchemy has both per-chain and global rate limits, so we need both
  */
 class AlchemyRateLimiter {
   private lastRequestTime: Map<number, number> = new Map();
-  private readonly minDelayMs = 100; // 100ms between requests = ~10 req/sec max
+  private lastGlobalRequestTime: number = 0;
+  private readonly minDelayMs = 200; // 200ms between requests per chain = ~5 req/sec per chain max
+  private readonly minGlobalDelayMs = 100; // 100ms between ANY requests globally = ~10 req/sec global max
 
   async waitForRateLimit(chainId: number): Promise<void> {
     const now = Date.now();
+    
+    // First, enforce global rate limit (across all chains)
+    const timeSinceLastGlobalRequest = now - this.lastGlobalRequestTime;
+    if (timeSinceLastGlobalRequest < this.minGlobalDelayMs) {
+      const globalWaitTime = this.minGlobalDelayMs - timeSinceLastGlobalRequest;
+      await new Promise(resolve => setTimeout(resolve, globalWaitTime));
+    }
+    
+    // Then, enforce per-chain rate limit
     const lastRequest = this.lastRequestTime.get(chainId) || 0;
-    const timeSinceLastRequest = now - lastRequest;
+    const timeSinceLastRequest = Date.now() - lastRequest;
 
     if (timeSinceLastRequest < this.minDelayMs) {
       const waitTime = this.minDelayMs - timeSinceLastRequest;
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
+    // Update both timestamps
     this.lastRequestTime.set(chainId, Date.now());
+    this.lastGlobalRequestTime = Date.now();
   }
 }
 

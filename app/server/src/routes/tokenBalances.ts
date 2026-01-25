@@ -167,8 +167,11 @@ router.post('/all/batch', async (req: Request, res: Response) => {
     }
 
     // Fetch uncached balances
+    // Process sequentially to avoid overwhelming Alchemy's rate limits
+    // The rate limiter in balanceService will add delays, but sequential processing
+    // ensures we don't hit global rate limits when querying multiple chains
     if (uncached.length > 0) {
-      const fetchPromises = uncached.map(async ({ chainId, userAddress, index }) => {
+      for (const { chainId, userAddress, index } of uncached) {
         try {
           const tokens = await getAllTokenBalances(chainId, userAddress);
           
@@ -181,16 +184,14 @@ router.post('/all/batch', async (req: Request, res: Response) => {
             cacheTTL
           );
 
-          return {
-            index,
+          results[index] = {
             chainId,
             userAddress,
             tokens,
             cached: false,
           };
         } catch (error) {
-          return {
-            index,
+          results[index] = {
             chainId,
             userAddress,
             tokens: [],
@@ -198,17 +199,6 @@ router.post('/all/batch', async (req: Request, res: Response) => {
             error: error instanceof Error ? error.message : 'Unknown error',
           };
         }
-      });
-
-      const fetchResults = await Promise.all(fetchPromises);
-      for (const result of fetchResults) {
-        results[result.index] = {
-          chainId: result.chainId,
-          userAddress: result.userAddress,
-          tokens: result.tokens,
-          cached: result.cached,
-          error: result.error,
-        };
       }
     }
 
