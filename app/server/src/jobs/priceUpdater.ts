@@ -1,10 +1,11 @@
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { getTokenPrice } from '../services/priceService.js';
 import { websocketService } from '../services/websocketService.js';
+import { DynamicIntervalManager } from '../utils/dynamicInterval.js';
 
 /**
  * Background job to update token prices
- * Runs every 5 minutes using Bun's built-in cron
+ * Uses dynamic intervals (5-60 minutes) based on conditions to optimize credit consumption
  * 
  * Purpose:
  * - Caches prices for common tokens in Redis for fast access
@@ -54,23 +55,52 @@ export async function startPriceUpdater() {
     { chainId: 100, tokenAddress: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8' }, // WXDAI
   ];
 
+  let priceChangeCount = 0;
+  let lastPriceUpdateTime = Date.now();
+
   // Price update function
   async function updatePrices() {
     console.log(`🔄 Updating token prices for ${allTokens.length} tokens...`);
+    let updatedCount = 0;
+    let errorCount = 0;
+    let cacheHitCount = 0;
+    let cacheMissCount = 0;
+    let changedCount = 0;
 
     for (const { chainId, tokenAddress } of allTokens) {
       try {
+        // Check cache first
+        const cacheKey = CacheKeys.tokenPrice(chainId, tokenAddress);
+        const cached = await cacheService.get<{ price: number; timestamp: number }>(cacheKey);
+        
+        if (cached && cached.price > 0) {
+          cacheHitCount++;
+          // Check if price changed significantly (>1%)
+          const newPrice = await getTokenPrice(chainId, tokenAddress);
+          if (newPrice && newPrice > 0) {
+            const priceChange = Math.abs((newPrice - cached.price) / cached.price);
+            if (priceChange > 0.01) {
+              // Price changed by more than 1%
+              changedCount++;
+              priceChangeCount++;
+              lastPriceUpdateTime = Date.now();
+            }
+          }
+        } else {
+          cacheMissCount++;
+        }
+
         // Use Alchemy Prices API (simplified - handles all fallbacks internally)
         const price = await getTokenPrice(chainId, tokenAddress);
 
         if (price && price > 0) {
-          const cacheKey = CacheKeys.tokenPrice(chainId, tokenAddress);
           const cacheTTL = parseInt(process.env.CACHE_TTL_PRICE || '300', 10);
           await cacheService.set(
             cacheKey,
             { price, timestamp: Date.now() },
             cacheTTL
           );
+          updatedCount++;
           console.log(`✅ Updated price for ${tokenAddress} on chain ${chainId}: $${price}`);
           
           // Broadcast price update via WebSocket
@@ -82,20 +112,62 @@ export async function startPriceUpdater() {
           }
         }
       } catch (error) {
+        errorCount++;
         console.error(`Error updating price for ${tokenAddress}:`, error);
       }
     }
 
-    console.log(`✅ Price update complete for ${allTokens.length} tokens`);
+    // Update dynamic interval conditions
+    const activeConnections = websocketService.getActiveAddresses().size;
+    const cacheHitRate = (cacheHitCount + cacheMissCount) > 0 
+      ? cacheHitCount / (cacheHitCount + cacheMissCount) 
+      : 0;
+    const errorRate = (updatedCount + errorCount) > 0 
+      ? errorCount / (updatedCount + errorCount) 
+      : 0;
+    
+    // Calculate data change frequency (changes per minute)
+    const timeSinceLastChange = Date.now() - lastPriceUpdateTime;
+    const dataChangeFrequency = timeSinceLastChange > 0 
+      ? (priceChangeCount * 60000) / timeSinceLastChange 
+      : 0;
+
+    intervalManager.updateConditions({
+      activeConnections,
+      errorRate,
+      cacheHitRate,
+      dataChangeFrequency,
+      lastChangeTime: priceChangeCount > 0 ? lastPriceUpdateTime : undefined,
+    });
+
+    // Record cache access
+    for (let i = 0; i < cacheHitCount; i++) {
+      intervalManager.recordCacheAccess(true);
+    }
+    for (let i = 0; i < cacheMissCount; i++) {
+      intervalManager.recordCacheAccess(false);
+    }
+
+    // Record execution
+    intervalManager.recordExecution(errorCount === 0);
+
+    if (changedCount > 0) {
+      intervalManager.recordDataChange();
+    }
+
+    console.log(`✅ Price update complete: ${updatedCount} updated, ${changedCount} changed, ${cacheHitCount} cache hits, ${cacheMissCount} cache misses`);
+    console.log(`📊 Next update in ${intervalManager.getCurrentIntervalMinutes()} minutes`);
   }
 
-  // Run every 5 minutes using setInterval (5 minutes = 300000ms)
-  setInterval(async () => {
-    await updatePrices();
-  }, 5 * 60 * 1000); // 5 minutes
+  // Create dynamic interval manager (5-60 minutes)
+  const intervalManager = new DynamicIntervalManager(updatePrices, {
+    minInterval: 5 * 60 * 1000, // 5 minutes
+    maxInterval: 60 * 60 * 1000, // 60 minutes
+    initialInterval: 5 * 60 * 1000, // Start at 5 minutes
+  });
 
-  // Run initial update immediately
-  await updatePrices();
+  // Start the dynamic interval
+  intervalManager.start();
 
-  console.log(`✅ Price updater job started (runs every 5 minutes, updating ${allTokens.length} tokens)`);
+  console.log(`✅ Price updater job started (dynamic interval: 5-60 minutes, updating ${allTokens.length} tokens)`);
 }

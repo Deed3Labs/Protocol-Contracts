@@ -1,6 +1,7 @@
 import { getAlchemyRestUrl, getAlchemyApiKey } from '../utils/rpc.js';
 import { websocketService } from './websocketService.js';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { DynamicIntervalManager } from '../utils/dynamicInterval.js';
 
 /**
  * Transfer types supported by Alchemy Transfers API
@@ -42,8 +43,10 @@ export interface TransferData {
 class TransfersService {
   private isRunning = false;
   private monitoringAddresses: Set<string> = new Set();
-  private monitoringIntervals: Map<string, number> = new Map();
+  private monitoringIntervals: Map<string, DynamicIntervalManager> = new Map();
   private lastCheckedBlocks: Map<string, Map<number, string>> = new Map(); // address -> chainId -> blockNum
+  private transferChangeCount: Map<string, number> = new Map(); // address -> change count
+  private lastTransferChangeTime: Map<string, number> = new Map(); // address -> timestamp
 
   /**
    * Start monitoring transfers for an address across all supported chains
@@ -80,37 +83,111 @@ class TransfersService {
     
     // Clear intervals for this address
     const intervalKey = `${normalizedAddress}`;
-    const interval = this.monitoringIntervals.get(intervalKey);
-    if (interval) {
-      clearInterval(interval);
+    const intervalManager = this.monitoringIntervals.get(intervalKey);
+    if (intervalManager) {
+      intervalManager.stop();
       this.monitoringIntervals.delete(intervalKey);
     }
 
-    // Clear last checked blocks
+    // Clear last checked blocks and change tracking
     this.lastCheckedBlocks.delete(normalizedAddress);
+    this.transferChangeCount.delete(normalizedAddress);
+    this.lastTransferChangeTime.delete(normalizedAddress);
 
     console.log(`[TransfersService] Stopped monitoring transfers for ${address}`);
   }
 
   /**
    * Monitor transfers for a specific address on a specific chain
+   * Uses dynamic intervals (1-60 minutes) to optimize credit consumption
    */
   private monitorChain(address: string, chainId: number) {
     const normalizedAddress = address.toLowerCase();
     const intervalKey = `${normalizedAddress}`;
 
-    // Check every 30 seconds for new transfers
-    const interval = setInterval(async () => {
-      try {
-        await this.checkTransfers(address, chainId);
-      } catch (error) {
-        console.error(`[TransfersService] Error checking transfers for ${address} on chain ${chainId}:`, error);
-      }
-    }, 30000); // 30 seconds
+    // Check if we already have an interval manager for this address
+    let intervalManager = this.monitoringIntervals.get(intervalKey);
 
-    this.monitoringIntervals.set(intervalKey, interval as unknown as number);
+    if (!intervalManager) {
+      // Supported chains for Alchemy Transfers API
+      const supportedChains = [1, 8453, 137, 42161, 100, 11155111, 84532];
+      
+      // Create dynamic interval manager for this address
+      // The callback checks all chains for the address
+      const checkCallback = async () => {
+        try {
+          let hadNewTransfers = false;
+          
+          // Check all supported chains for this address
+          for (const chain of supportedChains) {
+            const result = await this.checkTransfers(address, chain);
+            if (result) {
+              hadNewTransfers = true;
+            }
+          }
+          
+          if (hadNewTransfers) {
+            // Record data change
+            const changeCount = (this.transferChangeCount.get(normalizedAddress) || 0) + 1;
+            this.transferChangeCount.set(normalizedAddress, changeCount);
+            this.lastTransferChangeTime.set(normalizedAddress, Date.now());
+            
+            if (intervalManager) {
+              intervalManager.recordDataChange();
+            }
+          }
+          
+          if (intervalManager) {
+            intervalManager.recordExecution(true);
+          }
+        } catch (error) {
+          console.error(`[TransfersService] Error checking transfers for ${address}:`, error);
+          if (intervalManager) {
+            intervalManager.recordExecution(false);
+          }
+        }
+      };
 
-    // Initial check
+      intervalManager = new DynamicIntervalManager(checkCallback, {
+        minInterval: 1 * 60 * 1000, // 1 minute (transfers are more time-sensitive)
+        maxInterval: 60 * 60 * 1000, // 60 minutes
+        initialInterval: 1 * 60 * 1000, // Start at 1 minute
+      });
+
+      // Update conditions based on active connections
+      const activeConnections = websocketService.getActiveAddresses().size;
+      intervalManager.updateConditions({
+        activeConnections,
+      });
+
+      this.monitoringIntervals.set(intervalKey, intervalManager);
+      intervalManager.start();
+
+      // Update conditions periodically
+      const updateConditions = () => {
+        if (intervalManager) {
+          const activeConnections = websocketService.getActiveAddresses().size;
+          const lastChangeTime = this.lastTransferChangeTime.get(normalizedAddress);
+          const changeCount = this.transferChangeCount.get(normalizedAddress) || 0;
+          
+          const timeSinceLastChange = lastChangeTime ? Date.now() - lastChangeTime : Infinity;
+          const dataChangeFrequency = timeSinceLastChange > 0 && timeSinceLastChange < Infinity
+            ? (changeCount * 60000) / timeSinceLastChange 
+            : 0;
+
+          intervalManager.updateConditions({
+            activeConnections,
+            dataChangeFrequency,
+            lastChangeTime: lastChangeTime || undefined,
+          });
+        }
+      };
+
+      // Update conditions every minute
+      setInterval(updateConditions, 60000);
+    }
+
+    // Initial check for this specific chain
     this.checkTransfers(address, chainId).catch(error => {
       console.error(`[TransfersService] Error in initial transfer check:`, error);
     });
@@ -118,14 +195,15 @@ class TransfersService {
 
   /**
    * Check for new transfers for an address on a chain
+   * @returns true if new transfers were found, false otherwise
    */
-  private async checkTransfers(address: string, chainId: number): Promise<void> {
+  private async checkTransfers(address: string, chainId: number): Promise<boolean> {
     const normalizedAddress = address.toLowerCase();
     const alchemyRestUrl = getAlchemyRestUrl(chainId);
     const apiKey = getAlchemyApiKey();
 
     if (!alchemyRestUrl || !apiKey) {
-      return; // Alchemy API not available for this chain
+      return false; // Alchemy API not available for this chain
     }
 
     try {
@@ -183,7 +261,7 @@ class TransfersService {
       );
 
       if (transfers.length === 0) {
-        return; // No new transfers
+        return false; // No new transfers
       }
 
       // Process new transfers
@@ -206,7 +284,7 @@ class TransfersService {
             latestBlockHex = latestBlock.toLowerCase(); // Normalize to lowercase
           } else {
             console.warn(`[TransfersService] Invalid hex block number from Alchemy: ${latestBlock}`);
-            return; // Skip update if invalid
+            return false; // Skip update if invalid
           }
         } else {
           // Try parsing as decimal string (defensive programming in case API returns unexpected format)
@@ -215,7 +293,7 @@ class TransfersService {
             latestBlockHex = `0x${blockNum.toString(16)}`;
           } else {
             console.warn(`[TransfersService] Invalid block number format from Alchemy: ${latestBlock}`);
-            return; // Skip update if invalid
+            return false; // Skip update if invalid
           }
         }
         
@@ -246,8 +324,11 @@ class TransfersService {
           this.lastCheckedBlocks.set(normalizedAddress, addressBlocks);
         }
       }
+
+      return true; // New transfers were found and processed
     } catch (error) {
       console.error(`[TransfersService] Error fetching transfers:`, error);
+      return false;
     }
   }
 
@@ -757,8 +838,8 @@ class TransfersService {
   cleanup() {
     this.isRunning = false;
     
-    for (const interval of this.monitoringIntervals.values()) {
-      clearInterval(interval);
+    for (const intervalManager of this.monitoringIntervals.values()) {
+      intervalManager.stop();
     }
     this.monitoringIntervals.clear();
     this.monitoringAddresses.clear();

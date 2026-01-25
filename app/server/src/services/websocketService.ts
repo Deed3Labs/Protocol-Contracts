@@ -5,6 +5,7 @@ import { getBalance } from './balanceService.js';
 import { getDeedNFTs } from './nftService.js';
 import { getTokenPrice } from './priceService.js';
 import { transfersService } from './transfersService.js';
+import { DynamicIntervalManager } from '../utils/dynamicInterval.js';
 
 interface ClientSubscription {
   address: string;
@@ -16,6 +17,9 @@ class WebSocketService {
   private io: SocketIOServer | null = null;
   private clients: Map<string, ClientSubscription> = new Map();
   private priceUpdateInterval: number | null = null;
+  private nftUpdateIntervalManager: DynamicIntervalManager | null = null;
+  private lastNFTChangeTime: number = Date.now();
+  private nftChangeCount: number = 0;
 
   /**
    * Initialize WebSocket server
@@ -135,7 +139,7 @@ class WebSocketService {
 
   /**
    * Start periodic updates for all connected clients
-   * Optimized: Reduced NFT polling from 30s to 5 minutes to reduce Alchemy compute unit usage
+   * Uses dynamic intervals (5-60 minutes) for NFT polling to optimize credit consumption
    */
   private startPeriodicUpdates() {
     // Update balances and transactions every 30 seconds (these are lightweight)
@@ -175,12 +179,17 @@ class WebSocketService {
       }
     }, 30000); // 30 seconds for balances/transactions
 
-    // Update NFTs every 5 minutes (reduced from 30 seconds to save Alchemy compute units)
+    // Update NFTs using dynamic intervals (5-60 minutes)
     // NFTs change less frequently and are expensive to fetch
-    setInterval(async () => {
+    const updateNFTs = async () => {
       if (!this.io || this.clients.size === 0) return;
 
       const cacheService = await getRedisClient().then((client) => new CacheService(client));
+      let errorCount = 0;
+      let successCount = 0;
+      let cacheHitCount = 0;
+      let cacheMissCount = 0;
+      let changedCount = 0;
 
       for (const [socketId, subscription] of this.clients.entries()) {
         const socket = this.io.sockets.sockets.get(socketId);
@@ -196,13 +205,79 @@ class WebSocketService {
               subscription.chainIds,
               cacheService
             );
+            
+            // Check if NFTs changed (compare count or hash)
+            const previousCount = (socket as any).lastNFTCount || 0;
+            if (nfts.length !== previousCount) {
+              changedCount++;
+              this.nftChangeCount++;
+              this.lastNFTChangeTime = Date.now();
+            }
+            (socket as any).lastNFTCount = nfts.length;
+
+            // Track cache hits/misses from fetchNFTs
+            const cachedNFTs = nfts.filter((n: any) => n.cached);
+            cacheHitCount += cachedNFTs.length;
+            cacheMissCount += (nfts.length - cachedNFTs.length);
+
             socket.emit('nfts', nfts);
+            successCount++;
           }
         } catch (error) {
+          errorCount++;
           console.error(`[WebSocket] Error updating NFTs for client ${socketId}:`, error);
         }
       }
-    }, 5 * 60 * 1000); // 5 minutes for NFTs
+
+      // Update dynamic interval conditions
+      if (this.nftUpdateIntervalManager) {
+        const activeConnections = this.clients.size;
+        const errorRate = (successCount + errorCount) > 0 
+          ? errorCount / (successCount + errorCount) 
+          : 0;
+        const cacheHitRate = (cacheHitCount + cacheMissCount) > 0 
+          ? cacheHitCount / (cacheHitCount + cacheMissCount) 
+          : 0;
+        
+        // Calculate data change frequency
+        const timeSinceLastChange = Date.now() - this.lastNFTChangeTime;
+        const dataChangeFrequency = timeSinceLastChange > 0 
+          ? (this.nftChangeCount * 60000) / timeSinceLastChange 
+          : 0;
+
+        this.nftUpdateIntervalManager.updateConditions({
+          activeConnections,
+          errorRate,
+          cacheHitRate,
+          dataChangeFrequency,
+          lastChangeTime: changedCount > 0 ? this.lastNFTChangeTime : undefined,
+        });
+
+        // Record cache access
+        for (let i = 0; i < cacheHitCount; i++) {
+          this.nftUpdateIntervalManager.recordCacheAccess(true);
+        }
+        for (let i = 0; i < cacheMissCount; i++) {
+          this.nftUpdateIntervalManager.recordCacheAccess(false);
+        }
+
+        // Record execution
+        this.nftUpdateIntervalManager.recordExecution(errorCount === 0);
+
+        if (changedCount > 0) {
+          this.nftUpdateIntervalManager.recordDataChange();
+        }
+      }
+    };
+
+    // Create dynamic interval manager for NFT updates
+    this.nftUpdateIntervalManager = new DynamicIntervalManager(updateNFTs, {
+      minInterval: 5 * 60 * 1000, // 5 minutes
+      maxInterval: 60 * 60 * 1000, // 60 minutes
+      initialInterval: 5 * 60 * 1000, // Start at 5 minutes
+    });
+
+    this.nftUpdateIntervalManager.start();
 
     // Update prices every 1 minute
     this.priceUpdateInterval = setInterval(async () => {
@@ -476,6 +551,9 @@ class WebSocketService {
   cleanup() {
     if (this.priceUpdateInterval) {
       clearInterval(this.priceUpdateInterval);
+    }
+    if (this.nftUpdateIntervalManager) {
+      this.nftUpdateIntervalManager.stop();
     }
     if (this.io) {
       this.io.close();
