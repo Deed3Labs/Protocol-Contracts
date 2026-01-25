@@ -4,6 +4,7 @@ import { useMultichainBalances } from '@/hooks/useMultichainBalances';
 import { useMultichainActivity } from '@/hooks/useMultichainActivity';
 import { usePortfolioHoldings } from '@/hooks/usePortfolioHoldings';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { usePageVisibility } from '@/hooks/usePageVisibility';
 import type { MultichainBalance } from '@/hooks/useMultichainBalances';
 import type { WalletTransaction } from '@/types/transactions';
 
@@ -60,6 +61,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   
   // WebSocket connection for real-time updates
   const { socket, isConnected: wsConnected } = useWebSocket(address, isConnected);
+  
+  // User Activity Detection: Only poll when tab is visible
+  const { isVisible: isPageVisible } = usePageVisibility();
   
   // Use unified portfolio holdings hook (optimized - handles tokens + NFTs + cash balance)
   const {
@@ -239,6 +243,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Auto-refresh with optimized intervals to reduce Alchemy compute unit usage
   // Optimized: Increased intervals (30min no WS, 60min with WS) to reduce API calls
+  // User Activity Detection: Only poll when tab is visible
   // This is a fallback in case WebSocket is not available
   useEffect(() => {
     if (!isConnected) return;
@@ -246,9 +251,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     let intervalId: NodeJS.Timeout | null = null;
     let isMounted = true;
 
-    // Initial load - refresh all data
+    // Initial load - refresh all data (only if page is visible)
     const initialRefresh = async () => {
-      if (isMounted) {
+      if (isMounted && isPageVisible) {
         await refreshAll();
       }
     };
@@ -261,14 +266,16 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         // WebSocket is connected, rely on real-time updates
         // Still refresh every 60 minutes as backup (optimized from 30 minutes)
         intervalId = setInterval(() => {
-          if (isMounted && !wsConnected) {
+          // User Activity Detection: Only refresh if page is visible
+          if (isMounted && !wsConnected && isPageVisible) {
             refreshAll();
           }
         }, 60 * 60 * 1000); // 60 minutes as backup (optimized from 30 minutes)
       } else {
         // No WebSocket, use polling every 30 minutes (optimized from 10 minutes)
         intervalId = setInterval(() => {
-          if (isMounted) {
+          // User Activity Detection: Only refresh if page is visible
+          if (isMounted && isPageVisible) {
             refreshAll();
           }
         }, 30 * 60 * 1000); // 30 minutes (optimized from 10 minutes to reduce Alchemy compute units)
@@ -285,7 +292,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       clearTimeout(timeoutId);
     };
-  }, [isConnected, wsConnected]); // Include wsConnected to adjust interval based on WebSocket status
+  }, [isConnected, wsConnected, isPageVisible]); // Include isPageVisible to pause when tab is hidden
   
   const contextValue: PortfolioContextType = {
     balances: multichainBalances,

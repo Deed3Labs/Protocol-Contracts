@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { getRpcUrl, getAlchemyRestUrl } from '../utils/rpc.js';
+import { computeUnitTracker } from '../utils/computeUnitTracker.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { 
@@ -382,6 +383,13 @@ export async function getAllTokenBalances(
     
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
+        // Track compute units before making the call
+        computeUnitTracker.logApiCall(
+          'alchemy_getTokenBalances',
+          'getAllTokenBalances',
+          { chainId, address: normalizedAddress, estimatedUnits: 20 }
+        );
+
         // Call Alchemy's getTokenBalances API with "erc20" to get ALL tokens
         // Alchemy best practice: Use gzip compression for better performance
         const response = await fetch(alchemyRestUrl, {
