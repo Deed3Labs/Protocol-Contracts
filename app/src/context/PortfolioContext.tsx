@@ -4,7 +4,6 @@ import { useMultichainBalances } from '@/hooks/useMultichainBalances';
 import { useMultichainActivity } from '@/hooks/useMultichainActivity';
 import { usePortfolioHoldings } from '@/hooks/usePortfolioHoldings';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { DynamicIntervalManager } from '@/utils/dynamicInterval';
 import type { MultichainBalance } from '@/hooks/useMultichainBalances';
 import type { WalletTransaction } from '@/types/transactions';
 
@@ -238,114 +237,54 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, [socket, wsConnected, refreshBalances, refreshHoldings, refreshActivity]);
 
-  // Auto-refresh with dynamic intervals (5-60 minutes)
-  // Adjusts based on WebSocket connection, user activity, and data changes
-  const intervalManagerRef = useRef<DynamicIntervalManager | null>(null);
-  const lastDataChangeRef = useRef<number>(Date.now());
-  const dataChangeCountRef = useRef<number>(0);
-  const prevTotalBalanceRef = useRef<number>(totalBalanceUSD);
-  const prevHoldingsCountRef = useRef<number>(holdings.length);
-  const prevTransactionsCountRef = useRef<number>(walletTransactions.length);
-
-  // Track data changes
+  // Auto-refresh with reduced interval (10 minutes instead of 1 hour)
+  // This is a fallback in case WebSocket is not available
   useEffect(() => {
-    if (prevTotalBalanceRef.current !== totalBalanceUSD || 
-        prevHoldingsCountRef.current !== holdings.length ||
-        prevTransactionsCountRef.current !== walletTransactions.length) {
-      dataChangeCountRef.current++;
-      lastDataChangeRef.current = Date.now();
-      if (intervalManagerRef.current) {
-        intervalManagerRef.current.recordDataChange();
-      }
-    }
+    if (!isConnected) return;
 
-    prevTotalBalanceRef.current = totalBalanceUSD;
-    prevHoldingsCountRef.current = holdings.length;
-    prevTransactionsCountRef.current = walletTransactions.length;
-  }, [totalBalanceUSD, holdings.length, walletTransactions.length]);
-
-  // Setup dynamic interval manager
-  useEffect(() => {
-    if (!isConnected) {
-      if (intervalManagerRef.current) {
-        intervalManagerRef.current.stop();
-        intervalManagerRef.current = null;
-      }
-      return;
-    }
+    let intervalId: NodeJS.Timeout | null = null;
+    let isMounted = true;
 
     // Initial load - refresh all data
     const initialRefresh = async () => {
-      try {
+      if (isMounted) {
         await refreshAll();
-      } catch (error) {
-        console.error('[PortfolioContext] Error in initial refresh:', error);
-        if (intervalManagerRef.current) {
-          intervalManagerRef.current.recordExecution(false);
-        }
       }
     };
     initialRefresh();
 
-    // Create dynamic interval manager
-    const refreshCallback = async () => {
-      try {
-        await refreshAll();
-        if (intervalManagerRef.current) {
-          intervalManagerRef.current.recordExecution(true);
-        }
-      } catch (error) {
-        console.error('[PortfolioContext] Error in auto-refresh:', error);
-        if (intervalManagerRef.current) {
-          intervalManagerRef.current.recordExecution(false);
-        }
+    // Set up auto-refresh every 10 minutes (reduced from 1 hour)
+    // Only use if WebSocket is not connected
+    const setupInterval = () => {
+      if (wsConnected) {
+        // WebSocket is connected, rely on real-time updates
+        // Still refresh every 30 minutes as backup
+        intervalId = setInterval(() => {
+          if (isMounted && !wsConnected) {
+            refreshAll();
+          }
+        }, 30 * 60 * 1000); // 30 minutes as backup
+      } else {
+        // No WebSocket, use polling every 10 minutes
+        intervalId = setInterval(() => {
+          if (isMounted) {
+            refreshAll();
+          }
+        }, 10 * 60 * 1000); // 10 minutes
       }
     };
 
-    intervalManagerRef.current = new DynamicIntervalManager(refreshCallback, {
-      minInterval: 5 * 60 * 1000, // 5 minutes
-      maxInterval: 60 * 60 * 1000, // 60 minutes
-      initialInterval: wsConnected ? 30 * 60 * 1000 : 10 * 60 * 1000, // Start at 30 min if WS connected, 10 min otherwise
-    });
-
-    // Update conditions based on WebSocket status
-    intervalManagerRef.current.updateConditions({
-      wsConnected,
-      isUserActive: true, // Will be updated by activity tracking
-    });
-
-    // Delay starting the interval to allow initial data to load first
-    // This prevents rate limiting on app startup
-    // Wait 2 minutes before starting auto-refresh (initial data already loaded)
-    intervalManagerRef.current.start(2 * 60 * 1000);
-
-    // Update conditions when WebSocket status changes
-    const updateConditions = () => {
-      if (intervalManagerRef.current) {
-        const timeSinceLastChange = Date.now() - lastDataChangeRef.current;
-        const dataChangeFrequency = timeSinceLastChange > 0 
-          ? (dataChangeCountRef.current * 60000) / timeSinceLastChange 
-          : 0;
-
-        intervalManagerRef.current.updateConditions({
-          wsConnected,
-          dataChangeFrequency,
-          lastChangeTime: dataChangeCountRef.current > 0 ? lastDataChangeRef.current : undefined,
-        });
-      }
-    };
-
-    // Update conditions periodically and when WebSocket status changes
-    const conditionUpdateInterval = setInterval(updateConditions, 60000); // Update every minute
+    // Delay interval setup to avoid immediate refresh after initial load
+    const timeoutId = setTimeout(setupInterval, 60000); // Wait 1 minute before setting up interval
 
     return () => {
-      if (intervalManagerRef.current) {
-        intervalManagerRef.current.stop();
-        intervalManagerRef.current = null;
+      isMounted = false;
+      if (intervalId) {
+        clearInterval(intervalId);
       }
-      clearInterval(conditionUpdateInterval);
+      clearTimeout(timeoutId);
     };
-  }, [isConnected, wsConnected, refreshAll]); // Include wsConnected to adjust interval based on WebSocket status
+  }, [isConnected, wsConnected]); // Include wsConnected to adjust interval based on WebSocket status
   
   const contextValue: PortfolioContextType = {
     balances: multichainBalances,
