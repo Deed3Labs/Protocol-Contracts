@@ -237,7 +237,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, [socket, wsConnected, refreshBalances, refreshHoldings, refreshActivity]);
 
-  // Auto-refresh with reduced interval (10 minutes instead of 1 hour)
+  // Auto-refresh with optimized intervals to reduce Alchemy compute unit usage
+  // Optimized: Increased intervals (30min no WS, 60min with WS) to reduce API calls
   // This is a fallback in case WebSocket is not available
   useEffect(() => {
     if (!isConnected) return;
@@ -253,24 +254,24 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
     initialRefresh();
 
-    // Set up auto-refresh every 10 minutes (reduced from 1 hour)
+    // Set up auto-refresh with optimized intervals
     // Only use if WebSocket is not connected
     const setupInterval = () => {
       if (wsConnected) {
         // WebSocket is connected, rely on real-time updates
-        // Still refresh every 30 minutes as backup
+        // Still refresh every 60 minutes as backup (optimized from 30 minutes)
         intervalId = setInterval(() => {
           if (isMounted && !wsConnected) {
             refreshAll();
           }
-        }, 30 * 60 * 1000); // 30 minutes as backup
+        }, 60 * 60 * 1000); // 60 minutes as backup (optimized from 30 minutes)
       } else {
-        // No WebSocket, use polling every 10 minutes
+        // No WebSocket, use polling every 30 minutes (optimized from 10 minutes)
         intervalId = setInterval(() => {
           if (isMounted) {
             refreshAll();
           }
-        }, 10 * 60 * 1000); // 10 minutes
+        }, 30 * 60 * 1000); // 30 minutes (optimized from 10 minutes to reduce Alchemy compute units)
       }
     };
 

@@ -135,10 +135,13 @@ class WebSocketService {
 
   /**
    * Start periodic updates for all connected clients
-   * Optimized: Reduced NFT polling from 30s to 5 minutes to reduce Alchemy compute unit usage
+   * Optimized: Increased intervals to reduce Alchemy compute unit usage
+   * - Balances/transactions: 2 minutes (was 30 seconds)
+   * - NFTs: 5 minutes (already optimized)
+   * - Prices: 5 minutes (was 1 minute)
    */
   private startPeriodicUpdates() {
-    // Update balances and transactions every 30 seconds (these are lightweight)
+    // Update balances and transactions every 2 minutes (optimized from 30 seconds)
     setInterval(async () => {
       if (!this.io || this.clients.size === 0) return;
 
@@ -173,7 +176,7 @@ class WebSocketService {
           console.error(`[WebSocket] Error updating client ${socketId}:`, error);
         }
       }
-    }, 30000); // 30 seconds for balances/transactions
+    }, 2 * 60 * 1000); // 2 minutes for balances/transactions (optimized from 30 seconds)
 
     // Update NFTs every 5 minutes (reduced from 30 seconds to save Alchemy compute units)
     // NFTs change less frequently and are expensive to fetch
@@ -204,7 +207,7 @@ class WebSocketService {
       }
     }, 5 * 60 * 1000); // 5 minutes for NFTs
 
-    // Update prices every 1 minute
+    // Update prices every 5 minutes (optimized from 1 minute to reduce Alchemy compute units)
     this.priceUpdateInterval = setInterval(async () => {
       if (!this.io || this.clients.size === 0) return;
 
@@ -228,7 +231,7 @@ class WebSocketService {
           }
         }
       }
-    }, 60000) as unknown as number; // 1 minute
+    }, 5 * 60 * 1000) as unknown as number; // 5 minutes (optimized from 1 minute to reduce Alchemy compute units)
   }
 
   /**

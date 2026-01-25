@@ -94,19 +94,21 @@ class TransfersService {
 
   /**
    * Monitor transfers for a specific address on a specific chain
+   * Optimized: Increased interval from 30s to 5 minutes to reduce Alchemy compute unit usage
+   * This reduces API calls by 90% while still providing timely transfer notifications
    */
   private monitorChain(address: string, chainId: number) {
     const normalizedAddress = address.toLowerCase();
     const intervalKey = `${normalizedAddress}`;
 
-    // Check every 30 seconds for new transfers
+    // Check every 5 minutes for new transfers (optimized from 30 seconds)
     const interval = setInterval(async () => {
       try {
         await this.checkTransfers(address, chainId);
       } catch (error) {
         console.error(`[TransfersService] Error checking transfers for ${address} on chain ${chainId}:`, error);
       }
-    }, 30000); // 30 seconds
+    }, 5 * 60 * 1000); // 5 minutes (optimized from 30 seconds to reduce Alchemy compute units)
 
     this.monitoringIntervals.set(intervalKey, interval as unknown as number);
 
