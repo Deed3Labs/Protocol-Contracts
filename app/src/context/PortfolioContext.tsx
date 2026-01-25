@@ -314,7 +314,10 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isUserActive: true, // Will be updated by activity tracking
     });
 
-    intervalManagerRef.current.start();
+    // Delay starting the interval to allow initial data to load first
+    // This prevents rate limiting on app startup
+    // Wait 2 minutes before starting auto-refresh (initial data already loaded)
+    intervalManagerRef.current.start(2 * 60 * 1000);
 
     // Update conditions when WebSocket status changes
     const updateConditions = () => {

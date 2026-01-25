@@ -166,8 +166,14 @@ export async function startPriceUpdater() {
     initialInterval: 5 * 60 * 1000, // Start at 5 minutes
   });
 
-  // Start the dynamic interval
-  intervalManager.start();
+  // Run initial update immediately (needed for cache warming)
+  updatePrices().catch(error => {
+    console.error('[PriceUpdater] Error in initial price update:', error);
+  });
 
-  console.log(`✅ Price updater job started (dynamic interval: 5-60 minutes, updating ${allTokens.length} tokens)`);
+  // Start the dynamic interval with a delay to allow server to fully initialize
+  // This prevents rate limiting on server startup
+  intervalManager.start(60000); // Wait 1 minute before starting interval
+
+  console.log(`✅ Price updater job started (dynamic interval: 5-60 minutes, updating ${allTokens.length} tokens, interval starts in 1 minute)`);
 }

@@ -161,7 +161,8 @@ class TransfersService {
       });
 
       this.monitoringIntervals.set(intervalKey, intervalManager);
-      intervalManager.start();
+      // Delay start to prevent rate limiting on initial monitoring
+      intervalManager.start(30000); // Wait 30 seconds before starting
 
       // Update conditions periodically
       const updateConditions = () => {

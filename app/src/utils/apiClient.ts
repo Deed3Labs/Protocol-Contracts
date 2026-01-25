@@ -27,10 +27,12 @@ interface RequestInitWithTimeout extends RequestInit {
  * Generic API request function
  * Handles errors gracefully, including HTML responses (server down, wrong endpoint, etc.)
  * Includes timeout and abort handling to prevent resource exhaustion
+ * Implements exponential backoff for rate limiting (429 errors)
  */
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInitWithTimeout = {}
+  options: RequestInitWithTimeout = {},
+  retryCount: number = 0
 ): Promise<ApiResponse<T>> {
   // Create abort controller for timeout
   const timeoutController = new AbortController();
@@ -53,6 +55,33 @@ async function apiRequest<T>(
     // Check if response is actually JSON before trying to parse
     const contentType = response.headers.get('content-type');
     const isJson = contentType?.includes('application/json');
+
+    // Handle rate limiting (429) with exponential backoff
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('Retry-After') || response.headers.get('X-RateLimit-Reset');
+      const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : null;
+      
+      // Calculate backoff: exponential with jitter, max 3 retries
+      if (retryCount < 3) {
+        const baseDelay = retryAfterSeconds 
+          ? retryAfterSeconds * 1000 
+          : Math.min(1000 * Math.pow(2, retryCount), 10000); // Max 10 seconds
+        const jitter = Math.random() * 1000; // Add up to 1 second jitter
+        const delay = baseDelay + jitter;
+        
+        console.warn(`[apiClient] Rate limited (429), retrying after ${Math.round(delay)}ms (attempt ${retryCount + 1}/3)`);
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        // Retry the request
+        return apiRequest<T>(endpoint, options, retryCount + 1);
+      } else {
+        // Max retries reached
+        return {
+          error: 'Rate limit exceeded. Please try again later.',
+        };
+      }
+    }
 
     if (!response.ok) {
       // Try to parse error as JSON, but handle HTML/other responses

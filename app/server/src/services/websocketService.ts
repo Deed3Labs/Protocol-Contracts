@@ -277,7 +277,8 @@ class WebSocketService {
       initialInterval: 5 * 60 * 1000, // Start at 5 minutes
     });
 
-    this.nftUpdateIntervalManager.start();
+    // Delay start to prevent rate limiting on server startup
+    this.nftUpdateIntervalManager.start(60000); // Wait 1 minute before starting
 
     // Update prices every 1 minute
     this.priceUpdateInterval = setInterval(async () => {

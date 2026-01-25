@@ -176,8 +176,9 @@ export class DynamicIntervalManager {
 
   /**
    * Start the interval
+   * @param delayBeforeStart - Delay in ms before starting (to allow initial data to load)
    */
-  start() {
+  start(delayBeforeStart: number = 0) {
     if (this.intervalId) {
       this.stop();
     }
@@ -192,19 +193,25 @@ export class DynamicIntervalManager {
       }
     };
 
-    // Execute immediately on start
-    execute();
-
-    // Set up interval
-    this.intervalId = setInterval(execute, this.currentInterval) as unknown as NodeJS.Timeout;
+    // Don't execute immediately - wait for delay to allow initial setup
+    // This prevents rate limiting on server startup
+    if (delayBeforeStart > 0) {
+      setTimeout(() => {
+        // Set up interval (don't execute immediately)
+        this.intervalId = setInterval(execute, this.currentInterval) as unknown as NodeJS.Timeout;
+      }, delayBeforeStart);
+    } else {
+      // Set up interval (don't execute immediately)
+      this.intervalId = setInterval(execute, this.currentInterval) as unknown as NodeJS.Timeout;
+    }
   }
 
   /**
    * Restart the interval with current settings
    */
-  restart() {
+  restart(delayBeforeStart: number = 0) {
     this.stop();
-    this.start();
+    this.start(delayBeforeStart);
   }
 
   /**
