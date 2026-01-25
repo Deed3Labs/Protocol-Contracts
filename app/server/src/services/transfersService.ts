@@ -647,10 +647,10 @@ class TransfersService {
   }>> {
     try {
       // Determine categories based on chain support
-      // 'internal' category is only supported for Ethereum (1), Polygon (137), Arbitrum (42161), Optimism (10), and Base (8453)
+      // 'internal' category is only supported for ETH (1) and MATIC/Polygon (137) per Alchemy API
       const categories = ['external', 'erc20', 'erc721', 'erc1155'];
-      // Alchemy supports internal transfers on these chains
-      if (chainId === 1 || chainId === 137 || chainId === 42161 || chainId === 10 || chainId === 8453) {
+      // Only add 'internal' for Ethereum and Polygon
+      if (chainId === 1 || chainId === 137) {
         categories.push('internal');
       }
 
