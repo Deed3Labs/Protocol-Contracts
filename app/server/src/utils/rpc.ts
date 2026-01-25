@@ -122,7 +122,7 @@ export function getAlchemyRestUrl(chainId: number): string | null {
  * Get Alchemy NFT API base URL for a chain
  * Used for Alchemy's NFT API endpoints (different from REST API)
  * Note: getFloorPrice endpoint is only available on Ethereum mainnet
-z * getNFTsForOwner (v3) is available on multiple chains including Base Sepolia
+ * getNFTsForOwner (v3) is available on multiple chains including Base Sepolia
  */
 export function getAlchemyNFTUrl(chainId: number): string | null {
   const alchemyApiKey = process.env.ALCHEMY_API_KEY;
