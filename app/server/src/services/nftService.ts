@@ -121,10 +121,11 @@ export async function getDeedNFTs(
         // Use withMetadata=true to get tokenURI and other standard NFT data (saves RPC calls!)
         // Note: In v3, tokenId is a direct property (decimal string), not nested in id.tokenId
         const response = await fetch(
-          `${alchemyNFTUrl}/getNFTsForOwner?owner=${normalizedAddress}&contractAddresses[]=${normalizedContractAddr}&withMetadata=true&pageSize=100`,
+          `${alchemyNFTUrl}/getNFTsForOwner?owner=${normalizedAddress}&contractAddresses[]=${normalizedContractAddr}&withMetadata=true&pageSize=50`,
           {
             headers: {
               'Accept': 'application/json',
+              'Accept-Encoding': 'gzip', // Alchemy best practice: Use gzip compression
             },
           }
         );

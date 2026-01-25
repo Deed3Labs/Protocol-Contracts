@@ -176,7 +176,7 @@ class TransfersService {
         {
           fromBlock: lastBlock,
           toBlock: 'latest',
-          maxCount: 100,
+          maxCount: 50, // Alchemy best practice: Keep batches under 50
           excludeZeroValue: false,
           category: categories,
         }
@@ -362,17 +362,19 @@ class TransfersService {
       }
       
       // Ensure maxCount is a number (not a string) for internal logic
-      let maxCountNum: number = 100;
+      // Alchemy best practice: Keep batches under 50
+      let maxCountNum: number = 50;
       if (options.maxCount !== undefined && options.maxCount !== null) {
         if (typeof options.maxCount === 'number') {
-          maxCountNum = options.maxCount > 0 ? options.maxCount : 100;
+          // Cap at 50 per Alchemy best practices
+          maxCountNum = options.maxCount > 0 ? Math.min(options.maxCount, 50) : 50;
         } else if (typeof options.maxCount === 'string') {
           // Handle string maxCount (defensive)
           const parsed = parseInt(options.maxCount, 10);
-          maxCountNum = !isNaN(parsed) && parsed > 0 ? parsed : 100;
+          maxCountNum = !isNaN(parsed) && parsed > 0 ? Math.min(parsed, 50) : 50;
         } else {
-          console.warn(`[TransfersService] Invalid maxCount type: ${typeof options.maxCount}, using default 100`);
-          maxCountNum = 100;
+          console.warn(`[TransfersService] Invalid maxCount type: ${typeof options.maxCount}, using default 50`);
+          maxCountNum = 50;
         }
       }
       
@@ -420,6 +422,7 @@ class TransfersService {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'Accept-Encoding': 'gzip', // Alchemy best practice: Use gzip compression
             },
             body: JSON.stringify(requestBody),
           });

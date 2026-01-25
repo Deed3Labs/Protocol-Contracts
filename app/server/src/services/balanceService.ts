@@ -9,14 +9,15 @@ import {
 
 /**
  * Rate limiter for Alchemy API calls
- * Uses both per-chain and global rate limiting to avoid hitting Alchemy's limits
- * Alchemy has both per-chain and global rate limits, so we need both
+ * Light rate limiting to prevent accidental spikes, but allows concurrent requests
+ * Alchemy best practice: Send requests concurrently - Alchemy is built to handle high concurrency
+ * This limiter is a safety net, not a strict throttle
  */
 class AlchemyRateLimiter {
   private lastRequestTime: Map<number, number> = new Map();
   private lastGlobalRequestTime: number = 0;
-  private readonly minDelayMs = 200; // 200ms between requests per chain = ~5 req/sec per chain max
-  private readonly minGlobalDelayMs = 100; // 100ms between ANY requests globally = ~10 req/sec global max
+  private readonly minDelayMs = 50; // 50ms between requests per chain = ~20 req/sec per chain (light throttling)
+  private readonly minGlobalDelayMs = 20; // 20ms between ANY requests globally = ~50 req/sec global (very light throttling)
 
   async waitForRateLimit(chainId: number): Promise<void> {
     const now = Date.now();
@@ -279,9 +280,13 @@ async function getTokenMetadata(
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       // Use Alchemy's optimized metadata API
+      // Alchemy best practice: Use gzip compression for better performance
       const response = await fetch(alchemyRestUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept-Encoding': 'gzip', // Enable gzip compression (75% latency improvement)
+        },
         body: JSON.stringify({
           id: 1,
           jsonrpc: '2.0',
@@ -378,10 +383,12 @@ export async function getAllTokenBalances(
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         // Call Alchemy's getTokenBalances API with "erc20" to get ALL tokens
+        // Alchemy best practice: Use gzip compression for better performance
         const response = await fetch(alchemyRestUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Accept-Encoding': 'gzip', // Enable gzip compression (75% latency improvement)
           },
           body: JSON.stringify({
             id: 1,
