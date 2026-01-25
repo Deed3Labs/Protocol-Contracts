@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { getRpcUrl, getAlchemyNFTUrl, getAlchemyApiKey } from '../utils/rpc.js';
+import { getRpcUrl } from '../utils/rpc.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 import { getContractAddress } from '../config/contracts.js';
 import { getNFTFloorPrice } from './priceService.js';
@@ -79,7 +79,8 @@ export interface GeneralNFTData {
 
 /**
  * Get DeedNFTs for an address on a chain
- * Optimized to use Alchemy NFT API first, then batch RPC calls for T-Deed specific data
+ * Uses Alchemy Portfolio API (get-nfts-by-address) - more reliable than NFT API v3
+ * https://www.alchemy.com/docs/data/portfolio-apis/portfolio-api-endpoints/portfolio-api-endpoints/get-nfts-by-address
  */
 export async function getDeedNFTs(
   chainId: number,
@@ -101,191 +102,111 @@ export async function getDeedNFTs(
     const normalizedContractAddr = ethers.getAddress(contractAddr.toLowerCase());
     const normalizedAddress = ethers.getAddress(address.toLowerCase());
     
-    // Step 1: Try to get ALL data from Alchemy NFT API (single API call instead of multiple RPC calls)
-    // IMPORTANT: Do NOT fallback to RPC if Alchemy fails - it causes excessive compute unit usage
-    // Store tokenIds, tokenURIs, and metadata (traits, validation status) from Alchemy
-    let tokenIds: string[] = [];
+    // Step 1: Use Alchemy Portfolio API to get all NFTs (more reliable than NFT API v3)
+    // Portfolio API supports multiple chains and has better coverage
+    const portfolioResults = await getNFTsByAddress(
+      [{ address: normalizedAddress, chainIds: [chainId] }],
+      {
+        withMetadata: true,
+        pageSize: 50, // Alchemy best practice: Keep batches under 50
+      }
+    );
+
+    const addressMap = portfolioResults.get(normalizedAddress);
+    if (!addressMap) {
+      return [];
+    }
+
+    const chainData = addressMap.get(chainId);
+    if (!chainData || !chainData.nfts || chainData.nfts.length === 0) {
+      return [];
+    }
+
+    // Step 2: Filter NFTs by contract address and extract T-Deed data
     const tokenDataMap = new Map<string, {
       uri: string;
       assetType: number;
       definition: string;
       configuration: string;
       validatorAddress: string;
-    }>(); // Map tokenId -> all NFT data from Alchemy metadata
-    const alchemyNFTUrl = getAlchemyNFTUrl(chainId);
-    const apiKey = getAlchemyApiKey();
-    
-    if (alchemyNFTUrl && apiKey) {
-      try {
-        // Use Alchemy NFT API v3 getNFTsForOwner to get all NFTs owned by address
-        // Use withMetadata=true to get tokenURI and other standard NFT data (saves RPC calls!)
-        // Note: In v3, tokenId is a direct property (decimal string), not nested in id.tokenId
-        const response = await fetch(
-          `${alchemyNFTUrl}/getNFTsForOwner?owner=${normalizedAddress}&contractAddresses[]=${normalizedContractAddr}&withMetadata=true&pageSize=100`,
-          {
-            headers: {
-              'Accept': 'application/json',
-            },
-          }
-        );
+    }>();
 
-        if (response.ok) {
-          const data = await response.json() as {
-            ownedNfts?: Array<{ 
-              tokenId?: string; // v3: tokenId is direct property, decimal string
-              id?: { tokenId?: string; tokenIdHex?: string }; // Some responses may have nested id
-              contract?: { address: string };
-              tokenUri?: string; // Token URI from metadata
-              raw?: { 
-                tokenUri?: string; // Alternative location for token URI
-                metadata?: {
-                  name?: string;
-                  description?: string;
-                  image?: string;
-                  attributes?: Array<{
-                    trait_type?: string;
-                    value?: string | number;
-                  }>;
-                };
-              };
-              description?: string; // Description from metadata
-            }>;
-            error?: { message?: string };
-          };
+    // Map asset type string to number (from MetadataRenderer contract)
+    const assetTypeMap: Record<string, number> = {
+      'Land': 0,
+      'Vehicle': 1,
+      'Estate': 2,
+      'CommercialEquipment': 3,
+    };
 
-          if (data.ownedNfts && !data.error && Array.isArray(data.ownedNfts)) {
-            // Filter by contract address and extract tokenIds + tokenURIs
-            for (const nft of data.ownedNfts) {
-              // Ensure it matches our contract address
-              if (!nft.contract?.address) continue;
-              try {
-                const nftContract = ethers.getAddress(nft.contract.address.toLowerCase());
-                if (nftContract !== normalizedContractAddr) continue;
-              } catch {
-                continue;
-              }
-
-              // Extract tokenId (handle multiple formats)
-              let tokenId = '';
-              if (nft.tokenId) {
-                tokenId = nft.tokenId;
-              } else if (nft.id?.tokenId) {
-                tokenId = nft.id.tokenId;
-              } else if (nft.id?.tokenIdHex) {
-                // Convert hex to decimal string
-                try {
-                  tokenId = BigInt(nft.id.tokenIdHex).toString();
-                } catch {
-                  continue;
-                }
-              }
-
-              if (!tokenId) continue;
-
-              // Extract ALL data from Alchemy metadata (saves ALL RPC calls!)
-              const tokenURI = nft.tokenUri || nft.raw?.tokenUri || '';
-              const description = nft.description || nft.raw?.metadata?.description || '';
-              const attributes = nft.raw?.metadata?.attributes || [];
-
-              // Parse attributes to extract T-Deed specific data
-              let assetType = 0;
-              let validatorAddress = ethers.ZeroAddress;
-              let configuration = '';
-
-              // Map asset type string to number (from MetadataRenderer contract)
-              const assetTypeMap: Record<string, number> = {
-                'Land': 0,
-                'Vehicle': 1,
-                'Estate': 2,
-                'CommercialEquipment': 3,
-              };
-
-              for (const attr of attributes) {
-                const traitType = attr.trait_type || '';
-                const traitTypeLower = traitType.toLowerCase();
-                const value = attr.value;
-
-                // Match trait names from DeedNFT contract (case-insensitive)
-                if (traitTypeLower === 'asset type' || traitTypeLower === 'assettype') {
-                  // Asset type can be string (e.g., "Land", "Vehicle") or number
-                  if (typeof value === 'string') {
-                    assetType = assetTypeMap[value] ?? 0;
-                  } else if (typeof value === 'number') {
-                    assetType = value;
-                  }
-                } else if (traitTypeLower === 'validator') {
-                  // Validator address
-                  try {
-                    if (typeof value === 'string' && value.startsWith('0x')) {
-                      validatorAddress = ethers.getAddress(value);
-                    }
-                  } catch {
-                    // Invalid address format
-                  }
-                } else if (traitTypeLower === 'configuration') {
-                  // Configuration string
-                  if (typeof value === 'string') {
-                    configuration = value;
-                  }
-                }
-                // Note: "Validation Status" trait shows "Valid"/"Invalid" but we get validator address
-                // from "Validator" trait. If validator address is set, it's validated.
-              }
-
-              // Definition comes from description field
-              const definition = description || `T-Deed #${tokenId}`;
-
-              // Store all data from Alchemy
-              tokenDataMap.set(tokenId, {
-                uri: tokenURI,
-                assetType,
-                definition,
-                configuration,
-                validatorAddress,
-              });
-
-              tokenIds.push(tokenId);
-            }
-            
-            if (tokenIds.length > 0) {
-              console.log(`[getDeedNFTs] Found ${tokenIds.length} NFTs via Alchemy API with metadata for ${normalizedAddress} on chain ${chainId}`);
-            } else {
-              console.log(`[getDeedNFTs] Alchemy API returned ${data.ownedNfts.length} NFTs but none matched contract ${normalizedContractAddr}`);
-            }
-          } else if (data.error) {
-            console.warn(`[getDeedNFTs] Alchemy API error:`, data.error.message || 'Unknown error');
-            // Return empty array instead of falling back to RPC
-            return [];
-          } else {
-            console.warn(`[getDeedNFTs] Alchemy API returned unexpected response format`);
-            // Return empty array instead of falling back to RPC
-            return [];
-          }
-        } else {
-          console.warn(`[getDeedNFTs] Alchemy API returned status ${response.status}, not falling back to RPC to avoid compute unit usage`);
-          // Return empty array instead of falling back to RPC
-          return [];
-        }
-      } catch (error) {
-        console.warn(`[getDeedNFTs] Alchemy NFT API failed:`, error);
-        // CRITICAL: Do NOT fallback to RPC - return empty array instead
-        // Falling back to RPC causes excessive Alchemy compute unit usage
-        return [];
+    for (const nft of chainData.nfts) {
+      // Filter by contract address
+      const nftContract = ethers.getAddress(nft.contract.address.toLowerCase());
+      if (nftContract !== normalizedContractAddr) {
+        continue;
       }
-    } else {
-      // Alchemy API not available - return empty array instead of using expensive RPC
-      console.warn(`[getDeedNFTs] Alchemy NFT API not available for chain ${chainId}, returning empty array to avoid RPC compute unit usage`);
+
+      const tokenId = nft.tokenId;
+      if (!tokenId) continue;
+
+      // Extract data from Portfolio API response
+      const tokenURI = nft.tokenUri || nft.raw?.tokenUri || '';
+      const description = nft.description || nft.raw?.metadata?.description || '';
+      const attributes = nft.raw?.metadata?.attributes || [];
+
+      // Parse attributes to extract T-Deed specific data
+      let assetType = 0;
+      let validatorAddress = ethers.ZeroAddress;
+      let configuration = '';
+
+      for (const attr of attributes || []) {
+        const traitType = attr.trait_type || '';
+        const traitTypeLower = traitType.toLowerCase();
+        const value = attr.value;
+
+        // Match trait names from DeedNFT contract (case-insensitive)
+        if (traitTypeLower === 'asset type' || traitTypeLower === 'assettype') {
+          if (typeof value === 'string') {
+            assetType = assetTypeMap[value] ?? 0;
+          } else if (typeof value === 'number') {
+            assetType = value;
+          }
+        } else if (traitTypeLower === 'validator') {
+          try {
+            if (typeof value === 'string' && value.startsWith('0x')) {
+              validatorAddress = ethers.getAddress(value);
+            }
+          } catch {
+            // Invalid address format
+          }
+        } else if (traitTypeLower === 'configuration') {
+          if (typeof value === 'string') {
+            configuration = value;
+          }
+        }
+      }
+
+      // Definition comes from description field
+      const definition = description || `T-Deed #${tokenId}`;
+
+      // Store all data from Portfolio API
+      tokenDataMap.set(tokenId, {
+        uri: tokenURI,
+        assetType,
+        definition,
+        configuration,
+        validatorAddress,
+      });
+    }
+
+    if (tokenDataMap.size === 0) {
+      console.log(`[getDeedNFTs] Portfolio API returned ${chainData.nfts.length} NFTs but none matched contract ${normalizedContractAddr} on chain ${chainId}`);
       return [];
     }
 
-    // Step 2: If we have tokenIds from Alchemy, use the metadata we already have!
-    // All traits and validation status are in the NFT metadata - no RPC calls needed!
-    if (tokenIds.length === 0) {
-      // No NFTs found via Alchemy API - return empty array
-      return [];
-    }
+    console.log(`[getDeedNFTs] Found ${tokenDataMap.size} T-Deeds via Portfolio API for ${normalizedAddress} on chain ${chainId}`);
 
-    // Fetch collection floor price once (not per NFT)
+    // Step 3: Fetch collection floor price once (not per NFT)
     let collectionFloorPrice: number | undefined;
     try {
       const price = await getNFTFloorPrice(chainId, normalizedContractAddr);
@@ -294,23 +215,17 @@ export async function getDeedNFTs(
       // Silent error - pricing is optional
     }
 
-    // Step 3: Build NFT data from Alchemy metadata (NO RPC CALLS NEEDED!)
+    // Step 4: Build NFT data from Portfolio API metadata
     // Only need RPC for token() and salt() which are not in metadata
     const nfts: DeedNFTData[] = [];
     const provider = createRetryProvider(rpcUrl, chainId);
     const abi = getDeedNFTAbi();
     const contract = new ethers.Contract(normalizedContractAddr, abi, provider);
 
-    // Process tokens - only make RPC calls for token() and salt() if needed
-    for (const tokenIdString of tokenIds) {
+    // Process tokens - only make RPC calls for token() and salt()
+    for (const [tokenIdString, tokenData] of tokenDataMap.entries()) {
       try {
-        const tokenData = tokenDataMap.get(tokenIdString);
-        if (!tokenData) {
-          // Skip if we don't have data from Alchemy
-          continue;
-        }
-
-        // Get token() and salt() from contract (only 2 RPC calls per NFT instead of 7!)
+        // Get token() and salt() from contract (only 2 RPC calls per NFT)
         const tokenId = BigInt(tokenIdString);
         const [tokenResult, saltResult] = await Promise.allSettled([
           withRetry(() => contract.token(tokenId)).catch(() => ethers.ZeroAddress),
@@ -320,7 +235,7 @@ export async function getDeedNFTs(
         const token = tokenResult.status === 'fulfilled' ? tokenResult.value : ethers.ZeroAddress;
         const salt = saltResult.status === 'fulfilled' ? saltResult.value.toString() : '0';
 
-        // Use all data from Alchemy metadata
+        // Use all data from Portfolio API metadata
         const {
           uri,
           assetType,
@@ -340,7 +255,7 @@ export async function getDeedNFTs(
           token,
           salt,
           isMinted: true,
-          priceUSD: collectionFloorPrice, // Use collection floor price for all NFTs
+          priceUSD: collectionFloorPrice,
         });
       } catch (err) {
         console.warn(`[getDeedNFTs] Error processing token ${tokenIdString}:`, err);

@@ -156,6 +156,7 @@ export async function getTokensByAddress(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept-Encoding': 'gzip', // Alchemy best practice: Use gzip compression
         },
         body: JSON.stringify({
           addresses: limitedRequests.map(req => ({
@@ -305,6 +306,7 @@ export async function getNFTsByAddress(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept-Encoding': 'gzip', // Alchemy best practice: Use gzip compression
         },
         body: JSON.stringify({
           addresses: limitedRequests.map(req => ({
@@ -318,7 +320,7 @@ export async function getNFTsByAddress(
           })),
           withMetadata: options.withMetadata ?? true,
           pageKey: options.pageKey,
-          pageSize: options.pageSize ?? 100,
+          pageSize: options.pageSize ? Math.min(options.pageSize, 50) : 50, // Alchemy best practice: Keep batches under 50
           orderBy: options.orderBy,
           sortOrder: options.sortOrder,
         }),

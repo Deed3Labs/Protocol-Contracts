@@ -167,49 +167,41 @@ router.post('/all/batch', async (req: Request, res: Response) => {
     }
 
     // Fetch uncached balances
+    // Alchemy best practice: Send requests concurrently (not sequentially)
+    // The rate limiter in balanceService will handle delays appropriately
+    // Alchemy is built to handle concurrent requests at scale
     if (uncached.length > 0) {
-      const fetchPromises = uncached.map(async ({ chainId, userAddress, index }) => {
-        try {
-          const tokens = await getAllTokenBalances(chainId, userAddress);
-          
-          // Cache the result
-          const cacheKey = `all_token_balances:${chainId}:${userAddress.toLowerCase()}`;
-          const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
-          await cacheService.set(
-            cacheKey,
-            { data: tokens, timestamp: Date.now() },
-            cacheTTL
-          );
+      await Promise.all(
+        uncached.map(async ({ chainId, userAddress, index }) => {
+          try {
+            const tokens = await getAllTokenBalances(chainId, userAddress);
+            
+            // Cache the result
+            const cacheKey = `all_token_balances:${chainId}:${userAddress.toLowerCase()}`;
+            const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+            await cacheService.set(
+              cacheKey,
+              { data: tokens, timestamp: Date.now() },
+              cacheTTL
+            );
 
-          return {
-            index,
-            chainId,
-            userAddress,
-            tokens,
-            cached: false,
-          };
-        } catch (error) {
-          return {
-            index,
-            chainId,
-            userAddress,
-            tokens: [],
-            cached: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-          };
-        }
-      });
-
-      const fetchResults = await Promise.all(fetchPromises);
-      for (const result of fetchResults) {
-        results[result.index] = {
-          chainId: result.chainId,
-          userAddress: result.userAddress,
-          tokens: result.tokens,
-          cached: result.cached,
-          error: result.error,
-        };
-      }
+            results[index] = {
+              chainId,
+              userAddress,
+              tokens,
+              cached: false,
+            };
+          } catch (error) {
+            results[index] = {
+              chainId,
+              userAddress,
+              tokens: [],
+              cached: false,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            };
+          }
+        })
+      );
     }
 
     res.json({ results });
