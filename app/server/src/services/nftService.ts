@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { getRpcUrl } from '../utils/rpc.js';
+import { getRpcUrl, getAlchemyNFTUrl, getAlchemyApiKey } from '../utils/rpc.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 import { getContractAddress } from '../config/contracts.js';
 import { getNFTFloorPrice } from './priceService.js';
@@ -79,6 +79,7 @@ export interface GeneralNFTData {
 
 /**
  * Get DeedNFTs for an address on a chain
+ * Optimized to use Alchemy NFT API first, then batch RPC calls for T-Deed specific data
  */
 export async function getDeedNFTs(
   chainId: number,
@@ -96,144 +97,257 @@ export async function getDeedNFTs(
       return [];
     }
 
-    // Use retry provider to handle rate limits and network issues
-    const provider = createRetryProvider(rpcUrl, chainId);
-    
     // Normalize contract address to proper checksum format
     const normalizedContractAddr = ethers.getAddress(contractAddr.toLowerCase());
     const normalizedAddress = ethers.getAddress(address.toLowerCase());
     
-    const abi = getDeedNFTAbi();
-    const contract = new ethers.Contract(normalizedContractAddr, abi, provider);
+    // Step 1: Try to get ALL data from Alchemy NFT API (single API call instead of multiple RPC calls)
+    // IMPORTANT: Do NOT fallback to RPC if Alchemy fails - it causes excessive compute unit usage
+    // Store tokenIds, tokenURIs, and metadata (traits, validation status) from Alchemy
+    let tokenIds: string[] = [];
+    const tokenDataMap = new Map<string, {
+      uri: string;
+      assetType: number;
+      definition: string;
+      configuration: string;
+      validatorAddress: string;
+    }>(); // Map tokenId -> all NFT data from Alchemy metadata
+    const alchemyNFTUrl = getAlchemyNFTUrl(chainId);
+    const apiKey = getAlchemyApiKey();
+    
+    if (alchemyNFTUrl && apiKey) {
+      try {
+        // Use Alchemy NFT API v3 getNFTsForOwner to get all NFTs owned by address
+        // Use withMetadata=true to get tokenURI and other standard NFT data (saves RPC calls!)
+        // Note: In v3, tokenId is a direct property (decimal string), not nested in id.tokenId
+        const response = await fetch(
+          `${alchemyNFTUrl}/getNFTsForOwner?owner=${normalizedAddress}&contractAddresses[]=${normalizedContractAddr}&withMetadata=true&pageSize=100`,
+          {
+            headers: {
+              'Accept': 'application/json',
+            },
+          }
+        );
 
-    // Get user's balance first (much more efficient than checking all tokens)
-    let balance: bigint;
-    try {
-      balance = await withRetry(() => contract.balanceOf(normalizedAddress));
-    } catch (error: any) {
-      if (error?.code === 'BAD_DATA' || error?.shortMessage?.includes('could not decode')) {
-        return [];
-      }
-      throw error;
-    }
+        if (response.ok) {
+          const data = await response.json() as {
+            ownedNfts?: Array<{ 
+              tokenId?: string; // v3: tokenId is direct property, decimal string
+              id?: { tokenId?: string; tokenIdHex?: string }; // Some responses may have nested id
+              contract?: { address: string };
+              tokenUri?: string; // Token URI from metadata
+              raw?: { 
+                tokenUri?: string; // Alternative location for token URI
+                metadata?: {
+                  name?: string;
+                  description?: string;
+                  image?: string;
+                  attributes?: Array<{
+                    trait_type?: string;
+                    value?: string | number;
+                  }>;
+                };
+              };
+              description?: string; // Description from metadata
+            }>;
+            error?: { message?: string };
+          };
 
-    if (balance === 0n) {
-      return []; // User owns no T-Deeds
-    }
-
-    const nfts: DeedNFTData[] = [];
-    const balanceNum = Number(balance);
-    const maxTokens = Math.min(balanceNum, 100); // Limit to 100 tokens to prevent timeouts
-
-    // Process in smaller batches to reduce concurrent RPC calls
-    const batchSize = 5;
-    for (let i = 0; i < maxTokens; i += batchSize) {
-      const batchPromises: Promise<void>[] = [];
-
-      for (let j = i; j < Math.min(i + batchSize, maxTokens); j++) {
-        batchPromises.push(
-          (async () => {
-            try {
-              // Use tokenOfOwnerByIndex to get only user-owned tokens (much more efficient!)
-              const tokenId = await withRetry(() => contract.tokenOfOwnerByIndex(normalizedAddress, j));
-              const tokenIdString = tokenId.toString();
-
-              // Get token URI with retry logic
-              const uri = await withRetry(() => contract.tokenURI(tokenId)).catch(() => '');
-
-              // Get validation status with retry logic
-              let validatorAddress = ethers.ZeroAddress;
+          if (data.ownedNfts && !data.error && Array.isArray(data.ownedNfts)) {
+            // Filter by contract address and extract tokenIds + tokenURIs
+            for (const nft of data.ownedNfts) {
+              // Ensure it matches our contract address
+              if (!nft.contract?.address) continue;
               try {
-                const [isValidated, validator] = await withRetry(() => contract.getValidationStatus(tokenId));
-                if (isValidated) {
-                  validatorAddress = validator;
-                }
-              } catch (err) {
-                // Silent error
+                const nftContract = ethers.getAddress(nft.contract.address.toLowerCase());
+                if (nftContract !== normalizedContractAddr) continue;
+              } catch {
+                continue;
               }
 
-              // Get asset type
+              // Extract tokenId (handle multiple formats)
+              let tokenId = '';
+              if (nft.tokenId) {
+                tokenId = nft.tokenId;
+              } else if (nft.id?.tokenId) {
+                tokenId = nft.id.tokenId;
+              } else if (nft.id?.tokenIdHex) {
+                // Convert hex to decimal string
+                try {
+                  tokenId = BigInt(nft.id.tokenIdHex).toString();
+                } catch {
+                  continue;
+                }
+              }
+
+              if (!tokenId) continue;
+
+              // Extract ALL data from Alchemy metadata (saves ALL RPC calls!)
+              const tokenURI = nft.tokenUri || nft.raw?.tokenUri || '';
+              const description = nft.description || nft.raw?.metadata?.description || '';
+              const attributes = nft.raw?.metadata?.attributes || [];
+
+              // Parse attributes to extract T-Deed specific data
               let assetType = 0;
-              try {
-                const assetTypeKey = ethers.keccak256(ethers.toUtf8Bytes('assetType'));
-                const assetTypeBytes = await withRetry(() => contract.getTraitValue(tokenId, assetTypeKey));
-                if (assetTypeBytes && assetTypeBytes.length > 0) {
-                  assetType = Number(ethers.AbiCoder.defaultAbiCoder().decode(['uint8'], assetTypeBytes)[0]);
-                }
-              } catch (err) {
-                // Silent error
-              }
-
-              // Get definition
-              let definition = `T-Deed #${tokenIdString}`;
-              try {
-                const definitionKey = ethers.keccak256(ethers.toUtf8Bytes('definition'));
-                const definitionBytes = await withRetry(() => contract.getTraitValue(tokenId, definitionKey));
-                if (definitionBytes && definitionBytes.length > 0) {
-                  definition = ethers.AbiCoder.defaultAbiCoder().decode(['string'], definitionBytes)[0];
-                }
-              } catch (err) {
-                // Silent error
-              }
-
-              // Get configuration
+              let validatorAddress = ethers.ZeroAddress;
               let configuration = '';
-              try {
-                const configurationKey = ethers.keccak256(ethers.toUtf8Bytes('configuration'));
-                const configurationBytes = await withRetry(() => contract.getTraitValue(tokenId, configurationKey));
-                if (configurationBytes && configurationBytes.length > 0) {
-                  configuration = ethers.AbiCoder.defaultAbiCoder().decode(['string'], configurationBytes)[0];
+
+              // Map asset type string to number (from MetadataRenderer contract)
+              const assetTypeMap: Record<string, number> = {
+                'Land': 0,
+                'Vehicle': 1,
+                'Estate': 2,
+                'CommercialEquipment': 3,
+              };
+
+              for (const attr of attributes) {
+                const traitType = attr.trait_type || '';
+                const traitTypeLower = traitType.toLowerCase();
+                const value = attr.value;
+
+                // Match trait names from DeedNFT contract (case-insensitive)
+                if (traitTypeLower === 'asset type' || traitTypeLower === 'assettype') {
+                  // Asset type can be string (e.g., "Land", "Vehicle") or number
+                  if (typeof value === 'string') {
+                    assetType = assetTypeMap[value] ?? 0;
+                  } else if (typeof value === 'number') {
+                    assetType = value;
+                  }
+                } else if (traitTypeLower === 'validator') {
+                  // Validator address
+                  try {
+                    if (typeof value === 'string' && value.startsWith('0x')) {
+                      validatorAddress = ethers.getAddress(value);
+                    }
+                  } catch {
+                    // Invalid address format
+                  }
+                } else if (traitTypeLower === 'configuration') {
+                  // Configuration string
+                  if (typeof value === 'string') {
+                    configuration = value;
+                  }
                 }
-              } catch (err) {
-                // Silent error
+                // Note: "Validation Status" trait shows "Valid"/"Invalid" but we get validator address
+                // from "Validator" trait. If validator address is set, it's validated.
               }
 
-              // Get token and salt
-              let token = ethers.ZeroAddress;
-              let salt = '0';
-              try {
-                token = await withRetry(() => contract.token(tokenId)).catch(() => ethers.ZeroAddress);
-                salt = (await withRetry(() => contract.salt(tokenId)).catch(() => 0n)).toString();
-              } catch (err) {
-                // Silent error
-              }
+              // Definition comes from description field
+              const definition = description || `T-Deed #${tokenId}`;
 
-              // Fetch price for T-Deed (optional - can be slow)
-              // Uses Alchemy NFT API first, falls back to OpenSea
-              let priceUSD: number | undefined;
-              try {
-                const price = await getNFTFloorPrice(chainId, normalizedContractAddr);
-                priceUSD = price !== null ? price : undefined;
-              } catch (error) {
-                // Silent error - pricing is optional
-              }
-
-              nfts.push({
-                tokenId: tokenIdString,
-                owner: normalizedAddress,
+              // Store all data from Alchemy
+              tokenDataMap.set(tokenId, {
+                uri: tokenURI,
                 assetType,
-                uri,
                 definition,
                 configuration,
                 validatorAddress,
-                token,
-                salt,
-                isMinted: true,
-                priceUSD,
               });
-            } catch (err) {
-              // Skip this token
-            }
-          })()
-        );
-      }
 
-      await Promise.all(batchPromises);
+              tokenIds.push(tokenId);
+            }
+            
+            if (tokenIds.length > 0) {
+              console.log(`[getDeedNFTs] Found ${tokenIds.length} NFTs via Alchemy API with metadata for ${normalizedAddress} on chain ${chainId}`);
+            } else {
+              console.log(`[getDeedNFTs] Alchemy API returned ${data.ownedNfts.length} NFTs but none matched contract ${normalizedContractAddr}`);
+            }
+          } else if (data.error) {
+            console.warn(`[getDeedNFTs] Alchemy API error:`, data.error.message || 'Unknown error');
+            // Return empty array instead of falling back to RPC
+            return [];
+          } else {
+            console.warn(`[getDeedNFTs] Alchemy API returned unexpected response format`);
+            // Return empty array instead of falling back to RPC
+            return [];
+          }
+        } else {
+          console.warn(`[getDeedNFTs] Alchemy API returned status ${response.status}, not falling back to RPC to avoid compute unit usage`);
+          // Return empty array instead of falling back to RPC
+          return [];
+        }
+      } catch (error) {
+        console.warn(`[getDeedNFTs] Alchemy NFT API failed:`, error);
+        // CRITICAL: Do NOT fallback to RPC - return empty array instead
+        // Falling back to RPC causes excessive Alchemy compute unit usage
+        return [];
+      }
+    } else {
+      // Alchemy API not available - return empty array instead of using expensive RPC
+      console.warn(`[getDeedNFTs] Alchemy NFT API not available for chain ${chainId}, returning empty array to avoid RPC compute unit usage`);
+      return [];
     }
 
-    // Fetch prices for T-Deeds (optional - can be slow, so make it async/optional)
-    // Prices are fetched separately and added later if needed
-    
+    // Step 2: If we have tokenIds from Alchemy, use the metadata we already have!
+    // All traits and validation status are in the NFT metadata - no RPC calls needed!
+    if (tokenIds.length === 0) {
+      // No NFTs found via Alchemy API - return empty array
+      return [];
+    }
+
+    // Fetch collection floor price once (not per NFT)
+    let collectionFloorPrice: number | undefined;
+    try {
+      const price = await getNFTFloorPrice(chainId, normalizedContractAddr);
+      collectionFloorPrice = price !== null ? price : undefined;
+    } catch (error) {
+      // Silent error - pricing is optional
+    }
+
+    // Step 3: Build NFT data from Alchemy metadata (NO RPC CALLS NEEDED!)
+    // Only need RPC for token() and salt() which are not in metadata
+    const nfts: DeedNFTData[] = [];
+    const provider = createRetryProvider(rpcUrl, chainId);
+    const abi = getDeedNFTAbi();
+    const contract = new ethers.Contract(normalizedContractAddr, abi, provider);
+
+    // Process tokens - only make RPC calls for token() and salt() if needed
+    for (const tokenIdString of tokenIds) {
+      try {
+        const tokenData = tokenDataMap.get(tokenIdString);
+        if (!tokenData) {
+          // Skip if we don't have data from Alchemy
+          continue;
+        }
+
+        // Get token() and salt() from contract (only 2 RPC calls per NFT instead of 7!)
+        const tokenId = BigInt(tokenIdString);
+        const [tokenResult, saltResult] = await Promise.allSettled([
+          withRetry(() => contract.token(tokenId)).catch(() => ethers.ZeroAddress),
+          withRetry(() => contract.salt(tokenId)).catch(() => 0n),
+        ]);
+
+        const token = tokenResult.status === 'fulfilled' ? tokenResult.value : ethers.ZeroAddress;
+        const salt = saltResult.status === 'fulfilled' ? saltResult.value.toString() : '0';
+
+        // Use all data from Alchemy metadata
+        const {
+          uri,
+          assetType,
+          definition,
+          configuration,
+          validatorAddress,
+        } = tokenData;
+
+        nfts.push({
+          tokenId: tokenIdString,
+          owner: normalizedAddress,
+          assetType,
+          uri,
+          definition,
+          configuration,
+          validatorAddress,
+          token,
+          salt,
+          isMinted: true,
+          priceUSD: collectionFloorPrice, // Use collection floor price for all NFTs
+        });
+      } catch (err) {
+        console.warn(`[getDeedNFTs] Error processing token ${tokenIdString}:`, err);
+        // Skip this token
+      }
+    }
+
     return nfts;
   } catch (error) {
     console.error(`Error fetching NFTs for ${address} on chain ${chainId}:`, error);

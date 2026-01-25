@@ -135,9 +135,10 @@ class WebSocketService {
 
   /**
    * Start periodic updates for all connected clients
+   * Optimized: Reduced NFT polling from 30s to 5 minutes to reduce Alchemy compute unit usage
    */
   private startPeriodicUpdates() {
-    // Update every 30 seconds
+    // Update balances and transactions every 30 seconds (these are lightweight)
     setInterval(async () => {
       if (!this.io || this.clients.size === 0) return;
 
@@ -160,15 +161,6 @@ class WebSocketService {
             socket.emit('balances', balances);
           }
 
-          if (subscription.subscriptions.includes('nfts')) {
-            const nfts = await this.fetchNFTs(
-              subscription.address,
-              subscription.chainIds,
-              cacheService
-            );
-            socket.emit('nfts', nfts);
-          }
-
           if (subscription.subscriptions.includes('transactions')) {
             const transactions = await this.fetchTransactions(
               subscription.address,
@@ -181,7 +173,36 @@ class WebSocketService {
           console.error(`[WebSocket] Error updating client ${socketId}:`, error);
         }
       }
-    }, 30000); // 30 seconds
+    }, 30000); // 30 seconds for balances/transactions
+
+    // Update NFTs every 5 minutes (reduced from 30 seconds to save Alchemy compute units)
+    // NFTs change less frequently and are expensive to fetch
+    setInterval(async () => {
+      if (!this.io || this.clients.size === 0) return;
+
+      const cacheService = await getRedisClient().then((client) => new CacheService(client));
+
+      for (const [socketId, subscription] of this.clients.entries()) {
+        const socket = this.io.sockets.sockets.get(socketId);
+        if (!socket || !socket.connected) {
+          this.clients.delete(socketId);
+          continue;
+        }
+
+        try {
+          if (subscription.subscriptions.includes('nfts')) {
+            const nfts = await this.fetchNFTs(
+              subscription.address,
+              subscription.chainIds,
+              cacheService
+            );
+            socket.emit('nfts', nfts);
+          }
+        } catch (error) {
+          console.error(`[WebSocket] Error updating NFTs for client ${socketId}:`, error);
+        }
+      }
+    }, 5 * 60 * 1000); // 5 minutes for NFTs
 
     // Update prices every 1 minute
     this.priceUpdateInterval = setInterval(async () => {
@@ -283,7 +304,7 @@ class WebSocketService {
           });
         } else {
           const result = await getDeedNFTs(chainId, address);
-          const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '600', 10);
+          const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '1800', 10);
           await cacheService.set(
             cacheKey,
             { nfts: result, timestamp: Date.now() },

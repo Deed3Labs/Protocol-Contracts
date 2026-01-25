@@ -66,8 +66,8 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     }
 
     // Cache the result
-    // Aligned with refresh interval: 10 minutes (600s) - NFTs change less frequently
-    const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '600', 10);
+    // Increased to 30 minutes (1800s) to reduce Alchemy compute unit usage - NFTs change infrequently
+    const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '1800', 10);
     await cacheService.set(
       cacheKey,
       { nfts, timestamp: Date.now() },
@@ -180,7 +180,7 @@ router.post('/batch', async (req: Request, res: Response) => {
         }
 
         const cacheKey = CacheKeys.nftList(chainId, address.toLowerCase(), contractAddress);
-        const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '600', 10);
+        const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '1800', 10);
         await cacheService.set(
           cacheKey,
           { nfts, timestamp: Date.now() },
@@ -379,7 +379,7 @@ router.post('/portfolio', async (req: Request, res: Response) => {
           if (nfts.length > 0 || totalCount !== undefined) {
             // Cache the result (Portfolio API format)
             const cacheKey = CacheKeys.nftList(chainId, address);
-            const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '600', 10);
+            const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '1800', 10);
             await cacheService.set(
               cacheKey,
               { nfts, timestamp: Date.now() },
