@@ -163,7 +163,7 @@ export default function MarketsHome() {
               {/* Balance (Buying Power) Header */}
               <div>
                  <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
-                   <span className="text-sm font-medium">Balance (buying power)</span>
+                   <span className="text-sm font-medium">Buying Power</span>
                    <div className="group relative">
                       <Info className="h-4 w-4 cursor-help" />
                       <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
