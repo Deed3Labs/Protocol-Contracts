@@ -2,12 +2,13 @@ import { useState, useCallback, useMemo } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { SUPPORTED_NETWORKS, getContractAddressForNetwork } from '@/config/networks';
 import type { DeedNFT } from '@/context/DeedNFTContext';
-import { getNFTs } from '@/utils/apiClient';
-import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
+import { getNFTs, getNFTsByAddressPortfolio } from '@/utils/apiClient';
+import { ethers } from 'ethers';
 
 export interface MultichainDeedNFT extends DeedNFT {
   chainId: number;
   chainName: string;
+  priceUSD?: number; // Optional: price from OpenSea or other sources
 }
 
 interface UseMultichainDeedNFTsReturn {
@@ -24,7 +25,12 @@ interface UseMultichainDeedNFTsReturn {
  * Hook to fetch DeedNFTs across all supported networks
  * 
  * Fetches DeedNFT tokens owned by the connected wallet across all configured chains.
- * Uses server API with Redis caching - server is required in production.
+ * Uses Alchemy Portfolio API (get-nfts-by-address) for optimized multi-chain fetching.
+ * Server API with Redis caching - server is required in production.
+ * 
+ * Optimization: Uses Portfolio API endpoint directly to fetch NFTs across all chains
+ * in a single request (or batched if >15 chains) instead of making individual requests
+ * per chain. This significantly reduces API calls and improves performance.
  * 
  * @example
  * ```tsx
@@ -51,7 +57,94 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
   const [error, setError] = useState<string | null>(null);
 
 
-  // Fetch NFTs for a specific chain
+  /**
+   * Convert Portfolio API NFT format to DeedNFT format
+   * Extracts T-Deed metadata from Portfolio API attributes
+   */
+  const convertPortfolioNFTToDeedNFT = useCallback((
+    nft: any,
+    chainId: number,
+    chainName: string,
+    contractAddress: string
+  ): MultichainDeedNFT | null => {
+    // Filter by contract address
+    const nftContract = (nft.contract?.address || '').toLowerCase();
+    if (nftContract !== contractAddress.toLowerCase()) {
+      return null;
+    }
+
+    const tokenId = nft.tokenId;
+    if (!tokenId) return null;
+
+    // Extract data from Portfolio API response
+    const tokenURI = nft.tokenUri || nft.raw?.tokenUri || '';
+    const description = nft.description || nft.raw?.metadata?.description || '';
+    const attributes = nft.raw?.metadata?.attributes || [];
+
+    // Map asset type string to number (from MetadataRenderer contract)
+    const assetTypeMap: Record<string, number> = {
+      'Land': 0,
+      'Vehicle': 1,
+      'Estate': 2,
+      'CommercialEquipment': 3,
+    };
+
+    // Parse attributes to extract T-Deed specific data
+    let assetType = 0;
+    let validatorAddress = ethers.ZeroAddress;
+    let configuration = '';
+
+    for (const attr of attributes || []) {
+      const traitType = attr.trait_type || '';
+      const traitTypeLower = traitType.toLowerCase();
+      const value = attr.value;
+
+      // Match trait names from DeedNFT contract (case-insensitive)
+      if (traitTypeLower === 'asset type' || traitTypeLower === 'assettype') {
+        if (typeof value === 'string') {
+          assetType = assetTypeMap[value] ?? 0;
+        } else if (typeof value === 'number') {
+          assetType = value;
+        }
+      } else if (traitTypeLower === 'validator') {
+        try {
+          if (typeof value === 'string' && value.startsWith('0x')) {
+            validatorAddress = ethers.getAddress(value);
+          }
+        } catch {
+          // Invalid address format
+        }
+      } else if (traitTypeLower === 'configuration') {
+        if (typeof value === 'string') {
+          configuration = value;
+        }
+      }
+    }
+
+    // Definition comes from description field
+    const definition = description || `T-Deed #${tokenId}`;
+
+    // Get price from OpenSea metadata if available
+    const priceUSD = nft.contract?.openseaMetadata?.floorPrice;
+
+    return {
+      tokenId: tokenId.toString(),
+      owner: address || '',
+      assetType,
+      uri: tokenURI,
+      definition,
+      configuration,
+      validatorAddress,
+      token: ethers.ZeroAddress, // Will be fetched via RPC if needed
+      salt: '0', // Will be fetched via RPC if needed
+      isMinted: true,
+      chainId,
+      chainName,
+      priceUSD,
+    };
+  }, [address]);
+
+  // Fetch NFTs for a specific chain (fallback for refreshChain)
   const fetchChainNFTs = useCallback(async (chainId: number): Promise<MultichainDeedNFT[]> => {
     if (!address) return [];
 
@@ -67,10 +160,7 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     try {
       // Use server API (with Redis caching)
       // Explicitly pass type='t-deed' to ensure we fetch T-Deeds, not general NFTs
-      const serverNFTs = await withTimeout(
-        getNFTs(chainId, address, contractAddress, 't-deed'),
-        5000 // 5 second timeout for production
-      ) as Awaited<ReturnType<typeof getNFTs>> | null;
+      const serverNFTs = await getNFTs(chainId, address, contractAddress, 't-deed');
       
       if (!serverNFTs || !serverNFTs.nfts) {
         // No NFTs found or server error
@@ -109,7 +199,7 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     });
   }, [isConnected, address, fetchChainNFTs]);
 
-  // Refresh all chains
+  // Refresh all chains using Portfolio API (optimized - single request for all chains)
   const refresh = useCallback(async () => {
     if (!isConnected || !address) {
       setNfts([]);
@@ -135,12 +225,70 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
 
     try {
       console.log('[useMultichainDeedNFTs] Refreshing T-Deeds for address:', address);
-      // Use device-optimized fetching (sequential for mobile, parallel for desktop)
-      const allNFTs = await fetchWithDeviceOptimization(
-        SUPPORTED_NETWORKS,
-        async (network) => await fetchChainNFTs(network.chainId)
-      );
-      console.log('[useMultichainDeedNFTs] Fetched T-Deeds:', allNFTs.length);
+      
+      // Get all chains with T-Deed contracts
+      const chainsWithContracts = SUPPORTED_NETWORKS
+        .filter(network => {
+          const contractAddress = getContractAddressForNetwork(network.chainId);
+          return contractAddress && contractAddress !== '0x0000000000000000000000000000000000000000';
+        })
+        .map(network => network.chainId);
+
+      if (chainsWithContracts.length === 0) {
+        console.log('[useMultichainDeedNFTs] No chains with T-Deed contracts found');
+        setNfts([]);
+        setIsLoading(false);
+        return;
+      }
+
+      // Portfolio API limits: max 2 addresses, 15 networks per address
+      // Split into batches if needed
+      const maxNetworksPerRequest = 15;
+      const batches: number[][] = [];
+      for (let i = 0; i < chainsWithContracts.length; i += maxNetworksPerRequest) {
+        batches.push(chainsWithContracts.slice(i, i + maxNetworksPerRequest));
+      }
+
+      const allNFTs: MultichainDeedNFT[] = [];
+
+      // Fetch all batches using Portfolio API
+      for (const batchChainIds of batches) {
+        const portfolioResult = await getNFTsByAddressPortfolio(
+          [{ address, chainIds: batchChainIds }],
+          {
+            withMetadata: true,
+            excludeFilters: ['SPAM'], // Filter out spam NFTs
+          }
+        );
+
+        if (portfolioResult && portfolioResult.results) {
+          for (const result of portfolioResult.results) {
+            if (!result.nfts || result.nfts.length === 0) continue;
+
+            const networkConfig = SUPPORTED_NETWORKS.find(n => n.chainId === result.chainId);
+            if (!networkConfig) continue;
+
+            const contractAddress = getContractAddressForNetwork(result.chainId);
+            if (!contractAddress) continue;
+
+            // Convert Portfolio API NFTs to DeedNFT format
+            for (const nft of result.nfts) {
+              const deedNFT = convertPortfolioNFTToDeedNFT(
+                nft,
+                result.chainId,
+                networkConfig.name,
+                contractAddress
+              );
+
+              if (deedNFT) {
+                allNFTs.push(deedNFT);
+              }
+            }
+          }
+        }
+      }
+
+      console.log('[useMultichainDeedNFTs] Fetched T-Deeds via Portfolio API:', allNFTs.length);
       // Only update with new data - this prevents clearing to empty array during refresh
       setNfts(allNFTs);
     } catch (err) {
@@ -153,7 +301,7 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, address, fetchChainNFTs]);
+  }, [isConnected, address, convertPortfolioNFTToDeedNFT]);
 
   // Note: Auto-fetch is handled by PortfolioContext to avoid duplicate requests
   // This hook only fetches when refresh() or refreshChain() is explicitly called
