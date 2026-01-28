@@ -71,17 +71,37 @@ const ExpandedHoldingDetails = ({
         </span>
       </div>
       <div className="flex items-center justify-between text-xs">
-        <span className="text-zinc-500 dark:text-zinc-400">Total cost</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-zinc-500 dark:text-zinc-400">Total cost</span>
+          <div className="group relative">
+            <Info className="h-3 w-3 cursor-help text-zinc-400 dark:text-zinc-500" />
+            <div className="absolute left-0 top-5 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+              Total amount paid for this holding
+            </div>
+          </div>
+        </div>
         <span className="text-black dark:text-white font-medium">
           ${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       </div>
       <div className="flex items-center justify-between text-xs">
-        <span className="text-zinc-500 dark:text-zinc-400">Unrealized return</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-zinc-500 dark:text-zinc-400">Unrealized return</span>
+          <div className="group relative">
+            <Info className="h-3 w-3 cursor-help text-zinc-400 dark:text-zinc-500" />
+            <div className="absolute left-0 top-5 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+              Profit or loss not yet realized from sale
+            </div>
+          </div>
+        </div>
         <span className={`font-medium ${unrealizedReturn >= 0 ? 'text-green-600 dark:text-green-500' : 'text-red-600 dark:text-red-500'}`}>
           ${unrealizedReturn.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({unrealizedReturnPercent >= 0 ? '+' : ''}{unrealizedReturnPercent.toFixed(2)}%)
         </span>
       </div>
+      
+      {/* Divider */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800 my-2"></div>
+      
       <div className="flex items-center justify-between text-xs">
         <span className="text-zinc-500 dark:text-zinc-400">Current quantity</span>
         <span className="text-black dark:text-white font-medium">
@@ -100,13 +120,25 @@ const ExpandedHoldingDetails = ({
             </span>
           </div>
           <div className="flex items-center justify-between text-xs">
-            <span className="text-zinc-500 dark:text-zinc-400">Average cost basis</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-zinc-500 dark:text-zinc-400">Average cost basis</span>
+              <div className="group relative">
+                <Info className="h-3 w-3 cursor-help text-zinc-400 dark:text-zinc-500" />
+                <div className="absolute left-0 top-5 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+                  Average price paid per unit
+                </div>
+              </div>
+            </div>
             <span className="text-black dark:text-white font-medium">
               ${averageCostBasis.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/{holding.type === 'token' ? holding.asset_symbol : 'item'}
             </span>
           </div>
         </>
       )}
+      
+      {/* Divider */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800 my-2"></div>
+      
       <div className="flex items-center justify-between text-xs">
         <span className="text-zinc-500 dark:text-zinc-400">Portfolio weighting</span>
         <span className="text-black dark:text-white font-medium">
