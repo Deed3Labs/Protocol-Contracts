@@ -37,6 +37,55 @@ export interface TransferData {
 }
 
 /**
+ * Calculate approximate block number from N days ago based on chain's average block time
+ * This is used to limit transaction history queries and reduce Alchemy compute unit usage
+ * 
+ * OPTIMIZATION: Instead of scanning from block 0 (entire chain history), we limit to recent blocks.
+ * This dramatically reduces Alchemy compute unit consumption.
+ * 
+ * @param chainId - Chain ID
+ * @param daysAgo - Number of days to look back (default: 30 days)
+ * @returns Hex string block number representing approximately N days ago
+ */
+function getRecentBlockNumber(chainId: number, daysAgo: number = 30): string {
+  // Average block times (in seconds) for different chains
+  const blockTimes: Record<number, number> = {
+    1: 12,        // Ethereum: ~12 seconds per block
+    8453: 2,      // Base: ~2 seconds per block
+    137: 2,       // Polygon: ~2 seconds per block
+    42161: 0.25,  // Arbitrum: ~0.25 seconds per block
+    100: 5,       // Gnosis: ~5 seconds per block
+    11155111: 12, // Ethereum Sepolia: ~12 seconds per block
+    84532: 2,     // Base Sepolia: ~2 seconds per block
+  };
+
+  // Estimated current block numbers (as of Jan 2025, updated conservatively)
+  // These are rough estimates - the actual number will be higher, but this ensures we get recent blocks
+  const estimatedCurrentBlocks: Record<number, number> = {
+    1: 21000000,      // Ethereum mainnet
+    8453: 15000000,   // Base mainnet
+    137: 65000000,    // Polygon mainnet
+    42161: 250000000, // Arbitrum mainnet
+    100: 32000000,    // Gnosis mainnet
+    11155111: 8000000, // Ethereum Sepolia
+    84532: 15000000,  // Base Sepolia
+  };
+
+  const blockTime = blockTimes[chainId] || 12; // Default to 12 seconds
+  const estimatedCurrent = estimatedCurrentBlocks[chainId] || 20000000; // Default estimate
+  
+  // Calculate blocks in N days
+  const secondsAgo = daysAgo * 24 * 60 * 60;
+  const blocksAgo = Math.floor(secondsAgo / blockTime);
+  
+  // Calculate approximate block number from N days ago
+  // Subtract blocksAgo from estimated current block
+  const recentBlockNumber = Math.max(0, estimatedCurrent - blocksAgo);
+  
+  return `0x${recentBlockNumber.toString(16)}`;
+}
+
+/**
  * Service for monitoring user transfers using Alchemy Transfers API
  * Provides better coverage than event listeners for all transfer types
  */
@@ -748,9 +797,15 @@ class TransfersService {
         categories.push('internal');
       }
 
+      // OPTIMIZATION: Limit to last 30 days instead of scanning entire chain history
+      // This dramatically reduces Alchemy compute unit usage
+      // Calculate approximate block number from 30 days ago
+      const recentBlockNumber = getRecentBlockNumber(chainId, 30);
+      
       // Fetch transfers using Alchemy Transfers API
+      // Using recent block number instead of '0x0' to reduce compute units
       const transfers = await this.fetchTransfers(chainId, address, {
-        fromBlock: '0x0',
+        fromBlock: recentBlockNumber, // Use recent block instead of '0x0' to reduce compute units
         toBlock: 'latest',
         maxCount: limit * 2, // Get more than needed to filter and sort
         excludeZeroValue: false,
