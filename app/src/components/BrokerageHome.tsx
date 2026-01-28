@@ -151,13 +151,13 @@ const ExpandedHoldingDetails = ({
       
       {/* Action buttons */}
       <div className="flex gap-2 pt-2">
-        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-zinc-800">
+        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10">
           Buy
         </button>
-        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-zinc-800">
+        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10">
           Sell
         </button>
-        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-zinc-800 flex items-center justify-center gap-1">
+        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10 flex items-center justify-center gap-1">
           More
           <ChevronDown className="w-3 h-3" />
         </button>
