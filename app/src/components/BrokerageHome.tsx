@@ -1194,8 +1194,8 @@ export default function BrokerageHome() {
                   
                   {/* Activity filter/sort controls */}
                   <div className="px-3 pb-2">
-                    <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
-                      <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-nowrap">
+                      <div className="flex items-center gap-2 shrink-0">
                         <Select
                           value={activityFilter}
                           onValueChange={(
@@ -1211,7 +1211,7 @@ export default function BrokerageHome() {
                               | 'Other'
                           ) => setActivityFilter(value)}
                         >
-                          <SelectTrigger className="h-6 w-24 sm:w-28 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                          <SelectTrigger className="h-6 w-24 md:w-26 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
                             <SelectValue placeholder="Filter" />
                           </SelectTrigger>
                           <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
@@ -1231,7 +1231,7 @@ export default function BrokerageHome() {
                           value={activitySort}
                           onValueChange={(value: 'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow') => setActivitySort(value)}
                         >
-                          <SelectTrigger className="h-6 w-24 sm:w-32 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                          <SelectTrigger className="h-6 w-24 md:w-28 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
                             <SelectValue placeholder="Sort" />
                           </SelectTrigger>
                           <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
@@ -1243,11 +1243,13 @@ export default function BrokerageHome() {
                         </Select>
                       </div>
 
-                      <Select value={activityChainFilter} onValueChange={(value: string) => setActivityChainFilter(value)}>
-                        <SelectTrigger className="h-6 w-28 sm:w-36 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
-                          <SelectValue placeholder="Network" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                      {/* Let Network flex so row never overflows */}
+                      <div className="flex-1 min-w-0">
+                        <Select value={activityChainFilter} onValueChange={(value: string) => setActivityChainFilter(value)}>
+                          <SelectTrigger className="h-6 w-full min-w-0 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                            <SelectValue placeholder="Network" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
                           <SelectItem value="All" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">
                             All networks
                           </SelectItem>
@@ -1260,8 +1262,9 @@ export default function BrokerageHome() {
                               {chain}
                             </SelectItem>
                           ))}
-                        </SelectContent>
-                      </Select>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
 
