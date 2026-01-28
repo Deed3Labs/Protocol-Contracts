@@ -9,6 +9,7 @@ import {
   Settings, 
   LogOut, 
   CreditCard,
+  X,
   Loader2
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
@@ -30,7 +31,8 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
   const { disconnect } = useDisconnect();
   const navigate = useNavigate();
   const { conversations, messages, isConnected, isLoading } = useXMTP();
-  const { notifications, unreadCount, markAsRead } = useNotifications();
+  const { notifications, unreadCount, markAsRead, removeNotification } = useNotifications();
+  const [draggingNotificationId, setDraggingNotificationId] = useState<string | null>(null);
 
   // Close when clicking outside
   useEffect(() => {
@@ -147,27 +149,62 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
                   </div>
                 ) : (
                   <>
-                    {notifications.slice(0, 10).map((item) => (
-                      <div 
-                        key={item.id} 
-                        className={`p-3 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors flex gap-3 cursor-pointer ${!item.read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}
-                        onClick={() => {
-                          if (!item.read) {
-                            markAsRead(item.id);
-                          }
-                          if (item.action?.onClick) {
-                            item.action.onClick();
-                            onClose();
-                          }
-                        }}
-                      >
-                        <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${!item.read ? 'bg-blue-500' : 'bg-transparent'}`} />
-                        <div className="flex-1">
-                          <p className="text-sm text-zinc-800 dark:text-zinc-200">{item.title}</p>
-                          <p className="text-xs text-zinc-500 mt-1">{formatDistanceToNow(item.timestamp, { addSuffix: true })}</p>
-                        </div>
-                      </div>
-                    ))}
+                    <AnimatePresence initial={false}>
+                      {notifications.slice(0, 10).map((item) => (
+                        <motion.div
+                          key={item.id}
+                          layout
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, x: -40, height: 0, marginTop: 0, marginBottom: 0 }}
+                          transition={{ duration: 0.18, ease: 'easeOut' }}
+                          drag="x"
+                          dragConstraints={{ left: 0, right: 0 }}
+                          dragElastic={0.25}
+                          onDragStart={() => setDraggingNotificationId(item.id)}
+                          onDragEnd={(_, info) => {
+                            // Dismiss on swipe (either direction) past threshold
+                            const shouldDismiss = Math.abs(info.offset.x) > 90 || Math.abs(info.velocity.x) > 600;
+                            setDraggingNotificationId(null);
+                            if (shouldDismiss) removeNotification(item.id);
+                          }}
+                          className={`relative p-3 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors flex gap-3 cursor-pointer select-none touch-pan-y ${
+                            !item.read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
+                          }`}
+                          onClick={() => {
+                            // Prevent accidental click while dragging
+                            if (draggingNotificationId === item.id) return;
+                            if (!item.read) markAsRead(item.id);
+                            if (item.action?.onClick) {
+                              item.action.onClick();
+                              onClose();
+                            }
+                          }}
+                        >
+                          <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${!item.read ? 'bg-blue-500' : 'bg-transparent'}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm text-zinc-800 dark:text-zinc-200">{item.title}</p>
+                                <p className="text-xs text-zinc-500 mt-1">{formatDistanceToNow(item.timestamp, { addSuffix: true })}</p>
+                              </div>
+                              <button
+                                type="button"
+                                aria-label="Dismiss notification"
+                                className="shrink-0 rounded-md p-1 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200/60 dark:hover:text-zinc-200 dark:hover:bg-zinc-800/60 transition-colors"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  removeNotification(item.id);
+                                }}
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
                     {notifications.length > 10 && (
                       <button 
                         onClick={() => {
