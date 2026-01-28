@@ -402,6 +402,7 @@ export default function BrokerageHome() {
     'All' | 'Deposits' | 'Withdrawals' | 'Buys' | 'Sells' | 'Mints' | 'Transfers' | 'Trades' | 'Other'
   >('All');
   const [activitySort, setActivitySort] = useState<'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow'>('Newest');
+  const [activityChainFilter, setActivityChainFilter] = useState<'All' | string>('All');
   const [activityVisibleCount, setActivityVisibleCount] = useState(7);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -489,6 +490,18 @@ export default function BrokerageHome() {
 
     const filtered = walletTransactions.filter((tx) => {
       const type = String((tx as any)?.type || '').toLowerCase();
+      const chainName = (tx as any)?.chainName ? String((tx as any).chainName) : '';
+      const chainId =
+        typeof (tx as any)?.chainId === 'number' ? String((tx as any).chainId) : (tx as any)?.chainId ? String((tx as any).chainId) : '';
+
+      if (activityChainFilter !== 'All') {
+        // Prefer matching by chainName if present, otherwise fall back to chainId string match
+        const matchesChain =
+          (chainName && chainName === activityChainFilter) ||
+          (!chainName && chainId && chainId === activityChainFilter) ||
+          (chainId && chainId === activityChainFilter);
+        if (!matchesChain) return false;
+      }
 
       switch (activityFilter) {
         case 'Deposits':
@@ -535,7 +548,26 @@ export default function BrokerageHome() {
     });
 
     return sorted;
-  }, [walletTransactions, activityFilter, activitySort]);
+  }, [walletTransactions, activityFilter, activitySort, activityChainFilter]);
+
+  const activityChains = useMemo(() => {
+    // Unique list of available chains from the raw walletTransactions
+    const names = new Set<string>();
+    const ids = new Set<string>();
+
+    for (const tx of walletTransactions as any[]) {
+      if (tx?.chainName) names.add(String(tx.chainName));
+      if (typeof tx?.chainId === 'number') ids.add(String(tx.chainId));
+      else if (tx?.chainId) ids.add(String(tx.chainId));
+    }
+
+    const nameList = Array.from(names).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    const idList = Array.from(ids).filter(Boolean).sort((a, b) => Number(a) - Number(b));
+
+    // Prefer human-readable chainName entries; include chainId entries too for cases where name isn't present.
+    // De-dupe by keeping both if they are different strings.
+    return [...nameList, ...idList.filter((id) => !names.has(id))];
+  }, [walletTransactions]);
 
   const displayedActivityTransactions = useMemo(() => {
     return activityTransactions.slice(0, activityVisibleCount);
@@ -543,7 +575,7 @@ export default function BrokerageHome() {
 
   useEffect(() => {
     setActivityVisibleCount(7);
-  }, [activityFilter, activitySort, isConnected, address]);
+  }, [activityFilter, activitySort, activityChainFilter, isConnected, address]);
   
   // Debug: Verify data is being fetched (remove in production)
   useEffect(() => {
@@ -1163,49 +1195,71 @@ export default function BrokerageHome() {
                   {/* Activity filter/sort controls */}
                   <div className="px-3 pb-2">
                     <div className="flex items-center justify-between gap-2">
-                      <Select
-                        value={activityFilter}
-                        onValueChange={(
-                          value:
-                            | 'All'
-                            | 'Deposits'
-                            | 'Withdrawals'
-                            | 'Buys'
-                            | 'Sells'
-                            | 'Mints'
-                            | 'Transfers'
-                            | 'Trades'
-                            | 'Other'
-                        ) => setActivityFilter(value)}
-                      >
-                        <SelectTrigger className="h-4 w-28 text-sm font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-3 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
-                          <SelectValue placeholder="Filter" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
-                          <SelectItem value="All" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">All</SelectItem>
-                          <SelectItem value="Deposits" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Deposits</SelectItem>
-                          <SelectItem value="Withdrawals" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Withdrawals</SelectItem>
-                          <SelectItem value="Buys" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Buys</SelectItem>
-                          <SelectItem value="Sells" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Sells</SelectItem>
-                          <SelectItem value="Mints" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Mints</SelectItem>
-                          <SelectItem value="Transfers" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Transfers</SelectItem>
-                          <SelectItem value="Trades" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Trades</SelectItem>
-                          <SelectItem value="Other" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={activityFilter}
+                          onValueChange={(
+                            value:
+                              | 'All'
+                              | 'Deposits'
+                              | 'Withdrawals'
+                              | 'Buys'
+                              | 'Sells'
+                              | 'Mints'
+                              | 'Transfers'
+                              | 'Trades'
+                              | 'Other'
+                          ) => setActivityFilter(value)}
+                        >
+                          <SelectTrigger className="h-6 w-28 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                            <SelectValue placeholder="Filter" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                            <SelectItem value="All" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">All</SelectItem>
+                            <SelectItem value="Deposits" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Deposits</SelectItem>
+                            <SelectItem value="Withdrawals" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Withdrawals</SelectItem>
+                            <SelectItem value="Buys" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Buys</SelectItem>
+                            <SelectItem value="Sells" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Sells</SelectItem>
+                            <SelectItem value="Mints" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Mints</SelectItem>
+                            <SelectItem value="Transfers" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Transfers</SelectItem>
+                            <SelectItem value="Trades" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Trades</SelectItem>
+                            <SelectItem value="Other" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
 
-                      <Select
-                        value={activitySort}
-                        onValueChange={(value: 'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow') => setActivitySort(value)}
-                      >
-                        <SelectTrigger className="h-4 w-32 text-sm font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-3 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
-                          <SelectValue placeholder="Sort" />
+                        <Select
+                          value={activitySort}
+                          onValueChange={(value: 'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow') => setActivitySort(value)}
+                        >
+                          <SelectTrigger className="h-6 w-32 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                            <SelectValue placeholder="Sort" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                            <SelectItem value="Newest" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Newest</SelectItem>
+                            <SelectItem value="Oldest" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Oldest</SelectItem>
+                            <SelectItem value="AmountHigh" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Amount (high)</SelectItem>
+                            <SelectItem value="AmountLow" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Amount (low)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <Select value={activityChainFilter} onValueChange={(value: string) => setActivityChainFilter(value)}>
+                        <SelectTrigger className="h-6 w-36 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                          <SelectValue placeholder="Network" />
                         </SelectTrigger>
                         <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
-                          <SelectItem value="Newest" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Newest</SelectItem>
-                          <SelectItem value="Oldest" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Oldest</SelectItem>
-                          <SelectItem value="AmountHigh" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Amount (high)</SelectItem>
-                          <SelectItem value="AmountLow" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Amount (low)</SelectItem>
+                          <SelectItem value="All" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">
+                            All networks
+                          </SelectItem>
+                          {activityChains.map((chain) => (
+                            <SelectItem
+                              key={chain}
+                              value={chain}
+                              className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2"
+                            >
+                              {chain}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
