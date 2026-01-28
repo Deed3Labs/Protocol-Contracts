@@ -215,7 +215,7 @@ const NFTHoldingItem = ({
   const displayChainName = chainName || (chainId ? getNetworkByChainId(chainId)?.name : null) || (chainId ? `Chain ${chainId}` : null) || (deed?.chainName || (deed?.chainId ? getNetworkByChainId(deed.chainId)?.name : null) || (deed?.chainId ? `Chain ${deed.chainId}` : null));
   
   return (
-    <div className="rounded-lg transition-colors border-b border-zinc-200 dark:border-zinc-800 last:border-b-0">
+    <div className="transition-colors border-b border-zinc-200 dark:border-zinc-800 last:border-b-0">
       <div 
         onClick={onToggle}
         className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group"
@@ -876,7 +876,7 @@ export default function BrokerageHome() {
                                       const secondaryTextFull = holding.asset_name;
                                       
                                       return (
-                                        <div key={holding.id} className="rounded-lg transition-colors border-b border-zinc-200 dark:border-zinc-800 last:border-b-0">
+                                        <div key={holding.id} className="transition-colors border-b border-zinc-200 dark:border-zinc-800 last:border-b-0">
                                           <div 
                                             onClick={() => {
                                               setExpandedHoldings(prev => {
