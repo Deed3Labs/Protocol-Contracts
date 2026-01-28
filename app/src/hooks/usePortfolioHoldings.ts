@@ -232,10 +232,20 @@ export function usePortfolioHoldings(
     });
     
     // Add ERC20 tokens (Portfolio API format)
+    // FIX: Include all tokens with balance > 0, even if they don't have a price (balanceUSD = 0)
+    // This ensures tokens like USDC on Polygon show up even if price data is missing
     tokenBalances.forEach((token) => {
       // Get token address from Portfolio API format
       const tokenAddress = token.tokenAddress || token.address || '';
-      const balance = token.balance || (token.tokenBalance ? ethers.formatUnits(BigInt(token.tokenBalance), token.decimals || token.tokenMetadata?.decimals || 18) : '0');
+      const balanceRaw = token.balanceRaw || (token.tokenBalance ? BigInt(token.tokenBalance) : 0n);
+      
+      // Skip tokens with zero balance
+      if (balanceRaw === 0n) return;
+      
+      const decimals = token.decimals || token.tokenMetadata?.decimals || 18;
+      const balance = token.balance || (token.tokenBalance ? ethers.formatUnits(balanceRaw, decimals) : '0');
+      
+      // Calculate balanceUSD - allow 0 if price is not available
       const balanceUSD = token.balanceUSD || (() => {
         // Calculate from Portfolio API prices if available
         if (token.tokenPrices && token.tokenPrices.length > 0) {
@@ -244,22 +254,27 @@ export function usePortfolioHoldings(
             return parseFloat(balance) * parseFloat(usdPrice.value);
           }
         }
+        // Return 0 if no price - token will still be included but may be filtered by UI
         return 0;
       })();
+      
+      // Get token name and symbol with fallbacks
+      const tokenName = token.name || token.tokenMetadata?.name || 'Unknown Token';
+      const tokenSymbol = token.symbol || token.tokenMetadata?.symbol || 'UNKNOWN';
       
       allHoldings.push({
         ...token, // Include all token properties (Portfolio API format)
         id: `${token.chainId}-token-${tokenAddress}`,
         type: 'token',
-        asset_name: token.name || token.tokenMetadata?.name || 'Unknown Token',
-        asset_symbol: token.symbol || token.tokenMetadata?.symbol || 'UNKNOWN',
-        balanceUSD,
+        asset_name: tokenName,
+        asset_symbol: tokenSymbol,
+        balanceUSD, // May be 0 if price unavailable - token will still be included
         chainId: token.chainId,
         chainName: token.chainName,
         balance,
         address: tokenAddress,
-        decimals: token.decimals || token.tokenMetadata?.decimals || 18,
-        balanceRaw: token.balanceRaw || (token.tokenBalance ? BigInt(token.tokenBalance) : 0n),
+        decimals,
+        balanceRaw,
         logoUrl: token.logoUrl || token.tokenMetadata?.logo,
       });
     });

@@ -10,6 +10,7 @@ import MobileNav from './portfolio/MobileNav';
 import DepositModal from './portfolio/DepositModal';
 import WithdrawModal from './portfolio/WithdrawModal';
 import ActionModal from './portfolio/ActionModal';
+import { TradeModal } from './portfolio/TradeModal';
 import CTAStack from './portfolio/CTAStack';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useDeedName } from '@/hooks/useDeedName';
@@ -55,13 +56,44 @@ const getAssetTypeLabel = (assetType: number): string => {
   return types[assetType] || "Unknown";
 };
 
+// Helper function to get asset color based on symbol
+const getAssetColor = (symbol: string): string => {
+  const colors: Record<string, string> = {
+    BTC: "bg-orange-500",
+    ETH: "bg-blue-500",
+    SOL: "bg-gradient-to-r from-purple-500 to-cyan-400",
+    USDC: "bg-blue-600",
+    USDT: "bg-green-600",
+    DAI: "bg-yellow-500",
+  };
+  return colors[symbol.toUpperCase()] || "bg-zinc-500";
+};
+
+// Helper function to convert Holding to Asset format for TradeModal
+const holdingToAsset = (holding: Holding, portfolioHolding?: any): { symbol: string; name: string; color: string; balance?: number; balanceUSD?: number; type?: 'token' | 'nft' | 'rwa'; chainId?: number; chainName?: string } => {
+  return {
+    symbol: holding.asset_symbol,
+    name: holding.asset_name,
+    color: getAssetColor(holding.asset_symbol),
+    balance: holding.quantity,
+    balanceUSD: holding.valueUSD,
+    type: holding.type === 'token' ? 'token' : holding.type === 'rwa' ? 'rwa' : 'nft',
+    chainId: portfolioHolding?.chainId,
+    chainName: portfolioHolding?.chainName,
+  };
+};
+
 // Helper component to render expanded holding details
 const ExpandedHoldingDetails = ({ 
   holding, 
-  holdingsTotal 
+  holdingsTotal,
+  onBuy,
+  onSell
 }: { 
   holding: Holding; 
   holdingsTotal: number;
+  onBuy?: () => void;
+  onSell?: () => void;
 }) => {
   const currentValue = holding.valueUSD || 0;
   const totalCost = holding.average_cost * holding.quantity;
@@ -160,10 +192,16 @@ const ExpandedHoldingDetails = ({
       
       {/* Action buttons */}
       <div className="flex gap-2 pt-2">
-        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10">
+        <button 
+          onClick={onBuy}
+          className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
+        >
           Buy
         </button>
-        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10">
+        <button 
+          onClick={onSell}
+          className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
+        >
           Sell
         </button>
         <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10 flex items-center justify-center gap-1">
@@ -182,7 +220,9 @@ const NFTHoldingItem = ({
   chainName, 
   isExpanded, 
   onToggle, 
-  holdingsTotal 
+  holdingsTotal,
+  onBuy,
+  onSell
 }: { 
   holding: Holding; 
   deed: MultichainDeedNFT | undefined; 
@@ -191,6 +231,8 @@ const NFTHoldingItem = ({
   isExpanded: boolean;
   onToggle: () => void;
   holdingsTotal: number;
+  onBuy?: () => void;
+  onSell?: () => void;
 }) => {
   const deedName = useDeedName(deed || null);
   
@@ -273,7 +315,12 @@ const NFTHoldingItem = ({
             transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
             className="overflow-hidden"
           >
-            <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
+            <ExpandedHoldingDetails 
+              holding={holding} 
+              holdingsTotal={holdingsTotal}
+              onBuy={onBuy}
+              onSell={onSell}
+            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -418,6 +465,9 @@ export default function BrokerageHome() {
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const [actionModalOpen, setActionModalOpen] = useState(false);
+  const [tradeModalOpen, setTradeModalOpen] = useState(false);
+  const [tradeModalType, setTradeModalType] = useState<'buy' | 'sell'>('buy');
+  const [tradeModalAsset, setTradeModalAsset] = useState<{ symbol: string; name: string; color: string; balance?: number; balanceUSD?: number; type?: 'token' | 'nft' | 'rwa'; chainId?: number; chainName?: string } | null>(null);
   
   // State for tracking scroll position relative to portfolio value header
   const [isScrolledPast, setIsScrolledPast] = useState(false);
@@ -752,6 +802,14 @@ export default function BrokerageHome() {
         isOpen={actionModalOpen}
         onClose={() => setActionModalOpen(false)}
       />
+
+      {/* Trade Modal */}
+      <TradeModal
+        open={tradeModalOpen}
+        onOpenChange={setTradeModalOpen}
+        initialTradeType={tradeModalType}
+        initialAsset={tradeModalAsset}
+      />
       
       {/* Header */}
       <HeaderNav
@@ -1067,7 +1125,24 @@ export default function BrokerageHome() {
                                                 transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                                                 className="overflow-hidden"
                                               >
-                                                <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
+                                                <ExpandedHoldingDetails 
+                                                  holding={holding} 
+                                                  holdingsTotal={holdingsTotal}
+                                                  onBuy={() => {
+                                                    const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && h.type === 'token');
+                                                    const asset = holdingToAsset(holding, portfolioHolding);
+                                                    setTradeModalAsset(asset);
+                                                    setTradeModalType('buy');
+                                                    setTradeModalOpen(true);
+                                                  }}
+                                                  onSell={() => {
+                                                    const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && h.type === 'token');
+                                                    const asset = holdingToAsset(holding, portfolioHolding);
+                                                    setTradeModalAsset(asset);
+                                                    setTradeModalType('sell');
+                                                    setTradeModalOpen(true);
+                                                  }}
+                                                />
                                               </motion.div>
                                             )}
                                           </AnimatePresence>
@@ -1088,6 +1163,7 @@ export default function BrokerageHome() {
                                   <div className="space-y-1">
                                     {rwaHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => {
                                       const isExpanded = expandedHoldings.has(holding.id);
+                                      const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && (h.type as string) === 'rwa');
                                       return (
                                         <NFTHoldingItem 
                                           key={holding.id} 
@@ -1108,6 +1184,18 @@ export default function BrokerageHome() {
                                             });
                                           }}
                                           holdingsTotal={holdingsTotal}
+                                          onBuy={() => {
+                                            const asset = holdingToAsset(holding, portfolioHolding);
+                                            setTradeModalAsset(asset);
+                                            setTradeModalType('buy');
+                                            setTradeModalOpen(true);
+                                          }}
+                                          onSell={() => {
+                                            const asset = holdingToAsset(holding, portfolioHolding);
+                                            setTradeModalAsset(asset);
+                                            setTradeModalType('sell');
+                                            setTradeModalOpen(true);
+                                          }}
                                         />
                                       );
                                     })}
@@ -1125,6 +1213,7 @@ export default function BrokerageHome() {
                                   <div className="space-y-1">
                                     {nftHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => {
                                       const isExpanded = expandedHoldings.has(holding.id);
+                                      const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && (h.type as string) === 'nft');
                                       return (
                                         <NFTHoldingItem 
                                           key={holding.id} 
@@ -1145,6 +1234,18 @@ export default function BrokerageHome() {
                                             });
                                           }}
                                           holdingsTotal={holdingsTotal}
+                                          onBuy={() => {
+                                            const asset = holdingToAsset(holding, portfolioHolding);
+                                            setTradeModalAsset(asset);
+                                            setTradeModalType('buy');
+                                            setTradeModalOpen(true);
+                                          }}
+                                          onSell={() => {
+                                            const asset = holdingToAsset(holding, portfolioHolding);
+                                            setTradeModalAsset(asset);
+                                            setTradeModalType('sell');
+                                            setTradeModalOpen(true);
+                                          }}
                                         />
                                       );
                                     })}

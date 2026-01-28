@@ -664,15 +664,23 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
                   if (!networkConfig) continue;
 
                   for (const token of result.tokens) {
-                    // Skip if error or no metadata
-                    if (token.error || !token.tokenMetadata) continue;
+                    // Skip if error
+                    if (token.error) continue;
 
                     const balanceRaw = BigInt(token.tokenBalance || '0');
                     if (balanceRaw === 0n) continue;
 
-                    // Compute convenience fields
-                    const metadata = token.tokenMetadata;
-                    const decimals = metadata.decimals || 18;
+                    // FIX: Portfolio API may return tokens without tokenMetadata nested object
+                    // Some tokens have metadata directly on the token object (symbol, name, decimals)
+                    // Allow tokens even if tokenMetadata is missing, as long as we have basic info
+                    const metadata = token.tokenMetadata || {};
+                    
+                    // Fallback to token-level properties if metadata is missing
+                    const symbol = metadata.symbol || token.symbol || 'UNKNOWN';
+                    const name = metadata.name || token.name || 'Unknown Token';
+                    const decimals = metadata.decimals || token.decimals || 18;
+                    const logoUrl = metadata.logo || token.logoUrl || '';
+                    
                     const balance = ethers.formatUnits(balanceRaw, decimals);
                     
                     // Get USD price from Portfolio API response
@@ -694,10 +702,12 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
                       balance,
                       balanceRaw,
                       balanceUSD,
-                      symbol: metadata.symbol,
-                      name: metadata.name,
+                      symbol,
+                      name,
                       decimals,
-                      logoUrl: metadata.logo,
+                      logoUrl,
+                      // Ensure tokenMetadata exists (even if empty) for compatibility
+                      tokenMetadata: metadata,
                     });
                   }
                 }
