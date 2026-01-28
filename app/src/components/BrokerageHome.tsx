@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { ChevronDown, ChevronUp, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { ReturnView, IncomeView, AccountValueView, AllocationView } from './portfolio/TabViews';
@@ -245,16 +245,29 @@ const NFTHoldingItem = ({
               {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
             </p>
           </div>
-          {isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-          )}
+          <motion.div
+            animate={{ rotate: isExpanded ? 180 : 0 }}
+            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+            className="text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400"
+          >
+            <ChevronDown className="w-4 h-4" />
+          </motion.div>
         </div>
       </div>
-      {isExpanded && (
-        <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
-      )}
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            key="expanded-details"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            className="overflow-hidden"
+          >
+            <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -921,16 +934,29 @@ export default function BrokerageHome() {
                                                   })} {holding.asset_symbol}
                                                 </p>
                                               </div>
-                                              {isExpanded ? (
-                                                <ChevronUp className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-                                              ) : (
-                                                <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-                                              )}
+                                              <motion.div
+                                                animate={{ rotate: isExpanded ? 180 : 0 }}
+                                                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                                                className="text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400"
+                                              >
+                                                <ChevronDown className="w-4 h-4" />
+                                              </motion.div>
                                             </div>
                                           </div>
-                                          {isExpanded && (
-                                            <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
-                                          )}
+                                          <AnimatePresence initial={false}>
+                                            {isExpanded && (
+                                              <motion.div
+                                                key="expanded-details"
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                                                className="overflow-hidden"
+                                              >
+                                                <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
+                                              </motion.div>
+                                            )}
+                                          </AnimatePresence>
                                         </div>
                                       );
                                     })}
