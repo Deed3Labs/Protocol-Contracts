@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { ChevronDown, ChevronUp, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { ReturnView, IncomeView, AccountValueView, AllocationView } from './portfolio/TabViews';
@@ -245,16 +245,29 @@ const NFTHoldingItem = ({
               {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
             </p>
           </div>
-          {isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-          )}
+          <motion.div
+            animate={{ rotate: isExpanded ? 180 : 0 }}
+            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+            className="text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400"
+          >
+            <ChevronDown className="w-4 h-4" />
+          </motion.div>
         </div>
       </div>
-      {isExpanded && (
-        <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
-      )}
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            key="expanded-details"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            className="overflow-hidden"
+          >
+            <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -385,6 +398,12 @@ export default function BrokerageHome() {
   const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
   const [showZeroValueAssets, setShowZeroValueAssets] = useState(false); // Hide assets with $0 value by default
   const [expandedHoldings, setExpandedHoldings] = useState<Set<string | number>>(new Set()); // Track which holdings are expanded
+  const [activityFilter, setActivityFilter] = useState<
+    'All' | 'Deposits' | 'Withdrawals' | 'Buys' | 'Sells' | 'Mints' | 'Transfers' | 'Trades' | 'Other'
+  >('All');
+  const [activitySort, setActivitySort] = useState<'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow'>('Newest');
+  const [activityChainFilter, setActivityChainFilter] = useState<'All' | string>('All');
+  const [activityVisibleCount, setActivityVisibleCount] = useState(7);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
@@ -458,6 +477,105 @@ export default function BrokerageHome() {
     if (isPortfolioExpanded) return filteredHoldings;
     return filteredHoldings.slice(0, 5); // Show 5 holdings initially
   }, [filteredHoldings, isPortfolioExpanded]);
+
+  const activityTransactions = useMemo(() => {
+    const getTxTimeMs = (tx: any): number => {
+      if (tx?.timestamp) {
+        const t = new Date(tx.timestamp).getTime();
+        if (!Number.isNaN(t)) return t;
+      }
+      const parsed = Date.parse(tx?.date);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const filtered = walletTransactions.filter((tx) => {
+      const type = String((tx as any)?.type || '').toLowerCase();
+      const chainName = (tx as any)?.chainName ? String((tx as any).chainName) : '';
+      const chainId =
+        typeof (tx as any)?.chainId === 'number' ? String((tx as any).chainId) : (tx as any)?.chainId ? String((tx as any).chainId) : '';
+
+      if (activityChainFilter !== 'All') {
+        // Prefer matching by chainName if present, otherwise fall back to chainId string match
+        const matchesChain =
+          (chainName && chainName === activityChainFilter) ||
+          (!chainName && chainId && chainId === activityChainFilter) ||
+          (chainId && chainId === activityChainFilter);
+        if (!matchesChain) return false;
+      }
+
+      switch (activityFilter) {
+        case 'Deposits':
+          return type === 'deposit';
+        case 'Withdrawals':
+          return type === 'withdraw';
+        case 'Buys':
+          return type === 'buy';
+        case 'Sells':
+          return type === 'sell';
+        case 'Mints':
+          return type === 'mint';
+        case 'Transfers':
+          return type === 'transfer';
+        case 'Trades':
+          return type === 'trade';
+        case 'Other':
+          return !['deposit', 'withdraw', 'buy', 'sell', 'mint', 'transfer', 'trade'].includes(type);
+        case 'All':
+        default:
+          return true;
+      }
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      const aAny = a as any;
+      const bAny = b as any;
+      const aTime = getTxTimeMs(aAny);
+      const bTime = getTxTimeMs(bAny);
+      const aAmt = Math.abs(Number(aAny?.amount || 0));
+      const bAmt = Math.abs(Number(bAny?.amount || 0));
+
+      switch (activitySort) {
+        case 'Oldest':
+          return aTime - bTime;
+        case 'AmountHigh':
+          return bAmt - aAmt;
+        case 'AmountLow':
+          return aAmt - bAmt;
+        case 'Newest':
+        default:
+          return bTime - aTime;
+      }
+    });
+
+    return sorted;
+  }, [walletTransactions, activityFilter, activitySort, activityChainFilter]);
+
+  const activityChains = useMemo(() => {
+    // Unique list of available chains from the raw walletTransactions
+    const names = new Set<string>();
+    const ids = new Set<string>();
+
+    for (const tx of walletTransactions as any[]) {
+      if (tx?.chainName) names.add(String(tx.chainName));
+      if (typeof tx?.chainId === 'number') ids.add(String(tx.chainId));
+      else if (tx?.chainId) ids.add(String(tx.chainId));
+    }
+
+    const nameList = Array.from(names).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    const idList = Array.from(ids).filter(Boolean).sort((a, b) => Number(a) - Number(b));
+
+    // Prefer human-readable chainName entries; include chainId entries too for cases where name isn't present.
+    // De-dupe by keeping both if they are different strings.
+    return [...nameList, ...idList.filter((id) => !names.has(id))];
+  }, [walletTransactions]);
+
+  const displayedActivityTransactions = useMemo(() => {
+    return activityTransactions.slice(0, activityVisibleCount);
+  }, [activityTransactions, activityVisibleCount]);
+
+  useEffect(() => {
+    setActivityVisibleCount(7);
+  }, [activityFilter, activitySort, activityChainFilter, isConnected, address]);
   
   // Debug: Verify data is being fetched (remove in production)
   useEffect(() => {
@@ -921,16 +1039,29 @@ export default function BrokerageHome() {
                                                   })} {holding.asset_symbol}
                                                 </p>
                                               </div>
-                                              {isExpanded ? (
-                                                <ChevronUp className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-                                              ) : (
-                                                <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-                                              )}
+                                              <motion.div
+                                                animate={{ rotate: isExpanded ? 180 : 0 }}
+                                                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                                                className="text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400"
+                                              >
+                                                <ChevronDown className="w-4 h-4" />
+                                              </motion.div>
                                             </div>
                                           </div>
-                                          {isExpanded && (
-                                            <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
-                                          )}
+                                          <AnimatePresence initial={false}>
+                                            {isExpanded && (
+                                              <motion.div
+                                                key="expanded-details"
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                                                className="overflow-hidden"
+                                              >
+                                                <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
+                                              </motion.div>
+                                            )}
+                                          </AnimatePresence>
                                         </div>
                                       );
                                     })}
@@ -1061,13 +1192,86 @@ export default function BrokerageHome() {
                     </button>
                   </div>
                   
+                  {/* Activity filter/sort controls */}
+                  <div className="px-3 pb-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={activityFilter}
+                          onValueChange={(
+                            value:
+                              | 'All'
+                              | 'Deposits'
+                              | 'Withdrawals'
+                              | 'Buys'
+                              | 'Sells'
+                              | 'Mints'
+                              | 'Transfers'
+                              | 'Trades'
+                              | 'Other'
+                          ) => setActivityFilter(value)}
+                        >
+                          <SelectTrigger className="h-6 w-28 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                            <SelectValue placeholder="Filter" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                            <SelectItem value="All" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">All</SelectItem>
+                            <SelectItem value="Deposits" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Deposits</SelectItem>
+                            <SelectItem value="Withdrawals" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Withdrawals</SelectItem>
+                            <SelectItem value="Buys" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Buys</SelectItem>
+                            <SelectItem value="Sells" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Sells</SelectItem>
+                            <SelectItem value="Mints" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Mints</SelectItem>
+                            <SelectItem value="Transfers" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Transfers</SelectItem>
+                            <SelectItem value="Trades" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Trades</SelectItem>
+                            <SelectItem value="Other" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        <Select
+                          value={activitySort}
+                          onValueChange={(value: 'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow') => setActivitySort(value)}
+                        >
+                          <SelectTrigger className="h-6 w-32 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                            <SelectValue placeholder="Sort" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                            <SelectItem value="Newest" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Newest</SelectItem>
+                            <SelectItem value="Oldest" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Oldest</SelectItem>
+                            <SelectItem value="AmountHigh" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Amount (high)</SelectItem>
+                            <SelectItem value="AmountLow" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Amount (low)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <Select value={activityChainFilter} onValueChange={(value: string) => setActivityChainFilter(value)}>
+                        <SelectTrigger className="h-6 w-36 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                          <SelectValue placeholder="Network" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                          <SelectItem value="All" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">
+                            All networks
+                          </SelectItem>
+                          {activityChains.map((chain) => (
+                            <SelectItem
+                              key={chain}
+                              value={chain}
+                              className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2"
+                            >
+                              {chain}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
                   <div className="space-y-1 px-2 pb-2">
                     {!isConnected ? (
                       <div className="py-8 text-center text-zinc-500 text-sm">
                         Connect wallet to view activity
                       </div>
-                    ) : walletTransactions.length > 0 ? (
-                      walletTransactions.map((item) => (
+                    ) : activityTransactions.length > 0 ? (
+                      displayedActivityTransactions.map((item) => (
                         <div 
                           key={item.id} 
                           className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group"
@@ -1173,6 +1377,28 @@ export default function BrokerageHome() {
                       </div>
                     )}
                   </div>
+
+                  {/* Load more / Show less */}
+                  {isConnected && activityTransactions.length > 7 && (
+                    <div className="mt-2 px-3 pb-3">
+                      <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                        <button
+                          onClick={() => {
+                            if (activityVisibleCount >= activityTransactions.length) {
+                              setActivityVisibleCount(7);
+                              return;
+                            }
+                            setActivityVisibleCount((prev) => Math.min(prev + 7, activityTransactions.length));
+                          }}
+                          className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-2"
+                        >
+                          {activityVisibleCount >= activityTransactions.length
+                            ? `Show Less (${activityTransactions.length} total)`
+                            : `Load More (${Math.min(activityVisibleCount + 7, activityTransactions.length)}/${activityTransactions.length})`}
+                        </button>
+                      </div>
+                    </div>
+                  )}
               </div>
            </div>
         </div>
