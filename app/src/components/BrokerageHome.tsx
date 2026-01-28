@@ -37,6 +37,15 @@ interface ChartPoint {
   date: Date;
 }
 
+const formatCompactNumber = (value: number): string => {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(2)}T`;
+  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
+  return value.toString();
+};
+
 // Transaction type is now imported from useWalletActivity
 
 // Component to display NFT holding with name from metadata
@@ -1361,11 +1370,30 @@ export default function BrokerageHome() {
                             <p className="text-black dark:text-white font-medium text-sm">
                               {item.amount > 0 ? (
                                 <>
-                                  {item.type === 'deposit' || item.type === 'buy' ? '+' : item.type === 'withdraw' || item.type === 'sell' ? '-' : ''}
-                                  {item.currency === 'USD' ? '$' : ''}{item.amount.toLocaleString(undefined, { 
-                                    minimumFractionDigits: item.currency === currencySymbol ? 4 : 2,
-                                    maximumFractionDigits: item.currency === currencySymbol ? 4 : 2
-                                  })} {item.currency !== 'USD' ? item.currency : ''}
+                                  {(() => {
+                                    const isPlus = item.type === 'deposit' || item.type === 'buy';
+                                    const isMinus = item.type === 'withdraw' || item.type === 'sell';
+                                    const sign = isPlus ? '+' : isMinus ? '-' : '';
+
+                                    const absAmount = Math.abs(item.amount);
+                                    const smallDecimals = item.currency === currencySymbol ? 4 : 2;
+                                    const numberPart =
+                                      absAmount >= 1000
+                                        ? formatCompactNumber(absAmount)
+                                        : absAmount.toLocaleString(undefined, {
+                                            minimumFractionDigits: smallDecimals,
+                                            maximumFractionDigits: smallDecimals,
+                                          });
+
+                                    return (
+                                      <>
+                                        {sign}
+                                        {item.currency === 'USD' ? '$' : ''}
+                                        {numberPart}
+                                        {item.currency !== 'USD' ? ` ${item.currency}` : ''}
+                                      </>
+                                    );
+                                  })()}
                                 </>
                               ) : (
                                  <span className="text-zinc-500 text-xs">View</span>
