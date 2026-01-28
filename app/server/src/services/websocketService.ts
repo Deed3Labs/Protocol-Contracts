@@ -45,8 +45,12 @@ class WebSocketService {
 
         console.log(`[WebSocket] Client ${socket.id} subscribed to ${address} on chains ${chainIds.join(', ')}`);
         
+        // OPTIMIZATION: Only monitor chains the user actually uses, not all 7 chains
+        // This dramatically reduces Alchemy compute unit usage
         // Start monitoring transfers for this address (using Alchemy Transfers API)
-        transfersService.startMonitoring(address).catch(error => {
+        // Pass the actual chainIds the user is subscribed to, not all chains
+        const chainsToMonitor = chainIds.length > 0 ? chainIds : [1, 8453, 100, 11155111]; // Use subscribed chains or defaults
+        transfersService.startMonitoring(address, chainsToMonitor).catch(error => {
           console.error(`[WebSocket] Failed to start transfer monitoring for ${address}:`, error);
         });
         
@@ -141,7 +145,8 @@ class WebSocketService {
    * - Prices: 5 minutes (was 1 minute)
    */
   private startPeriodicUpdates() {
-    // Update balances and transactions every 2 minutes (optimized from 30 seconds)
+    // OPTIMIZATION: Increased intervals to reduce Alchemy compute unit usage
+    // Update balances every 5 minutes (optimized from 2 minutes)
     setInterval(async () => {
       if (!this.io || this.clients.size === 0) return;
 
@@ -163,7 +168,27 @@ class WebSocketService {
             );
             socket.emit('balances', balances);
           }
+        } catch (error) {
+          console.error(`[WebSocket] Error updating client ${socketId}:`, error);
+        }
+      }
+    }, 5 * 60 * 1000); // 5 minutes for balances (optimized from 2 minutes)
 
+    // Update transactions every 10 minutes (optimized from 2 minutes)
+    // Transactions change less frequently than balances, so we can poll less often
+    setInterval(async () => {
+      if (!this.io || this.clients.size === 0) return;
+
+      const cacheService = await getRedisClient().then((client) => new CacheService(client));
+
+      for (const [socketId, subscription] of this.clients.entries()) {
+        const socket = this.io.sockets.sockets.get(socketId);
+        if (!socket || !socket.connected) {
+          this.clients.delete(socketId);
+          continue;
+        }
+
+        try {
           if (subscription.subscriptions.includes('transactions')) {
             const transactions = await this.fetchTransactions(
               subscription.address,
@@ -176,7 +201,7 @@ class WebSocketService {
           console.error(`[WebSocket] Error updating client ${socketId}:`, error);
         }
       }
-    }, 2 * 60 * 1000); // 2 minutes for balances/transactions (optimized from 30 seconds)
+    }, 10 * 60 * 1000); // 10 minutes for transactions (optimized from 2 minutes to reduce Alchemy compute units)
 
     // Update NFTs every 5 minutes (reduced from 30 seconds to save Alchemy compute units)
     // NFTs change less frequently and are expensive to fetch
@@ -260,7 +285,8 @@ class WebSocketService {
         } else {
           const result = await getBalance(chainId, address);
           if (result) {
-            const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+            // OPTIMIZATION: Increased cache TTL to 5 minutes (300s) to align with WebSocket balance update interval
+            const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
             await cacheService.set(
               cacheKey,
               { balance: result.balance, balanceWei: result.balanceWei, timestamp: Date.now() },
@@ -352,7 +378,9 @@ class WebSocketService {
           });
         } else {
           const result = await transfersService.getTransactions(chainId, address, 20);
-          const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '60', 10);
+          // OPTIMIZATION: Increased cache TTL to 10 minutes (600s) to align with refresh intervals
+          // This matches the transaction update interval and reduces Alchemy compute unit usage
+          const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '600', 10);
           await cacheService.set(
             cacheKey,
             { transactions: result, timestamp: Date.now() },

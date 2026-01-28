@@ -43,7 +43,8 @@ router.get('/all/:chainId/:userAddress', async (req: Request, res: Response) => 
     }
 
     // Cache the result
-    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+    // OPTIMIZATION: Increased cache TTL to 5 minutes (300s) to align with refresh intervals
+    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
     await cacheService.set(
       cacheKey,
       { data: tokens, timestamp: Date.now() },
@@ -98,7 +99,8 @@ router.get('/:chainId/:userAddress/:tokenAddress', async (req: Request, res: Res
     }
 
     // Cache the result
-    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+    // OPTIMIZATION: Increased cache TTL to 5 minutes (300s) to align with refresh intervals
+    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
     await cacheService.set(
       cacheKey,
       { data: result, timestamp: Date.now() },
@@ -178,7 +180,8 @@ router.post('/all/batch', async (req: Request, res: Response) => {
             
             // Cache the result
             const cacheKey = `all_token_balances:${chainId}:${userAddress.toLowerCase()}`;
-            const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+            // OPTIMIZATION: Increased cache TTL to 5 minutes (300s) to align with refresh intervals
+    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
             await cacheService.set(
               cacheKey,
               { data: tokens, timestamp: Date.now() },
@@ -329,8 +332,10 @@ router.post('/portfolio', async (req: Request, res: Response) => {
           const tokens = addressMap.get(chainId) || [];
           if (tokens.length > 0) {
             // Cache the result (Portfolio API format)
+            // OPTIMIZATION: Increased cache TTL from 10s to 5 minutes (300s) to reduce Alchemy compute unit usage
+            // Portfolio tokens don't change frequently, so longer cache is safe
             const cacheKey = `all_token_balances:${chainId}:${address}`;
-            const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+            const cacheTTL = parseInt(process.env.CACHE_TTL_PORTFOLIO_TOKENS || process.env.CACHE_TTL_BALANCE || '300', 10);
             await cacheService.set(
               cacheKey,
               { data: tokens, timestamp: Date.now() },
