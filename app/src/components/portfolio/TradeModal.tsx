@@ -7,6 +7,9 @@ import { usePortfolio } from "@/context/PortfolioContext";
 
 type TradeType = "buy" | "sell" | "swap";
 type TradeStep = "input" | "review" | "success";
+type TradeScreen = "trade" | "selectAsset" | "selectWallet";
+type AssetPickTarget = "buyTo" | "sellFrom" | "swapFrom" | "swapTo";
+type WalletPickTarget = "pay" | "receive";
 
 interface Asset {
   symbol: string;
@@ -50,10 +53,15 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
   
   const [tradeType, setTradeType] = useState<TradeType>(initialTradeType);
   const [step, setStep] = useState<TradeStep>("input");
+  const [screen, setScreen] = useState<TradeScreen>("trade");
+  const [assetPickTarget, setAssetPickTarget] = useState<AssetPickTarget>("buyTo");
+  const [walletPickTarget, setWalletPickTarget] = useState<WalletPickTarget>("pay");
+  const [searchQuery, setSearchQuery] = useState("");
   const [amount, setAmount] = useState("0");
   const [fromAsset, setFromAsset] = useState<Asset | null>(null);
   const [toAsset, setToAsset] = useState<Asset | null>(null);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
+  const [receiveAccount, setReceiveAccount] = useState<{ id: string; name: string; subtitle?: string } | null>(null);
 
   const cashUsdAsset = useMemo<Asset>(
     () => ({
@@ -83,9 +91,21 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       }));
   }, [holdings]);
 
+  const filteredAssets = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return availableAssets;
+    return availableAssets.filter((a) => {
+      return a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q);
+    });
+  }, [availableAssets, searchQuery]);
+
   // Initialize assets when modal opens or initialAsset changes
   useEffect(() => {
     if (open) {
+      setScreen("trade");
+      setSearchQuery("");
+      setReceiveAccount({ id: "cash-usd", name: "Cash (USD)", subtitle: "Balance" });
+
       // Update payment method with cash balance
       setPaymentMethod({
         ...paymentMethods[0],
@@ -139,6 +159,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
   const handleClose = useCallback(() => {
     onOpenChange(false);
     setTimeout(() => {
+      setScreen("trade");
       setStep("input");
       setAmount("0");
     }, 300);
@@ -153,13 +174,21 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     if (!open) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Only handle keyboard events when modal is open and on input step
-      if (step !== "input") {
-        // Escape key works on all steps
-        if (event.key === "Escape") {
-          event.preventDefault();
-          handleClose();
+      // Escape closes from anywhere
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (screen !== "trade") {
+          setScreen("trade");
+          setSearchQuery("");
+          return;
         }
+        handleClose();
+        return;
+      }
+
+      // Only handle number input on main input screen
+      if (screen !== "trade" || step !== "input") {
+        // Escape key works on all steps
         return;
       }
 
@@ -174,9 +203,6 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       } else if (event.key === "Backspace" || event.key === "Delete") {
         event.preventDefault();
         handleBackspace();
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        handleClose();
       } else if (event.key === "Enter" && amount !== "0" && parseFloat(amount) > 0) {
         // Allow Enter to proceed to review step
         event.preventDefault();
@@ -188,7 +214,59 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, step, amount, handleNumberPress, handleBackspace, handleClose, handleReview]);
+  }, [open, screen, step, amount, handleNumberPress, handleBackspace, handleClose, handleReview]);
+
+  const openAssetPicker = useCallback((target: AssetPickTarget) => {
+    setAssetPickTarget(target);
+    setWalletPickTarget("pay");
+    setSearchQuery("");
+    setScreen("selectAsset");
+  }, []);
+
+  const openWalletPicker = useCallback((target: WalletPickTarget) => {
+    setWalletPickTarget(target);
+    setSearchQuery("");
+    setScreen("selectWallet");
+  }, []);
+
+  const handlePickAsset = useCallback(
+    (asset: Asset) => {
+      if (assetPickTarget === "buyTo") {
+        setToAsset(asset);
+      } else if (assetPickTarget === "sellFrom") {
+        setFromAsset(asset);
+        setToAsset(cashUsdAsset);
+      } else if (assetPickTarget === "swapFrom") {
+        setFromAsset(asset);
+      } else if (assetPickTarget === "swapTo") {
+        setToAsset(asset);
+      }
+      setScreen("trade");
+      setSearchQuery("");
+    },
+    [assetPickTarget, cashUsdAsset]
+  );
+
+  const handlePickWallet = useCallback(
+    (id: string) => {
+      if (walletPickTarget === "pay") {
+        const found = paymentMethods.find((m) => m.id === id) || paymentMethods[0];
+        setPaymentMethod({
+          ...found,
+          value: id === "wallet" ? cashBalance.totalCash : null,
+        });
+      } else {
+        // Receive wallet/account (for now we only support Cash USD)
+        if (id === "cash-usd") {
+          setReceiveAccount({ id: "cash-usd", name: "Cash (USD)", subtitle: "Balance" });
+          setToAsset(cashUsdAsset);
+        }
+      }
+      setScreen("trade");
+      setSearchQuery("");
+    },
+    [walletPickTarget, cashBalance.totalCash, cashUsdAsset]
+  );
 
   const handleConfirm = () => {
     setStep("success");
@@ -264,7 +342,217 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
               className="h-[100dvh] max-h-[100dvh] w-full max-w-full sm:max-w-md sm:h-[90vh] sm:max-h-[800px] bg-white dark:bg-[#0e0e0e] border-0 sm:border sm:border-zinc-200 dark:border-zinc-800 sm:rounded-2xl rounded-none overflow-hidden flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              {step === "input" && (
+              {screen === "selectAsset" && (
+                <div className="flex flex-col h-full">
+                  <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+                    <button
+                      onClick={() => {
+                        setScreen("trade");
+                        setSearchQuery("");
+                      }}
+                      className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                    </button>
+                    <h2 className="text-lg font-semibold text-black dark:text-white">
+                      {assetPickTarget === "buyTo"
+                        ? "Select asset to buy"
+                        : assetPickTarget === "sellFrom"
+                        ? "Select asset to sell"
+                        : assetPickTarget === "swapFrom"
+                        ? "Select asset to swap from"
+                        : "Select asset to receive"}
+                    </h2>
+                    <div className="w-9" />
+                  </div>
+
+                  <div className="p-4 pb-2">
+                    <div className="flex items-center gap-3 bg-zinc-100 dark:bg-zinc-900 rounded-full px-4 py-3">
+                      <div className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-600" />
+                      <input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search"
+                        className="w-full bg-transparent outline-none text-sm text-black dark:text-white placeholder:text-zinc-500"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  <div className="px-4">
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                      {availableAssets.slice(0, 4).map((a) => (
+                        <button
+                          key={`chip-${a.symbol}`}
+                          onClick={() => handlePickAsset(a)}
+                          className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-full border border-zinc-200 dark:border-zinc-800 bg-white/0 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+                        >
+                          <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold", a.color)}>
+                            {a.symbol.charAt(0)}
+                          </div>
+                          <span className="text-sm text-black dark:text-white">{a.symbol}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto px-2 pb-2">
+                    <div className="px-2 py-2 text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-500">
+                      Assets
+                    </div>
+                    <div className="space-y-1">
+                      {filteredAssets.map((a) => {
+                        const isSelected =
+                          (assetPickTarget === "buyTo" && toAsset?.symbol === a.symbol) ||
+                          (assetPickTarget === "sellFrom" && fromAsset?.symbol === a.symbol) ||
+                          (assetPickTarget === "swapFrom" && fromAsset?.symbol === a.symbol) ||
+                          (assetPickTarget === "swapTo" && toAsset?.symbol === a.symbol);
+                        return (
+                          <button
+                            key={`asset-${a.symbol}`}
+                            onClick={() => handlePickAsset(a)}
+                            className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors text-left"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={cn("w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold", a.color)}>
+                                {a.symbol.charAt(0)}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-black dark:text-white font-medium truncate">{a.name}</div>
+                                <div className="text-sm text-zinc-500 dark:text-zinc-400 truncate">{a.symbol}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <div className="text-black dark:text-white text-sm font-medium">
+                                  {a.balanceUSD !== undefined ? `$${a.balanceUSD.toFixed(2)}` : ""}
+                                </div>
+                                <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                                  {a.balance !== undefined ? `${formatBalance(a.balance)} ${a.symbol}` : ""}
+                                </div>
+                              </div>
+                              {isSelected ? (
+                                <div className="w-6 h-6 rounded-full bg-black dark:bg-white flex items-center justify-center">
+                                  <Check className="w-4 h-4 text-white dark:text-black" />
+                                </div>
+                              ) : (
+                                <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {filteredAssets.length === 0 && (
+                        <div className="py-10 text-center text-sm text-zinc-500">No assets found</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {screen === "selectWallet" && (
+                <div className="flex flex-col h-full">
+                  <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+                    <button
+                      onClick={() => {
+                        setScreen("trade");
+                        setSearchQuery("");
+                      }}
+                      className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                    </button>
+                    <h2 className="text-lg font-semibold text-black dark:text-white">
+                      {walletPickTarget === "pay" ? "Pay with" : "Receive to"}
+                    </h2>
+                    <div className="w-9" />
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                    {walletPickTarget === "pay" ? (
+                      <>
+                        <div className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-500 px-2 py-2">
+                          Wallets
+                        </div>
+                        {paymentMethods.map((m) => {
+                          const isSelected = paymentMethod.id === m.id;
+                          const displayValue =
+                            m.id === "wallet" ? `$${cashBalance.totalCash.toFixed(2)}` : m.value ? `$${m.value.toFixed(2)}` : "";
+                          const subtitle =
+                            m.id === "wallet"
+                              ? "Available balance"
+                              : m.id === "debit"
+                              ? "Debit card"
+                              : "Bank account";
+                          return (
+                            <button
+                              key={`pay-${m.id}`}
+                              onClick={() => handlePickWallet(m.id)}
+                              className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors border border-zinc-200/0 hover:border-zinc-200 dark:hover:border-zinc-800 text-left"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
+                                  {m.icon}
+                                </div>
+                                <div>
+                                  <div className="text-black dark:text-white font-medium">{m.name}</div>
+                                  <div className="text-sm text-zinc-500 dark:text-zinc-400">{subtitle}</div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {displayValue && (
+                                  <div className="text-right">
+                                    <div className="text-black dark:text-white text-sm font-medium">{displayValue}</div>
+                                    <div className="text-xs text-zinc-500 dark:text-zinc-400">Available</div>
+                                  </div>
+                                )}
+                                {isSelected ? (
+                                  <div className="w-6 h-6 rounded-full bg-black dark:bg-white flex items-center justify-center">
+                                    <Check className="w-4 h-4 text-white dark:text-black" />
+                                  </div>
+                                ) : (
+                                  <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-500 px-2 py-2">
+                          Accounts
+                        </div>
+                        <button
+                          onClick={() => handlePickWallet("cash-usd")}
+                          className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors border border-zinc-200/0 hover:border-zinc-200 dark:hover:border-zinc-800 text-left"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
+                              💵
+                            </div>
+                            <div>
+                              <div className="text-black dark:text-white font-medium">{receiveAccount?.name || "Cash (USD)"}</div>
+                              <div className="text-sm text-zinc-500 dark:text-zinc-400">Balance</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <div className="text-black dark:text-white text-sm font-medium">${cashBalance.totalCash.toFixed(2)}</div>
+                              <div className="text-xs text-zinc-500 dark:text-zinc-400">Available</div>
+                            </div>
+                            <div className="w-6 h-6 rounded-full bg-black dark:bg-white flex items-center justify-center">
+                              <Check className="w-4 h-4 text-white dark:text-black" />
+                            </div>
+                          </div>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {screen === "trade" && step === "input" && (
                 <div className="flex flex-col h-full">
                   {/* Header */}
                   <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
@@ -329,7 +617,10 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                       <>
                         {/* Swap From/To */}
                         <div className="relative">
-                          <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+                          <button
+                            onClick={() => openAssetPicker("swapFrom")}
+                            className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                          >
                             <div className="flex items-center gap-3">
                               {fromAsset && (
                                 <>
@@ -363,7 +654,10 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           </button>
                         </div>
 
-                        <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors mt-2">
+                        <button
+                          onClick={() => openAssetPicker("swapTo")}
+                          className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors mt-2"
+                        >
                           <div className="flex items-center gap-3">
                             {toAsset && (
                               <>
@@ -385,7 +679,10 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         {/* Buy/Sell - UX differs by direction */}
                         {tradeType === "buy" ? (
                           <>
-                            <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+                            <button
+                              onClick={() => openWalletPicker("pay")}
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                            >
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xl">
                                   {paymentMethod.icon}
@@ -412,7 +709,10 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                               <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800" />
                             </div>
 
-                            <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+                            <button
+                              onClick={() => openAssetPicker("buyTo")}
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                            >
                               <div className="flex items-center gap-3">
                                 {toAsset && (
                                   <>
@@ -431,7 +731,10 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           </>
                         ) : (
                           <>
-                            <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+                            <button
+                              onClick={() => openAssetPicker("sellFrom")}
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                            >
                               <div className="flex items-center gap-3">
                                 {fromAsset && (
                                   <>
@@ -462,14 +765,17 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                               <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800" />
                             </div>
 
-                            <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+                            <button
+                              onClick={() => openWalletPicker("receive")}
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                            >
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
                                   {paymentMethod.icon}
                                 </div>
                                 <div className="text-left">
                                   <p className="font-medium text-black dark:text-white">Receive</p>
-                                  <p className="text-sm text-zinc-500 dark:text-zinc-400">{cashUsdAsset.name}</p>
+                                  <p className="text-sm text-zinc-500 dark:text-zinc-400">{receiveAccount?.name || cashUsdAsset.name}</p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
