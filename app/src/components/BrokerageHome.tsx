@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { ReturnView, IncomeView, AccountValueView, AllocationView } from './portfolio/TabViews';
@@ -46,7 +46,143 @@ const getAssetTypeLabel = (assetType: number): string => {
   return types[assetType] || "Unknown";
 };
 
-const NFTHoldingItem = ({ holding, deed, chainId, chainName }: { holding: Holding; deed: MultichainDeedNFT | undefined; chainId?: number; chainName?: string }) => {
+// Helper component to render expanded holding details
+const ExpandedHoldingDetails = ({ 
+  holding, 
+  holdingsTotal 
+}: { 
+  holding: Holding; 
+  holdingsTotal: number;
+}) => {
+  const currentValue = holding.valueUSD || 0;
+  const totalCost = holding.average_cost * holding.quantity;
+  const unrealizedReturn = currentValue - totalCost;
+  const unrealizedReturnPercent = totalCost > 0 ? (unrealizedReturn / totalCost) * 100 : 0;
+  const portfolioWeighting = holdingsTotal > 0 ? (currentValue / holdingsTotal) * 100 : 0;
+  const currentPrice = holding.current_price || 0;
+  const averageCostBasis = holding.average_cost || 0;
+
+  return (
+    <div className="px-3 pb-3 space-y-2.5 border-t border-zinc-200 dark:border-zinc-800 mt-2 pt-3">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-zinc-500 dark:text-zinc-400">Current value</span>
+        <span className="text-black dark:text-white font-medium">
+          ${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-1.5">
+          <span className="text-zinc-500 dark:text-zinc-400">Total cost</span>
+          <div className="group relative">
+            <Info className="h-3 w-3 cursor-help text-zinc-400 dark:text-zinc-500" />
+            <div className="absolute left-0 top-5 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+              Total amount paid for this holding
+            </div>
+          </div>
+        </div>
+        <span className="text-black dark:text-white font-medium">
+          ${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-1.5">
+          <span className="text-zinc-500 dark:text-zinc-400">Unrealized return</span>
+          <div className="group relative">
+            <Info className="h-3 w-3 cursor-help text-zinc-400 dark:text-zinc-500" />
+            <div className="absolute left-0 top-5 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+              Profit or loss not yet realized from sale
+            </div>
+          </div>
+        </div>
+        <span className={`font-medium ${unrealizedReturn >= 0 ? 'text-green-600 dark:text-green-500' : 'text-red-600 dark:text-red-500'}`}>
+          ${unrealizedReturn.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({unrealizedReturnPercent >= 0 ? '+' : ''}{unrealizedReturnPercent.toFixed(2)}%)
+        </span>
+      </div>
+      
+      {/* Divider */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800 my-2"></div>
+      
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-zinc-500 dark:text-zinc-400">Current quantity</span>
+        <span className="text-black dark:text-white font-medium">
+          {holding.quantity.toLocaleString('en-US', { 
+            minimumFractionDigits: holding.quantity < 1 ? 4 : 2,
+            maximumFractionDigits: holding.quantity < 1 ? 4 : 2
+          })} {holding.type === 'token' ? holding.asset_symbol : 'items'}
+        </span>
+      </div>
+      {holding.type === 'token' && (
+        <>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-500 dark:text-zinc-400">Current price</span>
+            <span className="text-black dark:text-white font-medium">
+              ${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="text-zinc-500 dark:text-zinc-400">Average cost basis</span>
+              <div className="group relative">
+                <Info className="h-3 w-3 cursor-help text-zinc-400 dark:text-zinc-500" />
+                <div className="absolute left-0 top-5 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+                  Average price paid per unit
+                </div>
+              </div>
+            </div>
+            <span className="text-black dark:text-white font-medium">
+              ${averageCostBasis.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/{holding.type === 'token' ? holding.asset_symbol : 'item'}
+            </span>
+          </div>
+        </>
+      )}
+      
+      {/* Divider */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800 my-2"></div>
+      
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-zinc-500 dark:text-zinc-400">Portfolio weighting</span>
+        <span className="text-black dark:text-white font-medium">
+          {portfolioWeighting.toFixed(2)}% of portfolio
+        </span>
+      </div>
+      
+      {/* Divider above action buttons */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800 my-2"></div>
+      
+      {/* Action buttons */}
+      <div className="flex gap-2 pt-2">
+        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-zinc-800">
+          Buy
+        </button>
+        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-zinc-800">
+          Sell
+        </button>
+        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-zinc-800 flex items-center justify-center gap-1">
+          More
+          <ChevronDown className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const NFTHoldingItem = ({ 
+  holding, 
+  deed, 
+  chainId, 
+  chainName, 
+  isExpanded, 
+  onToggle, 
+  holdingsTotal 
+}: { 
+  holding: Holding; 
+  deed: MultichainDeedNFT | undefined; 
+  chainId?: number; 
+  chainName?: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+  holdingsTotal: number;
+}) => {
   const deedName = useDeedName(deed || null);
   
   // Truncate text to prevent wrapping (max ~25 chars for main, ~20 for secondary)
@@ -79,34 +215,46 @@ const NFTHoldingItem = ({ holding, deed, chainId, chainName }: { holding: Holdin
   const displayChainName = chainName || (chainId ? getNetworkByChainId(chainId)?.name : null) || (chainId ? `Chain ${chainId}` : null) || (deed?.chainName || (deed?.chainId ? getNetworkByChainId(deed.chainId)?.name : null) || (deed?.chainId ? `Chain ${deed.chainId}` : null));
   
   return (
-    <div className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
-          <span className="font-bold text-xs text-black dark:text-white">N</span>
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
-            {displayChainName && (
-              <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 bg-transparent font-normal leading-tight">
-                {displayChainName}
-              </Badge>
-            )}
+    <div className="rounded-lg transition-colors">
+      <div 
+        onClick={onToggle}
+        className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group"
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
+            <span className="font-bold text-xs text-black dark:text-white">N</span>
           </div>
-          <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
+              {displayChainName && (
+                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 bg-transparent font-normal leading-tight">
+                  {displayChainName}
+                </Badge>
+              )}
+            </div>
+            <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="text-right">
+            <p className="text-black dark:text-white font-medium text-sm">
+              ${(holding.valueUSD || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-zinc-500 text-xs">
+              {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
+            </p>
+          </div>
+          {isExpanded ? (
+            <ChevronUp className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
+          )}
         </div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="text-right">
-          <p className="text-black dark:text-white font-medium text-sm">
-            ${(holding.valueUSD || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
-          <p className="text-zinc-500 text-xs">
-            {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
-          </p>
-        </div>
-        <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-      </div>
+      {isExpanded && (
+        <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
+      )}
     </div>
   );
 };
@@ -236,6 +384,7 @@ export default function BrokerageHome() {
   const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'RWAs' | 'NFTs' | 'Tokens'>('All');
   const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
   const [showZeroValueAssets, setShowZeroValueAssets] = useState(false); // Hide assets with $0 value by default
+  const [expandedHoldings, setExpandedHoldings] = useState<Set<string | number>>(new Set()); // Track which holdings are expanded
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
@@ -349,16 +498,19 @@ export default function BrokerageHome() {
   // Cash balance is automatically calculated from stablecoin holdings in PortfolioContext
   const cashBalance = portfolioCashBalance?.totalCash || 0;
   
+  // Calculate holdings-only total (for portfolio weighting)
+  const holdingsTotal = useMemo(() => {
+    if (!isConnected) return 0;
+    return allHoldings.reduce((sum, h) => sum + (h.valueUSD || 0), 0);
+  }, [isConnected, allHoldings]);
+  
   // Calculate total value from wallet balance and holdings across all chains
   const totalValue = useMemo(() => {
     if (!isConnected) return 0;
     
-    // Calculate holdings value (tokens + NFTs)
-    const holdingsValue = allHoldings.reduce((sum, h) => sum + (h.valueUSD || 0), 0);
-    
     // Total portfolio value = aggregated wallet balance + holdings
-    return totalBalanceUSD + holdingsValue;
-  }, [isConnected, totalBalanceUSD, allHoldings]);
+    return totalBalanceUSD + holdingsTotal;
+  }, [isConnected, totalBalanceUSD, holdingsTotal]);
   
   // Track portfolio value history
   useEffect(() => {
@@ -702,6 +854,7 @@ export default function BrokerageHome() {
                                   <div className="space-y-1">
                                     {tokenHoldings.map((holding) => {
                                       const valueUSD = holding.valueUSD || 0;
+                                      const isExpanded = expandedHoldings.has(holding.id);
                                       
                                       // Get chain information from portfolio holdings
                                       const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && h.type === 'token');
@@ -723,39 +876,61 @@ export default function BrokerageHome() {
                                       const secondaryTextFull = holding.asset_name;
                                       
                                       return (
-                                        <div key={holding.id} className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
-                                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                                            <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
-                                              <span className="font-bold text-xs text-black dark:text-white">
-                                                {holding.asset_symbol[0]}
-                                              </span>
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                              <div className="flex items-center gap-1.5">
-                                                <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
-                                                {chainName && (
-                                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 bg-transparent font-normal leading-tight">
-                                                    {chainName}
-                                                  </Badge>
-                                                )}
+                                        <div key={holding.id} className="rounded-lg transition-colors">
+                                          <div 
+                                            onClick={() => {
+                                              setExpandedHoldings(prev => {
+                                                const next = new Set(prev);
+                                                if (next.has(holding.id)) {
+                                                  next.delete(holding.id);
+                                                } else {
+                                                  next.add(holding.id);
+                                                }
+                                                return next;
+                                              });
+                                            }}
+                                            className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group"
+                                          >
+                                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                              <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
+                                                <span className="font-bold text-xs text-black dark:text-white">
+                                                  {holding.asset_symbol[0]}
+                                                </span>
                                               </div>
-                                              <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
+                                              <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-1.5">
+                                                  <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
+                                                  {chainName && (
+                                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 bg-transparent font-normal leading-tight">
+                                                      {chainName}
+                                                    </Badge>
+                                                  )}
+                                                </div>
+                                                <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
+                                              </div>
+                                            </div>
+                                            <div className="flex items-center gap-3 shrink-0">
+                                              <div className="text-right">
+                                                <p className="text-black dark:text-white font-medium text-sm">
+                                                  ${valueUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </p>
+                                                <p className="text-zinc-500 text-xs">
+                                                  {holding.quantity.toLocaleString('en-US', { 
+                                                    minimumFractionDigits: holding.quantity < 1 ? 4 : 2,
+                                                    maximumFractionDigits: holding.quantity < 1 ? 4 : 2
+                                                  })} {holding.asset_symbol}
+                                                </p>
+                                              </div>
+                                              {isExpanded ? (
+                                                <ChevronUp className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
+                                              ) : (
+                                                <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
+                                              )}
                                             </div>
                                           </div>
-                                          <div className="flex items-center gap-3 shrink-0">
-                                            <div className="text-right">
-                                              <p className="text-black dark:text-white font-medium text-sm">
-                                                ${valueUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                              </p>
-                                              <p className="text-zinc-500 text-xs">
-                                                {holding.quantity.toLocaleString('en-US', { 
-                                                  minimumFractionDigits: holding.quantity < 1 ? 4 : 2,
-                                                  maximumFractionDigits: holding.quantity < 1 ? 4 : 2
-                                                })} {holding.asset_symbol}
-                                              </p>
-                                            </div>
-                                            <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-                                          </div>
+                                          {isExpanded && (
+                                            <ExpandedHoldingDetails holding={holding} holdingsTotal={holdingsTotal} />
+                                          )}
                                         </div>
                                       );
                                     })}
@@ -771,9 +946,31 @@ export default function BrokerageHome() {
                                     <span>Value</span>
                                   </div>
                                   <div className="space-y-1">
-                                    {rwaHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => (
-                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} chainId={chainId} chainName={chainName} />
-                                    ))}
+                                    {rwaHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => {
+                                      const isExpanded = expandedHoldings.has(holding.id);
+                                      return (
+                                        <NFTHoldingItem 
+                                          key={holding.id} 
+                                          holding={holding} 
+                                          deed={deed} 
+                                          chainId={chainId} 
+                                          chainName={chainName}
+                                          isExpanded={isExpanded}
+                                          onToggle={() => {
+                                            setExpandedHoldings(prev => {
+                                              const next = new Set(prev);
+                                              if (next.has(holding.id)) {
+                                                next.delete(holding.id);
+                                              } else {
+                                                next.add(holding.id);
+                                              }
+                                              return next;
+                                            });
+                                          }}
+                                          holdingsTotal={holdingsTotal}
+                                        />
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
@@ -786,9 +983,31 @@ export default function BrokerageHome() {
                                     <span>Value</span>
                                   </div>
                                   <div className="space-y-1">
-                                    {nftHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => (
-                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} chainId={chainId} chainName={chainName} />
-                                    ))}
+                                    {nftHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => {
+                                      const isExpanded = expandedHoldings.has(holding.id);
+                                      return (
+                                        <NFTHoldingItem 
+                                          key={holding.id} 
+                                          holding={holding} 
+                                          deed={deed} 
+                                          chainId={chainId} 
+                                          chainName={chainName}
+                                          isExpanded={isExpanded}
+                                          onToggle={() => {
+                                            setExpandedHoldings(prev => {
+                                              const next = new Set(prev);
+                                              if (next.has(holding.id)) {
+                                                next.delete(holding.id);
+                                              } else {
+                                                next.add(holding.id);
+                                              }
+                                              return next;
+                                            });
+                                          }}
+                                          holdingsTotal={holdingsTotal}
+                                        />
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
