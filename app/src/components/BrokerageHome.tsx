@@ -145,6 +145,10 @@ const ExpandedHoldingDetails = ({
           {portfolioWeighting.toFixed(2)}% of portfolio
         </span>
       </div>
+      
+      {/* Divider above action buttons */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800 my-2"></div>
+      
       {/* Action buttons */}
       <div className="flex gap-2 pt-2">
         <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-zinc-800">
