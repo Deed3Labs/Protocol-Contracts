@@ -285,7 +285,8 @@ class WebSocketService {
         } else {
           const result = await getBalance(chainId, address);
           if (result) {
-            const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+            // OPTIMIZATION: Increased cache TTL to 5 minutes (300s) to align with WebSocket balance update interval
+            const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
             await cacheService.set(
               cacheKey,
               { balance: result.balance, balanceWei: result.balanceWei, timestamp: Date.now() },
@@ -377,7 +378,9 @@ class WebSocketService {
           });
         } else {
           const result = await transfersService.getTransactions(chainId, address, 20);
-          const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '60', 10);
+          // OPTIMIZATION: Increased cache TTL to 10 minutes (600s) to align with refresh intervals
+          // This matches the transaction update interval and reduces Alchemy compute unit usage
+          const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '600', 10);
           await cacheService.set(
             cacheKey,
             { transactions: result, timestamp: Date.now() },

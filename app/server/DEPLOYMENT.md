@@ -138,7 +138,7 @@ ALCHEMY_API_KEY=your_alchemy_api_key_here
 CACHE_TTL_PRICE=300
 CACHE_TTL_BALANCE=10
 CACHE_TTL_NFT=600
-CACHE_TTL_TRANSACTION=60
+CACHE_TTL_TRANSACTION=600  # 10 minutes - increased to align with refresh intervals and reduce Alchemy compute unit usage
 ```
 
 ## Quick Start with Upstash + Railway

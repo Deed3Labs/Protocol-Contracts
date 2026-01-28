@@ -43,7 +43,8 @@ router.get('/all/:chainId/:userAddress', async (req: Request, res: Response) => 
     }
 
     // Cache the result
-    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+    // OPTIMIZATION: Increased cache TTL to 5 minutes (300s) to align with refresh intervals
+    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
     await cacheService.set(
       cacheKey,
       { data: tokens, timestamp: Date.now() },
@@ -98,7 +99,8 @@ router.get('/:chainId/:userAddress/:tokenAddress', async (req: Request, res: Res
     }
 
     // Cache the result
-    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+    // OPTIMIZATION: Increased cache TTL to 5 minutes (300s) to align with refresh intervals
+    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
     await cacheService.set(
       cacheKey,
       { data: result, timestamp: Date.now() },
@@ -178,7 +180,8 @@ router.post('/all/batch', async (req: Request, res: Response) => {
             
             // Cache the result
             const cacheKey = `all_token_balances:${chainId}:${userAddress.toLowerCase()}`;
-            const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+            // OPTIMIZATION: Increased cache TTL to 5 minutes (300s) to align with refresh intervals
+    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
             await cacheService.set(
               cacheKey,
               { data: tokens, timestamp: Date.now() },
