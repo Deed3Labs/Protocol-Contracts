@@ -329,8 +329,10 @@ router.post('/portfolio', async (req: Request, res: Response) => {
           const tokens = addressMap.get(chainId) || [];
           if (tokens.length > 0) {
             // Cache the result (Portfolio API format)
+            // OPTIMIZATION: Increased cache TTL from 10s to 5 minutes (300s) to reduce Alchemy compute unit usage
+            // Portfolio tokens don't change frequently, so longer cache is safe
             const cacheKey = `all_token_balances:${chainId}:${address}`;
-            const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '10', 10);
+            const cacheTTL = parseInt(process.env.CACHE_TTL_PORTFOLIO_TOKENS || process.env.CACHE_TTL_BALANCE || '300', 10);
             await cacheService.set(
               cacheKey,
               { data: tokens, timestamp: Date.now() },
