@@ -398,6 +398,11 @@ export default function BrokerageHome() {
   const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
   const [showZeroValueAssets, setShowZeroValueAssets] = useState(false); // Hide assets with $0 value by default
   const [expandedHoldings, setExpandedHoldings] = useState<Set<string | number>>(new Set()); // Track which holdings are expanded
+  const [activityFilter, setActivityFilter] = useState<
+    'All' | 'Deposits' | 'Withdrawals' | 'Buys' | 'Sells' | 'Mints' | 'Transfers' | 'Trades' | 'Other'
+  >('All');
+  const [activitySort, setActivitySort] = useState<'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow'>('Newest');
+  const [activityVisibleCount, setActivityVisibleCount] = useState(7);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
@@ -471,6 +476,74 @@ export default function BrokerageHome() {
     if (isPortfolioExpanded) return filteredHoldings;
     return filteredHoldings.slice(0, 5); // Show 5 holdings initially
   }, [filteredHoldings, isPortfolioExpanded]);
+
+  const activityTransactions = useMemo(() => {
+    const getTxTimeMs = (tx: any): number => {
+      if (tx?.timestamp) {
+        const t = new Date(tx.timestamp).getTime();
+        if (!Number.isNaN(t)) return t;
+      }
+      const parsed = Date.parse(tx?.date);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const filtered = walletTransactions.filter((tx) => {
+      const type = String((tx as any)?.type || '').toLowerCase();
+
+      switch (activityFilter) {
+        case 'Deposits':
+          return type === 'deposit';
+        case 'Withdrawals':
+          return type === 'withdraw';
+        case 'Buys':
+          return type === 'buy';
+        case 'Sells':
+          return type === 'sell';
+        case 'Mints':
+          return type === 'mint';
+        case 'Transfers':
+          return type === 'transfer';
+        case 'Trades':
+          return type === 'trade';
+        case 'Other':
+          return !['deposit', 'withdraw', 'buy', 'sell', 'mint', 'transfer', 'trade'].includes(type);
+        case 'All':
+        default:
+          return true;
+      }
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      const aAny = a as any;
+      const bAny = b as any;
+      const aTime = getTxTimeMs(aAny);
+      const bTime = getTxTimeMs(bAny);
+      const aAmt = Math.abs(Number(aAny?.amount || 0));
+      const bAmt = Math.abs(Number(bAny?.amount || 0));
+
+      switch (activitySort) {
+        case 'Oldest':
+          return aTime - bTime;
+        case 'AmountHigh':
+          return bAmt - aAmt;
+        case 'AmountLow':
+          return aAmt - bAmt;
+        case 'Newest':
+        default:
+          return bTime - aTime;
+      }
+    });
+
+    return sorted;
+  }, [walletTransactions, activityFilter, activitySort]);
+
+  const displayedActivityTransactions = useMemo(() => {
+    return activityTransactions.slice(0, activityVisibleCount);
+  }, [activityTransactions, activityVisibleCount]);
+
+  useEffect(() => {
+    setActivityVisibleCount(7);
+  }, [activityFilter, activitySort, isConnected, address]);
   
   // Debug: Verify data is being fetched (remove in production)
   useEffect(() => {
@@ -1087,13 +1160,64 @@ export default function BrokerageHome() {
                     </button>
                   </div>
                   
+                  {/* Activity filter/sort controls */}
+                  <div className="px-3 pb-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Select
+                        value={activityFilter}
+                        onValueChange={(
+                          value:
+                            | 'All'
+                            | 'Deposits'
+                            | 'Withdrawals'
+                            | 'Buys'
+                            | 'Sells'
+                            | 'Mints'
+                            | 'Transfers'
+                            | 'Trades'
+                            | 'Other'
+                        ) => setActivityFilter(value)}
+                      >
+                        <SelectTrigger className="h-4 w-28 text-sm font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-3 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                          <SelectValue placeholder="Filter" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                          <SelectItem value="All" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">All</SelectItem>
+                          <SelectItem value="Deposits" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Deposits</SelectItem>
+                          <SelectItem value="Withdrawals" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Withdrawals</SelectItem>
+                          <SelectItem value="Buys" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Buys</SelectItem>
+                          <SelectItem value="Sells" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Sells</SelectItem>
+                          <SelectItem value="Mints" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Mints</SelectItem>
+                          <SelectItem value="Transfers" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Transfers</SelectItem>
+                          <SelectItem value="Trades" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Trades</SelectItem>
+                          <SelectItem value="Other" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Select
+                        value={activitySort}
+                        onValueChange={(value: 'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow') => setActivitySort(value)}
+                      >
+                        <SelectTrigger className="h-4 w-32 text-sm font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-3 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                          <SelectValue placeholder="Sort" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                          <SelectItem value="Newest" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Newest</SelectItem>
+                          <SelectItem value="Oldest" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Oldest</SelectItem>
+                          <SelectItem value="AmountHigh" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Amount (high)</SelectItem>
+                          <SelectItem value="AmountLow" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Amount (low)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
                   <div className="space-y-1 px-2 pb-2">
                     {!isConnected ? (
                       <div className="py-8 text-center text-zinc-500 text-sm">
                         Connect wallet to view activity
                       </div>
-                    ) : walletTransactions.length > 0 ? (
-                      walletTransactions.map((item) => (
+                    ) : activityTransactions.length > 0 ? (
+                      displayedActivityTransactions.map((item) => (
                         <div 
                           key={item.id} 
                           className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group"
@@ -1199,6 +1323,28 @@ export default function BrokerageHome() {
                       </div>
                     )}
                   </div>
+
+                  {/* Load more / Show less */}
+                  {isConnected && activityTransactions.length > 7 && (
+                    <div className="mt-2 px-3 pb-3">
+                      <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                        <button
+                          onClick={() => {
+                            if (activityVisibleCount >= activityTransactions.length) {
+                              setActivityVisibleCount(7);
+                              return;
+                            }
+                            setActivityVisibleCount((prev) => Math.min(prev + 7, activityTransactions.length));
+                          }}
+                          className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-2"
+                        >
+                          {activityVisibleCount >= activityTransactions.length
+                            ? `Show Less (${activityTransactions.length} total)`
+                            : `Load More (${Math.min(activityVisibleCount + 7, activityTransactions.length)}/${activityTransactions.length})`}
+                        </button>
+                      </div>
+                    </div>
+                  )}
               </div>
            </div>
         </div>
