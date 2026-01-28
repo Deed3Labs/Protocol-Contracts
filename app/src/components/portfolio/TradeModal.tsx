@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, MoreHorizontal, ChevronRight, ArrowUpDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,18 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
   const [toAsset, setToAsset] = useState<Asset | null>(null);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
 
+  const cashUsdAsset = useMemo<Asset>(
+    () => ({
+      symbol: "USD",
+      name: "Cash (USD)",
+      color: "bg-zinc-700",
+      balance: cashBalance.totalCash,
+      balanceUSD: cashBalance.totalCash,
+      type: "token",
+    }),
+    [cashBalance.totalCash]
+  );
+
   // Convert holdings to assets for selection
   const availableAssets = useMemo<Asset[]>(() => {
     return holdings
@@ -89,9 +101,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
           setFromAsset(usdc || availableAssets[0] || null);
         } else if (initialTradeType === "sell") {
           setFromAsset(initialAsset);
-          // Set USDC as to asset if available
-          const usdc = availableAssets.find(a => a.symbol.toUpperCase() === "USDC");
-          setToAsset(usdc || availableAssets[0] || null);
+          // Receive Cash (USD)
+          setToAsset(cashUsdAsset);
         }
         setTradeType(initialTradeType);
       } else {
@@ -104,36 +115,80 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       setStep("input");
       setAmount("0");
     }
-  }, [open, initialAsset, initialTradeType, availableAssets, cashBalance]);
+  }, [open, initialAsset, initialTradeType, availableAssets, cashBalance, cashUsdAsset]);
 
-  const handleNumberPress = (num: string) => {
-    if (num === "." && amount.includes(".")) return;
-    if (amount === "0" && num !== ".") {
-      setAmount(num);
-    } else {
-      setAmount(amount + num);
-    }
-  };
+  const handleNumberPress = useCallback((num: string) => {
+    setAmount((currentAmount) => {
+      if (num === "." && currentAmount.includes(".")) return currentAmount;
+      if (currentAmount === "0" && num !== ".") {
+        return num;
+      }
+      return currentAmount + num;
+    });
+  }, []);
 
-  const handleBackspace = () => {
-    if (amount.length === 1) {
-      setAmount("0");
-    } else {
-      setAmount(amount.slice(0, -1));
-    }
-  };
+  const handleBackspace = useCallback(() => {
+    setAmount((currentAmount) => {
+      if (currentAmount.length === 1) {
+        return "0";
+      }
+      return currentAmount.slice(0, -1);
+    });
+  }, []);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     onOpenChange(false);
     setTimeout(() => {
       setStep("input");
       setAmount("0");
     }, 300);
-  };
+  }, [onOpenChange]);
 
-  const handleReview = () => {
+  const handleReview = useCallback(() => {
     setStep("review");
-  };
+  }, []);
+
+  // Keyboard event handlers
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only handle keyboard events when modal is open and on input step
+      if (step !== "input") {
+        // Escape key works on all steps
+        if (event.key === "Escape") {
+          event.preventDefault();
+          handleClose();
+        }
+        return;
+      }
+
+      // Prevent default for number keys and special keys when typing
+      if (event.key >= "0" && event.key <= "9") {
+        event.preventDefault();
+        handleNumberPress(event.key);
+      } else if (event.key === "." || event.key === ",") {
+        // Support both . and , for decimal point
+        event.preventDefault();
+        handleNumberPress(".");
+      } else if (event.key === "Backspace" || event.key === "Delete") {
+        event.preventDefault();
+        handleBackspace();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        handleClose();
+      } else if (event.key === "Enter" && amount !== "0" && parseFloat(amount) > 0) {
+        // Allow Enter to proceed to review step
+        event.preventDefault();
+        handleReview();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, step, amount, handleNumberPress, handleBackspace, handleClose, handleReview]);
 
   const handleConfirm = () => {
     setStep("success");
@@ -152,6 +207,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       USDC: 1,
       USDT: 1,
       DAI: 1,
+      USD: 1,
     };
     
     const fromRate = rates[fromAsset.symbol.toUpperCase()] || 0.001;
@@ -202,8 +258,12 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
             exit={{ opacity: 0, scale: 0.98, y: 10 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
             className="fixed inset-0 z-[101] flex items-center justify-center p-0 sm:p-4"
+            onClick={handleClose}
           >
-            <div className="h-[100dvh] max-h-[100dvh] w-full max-w-full sm:max-w-md sm:h-[90vh] sm:max-h-[800px] bg-white dark:bg-[#0e0e0e] border-0 sm:border sm:border-zinc-200 dark:border-zinc-800 sm:rounded-2xl rounded-none overflow-hidden flex flex-col">
+            <div 
+              className="h-[100dvh] max-h-[100dvh] w-full max-w-full sm:max-w-md sm:h-[90vh] sm:max-h-[800px] bg-white dark:bg-[#0e0e0e] border-0 sm:border sm:border-zinc-200 dark:border-zinc-800 sm:rounded-2xl rounded-none overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
               {step === "input" && (
                 <div className="flex flex-col h-full">
                   {/* Header */}
@@ -322,52 +382,108 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                       </>
                     ) : (
                       <>
-                        {/* Buy/Sell - Payment Method & Asset */}
-                        <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xl">
-                              {paymentMethod.icon}
-                            </div>
-                            <div className="text-left">
-                              <p className="font-medium text-black dark:text-white">Pay with</p>
-                              <p className="text-sm text-zinc-500 dark:text-zinc-400">{paymentMethod.name}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {paymentMethod.value !== null && (
-                              <div className="text-right">
-                                <p className="text-sm font-medium text-black dark:text-white">
-                                  ${paymentMethod.value.toFixed(2)}
-                                </p>
-                                <p className="text-xs text-zinc-500 dark:text-zinc-400">Available</p>
-                              </div>
-                            )}
-                            <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
-                          </div>
-                        </button>
-
-                        <div className="flex items-center justify-center py-1">
-                          <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800" />
-                        </div>
-
-                        <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
-                          <div className="flex items-center gap-3">
-                            {toAsset && (
-                              <>
-                                <div className={cn("w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold", toAsset.color)}>
-                                  {toAsset.symbol.charAt(0)}
+                        {/* Buy/Sell - UX differs by direction */}
+                        {tradeType === "buy" ? (
+                          <>
+                            <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xl">
+                                  {paymentMethod.icon}
                                 </div>
                                 <div className="text-left">
-                                  <p className="font-medium text-black dark:text-white">
-                                    {tradeType === "buy" ? "Buy" : "Sell"}
-                                  </p>
-                                  <p className="text-sm text-zinc-500 dark:text-zinc-400">{toAsset.name}</p>
+                                  <p className="font-medium text-black dark:text-white">Pay with</p>
+                                  <p className="text-sm text-zinc-500 dark:text-zinc-400">{paymentMethod.name}</p>
                                 </div>
-                              </>
-                            )}
-                          </div>
-                          <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
-                        </button>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {paymentMethod.value !== null && (
+                                  <div className="text-right">
+                                    <p className="text-sm font-medium text-black dark:text-white">
+                                      ${paymentMethod.value.toFixed(2)}
+                                    </p>
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Available</p>
+                                  </div>
+                                )}
+                                <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
+                              </div>
+                            </button>
+
+                            <div className="flex items-center justify-center py-1">
+                              <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800" />
+                            </div>
+
+                            <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+                              <div className="flex items-center gap-3">
+                                {toAsset && (
+                                  <>
+                                    <div className={cn("w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold", toAsset.color)}>
+                                      {toAsset.symbol.charAt(0)}
+                                    </div>
+                                    <div className="text-left">
+                                      <p className="font-medium text-black dark:text-white">Buy</p>
+                                      <p className="text-sm text-zinc-500 dark:text-zinc-400">{toAsset.name}</p>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                              <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+                              <div className="flex items-center gap-3">
+                                {fromAsset && (
+                                  <>
+                                    <div className={cn("w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold", fromAsset.color)}>
+                                      {fromAsset.symbol.charAt(0)}
+                                    </div>
+                                    <div className="text-left">
+                                      <p className="font-medium text-black dark:text-white">Sell</p>
+                                      <p className="text-sm text-zinc-500 dark:text-zinc-400">{fromAsset.name}</p>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {fromAsset?.balance !== undefined && (
+                                  <div className="text-right">
+                                    <p className="text-sm font-medium text-black dark:text-white">
+                                      {formatBalance(fromAsset.balance)} {fromAsset.symbol}
+                                    </p>
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Available</p>
+                                  </div>
+                                )}
+                                <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
+                              </div>
+                            </button>
+
+                            <div className="flex items-center justify-center py-1">
+                              <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800" />
+                            </div>
+
+                            <button className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
+                                  {paymentMethod.icon}
+                                </div>
+                                <div className="text-left">
+                                  <p className="font-medium text-black dark:text-white">Receive</p>
+                                  <p className="text-sm text-zinc-500 dark:text-zinc-400">{cashUsdAsset.name}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="text-right">
+                                  <p className="text-sm font-medium text-black dark:text-white">
+                                    ${cashBalance.totalCash.toFixed(2)}
+                                  </p>
+                                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Balance</p>
+                                </div>
+                                <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
+                              </div>
+                            </button>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
