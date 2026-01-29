@@ -126,6 +126,7 @@ export default function InteractiveChart({ data, isNegative = false, color, show
             fill={`url(#${patternId}-gradient)`}
             fillOpacity={1}
             stroke="none"
+            baseValue="dataMin"
             animationDuration={500}
           />
           {/* Overlay area with dotted pattern */}
@@ -135,6 +136,7 @@ export default function InteractiveChart({ data, isNegative = false, color, show
             fill={`url(#${patternId})`}
             fillOpacity={1}
             stroke="none"
+            baseValue="dataMin"
             animationDuration={500}
           />
           {/* Line on top of the area */}
