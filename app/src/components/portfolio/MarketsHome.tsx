@@ -64,7 +64,20 @@ export default function MarketsHome() {
     balances: multichainBalances,
   } = usePortfolio();
   
-  const [user] = useState<any>({ name: 'Isaiah Litt' });
+  // Derive user from wallet address or use mock data
+  const { address } = useAppKitAccount();
+  const user = useMemo(() => {
+    if (address) {
+      // Format address for display name
+      const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
+      return {
+        name: shortAddress,
+        email: `${shortAddress.toLowerCase()}@wallet`,
+      };
+    }
+    // Fallback to mock data if no wallet connected
+    return { name: 'Isaiah Litt', email: 'isaiah@example.com' };
+  }, [address]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);

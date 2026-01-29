@@ -446,7 +446,19 @@ export default function BrokerageHome() {
   }, [multichainBalances]);
   
   
-  const [user] = useState(null);
+  // Derive user from wallet address or use mock data
+  const user = useMemo(() => {
+    if (address) {
+      // Format address for display name
+      const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
+      return {
+        name: shortAddress,
+        email: `${shortAddress.toLowerCase()}@wallet`,
+      };
+    }
+    // Fallback to mock data if no wallet connected
+    return { name: 'Isaiah Litt', email: 'isaiah@example.com' };
+  }, [address]);
   const [selectedTab, setSelectedTab] = useState('Return');
   const [selectedRange, setSelectedRange] = useState('1D');
   const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'RWAs' | 'NFTs' | 'Tokens'>('All');

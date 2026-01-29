@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Info, ArrowUpRight, ArrowRight, ShieldCheck, Home, Zap } from 'lucide-react';
 import SideMenu from './SideMenu';
@@ -7,6 +7,7 @@ import MobileNav from './MobileNav';
 import DepositModal from './DepositModal';
 import WithdrawModal from './WithdrawModal';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
+import { useAppKitAccount } from '@reown/appkit/react';
 import CreditCycleWidget from './CreditCycleWidget';
 import ActiveLoansWidget from './ActiveLoansWidget';
 import MarketRatesWidget from './MarketRatesWidget';
@@ -54,7 +55,20 @@ const currentLoans = [
 ];
 
 export default function BorrowHome() {
-  const [user] = useState<any>({ name: 'Isaiah Litt' }); // Mock user
+  // Derive user from wallet address or use mock data
+  const { address } = useAppKitAccount();
+  const user = useMemo(() => {
+    if (address) {
+      // Format address for display name
+      const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
+      return {
+        name: shortAddress,
+        email: `${shortAddress.toLowerCase()}@wallet`,
+      };
+    }
+    // Fallback to mock data if no wallet connected
+    return { name: 'Isaiah Litt', email: 'isaiah@example.com' };
+  }, [address]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);

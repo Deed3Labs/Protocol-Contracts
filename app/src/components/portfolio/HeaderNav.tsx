@@ -40,10 +40,13 @@ export default function HeaderNav({
   const { openSearchModal, toggleProfileMenu, setProfileMenuUser, profileMenuOpen, setProfileMenuOpen, openXmtpModal } = useGlobalModals();
   
   // Sync user to global ProfileMenu state
+  // Only update if user is truthy to avoid overwriting with null
   useEffect(() => {
     if (user) {
       setProfileMenuUser(user);
     }
+    // Note: We don't clear profileMenuUser when user becomes null/undefined
+    // to prevent overwriting valid user data from other pages
   }, [user, setProfileMenuUser]);
 
   const isActive = (path: string) => location.pathname === path;
