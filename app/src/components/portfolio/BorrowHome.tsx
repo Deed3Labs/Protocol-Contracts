@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Info, ArrowUpRight, ArrowRight, ShieldCheck, Home, Zap } from 'lucide-react';
 import SideMenu from './SideMenu';
@@ -7,8 +7,6 @@ import MobileNav from './MobileNav';
 import DepositModal from './DepositModal';
 import WithdrawModal from './WithdrawModal';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
-import { useAppKitAccount } from '@reown/appkit/react';
-import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import CreditCycleWidget from './CreditCycleWidget';
 import ActiveLoansWidget from './ActiveLoansWidget';
 import MarketRatesWidget from './MarketRatesWidget';
@@ -56,25 +54,7 @@ const currentLoans = [
 ];
 
 export default function BorrowHome() {
-  // Get user email from AppKit auth if available
-  const { address } = useAppKitAccount();
-  const { user: appKitUser } = useAppKitAuth();
-  
-  // Derive user from wallet address or use mock data
-  const user = useMemo(() => {
-    const email = appKitUser?.email; // Get email from AppKit if user signed in with email
-    
-    if (address) {
-      // Format address for display name
-      const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
-      return {
-        name: shortAddress,
-        email: email || 'user@example.com', // Use AppKit email if available, otherwise mock data
-      };
-    }
-    // Fallback to mock data if no wallet connected
-    return { name: 'Username', email: email || 'user@example.com' };
-  }, [address, appKitUser?.email]);
+  // User data is now derived globally in GlobalModalsContext
   const [menuOpen, setMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
@@ -103,7 +83,6 @@ export default function BorrowHome() {
       <SideMenu 
         isOpen={menuOpen} 
         onClose={() => setMenuOpen(false)} 
-        user={user}
       />
       
       {/* Modals - keeping consistent with BrokerageHome */}
@@ -122,7 +101,6 @@ export default function BorrowHome() {
         isScrolledPast={isScrolledPast}
         onMenuOpen={() => setMenuOpen(true)}
         onActionOpen={() => setActionModalOpen(true)}
-        user={user}
       />
       
       {/* Main Content */}

@@ -13,14 +13,12 @@ interface HeaderNavProps {
   isScrolledPast: boolean;
   onMenuOpen: () => void;
   onActionOpen: () => void;
-  user: any;
 }
 
 export default function HeaderNav({
   isScrolledPast,
   onMenuOpen,
   onActionOpen,
-  user,
 }: HeaderNavProps) {
   // Use global portfolio context for cash balance
   const { cashBalance: portfolioCashBalance, previousTotalBalanceUSD } = usePortfolio();
@@ -37,17 +35,7 @@ export default function HeaderNav({
   const { isConnected, openModal } = useAppKitAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { openSearchModal, toggleProfileMenu, setProfileMenuUser, profileMenuOpen, setProfileMenuOpen, openXmtpModal } = useGlobalModals();
-  
-  // Sync user to global ProfileMenu state
-  // Only update if user is truthy to avoid overwriting with null
-  useEffect(() => {
-    if (user) {
-      setProfileMenuUser(user);
-    }
-    // Note: We don't clear profileMenuUser when user becomes null/undefined
-    // to prevent overwriting valid user data from other pages
-  }, [user, setProfileMenuUser]);
+  const { openSearchModal, toggleProfileMenu, profileMenuOpen, setProfileMenuOpen, openXmtpModal, profileMenuUser } = useGlobalModals();
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -162,19 +150,21 @@ export default function HeaderNav({
                    className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors"
                  >
                     <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-sm font-medium text-white">
-                       {user?.name?.[0] || 'U'}
+                       {profileMenuUser?.name?.[0] || 'U'}
                     </div>
                  </button>
                  {/* ProfileMenu rendered here for correct positioning, but uses global state */}
-                 <ProfileMenu
-                   isOpen={profileMenuOpen}
-                   onClose={() => setProfileMenuOpen(false)}
-                   user={user}
-                   onOpenXMTP={(conversationId) => {
-                     openXmtpModal(conversationId);
-                     setProfileMenuOpen(false);
-                   }}
-                 />
+                 {profileMenuUser && (
+                   <ProfileMenu
+                     isOpen={profileMenuOpen}
+                     onClose={() => setProfileMenuOpen(false)}
+                     user={profileMenuUser}
+                     onOpenXMTP={(conversationId) => {
+                       openXmtpModal(conversationId);
+                       setProfileMenuOpen(false);
+                     }}
+                   />
+                 )}
                </div>
              ) : (
                <button 

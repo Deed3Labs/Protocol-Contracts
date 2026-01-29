@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useMemo } from 'react';
 import type { ReactNode } from 'react';
+import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 
 interface TradeModalAsset {
   symbol: string;
@@ -42,8 +44,10 @@ interface GlobalModalsContextType {
   // ProfileMenu
   profileMenuOpen: boolean;
   setProfileMenuOpen: (open: boolean) => void;
-  profileMenuUser: any;
-  setProfileMenuUser: (user: any) => void;
+  profileMenuUser: {
+    name: string;
+    email: string;
+  } | null;
   
   // Helper functions
   openTradeModal: (type: 'buy' | 'sell' | 'swap', asset?: TradeModalAsset | null) => void;
@@ -55,6 +59,10 @@ interface GlobalModalsContextType {
 const GlobalModalsContext = createContext<GlobalModalsContextType | null>(null);
 
 export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Get wallet address and AppKit auth for user derivation
+  const { address } = useAppKitAccount();
+  const { user: appKitUser } = useAppKitAuth();
+  
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [tradeModalType, setTradeModalType] = useState<'buy' | 'sell' | 'swap'>('buy');
@@ -71,7 +79,22 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
   
   // ProfileMenu state
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [profileMenuUser, setProfileMenuUser] = useState<any>(null);
+  
+  // Derive user data globally from wallet address and AppKit auth
+  const profileMenuUser = useMemo(() => {
+    const email = appKitUser?.email; // Get email from AppKit if user signed in with email
+    
+    if (address) {
+      // Format address for display name
+      const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
+      return {
+        name: shortAddress,
+        email: email || 'user@example.com', // Use AppKit email if available, otherwise mock data
+      };
+    }
+    // Fallback to mock data if no wallet connected
+    return { name: 'Username', email: email || 'user@example.com' };
+  }, [address, appKitUser?.email]);
   
   const openTradeModal = (type: 'buy' | 'sell' | 'swap', asset: TradeModalAsset | null = null) => {
     setTradeModalType(type);
@@ -116,7 +139,6 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
         profileMenuOpen,
         setProfileMenuOpen,
         profileMenuUser,
-        setProfileMenuUser,
         openTradeModal,
         openSearchModal,
         openXmtpModal,
