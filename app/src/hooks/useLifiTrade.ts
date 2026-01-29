@@ -128,20 +128,44 @@ export function useLifiTrade() {
       const route = convertQuoteToRoute(quoteResult);
 
       // Calculate estimated output
-      // Li.Fi quote structure: quoteResult.action.toAmount (in smallest units)
+      // Li.Fi quote structure can vary, so we check multiple possible locations
       // Type assertion needed because TypeScript types may not match runtime structure
       const quoteResultAny = quoteResult as any;
-      const action = quoteResultAny.action || {};
-      const toAmount = action.toAmount || '0';
+      const routeAny = route as any;
       
+      // Try to get toAmount from multiple possible locations:
+      // 1. quoteResult.action.toAmount (direct quote action)
+      // 2. route.toAmount (route-level toAmount)
+      // 3. route.steps[last].action.toAmount (last step's action)
+      // 4. quoteResult.estimate.toAmount (estimate object)
+      let toAmount = 
+        quoteResultAny.action?.toAmount ||
+        routeAny.toAmount ||
+        routeAny.steps?.[routeAny.steps?.length - 1]?.action?.toAmount ||
+        quoteResultAny.estimate?.toAmount ||
+        '0';
+      
+      // If still not found, log the structure for debugging
       if (!toAmount || toAmount === '0') {
+        console.error('Quote structure:', {
+          quoteResult: quoteResultAny,
+          route: routeAny,
+          hasAction: !!quoteResultAny.action,
+          hasRouteToAmount: !!routeAny.toAmount,
+          hasSteps: !!routeAny.steps,
+          lastStep: routeAny.steps?.[routeAny.steps?.length - 1],
+        });
         throw new Error('Invalid quote: toAmount is missing or zero');
       }
       
       const estimatedOutput = formatUnits(BigInt(toAmount), toToken.decimals);
       
-      // Get token price from the quote action
-      const toTokenPrice = action.toToken?.priceUSD || quoteResult.action.toToken?.priceUSD || '0';
+      // Get token price from multiple possible locations
+      const toTokenPrice = 
+        quoteResultAny.action?.toToken?.priceUSD ||
+        routeAny.steps?.[routeAny.steps?.length - 1]?.action?.toToken?.priceUSD ||
+        quoteResultAny.estimate?.toToken?.priceUSD ||
+        '0';
       const estimatedOutputUSD = parseFloat(estimatedOutput) * parseFloat(toTokenPrice);
       
       console.log('Quote data:', {
@@ -155,7 +179,8 @@ export function useLifiTrade() {
         toToken: toToken,
         toTokenPrice: toTokenPrice,
         estimatedOutputUSD: estimatedOutputUSD,
-        quoteAction: action
+        quoteAction: quoteResultAny.action,
+        routeSteps: routeAny.steps?.length || 0,
       });
 
       setQuote({
