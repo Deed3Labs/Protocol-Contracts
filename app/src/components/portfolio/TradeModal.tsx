@@ -1,9 +1,12 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, MoreHorizontal, ChevronRight, ArrowUpDown, Check } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, ChevronRight, ArrowUpDown, Check, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePortfolio } from "@/context/PortfolioContext";
+import { useAccount } from "wagmi";
+import { useLifiTrade } from "@/hooks/useLifiTrade";
+import { SUPPORTED_NETWORKS } from "@/config/networks";
 
 type TradeType = "buy" | "sell" | "swap";
 type TradeStep = "input" | "review" | "success";
@@ -50,6 +53,8 @@ const getAssetColor = (symbol: string): string => {
 
 export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initialAsset = null }: TradeModalProps) {
   const { holdings, cashBalance } = usePortfolio();
+  const { address, chainId } = useAccount();
+  const { quote, execution, fetchQuote, executeTrade, resetExecution, clearQuote } = useLifiTrade();
   
   const [tradeType, setTradeType] = useState<TradeType>(initialTradeType);
   const [step, setStep] = useState<TradeStep>("input");
@@ -60,8 +65,13 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
   const [amount, setAmount] = useState("0");
   const [fromAsset, setFromAsset] = useState<Asset | null>(null);
   const [toAsset, setToAsset] = useState<Asset | null>(null);
+  const [fromChainId, setFromChainId] = useState<number | null>(null);
+  const [toChainId, setToChainId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [receiveAccount, setReceiveAccount] = useState<{ id: string; name: string; subtitle?: string } | null>(null);
+  const [quoteExpiryTime, setQuoteExpiryTime] = useState<number | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const lastAutoRefreshExpiryRef = useRef<number | null>(null);
 
   const cashUsdAsset = useMemo<Asset>(
     () => ({
@@ -105,6 +115,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       setScreen("trade");
       setSearchQuery("");
       setReceiveAccount({ id: "cash-usd", name: "Cash (USD)", subtitle: "Balance" });
+      clearQuote();
+      resetExecution();
 
       // Update payment method with cash balance
       setPaymentMethod({
@@ -112,30 +124,44 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
         value: cashBalance.totalCash,
       });
 
+      // Set default chain IDs from current wallet chain or first available asset
+      const defaultChainId = chainId || availableAssets[0]?.chainId || 1;
+      setFromChainId(defaultChainId);
+      setToChainId(defaultChainId);
+
       if (initialAsset) {
         // If initial asset provided, set it as the target
         if (initialTradeType === "buy") {
           setToAsset(initialAsset);
+          setToChainId(initialAsset.chainId || defaultChainId);
           // Set USDC as from asset if available, otherwise first stablecoin
           const usdc = availableAssets.find(a => a.symbol.toUpperCase() === "USDC");
-          setFromAsset(usdc || availableAssets[0] || null);
+          const fromAsset = usdc || availableAssets[0] || null;
+          setFromAsset(fromAsset);
+          setFromChainId(fromAsset?.chainId || defaultChainId);
         } else if (initialTradeType === "sell") {
           setFromAsset(initialAsset);
+          setFromChainId(initialAsset.chainId || defaultChainId);
           // Receive Cash (USD)
           setToAsset(cashUsdAsset);
+          setToChainId(defaultChainId);
         }
         setTradeType(initialTradeType);
       } else {
         // Default: Buy mode with USDC -> first available asset
         const usdc = availableAssets.find(a => a.symbol.toUpperCase() === "USDC");
-        setFromAsset(usdc || availableAssets[0] || null);
-        setToAsset(availableAssets.find(a => a.symbol.toUpperCase() !== "USDC") || availableAssets[1] || null);
+        const fromAsset = usdc || availableAssets[0] || null;
+        const toAsset = availableAssets.find(a => a.symbol.toUpperCase() !== "USDC") || availableAssets[1] || null;
+        setFromAsset(fromAsset);
+        setToAsset(toAsset);
+        setFromChainId(fromAsset?.chainId || defaultChainId);
+        setToChainId(toAsset?.chainId || defaultChainId);
         setTradeType("buy");
       }
       setStep("input");
       setAmount("0");
     }
-  }, [open, initialAsset, initialTradeType, availableAssets, cashBalance, cashUsdAsset]);
+  }, [open, initialAsset, initialTradeType, availableAssets, cashBalance, cashUsdAsset, chainId, clearQuote, resetExecution]);
 
   const handleNumberPress = useCallback((num: string) => {
     setAmount((currentAmount) => {
@@ -233,18 +259,23 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     (asset: Asset) => {
       if (assetPickTarget === "buyTo") {
         setToAsset(asset);
+        setToChainId(asset.chainId || chainId || 1);
       } else if (assetPickTarget === "sellFrom") {
         setFromAsset(asset);
+        setFromChainId(asset.chainId || chainId || 1);
         setToAsset(cashUsdAsset);
+        setToChainId(chainId || 1);
       } else if (assetPickTarget === "swapFrom") {
         setFromAsset(asset);
+        setFromChainId(asset.chainId || chainId || 1);
       } else if (assetPickTarget === "swapTo") {
         setToAsset(asset);
+        setToChainId(asset.chainId || chainId || 1);
       }
       setScreen("trade");
       setSearchQuery("");
     },
-    [assetPickTarget, cashUsdAsset]
+    [assetPickTarget, cashUsdAsset, chainId]
   );
 
   const handlePickWallet = useCallback(
@@ -268,46 +299,261 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     [walletPickTarget, cashBalance.totalCash, cashUsdAsset]
   );
 
-  const handleConfirm = () => {
-    setStep("success");
-    // TODO: Implement actual trade logic
+  const handleConfirm = async () => {
+    if (!quote.route) {
+      // If no route, just show success (for USD trades)
+      setStep("success");
+      return;
+    }
+
+    try {
+      await executeTrade(quote.route);
+      
+      // Wait for execution to complete
+      if (execution.status === 'success') {
+        setStep("success");
+      } else if (execution.status === 'failed') {
+        // Show error but don't change step
+        console.error('Trade execution failed:', execution.error);
+      }
+    } catch (error) {
+      console.error('Failed to execute trade:', error);
+    }
   };
 
-  const getConversionAmount = () => {
-    const numAmount = parseFloat(amount) || 0;
-    if (!fromAsset || !toAsset) return "0";
-    
-    // Mock conversion rates (in production, fetch from price oracle)
-    const rates: Record<string, number> = {
-      BTC: 0.00001,
-      ETH: 0.00036,
-      SOL: 0.007,
-      USDC: 1,
-      USDT: 1,
-      DAI: 1,
-      USD: 1,
-    };
-    
-    const fromRate = rates[fromAsset.symbol.toUpperCase()] || 0.001;
-    const toRate = rates[toAsset.symbol.toUpperCase()] || 0.001;
-    
-    if (tradeType === "swap") {
-      return ((numAmount * fromRate) / toRate).toFixed(8);
-    } else if (tradeType === "buy") {
-      // Buying toAsset with USD (fromAsset should be USDC)
-      return ((numAmount * fromRate) / toRate).toFixed(8);
-    } else {
-      // Selling fromAsset for USD (toAsset should be USDC)
-      return ((numAmount * fromRate) / toRate).toFixed(8);
+  // Fetch quote when amount or assets change (only on input step)
+  useEffect(() => {
+    if (
+      open &&
+      step === "input" &&
+      fromAsset &&
+      toAsset &&
+      fromChainId &&
+      toChainId &&
+      amount &&
+      parseFloat(amount) > 0 &&
+      address
+    ) {
+      // Skip if USD is involved (not a blockchain trade)
+      if (fromAsset.symbol === "USD" || toAsset.symbol === "USD") {
+        return;
+      }
+
+      const timeoutId = setTimeout(() => {
+        fetchQuote(
+          fromChainId,
+          fromAsset.symbol,
+          amount,
+          toChainId,
+          toAsset.symbol,
+          address
+        );
+      }, 500); // Debounce quote fetching
+
+      return () => clearTimeout(timeoutId);
+    } else if (!open) {
+      // Only clear quote when modal is closed, not when transitioning to review step
+      clearQuote();
+      setQuoteExpiryTime(null);
+      setTimeRemaining(null);
     }
+  }, [open, step, fromAsset, toAsset, fromChainId, toChainId, amount, address, fetchQuote, clearQuote]);
+
+  // Set quote expiry time when quote is received
+  useEffect(() => {
+    if (quote.quote && !quote.error) {
+      const quoteResult = quote.quote as any;
+      const validUntil = quoteResult.validUntil;
+      const expiryTime = validUntil 
+        ? validUntil * 1000 
+        : Date.now() + 60000; // Default to 60 seconds from now
+      setQuoteExpiryTime(expiryTime);
+    } else {
+      setQuoteExpiryTime(null);
+      setTimeRemaining(null);
+    }
+  }, [quote.quote, quote.error]);
+
+  // Update quote expiry timer
+  useEffect(() => {
+    if (!quoteExpiryTime) {
+      setTimeRemaining(null);
+      return;
+    }
+
+    const updateTimer = () => {
+      const remaining = Math.max(0, Math.floor((quoteExpiryTime - Date.now()) / 1000));
+      setTimeRemaining(remaining);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [quoteExpiryTime]);
+
+  // Auto-refresh quote on review when it expires (stay on review page)
+  useEffect(() => {
+    if (!open || step !== "review") return;
+    if (!quoteExpiryTime) return;
+    if (timeRemaining === null || timeRemaining > 0) return;
+    if (quote.isLoading) return;
+
+    if (!fromAsset || !toAsset || !fromChainId || !toChainId || !address) return;
+    if (!amount || parseFloat(amount) <= 0) return;
+    // Skip if USD is involved (not a blockchain trade)
+    if (fromAsset.symbol === "USD" || toAsset.symbol === "USD") return;
+
+    // Prevent repeated auto-refresh for the same expired quote
+    if (lastAutoRefreshExpiryRef.current === quoteExpiryTime) return;
+    lastAutoRefreshExpiryRef.current = quoteExpiryTime;
+
+    fetchQuote(fromChainId, fromAsset.symbol, amount, toChainId, toAsset.symbol, address);
+  }, [
+    open,
+    step,
+    quoteExpiryTime,
+    timeRemaining,
+    quote.isLoading,
+    fromAsset,
+    toAsset,
+    fromChainId,
+    toChainId,
+    amount,
+    address,
+    fetchQuote,
+  ]);
+
+  const getConversionAmount = () => {
+    // Only use Li.Fi quote if available and valid (no fallback to mock rates)
+    if (quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading) {
+      const output = parseFloat(quote.estimatedOutput);
+      // Format based on size - show more decimals for small amounts
+      if (output < 0.0001) {
+        return output.toFixed(8);
+      } else if (output < 1) {
+        return output.toFixed(6);
+      } else if (output < 1000) {
+        return output.toFixed(4);
+      } else {
+        return output.toFixed(2);
+      }
+    }
+
+    // Return "0" if no valid quote (don't show mock rates)
+    return "0";
   };
 
   const swapAssets = () => {
     if (!fromAsset || !toAsset) return;
-    const temp = fromAsset;
+    const tempAsset = fromAsset;
+    const tempChainId = fromChainId;
     setFromAsset(toAsset);
-    setToAsset(temp);
+    setToAsset(tempAsset);
+    setFromChainId(toChainId);
+    setToChainId(tempChainId);
   };
+
+  // Preserve assets when switching between buy/sell/swap tabs
+  const prevTradeTypeRef = useRef<TradeType | null>(null);
+  
+  useEffect(() => {
+    if (!open || step !== "input") {
+      prevTradeTypeRef.current = tradeType;
+      return;
+    }
+    
+    // Only adjust if tradeType actually changed
+    if (prevTradeTypeRef.current === tradeType) {
+      return;
+    }
+    
+    // Only adjust if we have assets selected
+    if (!fromAsset || !toAsset) {
+      prevTradeTypeRef.current = tradeType;
+      return;
+    }
+
+    prevTradeTypeRef.current = tradeType;
+    
+    if (tradeType === "buy") {
+      // Buy mode: fromAsset should be payment (USDC/USDT/USD), toAsset is what we're buying
+      // If toAsset is USD, that's wrong for buy mode - swap them
+      if (toAsset.symbol === "USD" && fromAsset.symbol !== "USD") {
+        const tempAsset = fromAsset;
+        const tempChainId = fromChainId;
+        // Find USDC or first stablecoin for payment
+        const usdc = availableAssets.find(a => a.symbol.toUpperCase() === "USDC");
+        setFromAsset(usdc || availableAssets[0] || null);
+        setFromChainId(usdc?.chainId || fromChainId || 1);
+        setToAsset(tempAsset);
+        setToChainId(tempChainId);
+      }
+      // If fromAsset is USD, that's fine for buy mode
+    } else if (tradeType === "sell") {
+      // Sell mode: fromAsset is what we're selling, toAsset should be USD
+      // If fromAsset is USD, that's wrong - find a token to sell
+      if (fromAsset.symbol === "USD") {
+        // Try to use toAsset if it's a token, otherwise find another token
+        if (toAsset.symbol !== "USD") {
+          setFromAsset(toAsset);
+          setFromChainId(toChainId);
+          setToAsset(cashUsdAsset);
+          setToChainId(chainId || 1);
+        } else {
+          const tokenToSell = availableAssets.find(a => a.symbol !== "USD");
+          if (tokenToSell) {
+            setFromAsset(tokenToSell);
+            setFromChainId(tokenToSell.chainId || chainId || 1);
+            setToAsset(cashUsdAsset);
+            setToChainId(chainId || 1);
+          }
+        }
+      }
+      // If toAsset is not USD, set it to USD
+      else if (toAsset.symbol !== "USD") {
+        setToAsset(cashUsdAsset);
+        setToChainId(chainId || 1);
+      }
+    } else if (tradeType === "swap") {
+      // Swap mode: both should be tokens (not USD)
+      // If fromAsset is USD, swap them if toAsset is a token
+      if (fromAsset.symbol === "USD" && toAsset.symbol !== "USD") {
+        setFromAsset(toAsset);
+        setFromChainId(toChainId);
+        // Find another token for toAsset
+        const tokenToReceive = availableAssets.find(a => a.symbol !== "USD" && a.symbol !== toAsset.symbol);
+        if (tokenToReceive) {
+          setToAsset(tokenToReceive);
+          setToChainId(tokenToReceive.chainId || chainId || 1);
+        } else {
+          setToAsset(cashUsdAsset);
+          setToChainId(chainId || 1);
+        }
+      }
+      // If toAsset is USD, find a token to receive
+      else if (toAsset.symbol === "USD" && fromAsset.symbol !== "USD") {
+        const tokenToReceive = availableAssets.find(a => a.symbol !== "USD" && a.symbol !== fromAsset.symbol);
+        if (tokenToReceive) {
+          setToAsset(tokenToReceive);
+          setToChainId(tokenToReceive.chainId || chainId || 1);
+        }
+      }
+      // If both are USD, find tokens for both
+      else if (fromAsset.symbol === "USD" && toAsset.symbol === "USD") {
+        const tokens = availableAssets.filter(a => a.symbol !== "USD");
+        if (tokens.length >= 2) {
+          setFromAsset(tokens[0]);
+          setFromChainId(tokens[0].chainId || chainId || 1);
+          setToAsset(tokens[1]);
+          setToChainId(tokens[1].chainId || chainId || 1);
+        } else if (tokens.length === 1) {
+          setFromAsset(tokens[0]);
+          setFromChainId(tokens[0].chainId || chainId || 1);
+        }
+      }
+    }
+  }, [tradeType, open, step, fromAsset, toAsset, availableAssets, cashUsdAsset, chainId, fromChainId, toChainId]);
 
   const formatBalance = (balance: number | undefined): string => {
     if (!balance) return "0";
@@ -419,7 +665,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                               </div>
                               <div className="min-w-0">
                                 <div className="text-black dark:text-white font-medium truncate">{a.name}</div>
-                                <div className="text-sm text-zinc-500 dark:text-zinc-400 truncate">{a.symbol}</div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-zinc-500 dark:text-zinc-400 truncate">{a.symbol}</span>
+                                  {a.chainName && (
+                                    <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                      {a.chainName}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
@@ -601,12 +854,36 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         {tradeType === "swap" && fromAsset ? fromAsset.symbol : "USD"}
                       </span>
                     </div>
-                    {toAsset && (
-                      <div className="flex items-center gap-1 mt-2 text-blue-600 dark:text-blue-400">
-                        <ArrowUpDown className="w-4 h-4" />
-                        <span className="text-sm font-medium">
-                          {getConversionAmount()} {toAsset.symbol}
-                        </span>
+                    {toAsset && parseFloat(amount) > 0 && (
+                      <div className="flex flex-col items-center gap-1 mt-2">
+                        {quote.isLoading && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
+                          <div className="flex items-center gap-1 text-xs text-zinc-500">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Fetching quote...</span>
+                          </div>
+                        )}
+                        {quote.error && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
+                          <div className="flex items-center gap-1 text-xs text-red-500 max-w-[200px] text-center">
+                            <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{quote.error}</span>
+                          </div>
+                        )}
+                        {/* Only show conversion amount when quote is loaded and valid */}
+                        {quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && (
+                          <>
+                            <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                              <ArrowUpDown className="w-4 h-4" />
+                              <span className="text-sm font-medium">
+                                {getConversionAmount()} {toAsset.symbol}
+                              </span>
+                            </div>
+                            {quote.estimatedOutputUSD > 0 && (
+                              <div className="text-xs text-zinc-500">
+                                ≈ ${quote.estimatedOutputUSD.toFixed(2)}
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -619,7 +896,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         <div className="relative">
                           <button
                             onClick={() => openAssetPicker("swapFrom")}
-                            className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                            className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                           >
                             <div className="flex items-center gap-3">
                               {fromAsset && (
@@ -629,7 +906,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                                   </div>
                                   <div className="text-left">
                                     <p className="text-sm text-zinc-500 dark:text-zinc-400">You pay</p>
-                                    <p className="font-medium text-black dark:text-white">{fromAsset.name}</p>
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium text-black dark:text-white">{fromAsset.name}</p>
+                                      {fromAsset.chainName && (
+                                        <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                          {fromAsset.chainName}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </>
                               )}
@@ -656,7 +940,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
 
                         <button
                           onClick={() => openAssetPicker("swapTo")}
-                          className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors mt-2"
+                          className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10 mt-2"
                         >
                           <div className="flex items-center gap-3">
                             {toAsset && (
@@ -666,7 +950,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                                 </div>
                                 <div className="text-left">
                                   <p className="text-sm text-zinc-500 dark:text-zinc-400">You receive</p>
-                                  <p className="font-medium text-black dark:text-white">{toAsset.name}</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium text-black dark:text-white">{toAsset.name}</p>
+                                    {toAsset.chainName && (
+                                      <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                        {toAsset.chainName}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </>
                             )}
@@ -681,7 +972,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           <>
                             <button
                               onClick={() => openWalletPicker("pay")}
-                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                             >
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xl">
@@ -711,7 +1002,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
 
                             <button
                               onClick={() => openAssetPicker("buyTo")}
-                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                             >
                               <div className="flex items-center gap-3">
                                 {toAsset && (
@@ -721,7 +1012,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                                     </div>
                                     <div className="text-left">
                                       <p className="font-medium text-black dark:text-white">Buy</p>
-                                      <p className="text-sm text-zinc-500 dark:text-zinc-400">{toAsset.name}</p>
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-sm text-zinc-500 dark:text-zinc-400">{toAsset.name}</p>
+                                        {toAsset.chainName && (
+                                          <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                            {toAsset.chainName}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   </>
                                 )}
@@ -733,7 +1031,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           <>
                             <button
                               onClick={() => openAssetPicker("sellFrom")}
-                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                             >
                               <div className="flex items-center gap-3">
                                 {fromAsset && (
@@ -743,7 +1041,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                                     </div>
                                     <div className="text-left">
                                       <p className="font-medium text-black dark:text-white">Sell</p>
-                                      <p className="text-sm text-zinc-500 dark:text-zinc-400">{fromAsset.name}</p>
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-sm text-zinc-500 dark:text-zinc-400">{fromAsset.name}</p>
+                                        {fromAsset.chainName && (
+                                          <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                            {fromAsset.chainName}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   </>
                                 )}
@@ -767,7 +1072,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
 
                             <button
                               onClick={() => openWalletPicker("receive")}
-                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                             >
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
@@ -798,10 +1103,30 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                   <div className="px-4 pb-2">
                     <Button 
                       onClick={handleReview}
-                      disabled={amount === "0" || parseFloat(amount) <= 0}
-                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                      disabled={
+                        amount === "0" || 
+                        parseFloat(amount) <= 0 || 
+                        !fromAsset || 
+                        !toAsset ||
+                        (!quote.route && fromAsset.symbol !== "USD" && toAsset.symbol !== "USD") ||
+                        quote.isLoading ||
+                        execution.isExecuting
+                      }
+                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50"
                     >
-                      Review order
+                      {execution.isExecuting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Executing...
+                        </>
+                      ) : quote.isLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Loading quote...
+                        </>
+                      ) : (
+                        "Review order"
+                      )}
                     </Button>
                   </div>
 
@@ -838,29 +1163,93 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                     <div className="w-9" />
                   </div>
 
-                  <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+                  <div className="flex-1 p-4 space-y-4 overflow-y-auto pb-24">
                     {/* Order Summary */}
-                    <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl p-4 space-y-4">
+                    <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl p-4 space-y-4 border border-zinc-200 dark:border-white/10">
                       <div className="flex items-center justify-between">
                         <span className="text-zinc-500 dark:text-zinc-400">
                           You're {tradeType === "swap" ? "swapping" : tradeType === "buy" ? "buying" : "selling"}
                         </span>
-                        {toAsset && (
+                        {toAsset && quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && (
                           <div className="flex items-center gap-2">
                             <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold", toAsset.color)}>
                               {toAsset.symbol.charAt(0)}
                             </div>
-                            <span className="font-semibold text-black dark:text-white">
-                              {getConversionAmount()} {toAsset.symbol}
-                            </span>
+                            <div className="text-right">
+                              <span className="font-semibold text-black dark:text-white block">
+                                {getConversionAmount()} {toAsset.symbol}
+                              </span>
+                              {quote.estimatedOutputUSD > 0 && (
+                                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                  ≈ ${quote.estimatedOutputUSD.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        {toAsset && (quote.isLoading || (!quote.estimatedOutput && !quote.error)) && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
+                          <div className="flex items-center gap-2 text-xs text-zinc-500">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Loading quote...</span>
                           </div>
                         )}
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-zinc-500 dark:text-zinc-400">For</span>
-                        <span className="font-semibold text-black dark:text-white">${amount} USD</span>
+                        <div className="text-right">
+                          <span className="font-semibold text-black dark:text-white block">
+                            {amount} {fromAsset?.symbol || "USD"}
+                          </span>
+                          {fromAsset?.symbol !== "USD" && quote.quote && (
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                              ≈ ${(parseFloat((quote.quote as any).action?.fromToken?.priceUSD || "0") * parseFloat(amount || "0")).toFixed(2)} USD
+                            </span>
+                          )}
+                          {fromAsset?.symbol === "USD" && (
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                              ≈ ${parseFloat(amount || "0").toFixed(2)} USD
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
+
+                    {/* Quote Expiry Timer */}
+                    {quote.quote && !quote.error && (
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={cn(
+                            "w-2 h-2 rounded-full",
+                            timeRemaining !== null && timeRemaining < 10 ? "bg-red-500 animate-pulse" : "bg-blue-500"
+                          )} />
+                          <span className="text-sm text-blue-600 dark:text-blue-400">
+                            {timeRemaining !== null && timeRemaining > 0 
+                              ? `Quote expires in ${timeRemaining}s`
+                              : "Quote valid"
+                            }
+                          </span>
+                        </div>
+                        {(timeRemaining === null || timeRemaining < 10) && (
+                          <button
+                            onClick={() => {
+                              if (fromAsset && toAsset && fromChainId && toChainId && amount && parseFloat(amount) > 0 && address) {
+                                fetchQuote(
+                                  fromChainId,
+                                  fromAsset.symbol,
+                                  amount,
+                                  toChainId,
+                                  toAsset.symbol,
+                                  address
+                                );
+                              }
+                            }}
+                            className="text-xs text-blue-600 dark:text-blue-400 underline"
+                          >
+                            Refresh
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {/* Details */}
                     <div className="space-y-3">
@@ -868,32 +1257,203 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         <span className="text-zinc-500 dark:text-zinc-400">Payment method</span>
                         <span className="text-black dark:text-white">{paymentMethod.name}</span>
                       </div>
+                      
+                      {/* From/To Assets with Chains */}
+                      {fromAsset && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">From</span>
+                          <div className="text-right">
+                            <div className="flex items-center gap-2 justify-end">
+                              <span className="text-black dark:text-white font-medium">{fromAsset.symbol}</span>
+                              {fromAsset.chainName && (
+                                <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                  {fromAsset.chainName}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">{fromAsset.name}</span>
+                          </div>
+                        </div>
+                      )}
+                      
                       {toAsset && (
                         <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
-                          <span className="text-zinc-500 dark:text-zinc-400">Price</span>
-                          <span className="text-black dark:text-white">
-                            1 {toAsset.symbol} ≈ ${(parseFloat(amount) / parseFloat(getConversionAmount())).toFixed(2)}
+                          <span className="text-zinc-500 dark:text-zinc-400">To</span>
+                          <div className="text-right">
+                            <div className="flex items-center gap-2 justify-end">
+                              <span className="text-black dark:text-white font-medium">{toAsset.symbol}</span>
+                              {toAsset.chainName && (
+                                <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                  {toAsset.chainName}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">{toAsset.name}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {fromChainId && toChainId && fromChainId !== toChainId && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">Bridge</span>
+                          <span className="text-black dark:text-white text-sm">
+                            {SUPPORTED_NETWORKS.find(n => n.chainId === fromChainId)?.name || `Chain ${fromChainId}`} → {SUPPORTED_NETWORKS.find(n => n.chainId === toChainId)?.name || `Chain ${toChainId}`}
                           </span>
                         </div>
                       )}
-                      <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
-                        <span className="text-zinc-500 dark:text-zinc-400">Network fee</span>
-                        <span className="text-black dark:text-white">$0.00</span>
-                      </div>
-                      <div className="flex items-center justify-between py-3">
-                        <span className="font-semibold text-black dark:text-white">Total</span>
-                        <span className="font-semibold text-black dark:text-white">${amount} USD</span>
-                      </div>
+                      
+                      {/* Exchange Rate - Only show when quote is loaded and valid */}
+                      {toAsset && quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && parseFloat(amount || "0") > 0 && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">Exchange rate</span>
+                          <div className="text-right">
+                            <span className="text-black dark:text-white text-sm">
+                              1 {fromAsset?.symbol || "USD"} = {(parseFloat(getConversionAmount()) / parseFloat(amount || "1")).toFixed(8)} {toAsset.symbol}
+                            </span>
+                            <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                              1 {toAsset.symbol} ≈ ${quote.estimatedOutputUSD > 0 ? (quote.estimatedOutputUSD / parseFloat(getConversionAmount())).toFixed(4) : (parseFloat(amount || "0") / parseFloat(getConversionAmount())).toFixed(4)} USD
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Slippage */}
+                      {quote.quote && (quote.quote as any).slippage !== undefined && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">Slippage tolerance</span>
+                          <span className="text-black dark:text-white">
+                            {((quote.quote as any).slippage * 100).toFixed(2)}%
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Gas Costs */}
+                      {quote.quote && (quote.quote as any).estimate?.gasCosts && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">Network fees</span>
+                          <div className="text-right">
+                            {(quote.quote as any).estimate.gasCosts.map((cost: any, idx: number) => (
+                              <div key={idx} className="text-black dark:text-white text-sm">
+                                {cost.amount} {cost.token.symbol}
+                                {cost.amountUSD && (
+                                  <span className="text-xs text-zinc-500 dark:text-zinc-400 ml-1">
+                                    (${parseFloat(cost.amountUSD).toFixed(2)})
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {quote.executionTime > 0 && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">Estimated time</span>
+                          <span className="text-black dark:text-white">
+                            {quote.executionTime < 60 
+                              ? `${quote.executionTime}s` 
+                              : `${Math.floor(quote.executionTime / 60)}m ${quote.executionTime % 60}s`
+                            }
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Total Output - Only show when quote is loaded and valid */}
+                      {quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && (
+                        <div className="flex items-center justify-between py-3 border-t border-zinc-200 dark:border-zinc-800 pt-4">
+                          <span className="font-semibold text-black dark:text-white">You will receive</span>
+                          <div className="text-right">
+                            <span className="font-semibold text-black dark:text-white block">
+                              {getConversionAmount()} {toAsset?.symbol || ""}
+                            </span>
+                            {quote.estimatedOutputUSD > 0 && (
+                              <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                                ≈ ${quote.estimatedOutputUSD.toFixed(2)} USD
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {/* Show loading state when quote is being fetched */}
+                      {quote.isLoading && fromAsset?.symbol !== "USD" && toAsset?.symbol !== "USD" && (
+                        <div className="flex items-center justify-between py-3 border-t border-zinc-200 dark:border-zinc-800 pt-4">
+                          <span className="font-semibold text-black dark:text-white">You will receive</span>
+                          <div className="flex items-center gap-2 text-zinc-500">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span className="text-sm">Loading quote...</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
+                    
+                    {/* Execution Status */}
+                    {execution.isExecuting && (
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                          <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                            Executing trade...
+                          </span>
+                        </div>
+                        {execution.transactionHashes.length > 0 && (
+                          <div className="text-xs text-zinc-600 dark:text-zinc-400 space-y-1">
+                            {execution.transactionHashes.map((txHash, idx) => (
+                              <div key={idx} className="truncate">
+                                Step {idx + 1}: {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {execution.error && (
+                      <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4">
+                        <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                          <AlertCircle className="w-4 h-4" />
+                          <span className="text-sm">{execution.error}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="p-4">
+                  {/* Fixed button at bottom for mobile */}
+                  <div className="fixed bottom-0 left-0 right-0 sm:relative sm:bottom-auto bg-white dark:bg-[#0e0e0e] border-t border-zinc-200 dark:border-zinc-800 sm:border-t-0 p-4 pt-3 pb-safe sm:p-4">
                     <Button 
                       onClick={handleConfirm}
-                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                      disabled={
+                        execution.isExecuting || 
+                        (!quote.route && fromAsset?.symbol !== "USD" && toAsset?.symbol !== "USD") ||
+                        (fromAsset?.symbol !== "USD" && toAsset?.symbol !== "USD" && quote.isLoading)
+                      }
+                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50 mb-2"
                     >
-                      Confirm {tradeType}
+                      {execution.isExecuting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Executing...
+                        </>
+                      ) : (fromAsset?.symbol !== "USD" && toAsset?.symbol !== "USD" && quote.isLoading) ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Refreshing quote...
+                        </>
+                      ) : (
+                        `Confirm ${tradeType}`
+                      )}
                     </Button>
+                    <p className="text-xs text-center text-zinc-500 dark:text-zinc-400 px-4 leading-relaxed">
+                      By confirming, you agree to our{" "}
+                      <a 
+                        href="/terms" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="underline hover:text-zinc-700 dark:hover:text-zinc-300"
+                      >
+                        Terms & Conditions
+                      </a>
+                      {" "}and acknowledge that cryptocurrency transactions are irreversible.
+                    </p>
                   </div>
                 </div>
               )}
