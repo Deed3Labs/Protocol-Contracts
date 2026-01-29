@@ -466,7 +466,7 @@ export default function BrokerageHome() {
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
-  const [tradeModalType, setTradeModalType] = useState<'buy' | 'sell'>('buy');
+  const [tradeModalType, setTradeModalType] = useState<'buy' | 'sell' | 'swap'>('buy');
   const [tradeModalAsset, setTradeModalAsset] = useState<{ symbol: string; name: string; color: string; balance?: number; balanceUSD?: number; type?: 'token' | 'nft' | 'rwa'; chainId?: number; chainName?: string } | null>(null);
   
   // State for tracking scroll position relative to portfolio value header
@@ -801,6 +801,11 @@ export default function BrokerageHome() {
       <ActionModal
         isOpen={actionModalOpen}
         onClose={() => setActionModalOpen(false)}
+        onSwapClick={() => {
+          setTradeModalType('swap');
+          setTradeModalAsset(null);
+          setTradeModalOpen(true);
+        }}
       />
 
       {/* Trade Modal */}

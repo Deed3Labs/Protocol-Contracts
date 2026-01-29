@@ -28,7 +28,7 @@ interface Asset {
 interface TradeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialTradeType?: "buy" | "sell";
+  initialTradeType?: "buy" | "sell" | "swap";
   initialAsset?: Asset | null;
 }
 
@@ -147,6 +147,13 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
           setToChainId(defaultChainId);
         }
         setTradeType(initialTradeType);
+      } else if (initialTradeType === "swap") {
+        // Swap mode: start with blank selectors (user selects tokens)
+        setFromAsset(null);
+        setToAsset(null);
+        setFromChainId(defaultChainId);
+        setToChainId(defaultChainId);
+        setTradeType("swap");
       } else {
         // Default: Buy mode with USDC -> first available asset
         const usdc = availableAssets.find(a => a.symbol.toUpperCase() === "USDC");
