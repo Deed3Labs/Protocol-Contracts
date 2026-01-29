@@ -12,6 +12,7 @@ import WithdrawModal from './portfolio/WithdrawModal';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import CTAStack from './portfolio/CTAStack';
 import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useDeedName } from '@/hooks/useDeedName';
 import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
 import { getNetworkByChainId } from '@/config/networks';
@@ -446,19 +447,24 @@ export default function BrokerageHome() {
   }, [multichainBalances]);
   
   
+  // Get user email from AppKit auth if available
+  const { user: appKitUser } = useAppKitAuth();
+  
   // Derive user from wallet address or use mock data
   const user = useMemo(() => {
+    const email = appKitUser?.email; // Get email from AppKit if user signed in with email
+    
     if (address) {
       // Format address for display name
       const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
       return {
         name: shortAddress,
-        email: `${shortAddress.toLowerCase()}@wallet`,
+        email: email || 'user@example.com', // Use AppKit email if available, otherwise mock data
       };
     }
     // Fallback to mock data if no wallet connected
-    return { name: 'Username', email: 'user@example.com' };
-  }, [address]);
+    return { name: 'Username', email: email || 'user@example.com' };
+  }, [address, appKitUser?.email]);
   const [selectedTab, setSelectedTab] = useState('Return');
   const [selectedRange, setSelectedRange] = useState('1D');
   const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'RWAs' | 'NFTs' | 'Tokens'>('All');
