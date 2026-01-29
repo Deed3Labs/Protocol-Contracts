@@ -320,7 +320,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     }
   };
 
-  // Fetch quote when amount or assets change
+  // Fetch quote when amount or assets change (only on input step)
   useEffect(() => {
     if (
       open &&
@@ -350,7 +350,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       }, 500); // Debounce quote fetching
 
       return () => clearTimeout(timeoutId);
-    } else {
+    } else if (!open) {
+      // Only clear quote when modal is closed, not when transitioning to review step
       clearQuote();
       setQuoteExpiryTime(null);
       setTimeRemaining(null);
