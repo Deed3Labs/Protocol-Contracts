@@ -28,7 +28,7 @@ interface Asset {
 interface TradeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialTradeType?: "buy" | "sell";
+  initialTradeType?: "buy" | "sell" | "swap";
   initialAsset?: Asset | null;
 }
 
@@ -147,6 +147,59 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
           setToChainId(defaultChainId);
         }
         setTradeType(initialTradeType);
+      } else if (initialTradeType === "swap") {
+        // Swap mode: default to USDC from any chain (with balance, excluding Ethereum) -> USDC on Ethereum
+        // If no USDC exists, use highest USD balance holding (excluding Ethereum) -> USDC on Ethereum
+        const ethereumChainId = 1;
+        
+        // Find all USDC assets with balance, excluding Ethereum
+        const usdcAssets = availableAssets.filter(
+          a => a.symbol.toUpperCase() === "USDC" && 
+               a.chainId !== ethereumChainId && 
+               (a.balance || 0) > 0
+        );
+        
+        // Find USDC on Ethereum (for destination)
+        const ethereumUsdc = availableAssets.find(
+          a => a.symbol.toUpperCase() === "USDC" && a.chainId === ethereumChainId
+        ) || {
+          symbol: "USDC",
+          name: "USD Coin",
+          color: getAssetColor("USDC"),
+          balance: 0,
+          balanceUSD: 0,
+          type: "token" as const,
+          chainId: ethereumChainId,
+          chainName: "Ethereum",
+        };
+        
+        // Determine from asset: prefer USDC, fallback to highest USD balance holding (excluding Ethereum)
+        let fromAsset: Asset | null = null;
+        
+        if (usdcAssets.length > 0) {
+          // Use USDC with highest balance
+          fromAsset = usdcAssets.reduce((prev, current) => 
+            (prev.balance || 0) > (current.balance || 0) ? prev : current
+          );
+        } else {
+          // Fallback: find highest USD balance holding excluding Ethereum
+          const nonEthereumAssets = availableAssets.filter(
+            a => a.chainId !== ethereumChainId && (a.balanceUSD || 0) > 0
+          );
+          
+          if (nonEthereumAssets.length > 0) {
+            // Sort by balanceUSD descending and pick the first (highest)
+            fromAsset = nonEthereumAssets.sort((a, b) => 
+              (b.balanceUSD || 0) - (a.balanceUSD || 0)
+            )[0];
+          }
+        }
+        
+        setFromAsset(fromAsset);
+        setToAsset(ethereumUsdc);
+        setFromChainId(fromAsset?.chainId || defaultChainId);
+        setToChainId(ethereumChainId);
+        setTradeType("swap");
       } else {
         // Default: Buy mode with USDC -> first available asset
         const usdc = availableAssets.find(a => a.symbol.toUpperCase() === "USDC");

@@ -5,9 +5,10 @@ import { X, ChevronRight, Box, Send, ArrowRightLeft, GitMerge } from 'lucide-rea
 interface ActionModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSwapClick?: () => void;
 }
 
-const ActionModal = ({ isOpen, onClose }: ActionModalProps) => {
+const ActionModal = ({ isOpen, onClose, onSwapClick }: ActionModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,6 +104,12 @@ const ActionModal = ({ isOpen, onClose }: ActionModalProps) => {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: action.delay, duration: 0.3 }}
+                  onClick={() => {
+                    if (action.id === 'swap' && onSwapClick) {
+                      onSwapClick();
+                      onClose();
+                    }
+                  }}
                   className="w-full flex items-center gap-4 p-4 rounded-sm hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-all group text-left border border-transparent hover:border-zinc-200 dark:hover:border-zinc-800"
                 >
                   <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center shrink-0 group-hover:bg-white dark:group-hover:bg-black group-hover:shadow-sm transition-all border border-transparent group-hover:border-zinc-200 dark:group-hover:border-zinc-800">
