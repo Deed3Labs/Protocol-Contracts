@@ -391,8 +391,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
   }, [quoteExpiryTime]);
 
   const getConversionAmount = () => {
-    // Use Li.Fi quote if available and valid
-    if (quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error) {
+    // Only use Li.Fi quote if available and valid (no fallback to mock rates)
+    if (quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading) {
       const output = parseFloat(quote.estimatedOutput);
       // Format based on size - show more decimals for small amounts
       if (output < 0.0001) {
@@ -406,33 +406,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       }
     }
 
-    // Fallback to mock rates if no quote (for USD trades or before quote loads)
-    const numAmount = parseFloat(amount) || 0;
-    if (!fromAsset || !toAsset || numAmount === 0) return "0";
-    
-    const rates: Record<string, number> = {
-      BTC: 0.00001,
-      ETH: 0.00036,
-      SOL: 0.007,
-      USDC: 1,
-      USDT: 1,
-      DAI: 1,
-      USD: 1,
-    };
-    
-    const fromRate = rates[fromAsset.symbol.toUpperCase()] || 0.001;
-    const toRate = rates[toAsset.symbol.toUpperCase()] || 0.001;
-    
-    const result = (numAmount * fromRate) / toRate;
-    if (result < 0.0001) {
-      return result.toFixed(8);
-    } else if (result < 1) {
-      return result.toFixed(6);
-    } else if (result < 1000) {
-      return result.toFixed(4);
-    } else {
-      return result.toFixed(2);
-    }
+    // Return "0" if no valid quote (don't show mock rates)
+    return "0";
   };
 
   const swapAssets = () => {
@@ -847,12 +822,6 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                     </div>
                     {toAsset && parseFloat(amount) > 0 && (
                       <div className="flex flex-col items-center gap-1 mt-2">
-                        <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
-                          <ArrowUpDown className="w-4 h-4" />
-                          <span className="text-sm font-medium">
-                            {getConversionAmount()} {toAsset.symbol}
-                          </span>
-                        </div>
                         {quote.isLoading && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
                           <div className="flex items-center gap-1 text-xs text-zinc-500">
                             <Loader2 className="w-3 h-3 animate-spin" />
@@ -865,10 +834,21 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                             <span className="truncate">{quote.error}</span>
                           </div>
                         )}
-                        {quote.estimatedOutputUSD > 0 && !quote.error && (
-                          <div className="text-xs text-zinc-500">
-                            ≈ ${quote.estimatedOutputUSD.toFixed(2)}
-                          </div>
+                        {/* Only show conversion amount when quote is loaded and valid */}
+                        {quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && (
+                          <>
+                            <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                              <ArrowUpDown className="w-4 h-4" />
+                              <span className="text-sm font-medium">
+                                {getConversionAmount()} {toAsset.symbol}
+                              </span>
+                            </div>
+                            {quote.estimatedOutputUSD > 0 && (
+                              <div className="text-xs text-zinc-500">
+                                ≈ ${quote.estimatedOutputUSD.toFixed(2)}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
@@ -1156,7 +1136,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         <span className="text-zinc-500 dark:text-zinc-400">
                           You're {tradeType === "swap" ? "swapping" : tradeType === "buy" ? "buying" : "selling"}
                         </span>
-                        {toAsset && (
+                        {toAsset && quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && (
                           <div className="flex items-center gap-2">
                             <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold", toAsset.color)}>
                               {toAsset.symbol.charAt(0)}
@@ -1171,6 +1151,12 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                                 </span>
                               )}
                             </div>
+                          </div>
+                        )}
+                        {toAsset && (quote.isLoading || (!quote.estimatedOutput && !quote.error)) && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
+                          <div className="flex items-center gap-2 text-xs text-zinc-500">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Loading quote...</span>
                           </div>
                         )}
                       </div>
@@ -1282,8 +1268,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         </div>
                       )}
                       
-                      {/* Exchange Rate */}
-                      {toAsset && parseFloat(getConversionAmount()) > 0 && parseFloat(amount || "0") > 0 && (
+                      {/* Exchange Rate - Only show when quote is loaded and valid */}
+                      {toAsset && quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && parseFloat(amount || "0") > 0 && (
                         <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
                           <span className="text-zinc-500 dark:text-zinc-400">Exchange rate</span>
                           <div className="text-right">
@@ -1338,20 +1324,32 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         </div>
                       )}
 
-                      {/* Total Output */}
-                      <div className="flex items-center justify-between py-3 border-t border-zinc-200 dark:border-zinc-800 pt-4">
-                        <span className="font-semibold text-black dark:text-white">You will receive</span>
-                        <div className="text-right">
-                          <span className="font-semibold text-black dark:text-white block">
-                            {getConversionAmount()} {toAsset?.symbol || ""}
-                          </span>
-                          {quote.estimatedOutputUSD > 0 && (
-                            <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                              ≈ ${quote.estimatedOutputUSD.toFixed(2)} USD
+                      {/* Total Output - Only show when quote is loaded and valid */}
+                      {quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && (
+                        <div className="flex items-center justify-between py-3 border-t border-zinc-200 dark:border-zinc-800 pt-4">
+                          <span className="font-semibold text-black dark:text-white">You will receive</span>
+                          <div className="text-right">
+                            <span className="font-semibold text-black dark:text-white block">
+                              {getConversionAmount()} {toAsset?.symbol || ""}
                             </span>
-                          )}
+                            {quote.estimatedOutputUSD > 0 && (
+                              <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                                ≈ ${quote.estimatedOutputUSD.toFixed(2)} USD
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      )}
+                      {/* Show loading state when quote is being fetched */}
+                      {quote.isLoading && fromAsset?.symbol !== "USD" && toAsset?.symbol !== "USD" && (
+                        <div className="flex items-center justify-between py-3 border-t border-zinc-200 dark:border-zinc-800 pt-4">
+                          <span className="font-semibold text-black dark:text-white">You will receive</span>
+                          <div className="flex items-center gap-2 text-zinc-500">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span className="text-sm">Loading quote...</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     
                     {/* Execution Status */}
