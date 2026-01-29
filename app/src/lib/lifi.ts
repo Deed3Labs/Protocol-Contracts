@@ -9,7 +9,7 @@ import { wagmiAdapter } from '@/AppKitProvider';
 
 // Initialize Li.Fi SDK configuration
 export const lifiConfig = createConfig({
-  integrator: 'Deed3 Protocol',
+  integrator: 'Deed3Labs',
   providers: [
     EVM({
       getWalletClient: async () => {
