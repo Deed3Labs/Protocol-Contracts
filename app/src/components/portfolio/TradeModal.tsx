@@ -1,9 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, MoreHorizontal, ChevronRight, ArrowUpDown, Check } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, ChevronRight, ArrowUpDown, Check, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePortfolio } from "@/context/PortfolioContext";
+import { useAccount } from "wagmi";
+import { useLifiTrade } from "@/hooks/useLifiTrade";
+import { SUPPORTED_NETWORKS } from "@/config/networks";
 
 type TradeType = "buy" | "sell" | "swap";
 type TradeStep = "input" | "review" | "success";
@@ -50,6 +53,8 @@ const getAssetColor = (symbol: string): string => {
 
 export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initialAsset = null }: TradeModalProps) {
   const { holdings, cashBalance } = usePortfolio();
+  const { address, chainId } = useAccount();
+  const { quote, execution, fetchQuote, executeTrade, resetExecution, clearQuote } = useLifiTrade();
   
   const [tradeType, setTradeType] = useState<TradeType>(initialTradeType);
   const [step, setStep] = useState<TradeStep>("input");
@@ -60,6 +65,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
   const [amount, setAmount] = useState("0");
   const [fromAsset, setFromAsset] = useState<Asset | null>(null);
   const [toAsset, setToAsset] = useState<Asset | null>(null);
+  const [fromChainId, setFromChainId] = useState<number | null>(null);
+  const [toChainId, setToChainId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [receiveAccount, setReceiveAccount] = useState<{ id: string; name: string; subtitle?: string } | null>(null);
 
@@ -105,6 +112,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       setScreen("trade");
       setSearchQuery("");
       setReceiveAccount({ id: "cash-usd", name: "Cash (USD)", subtitle: "Balance" });
+      clearQuote();
+      resetExecution();
 
       // Update payment method with cash balance
       setPaymentMethod({
@@ -112,30 +121,44 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
         value: cashBalance.totalCash,
       });
 
+      // Set default chain IDs from current wallet chain or first available asset
+      const defaultChainId = chainId || availableAssets[0]?.chainId || 1;
+      setFromChainId(defaultChainId);
+      setToChainId(defaultChainId);
+
       if (initialAsset) {
         // If initial asset provided, set it as the target
         if (initialTradeType === "buy") {
           setToAsset(initialAsset);
+          setToChainId(initialAsset.chainId || defaultChainId);
           // Set USDC as from asset if available, otherwise first stablecoin
           const usdc = availableAssets.find(a => a.symbol.toUpperCase() === "USDC");
-          setFromAsset(usdc || availableAssets[0] || null);
+          const fromAsset = usdc || availableAssets[0] || null;
+          setFromAsset(fromAsset);
+          setFromChainId(fromAsset?.chainId || defaultChainId);
         } else if (initialTradeType === "sell") {
           setFromAsset(initialAsset);
+          setFromChainId(initialAsset.chainId || defaultChainId);
           // Receive Cash (USD)
           setToAsset(cashUsdAsset);
+          setToChainId(defaultChainId);
         }
         setTradeType(initialTradeType);
       } else {
         // Default: Buy mode with USDC -> first available asset
         const usdc = availableAssets.find(a => a.symbol.toUpperCase() === "USDC");
-        setFromAsset(usdc || availableAssets[0] || null);
-        setToAsset(availableAssets.find(a => a.symbol.toUpperCase() !== "USDC") || availableAssets[1] || null);
+        const fromAsset = usdc || availableAssets[0] || null;
+        const toAsset = availableAssets.find(a => a.symbol.toUpperCase() !== "USDC") || availableAssets[1] || null;
+        setFromAsset(fromAsset);
+        setToAsset(toAsset);
+        setFromChainId(fromAsset?.chainId || defaultChainId);
+        setToChainId(toAsset?.chainId || defaultChainId);
         setTradeType("buy");
       }
       setStep("input");
       setAmount("0");
     }
-  }, [open, initialAsset, initialTradeType, availableAssets, cashBalance, cashUsdAsset]);
+  }, [open, initialAsset, initialTradeType, availableAssets, cashBalance, cashUsdAsset, chainId, clearQuote, resetExecution]);
 
   const handleNumberPress = useCallback((num: string) => {
     setAmount((currentAmount) => {
@@ -233,18 +256,23 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     (asset: Asset) => {
       if (assetPickTarget === "buyTo") {
         setToAsset(asset);
+        setToChainId(asset.chainId || chainId || 1);
       } else if (assetPickTarget === "sellFrom") {
         setFromAsset(asset);
+        setFromChainId(asset.chainId || chainId || 1);
         setToAsset(cashUsdAsset);
+        setToChainId(chainId || 1);
       } else if (assetPickTarget === "swapFrom") {
         setFromAsset(asset);
+        setFromChainId(asset.chainId || chainId || 1);
       } else if (assetPickTarget === "swapTo") {
         setToAsset(asset);
+        setToChainId(asset.chainId || chainId || 1);
       }
       setScreen("trade");
       setSearchQuery("");
     },
-    [assetPickTarget, cashUsdAsset]
+    [assetPickTarget, cashUsdAsset, chainId]
   );
 
   const handlePickWallet = useCallback(
@@ -268,16 +296,73 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     [walletPickTarget, cashBalance.totalCash, cashUsdAsset]
   );
 
-  const handleConfirm = () => {
-    setStep("success");
-    // TODO: Implement actual trade logic
+  const handleConfirm = async () => {
+    if (!quote.route) {
+      // If no route, just show success (for USD trades)
+      setStep("success");
+      return;
+    }
+
+    try {
+      await executeTrade(quote.route);
+      
+      // Wait for execution to complete
+      if (execution.status === 'success') {
+        setStep("success");
+      } else if (execution.status === 'failed') {
+        // Show error but don't change step
+        console.error('Trade execution failed:', execution.error);
+      }
+    } catch (error) {
+      console.error('Failed to execute trade:', error);
+    }
   };
 
+  // Fetch quote when amount or assets change
+  useEffect(() => {
+    if (
+      open &&
+      step === "input" &&
+      fromAsset &&
+      toAsset &&
+      fromChainId &&
+      toChainId &&
+      amount &&
+      parseFloat(amount) > 0 &&
+      address
+    ) {
+      // Skip if USD is involved (not a blockchain trade)
+      if (fromAsset.symbol === "USD" || toAsset.symbol === "USD") {
+        return;
+      }
+
+      const timeoutId = setTimeout(() => {
+        fetchQuote(
+          fromChainId,
+          fromAsset.symbol,
+          amount,
+          toChainId,
+          toAsset.symbol,
+          address
+        );
+      }, 500); // Debounce quote fetching
+
+      return () => clearTimeout(timeoutId);
+    } else {
+      clearQuote();
+    }
+  }, [open, step, fromAsset, toAsset, fromChainId, toChainId, amount, address, fetchQuote, clearQuote]);
+
   const getConversionAmount = () => {
+    // Use Li.Fi quote if available
+    if (quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0) {
+      return parseFloat(quote.estimatedOutput).toFixed(8);
+    }
+
+    // Fallback to mock rates if no quote
     const numAmount = parseFloat(amount) || 0;
     if (!fromAsset || !toAsset) return "0";
     
-    // Mock conversion rates (in production, fetch from price oracle)
     const rates: Record<string, number> = {
       BTC: 0.00001,
       ETH: 0.00036,
@@ -291,15 +376,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     const fromRate = rates[fromAsset.symbol.toUpperCase()] || 0.001;
     const toRate = rates[toAsset.symbol.toUpperCase()] || 0.001;
     
-    if (tradeType === "swap") {
-      return ((numAmount * fromRate) / toRate).toFixed(8);
-    } else if (tradeType === "buy") {
-      // Buying toAsset with USD (fromAsset should be USDC)
-      return ((numAmount * fromRate) / toRate).toFixed(8);
-    } else {
-      // Selling fromAsset for USD (toAsset should be USDC)
-      return ((numAmount * fromRate) / toRate).toFixed(8);
-    }
+    return ((numAmount * fromRate) / toRate).toFixed(8);
   };
 
   const swapAssets = () => {
@@ -419,7 +496,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                               </div>
                               <div className="min-w-0">
                                 <div className="text-black dark:text-white font-medium truncate">{a.name}</div>
-                                <div className="text-sm text-zinc-500 dark:text-zinc-400 truncate">{a.symbol}</div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-zinc-500 dark:text-zinc-400 truncate">{a.symbol}</span>
+                                  {a.chainName && (
+                                    <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                      {a.chainName}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
@@ -602,11 +686,30 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                       </span>
                     </div>
                     {toAsset && (
-                      <div className="flex items-center gap-1 mt-2 text-blue-600 dark:text-blue-400">
-                        <ArrowUpDown className="w-4 h-4" />
-                        <span className="text-sm font-medium">
-                          {getConversionAmount()} {toAsset.symbol}
-                        </span>
+                      <div className="flex flex-col items-center gap-1 mt-2">
+                        <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                          <ArrowUpDown className="w-4 h-4" />
+                          <span className="text-sm font-medium">
+                            {getConversionAmount()} {toAsset.symbol}
+                          </span>
+                        </div>
+                        {quote.isLoading && (
+                          <div className="flex items-center gap-1 text-xs text-zinc-500">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Fetching quote...</span>
+                          </div>
+                        )}
+                        {quote.error && (
+                          <div className="flex items-center gap-1 text-xs text-red-500">
+                            <AlertCircle className="w-3 h-3" />
+                            <span>{quote.error}</span>
+                          </div>
+                        )}
+                        {quote.estimatedOutputUSD > 0 && (
+                          <div className="text-xs text-zinc-500">
+                            ≈ ${quote.estimatedOutputUSD.toFixed(2)}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -629,7 +732,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                                   </div>
                                   <div className="text-left">
                                     <p className="text-sm text-zinc-500 dark:text-zinc-400">You pay</p>
-                                    <p className="font-medium text-black dark:text-white">{fromAsset.name}</p>
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium text-black dark:text-white">{fromAsset.name}</p>
+                                      {fromAsset.chainName && (
+                                        <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                          {fromAsset.chainName}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </>
                               )}
@@ -666,7 +776,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                                 </div>
                                 <div className="text-left">
                                   <p className="text-sm text-zinc-500 dark:text-zinc-400">You receive</p>
-                                  <p className="font-medium text-black dark:text-white">{toAsset.name}</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium text-black dark:text-white">{toAsset.name}</p>
+                                    {toAsset.chainName && (
+                                      <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                        {toAsset.chainName}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </>
                             )}
@@ -721,7 +838,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                                     </div>
                                     <div className="text-left">
                                       <p className="font-medium text-black dark:text-white">Buy</p>
-                                      <p className="text-sm text-zinc-500 dark:text-zinc-400">{toAsset.name}</p>
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-sm text-zinc-500 dark:text-zinc-400">{toAsset.name}</p>
+                                        {toAsset.chainName && (
+                                          <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                            {toAsset.chainName}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   </>
                                 )}
@@ -743,7 +867,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                                     </div>
                                     <div className="text-left">
                                       <p className="font-medium text-black dark:text-white">Sell</p>
-                                      <p className="text-sm text-zinc-500 dark:text-zinc-400">{fromAsset.name}</p>
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-sm text-zinc-500 dark:text-zinc-400">{fromAsset.name}</p>
+                                        {fromAsset.chainName && (
+                                          <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                            {fromAsset.chainName}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   </>
                                 )}
@@ -798,10 +929,30 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                   <div className="px-4 pb-2">
                     <Button 
                       onClick={handleReview}
-                      disabled={amount === "0" || parseFloat(amount) <= 0}
-                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                      disabled={
+                        amount === "0" || 
+                        parseFloat(amount) <= 0 || 
+                        !fromAsset || 
+                        !toAsset ||
+                        (!quote.route && fromAsset.symbol !== "USD" && toAsset.symbol !== "USD") ||
+                        quote.isLoading ||
+                        execution.isExecuting
+                      }
+                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50"
                     >
-                      Review order
+                      {execution.isExecuting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Executing...
+                        </>
+                      ) : quote.isLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Loading quote...
+                        </>
+                      ) : (
+                        "Review order"
+                      )}
                     </Button>
                   </div>
 
@@ -868,7 +1019,15 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         <span className="text-zinc-500 dark:text-zinc-400">Payment method</span>
                         <span className="text-black dark:text-white">{paymentMethod.name}</span>
                       </div>
-                      {toAsset && (
+                      {fromChainId && toChainId && fromChainId !== toChainId && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">Bridge</span>
+                          <span className="text-black dark:text-white">
+                            {SUPPORTED_NETWORKS.find(n => n.chainId === fromChainId)?.name || `Chain ${fromChainId}`} → {SUPPORTED_NETWORKS.find(n => n.chainId === toChainId)?.name || `Chain ${toChainId}`}
+                          </span>
+                        </div>
+                      )}
+                      {toAsset && parseFloat(getConversionAmount()) > 0 && (
                         <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
                           <span className="text-zinc-500 dark:text-zinc-400">Price</span>
                           <span className="text-black dark:text-white">
@@ -876,23 +1035,69 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           </span>
                         </div>
                       )}
-                      <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
-                        <span className="text-zinc-500 dark:text-zinc-400">Network fee</span>
-                        <span className="text-black dark:text-white">$0.00</span>
-                      </div>
+                      {quote.gasEstimate && parseFloat(quote.gasEstimate) > 0 && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">Network fee</span>
+                          <span className="text-black dark:text-white">~{quote.gasEstimate}</span>
+                        </div>
+                      )}
+                      {quote.executionTime > 0 && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">Estimated time</span>
+                          <span className="text-black dark:text-white">{quote.executionTime}s</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between py-3">
                         <span className="font-semibold text-black dark:text-white">Total</span>
                         <span className="font-semibold text-black dark:text-white">${amount} USD</span>
                       </div>
                     </div>
+                    
+                    {/* Execution Status */}
+                    {execution.isExecuting && (
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                          <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                            Executing trade...
+                          </span>
+                        </div>
+                        {execution.transactionHashes.length > 0 && (
+                          <div className="text-xs text-zinc-600 dark:text-zinc-400 space-y-1">
+                            {execution.transactionHashes.map((txHash, idx) => (
+                              <div key={idx} className="truncate">
+                                Step {idx + 1}: {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {execution.error && (
+                      <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4">
+                        <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                          <AlertCircle className="w-4 h-4" />
+                          <span className="text-sm">{execution.error}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-4">
                     <Button 
                       onClick={handleConfirm}
-                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                      disabled={execution.isExecuting || (!quote.route && fromAsset?.symbol !== "USD" && toAsset?.symbol !== "USD")}
+                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50"
                     >
-                      Confirm {tradeType}
+                      {execution.isExecuting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Executing...
+                        </>
+                      ) : (
+                        `Confirm ${tradeType}`
+                      )}
                     </Button>
                   </div>
                 </div>

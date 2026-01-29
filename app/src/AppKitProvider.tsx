@@ -78,7 +78,7 @@ const metadata = {
 // Only include supported networks
 const supportedNetworks = [mainnet, base, sepolia, baseSepolia];
 
-const wagmiAdapter = new WagmiAdapter({
+export const wagmiAdapter = new WagmiAdapter({
   networks: supportedNetworks,
   projectId,
   ssr: true
