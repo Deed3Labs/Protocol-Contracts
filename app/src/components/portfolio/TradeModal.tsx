@@ -71,6 +71,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
   const [receiveAccount, setReceiveAccount] = useState<{ id: string; name: string; subtitle?: string } | null>(null);
   const [quoteExpiryTime, setQuoteExpiryTime] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const lastAutoRefreshExpiryRef = useRef<number | null>(null);
 
   const cashUsdAsset = useMemo<Asset>(
     () => ({
@@ -390,6 +391,38 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
 
     return () => clearInterval(interval);
   }, [quoteExpiryTime]);
+
+  // Auto-refresh quote on review when it expires (stay on review page)
+  useEffect(() => {
+    if (!open || step !== "review") return;
+    if (!quoteExpiryTime) return;
+    if (timeRemaining === null || timeRemaining > 0) return;
+    if (quote.isLoading) return;
+
+    if (!fromAsset || !toAsset || !fromChainId || !toChainId || !address) return;
+    if (!amount || parseFloat(amount) <= 0) return;
+    // Skip if USD is involved (not a blockchain trade)
+    if (fromAsset.symbol === "USD" || toAsset.symbol === "USD") return;
+
+    // Prevent repeated auto-refresh for the same expired quote
+    if (lastAutoRefreshExpiryRef.current === quoteExpiryTime) return;
+    lastAutoRefreshExpiryRef.current = quoteExpiryTime;
+
+    fetchQuote(fromChainId, fromAsset.symbol, amount, toChainId, toAsset.symbol, address);
+  }, [
+    open,
+    step,
+    quoteExpiryTime,
+    timeRemaining,
+    quote.isLoading,
+    fromAsset,
+    toAsset,
+    fromChainId,
+    toChainId,
+    amount,
+    address,
+    fetchQuote,
+  ]);
 
   const getConversionAmount = () => {
     // Only use Li.Fi quote if available and valid (no fallback to mock rates)
@@ -1132,7 +1165,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
 
                   <div className="flex-1 p-4 space-y-4 overflow-y-auto pb-24">
                     {/* Order Summary */}
-                    <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl p-4 space-y-4">
+                    <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl p-4 space-y-4 border border-zinc-200 dark:border-white/10">
                       <div className="flex items-center justify-between">
                         <span className="text-zinc-500 dark:text-zinc-400">
                           You're {tradeType === "swap" ? "swapping" : tradeType === "buy" ? "buying" : "selling"}
@@ -1391,7 +1424,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                       disabled={
                         execution.isExecuting || 
                         (!quote.route && fromAsset?.symbol !== "USD" && toAsset?.symbol !== "USD") ||
-                        (timeRemaining !== null && timeRemaining === 0)
+                        (fromAsset?.symbol !== "USD" && toAsset?.symbol !== "USD" && quote.isLoading)
                       }
                       className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50 mb-2"
                     >
@@ -1400,8 +1433,11 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           Executing...
                         </>
-                      ) : timeRemaining === 0 ? (
-                        "Quote Expired"
+                      ) : (fromAsset?.symbol !== "USD" && toAsset?.symbol !== "USD" && quote.isLoading) ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Refreshing quote...
+                        </>
                       ) : (
                         `Confirm ${tradeType}`
                       )}
