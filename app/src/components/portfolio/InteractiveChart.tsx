@@ -67,6 +67,15 @@ export default function InteractiveChart({ data, isNegative = false, color, show
   const baseValue = data.length > 0 ? data[0].value : 100;
   const chartColor = color || (isNegative ? '#FF3B30' : '#30D158');
   
+  // Calculate baseline to fill area BELOW the line (from bottom up to the line)
+  // Set baseline slightly below minimum to ensure pattern fills all the way to bottom of chart
+  const minValue = data.length > 0 ? Math.min(...data.map(d => d.value)) : baseValue;
+  const maxValue = data.length > 0 ? Math.max(...data.map(d => d.value)) : baseValue;
+  const range = maxValue - minValue || 1; // Avoid division by zero
+  // Set baseline 2-3% below minimum to fill to the bottom of the visible chart area
+  const baselineOffset = range * 0.02; // 2% of range
+  const baseline = Math.max(0, minValue - baselineOffset); // Don't go below 0 for positive values
+  
   // Create a unique pattern ID for this chart instance
   const patternId = `dot-pattern-${isNegative ? 'negative' : 'positive'}-${chartColor.replace('#', '')}`;
   
@@ -87,7 +96,8 @@ export default function InteractiveChart({ data, isNegative = false, color, show
               height="6"
               patternUnits="userSpaceOnUse"
             >
-              <circle cx="3" cy="3" r="0.8" fill={chartColor} opacity="0.4" />
+              <rect width="6" height="6" fill="transparent" />
+              <circle cx="3" cy="3" r="0.8" fill={chartColor} opacity="0.6" />
             </pattern>
           </defs>
           <XAxis dataKey="time" hide />
@@ -104,15 +114,15 @@ export default function InteractiveChart({ data, isNegative = false, color, show
             cursor={<CustomCursor height={200} />}
             position={{ y: 0 }}
           />
-          {/* Area fill with dotted pattern - fills from line down to baseline */}
+          {/* Area fill with dotted pattern - fills from baseline (bottom) up to the line */}
+          {/* Place Area before Line so line renders on top */}
           <Area
             type="monotone"
             dataKey="value"
             stroke="none"
             fill={`url(#${patternId})`}
             fillOpacity={1}
-            baseLine={baseValue}
-            style={{ color: chartColor }}
+            baseLine={baseline}
           />
           <Line
             type="monotone"
