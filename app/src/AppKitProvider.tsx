@@ -1,6 +1,6 @@
 import { createAppKit, useAppKitTheme } from '@reown/appkit/react';
 import { WagmiProvider } from 'wagmi';
-import { mainnet, base, sepolia, baseSepolia } from '@reown/appkit/networks';
+import { mainnet, base, sepolia, baseSepolia, arbitrum, polygon, gnosis } from '@reown/appkit/networks';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
 import { ReownAuthentication } from '@reown/appkit-siwx';
@@ -75,8 +75,9 @@ const metadata = {
   icons: ['https://avatars.githubusercontent.com/u/179229932']
 };
 
-// Only include supported networks
-const supportedNetworks = [mainnet, base, sepolia, baseSepolia];
+// Networks enabled for wallet connections + wagmi switchChain.
+// Must include any chain LI.FI routes may require (e.g. Gnosis/Arbitrum).
+const supportedNetworks = [mainnet, base, sepolia, baseSepolia, arbitrum, polygon, gnosis];
 
 export const wagmiAdapter = new WagmiAdapter({
   networks: supportedNetworks,
