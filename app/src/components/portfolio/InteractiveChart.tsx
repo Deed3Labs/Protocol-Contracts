@@ -1,4 +1,4 @@
-import { LineChart, Line, Area, XAxis, YAxis, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
 import { format } from 'date-fns';
 
 interface ChartPoint {
@@ -67,12 +67,6 @@ export default function InteractiveChart({ data, isNegative = false, color, show
   const baseValue = data.length > 0 ? data[0].value : 100;
   const chartColor = color || (isNegative ? '#FF3B30' : '#30D158');
   
-  // Generate unique gradient ID based on chart color to avoid conflicts
-  const gradientId = `area-gradient-${chartColor.replace('#', '')}`;
-  
-  // Create fill color based on chart color
-  const fillColor = chartColor;
-  
   return (
     <div className="h-52 w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -80,25 +74,6 @@ export default function InteractiveChart({ data, isNegative = false, color, show
           data={data} 
           margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
         >
-          <defs>
-            {/* Gradient fill for the area - fades from top to bottom */}
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={fillColor} stopOpacity="0.2" />
-              <stop offset="50%" stopColor={fillColor} stopOpacity="0.1" />
-              <stop offset="100%" stopColor={fillColor} stopOpacity="0.05" />
-            </linearGradient>
-            {/* Dotted pattern overlay */}
-            <pattern
-              id={`${gradientId}-dots`}
-              x="0"
-              y="0"
-              width="4"
-              height="4"
-              patternUnits="userSpaceOnUse"
-            >
-              <circle cx="2" cy="2" r="0.5" fill={fillColor} opacity="0.3" />
-            </pattern>
-          </defs>
           <XAxis dataKey="time" hide />
           <YAxis hide domain={['auto', 'auto']} />
           {showReferenceLine && data.length > 0 && (
@@ -113,27 +88,6 @@ export default function InteractiveChart({ data, isNegative = false, color, show
             cursor={<CustomCursor height={200} />}
             position={{ y: 0 }}
           />
-          {/* Area with gradient fill and dotted pattern */}
-          <Area
-            type="monotone"
-            dataKey="value"
-            fill={`url(#${gradientId})`}
-            fillOpacity={1}
-            stroke="none"
-            baseValue="dataMin"
-            animationDuration={500}
-          />
-          {/* Overlay with dotted pattern for Coinbase-style texture */}
-          <Area
-            type="monotone"
-            dataKey="value"
-            fill={`url(#${gradientId}-dots)`}
-            fillOpacity={1}
-            stroke="none"
-            baseValue="dataMin"
-            animationDuration={500}
-          />
-          {/* Line on top of the area */}
           <Line
             type="monotone"
             dataKey="value"
