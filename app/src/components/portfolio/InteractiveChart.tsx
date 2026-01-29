@@ -68,20 +68,26 @@ export default function InteractiveChart({ data, isNegative = false, color, show
   const chartColor = color || (isNegative ? '#FF3B30' : '#30D158');
   
   // Calculate baseline to fill area BELOW the line (from bottom up to the line)
-  // Set baseline slightly below minimum to ensure pattern fills all the way to bottom of chart
+  // Set baseline well below minimum to ensure pattern fills all the way to bottom of chart
   const minValue = data.length > 0 ? Math.min(...data.map(d => d.value)) : baseValue;
   const maxValue = data.length > 0 ? Math.max(...data.map(d => d.value)) : baseValue;
   const range = maxValue - minValue || 1; // Avoid division by zero
-  // Set baseline 2-3% below minimum to fill to the bottom of the visible chart area
-  const baselineOffset = range * 0.02; // 2% of range
+  
+  // Calculate baseline: use a percentage of the range to ensure visible fill
+  // For small ranges, use a larger percentage; for large ranges, use a smaller percentage
+  const percentage = range < 10 ? 0.2 : range < 100 ? 0.15 : 0.1; // 20%, 15%, or 10% based on range size
+  const baselineOffset = range * percentage;
   const baseline = Math.max(0, minValue - baselineOffset); // Don't go below 0 for positive values
+  
+  // Debug: log values to help troubleshoot
+  // console.log('Chart values:', { minValue, maxValue, range, baseline, baselineOffset });
   
   // Create a unique pattern ID for this chart instance
   const patternId = `dot-pattern-${isNegative ? 'negative' : 'positive'}-${chartColor.replace('#', '')}`;
   
   return (
-    <div className="h-52 w-full">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="h-52 w-full min-h-[208px]">
+      <ResponsiveContainer width="100%" height="100%" minHeight={208}>
         <LineChart 
           data={data} 
           margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
@@ -92,12 +98,12 @@ export default function InteractiveChart({ data, isNegative = false, color, show
               id={patternId}
               x="0"
               y="0"
-              width="6"
-              height="6"
+              width="8"
+              height="8"
               patternUnits="userSpaceOnUse"
             >
-              <rect width="6" height="6" fill="transparent" />
-              <circle cx="3" cy="3" r="0.8" fill={chartColor} opacity="0.6" />
+              <rect width="8" height="8" fill="transparent" />
+              <circle cx="4" cy="4" r="1.5" fill={chartColor} opacity="0.4" />
             </pattern>
           </defs>
           <XAxis dataKey="time" hide />
@@ -123,6 +129,8 @@ export default function InteractiveChart({ data, isNegative = false, color, show
             fill={`url(#${patternId})`}
             fillOpacity={1}
             baseLine={baseline}
+            isAnimationActive={true}
+            connectNulls={true}
           />
           <Line
             type="monotone"
