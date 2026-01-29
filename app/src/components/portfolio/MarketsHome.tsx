@@ -76,7 +76,7 @@ export default function MarketsHome() {
       };
     }
     // Fallback to mock data if no wallet connected
-    return { name: 'Isaiah Litt', email: 'isaiah@example.com' };
+    return { name: 'Username', email: 'user@example.com' };
   }, [address]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);

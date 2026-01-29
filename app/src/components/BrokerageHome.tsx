@@ -457,7 +457,7 @@ export default function BrokerageHome() {
       };
     }
     // Fallback to mock data if no wallet connected
-    return { name: 'Isaiah Litt', email: 'isaiah@example.com' };
+    return { name: 'Username', email: 'user@example.com' };
   }, [address]);
   const [selectedTab, setSelectedTab] = useState('Return');
   const [selectedRange, setSelectedRange] = useState('1D');
