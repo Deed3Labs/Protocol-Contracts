@@ -67,44 +67,43 @@ export default function InteractiveChart({ data, isNegative = false, color, show
   const baseValue = data.length > 0 ? data[0].value : 100;
   const chartColor = color || (isNegative ? '#FF3B30' : '#30D158');
   
-  // Calculate baseline to fill area BELOW the line (from bottom up to the line)
-  // Set baseline well below minimum to ensure pattern fills all the way to bottom of chart
-  const minValue = data.length > 0 ? Math.min(...data.map(d => d.value)) : baseValue;
-  const maxValue = data.length > 0 ? Math.max(...data.map(d => d.value)) : baseValue;
-  const range = maxValue - minValue || 1; // Avoid division by zero
+  // Generate unique pattern ID based on chart color to avoid conflicts
+  const patternId = `dot-pattern-${chartColor.replace('#', '')}`;
   
-  // Calculate baseline: use a percentage of the range to ensure visible fill
-  // For small ranges, use a larger percentage; for large ranges, use a smaller percentage
-  const percentage = range < 10 ? 0.2 : range < 100 ? 0.15 : 0.1; // 20%, 15%, or 10% based on range size
-  const baselineOffset = range * percentage;
-  const baseline = Math.max(0, minValue - baselineOffset); // Don't go below 0 for positive values
+  // Create a lighter version of the chart color for the dots
+  const getDotColor = () => {
+    if (color) {
+      // If custom color provided, use it with low opacity
+      return color;
+    }
+    return isNegative ? '#FF3B30' : '#30D158';
+  };
   
-  // Debug: log values to help troubleshoot
-  // console.log('Chart values:', { minValue, maxValue, range, baseline, baselineOffset });
-  
-  // Create a unique pattern ID for this chart instance
-  const patternId = `dot-pattern-${isNegative ? 'negative' : 'positive'}-${chartColor.replace('#', '')}`;
+  const dotColor = getDotColor();
   
   return (
-    <div className="h-52 w-full min-h-[208px]">
-      <ResponsiveContainer width="100%" height="100%" minHeight={208}>
+    <div className="h-52 w-full">
+      <ResponsiveContainer width="100%" height="100%">
         <LineChart 
           data={data} 
           margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
         >
           <defs>
-            {/* Create a dotted pattern similar to Coinbase */}
             <pattern
               id={patternId}
               x="0"
               y="0"
-              width="8"
-              height="8"
+              width="5"
+              height="5"
               patternUnits="userSpaceOnUse"
             >
-              <rect width="8" height="8" fill="transparent" />
-              <circle cx="4" cy="4" r="1.5" fill={chartColor} opacity="0.4" />
+              <circle cx="2.5" cy="2.5" r="0.6" fill={dotColor} opacity="0.25" />
             </pattern>
+            {/* Base fill gradient for the area */}
+            <linearGradient id={`${patternId}-gradient`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={dotColor} stopOpacity="0.15" />
+              <stop offset="100%" stopColor={dotColor} stopOpacity="0.05" />
+            </linearGradient>
           </defs>
           <XAxis dataKey="time" hide />
           <YAxis hide domain={['auto', 'auto']} />
@@ -120,18 +119,25 @@ export default function InteractiveChart({ data, isNegative = false, color, show
             cursor={<CustomCursor height={200} />}
             position={{ y: 0 }}
           />
-          {/* Area fill with dotted pattern - fills from baseline (bottom) up to the line */}
-          {/* Place Area before Line so line renders on top */}
+          {/* Base area with gradient fill */}
           <Area
             type="monotone"
             dataKey="value"
+            fill={`url(#${patternId}-gradient)`}
+            fillOpacity={1}
             stroke="none"
+            animationDuration={500}
+          />
+          {/* Overlay area with dotted pattern */}
+          <Area
+            type="monotone"
+            dataKey="value"
             fill={`url(#${patternId})`}
             fillOpacity={1}
-            baseLine={baseline}
-            isAnimationActive={true}
-            connectNulls={true}
+            stroke="none"
+            animationDuration={500}
           />
+          {/* Line on top of the area */}
           <Line
             type="monotone"
             dataKey="value"
