@@ -69,6 +69,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
   const [toChainId, setToChainId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [receiveAccount, setReceiveAccount] = useState<{ id: string; name: string; subtitle?: string } | null>(null);
+  const [quoteExpiryTime, setQuoteExpiryTime] = useState<number | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
 
   const cashUsdAsset = useMemo<Asset>(
     () => ({
@@ -350,8 +352,43 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       return () => clearTimeout(timeoutId);
     } else {
       clearQuote();
+      setQuoteExpiryTime(null);
+      setTimeRemaining(null);
     }
   }, [open, step, fromAsset, toAsset, fromChainId, toChainId, amount, address, fetchQuote, clearQuote]);
+
+  // Set quote expiry time when quote is received
+  useEffect(() => {
+    if (quote.quote && !quote.error) {
+      const quoteResult = quote.quote as any;
+      const validUntil = quoteResult.validUntil;
+      const expiryTime = validUntil 
+        ? validUntil * 1000 
+        : Date.now() + 60000; // Default to 60 seconds from now
+      setQuoteExpiryTime(expiryTime);
+    } else {
+      setQuoteExpiryTime(null);
+      setTimeRemaining(null);
+    }
+  }, [quote.quote, quote.error]);
+
+  // Update quote expiry timer
+  useEffect(() => {
+    if (!quoteExpiryTime) {
+      setTimeRemaining(null);
+      return;
+    }
+
+    const updateTimer = () => {
+      const remaining = Math.max(0, Math.floor((quoteExpiryTime - Date.now()) / 1000));
+      setTimeRemaining(remaining);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [quoteExpiryTime]);
 
   const getConversionAmount = () => {
     // Use Li.Fi quote if available and valid
@@ -1112,7 +1149,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                     <div className="w-9" />
                   </div>
 
-                  <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+                  <div className="flex-1 p-4 space-y-4 overflow-y-auto pb-24">
                     {/* Order Summary */}
                     <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl p-4 space-y-4">
                       <div className="flex items-center justify-between">
@@ -1124,17 +1161,65 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                             <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold", toAsset.color)}>
                               {toAsset.symbol.charAt(0)}
                             </div>
-                            <span className="font-semibold text-black dark:text-white">
-                              {getConversionAmount()} {toAsset.symbol}
-                            </span>
+                            <div className="text-right">
+                              <span className="font-semibold text-black dark:text-white block">
+                                {getConversionAmount()} {toAsset.symbol}
+                              </span>
+                              {quote.estimatedOutputUSD > 0 && (
+                                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                  ≈ ${quote.estimatedOutputUSD.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-zinc-500 dark:text-zinc-400">For</span>
-                        <span className="font-semibold text-black dark:text-white">${amount} USD</span>
+                        <div className="text-right">
+                          <span className="font-semibold text-black dark:text-white block">
+                            {amount} {fromAsset?.symbol || "USD"}
+                          </span>
+                          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                            ≈ ${parseFloat(amount || "0").toFixed(2)} USD
+                          </span>
+                        </div>
                       </div>
                     </div>
+
+                    {/* Quote Expiry Timer */}
+                    {timeRemaining !== null && timeRemaining > 0 && (
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={cn(
+                            "w-2 h-2 rounded-full",
+                            timeRemaining < 10 ? "bg-red-500 animate-pulse" : "bg-blue-500"
+                          )} />
+                          <span className="text-sm text-blue-600 dark:text-blue-400">
+                            Quote expires in {timeRemaining}s
+                          </span>
+                        </div>
+                        {timeRemaining < 10 && (
+                          <button
+                            onClick={() => {
+                              if (fromAsset && toAsset && fromChainId && toChainId && amount && parseFloat(amount) > 0 && address) {
+                                fetchQuote(
+                                  fromChainId,
+                                  fromAsset.symbol,
+                                  amount,
+                                  toChainId,
+                                  toAsset.symbol,
+                                  address
+                                );
+                              }
+                            }}
+                            className="text-xs text-blue-600 dark:text-blue-400 underline"
+                          >
+                            Refresh
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {/* Details */}
                     <div className="space-y-3">
@@ -1142,37 +1227,120 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         <span className="text-zinc-500 dark:text-zinc-400">Payment method</span>
                         <span className="text-black dark:text-white">{paymentMethod.name}</span>
                       </div>
+                      
+                      {/* From/To Assets with Chains */}
+                      {fromAsset && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">From</span>
+                          <div className="text-right">
+                            <div className="flex items-center gap-2 justify-end">
+                              <span className="text-black dark:text-white font-medium">{fromAsset.symbol}</span>
+                              {fromAsset.chainName && (
+                                <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                  {fromAsset.chainName}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">{fromAsset.name}</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {toAsset && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">To</span>
+                          <div className="text-right">
+                            <div className="flex items-center gap-2 justify-end">
+                              <span className="text-black dark:text-white font-medium">{toAsset.symbol}</span>
+                              {toAsset.chainName && (
+                                <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                  {toAsset.chainName}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">{toAsset.name}</span>
+                          </div>
+                        </div>
+                      )}
+
                       {fromChainId && toChainId && fromChainId !== toChainId && (
                         <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
                           <span className="text-zinc-500 dark:text-zinc-400">Bridge</span>
-                          <span className="text-black dark:text-white">
+                          <span className="text-black dark:text-white text-sm">
                             {SUPPORTED_NETWORKS.find(n => n.chainId === fromChainId)?.name || `Chain ${fromChainId}`} → {SUPPORTED_NETWORKS.find(n => n.chainId === toChainId)?.name || `Chain ${toChainId}`}
                           </span>
                         </div>
                       )}
+                      
+                      {/* Exchange Rate */}
                       {toAsset && parseFloat(getConversionAmount()) > 0 && (
                         <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
-                          <span className="text-zinc-500 dark:text-zinc-400">Price</span>
+                          <span className="text-zinc-500 dark:text-zinc-400">Exchange rate</span>
+                          <div className="text-right">
+                            <span className="text-black dark:text-white">
+                              1 {fromAsset?.symbol || "USD"} = {(parseFloat(getConversionAmount()) / parseFloat(amount || "1")).toFixed(8)} {toAsset.symbol}
+                            </span>
+                            <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                              1 {toAsset.symbol} ≈ ${(parseFloat(amount || "0") / parseFloat(getConversionAmount())).toFixed(4)} USD
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Slippage */}
+                      {quote.quote && (quote.quote as any).slippage !== undefined && (
+                        <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
+                          <span className="text-zinc-500 dark:text-zinc-400">Slippage tolerance</span>
                           <span className="text-black dark:text-white">
-                            1 {toAsset.symbol} ≈ ${(parseFloat(amount) / parseFloat(getConversionAmount())).toFixed(2)}
+                            {((quote.quote as any).slippage * 100).toFixed(2)}%
                           </span>
                         </div>
                       )}
-                      {quote.gasEstimate && parseFloat(quote.gasEstimate) > 0 && (
+
+                      {/* Gas Costs */}
+                      {quote.quote && (quote.quote as any).estimate?.gasCosts && (
                         <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
-                          <span className="text-zinc-500 dark:text-zinc-400">Network fee</span>
-                          <span className="text-black dark:text-white">~{quote.gasEstimate}</span>
+                          <span className="text-zinc-500 dark:text-zinc-400">Network fees</span>
+                          <div className="text-right">
+                            {(quote.quote as any).estimate.gasCosts.map((cost: any, idx: number) => (
+                              <div key={idx} className="text-black dark:text-white text-sm">
+                                {cost.amount} {cost.token.symbol}
+                                {cost.amountUSD && (
+                                  <span className="text-xs text-zinc-500 dark:text-zinc-400 ml-1">
+                                    (${parseFloat(cost.amountUSD).toFixed(2)})
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
+
                       {quote.executionTime > 0 && (
                         <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
                           <span className="text-zinc-500 dark:text-zinc-400">Estimated time</span>
-                          <span className="text-black dark:text-white">{quote.executionTime}s</span>
+                          <span className="text-black dark:text-white">
+                            {quote.executionTime < 60 
+                              ? `${quote.executionTime}s` 
+                              : `${Math.floor(quote.executionTime / 60)}m ${quote.executionTime % 60}s`
+                            }
+                          </span>
                         </div>
                       )}
-                      <div className="flex items-center justify-between py-3">
-                        <span className="font-semibold text-black dark:text-white">Total</span>
-                        <span className="font-semibold text-black dark:text-white">${amount} USD</span>
+
+                      {/* Total Output */}
+                      <div className="flex items-center justify-between py-3 border-t border-zinc-200 dark:border-zinc-800 pt-4">
+                        <span className="font-semibold text-black dark:text-white">You will receive</span>
+                        <div className="text-right">
+                          <span className="font-semibold text-black dark:text-white block">
+                            {getConversionAmount()} {toAsset?.symbol || ""}
+                          </span>
+                          {quote.estimatedOutputUSD > 0 && (
+                            <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                              ≈ ${quote.estimatedOutputUSD.toFixed(2)} USD
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     
@@ -1207,21 +1375,40 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                     )}
                   </div>
 
-                  <div className="p-4">
+                  {/* Fixed button at bottom for mobile */}
+                  <div className="fixed bottom-0 left-0 right-0 sm:relative sm:bottom-auto bg-white dark:bg-[#0e0e0e] border-t border-zinc-200 dark:border-zinc-800 sm:border-t-0 p-4 pt-3 pb-safe sm:p-4">
                     <Button 
                       onClick={handleConfirm}
-                      disabled={execution.isExecuting || (!quote.route && fromAsset?.symbol !== "USD" && toAsset?.symbol !== "USD")}
-                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50"
+                      disabled={
+                        execution.isExecuting || 
+                        (!quote.route && fromAsset?.symbol !== "USD" && toAsset?.symbol !== "USD") ||
+                        (timeRemaining !== null && timeRemaining === 0)
+                      }
+                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50 mb-2"
                     >
                       {execution.isExecuting ? (
                         <>
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           Executing...
                         </>
+                      ) : timeRemaining === 0 ? (
+                        "Quote Expired"
                       ) : (
                         `Confirm ${tradeType}`
                       )}
                     </Button>
+                    <p className="text-xs text-center text-zinc-500 dark:text-zinc-400 px-4 leading-relaxed">
+                      By confirming, you agree to our{" "}
+                      <a 
+                        href="/terms" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="underline hover:text-zinc-700 dark:hover:text-zinc-300"
+                      >
+                        Terms & Conditions
+                      </a>
+                      {" "}and acknowledge that cryptocurrency transactions are irreversible.
+                    </p>
                   </div>
                 </div>
               )}
