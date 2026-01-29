@@ -6,7 +6,7 @@ import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
 import DepositModal from './DepositModal';
 import WithdrawModal from './WithdrawModal';
-import ActionModal from './ActionModal';
+import { useGlobalModals } from '@/context/GlobalModalsContext';
 import SearchResults from './SearchResults';
 import SearchBar from './SearchBar';
 import { useAppKitAccount } from '@reown/appkit/react';
@@ -64,12 +64,11 @@ export default function MarketsHome() {
     balances: multichainBalances,
   } = usePortfolio();
   
-  const [user] = useState<any>({ name: 'Isaiah Litt' });
+  // User data is now derived globally in GlobalModalsContext
   const [menuOpen, setMenuOpen] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-  const [actionModalOpen, setActionModalOpen] = useState(false);
+  const { setActionModalOpen } = useGlobalModals();
   const [isScrolledPast, setIsScrolledPast] = useState(false);
   
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -126,7 +125,6 @@ export default function MarketsHome() {
       <SideMenu 
         isOpen={menuOpen} 
         onClose={() => setMenuOpen(false)} 
-        user={user}
       />
       
       {/* Modals */}
@@ -138,19 +136,13 @@ export default function MarketsHome() {
         isOpen={withdrawModalOpen}
         onClose={() => setWithdrawModalOpen(false)}
       />
-      <ActionModal
-        isOpen={actionModalOpen}
-        onClose={() => setActionModalOpen(false)}
-      />
+      {/* ActionModal and TradeModal are now global - rendered in AppLayout */}
       
       {/* Header */}
       <HeaderNav
         isScrolledPast={isScrolledPast}
         onMenuOpen={() => setMenuOpen(true)}
         onActionOpen={() => setActionModalOpen(true)}
-        user={user}
-        profileMenuOpen={profileMenuOpen}
-        setProfileMenuOpen={setProfileMenuOpen}
       />
       
       {/* Main Content */}

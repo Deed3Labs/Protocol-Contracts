@@ -3,8 +3,11 @@ import { useTheme } from '@/context/ThemeContext';
 import { useDisconnect } from 'wagmi';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useGlobalModals } from '@/context/GlobalModalsContext';
 
-const SideMenu = ({ isOpen, onClose, user }: { isOpen: boolean; onClose: () => void; user: any }) => {
+const SideMenu = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+  const { profileMenuUser } = useGlobalModals();
+  const user = profileMenuUser;
   const { theme, setTheme } = useTheme();
   const { disconnect } = useDisconnect();
   const navigate = useNavigate();

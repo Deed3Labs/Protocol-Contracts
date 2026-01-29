@@ -9,8 +9,7 @@ import HeaderNav from './portfolio/HeaderNav';
 import MobileNav from './portfolio/MobileNav';
 import DepositModal from './portfolio/DepositModal';
 import WithdrawModal from './portfolio/WithdrawModal';
-import ActionModal from './portfolio/ActionModal';
-import { TradeModal } from './portfolio/TradeModal';
+import { useGlobalModals } from '@/context/GlobalModalsContext';
 import CTAStack from './portfolio/CTAStack';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useDeedName } from '@/hooks/useDeedName';
@@ -447,7 +446,7 @@ export default function BrokerageHome() {
   }, [multichainBalances]);
   
   
-  const [user] = useState(null);
+  // User data is now derived globally in GlobalModalsContext
   const [selectedTab, setSelectedTab] = useState('Return');
   const [selectedRange, setSelectedRange] = useState('1D');
   const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'RWAs' | 'NFTs' | 'Tokens'>('All');
@@ -461,13 +460,9 @@ export default function BrokerageHome() {
   const [activityChainFilter, setActivityChainFilter] = useState<'All' | string>('All');
   const [activityVisibleCount, setActivityVisibleCount] = useState(7);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-  const [actionModalOpen, setActionModalOpen] = useState(false);
-  const [tradeModalOpen, setTradeModalOpen] = useState(false);
-  const [tradeModalType, setTradeModalType] = useState<'buy' | 'sell' | 'swap'>('buy');
-  const [tradeModalAsset, setTradeModalAsset] = useState<{ symbol: string; name: string; color: string; balance?: number; balanceUSD?: number; type?: 'token' | 'nft' | 'rwa'; chainId?: number; chainName?: string } | null>(null);
+  const { setActionModalOpen, openTradeModal } = useGlobalModals();
   
   // State for tracking scroll position relative to portfolio value header
   const [isScrolledPast, setIsScrolledPast] = useState(false);
@@ -782,7 +777,6 @@ export default function BrokerageHome() {
       <SideMenu 
         isOpen={menuOpen} 
         onClose={() => setMenuOpen(false)} 
-        user={user}
       />
       
       {/* Deposit Modal */}
@@ -797,33 +791,13 @@ export default function BrokerageHome() {
         onClose={() => setWithdrawModalOpen(false)}
       />
 
-      {/* Action Modal */}
-      <ActionModal
-        isOpen={actionModalOpen}
-        onClose={() => setActionModalOpen(false)}
-        onSwapClick={() => {
-          setTradeModalType('swap');
-          setTradeModalAsset(null);
-          setTradeModalOpen(true);
-        }}
-      />
-
-      {/* Trade Modal */}
-      <TradeModal
-        open={tradeModalOpen}
-        onOpenChange={setTradeModalOpen}
-        initialTradeType={tradeModalType}
-        initialAsset={tradeModalAsset}
-      />
+      {/* ActionModal and TradeModal are now global - rendered in AppLayout */}
       
       {/* Header */}
       <HeaderNav
         isScrolledPast={isScrolledPast}
         onMenuOpen={() => setMenuOpen(true)}
         onActionOpen={() => setActionModalOpen(true)}
-        user={user}
-        profileMenuOpen={profileMenuOpen}
-        setProfileMenuOpen={setProfileMenuOpen}
       />
       
       {/* Main Content */}
@@ -1136,16 +1110,12 @@ export default function BrokerageHome() {
                                                   onBuy={() => {
                                                     const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && h.type === 'token');
                                                     const asset = holdingToAsset(holding, portfolioHolding);
-                                                    setTradeModalAsset(asset);
-                                                    setTradeModalType('buy');
-                                                    setTradeModalOpen(true);
+                                                    openTradeModal('buy', asset);
                                                   }}
                                                   onSell={() => {
                                                     const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && h.type === 'token');
                                                     const asset = holdingToAsset(holding, portfolioHolding);
-                                                    setTradeModalAsset(asset);
-                                                    setTradeModalType('sell');
-                                                    setTradeModalOpen(true);
+                                                    openTradeModal('sell', asset);
                                                   }}
                                                 />
                                               </motion.div>
@@ -1191,15 +1161,11 @@ export default function BrokerageHome() {
                                           holdingsTotal={holdingsTotal}
                                           onBuy={() => {
                                             const asset = holdingToAsset(holding, portfolioHolding);
-                                            setTradeModalAsset(asset);
-                                            setTradeModalType('buy');
-                                            setTradeModalOpen(true);
+                                            openTradeModal('buy', asset);
                                           }}
                                           onSell={() => {
                                             const asset = holdingToAsset(holding, portfolioHolding);
-                                            setTradeModalAsset(asset);
-                                            setTradeModalType('sell');
-                                            setTradeModalOpen(true);
+                                            openTradeModal('sell', asset);
                                           }}
                                         />
                                       );
@@ -1241,15 +1207,11 @@ export default function BrokerageHome() {
                                           holdingsTotal={holdingsTotal}
                                           onBuy={() => {
                                             const asset = holdingToAsset(holding, portfolioHolding);
-                                            setTradeModalAsset(asset);
-                                            setTradeModalType('buy');
-                                            setTradeModalOpen(true);
+                                            openTradeModal('buy', asset);
                                           }}
                                           onSell={() => {
                                             const asset = holdingToAsset(holding, portfolioHolding);
-                                            setTradeModalAsset(asset);
-                                            setTradeModalType('sell');
-                                            setTradeModalOpen(true);
+                                            openTradeModal('sell', asset);
                                           }}
                                         />
                                       );

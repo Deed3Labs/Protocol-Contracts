@@ -6,7 +6,7 @@ import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
 import DepositModal from './DepositModal';
 import WithdrawModal from './WithdrawModal';
-import ActionModal from './ActionModal';
+import { useGlobalModals } from '@/context/GlobalModalsContext';
 import CreditCycleWidget from './CreditCycleWidget';
 import ActiveLoansWidget from './ActiveLoansWidget';
 import MarketRatesWidget from './MarketRatesWidget';
@@ -54,12 +54,11 @@ const currentLoans = [
 ];
 
 export default function BorrowHome() {
-  const [user] = useState<any>({ name: 'Isaiah Litt' }); // Mock user
+  // User data is now derived globally in GlobalModalsContext
   const [menuOpen, setMenuOpen] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-  const [actionModalOpen, setActionModalOpen] = useState(false);
+  const { setActionModalOpen } = useGlobalModals();
   const [isScrolledPast, setIsScrolledPast] = useState(false);
 
   // Mock values
@@ -84,7 +83,6 @@ export default function BorrowHome() {
       <SideMenu 
         isOpen={menuOpen} 
         onClose={() => setMenuOpen(false)} 
-        user={user}
       />
       
       {/* Modals - keeping consistent with BrokerageHome */}
@@ -96,19 +94,13 @@ export default function BorrowHome() {
         isOpen={withdrawModalOpen}
         onClose={() => setWithdrawModalOpen(false)}
       />
-      <ActionModal
-        isOpen={actionModalOpen}
-        onClose={() => setActionModalOpen(false)}
-      />
+      {/* ActionModal and TradeModal are now global - rendered in AppLayout */}
       
       {/* Header */}
       <HeaderNav
         isScrolledPast={isScrolledPast}
         onMenuOpen={() => setMenuOpen(true)}
         onActionOpen={() => setActionModalOpen(true)}
-        user={user}
-        profileMenuOpen={profileMenuOpen}
-        setProfileMenuOpen={setProfileMenuOpen}
       />
       
       {/* Main Content */}
