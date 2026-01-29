@@ -1,4 +1,4 @@
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
+import { LineChart, Line, Area, XAxis, YAxis, ResponsiveContainer, ReferenceLine, Tooltip } from 'recharts';
 import { format } from 'date-fns';
 
 interface ChartPoint {
@@ -67,6 +67,9 @@ export default function InteractiveChart({ data, isNegative = false, color, show
   const baseValue = data.length > 0 ? data[0].value : 100;
   const chartColor = color || (isNegative ? '#FF3B30' : '#30D158');
   
+  // Create a unique pattern ID for this chart instance
+  const patternId = `dot-pattern-${isNegative ? 'negative' : 'positive'}-${chartColor.replace('#', '')}`;
+  
   return (
     <div className="h-52 w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -74,6 +77,19 @@ export default function InteractiveChart({ data, isNegative = false, color, show
           data={data} 
           margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
         >
+          <defs>
+            {/* Create a dotted pattern similar to Coinbase */}
+            <pattern
+              id={patternId}
+              x="0"
+              y="0"
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+            >
+              <circle cx="3" cy="3" r="0.8" fill={chartColor} opacity="0.4" />
+            </pattern>
+          </defs>
           <XAxis dataKey="time" hide />
           <YAxis hide domain={['auto', 'auto']} />
           {showReferenceLine && data.length > 0 && (
@@ -87,6 +103,16 @@ export default function InteractiveChart({ data, isNegative = false, color, show
             content={<CustomTooltip baseValue={baseValue} />}
             cursor={<CustomCursor height={200} />}
             position={{ y: 0 }}
+          />
+          {/* Area fill with dotted pattern - fills from line down to baseline */}
+          <Area
+            type="monotone"
+            dataKey="value"
+            stroke="none"
+            fill={`url(#${patternId})`}
+            fillOpacity={1}
+            baseLine={baseValue}
+            style={{ color: chartColor }}
           />
           <Line
             type="monotone"
