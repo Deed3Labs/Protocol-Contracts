@@ -67,19 +67,11 @@ export default function InteractiveChart({ data, isNegative = false, color, show
   const baseValue = data.length > 0 ? data[0].value : 100;
   const chartColor = color || (isNegative ? '#FF3B30' : '#30D158');
   
-  // Generate unique pattern ID based on chart color to avoid conflicts
-  const patternId = `dot-pattern-${chartColor.replace('#', '')}`;
+  // Generate unique gradient ID based on chart color to avoid conflicts
+  const gradientId = `area-gradient-${chartColor.replace('#', '')}`;
   
-  // Create a lighter version of the chart color for the dots
-  const getDotColor = () => {
-    if (color) {
-      // If custom color provided, use it with low opacity
-      return color;
-    }
-    return isNegative ? '#FF3B30' : '#30D158';
-  };
-  
-  const dotColor = getDotColor();
+  // Create fill color based on chart color
+  const fillColor = chartColor;
   
   return (
     <div className="h-52 w-full">
@@ -89,21 +81,23 @@ export default function InteractiveChart({ data, isNegative = false, color, show
           margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
         >
           <defs>
+            {/* Gradient fill for the area - fades from top to bottom */}
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={fillColor} stopOpacity="0.2" />
+              <stop offset="50%" stopColor={fillColor} stopOpacity="0.1" />
+              <stop offset="100%" stopColor={fillColor} stopOpacity="0.05" />
+            </linearGradient>
+            {/* Dotted pattern overlay */}
             <pattern
-              id={patternId}
+              id={`${gradientId}-dots`}
               x="0"
               y="0"
-              width="5"
-              height="5"
+              width="4"
+              height="4"
               patternUnits="userSpaceOnUse"
             >
-              <circle cx="2.5" cy="2.5" r="0.6" fill={dotColor} opacity="0.25" />
+              <circle cx="2" cy="2" r="0.5" fill={fillColor} opacity="0.3" />
             </pattern>
-            {/* Base fill gradient for the area */}
-            <linearGradient id={`${patternId}-gradient`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={dotColor} stopOpacity="0.15" />
-              <stop offset="100%" stopColor={dotColor} stopOpacity="0.05" />
-            </linearGradient>
           </defs>
           <XAxis dataKey="time" hide />
           <YAxis hide domain={['auto', 'auto']} />
@@ -119,21 +113,21 @@ export default function InteractiveChart({ data, isNegative = false, color, show
             cursor={<CustomCursor height={200} />}
             position={{ y: 0 }}
           />
-          {/* Base area with gradient fill */}
+          {/* Area with gradient fill and dotted pattern */}
           <Area
             type="monotone"
             dataKey="value"
-            fill={`url(#${patternId}-gradient)`}
+            fill={`url(#${gradientId})`}
             fillOpacity={1}
             stroke="none"
             baseValue="dataMin"
             animationDuration={500}
           />
-          {/* Overlay area with dotted pattern */}
+          {/* Overlay with dotted pattern for Coinbase-style texture */}
           <Area
             type="monotone"
             dataKey="value"
-            fill={`url(#${patternId})`}
+            fill={`url(#${gradientId}-dots)`}
             fillOpacity={1}
             stroke="none"
             baseValue="dataMin"
