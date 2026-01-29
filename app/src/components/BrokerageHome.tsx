@@ -460,7 +460,6 @@ export default function BrokerageHome() {
   const [activityChainFilter, setActivityChainFilter] = useState<'All' | string>('All');
   const [activityVisibleCount, setActivityVisibleCount] = useState(7);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const { setActionModalOpen, openTradeModal } = useGlobalModals();
@@ -801,8 +800,6 @@ export default function BrokerageHome() {
         onMenuOpen={() => setMenuOpen(true)}
         onActionOpen={() => setActionModalOpen(true)}
         user={user}
-        profileMenuOpen={profileMenuOpen}
-        setProfileMenuOpen={setProfileMenuOpen}
       />
       
       {/* Main Content */}

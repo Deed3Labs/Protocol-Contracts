@@ -66,7 +66,6 @@ export default function MarketsHome() {
   
   const [user] = useState<any>({ name: 'Isaiah Litt' });
   const [menuOpen, setMenuOpen] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const { setActionModalOpen } = useGlobalModals();
@@ -146,8 +145,6 @@ export default function MarketsHome() {
         onMenuOpen={() => setMenuOpen(true)}
         onActionOpen={() => setActionModalOpen(true)}
         user={user}
-        profileMenuOpen={profileMenuOpen}
-        setProfileMenuOpen={setProfileMenuOpen}
       />
       
       {/* Main Content */}

@@ -56,7 +56,6 @@ const currentLoans = [
 export default function BorrowHome() {
   const [user] = useState<any>({ name: 'Isaiah Litt' }); // Mock user
   const [menuOpen, setMenuOpen] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const { setActionModalOpen } = useGlobalModals();
@@ -104,8 +103,6 @@ export default function BorrowHome() {
         onMenuOpen={() => setMenuOpen(true)}
         onActionOpen={() => setActionModalOpen(true)}
         user={user}
-        profileMenuOpen={profileMenuOpen}
-        setProfileMenuOpen={setProfileMenuOpen}
       />
       
       {/* Main Content */}

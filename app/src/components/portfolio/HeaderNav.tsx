@@ -1,22 +1,19 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, Search, Plus } from 'lucide-react';
-import ProfileMenu from './ProfileMenu';
 import ClearPathLogo from '../../assets/ClearPath-Logo.png';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useNavigate, useLocation } from 'react-router-dom';
-import XMTPMessaging from '@/components/XMTPMessaging';
-import { useState, useEffect, useMemo } from 'react';
-import SearchModal from './SearchModal';
+import { useEffect, useMemo } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { CompactPriceWheel } from '../PriceWheel';
+import { useGlobalModals } from '@/context/GlobalModalsContext';
+import ProfileMenu from './ProfileMenu';
 
 interface HeaderNavProps {
   isScrolledPast: boolean;
   onMenuOpen: () => void;
   onActionOpen: () => void;
   user: any;
-  profileMenuOpen: boolean;
-  setProfileMenuOpen: (open: boolean) => void;
 }
 
 export default function HeaderNav({
@@ -24,8 +21,6 @@ export default function HeaderNav({
   onMenuOpen,
   onActionOpen,
   user,
-  profileMenuOpen,
-  setProfileMenuOpen
 }: HeaderNavProps) {
   // Use global portfolio context for cash balance
   const { cashBalance: portfolioCashBalance, previousTotalBalanceUSD } = usePortfolio();
@@ -42,26 +37,14 @@ export default function HeaderNav({
   const { isConnected, openModal } = useAppKitAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [isXMTPModalOpen, setIsXMTPModalOpen] = useState(false);
-  const [xmtpConversationId, setXmtpConversationId] = useState<string | null>(null);
-  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-
-  // Filter categories for search
-  const filterCategories = [
-    'Technology',
-    'Finance',
-    'Healthcare',
-    'Energy',
-    'Real Estate',
-    'Consumer',
-    'Crypto & DeFi',
-    'ESG',
-    'Growth',
-    'Value',
-    'Dividend',
-  ];
+  const { openSearchModal, toggleProfileMenu, setProfileMenuUser, profileMenuOpen, setProfileMenuOpen, openXmtpModal } = useGlobalModals();
+  
+  // Sync user to global ProfileMenu state
+  useEffect(() => {
+    if (user) {
+      setProfileMenuUser(user);
+    }
+  }, [user, setProfileMenuUser]);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -70,36 +53,14 @@ export default function HeaderNav({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setIsSearchModalOpen(true);
+        openSearchModal();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  const handleCategoryToggle = (category: string) => {
-    setSelectedCategories(prev => {
-      if (prev.includes(category)) {
-        return prev.filter(c => c !== category);
-      } else {
-        return [...prev, category];
-      }
-    });
-  };
-
-  const handleSearchModalClose = () => {
-    setIsSearchModalOpen(false);
-    // Optionally clear search on close
-    // setSearchQuery('');
-    // setSelectedCategories([]);
-  };
-
-  const handleOpenXMTP = (conversationId?: string) => {
-    setXmtpConversationId(conversationId || null);
-    setIsXMTPModalOpen(true);
-    setProfileMenuOpen(false); // Close profile menu when opening XMTP
-  };
+  }, [openSearchModal]);
+  
 
   return (
     <>
@@ -174,7 +135,7 @@ export default function HeaderNav({
              </motion.button>
   
              <button 
-               onClick={() => setIsSearchModalOpen(true)}
+               onClick={openSearchModal}
                className="hidden md:flex items-center gap-2 px-4 py-2 w-64 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded text-sm font-normal transition-colors justify-between cursor-pointer"
              >
                <div className="flex items-center gap-2">
@@ -184,7 +145,7 @@ export default function HeaderNav({
                <span className="text-zinc-500 dark:text-zinc-600 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-xs">⌘K</span>
              </button>
              <button 
-               onClick={() => setIsSearchModalOpen(true)}
+               onClick={openSearchModal}
                className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors md:hidden"
              >
                <Search className="w-5 h-5 text-black dark:text-white" />
@@ -194,18 +155,22 @@ export default function HeaderNav({
              {isConnected ? (
                <div className="relative">
                  <button 
-                   onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                   onClick={toggleProfileMenu}
                    className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors"
                  >
                     <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-sm font-medium text-white">
                        {user?.name?.[0] || 'U'}
                     </div>
                  </button>
-                 <ProfileMenu 
-                   isOpen={profileMenuOpen} 
-                   onClose={() => setProfileMenuOpen(false)} 
+                 {/* ProfileMenu rendered here for correct positioning, but uses global state */}
+                 <ProfileMenu
+                   isOpen={profileMenuOpen}
+                   onClose={() => setProfileMenuOpen(false)}
                    user={user}
-                   onOpenXMTP={handleOpenXMTP}
+                   onOpenXMTP={(conversationId) => {
+                     openXmtpModal(conversationId);
+                     setProfileMenuOpen(false);
+                   }}
                  />
                </div>
              ) : (
@@ -220,23 +185,7 @@ export default function HeaderNav({
         </div>
       </header>
 
-      {/* XMTP Modal */}
-      <XMTPMessaging 
-        isOpen={isXMTPModalOpen} 
-        onClose={() => setIsXMTPModalOpen(false)}
-        initialConversationId={xmtpConversationId}
-      />
-
-      {/* Search Modal */}
-      <SearchModal
-        isOpen={isSearchModalOpen}
-        onClose={handleSearchModalClose}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        selectedCategories={selectedCategories}
-        onCategoryToggle={handleCategoryToggle}
-        filterCategories={filterCategories}
-      />
+      {/* XMTPMessaging and SearchModal are now global - rendered in AppLayout */}
     </>
   );
 }
