@@ -128,12 +128,35 @@ export function useLifiTrade() {
       const route = convertQuoteToRoute(quoteResult);
 
       // Calculate estimated output
-      // Quote result has action with toAmount property
-      const action = quoteResult.action as any; // Li.Fi SDK types may vary
-      const toAmount = action.toAmount || action.estimate?.toAmount || '0';
+      // Li.Fi quote structure: quoteResult.action.toAmount (in smallest units)
+      // Type assertion needed because TypeScript types may not match runtime structure
+      const quoteResultAny = quoteResult as any;
+      const action = quoteResultAny.action || {};
+      const toAmount = action.toAmount || '0';
+      
+      if (!toAmount || toAmount === '0') {
+        throw new Error('Invalid quote: toAmount is missing or zero');
+      }
+      
       const estimatedOutput = formatUnits(BigInt(toAmount), toToken.decimals);
+      
+      // Get token price from the quote action
       const toTokenPrice = action.toToken?.priceUSD || quoteResult.action.toToken?.priceUSD || '0';
       const estimatedOutputUSD = parseFloat(estimatedOutput) * parseFloat(toTokenPrice);
+      
+      console.log('Quote data:', {
+        fromAmount: fromAmount,
+        fromAmountFormatted: fromAmount,
+        toAmount: toAmount,
+        toAmountFormatted: estimatedOutput,
+        fromTokenDecimals: fromToken.decimals,
+        toTokenDecimals: toToken.decimals,
+        fromToken: fromToken,
+        toToken: toToken,
+        toTokenPrice: toTokenPrice,
+        estimatedOutputUSD: estimatedOutputUSD,
+        quoteAction: action
+      });
 
       setQuote({
         quote: quoteResult,

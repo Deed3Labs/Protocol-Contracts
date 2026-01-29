@@ -882,7 +882,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         <div className="relative">
                           <button
                             onClick={() => openAssetPicker("swapFrom")}
-                            className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                            className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                           >
                             <div className="flex items-center gap-3">
                               {fromAsset && (
@@ -926,7 +926,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
 
                         <button
                           onClick={() => openAssetPicker("swapTo")}
-                          className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors mt-2"
+                          className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10 mt-2"
                         >
                           <div className="flex items-center gap-3">
                             {toAsset && (
@@ -958,7 +958,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           <>
                             <button
                               onClick={() => openWalletPicker("pay")}
-                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                             >
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xl">
@@ -988,7 +988,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
 
                             <button
                               onClick={() => openAssetPicker("buyTo")}
-                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                             >
                               <div className="flex items-center gap-3">
                                 {toAsset && (
@@ -1017,7 +1017,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           <>
                             <button
                               onClick={() => openAssetPicker("sellFrom")}
-                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                             >
                               <div className="flex items-center gap-3">
                                 {fromAsset && (
@@ -1058,7 +1058,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
 
                             <button
                               onClick={() => openWalletPicker("receive")}
-                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                              className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                             >
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
@@ -1180,26 +1180,36 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           <span className="font-semibold text-black dark:text-white block">
                             {amount} {fromAsset?.symbol || "USD"}
                           </span>
-                          <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                            ≈ ${parseFloat(amount || "0").toFixed(2)} USD
-                          </span>
+                          {fromAsset?.symbol !== "USD" && quote.quote && (
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                              ≈ ${(parseFloat((quote.quote as any).action?.fromToken?.priceUSD || "0") * parseFloat(amount || "0")).toFixed(2)} USD
+                            </span>
+                          )}
+                          {fromAsset?.symbol === "USD" && (
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                              ≈ ${parseFloat(amount || "0").toFixed(2)} USD
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
 
                     {/* Quote Expiry Timer */}
-                    {timeRemaining !== null && timeRemaining > 0 && (
+                    {quote.quote && !quote.error && (
                       <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <div className={cn(
                             "w-2 h-2 rounded-full",
-                            timeRemaining < 10 ? "bg-red-500 animate-pulse" : "bg-blue-500"
+                            timeRemaining !== null && timeRemaining < 10 ? "bg-red-500 animate-pulse" : "bg-blue-500"
                           )} />
                           <span className="text-sm text-blue-600 dark:text-blue-400">
-                            Quote expires in {timeRemaining}s
+                            {timeRemaining !== null && timeRemaining > 0 
+                              ? `Quote expires in ${timeRemaining}s`
+                              : "Quote valid"
+                            }
                           </span>
                         </div>
-                        {timeRemaining < 10 && (
+                        {(timeRemaining === null || timeRemaining < 10) && (
                           <button
                             onClick={() => {
                               if (fromAsset && toAsset && fromChainId && toChainId && amount && parseFloat(amount) > 0 && address) {
@@ -1273,15 +1283,15 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                       )}
                       
                       {/* Exchange Rate */}
-                      {toAsset && parseFloat(getConversionAmount()) > 0 && (
+                      {toAsset && parseFloat(getConversionAmount()) > 0 && parseFloat(amount || "0") > 0 && (
                         <div className="flex items-center justify-between py-3 border-b border-zinc-200 dark:border-zinc-800">
                           <span className="text-zinc-500 dark:text-zinc-400">Exchange rate</span>
                           <div className="text-right">
-                            <span className="text-black dark:text-white">
+                            <span className="text-black dark:text-white text-sm">
                               1 {fromAsset?.symbol || "USD"} = {(parseFloat(getConversionAmount()) / parseFloat(amount || "1")).toFixed(8)} {toAsset.symbol}
                             </span>
                             <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                              1 {toAsset.symbol} ≈ ${(parseFloat(amount || "0") / parseFloat(getConversionAmount())).toFixed(4)} USD
+                              1 {toAsset.symbol} ≈ ${quote.estimatedOutputUSD > 0 ? (quote.estimatedOutputUSD / parseFloat(getConversionAmount())).toFixed(4) : (parseFloat(amount || "0") / parseFloat(getConversionAmount())).toFixed(4)} USD
                             </div>
                           </div>
                         </div>
