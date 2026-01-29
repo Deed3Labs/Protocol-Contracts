@@ -24,6 +24,8 @@ import { XMTPProvider } from "@/context/XMTPContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { ModalProvider, useModal } from "@/context/ModalContext";
 import { PortfolioProvider, usePortfolio } from "@/context/PortfolioContext";
+import { GlobalModalsProvider } from "@/context/GlobalModalsContext";
+import GlobalModals from "@/components/GlobalModals";
 import Faucet from "@/components/Faucet";
 import BurnerBondPage from "@/components/BurnerBondPage";
 import PullToRefresh from "@/components/ui/PullToRefresh";
@@ -60,6 +62,9 @@ const AppLayout = ({ startWithSkeleton = false }: { startWithSkeleton?: boolean 
   return (
     <ProtectedRoute>
       <PullToRefresh onRefresh={handleRefresh} initialLoading={startWithSkeleton} disabled={isModalOpen}>
+        {/* Global Modals (ActionModal + TradeModal) - shared across all pages */}
+        <GlobalModals />
+        
         <Outlet />
       </PullToRefresh>
     </ProtectedRoute>
@@ -117,6 +122,7 @@ function App() {
             <DeedNFTProvider>
               <XMTPProvider>
                 <ModalProvider>
+                  <GlobalModalsProvider>
                   <ScrollToTop />
                   <AnimatePresence>
                     {showSplash && <SplashScreen />}
@@ -157,6 +163,7 @@ function App() {
                       <Route path="/faucet" element={<Faucet />} />
                     </Route>
                   </Routes>
+                  </GlobalModalsProvider>
                 </ModalProvider>
               </XMTPProvider>
             </DeedNFTProvider>

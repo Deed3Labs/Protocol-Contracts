@@ -6,7 +6,7 @@ import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
 import DepositModal from './DepositModal';
 import WithdrawModal from './WithdrawModal';
-import ActionModal from './ActionModal';
+import { useGlobalModals } from '@/context/GlobalModalsContext';
 import CreditCycleWidget from './CreditCycleWidget';
 import ActiveLoansWidget from './ActiveLoansWidget';
 import MarketRatesWidget from './MarketRatesWidget';
@@ -59,7 +59,7 @@ export default function BorrowHome() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-  const [actionModalOpen, setActionModalOpen] = useState(false);
+  const { setActionModalOpen } = useGlobalModals();
   const [isScrolledPast, setIsScrolledPast] = useState(false);
 
   // Mock values
@@ -96,10 +96,7 @@ export default function BorrowHome() {
         isOpen={withdrawModalOpen}
         onClose={() => setWithdrawModalOpen(false)}
       />
-      <ActionModal
-        isOpen={actionModalOpen}
-        onClose={() => setActionModalOpen(false)}
-      />
+      {/* ActionModal and TradeModal are now global - rendered in AppLayout */}
       
       {/* Header */}
       <HeaderNav

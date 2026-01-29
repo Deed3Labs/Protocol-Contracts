@@ -6,7 +6,7 @@ import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
 import DepositModal from './DepositModal';
 import WithdrawModal from './WithdrawModal';
-import ActionModal from './ActionModal';
+import { useGlobalModals } from '@/context/GlobalModalsContext';
 import SearchResults from './SearchResults';
 import SearchBar from './SearchBar';
 import { useAppKitAccount } from '@reown/appkit/react';
@@ -69,7 +69,7 @@ export default function MarketsHome() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-  const [actionModalOpen, setActionModalOpen] = useState(false);
+  const { setActionModalOpen } = useGlobalModals();
   const [isScrolledPast, setIsScrolledPast] = useState(false);
   
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -138,10 +138,7 @@ export default function MarketsHome() {
         isOpen={withdrawModalOpen}
         onClose={() => setWithdrawModalOpen(false)}
       />
-      <ActionModal
-        isOpen={actionModalOpen}
-        onClose={() => setActionModalOpen(false)}
-      />
+      {/* ActionModal and TradeModal are now global - rendered in AppLayout */}
       
       {/* Header */}
       <HeaderNav
