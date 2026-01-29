@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, MoreHorizontal, ChevronRight, ArrowUpDown, Check, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -354,14 +354,24 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
   }, [open, step, fromAsset, toAsset, fromChainId, toChainId, amount, address, fetchQuote, clearQuote]);
 
   const getConversionAmount = () => {
-    // Use Li.Fi quote if available
-    if (quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0) {
-      return parseFloat(quote.estimatedOutput).toFixed(8);
+    // Use Li.Fi quote if available and valid
+    if (quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error) {
+      const output = parseFloat(quote.estimatedOutput);
+      // Format based on size - show more decimals for small amounts
+      if (output < 0.0001) {
+        return output.toFixed(8);
+      } else if (output < 1) {
+        return output.toFixed(6);
+      } else if (output < 1000) {
+        return output.toFixed(4);
+      } else {
+        return output.toFixed(2);
+      }
     }
 
-    // Fallback to mock rates if no quote
+    // Fallback to mock rates if no quote (for USD trades or before quote loads)
     const numAmount = parseFloat(amount) || 0;
-    if (!fromAsset || !toAsset) return "0";
+    if (!fromAsset || !toAsset || numAmount === 0) return "0";
     
     const rates: Record<string, number> = {
       BTC: 0.00001,
@@ -376,15 +386,128 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     const fromRate = rates[fromAsset.symbol.toUpperCase()] || 0.001;
     const toRate = rates[toAsset.symbol.toUpperCase()] || 0.001;
     
-    return ((numAmount * fromRate) / toRate).toFixed(8);
+    const result = (numAmount * fromRate) / toRate;
+    if (result < 0.0001) {
+      return result.toFixed(8);
+    } else if (result < 1) {
+      return result.toFixed(6);
+    } else if (result < 1000) {
+      return result.toFixed(4);
+    } else {
+      return result.toFixed(2);
+    }
   };
 
   const swapAssets = () => {
     if (!fromAsset || !toAsset) return;
-    const temp = fromAsset;
+    const tempAsset = fromAsset;
+    const tempChainId = fromChainId;
     setFromAsset(toAsset);
-    setToAsset(temp);
+    setToAsset(tempAsset);
+    setFromChainId(toChainId);
+    setToChainId(tempChainId);
   };
+
+  // Preserve assets when switching between buy/sell/swap tabs
+  const prevTradeTypeRef = useRef<TradeType | null>(null);
+  
+  useEffect(() => {
+    if (!open || step !== "input") {
+      prevTradeTypeRef.current = tradeType;
+      return;
+    }
+    
+    // Only adjust if tradeType actually changed
+    if (prevTradeTypeRef.current === tradeType) {
+      return;
+    }
+    
+    // Only adjust if we have assets selected
+    if (!fromAsset || !toAsset) {
+      prevTradeTypeRef.current = tradeType;
+      return;
+    }
+
+    prevTradeTypeRef.current = tradeType;
+    
+    if (tradeType === "buy") {
+      // Buy mode: fromAsset should be payment (USDC/USDT/USD), toAsset is what we're buying
+      // If toAsset is USD, that's wrong for buy mode - swap them
+      if (toAsset.symbol === "USD" && fromAsset.symbol !== "USD") {
+        const tempAsset = fromAsset;
+        const tempChainId = fromChainId;
+        // Find USDC or first stablecoin for payment
+        const usdc = availableAssets.find(a => a.symbol.toUpperCase() === "USDC");
+        setFromAsset(usdc || availableAssets[0] || null);
+        setFromChainId(usdc?.chainId || fromChainId || 1);
+        setToAsset(tempAsset);
+        setToChainId(tempChainId);
+      }
+      // If fromAsset is USD, that's fine for buy mode
+    } else if (tradeType === "sell") {
+      // Sell mode: fromAsset is what we're selling, toAsset should be USD
+      // If fromAsset is USD, that's wrong - find a token to sell
+      if (fromAsset.symbol === "USD") {
+        // Try to use toAsset if it's a token, otherwise find another token
+        if (toAsset.symbol !== "USD") {
+          setFromAsset(toAsset);
+          setFromChainId(toChainId);
+          setToAsset(cashUsdAsset);
+          setToChainId(chainId || 1);
+        } else {
+          const tokenToSell = availableAssets.find(a => a.symbol !== "USD");
+          if (tokenToSell) {
+            setFromAsset(tokenToSell);
+            setFromChainId(tokenToSell.chainId || chainId || 1);
+            setToAsset(cashUsdAsset);
+            setToChainId(chainId || 1);
+          }
+        }
+      }
+      // If toAsset is not USD, set it to USD
+      else if (toAsset.symbol !== "USD") {
+        setToAsset(cashUsdAsset);
+        setToChainId(chainId || 1);
+      }
+    } else if (tradeType === "swap") {
+      // Swap mode: both should be tokens (not USD)
+      // If fromAsset is USD, swap them if toAsset is a token
+      if (fromAsset.symbol === "USD" && toAsset.symbol !== "USD") {
+        setFromAsset(toAsset);
+        setFromChainId(toChainId);
+        // Find another token for toAsset
+        const tokenToReceive = availableAssets.find(a => a.symbol !== "USD" && a.symbol !== toAsset.symbol);
+        if (tokenToReceive) {
+          setToAsset(tokenToReceive);
+          setToChainId(tokenToReceive.chainId || chainId || 1);
+        } else {
+          setToAsset(cashUsdAsset);
+          setToChainId(chainId || 1);
+        }
+      }
+      // If toAsset is USD, find a token to receive
+      else if (toAsset.symbol === "USD" && fromAsset.symbol !== "USD") {
+        const tokenToReceive = availableAssets.find(a => a.symbol !== "USD" && a.symbol !== fromAsset.symbol);
+        if (tokenToReceive) {
+          setToAsset(tokenToReceive);
+          setToChainId(tokenToReceive.chainId || chainId || 1);
+        }
+      }
+      // If both are USD, find tokens for both
+      else if (fromAsset.symbol === "USD" && toAsset.symbol === "USD") {
+        const tokens = availableAssets.filter(a => a.symbol !== "USD");
+        if (tokens.length >= 2) {
+          setFromAsset(tokens[0]);
+          setFromChainId(tokens[0].chainId || chainId || 1);
+          setToAsset(tokens[1]);
+          setToChainId(tokens[1].chainId || chainId || 1);
+        } else if (tokens.length === 1) {
+          setFromAsset(tokens[0]);
+          setFromChainId(tokens[0].chainId || chainId || 1);
+        }
+      }
+    }
+  }, [tradeType, open, step, fromAsset, toAsset, availableAssets, cashUsdAsset, chainId, fromChainId, toChainId]);
 
   const formatBalance = (balance: number | undefined): string => {
     if (!balance) return "0";
@@ -685,7 +808,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         {tradeType === "swap" && fromAsset ? fromAsset.symbol : "USD"}
                       </span>
                     </div>
-                    {toAsset && (
+                    {toAsset && parseFloat(amount) > 0 && (
                       <div className="flex flex-col items-center gap-1 mt-2">
                         <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
                           <ArrowUpDown className="w-4 h-4" />
@@ -693,19 +816,19 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                             {getConversionAmount()} {toAsset.symbol}
                           </span>
                         </div>
-                        {quote.isLoading && (
+                        {quote.isLoading && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
                           <div className="flex items-center gap-1 text-xs text-zinc-500">
                             <Loader2 className="w-3 h-3 animate-spin" />
                             <span>Fetching quote...</span>
                           </div>
                         )}
-                        {quote.error && (
-                          <div className="flex items-center gap-1 text-xs text-red-500">
-                            <AlertCircle className="w-3 h-3" />
-                            <span>{quote.error}</span>
+                        {quote.error && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
+                          <div className="flex items-center gap-1 text-xs text-red-500 max-w-[200px] text-center">
+                            <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{quote.error}</span>
                           </div>
                         )}
-                        {quote.estimatedOutputUSD > 0 && (
+                        {quote.estimatedOutputUSD > 0 && !quote.error && (
                           <div className="text-xs text-zinc-500">
                             ≈ ${quote.estimatedOutputUSD.toFixed(2)}
                           </div>
