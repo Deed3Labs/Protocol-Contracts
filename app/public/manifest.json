@@ -1,7 +1,7 @@
 {
   "name": "CLEAR Credit",
   "short_name": "CLEAR",
-  "description": "A Modern Platform for RWA Tokenization and Portfolio Management",
+  "description": "A Modern Platform for Tokenization, On-Chain Credit and Portfolio Management",
   "start_url": "https://deed3.io",
   "scope": "/",
   "display_override": ["window-controls-overlay", "fullscreen", "standalone"],
