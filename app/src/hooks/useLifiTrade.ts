@@ -35,6 +35,19 @@ export interface TradeExecution {
 }
 
 /**
+ * Returns true when every step that has execution has at least one txHash (approval + main tx both done).
+ * Prevents showing success after only the approval/sign step.
+ */
+function isRouteFullyComplete(route: RouteExtended | null): boolean {
+  if (!route?.steps?.length) return false;
+  return route.steps.every((step: { execution?: { process?: Array<{ txHash?: string }> } }) => {
+    const process = step.execution?.process;
+    if (!process?.length) return true; // step doesn't need execution
+    return process.some((p) => !!p.txHash);
+  });
+}
+
+/**
  * Resolve token address from symbol and chain ID
  */
 const resolveTokenAddress = async (symbol: string, chainId: number): Promise<string> => {
@@ -275,10 +288,14 @@ export function useLifiTrade() {
             });
           });
 
+          const fullyComplete = isRouteFullyComplete(updatedRoute);
+
           setExecution(prev => ({
             ...prev,
             route: updatedRoute,
             transactionHashes: txHashes,
+            // Only mark success when all steps (approval + main tx) have tx hashes
+            ...(fullyComplete ? { isExecuting: false, status: 'success' as const } : {}),
           }));
         },
         acceptExchangeRateUpdateHook: async (update) => {
@@ -292,11 +309,20 @@ export function useLifiTrade() {
         },
       });
 
+      // Only mark success when all steps are complete (approval + main tx); SDK may resolve after first sign
+      const txHashesFromRoute: string[] = [];
+      executedRoute.steps.forEach((step) => {
+        step.execution?.process.forEach((process) => {
+          if (process.txHash) txHashesFromRoute.push(process.txHash);
+        });
+      });
+      const fullyComplete = isRouteFullyComplete(executedRoute);
       setExecution(prev => ({
         ...prev,
-        isExecuting: false,
-        status: 'success',
         route: executedRoute,
+        transactionHashes: txHashesFromRoute,
+        isExecuting: !fullyComplete,
+        status: fullyComplete ? 'success' : prev.status,
       }));
     } catch (error: any) {
       console.error('Failed to execute trade:', error);
