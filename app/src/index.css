@@ -48,6 +48,17 @@
   font-display: swap;
 }
 
+/* Stripe Onramp Container Styles */
+.stripe-onramp-container {
+  /* Constrain Stripe embed to not expand beyond container */
+  contain: layout style;
+}
+
+.stripe-onramp-container > * {
+  /* Ensure Stripe's internal elements respect container bounds */
+  max-width: 100%;
+}
+
 /* AppKit Modal Icon Fixes */
 @layer utilities {
   /* Ensure AppKit modal icons are visible */
