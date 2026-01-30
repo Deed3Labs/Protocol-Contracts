@@ -187,8 +187,12 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             }
           });
 
-          // Mount the onramp
-          session.mount(onrampElementRef.current);
+          // Mount the onramp (element must exist - we keep it in DOM with loading overlay)
+          const mountEl = onrampElementRef.current;
+          if (!mountEl) {
+            throw new Error('Payment form container is not available');
+          }
+          session.mount(mountEl);
           setOnrampSession(session);
         } catch (err) {
           console.error('Error initializing Stripe Onramp:', err);
@@ -297,11 +301,6 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                       ← Back
                     </button>
                   </div>
-                ) : isLoadingSession ? (
-                  <div className="text-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-zinc-400 mx-auto mb-4" />
-                    <p className="text-zinc-500 dark:text-zinc-400">Loading payment form...</p>
-                  </div>
                 ) : error ? (
                   <div className="text-center py-8">
                     <p className="text-red-500 dark:text-red-400 mb-4">{error}</p>
@@ -316,7 +315,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     </button>
                   </div>
                 ) : (
-                  <div>
+                  <div className="relative">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-medium text-zinc-900 dark:text-white">
                         Buy Crypto with Debit Card
@@ -328,7 +327,17 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                         ← Back
                       </button>
                     </div>
+                    {/* Mount container must always be in DOM when card is selected and we have address */}
                     <div ref={onrampElementRef} className="min-h-[500px]" />
+                    {/* Loading overlay on top so container stays mounted for Stripe */}
+                    {isLoadingSession && (
+                      <div className="absolute inset-0 top-12 flex items-center justify-center bg-white dark:bg-[#0e0e0e] min-h-[500px] rounded">
+                        <div className="text-center">
+                          <Loader2 className="w-8 h-8 animate-spin text-zinc-400 mx-auto mb-4" />
+                          <p className="text-zinc-500 dark:text-zinc-400">Loading payment form...</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
