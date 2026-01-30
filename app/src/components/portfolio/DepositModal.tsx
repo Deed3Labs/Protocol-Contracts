@@ -366,7 +366,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                         {/* Mount container must always be in DOM when card is selected and we have address */}
                         <div 
                           ref={onrampElementRef} 
-                          className="stripe-onramp-container w-full h-full min-h-[480px]"
+                          className="stripe-onramp-container w-full h-full min-h-[480px] rounded-none overflow-hidden"
                         />
                         {/* Loading overlay on top so container stays mounted for Stripe */}
                         {isLoadingSession && (
