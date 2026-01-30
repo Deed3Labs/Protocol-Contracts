@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { createStripeOnrampSession } from '@/utils/apiClient';
 
@@ -166,12 +166,32 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             onrampElementRef.current.innerHTML = '';
           }
 
+          // Get current theme from app (dark/light)
+          const currentTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+
           // Create and mount the onramp session
           const session = stripeOnramp.createSession({
             clientSecret: sessionData.client_secret,
             appearance: {
-              theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+              theme: currentTheme,
             },
+          });
+
+          // Listen for theme changes and update Stripe appearance
+          const handleThemeChange = () => {
+            const newTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+            try {
+              session.setAppearance({ theme: newTheme });
+            } catch (err) {
+              console.warn('Failed to update Stripe theme:', err);
+            }
+          };
+
+          window.addEventListener('themechange', handleThemeChange);
+          window.addEventListener('storage', (e) => {
+            if (e.key === 'theme') {
+              handleThemeChange();
+            }
           });
 
           // Listen to session updates
@@ -207,6 +227,10 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
 
     // Cleanup onramp session when component unmounts or option changes
     return () => {
+      // Remove theme change listeners
+      window.removeEventListener('themechange', () => {});
+      window.removeEventListener('storage', () => {});
+      
       if (onrampSession) {
         try {
           // Stripe onramp sessions don't have a cleanup method, but unmounting is handled by clearing the container
@@ -270,78 +294,94 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 10 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="relative w-full max-w-lg bg-white dark:bg-[#0e0e0e] rounded shadow-2xl border-[0.5px] border-zinc-200 dark:border-zinc-800 overflow-hidden"
+            className="relative w-full max-w-lg bg-white dark:bg-[#0e0e0e] rounded shadow-2xl border-[0.5px] border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[90vh]"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 pb-2">
-              <div>
-                <h2 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight">Deposit</h2>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Select a method to fund your account</p>
+            {/* Main Header - only show when not on card screen */}
+            {selectedOption !== 'card' && (
+              <div className="flex items-center justify-between p-6 pb-2">
+                <div>
+                  <h2 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight">Deposit</h2>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Select a method to fund your account</p>
+                </div>
+                <button 
+                  onClick={onClose}
+                  className="p-2 -mr-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button 
-                onClick={onClose}
-                className="p-2 -mr-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            )}
 
-            {/* Content */}
-            {selectedOption === 'card' ? (
-              <div className="p-6">
-                {!address ? (
-                  <div className="text-center py-8">
-                    <p className="text-zinc-500 dark:text-zinc-400 mb-4">
-                      Please connect your wallet to use debit card deposits
-                    </p>
-                    <button
-                      onClick={() => setSelectedOption(null)}
-                      className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                    >
-                      ← Back
-                    </button>
-                  </div>
-                ) : error ? (
-                  <div className="text-center py-8">
-                    <p className="text-red-500 dark:text-red-400 mb-4">{error}</p>
-                    <button
-                      onClick={() => {
-                        setSelectedOption(null);
-                        setError(null);
-                      }}
-                      className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                    >
-                      ← Back
-                    </button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-medium text-zinc-900 dark:text-white">
-                        Buy Crypto with Debit Card
-                      </h3>
+            {/* Content - flex-1 to take remaining space, overflow-auto for scrolling */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {selectedOption === 'card' ? (
+                <div className="flex flex-col h-full">
+                  {!address ? (
+                    <div className="text-center py-8 px-6">
+                      <p className="text-zinc-500 dark:text-zinc-400 mb-4">
+                        Please connect your wallet to use debit card deposits
+                      </p>
                       <button
                         onClick={() => setSelectedOption(null)}
-                        className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                        className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
                       >
                         ← Back
                       </button>
                     </div>
-                    {/* Mount container must always be in DOM when card is selected and we have address */}
-                    <div ref={onrampElementRef} className="min-h-[500px]" />
-                    {/* Loading overlay on top so container stays mounted for Stripe */}
-                    {isLoadingSession && (
-                      <div className="absolute inset-0 top-12 flex items-center justify-center bg-white dark:bg-[#0e0e0e] min-h-[500px] rounded">
-                        <div className="text-center">
-                          <Loader2 className="w-8 h-8 animate-spin text-zinc-400 mx-auto mb-4" />
-                          <p className="text-zinc-500 dark:text-zinc-400">Loading payment form...</p>
-                        </div>
+                  ) : error ? (
+                    <div className="text-center py-8 px-6">
+                      <p className="text-red-500 dark:text-red-400 mb-4">{error}</p>
+                      <button
+                        onClick={() => {
+                          setSelectedOption(null);
+                          setError(null);
+                        }}
+                        className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                      >
+                        ← Back
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+                      {/* Header with title and back button - fixed at top, replaces main header */}
+                      <div className="flex items-center justify-between p-4 flex-shrink-0">
+                        <button
+                          onClick={() => setSelectedOption(null)}
+                          className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                        >
+                          <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                        </button>
+                        <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
+                          Buy Crypto with Debit Card
+                        </h2>
+                        <button
+                          onClick={onClose}
+                          className="p-2 -mr-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
+                      {/* Stripe embed container - full width, no padding, scrollable so Continue button is visible */}
+                      <div className="flex-1 min-h-0 overflow-auto relative w-full">
+                        {/* Mount container must always be in DOM when card is selected and we have address */}
+                        <div 
+                          ref={onrampElementRef} 
+                          className="stripe-onramp-container w-full h-full min-h-[480px]"
+                        />
+                        {/* Loading overlay on top so container stays mounted for Stripe */}
+                        {isLoadingSession && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-[#0e0e0e] rounded">
+                            <div className="text-center">
+                              <Loader2 className="w-8 h-8 animate-spin text-zinc-400 mx-auto mb-4" />
+                              <p className="text-zinc-500 dark:text-zinc-400">Loading payment form...</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
               <div className="p-4 space-y-2">
                 {depositOptions.map((option) => (
                   <motion.button
@@ -374,15 +414,18 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                   </motion.button>
                 ))}
               </div>
-            )}
-
-            {/* Footer */}
-            <div className="p-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30 text-center">
-              <p className="text-[11px] text-zinc-400 dark:text-zinc-500 max-w-xs mx-auto leading-relaxed">
-                By making a deposit, you agree to our Terms of Service. 
-                Transfers typically settle within 1-3 business days.
-              </p>
+              )}
             </div>
+
+            {/* Footer - hide when on card screen to maximize space for Stripe embed */}
+            {selectedOption !== 'card' && (
+              <div className="p-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30 text-center">
+                <p className="text-[11px] text-zinc-400 dark:text-zinc-500 max-w-xs mx-auto leading-relaxed">
+                  By making a deposit, you agree to our Terms of Service. 
+                  Transfers typically settle within 1-3 business days.
+                </p>
+              </div>
+            )}
           </motion.div>
         </div>
       )}
