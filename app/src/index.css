@@ -48,15 +48,29 @@
   font-display: swap;
 }
 
-/* Stripe Onramp Container Styles */
+/* Stripe Onramp Container Styles - full width, no border, scrollable */
 .stripe-onramp-container {
-  /* Constrain Stripe embed to not expand beyond container */
-  contain: layout style;
+  width: 100%;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 0 !important;
 }
 
-.stripe-onramp-container > * {
-  /* Ensure Stripe's internal elements respect container bounds */
-  max-width: 100%;
+/* Remove border from Stripe's outer wrapper and iframe (not inner inputs) */
+.stripe-onramp-container iframe,
+.stripe-onramp-container [data-stripe],
+.stripe-onramp-container > div {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Let Stripe content fill width */
+.stripe-onramp-container iframe,
+.stripe-onramp-container > div {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100% !important;
 }
 
 /* AppKit Modal Icon Fixes */

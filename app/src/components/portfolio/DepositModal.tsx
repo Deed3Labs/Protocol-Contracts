@@ -342,7 +342,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                       </button>
                     </div>
                   ) : (
-                    <div className="flex flex-col h-full overflow-hidden">
+                    <div className="flex flex-col h-full min-h-0 overflow-hidden">
                       {/* Header with title and back button - fixed at top, replaces main header */}
                       <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
                         <button
@@ -361,17 +361,12 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                           <X className="w-5 h-5" />
                         </button>
                       </div>
-                      {/* Stripe embed container - scrollable, constrained height */}
-                      <div className="flex-1 overflow-auto px-6 py-4 relative">
+                      {/* Stripe embed container - full width, no padding, scrollable so Continue button is visible */}
+                      <div className="flex-1 min-h-0 overflow-auto relative w-full">
                         {/* Mount container must always be in DOM when card is selected and we have address */}
                         <div 
                           ref={onrampElementRef} 
-                          className="stripe-onramp-container"
-                          style={{ 
-                            minHeight: '400px',
-                            maxHeight: '100%',
-                            overflow: 'auto'
-                          }}
+                          className="stripe-onramp-container w-full h-full min-h-[480px]"
                         />
                         {/* Loading overlay on top so container stays mounted for Stripe */}
                         {isLoadingSession && (
@@ -422,13 +417,15 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
               )}
             </div>
 
-            {/* Footer */}
-            <div className="p-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30 text-center">
-              <p className="text-[11px] text-zinc-400 dark:text-zinc-500 max-w-xs mx-auto leading-relaxed">
-                By making a deposit, you agree to our Terms of Service. 
-                Transfers typically settle within 1-3 business days.
-              </p>
-            </div>
+            {/* Footer - hide when on card screen to maximize space for Stripe embed */}
+            {selectedOption !== 'card' && (
+              <div className="p-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30 text-center">
+                <p className="text-[11px] text-zinc-400 dark:text-zinc-500 max-w-xs mx-auto leading-relaxed">
+                  By making a deposit, you agree to our Terms of Service. 
+                  Transfers typically settle within 1-3 business days.
+                </p>
+              </div>
+            )}
           </motion.div>
         </div>
       )}
