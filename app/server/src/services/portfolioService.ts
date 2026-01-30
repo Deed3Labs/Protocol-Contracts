@@ -150,89 +150,106 @@ export async function getTokensByAddress(
   // Wait for rate limit
   await portfolioRateLimiter.waitForRateLimit();
 
-  // Retry up to 3 times with exponential backoff
+  // Retry up to 3 times with exponential backoff (for the first request only)
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      // Track compute units before making the call
-      computeUnitTracker.logApiCall(
-        'alchemy_portfolio_tokens',
-        'getTokensByAddress',
-        { estimatedUnits: 30 }
-      );
+      const allTokens: PortfolioTokenData[] = [];
+      let pageKey: string | undefined;
+      const maxPages = 20; // Safety limit to avoid infinite loops
+      let pageCount = 0;
 
-      const response = await fetch(`${apiUrl}/assets/tokens/by-address`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept-Encoding': 'gzip', // Alchemy best practice: Use gzip compression
-        },
-        body: JSON.stringify({
-          addresses: limitedRequests.map(req => ({
-            address: req.address,
-            networks: req.chainIds
-              .map(chainId => getAlchemyNetworkName(chainId))
-              .filter((name): name is string => name !== null),
-          })),
-          withMetadata: options.withMetadata ?? true,
-          withPrices: options.withPrices ?? true,
-          includeNativeTokens: options.includeNativeTokens ?? true,
-          includeErc20Tokens: options.includeErc20Tokens ?? true,
-        }),
-      });
+      // Paginate through all token pages (Alchemy returns pageKey when more results exist)
+      do {
+        if (pageCount >= maxPages) break;
+        pageCount += 1;
+        computeUnitTracker.logApiCall(
+          'alchemy_portfolio_tokens',
+          'getTokensByAddress',
+          { estimatedUnits: 30 }
+        );
 
-      // Handle rate limit errors
-      if (response.status === 429 || response.status === 503) {
-        const retryAfter = response.headers.get('Retry-After');
-        const waitTime = retryAfter 
-          ? parseInt(retryAfter, 10) * 1000 
-          : Math.pow(2, attempt) * 2000; // Exponential backoff: 2s, 4s, 8s
-        
-        if (attempt < 2) {
-          console.warn(`[Portfolio API] Rate limited, retrying in ${waitTime}ms...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          continue;
-        }
-        return new Map();
-      }
+        const response = await fetch(`${apiUrl}/assets/tokens/by-address`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept-Encoding': 'gzip', // Alchemy best practice: Use gzip compression
+          },
+          body: JSON.stringify({
+            addresses: limitedRequests.map(req => ({
+              address: req.address,
+              networks: req.chainIds
+                .map(chainId => getAlchemyNetworkName(chainId))
+                .filter((name): name is string => name !== null),
+            })),
+            withMetadata: options.withMetadata ?? true,
+            withPrices: options.withPrices ?? true,
+            includeNativeTokens: options.includeNativeTokens ?? true,
+            includeErc20Tokens: options.includeErc20Tokens ?? true,
+            ...(pageKey !== undefined && { pageKey }),
+          }),
+        });
 
-      if (!response.ok) {
-        if (attempt === 2) {
-          console.error(`[Portfolio API] Error: ${response.statusText}`);
-        }
-        return new Map();
-      }
-
-      const data = await response.json() as {
-        data?: {
-          tokens?: PortfolioTokenData[];
-          pageKey?: string;
-        };
-        error?: {
-          message?: string;
-        };
-      };
-
-      if (data.error) {
-        const errorMessage = (data.error.message || '').toLowerCase();
-        if (errorMessage.includes('too many requests') || errorMessage.includes('rate limit')) {
-          const waitTime = Math.pow(2, attempt) * 2000;
+        // Handle rate limit errors
+        if (response.status === 429 || response.status === 503) {
+          const retryAfter = response.headers.get('Retry-After');
+          const waitTime = retryAfter 
+            ? parseInt(retryAfter, 10) * 1000 
+            : Math.pow(2, attempt) * 2000; // Exponential backoff: 2s, 4s, 8s
+          
           if (attempt < 2) {
             console.warn(`[Portfolio API] Rate limited, retrying in ${waitTime}ms...`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
             continue;
           }
+          return new Map();
         }
-        if (attempt === 2) {
-          console.error(`[Portfolio API] Error:`, data.error);
+
+        if (!response.ok) {
+          if (attempt === 2) {
+            console.error(`[Portfolio API] Error: ${response.statusText}`);
+          }
+          return new Map();
         }
-        return new Map();
-      }
+
+        const data = await response.json() as {
+          data?: {
+            tokens?: PortfolioTokenData[];
+            pageKey?: string;
+          };
+          error?: {
+            message?: string;
+          };
+        };
+
+        if (data.error) {
+          const errorMessage = (data.error.message || '').toLowerCase();
+          if (errorMessage.includes('too many requests') || errorMessage.includes('rate limit')) {
+            const waitTime = Math.pow(2, attempt) * 2000;
+            if (attempt < 2) {
+              console.warn(`[Portfolio API] Rate limited, retrying in ${waitTime}ms...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+              continue;
+            }
+          }
+          if (attempt === 2) {
+            console.error(`[Portfolio API] Error:`, data.error);
+          }
+          return new Map();
+        }
+
+        const pageTokens = data.data?.tokens || [];
+        allTokens.push(...pageTokens);
+        pageKey = data.data?.pageKey;
+
+        if (pageKey) {
+          await portfolioRateLimiter.waitForRateLimit();
+        }
+      } while (pageKey);
 
       // Organize results by address and network
       const resultMap = new Map<string, Map<number, PortfolioTokenData[]>>();
-      const tokens = data.data?.tokens || [];
 
-      for (const token of tokens) {
+      for (const token of allTokens) {
         const addressLower = token.address.toLowerCase();
         const networkName = token.network;
         
