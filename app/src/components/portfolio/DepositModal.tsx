@@ -344,7 +344,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                   ) : (
                     <div className="flex flex-col h-full min-h-0 overflow-hidden">
                       {/* Header with title and back button - fixed at top, replaces main header */}
-                      <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
+                      <div className="flex items-center justify-between p-4 flex-shrink-0">
                         <button
                           onClick={() => setSelectedOption(null)}
                           className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"

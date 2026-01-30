@@ -48,21 +48,23 @@
   font-display: swap;
 }
 
-/* Stripe Onramp Container Styles - full width, no border, scrollable */
+/* Stripe Onramp Container Styles - full width, no border, no rounded edges */
 .stripe-onramp-container {
   width: 100%;
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
   padding: 0 !important;
+  border-radius: 0 !important;
 }
 
-/* Remove border from Stripe's outer wrapper and iframe (not inner inputs) */
+/* Remove border and rounded edges from Stripe's outer wrapper and iframe */
 .stripe-onramp-container iframe,
 .stripe-onramp-container [data-stripe],
 .stripe-onramp-container > div {
   border: none !important;
   box-shadow: none !important;
+  border-radius: 0 !important;
 }
 
 /* Let Stripe content fill width */
