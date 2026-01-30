@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { createStripeOnrampSession } from '@/utils/apiClient';
 
@@ -296,19 +296,21 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
             className="relative w-full max-w-lg bg-white dark:bg-[#0e0e0e] rounded shadow-2xl border-[0.5px] border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[90vh]"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 pb-2">
-              <div>
-                <h2 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight">Deposit</h2>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Select a method to fund your account</p>
+            {/* Main Header - only show when not on card screen */}
+            {selectedOption !== 'card' && (
+              <div className="flex items-center justify-between p-6 pb-2">
+                <div>
+                  <h2 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight">Deposit</h2>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Select a method to fund your account</p>
+                </div>
+                <button 
+                  onClick={onClose}
+                  className="p-2 -mr-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button 
-                onClick={onClose}
-                className="p-2 -mr-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            )}
 
             {/* Content - flex-1 to take remaining space, overflow-auto for scrolling */}
             <div className="flex-1 overflow-hidden flex flex-col">
@@ -341,16 +343,22 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     </div>
                   ) : (
                     <div className="flex flex-col h-full overflow-hidden">
-                      {/* Header with title and back button - fixed at top */}
-                      <div className="flex items-center justify-between px-6 pt-6 pb-4 flex-shrink-0 border-b border-zinc-100 dark:border-zinc-800">
-                        <h3 className="text-lg font-medium text-zinc-900 dark:text-white">
-                          Buy Crypto with Debit Card
-                        </h3>
+                      {/* Header with title and back button - fixed at top, replaces main header */}
+                      <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
                         <button
                           onClick={() => setSelectedOption(null)}
-                          className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                          className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
                         >
-                          ← Back
+                          <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                        </button>
+                        <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
+                          Buy Crypto with Debit Card
+                        </h2>
+                        <button
+                          onClick={onClose}
+                          className="p-2 -mr-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                        >
+                          <X className="w-5 h-5" />
                         </button>
                       </div>
                       {/* Stripe embed container - scrollable, constrained height */}
