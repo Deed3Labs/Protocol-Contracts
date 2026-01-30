@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, MoreHorizontal, ChevronRight, ArrowUpDown, Check, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, ChevronRight, ArrowUpDown, Check, Loader2, AlertCircle, X, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePortfolio } from "@/context/PortfolioContext";
@@ -9,7 +9,7 @@ import { useLifiTrade } from "@/hooks/useLifiTrade";
 import { SUPPORTED_NETWORKS } from "@/config/networks";
 
 type TradeType = "buy" | "sell" | "swap";
-type TradeStep = "input" | "review" | "success";
+type TradeStep = "input" | "review" | "pending" | "success" | "failed";
 type TradeScreen = "trade" | "selectAsset" | "selectWallet";
 type AssetPickTarget = "buyTo" | "sellFrom" | "swapFrom" | "swapTo";
 type WalletPickTarget = "pay" | "receive";
@@ -359,20 +359,24 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       return;
     }
 
+    // Immediately show pending screen so when user returns from wallet (e.g. MetaMask) they see clear state
+    setStep("pending");
+
     try {
       await executeTrade(quote.route);
-      
-      // Wait for execution to complete
-      if (execution.status === 'success') {
-        setStep("success");
-      } else if (execution.status === 'failed') {
-        // Show error but don't change step
-        console.error('Trade execution failed:', execution.error);
-      }
+      // Step is synced to success/failed via useEffect below (execution.status)
     } catch (error) {
       console.error('Failed to execute trade:', error);
+      setStep("failed");
     }
   };
+
+  // Sync modal step with execution status (handles async state updates from useLifiTrade)
+  useEffect(() => {
+    if (step !== "pending") return;
+    if (execution.status === "success") setStep("success");
+    if (execution.status === "failed") setStep("failed");
+  }, [step, execution.status]);
 
   // Fetch quote when amount or assets change (only on input step)
   useEffect(() => {
@@ -1507,6 +1511,88 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                       </a>
                       {" "}and acknowledge that cryptocurrency transactions are irreversible.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {step === "pending" && (
+                <div className="flex flex-col h-full items-center justify-center p-6 text-center">
+                  <div className="w-20 h-20 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-6">
+                    {execution.transactionHashes.length === 0 ? (
+                      <Wallet className="w-10 h-10 text-blue-600 dark:text-blue-400" />
+                    ) : (
+                      <Loader2 className="w-10 h-10 text-blue-600 dark:text-blue-400 animate-spin" />
+                    )}
+                  </div>
+                  <h2 className="text-xl font-semibold mb-2 text-black dark:text-white">
+                    {execution.transactionHashes.length === 0
+                      ? "Confirm in your wallet"
+                      : "Processing your trade"}
+                  </h2>
+                  <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-6 max-w-[280px]">
+                    {execution.transactionHashes.length === 0 ? (
+                      <>
+                        You may have been switched to MetaMask or your wallet app. Approve the transaction there, then return here.
+                      </>
+                    ) : (
+                      <>
+                        Waiting for confirmations… Step {execution.transactionHashes.length} submitted.
+                      </>
+                    )}
+                  </p>
+                  {execution.transactionHashes.length > 0 && (
+                    <div className="w-full space-y-2 mb-6">
+                      {execution.transactionHashes.map((txHash, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-center gap-2 text-xs text-zinc-500 dark:text-zinc-400"
+                        >
+                          <span>Step {idx + 1}:</span>
+                          <code className="truncate max-w-[180px] font-mono">
+                            {txHash.slice(0, 10)}…{txHash.slice(-8)}
+                          </code>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500 max-w-[260px]">
+                    You can reject the transaction in your wallet to cancel.
+                  </p>
+                </div>
+              )}
+
+              {step === "failed" && (
+                <div className="flex flex-col h-full items-center justify-center p-6 text-center">
+                  <div className="w-20 h-20 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-6">
+                    <X className="w-10 h-10 text-red-600 dark:text-red-400" />
+                  </div>
+                  <h2 className="text-xl font-semibold mb-2 text-black dark:text-white">
+                    {execution.error && /reject|denied|cancel|user/i.test(execution.error)
+                      ? "Transaction canceled"
+                      : "Transaction failed"}
+                  </h2>
+                  {execution.error && (
+                    <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-6 max-w-[280px]">
+                      {execution.error}
+                    </p>
+                  )}
+                  <div className="flex flex-col gap-3 w-full max-w-[280px]">
+                    <Button
+                      onClick={() => {
+                        resetExecution();
+                        setStep("review");
+                      }}
+                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                    >
+                      Try again
+                    </Button>
+                    <Button
+                      onClick={handleClose}
+                      variant="secondary"
+                      className="w-full h-14 rounded-full text-base font-semibold bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800"
+                    >
+                      Close
+                    </Button>
                   </div>
                 </div>
               )}

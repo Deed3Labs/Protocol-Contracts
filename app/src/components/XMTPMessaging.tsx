@@ -143,15 +143,20 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, selectedConversation]);
 
-  // Connect to XMTP when modal opens and not already connected
+  // Auto-connect only once per modal open to avoid infinite loop (handleConnect identity changes every render)
+  const autoConnectAttemptedRef = useRef(false);
   useEffect(() => {
-    if (isOpen && !isConnected && !isConnecting) {
-      console.log('XMTP: Modal opened, connecting to XMTP...');
-      handleConnect().catch((err) => {
-        console.error('XMTP: Failed to connect when modal opened:', err);
-      });
+    if (!isOpen) {
+      autoConnectAttemptedRef.current = false;
+      return;
     }
-  }, [isOpen, isConnected, isConnecting, handleConnect]);
+    if (isConnected || isConnecting || autoConnectAttemptedRef.current) return;
+    autoConnectAttemptedRef.current = true;
+    console.log('XMTP: Modal opened, attempting XMTP connect once...');
+    handleConnect().catch((err) => {
+      console.error('XMTP: Failed to connect when modal opened:', err);
+    });
+  }, [isOpen, isConnected, isConnecting]);
 
   // Auto-create conversation with owner if provided
   const [autoCreationAttempted, setAutoCreationAttempted] = useState(false);
