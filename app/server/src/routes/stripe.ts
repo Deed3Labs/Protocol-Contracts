@@ -118,9 +118,8 @@ router.post('/create-onramp-session', async (req: Request, res: Response) => {
       });
     }
 
-    // Branding: rectangular border (no rounded corners) - same as Checkout
-    // https://docs.stripe.com/payments/checkout/customization/appearance#branding
-    formData.append('branding_settings[border_style]', 'rectangular');
+    // Note: branding_settings (e.g. border_style=rectangular) may not be supported
+    // on crypto/onramp_sessions - omit to avoid API errors.
 
     // Make request to Stripe API
     const response = await fetch('https://api.stripe.com/v1/crypto/onramp_sessions', {
