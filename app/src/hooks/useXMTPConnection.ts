@@ -6,7 +6,7 @@ import type { Signer } from 'ethers';
 
 export const useXMTPConnection = () => {
   const { connect, isConnected, disconnect } = useXMTP();
-  const { address, isConnected: isWalletConnected } = useAccount();
+  const { address, isConnected: isWalletConnected, connector } = useAccount();
   const { address: appkitAddress, isConnected: isAppKitConnected, embeddedWalletInfo } = useAppKitAccount();
   const { walletProvider } = useAppKitProvider("eip155");
   const [isConnecting, setIsConnecting] = useState(false);
@@ -57,7 +57,9 @@ export const useXMTPConnection = () => {
       isActiveWalletConnected,
       isConnected,
       isConnecting,
-      embeddedWalletInfo: !!embeddedWalletInfo
+      embeddedWalletInfo: !!embeddedWalletInfo,
+      hasWalletProvider: !!walletProvider,
+      hasConnector: !!connector
     });
     
     if (!activeAddress || !isActiveWalletConnected || isConnected || isConnecting) {
@@ -72,39 +74,43 @@ export const useXMTPConnection = () => {
     setIsConnecting(true);
     try {
       let signer: Signer;
+      const { BrowserProvider } = await import('ethers');
 
-      if (embeddedWalletInfo) {
-        // For AppKit embedded wallets (smart accounts)
-        console.log('XMTP Connection Hook: Using AppKit embedded wallet');
-        
-        if (!walletProvider) {
-          throw new Error('No AppKit wallet provider available');
+      // 1. Prefer AppKit walletProvider when available (covers embedded wallets AND WalletConnect on mobile Safari).
+      // On mobile Safari there is no window.ethereum; WalletConnect sessions use walletProvider from AppKit.
+      if (walletProvider) {
+        const hasGetSigner = typeof (walletProvider as { getSigner?: () => unknown }).getSigner === 'function';
+        if (hasGetSigner) {
+          console.log('XMTP Connection Hook: Using AppKit wallet provider (getSigner)');
+          signer = await (walletProvider as { getSigner(): Promise<Signer> }).getSigner();
+        } else {
+          console.log('XMTP Connection Hook: Using AppKit wallet provider (BrowserProvider)');
+          const provider = new BrowserProvider(walletProvider as import('ethers').Eip1193Provider);
+          signer = await provider.getSigner();
         }
-
-        // Use AppKit's wallet provider to create a signer
-        signer = await (walletProvider as { getSigner(): Promise<Signer> }).getSigner();
         console.log('XMTP Connection Hook: AppKit signer created');
-      } else {
-        // For regular wallets (MetaMask, etc.)
-        console.log('XMTP Connection Hook: Using regular wallet');
-        
-        if (!(window as { ethereum?: unknown }).ethereum) {
-          throw new Error('No Ethereum provider available');
-        }
-
-        // Add a small delay to ensure the provider is properly initialized on mobile
+      } else if (typeof window !== 'undefined' && (window as { ethereum?: unknown }).ethereum) {
+        // 2. Browser extension (MetaMask, etc.) when not using WalletConnect
+        console.log('XMTP Connection Hook: Using window.ethereum');
         await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Double-check that ethereum is still available after the delay
         if (!(window as { ethereum?: unknown }).ethereum) {
           throw new Error('Ethereum provider not available after initialization delay');
         }
-
-        // Create ethers provider and signer
-        const { BrowserProvider } = await import('ethers');
-        const provider = new BrowserProvider((window as { ethereum: unknown }).ethereum as any);
+        const provider = new BrowserProvider((window as { ethereum: unknown }).ethereum as import('ethers').Eip1193Provider);
         signer = await provider.getSigner();
         console.log('XMTP Connection Hook: Regular wallet signer created');
+      } else if (connector) {
+        // 3. Fallback: wagmi connector (e.g. after mobile deeplink return when walletProvider may not be hydrated yet)
+        console.log('XMTP Connection Hook: Using wagmi connector provider');
+        const provider = await connector.getProvider();
+        if (!provider) {
+          throw new Error('No provider available from wallet connector. Try reconnecting or opening the app in your wallet browser.');
+        }
+        const ethersProvider = new BrowserProvider(provider as import('ethers').Eip1193Provider);
+        signer = await ethersProvider.getSigner();
+        console.log('XMTP Connection Hook: Connector signer created');
+      } else {
+        throw new Error('No Ethereum provider available. On mobile Safari, connect your wallet first and ensure you return to this tab after approving.');
       }
       
       console.log('XMTP Connection Hook: Calling XMTP connect...');
