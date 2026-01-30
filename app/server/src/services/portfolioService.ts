@@ -159,6 +159,7 @@ export async function getTokensByAddress(
       let pageCount = 0;
 
       // Paginate through all token pages (Alchemy returns pageKey when more results exist)
+      // Note: each page is a separate API call; compute units are logged per request (~30/page)
       do {
         if (pageCount >= maxPages) break;
         pageCount += 1;

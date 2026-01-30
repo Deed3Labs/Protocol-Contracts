@@ -1,6 +1,15 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight } from 'lucide-react';
+import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { useAppKitAccount } from '@reown/appkit/react';
+import { createStripeOnrampSession } from '@/utils/apiClient';
+
+// Type declarations for Stripe Onramp (loaded via script tags)
+declare global {
+  interface Window {
+    StripeOnramp?: (publishableKey: string) => any;
+  }
+}
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -9,6 +18,12 @@ interface DepositModalProps {
 
 const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
+  const onrampElementRef = useRef<HTMLDivElement>(null);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [onrampSession, setOnrampSession] = useState<any>(null);
+  const { address } = useAppKitAccount();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -22,12 +37,184 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
+      // Reset state when modal closes
+      setSelectedOption(null);
+      setError(null);
+      setOnrampSession(null);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.body.style.overflow = 'unset';
     };
   }, [isOpen, onClose]);
+
+  // Load Stripe scripts dynamically
+  const loadStripeScripts = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      // Check if scripts are already loaded
+      if (window.StripeOnramp) {
+        resolve();
+        return;
+      }
+
+      // Check if scripts are already being loaded
+      if (document.querySelector('script[src*="stripe.js"]')) {
+        // Wait for StripeOnramp to be available
+        const checkInterval = setInterval(() => {
+          if (window.StripeOnramp) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 100);
+        
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          if (!window.StripeOnramp) {
+            reject(new Error('Stripe scripts failed to load'));
+          }
+        }, 10000);
+        return;
+      }
+
+      // Load Stripe.js first
+      const stripeScript = document.createElement('script');
+      stripeScript.src = 'https://js.stripe.com/clover/stripe.js';
+      stripeScript.async = true;
+      
+      stripeScript.onload = () => {
+        // Then load crypto onramp script
+        const cryptoScript = document.createElement('script');
+        cryptoScript.src = 'https://crypto-js.stripe.com/crypto-onramp-outer.js';
+        cryptoScript.async = true;
+        
+        cryptoScript.onload = () => {
+          // Wait a bit for StripeOnramp to be available
+          const checkInterval = setInterval(() => {
+            if (window.StripeOnramp) {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 100);
+          
+          // Timeout after 10 seconds
+          setTimeout(() => {
+            clearInterval(checkInterval);
+            if (!window.StripeOnramp) {
+              reject(new Error('StripeOnramp not available after loading scripts'));
+            }
+          }, 10000);
+        };
+        
+        cryptoScript.onerror = () => {
+          reject(new Error('Failed to load Stripe crypto onramp script'));
+        };
+        
+        document.head.appendChild(cryptoScript);
+      };
+      
+      stripeScript.onerror = () => {
+        reject(new Error('Failed to load Stripe script'));
+      };
+      
+      document.head.appendChild(stripeScript);
+    });
+  };
+
+  // Initialize Stripe Onramp when debit card is selected
+  useEffect(() => {
+    if (selectedOption === 'card' && address && onrampElementRef.current) {
+      const initializeOnramp = async () => {
+        try {
+          setIsLoadingSession(true);
+          setError(null);
+
+          // Get Stripe publishable key from environment
+          const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+          if (!stripePublishableKey) {
+            throw new Error('Stripe publishable key is not configured');
+          }
+
+          // Load Stripe scripts
+          await loadStripeScripts();
+
+          if (!window.StripeOnramp) {
+            throw new Error('Stripe Onramp is not available');
+          }
+
+          // Create onramp session
+          const sessionData = await createStripeOnrampSession({
+            wallet_addresses: {
+              ethereum: address,
+            },
+            destination_networks: ['ethereum', 'solana', 'polygon'],
+            destination_currencies: ['eth', 'usdc', 'sol'],
+          });
+
+          if (!sessionData) {
+            throw new Error('Failed to create onramp session');
+          }
+
+          // Initialize Stripe Onramp
+          const stripeOnramp = window.StripeOnramp(stripePublishableKey);
+          if (!stripeOnramp) {
+            throw new Error('Failed to initialize Stripe Onramp');
+          }
+
+          // Clear the container
+          if (onrampElementRef.current) {
+            onrampElementRef.current.innerHTML = '';
+          }
+
+          // Create and mount the onramp session
+          const session = stripeOnramp.createSession({
+            clientSecret: sessionData.client_secret,
+            appearance: {
+              theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+            },
+          });
+
+          // Listen to session updates
+          session.addEventListener('onramp_session_updated', (event: any) => {
+            const sessionStatus = event.payload.session.status;
+            console.log('Onramp session updated:', sessionStatus);
+            
+            if (sessionStatus === 'fulfillment_complete' || sessionStatus === 'rejected') {
+              // Close modal after completion or rejection
+              setTimeout(() => {
+                onClose();
+              }, 2000);
+            }
+          });
+
+          // Mount the onramp
+          session.mount(onrampElementRef.current);
+          setOnrampSession(session);
+        } catch (err) {
+          console.error('Error initializing Stripe Onramp:', err);
+          setError(err instanceof Error ? err.message : 'Failed to initialize payment');
+        } finally {
+          setIsLoadingSession(false);
+        }
+      };
+
+      initializeOnramp();
+    }
+
+    // Cleanup onramp session when component unmounts or option changes
+    return () => {
+      if (onrampSession) {
+        try {
+          // Stripe onramp sessions don't have a cleanup method, but unmounting is handled by clearing the container
+          if (onrampElementRef.current) {
+            onrampElementRef.current.innerHTML = '';
+          }
+        } catch (err) {
+          console.error('Error cleaning up onramp session:', err);
+        }
+      }
+    };
+  }, [selectedOption, address, onClose]);
 
   const depositOptions = [
     {
@@ -96,30 +283,89 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             </div>
 
             {/* Content */}
-            <div className="p-4 space-y-2">
-              {depositOptions.map((option) => (
-                <motion.button
-                  key={option.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: option.delay, duration: 0.3 }}
-                  className="w-full flex items-center gap-4 p-4 rounded-sm hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-all group text-left border border-transparent hover:border-zinc-200 dark:hover:border-zinc-800"
-                >
-                  <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center shrink-0 group-hover:bg-white dark:group-hover:bg-black group-hover:shadow-sm transition-all border border-transparent group-hover:border-zinc-200 dark:group-hover:border-zinc-800">
-                    <option.icon className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-medium text-zinc-900 dark:text-zinc-100 text-base">
-                      {option.title}
-                    </h3>
-                    <p className="text-sm text-zinc-500 dark:text-zinc-500 mt-0.5 group-hover:text-zinc-600 dark:group-hover:text-zinc-400 transition-colors">
-                      {option.description}
+            {selectedOption === 'card' ? (
+              <div className="p-6">
+                {!address ? (
+                  <div className="text-center py-8">
+                    <p className="text-zinc-500 dark:text-zinc-400 mb-4">
+                      Please connect your wallet to use debit card deposits
                     </p>
+                    <button
+                      onClick={() => setSelectedOption(null)}
+                      className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                    >
+                      ← Back
+                    </button>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-zinc-300 dark:text-zinc-700 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors" />
-                </motion.button>
-              ))}
-            </div>
+                ) : isLoadingSession ? (
+                  <div className="text-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-zinc-400 mx-auto mb-4" />
+                    <p className="text-zinc-500 dark:text-zinc-400">Loading payment form...</p>
+                  </div>
+                ) : error ? (
+                  <div className="text-center py-8">
+                    <p className="text-red-500 dark:text-red-400 mb-4">{error}</p>
+                    <button
+                      onClick={() => {
+                        setSelectedOption(null);
+                        setError(null);
+                      }}
+                      className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                    >
+                      ← Back
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-medium text-zinc-900 dark:text-white">
+                        Buy Crypto with Debit Card
+                      </h3>
+                      <button
+                        onClick={() => setSelectedOption(null)}
+                        className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                      >
+                        ← Back
+                      </button>
+                    </div>
+                    <div ref={onrampElementRef} className="min-h-[500px]" />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-4 space-y-2">
+                {depositOptions.map((option) => (
+                  <motion.button
+                    key={option.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: option.delay, duration: 0.3 }}
+                    onClick={() => {
+                      if (option.id === 'card') {
+                        setSelectedOption('card');
+                      } else {
+                        // Handle other options (bank, wire, crypto) here
+                        console.log('Selected option:', option.id);
+                      }
+                    }}
+                    className="w-full flex items-center gap-4 p-4 rounded-sm hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-all group text-left border border-transparent hover:border-zinc-200 dark:hover:border-zinc-800"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center shrink-0 group-hover:bg-white dark:group-hover:bg-black group-hover:shadow-sm transition-all border border-transparent group-hover:border-zinc-200 dark:group-hover:border-zinc-800">
+                      <option.icon className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-zinc-900 dark:text-zinc-100 text-base">
+                        {option.title}
+                      </h3>
+                      <p className="text-sm text-zinc-500 dark:text-zinc-500 mt-0.5 group-hover:text-zinc-600 dark:group-hover:text-zinc-400 transition-colors">
+                        {option.description}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-zinc-300 dark:text-zinc-700 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors" />
+                  </motion.button>
+                ))}
+              </div>
+            )}
 
             {/* Footer */}
             <div className="p-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30 text-center">

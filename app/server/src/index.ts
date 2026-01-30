@@ -10,6 +10,7 @@ import balancesRouter from './routes/balances.js';
 import tokenBalancesRouter from './routes/tokenBalances.js';
 import nftsRouter from './routes/nfts.js';
 import transactionsRouter from './routes/transactions.js';
+import stripeRouter from './routes/stripe.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
@@ -139,6 +140,7 @@ async function startServer() {
     app.use('/api/token-balances', tokenBalancesRouter); // Uses same service as balances (consolidated)
     app.use('/api/nfts', nftsRouter);
     app.use('/api/transactions', transactionsRouter);
+    app.use('/api/stripe', stripeRouter);
     
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');
@@ -146,6 +148,7 @@ async function startServer() {
     console.log('  - /api/token-balances (ERC20 token balances - uses same service)');
     console.log('  - /api/nfts');
     console.log('  - /api/transactions');
+    console.log('  - /api/stripe');
 
     // 404 handler (must be after all routes)
     app.use((req: express.Request, res: express.Response) => {
