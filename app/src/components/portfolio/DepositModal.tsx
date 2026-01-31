@@ -1,13 +1,20 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
-import { createStripeOnrampSession } from '@/utils/apiClient';
+import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken } from '@/utils/apiClient';
 
 // Type declarations for Stripe Onramp (loaded via script tags)
 declare global {
   interface Window {
     StripeOnramp?: (publishableKey: string) => any;
+    Plaid?: {
+      create: (config: {
+        token: string;
+        onSuccess: (public_token: string) => void;
+        onExit?: (err: unknown, metadata: unknown) => void;
+      }) => { open: () => void };
+    };
   }
 }
 
@@ -23,6 +30,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [onrampSession, setOnrampSession] = useState<any>(null);
+  const [isLoadingLinkToken, setIsLoadingLinkToken] = useState(false);
+  const [bankError, setBankError] = useState<string | null>(null);
   const { address } = useAppKitAccount();
 
   useEffect(() => {
@@ -41,6 +50,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
       setSelectedOption(null);
       setError(null);
       setOnrampSession(null);
+      setBankError(null);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
@@ -244,6 +254,82 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     };
   }, [selectedOption, address, onClose]);
 
+  const loadPlaidScript = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (window.Plaid) {
+        resolve();
+        return;
+      }
+      if (document.querySelector('script[src*="plaid.com/link"]')) {
+        const check = setInterval(() => {
+          if (window.Plaid) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 100);
+        setTimeout(() => {
+          clearInterval(check);
+          if (!window.Plaid) reject(new Error('Plaid script failed to load'));
+        }, 10000);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+      script.async = true;
+      script.onload = () => {
+        const check = setInterval(() => {
+          if (window.Plaid) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 100);
+        setTimeout(() => {
+          clearInterval(check);
+          if (!window.Plaid) reject(new Error('Plaid not available'));
+        }, 5000);
+      };
+      script.onerror = () => reject(new Error('Failed to load Plaid script'));
+      document.head.appendChild(script);
+    });
+  };
+
+  const openPlaidLink = useCallback(async () => {
+    if (!address) {
+      setBankError('Please connect your wallet first');
+      return;
+    }
+    setIsLoadingLinkToken(true);
+    setBankError(null);
+    try {
+      const linkTokenRes = await getPlaidLinkToken(address);
+      if (!linkTokenRes?.link_token) {
+        throw new Error('Could not get link token. Plaid may not be configured.');
+      }
+      await loadPlaidScript();
+      if (!window.Plaid) throw new Error('Plaid Link is not available');
+      const handler = window.Plaid.create({
+        token: linkTokenRes.link_token,
+        onSuccess: async (public_token: string) => {
+          const exchanged = await exchangePlaidToken(address, public_token);
+          if (exchanged?.success) {
+            setSelectedOption(null);
+            onClose();
+          } else {
+            setBankError('Failed to save connection');
+          }
+        },
+        onExit: (err) => {
+          if (err) setBankError(err instanceof Error ? err.message : 'Link closed');
+        },
+      });
+      handler.open();
+    } catch (e) {
+      setBankError(e instanceof Error ? e.message : 'Failed to open Plaid Link');
+    } finally {
+      setIsLoadingLinkToken(false);
+    }
+  }, [address, onClose]);
+
   const depositOptions = [
     {
       id: 'bank',
@@ -296,8 +382,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
             className="relative w-full max-w-lg bg-white dark:bg-[#0e0e0e] rounded shadow-2xl border-[0.5px] border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[90vh]"
           >
-            {/* Main Header - only show when not on card screen */}
-            {selectedOption !== 'card' && (
+            {/* Main Header - only show when not on card or bank screen */}
+            {selectedOption !== 'card' && selectedOption !== 'bank' && (
               <div className="flex items-center justify-between p-6 pb-2">
                 <div>
                   <h2 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight">Deposit</h2>
@@ -314,7 +400,69 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
 
             {/* Content - flex-1 to take remaining space, overflow-auto for scrolling */}
             <div className="flex-1 overflow-hidden flex flex-col">
-              {selectedOption === 'card' ? (
+              {selectedOption === 'bank' ? (
+                <div className="flex flex-col p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <button
+                      onClick={() => {
+                        setSelectedOption(null);
+                        setBankError(null);
+                      }}
+                      className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                    </button>
+                    <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Link Bank Account</h2>
+                    <div className="w-9" />
+                  </div>
+                  {!address ? (
+                    <div className="text-center py-6">
+                      <p className="text-zinc-500 dark:text-zinc-400 mb-4">
+                        Please connect your wallet to link a bank account
+                      </p>
+                      <button
+                        onClick={() => setSelectedOption(null)}
+                        className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                      >
+                        ← Back
+                      </button>
+                    </div>
+                  ) : bankError ? (
+                    <div className="text-center py-6">
+                      <p className="text-red-500 dark:text-red-400 mb-4">{bankError}</p>
+                      <button
+                        onClick={() => {
+                          setBankError(null);
+                          openPlaidLink();
+                        }}
+                        className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 underline"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Connect your bank via Plaid to see your balance alongside your crypto in the app.
+                      </p>
+                      <button
+                        onClick={openPlaidLink}
+                        disabled={isLoadingLinkToken}
+                        className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-black dark:bg-white text-white dark:text-black font-medium hover:opacity-90 disabled:opacity-50"
+                      >
+                        {isLoadingLinkToken ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          'Connect with Plaid'
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : selectedOption === 'card' ? (
                 <div className="flex flex-col h-full">
                   {!address ? (
                     <div className="text-center py-8 px-6">
@@ -392,8 +540,9 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     onClick={() => {
                       if (option.id === 'card') {
                         setSelectedOption('card');
+                      } else if (option.id === 'bank') {
+                        setSelectedOption('bank');
                       } else {
-                        // Handle other options (bank, wire, crypto) here
                         console.log('Selected option:', option.id);
                       }
                     }}
@@ -417,8 +566,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
               )}
             </div>
 
-            {/* Footer - hide when on card screen to maximize space for Stripe embed */}
-            {selectedOption !== 'card' && (
+            {/* Footer - hide when on card or bank screen */}
+            {selectedOption !== 'card' && selectedOption !== 'bank' && (
               <div className="p-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30 text-center">
                 <p className="text-[11px] text-zinc-400 dark:text-zinc-500 max-w-xs mx-auto leading-relaxed">
                   By making a deposit, you agree to our Terms of Service. 
