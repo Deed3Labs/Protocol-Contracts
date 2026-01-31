@@ -355,9 +355,13 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     if (!open) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Escape closes from anywhere
+      // Escape closes from anywhere (or goes back from bank_pending)
       if (event.key === "Escape") {
         event.preventDefault();
+        if (step === "bank_pending") {
+          setStep("input");
+          return;
+        }
         if (screen !== "trade") {
           setScreen("trade");
           setSearchQuery("");
