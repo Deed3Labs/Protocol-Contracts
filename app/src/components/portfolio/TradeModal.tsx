@@ -446,6 +446,9 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
         });
         if (id === "debit") {
           setScreen("selectCardProvider");
+        } else if (id === "wallet") {
+          setAssetPickTarget("buyFrom");
+          setScreen("selectAsset");
         } else {
           setScreen("trade");
         }
@@ -1483,11 +1486,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         {tradeType === "buy" ? (
                           <>
                             <button
-                              onClick={() =>
-                                paymentMethod.id === "wallet"
-                                  ? openAssetPicker("buyFrom")
-                                  : openWalletPicker("pay")
-                              }
+                              onClick={() => openWalletPicker("pay")}
                               className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                             >
                               <div className="flex items-center gap-3">
@@ -1510,12 +1509,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                                   </>
                                 ) : (
                                   <>
-                                    <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xl">
+                                    <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
                                       {paymentMethod.icon}
                                     </div>
                                     <div className="text-left">
                                       <p className="font-medium text-black dark:text-white">Pay with</p>
-                                      <p className="text-sm text-zinc-500 dark:text-zinc-400">{paymentMethod.name}</p>
+                                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                                        {paymentMethod.id === "wallet" ? "Select token and chain" : paymentMethod.name}
+                                      </p>
                                     </div>
                                   </>
                                 )}
