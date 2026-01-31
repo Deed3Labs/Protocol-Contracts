@@ -1515,7 +1515,11 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                                     <div className="text-left">
                                       <p className="font-medium text-black dark:text-white">Pay with</p>
                                       <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                                        {paymentMethod.id === "wallet" ? "Select token and chain" : paymentMethod.name}
+                                        {paymentMethod.id === "wallet"
+                                          ? "Select token and chain"
+                                          : paymentMethod.id === "debit"
+                                            ? (cardFundingProviders.find((p) => p.id === selectedCardProvider)?.name ?? paymentMethod.name)
+                                            : paymentMethod.name}
                                       </p>
                                     </div>
                                   </>
@@ -1659,34 +1663,40 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
 
                   {/* Review Button */}
                   <div className="px-4 pb-2">
-                    <Button 
-                      onClick={handleReview}
-                      disabled={
-                        amount === "0" || 
-                        parseFloat(amount) <= 0 || 
-                        !fromAsset || 
+                    {(() => {
+                      const isBuyWithFiat = tradeType === "buy" && (paymentMethod.id === "debit" || paymentMethod.id === "bank");
+                      const disabled =
+                        amount === "0" ||
+                        parseFloat(amount) <= 0 ||
                         !toAsset ||
+                        (!isBuyWithFiat && !fromAsset) ||
                         (tradeType === "sell" && receiveAccount?.id === "external-wallet" && (!externalPayoutAddress || !isAddress(externalPayoutAddress.trim()))) ||
-                        (!quote.route && fromAsset.symbol !== "USD" && toAsset.symbol !== "USD") ||
-                        quote.isLoading ||
-                        execution.isExecuting
-                      }
-                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50"
-                    >
-                      {execution.isExecuting ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Executing...
-                        </>
-                      ) : quote.isLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Loading quote...
-                        </>
-                      ) : (
-                        "Review order"
-                      )}
-                    </Button>
+                        (!isBuyWithFiat && fromAsset && toAsset && fromAsset.symbol !== "USD" && toAsset.symbol !== "USD" && !quote.route) ||
+                        (!isBuyWithFiat && quote.isLoading) ||
+                        execution.isExecuting;
+                      const showQuoteLoading = quote.isLoading && !isBuyWithFiat;
+                      return (
+                        <Button
+                          onClick={handleReview}
+                          disabled={disabled}
+                          className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50"
+                        >
+                          {execution.isExecuting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Executing...
+                            </>
+                          ) : showQuoteLoading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Loading quote...
+                            </>
+                          ) : (
+                            "Review order"
+                          )}
+                        </Button>
+                      );
+                    })()}
                   </div>
 
                   {/* Number Pad */}
