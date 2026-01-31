@@ -48,6 +48,37 @@
   font-display: swap;
 }
 
+/* Stripe Onramp Container Styles - full width, no border, no rounded edges */
+.stripe-onramp-container {
+  width: 100%;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  /* Clip any inner rounded corners from Stripe's content */
+  overflow: hidden !important;
+}
+
+/* Remove border and rounded edges from Stripe's wrapper, iframe, and all injected elements */
+.stripe-onramp-container iframe,
+.stripe-onramp-container [data-stripe],
+.stripe-onramp-container > div,
+.stripe-onramp-container > *,
+.stripe-onramp-container * {
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* Let Stripe content fill width */
+.stripe-onramp-container iframe,
+.stripe-onramp-container > div {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100% !important;
+}
+
 /* AppKit Modal Icon Fixes */
 @layer utilities {
   /* Ensure AppKit modal icons are visible */

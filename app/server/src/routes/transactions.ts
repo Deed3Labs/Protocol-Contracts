@@ -32,9 +32,10 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     const transactions = await transfersService.getTransactions(chainId, address, limit);
 
     // Cache the result
-    // Aligned with refresh interval: 5 minutes (300s) - transactions update more frequently
+    // OPTIMIZATION: Increased cache TTL to 10 minutes (600s) to align with refresh intervals
+    // Transactions don't change frequently, so longer cache reduces Alchemy compute unit usage
     // Using Alchemy Transfers API for fast, comprehensive transaction fetching
-    const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '300', 10);
+    const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '600', 10);
     await cacheService.set(
       cacheKey,
       { transactions, timestamp: Date.now() },
@@ -109,7 +110,8 @@ router.post('/batch', async (req: Request, res: Response) => {
         const transactions = await transfersService.getTransactions(chainId, address, limit);
 
         const cacheKey = CacheKeys.transactions(chainId, address.toLowerCase(), limit);
-        const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '300', 10);
+        // OPTIMIZATION: Increased cache TTL to 10 minutes (600s) to align with refresh intervals
+        const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '600', 10);
         await cacheService.set(
           cacheKey,
           { transactions, timestamp: Date.now() },

@@ -20,6 +20,14 @@ const CustomTooltip = ({ active, payload, baseValue }: any) => {
     const change = value - baseValue;
     const changePercent = baseValue !== 0 ? ((value - baseValue) / baseValue) * 100 : 0;
     const isUp = change >= 0;
+    const point = payload?.[0]?.payload;
+    const pointDateRaw = point?.date ?? point?.time;
+    const pointDate =
+      pointDateRaw instanceof Date
+        ? pointDateRaw
+        : typeof pointDateRaw === 'number' || typeof pointDateRaw === 'string'
+          ? new Date(pointDateRaw)
+          : new Date();
     
     return (
       <div className="bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 rounded-lg px-3 py-2 shadow-xl">
@@ -30,7 +38,7 @@ const CustomTooltip = ({ active, payload, baseValue }: any) => {
           {isUp ? '+' : ''}{change.toFixed(2)} ({isUp ? '+' : ''}{changePercent.toFixed(2)}%)
         </p>
         <p className="text-zinc-500 text-xs mt-1">
-          {format(new Date(), 'MMM d, yyyy h:mm a')}
+          {format(pointDate, 'MMM d, yyyy h:mm a')}
         </p>
       </div>
     );

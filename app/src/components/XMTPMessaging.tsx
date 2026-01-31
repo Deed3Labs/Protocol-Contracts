@@ -143,15 +143,20 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, selectedConversation]);
 
-  // Connect to XMTP when modal opens and not already connected
+  // Auto-connect only once per modal open to avoid infinite loop (handleConnect identity changes every render)
+  const autoConnectAttemptedRef = useRef(false);
   useEffect(() => {
-    if (isOpen && !isConnected && !isConnecting) {
-      console.log('XMTP: Modal opened, connecting to XMTP...');
-      handleConnect().catch((err) => {
-        console.error('XMTP: Failed to connect when modal opened:', err);
-      });
+    if (!isOpen) {
+      autoConnectAttemptedRef.current = false;
+      return;
     }
-  }, [isOpen, isConnected, isConnecting, handleConnect]);
+    if (isConnected || isConnecting || autoConnectAttemptedRef.current) return;
+    autoConnectAttemptedRef.current = true;
+    console.log('XMTP: Modal opened, attempting XMTP connect once...');
+    handleConnect().catch((err) => {
+      console.error('XMTP: Failed to connect when modal opened:', err);
+    });
+  }, [isOpen, isConnected, isConnecting]);
 
   // Auto-create conversation with owner if provided
   const [autoCreationAttempted, setAutoCreationAttempted] = useState(false);
@@ -544,8 +549,16 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
-      <div className="bg-white dark:bg-[#0e0e0e] rounded-sm shadow-xl w-full max-w-6xl h-full max-h-[95vh] flex flex-col">
+    <>
+      {/* Backdrop */}
+      <div 
+        className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      
+      {/* Modal Content */}
+      <div className="fixed inset-0 z-[101] flex items-center justify-center p-0 sm:p-4">
+        <div className="bg-white dark:bg-[#0e0e0e] rounded-none sm:rounded-sm shadow-xl w-full h-full sm:max-w-6xl sm:h-[95vh] sm:max-h-[95vh] flex flex-col">
         {/* Main Header */}
         <div className="p-4 border-b border-black/10 dark:border-white/10">
           <div className="flex items-center justify-between">
@@ -1418,8 +1431,9 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
             </div>
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

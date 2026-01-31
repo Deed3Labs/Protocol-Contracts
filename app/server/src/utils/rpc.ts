@@ -122,7 +122,7 @@ export function getAlchemyRestUrl(chainId: number): string | null {
  * Get Alchemy NFT API base URL for a chain
  * Used for Alchemy's NFT API endpoints (different from REST API)
  * Note: getFloorPrice endpoint is only available on Ethereum mainnet
- * Other chains may have different NFT API endpoints or need to use OpenSea
+ * getNFTsForOwner (v3) is available on multiple chains including Base Sepolia
  */
 export function getAlchemyNFTUrl(chainId: number): string | null {
   const alchemyApiKey = process.env.ALCHEMY_API_KEY;
@@ -130,15 +130,20 @@ export function getAlchemyNFTUrl(chainId: number): string | null {
     return null;
   }
 
-  // getFloorPrice is only available on Ethereum mainnet
-  // For other chains, we'll fall back to OpenSea
-  if (chainId === 1) {
-    return `https://eth-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`;
-  }
+  // NFT API v3 endpoints by chain
+  const nftApiUrls: Record<number, string> = {
+    // Mainnets
+    1: `https://eth-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`,
+    8453: `https://base-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`,
+    137: `https://polygon-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`,
+    42161: `https://arb-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`,
+    
+    // Testnets
+    11155111: `https://eth-sepolia.g.alchemy.com/nft/v3/${alchemyApiKey}`,
+    84532: `https://base-sepolia.g.alchemy.com/nft/v3/${alchemyApiKey}`,
+  };
 
-  // Other chains may have NFT API but with different endpoints
-  // For now, we only support getFloorPrice on Ethereum mainnet
-  return null;
+  return nftApiUrls[chainId] || null;
 }
 
 /**

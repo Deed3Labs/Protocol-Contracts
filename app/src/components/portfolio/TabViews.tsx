@@ -49,10 +49,10 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
   const timeRanges = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', 'All'];
   const periodLabels: Record<string, string> = { '1D': 'today', '1W': 'past week', '1M': 'past month', '3M': 'past quarter', '6M': 'past 6 months', 'YTD': 'year to date', '1Y': 'past year', 'All': 'all time' };
   
-  // Memoize borrowing power calculation - only recalculate when holdings or balance changes
-  // Borrowing power = cash balance (stablecoins) + crypto tokens + NFTs
+  // Memoize buying power calculation - only recalculate when holdings or balance changes
+  // Buying power = cash balance (stablecoins) + crypto tokens + NFTs
   // Note: balanceUSD is cash balance (stablecoins only), native token balance should be included separately if needed
-  const borrowingPower = useMemo(() => {
+  const buyingPower = useMemo(() => {
     if (!holdings || holdings.length === 0) return balanceUSD || 0;
     
     // Calculate crypto tokens (non-stablecoin tokens) and NFTs
@@ -64,7 +64,7 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
       return sum + (h.valueUSD || 0);
     }, 0);
     
-    // Borrowing power = cash (stablecoins) + crypto + NFTs
+    // Buying power = cash (stablecoins) + crypto + NFTs
     return (balanceUSD || 0) + cryptoAndNFTValue;
   }, [holdings, balanceUSD]);
   
@@ -126,11 +126,11 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
         </div>
       </div>
 
-      {/* Buying/Borrowing Power Link */}
+      {/* Buying Power Link */}
       <button className="w-full flex items-center justify-between py-4 border-t border-b border-zinc-200 dark:border-zinc-800 mt-4">
-        <span className="text-black dark:text-white">Borrowing power</span>
+        <span className="text-black dark:text-white">Buying Power</span>
         <div className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
-          <span>${borrowingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span>${buyingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           <ChevronRight className="w-5 h-5 text-zinc-500" />
         </div>
       </button>

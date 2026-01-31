@@ -538,6 +538,42 @@ export async function getPortfolio(
 }
 
 /**
+ * Create a Stripe crypto onramp session
+ */
+export async function createStripeOnrampSession(params: {
+  wallet_addresses?: Record<string, string>;
+  customer_ip_address?: string;
+  source_currency?: string;
+  destination_currency?: string;
+  destination_network?: string;
+  destination_amount?: string;
+  source_amount?: string;
+  destination_currencies?: string[];
+  destination_networks?: string[];
+}): Promise<{
+  id: string;
+  client_secret: string;
+  status: string;
+  transaction_details: any;
+} | null> {
+  const response = await apiRequest<{
+    id: string;
+    client_secret: string;
+    status: string;
+    transaction_details: any;
+  }>('/api/stripe/create-onramp-session', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+/**
  * Check server health (uses cached version to avoid race conditions)
  * @deprecated Use checkServerHealthCached from serverHealth.ts instead
  */

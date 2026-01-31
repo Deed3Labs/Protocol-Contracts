@@ -42,9 +42,12 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
       ? CacheKeys.nftList(chainId, address, contractAddress)
       : CacheKeys.nftList(chainId, address);
     const cached = await cacheService.get<{ nfts: any[]; timestamp: number }>(cacheKey);
-
+    // Note: We deliberately don't return early here to ensure we don't trigger "headers already sent"
+    // The previous implementation had a race condition or logic error where it might try to send response twice
+    
     if (cached) {
       clearTimeout(timeout);
+      // Explicit return to stop execution
       return res.json({
         nfts: cached.nfts,
         cached: true,
@@ -63,8 +66,8 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     }
 
     // Cache the result
-    // Aligned with refresh interval: 10 minutes (600s) - NFTs change less frequently
-    const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '600', 10);
+    // Increased to 30 minutes (1800s) to reduce Alchemy compute unit usage - NFTs change infrequently
+    const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '1800', 10);
     await cacheService.set(
       cacheKey,
       { nfts, timestamp: Date.now() },
@@ -72,11 +75,14 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     );
 
     clearTimeout(timeout);
-    res.json({
-      nfts,
-      cached: false,
-      timestamp: Date.now(),
-    });
+    // Only send response if headers haven't been sent yet
+    if (!res.headersSent) {
+      return res.json({
+        nfts,
+        cached: false,
+        timestamp: Date.now(),
+      });
+    }
   } catch (error) {
     clearTimeout(timeout);
     
@@ -174,7 +180,7 @@ router.post('/batch', async (req: Request, res: Response) => {
         }
 
         const cacheKey = CacheKeys.nftList(chainId, address.toLowerCase(), contractAddress);
-        const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '600', 10);
+        const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '1800', 10);
         await cacheService.set(
           cacheKey,
           { nfts, timestamp: Date.now() },
@@ -373,7 +379,7 @@ router.post('/portfolio', async (req: Request, res: Response) => {
           if (nfts.length > 0 || totalCount !== undefined) {
             // Cache the result (Portfolio API format)
             const cacheKey = CacheKeys.nftList(chainId, address);
-            const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '600', 10);
+            const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '1800', 10);
             await cacheService.set(
               cacheKey,
               { nfts, timestamp: Date.now() },

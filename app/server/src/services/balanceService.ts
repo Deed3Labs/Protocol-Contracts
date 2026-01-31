@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { getRpcUrl, getAlchemyRestUrl } from '../utils/rpc.js';
+import { computeUnitTracker } from '../utils/computeUnitTracker.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { 
@@ -9,23 +10,38 @@ import {
 
 /**
  * Rate limiter for Alchemy API calls
- * Limits to ~10 requests per second per chain to avoid rate limits
+ * Light rate limiting to prevent accidental spikes, but allows concurrent requests
+ * Alchemy best practice: Send requests concurrently - Alchemy is built to handle high concurrency
+ * This limiter is a safety net, not a strict throttle
  */
 class AlchemyRateLimiter {
   private lastRequestTime: Map<number, number> = new Map();
-  private readonly minDelayMs = 100; // 100ms between requests = ~10 req/sec max
+  private lastGlobalRequestTime: number = 0;
+  private readonly minDelayMs = 50; // 50ms between requests per chain = ~20 req/sec per chain (light throttling)
+  private readonly minGlobalDelayMs = 20; // 20ms between ANY requests globally = ~50 req/sec global (very light throttling)
 
   async waitForRateLimit(chainId: number): Promise<void> {
     const now = Date.now();
+    
+    // First, enforce global rate limit (across all chains)
+    const timeSinceLastGlobalRequest = now - this.lastGlobalRequestTime;
+    if (timeSinceLastGlobalRequest < this.minGlobalDelayMs) {
+      const globalWaitTime = this.minGlobalDelayMs - timeSinceLastGlobalRequest;
+      await new Promise(resolve => setTimeout(resolve, globalWaitTime));
+    }
+    
+    // Then, enforce per-chain rate limit
     const lastRequest = this.lastRequestTime.get(chainId) || 0;
-    const timeSinceLastRequest = now - lastRequest;
+    const timeSinceLastRequest = Date.now() - lastRequest;
 
     if (timeSinceLastRequest < this.minDelayMs) {
       const waitTime = this.minDelayMs - timeSinceLastRequest;
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
+    // Update both timestamps
     this.lastRequestTime.set(chainId, Date.now());
+    this.lastGlobalRequestTime = Date.now();
   }
 }
 
@@ -265,9 +281,13 @@ async function getTokenMetadata(
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       // Use Alchemy's optimized metadata API
+      // Alchemy best practice: Use gzip compression for better performance
       const response = await fetch(alchemyRestUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept-Encoding': 'gzip', // Enable gzip compression (75% latency improvement)
+        },
         body: JSON.stringify({
           id: 1,
           jsonrpc: '2.0',
@@ -363,11 +383,20 @@ export async function getAllTokenBalances(
     
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
+        // Track compute units before making the call
+        computeUnitTracker.logApiCall(
+          'alchemy_getTokenBalances',
+          'getAllTokenBalances',
+          { chainId, address: normalizedAddress, estimatedUnits: 20 }
+        );
+
         // Call Alchemy's getTokenBalances API with "erc20" to get ALL tokens
+        // Alchemy best practice: Use gzip compression for better performance
         const response = await fetch(alchemyRestUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Accept-Encoding': 'gzip', // Enable gzip compression (75% latency improvement)
           },
           body: JSON.stringify({
             id: 1,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,7 @@ import HeaderNav from './portfolio/HeaderNav';
 import MobileNav from './portfolio/MobileNav';
 import DepositModal from './portfolio/DepositModal';
 import WithdrawModal from './portfolio/WithdrawModal';
-import ActionModal from './portfolio/ActionModal';
+import { useGlobalModals } from '@/context/GlobalModalsContext';
 import CTAStack from './portfolio/CTAStack';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useDeedName } from '@/hooks/useDeedName';
@@ -37,6 +37,15 @@ interface ChartPoint {
   date: Date;
 }
 
+const formatCompactNumber = (value: number): string => {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(2)}T`;
+  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
+  return value.toString();
+};
+
 // Transaction type is now imported from useWalletActivity
 
 // Component to display NFT holding with name from metadata
@@ -46,7 +55,184 @@ const getAssetTypeLabel = (assetType: number): string => {
   return types[assetType] || "Unknown";
 };
 
-const NFTHoldingItem = ({ holding, deed, chainId, chainName }: { holding: Holding; deed: MultichainDeedNFT | undefined; chainId?: number; chainName?: string }) => {
+// Helper function to get asset color based on symbol
+const getAssetColor = (symbol: string): string => {
+  const colors: Record<string, string> = {
+    BTC: "bg-orange-500",
+    ETH: "bg-blue-500",
+    SOL: "bg-gradient-to-r from-purple-500 to-cyan-400",
+    USDC: "bg-blue-600",
+    USDT: "bg-green-600",
+    DAI: "bg-yellow-500",
+  };
+  return colors[symbol.toUpperCase()] || "bg-zinc-500";
+};
+
+// Helper function to convert Holding to Asset format for TradeModal
+const holdingToAsset = (holding: Holding, portfolioHolding?: any): { symbol: string; name: string; color: string; balance?: number; balanceUSD?: number; type?: 'token' | 'nft' | 'rwa'; chainId?: number; chainName?: string } => {
+  return {
+    symbol: holding.asset_symbol,
+    name: holding.asset_name,
+    color: getAssetColor(holding.asset_symbol),
+    balance: holding.quantity,
+    balanceUSD: holding.valueUSD,
+    type: holding.type === 'token' ? 'token' : holding.type === 'rwa' ? 'rwa' : 'nft',
+    chainId: portfolioHolding?.chainId,
+    chainName: portfolioHolding?.chainName,
+  };
+};
+
+// Helper component to render expanded holding details
+const ExpandedHoldingDetails = ({ 
+  holding, 
+  holdingsTotal,
+  onBuy,
+  onSell
+}: { 
+  holding: Holding; 
+  holdingsTotal: number;
+  onBuy?: () => void;
+  onSell?: () => void;
+}) => {
+  const currentValue = holding.valueUSD || 0;
+  const totalCost = holding.average_cost * holding.quantity;
+  const unrealizedReturn = currentValue - totalCost;
+  const unrealizedReturnPercent = totalCost > 0 ? (unrealizedReturn / totalCost) * 100 : 0;
+  const portfolioWeighting = holdingsTotal > 0 ? (currentValue / holdingsTotal) * 100 : 0;
+  const currentPrice = holding.current_price || 0;
+  const averageCostBasis = holding.average_cost || 0;
+
+  return (
+    <div className="px-3 pb-3 space-y-2.5 border-t border-zinc-200 dark:border-zinc-800 mt-2 pt-3">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-zinc-500 dark:text-zinc-400">Current value</span>
+        <span className="text-black dark:text-white font-medium">
+          ${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-1.5">
+          <span className="text-zinc-500 dark:text-zinc-400">Total cost</span>
+          <div className="group relative">
+            <Info className="h-3 w-3 cursor-help text-zinc-400 dark:text-zinc-500" />
+            <div className="absolute left-0 top-5 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+              Total amount paid for this holding
+            </div>
+          </div>
+        </div>
+        <span className="text-black dark:text-white font-medium">
+          ${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-1.5">
+          <span className="text-zinc-500 dark:text-zinc-400">Unrealized return</span>
+          <div className="group relative">
+            <Info className="h-3 w-3 cursor-help text-zinc-400 dark:text-zinc-500" />
+            <div className="absolute left-0 top-5 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+              Profit or loss not yet realized from sale
+            </div>
+          </div>
+        </div>
+        <span className={`font-medium ${unrealizedReturn >= 0 ? 'text-green-600 dark:text-green-500' : 'text-red-600 dark:text-red-500'}`}>
+          ${unrealizedReturn.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({unrealizedReturnPercent >= 0 ? '+' : ''}{unrealizedReturnPercent.toFixed(2)}%)
+        </span>
+      </div>
+      
+      {/* Divider */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800 my-2"></div>
+      
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-zinc-500 dark:text-zinc-400">Current quantity</span>
+        <span className="text-black dark:text-white font-medium">
+          {holding.quantity.toLocaleString('en-US', { 
+            minimumFractionDigits: holding.quantity < 1 ? 4 : 2,
+            maximumFractionDigits: holding.quantity < 1 ? 4 : 2
+          })} {holding.type === 'token' ? holding.asset_symbol : 'items'}
+        </span>
+      </div>
+      {holding.type === 'token' && (
+        <>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-500 dark:text-zinc-400">Current price</span>
+            <span className="text-black dark:text-white font-medium">
+              ${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="text-zinc-500 dark:text-zinc-400">Average cost basis</span>
+              <div className="group relative">
+                <Info className="h-3 w-3 cursor-help text-zinc-400 dark:text-zinc-500" />
+                <div className="absolute left-0 top-5 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+                  Average price paid per unit
+                </div>
+              </div>
+            </div>
+            <span className="text-black dark:text-white font-medium">
+              ${averageCostBasis.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/{holding.type === 'token' ? holding.asset_symbol : 'item'}
+            </span>
+          </div>
+        </>
+      )}
+      
+      {/* Divider */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800 my-2"></div>
+      
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-zinc-500 dark:text-zinc-400">Portfolio weighting</span>
+        <span className="text-black dark:text-white font-medium">
+          {portfolioWeighting.toFixed(2)}% of portfolio
+        </span>
+      </div>
+      
+      {/* Divider above action buttons */}
+      <div className="border-t border-zinc-200 dark:border-zinc-800 my-2"></div>
+      
+      {/* Action buttons */}
+      <div className="flex gap-2 pt-2">
+        <button 
+          onClick={onBuy}
+          className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
+        >
+          Buy
+        </button>
+        <button 
+          onClick={onSell}
+          className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
+        >
+          Sell
+        </button>
+        <button className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10 flex items-center justify-center gap-1">
+          More
+          <ChevronDown className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const NFTHoldingItem = ({ 
+  holding, 
+  deed, 
+  chainId, 
+  chainName, 
+  isExpanded, 
+  onToggle, 
+  holdingsTotal,
+  onBuy,
+  onSell
+}: { 
+  holding: Holding; 
+  deed: MultichainDeedNFT | undefined; 
+  chainId?: number; 
+  chainName?: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+  holdingsTotal: number;
+  onBuy?: () => void;
+  onSell?: () => void;
+}) => {
   const deedName = useDeedName(deed || null);
   
   // Truncate text to prevent wrapping (max ~25 chars for main, ~20 for secondary)
@@ -79,34 +265,64 @@ const NFTHoldingItem = ({ holding, deed, chainId, chainName }: { holding: Holdin
   const displayChainName = chainName || (chainId ? getNetworkByChainId(chainId)?.name : null) || (chainId ? `Chain ${chainId}` : null) || (deed?.chainName || (deed?.chainId ? getNetworkByChainId(deed.chainId)?.name : null) || (deed?.chainId ? `Chain ${deed.chainId}` : null));
   
   return (
-    <div className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
-          <span className="font-bold text-xs text-black dark:text-white">N</span>
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
-            {displayChainName && (
-              <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 bg-transparent font-normal leading-tight">
-                {displayChainName}
-              </Badge>
-            )}
+    <div className="rounded-lg transition-colors">
+      <div 
+        onClick={onToggle}
+        className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group"
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
+            <span className="font-bold text-xs text-black dark:text-white">N</span>
           </div>
-          <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
+              {displayChainName && (
+                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 bg-transparent font-normal leading-tight">
+                  {displayChainName}
+                </Badge>
+              )}
+            </div>
+            <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="text-right">
+            <p className="text-black dark:text-white font-medium text-sm">
+              ${(holding.valueUSD || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-zinc-500 text-xs">
+              {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
+            </p>
+          </div>
+          <motion.div
+            animate={{ rotate: isExpanded ? 180 : 0 }}
+            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+            className="text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400"
+          >
+            <ChevronDown className="w-4 h-4" />
+          </motion.div>
         </div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="text-right">
-          <p className="text-black dark:text-white font-medium text-sm">
-            ${(holding.valueUSD || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
-          <p className="text-zinc-500 text-xs">
-            {holding.quantity} {holding.quantity === 1 ? 'item' : 'items'}
-          </p>
-        </div>
-        <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-      </div>
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            key="expanded-details"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            className="overflow-hidden"
+          >
+            <ExpandedHoldingDetails 
+              holding={holding} 
+              holdingsTotal={holdingsTotal}
+              onBuy={onBuy}
+              onSell={onSell}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -230,17 +446,23 @@ export default function BrokerageHome() {
   }, [multichainBalances]);
   
   
-  const [user] = useState(null);
+  // User data is now derived globally in GlobalModalsContext
   const [selectedTab, setSelectedTab] = useState('Return');
   const [selectedRange, setSelectedRange] = useState('1D');
   const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'RWAs' | 'NFTs' | 'Tokens'>('All');
   const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
   const [showZeroValueAssets, setShowZeroValueAssets] = useState(false); // Hide assets with $0 value by default
+  const [expandedHoldings, setExpandedHoldings] = useState<Set<string | number>>(new Set()); // Track which holdings are expanded
+  const [activityFilter, setActivityFilter] = useState<
+    'All' | 'Deposits' | 'Withdrawals' | 'Buys' | 'Sells' | 'Mints' | 'Transfers' | 'Trades' | 'Other'
+  >('All');
+  const [activitySort, setActivitySort] = useState<'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow'>('Newest');
+  const [activityChainFilter, setActivityChainFilter] = useState<'All' | string>('All');
+  const [activityVisibleCount, setActivityVisibleCount] = useState(7);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-  const [actionModalOpen, setActionModalOpen] = useState(false);
+  const { setActionModalOpen, openTradeModal } = useGlobalModals();
   
   // State for tracking scroll position relative to portfolio value header
   const [isScrolledPast, setIsScrolledPast] = useState(false);
@@ -309,6 +531,105 @@ export default function BrokerageHome() {
     if (isPortfolioExpanded) return filteredHoldings;
     return filteredHoldings.slice(0, 5); // Show 5 holdings initially
   }, [filteredHoldings, isPortfolioExpanded]);
+
+  const activityTransactions = useMemo(() => {
+    const getTxTimeMs = (tx: any): number => {
+      if (tx?.timestamp) {
+        const t = new Date(tx.timestamp).getTime();
+        if (!Number.isNaN(t)) return t;
+      }
+      const parsed = Date.parse(tx?.date);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const filtered = walletTransactions.filter((tx) => {
+      const type = String((tx as any)?.type || '').toLowerCase();
+      const chainName = (tx as any)?.chainName ? String((tx as any).chainName) : '';
+      const chainId =
+        typeof (tx as any)?.chainId === 'number' ? String((tx as any).chainId) : (tx as any)?.chainId ? String((tx as any).chainId) : '';
+
+      if (activityChainFilter !== 'All') {
+        // Prefer matching by chainName if present, otherwise fall back to chainId string match
+        const matchesChain =
+          (chainName && chainName === activityChainFilter) ||
+          (!chainName && chainId && chainId === activityChainFilter) ||
+          (chainId && chainId === activityChainFilter);
+        if (!matchesChain) return false;
+      }
+
+      switch (activityFilter) {
+        case 'Deposits':
+          return type === 'deposit';
+        case 'Withdrawals':
+          return type === 'withdraw';
+        case 'Buys':
+          return type === 'buy';
+        case 'Sells':
+          return type === 'sell';
+        case 'Mints':
+          return type === 'mint';
+        case 'Transfers':
+          return type === 'transfer';
+        case 'Trades':
+          return type === 'trade';
+        case 'Other':
+          return !['deposit', 'withdraw', 'buy', 'sell', 'mint', 'transfer', 'trade'].includes(type);
+        case 'All':
+        default:
+          return true;
+      }
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      const aAny = a as any;
+      const bAny = b as any;
+      const aTime = getTxTimeMs(aAny);
+      const bTime = getTxTimeMs(bAny);
+      const aAmt = Math.abs(Number(aAny?.amount || 0));
+      const bAmt = Math.abs(Number(bAny?.amount || 0));
+
+      switch (activitySort) {
+        case 'Oldest':
+          return aTime - bTime;
+        case 'AmountHigh':
+          return bAmt - aAmt;
+        case 'AmountLow':
+          return aAmt - bAmt;
+        case 'Newest':
+        default:
+          return bTime - aTime;
+      }
+    });
+
+    return sorted;
+  }, [walletTransactions, activityFilter, activitySort, activityChainFilter]);
+
+  const activityChains = useMemo(() => {
+    // Unique list of available chains from the raw walletTransactions
+    const names = new Set<string>();
+    const ids = new Set<string>();
+
+    for (const tx of walletTransactions as any[]) {
+      if (tx?.chainName) names.add(String(tx.chainName));
+      if (typeof tx?.chainId === 'number') ids.add(String(tx.chainId));
+      else if (tx?.chainId) ids.add(String(tx.chainId));
+    }
+
+    const nameList = Array.from(names).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    const idList = Array.from(ids).filter(Boolean).sort((a, b) => Number(a) - Number(b));
+
+    // Prefer human-readable chainName entries; include chainId entries too for cases where name isn't present.
+    // De-dupe by keeping both if they are different strings.
+    return [...nameList, ...idList.filter((id) => !names.has(id))];
+  }, [walletTransactions]);
+
+  const displayedActivityTransactions = useMemo(() => {
+    return activityTransactions.slice(0, activityVisibleCount);
+  }, [activityTransactions, activityVisibleCount]);
+
+  useEffect(() => {
+    setActivityVisibleCount(7);
+  }, [activityFilter, activitySort, activityChainFilter, isConnected, address]);
   
   // Debug: Verify data is being fetched (remove in production)
   useEffect(() => {
@@ -349,16 +670,19 @@ export default function BrokerageHome() {
   // Cash balance is automatically calculated from stablecoin holdings in PortfolioContext
   const cashBalance = portfolioCashBalance?.totalCash || 0;
   
+  // Calculate holdings-only total (for portfolio weighting)
+  const holdingsTotal = useMemo(() => {
+    if (!isConnected) return 0;
+    return allHoldings.reduce((sum, h) => sum + (h.valueUSD || 0), 0);
+  }, [isConnected, allHoldings]);
+  
   // Calculate total value from wallet balance and holdings across all chains
   const totalValue = useMemo(() => {
     if (!isConnected) return 0;
     
-    // Calculate holdings value (tokens + NFTs)
-    const holdingsValue = allHoldings.reduce((sum, h) => sum + (h.valueUSD || 0), 0);
-    
     // Total portfolio value = aggregated wallet balance + holdings
-    return totalBalanceUSD + holdingsValue;
-  }, [isConnected, totalBalanceUSD, allHoldings]);
+    return totalBalanceUSD + holdingsTotal;
+  }, [isConnected, totalBalanceUSD, holdingsTotal]);
   
   // Track portfolio value history
   useEffect(() => {
@@ -453,7 +777,6 @@ export default function BrokerageHome() {
       <SideMenu 
         isOpen={menuOpen} 
         onClose={() => setMenuOpen(false)} 
-        user={user}
       />
       
       {/* Deposit Modal */}
@@ -468,20 +791,13 @@ export default function BrokerageHome() {
         onClose={() => setWithdrawModalOpen(false)}
       />
 
-      {/* Action Modal */}
-      <ActionModal
-        isOpen={actionModalOpen}
-        onClose={() => setActionModalOpen(false)}
-      />
+      {/* ActionModal and TradeModal are now global - rendered in AppLayout */}
       
       {/* Header */}
       <HeaderNav
         isScrolledPast={isScrolledPast}
         onMenuOpen={() => setMenuOpen(true)}
         onActionOpen={() => setActionModalOpen(true)}
-        user={user}
-        profileMenuOpen={profileMenuOpen}
-        setProfileMenuOpen={setProfileMenuOpen}
       />
       
       {/* Main Content */}
@@ -595,7 +911,7 @@ export default function BrokerageHome() {
                         value={portfolioFilter} 
                         onValueChange={(value: 'All' | 'RWAs' | 'NFTs' | 'Tokens') => setPortfolioFilter(value)}
                       >
-                        <SelectTrigger className="h-4 w-28 text-sm font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-3 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                        <SelectTrigger className="h-6 w-24 sm:w-28 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
                           <SelectValue placeholder="Filter" />
                         </SelectTrigger>
                         <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
@@ -702,6 +1018,7 @@ export default function BrokerageHome() {
                                   <div className="space-y-1">
                                     {tokenHoldings.map((holding) => {
                                       const valueUSD = holding.valueUSD || 0;
+                                      const isExpanded = expandedHoldings.has(holding.id);
                                       
                                       // Get chain information from portfolio holdings
                                       const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && h.type === 'token');
@@ -723,39 +1040,87 @@ export default function BrokerageHome() {
                                       const secondaryTextFull = holding.asset_name;
                                       
                                       return (
-                                        <div key={holding.id} className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group">
-                                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                                            <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
-                                              <span className="font-bold text-xs text-black dark:text-white">
-                                                {holding.asset_symbol[0]}
-                                              </span>
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                              <div className="flex items-center gap-1.5">
-                                                <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
-                                                {chainName && (
-                                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 bg-transparent font-normal leading-tight">
-                                                    {chainName}
-                                                  </Badge>
-                                                )}
+                                        <div key={holding.id} className="rounded-lg transition-colors">
+                                          <div 
+                                            onClick={() => {
+                                              setExpandedHoldings(prev => {
+                                                const next = new Set(prev);
+                                                if (next.has(holding.id)) {
+                                                  next.delete(holding.id);
+                                                } else {
+                                                  next.add(holding.id);
+                                                }
+                                                return next;
+                                              });
+                                            }}
+                                            className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group"
+                                          >
+                                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                              <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
+                                                <span className="font-bold text-xs text-black dark:text-white">
+                                                  {holding.asset_symbol[0]}
+                                                </span>
                                               </div>
-                                              <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
+                                              <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-1.5">
+                                                  <p className="text-black dark:text-white font-medium text-sm truncate" title={mainTextFull}>{mainText}</p>
+                                                  {chainName && (
+                                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 bg-transparent font-normal leading-tight">
+                                                      {chainName}
+                                                    </Badge>
+                                                  )}
+                                                </div>
+                                                <p className="text-zinc-500 text-xs truncate" title={secondaryTextFull}>{secondaryText}</p>
+                                              </div>
+                                            </div>
+                                            <div className="flex items-center gap-3 shrink-0">
+                                              <div className="text-right">
+                                                <p className="text-black dark:text-white font-medium text-sm">
+                                                  ${valueUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </p>
+                                                <p className="text-zinc-500 text-xs">
+                                                  {holding.quantity.toLocaleString('en-US', { 
+                                                    minimumFractionDigits: holding.quantity < 1 ? 4 : 2,
+                                                    maximumFractionDigits: holding.quantity < 1 ? 4 : 2
+                                                  })} {holding.asset_symbol}
+                                                </p>
+                                              </div>
+                                              <motion.div
+                                                animate={{ rotate: isExpanded ? 180 : 0 }}
+                                                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                                                className="text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400"
+                                              >
+                                                <ChevronDown className="w-4 h-4" />
+                                              </motion.div>
                                             </div>
                                           </div>
-                                          <div className="flex items-center gap-3 shrink-0">
-                                            <div className="text-right">
-                                              <p className="text-black dark:text-white font-medium text-sm">
-                                                ${valueUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                              </p>
-                                              <p className="text-zinc-500 text-xs">
-                                                {holding.quantity.toLocaleString('en-US', { 
-                                                  minimumFractionDigits: holding.quantity < 1 ? 4 : 2,
-                                                  maximumFractionDigits: holding.quantity < 1 ? 4 : 2
-                                                })} {holding.asset_symbol}
-                                              </p>
-                                            </div>
-                                            <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400" />
-                                          </div>
+                                          <AnimatePresence initial={false}>
+                                            {isExpanded && (
+                                              <motion.div
+                                                key="expanded-details"
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                                                className="overflow-hidden"
+                                              >
+                                                <ExpandedHoldingDetails 
+                                                  holding={holding} 
+                                                  holdingsTotal={holdingsTotal}
+                                                  onBuy={() => {
+                                                    const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && h.type === 'token');
+                                                    const asset = holdingToAsset(holding, portfolioHolding);
+                                                    openTradeModal('buy', asset);
+                                                  }}
+                                                  onSell={() => {
+                                                    const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && h.type === 'token');
+                                                    const asset = holdingToAsset(holding, portfolioHolding);
+                                                    openTradeModal('sell', asset);
+                                                  }}
+                                                />
+                                              </motion.div>
+                                            )}
+                                          </AnimatePresence>
                                         </div>
                                       );
                                     })}
@@ -771,9 +1136,40 @@ export default function BrokerageHome() {
                                     <span>Value</span>
                                   </div>
                                   <div className="space-y-1">
-                                    {rwaHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => (
-                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} chainId={chainId} chainName={chainName} />
-                                    ))}
+                                    {rwaHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => {
+                                      const isExpanded = expandedHoldings.has(holding.id);
+                                      const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && (h.type as string) === 'rwa');
+                                      return (
+                                        <NFTHoldingItem 
+                                          key={holding.id} 
+                                          holding={holding} 
+                                          deed={deed} 
+                                          chainId={chainId} 
+                                          chainName={chainName}
+                                          isExpanded={isExpanded}
+                                          onToggle={() => {
+                                            setExpandedHoldings(prev => {
+                                              const next = new Set(prev);
+                                              if (next.has(holding.id)) {
+                                                next.delete(holding.id);
+                                              } else {
+                                                next.add(holding.id);
+                                              }
+                                              return next;
+                                            });
+                                          }}
+                                          holdingsTotal={holdingsTotal}
+                                          onBuy={() => {
+                                            const asset = holdingToAsset(holding, portfolioHolding);
+                                            openTradeModal('buy', asset);
+                                          }}
+                                          onSell={() => {
+                                            const asset = holdingToAsset(holding, portfolioHolding);
+                                            openTradeModal('sell', asset);
+                                          }}
+                                        />
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
@@ -786,9 +1182,40 @@ export default function BrokerageHome() {
                                     <span>Value</span>
                                   </div>
                                   <div className="space-y-1">
-                                    {nftHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => (
-                                      <NFTHoldingItem key={holding.id} holding={holding} deed={deed} chainId={chainId} chainName={chainName} />
-                                    ))}
+                                    {nftHoldingsWithDeeds.map(({ holding, deed, chainId, chainName }) => {
+                                      const isExpanded = expandedHoldings.has(holding.id);
+                                      const portfolioHolding = portfolioHoldings.find(h => h.id === holding.id && (h.type as string) === 'nft');
+                                      return (
+                                        <NFTHoldingItem 
+                                          key={holding.id} 
+                                          holding={holding} 
+                                          deed={deed} 
+                                          chainId={chainId} 
+                                          chainName={chainName}
+                                          isExpanded={isExpanded}
+                                          onToggle={() => {
+                                            setExpandedHoldings(prev => {
+                                              const next = new Set(prev);
+                                              if (next.has(holding.id)) {
+                                                next.delete(holding.id);
+                                              } else {
+                                                next.add(holding.id);
+                                              }
+                                              return next;
+                                            });
+                                          }}
+                                          holdingsTotal={holdingsTotal}
+                                          onBuy={() => {
+                                            const asset = holdingToAsset(holding, portfolioHolding);
+                                            openTradeModal('buy', asset);
+                                          }}
+                                          onSell={() => {
+                                            const asset = holdingToAsset(holding, portfolioHolding);
+                                            openTradeModal('sell', asset);
+                                          }}
+                                        />
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
@@ -842,13 +1269,89 @@ export default function BrokerageHome() {
                     </button>
                   </div>
                   
+                  {/* Activity filter/sort controls */}
+                  <div className="px-3 pb-2">
+                    <div className="flex items-center gap-2 flex-nowrap">
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Select
+                          value={activityFilter}
+                          onValueChange={(
+                            value:
+                              | 'All'
+                              | 'Deposits'
+                              | 'Withdrawals'
+                              | 'Buys'
+                              | 'Sells'
+                              | 'Mints'
+                              | 'Transfers'
+                              | 'Trades'
+                              | 'Other'
+                          ) => setActivityFilter(value)}
+                        >
+                          <SelectTrigger className="h-6 w-24 md:w-26 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                            <SelectValue placeholder="Filter" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                            <SelectItem value="All" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">All</SelectItem>
+                            <SelectItem value="Deposits" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Deposits</SelectItem>
+                            <SelectItem value="Withdrawals" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Withdrawals</SelectItem>
+                            <SelectItem value="Buys" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Buys</SelectItem>
+                            <SelectItem value="Sells" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Sells</SelectItem>
+                            <SelectItem value="Mints" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Mints</SelectItem>
+                            <SelectItem value="Transfers" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Transfers</SelectItem>
+                            <SelectItem value="Trades" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Trades</SelectItem>
+                            <SelectItem value="Other" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        <Select
+                          value={activitySort}
+                          onValueChange={(value: 'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow') => setActivitySort(value)}
+                        >
+                          <SelectTrigger className="h-6 w-24 md:w-28 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                            <SelectValue placeholder="Sort" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                            <SelectItem value="Newest" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Newest</SelectItem>
+                            <SelectItem value="Oldest" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Oldest</SelectItem>
+                            <SelectItem value="AmountHigh" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Amount (high)</SelectItem>
+                            <SelectItem value="AmountLow" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Amount (low)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Let Network flex so row never overflows */}
+                      <div className="flex-1 min-w-0">
+                        <Select value={activityChainFilter} onValueChange={(value: string) => setActivityChainFilter(value)}>
+                          <SelectTrigger className="h-6 w-full min-w-0 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                            <SelectValue placeholder="Network" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
+                          <SelectItem value="All" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">
+                            All networks
+                          </SelectItem>
+                          {activityChains.map((chain) => (
+                            <SelectItem
+                              key={chain}
+                              value={chain}
+                              className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2"
+                            >
+                              {chain}
+                            </SelectItem>
+                          ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="space-y-1 px-2 pb-2">
                     {!isConnected ? (
                       <div className="py-8 text-center text-zinc-500 text-sm">
                         Connect wallet to view activity
                       </div>
-                    ) : walletTransactions.length > 0 ? (
-                      walletTransactions.map((item) => (
+                    ) : activityTransactions.length > 0 ? (
+                      displayedActivityTransactions.map((item) => (
                         <div 
                           key={item.id} 
                           className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group"
@@ -891,7 +1394,30 @@ export default function BrokerageHome() {
                                  item.type}
                               </p>
                               <div className="flex items-center gap-1.5 text-zinc-500 text-xs">
-                                <span>{item.date}</span>
+                                <span>
+                                  {(() => {
+                                    // Try to use timestamp if available, otherwise fallback to date string
+                                    // Use type assertion to access timestamp which might be on the object but not in the type definition used here
+                                    const tx = item as any;
+                                    if (tx.timestamp) {
+                                      const date = new Date(tx.timestamp);
+                                      // Format: "MM/DD/YY : H:MMam/pm" (e.g., "01/01/26 : 7:18am")
+                                      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                                      const day = date.getDate().toString().padStart(2, '0');
+                                      const year = date.getFullYear().toString().slice(-2);
+                                      
+                                      let hours = date.getHours();
+                                      const minutes = date.getMinutes().toString().padStart(2, '0');
+                                      const ampm = hours >= 12 ? 'pm' : 'am';
+                                      
+                                      hours = hours % 12;
+                                      hours = hours ? hours : 12; // the hour '0' should be '12'
+                                      
+                                      return `${month}/${day}/${year} : ${hours}:${minutes}${ampm}`;
+                                    }
+                                    return item.date;
+                                  })()}
+                                </span>
                                 <span className="w-0.5 h-0.5 bg-zinc-400 dark:bg-zinc-600 rounded-full"></span>
                                 <span className="capitalize">{item.status || 'completed'}</span>
                                 {(() => {
@@ -912,11 +1438,30 @@ export default function BrokerageHome() {
                             <p className="text-black dark:text-white font-medium text-sm">
                               {item.amount > 0 ? (
                                 <>
-                                  {item.type === 'deposit' || item.type === 'buy' ? '+' : item.type === 'withdraw' || item.type === 'sell' ? '-' : ''}
-                                  {item.currency === 'USD' ? '$' : ''}{item.amount.toLocaleString(undefined, { 
-                                    minimumFractionDigits: item.currency === currencySymbol ? 4 : 2,
-                                    maximumFractionDigits: item.currency === currencySymbol ? 4 : 2
-                                  })} {item.currency !== 'USD' ? item.currency : ''}
+                                  {(() => {
+                                    const isPlus = item.type === 'deposit' || item.type === 'buy';
+                                    const isMinus = item.type === 'withdraw' || item.type === 'sell';
+                                    const sign = isPlus ? '+' : isMinus ? '-' : '';
+
+                                    const absAmount = Math.abs(item.amount);
+                                    const smallDecimals = item.currency === currencySymbol ? 4 : 2;
+                                    const numberPart =
+                                      absAmount >= 1000
+                                        ? formatCompactNumber(absAmount)
+                                        : absAmount.toLocaleString(undefined, {
+                                            minimumFractionDigits: smallDecimals,
+                                            maximumFractionDigits: smallDecimals,
+                                          });
+
+                                    return (
+                                      <>
+                                        {sign}
+                                        {item.currency === 'USD' ? '$' : ''}
+                                        {numberPart}
+                                        {item.currency !== 'USD' ? ` ${item.currency}` : ''}
+                                      </>
+                                    );
+                                  })()}
                                 </>
                               ) : (
                                  <span className="text-zinc-500 text-xs">View</span>
@@ -931,6 +1476,28 @@ export default function BrokerageHome() {
                       </div>
                     )}
                   </div>
+
+                  {/* Load more / Show less */}
+                  {isConnected && activityTransactions.length > 7 && (
+                    <div className="mt-2 px-3 pb-3">
+                      <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                        <button
+                          onClick={() => {
+                            if (activityVisibleCount >= activityTransactions.length) {
+                              setActivityVisibleCount(7);
+                              return;
+                            }
+                            setActivityVisibleCount((prev) => Math.min(prev + 7, activityTransactions.length));
+                          }}
+                          className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-2"
+                        >
+                          {activityVisibleCount >= activityTransactions.length
+                            ? `Show Less (${activityTransactions.length} total)`
+                            : `Load More (${Math.min(activityVisibleCount + 7, activityTransactions.length)}/${activityTransactions.length})`}
+                        </button>
+                      </div>
+                    </div>
+                  )}
               </div>
            </div>
         </div>
