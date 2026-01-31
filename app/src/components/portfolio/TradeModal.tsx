@@ -1430,14 +1430,15 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                               )}
                             </div>
                             <div className="flex items-center gap-2">
-                              {fromAsset && (
-                                <>
-                                  <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                                    {formatBalance(fromAsset.balance)} available
-                                  </span>
-                                  <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
-                                </>
+                              {fromAsset?.balance !== undefined && (
+                                <div className="text-right">
+                                  <p className="text-sm font-medium text-black dark:text-white">
+                                    {formatBalance(fromAsset.balance)} {fromAsset.symbol}
+                                  </p>
+                                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Available</p>
+                                </div>
                               )}
+                              <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
                             </div>
                           </button>
                           
