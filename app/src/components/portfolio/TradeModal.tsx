@@ -17,7 +17,7 @@ declare global {
 }
 
 type TradeType = "buy" | "sell" | "swap";
-type TradeStep = "input" | "review" | "pending" | "success" | "failed" | "funding" | "funding_complete";
+type TradeStep = "input" | "review" | "pending" | "success" | "failed" | "funding" | "bank_pending" | "funding_complete";
 type TradeScreen = "trade" | "selectAsset" | "selectWallet" | "selectCardProvider" | "externalWalletAddress";
 type AssetPickTarget = "buyTo" | "buyFrom" | "sellFrom" | "swapFrom" | "swapTo";
 type WalletPickTarget = "pay" | "receive";
@@ -339,7 +339,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
           window.open(url, "_blank", "noopener,noreferrer");
         }
         setFundingCompleteMessage("Funding initiated. Funds should appear in your wallet within 1-3 business days.");
-        setStep("funding_complete");
+        setStep("bank_pending");
         return;
       }
       if (paymentMethod.id === "debit" && selectedCardProvider === "stripe") {
@@ -1714,6 +1714,35 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         )}
                       </button>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {step === "bank_pending" && paymentMethod.id === "bank" && (
+                <div className="flex flex-col h-full items-center justify-center p-6 text-center">
+                  <div className="w-16 h-16 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center mb-4">
+                    <Loader2 className="w-8 h-8 text-zinc-500 dark:text-zinc-400 animate-spin" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-black dark:text-white mb-2">
+                    Complete in Bridge
+                  </h2>
+                  <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-6 max-w-[280px]">
+                    Complete your transfer in the Bridge tab. When you&apos;re done, return here and tap the button below.
+                  </p>
+                  <div className="w-full max-w-[280px] space-y-3">
+                    <Button
+                      onClick={() => setStep("funding_complete")}
+                      className="w-full h-12 rounded-full font-semibold bg-black dark:bg-white text-white dark:text-black"
+                    >
+                      I&apos;ve completed funding
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setStep("input")}
+                      className="w-full h-12 rounded-full font-semibold border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      Go back
+                    </Button>
                   </div>
                 </div>
               )}
