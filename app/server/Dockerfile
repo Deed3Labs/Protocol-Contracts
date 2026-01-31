@@ -18,7 +18,8 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 
 # Install dependencies (including devDependencies for TypeScript compilation)
-RUN bun install --frozen-lockfile
+# If you get "lockfile had changes", run `bun install` in app/server and commit bun.lock, then use: RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy source code
 COPY . .
