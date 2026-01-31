@@ -523,8 +523,25 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
 
   // Fetch quote when amount or assets change (only on input step)
   useEffect(() => {
+    const isBuyWithFiat = tradeType === "buy" && (paymentMethod.id === "debit" || paymentMethod.id === "bank");
+
+    if (!open) {
+      // Only clear quote when modal is closed, not when transitioning to review step
+      clearQuote();
+      setQuoteExpiryTime(null);
+      setTimeRemaining(null);
+      return;
+    }
+
+    // Buy with bank or debit: no Li.Fi swap, so don't fetch quote and clear any existing one
+    if (isBuyWithFiat) {
+      clearQuote();
+      setQuoteExpiryTime(null);
+      setTimeRemaining(null);
+      return;
+    }
+
     if (
-      open &&
       step === "input" &&
       fromAsset &&
       toAsset &&
@@ -556,13 +573,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       }, 500); // Debounce quote fetching
 
       return () => clearTimeout(timeoutId);
-    } else if (!open) {
-      // Only clear quote when modal is closed, not when transitioning to review step
-      clearQuote();
-      setQuoteExpiryTime(null);
-      setTimeRemaining(null);
     }
-  }, [open, step, fromAsset, toAsset, fromChainId, toChainId, amount, address, tradeType, receiveAccount?.id, externalPayoutAddress, sellRecipientAddress, fetchQuote, clearQuote]);
+  }, [open, step, fromAsset, toAsset, fromChainId, toChainId, amount, address, tradeType, paymentMethod.id, receiveAccount?.id, externalPayoutAddress, sellRecipientAddress, fetchQuote, clearQuote]);
 
   // Set quote expiry time when quote is received
   useEffect(() => {
@@ -1372,22 +1384,24 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           : "USD"}
                       </span>
                     </div>
-                    {toAsset && parseFloat(amount) > 0 && (
+                    {toAsset && parseFloat(amount) > 0 && (() => {
+                      const isBuyWithFiat = tradeType === "buy" && (paymentMethod.id === "debit" || paymentMethod.id === "bank");
+                      return (
                       <div className="flex flex-col items-center gap-1 mt-2">
-                        {quote.isLoading && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
+                        {!isBuyWithFiat && quote.isLoading && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
                           <div className="flex items-center gap-1 text-xs text-zinc-500">
                             <Loader2 className="w-3 h-3 animate-spin" />
                             <span>Fetching quote...</span>
                           </div>
                         )}
-                        {quote.error && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
+                        {!isBuyWithFiat && quote.error && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
                           <div className="flex items-center gap-1 text-xs text-red-500 max-w-[200px] text-center">
                             <AlertCircle className="w-3 h-3 flex-shrink-0" />
                             <span className="truncate">{quote.error}</span>
                           </div>
                         )}
-                        {/* Only show conversion amount when quote is loaded and valid */}
-                        {quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && (
+                        {/* Only show conversion amount when quote is loaded and valid (not for buy with bank/debit) */}
+                        {!isBuyWithFiat && quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && (
                           <>
                             <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
                               <ArrowUpDown className="w-4 h-4" />
@@ -1403,7 +1417,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           </>
                         )}
                       </div>
-                    )}
+                      );
+                    })()}
                   </div>
 
                   {/* Asset Selectors */}
