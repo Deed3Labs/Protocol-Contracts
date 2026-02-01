@@ -959,28 +959,28 @@ export default function BrokerageHome() {
               {/* CTA Stack - Persistent */}
               <CTAStack />
 
-              {/* Linked Accounts – Bank & investment accounts (distinct from tradable Portfolio) */}
-              <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-gradient-to-b from-slate-50/90 to-white dark:from-slate-900/40 dark:to-slate-900/20 p-1 shadow-sm">
+              {/* Linked Accounts – Bank & investment accounts (same rounded, flat, border-only as Portfolio) */}
+              <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-1">
                   <div className="p-4">
                     <div className="flex items-center gap-2.5 mb-0.5">
-                      <div className="w-9 h-9 rounded-lg bg-slate-200/80 dark:bg-slate-700/50 flex items-center justify-center">
-                        <Landmark className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                      <div className="w-9 h-9 rounded-lg bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center">
+                        <Landmark className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
                       </div>
                       <div>
-                        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Linked Accounts</h2>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Bank & investment accounts</p>
+                        <h2 className="text-lg font-semibold text-black dark:text-white">Linked Accounts</h2>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Bank & investment accounts</p>
                       </div>
                     </div>
                     {bankLinked && bankAccounts.length > 0 && (
-                      <div className="flex items-center gap-2 mt-3 flex-wrap">
+                      <div className="flex items-center justify-between gap-2 mt-3">
                         <Select
                           value={accountSort}
                           onValueChange={(value: 'Balance (high)' | 'Balance (low)' | 'Name (A–Z)') => setAccountSort(value)}
                         >
-                          <SelectTrigger className="h-8 w-auto min-w-[120px] text-xs font-normal text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800/50 focus:ring-2 focus:ring-slate-400/30">
+                          <SelectTrigger className="h-8 w-auto min-w-[120px] text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0">
                             <SelectValue placeholder="Sort by" />
                           </SelectTrigger>
-                          <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50">
+                          <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg z-50">
                             <SelectItem value="Balance (high)" className="text-sm cursor-pointer py-2">Balance (high → low)</SelectItem>
                             <SelectItem value="Balance (low)" className="text-sm cursor-pointer py-2">Balance (low → high)</SelectItem>
                             <SelectItem value="Name (A–Z)" className="text-sm cursor-pointer py-2">Name (A–Z)</SelectItem>
@@ -988,7 +988,7 @@ export default function BrokerageHome() {
                         </Select>
                         <button
                           onClick={() => refreshBankAccounts()}
-                          className="h-8 px-3 rounded-lg border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                          className="h-8 px-3 rounded-lg border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1.5 disabled:opacity-50"
                           disabled={bankAccountsLoading}
                         >
                           {bankAccountsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
@@ -1000,20 +1000,20 @@ export default function BrokerageHome() {
 
                   <div className="px-3 pb-3">
                     {!isConnected ? (
-                      <div className="py-8 text-center text-slate-500 text-sm rounded-lg bg-slate-50/50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-700">
+                      <div className="py-8 text-center text-zinc-500 text-sm rounded-lg border border-dashed border-zinc-200 dark:border-zinc-800">
                         Connect wallet to view linked accounts
                       </div>
                     ) : bankAccountsLoading && bankAccounts.length === 0 ? (
-                      <div className="py-8 flex items-center justify-center gap-2 text-slate-500 text-sm rounded-lg bg-slate-50/50 dark:bg-slate-800/30">
+                      <div className="py-8 flex items-center justify-center gap-2 text-zinc-500 text-sm rounded-lg">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Loading accounts...
                       </div>
                     ) : !bankLinked || bankAccounts.length === 0 ? (
-                      <div className="py-8 text-center space-y-4 rounded-lg bg-slate-50/50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-700">
-                        <p className="text-slate-500 text-sm">No linked bank or investment accounts yet</p>
+                      <div className="py-8 text-center space-y-4 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-800">
+                        <p className="text-zinc-500 text-sm">No linked bank or investment accounts yet</p>
                         <button
                           onClick={() => { setDepositInitialOption('bank'); setDepositModalOpen(true); }}
-                          className="inline-flex items-center gap-2 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 text-sm font-medium py-2.5 px-4 rounded-lg hover:bg-slate-700 dark:hover:bg-slate-300 transition-colors shadow-sm"
+                          className="inline-flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black text-sm font-medium py-2.5 px-4 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors border border-zinc-800 dark:border-zinc-200"
                         >
                           <Landmark className="w-4 h-4" />
                           Link account
@@ -1030,43 +1030,43 @@ export default function BrokerageHome() {
                             return (
                               <div
                                 key={account.account_id}
-                                className="rounded-xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800/40 p-3 shadow-sm"
+                                className="rounded-lg border border-zinc-200 dark:border-zinc-800/50 bg-white dark:bg-zinc-900/30 p-3"
                               >
                                 <div className="flex items-start justify-between gap-3 mb-3">
                                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                    <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700/60 flex items-center justify-center shrink-0">
-                                      <Landmark className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                                    <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                                      <Landmark className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
                                     </div>
                                     <div className="min-w-0">
-                                      <p className="text-slate-900 dark:text-white font-medium text-sm truncate">{displayName}</p>
-                                      {maskText ? <p className="text-slate-500 dark:text-slate-400 text-xs">{maskText}</p> : null}
+                                      <p className="text-black dark:text-white font-medium text-sm truncate">{displayName}</p>
+                                      {maskText ? <p className="text-zinc-500 dark:text-zinc-400 text-xs">{maskText}</p> : null}
                                     </div>
                                   </div>
                                   <div className="text-right shrink-0">
-                                    <p className="text-slate-900 dark:text-white font-semibold text-sm">
+                                    <p className="text-black dark:text-white font-semibold text-sm">
                                       ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </p>
                                     {account.available != null && account.current !== account.available && (
-                                      <p className="text-slate-500 dark:text-slate-400 text-xs">Available: ${(account.available ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                      <p className="text-zinc-500 dark:text-zinc-400 text-xs">Available: ${(account.available ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                     )}
                                   </div>
                                 </div>
-                                <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700/50">
+                                <div className="flex gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
                                   <button
                                     onClick={() => setDepositModalOpen(true)}
-                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                                   >
                                     Deposit
                                   </button>
                                   <button
                                     onClick={() => setWithdrawModalOpen(true)}
-                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                                   >
                                     Withdraw
                                   </button>
                                   <button
                                     onClick={() => { setDepositInitialOption('bank'); setDepositModalOpen(true); }}
-                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                                   >
                                     Manage
                                   </button>
@@ -1076,10 +1076,10 @@ export default function BrokerageHome() {
                           })}
                         </div>
                         {sortedBankAccounts.length > 5 && (
-                          <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/50">
+                          <div className="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-800">
                             <button
                               onClick={() => setIsAccountsExpanded(!isAccountsExpanded)}
-                              className="w-full text-center text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors py-2"
+                              className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-2"
                             >
                               {isAccountsExpanded
                                 ? `Show less (${sortedBankAccounts.length} accounts)`
