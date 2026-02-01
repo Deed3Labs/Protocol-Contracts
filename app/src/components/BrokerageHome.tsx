@@ -238,7 +238,7 @@ function PortfolioCashBalanceBlock({
         <span className="text-sm font-medium">Cash Balance</span>
         <div className="group relative">
           <Info className="h-4 w-4 cursor-help" />
-          <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 max-w-[240px]">
+          <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
             {cashBalanceTooltip}
           </div>
         </div>
