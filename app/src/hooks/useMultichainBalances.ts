@@ -629,12 +629,13 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
 
     try {
       // Use Portfolio API when fetching multiple chains (more efficient)
+      // Portfolio API returns BOTH native and ERC20 tokens; we derive native balances from it
+      // and skip the separate getBalancesBatch call to save RPC/Alchemy usage.
       if (SUPPORTED_NETWORKS.length > 1) {
         try {
           const chainIds = SUPPORTED_NETWORKS.map(n => n.chainId);
           
           // Portfolio API limits: max 2 addresses, 5 networks per address
-          // Split into batches if needed
           const maxNetworksPerRequest = 5;
           const batches: number[][] = [];
           for (let i = 0; i < chainIds.length; i += maxNetworksPerRequest) {
@@ -642,6 +643,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
           }
 
           const allTokens: MultichainTokenBalance[] = [];
+          const nativeByChainId = new Map<number, { balance: string; balanceWei: bigint; balanceUSD: number }>();
 
           for (const batchChainIds of batches) {
             const portfolioResult = await withTimeout(
@@ -659,31 +661,23 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
 
             if (portfolioResult && portfolioResult.results) {
               for (const result of portfolioResult.results) {
-                if (result.tokens && result.tokens.length > 0) {
-                  const networkConfig = getNetworkByChainId(result.chainId);
-                  if (!networkConfig) continue;
+                const networkConfig = getNetworkByChainId(result.chainId);
+                if (!networkConfig) continue;
 
+                if (result.tokens && result.tokens.length > 0) {
                   for (const token of result.tokens) {
-                    // Skip if error
                     if (token.error) continue;
 
                     const balanceRaw = BigInt(token.tokenBalance || '0');
                     if (balanceRaw === 0n) continue;
 
-                    // FIX: Portfolio API may return tokens without tokenMetadata nested object
-                    // Some tokens have metadata directly on the token object (symbol, name, decimals)
-                    // Allow tokens even if tokenMetadata is missing, as long as we have basic info
                     const metadata = token.tokenMetadata || {};
-                    
-                    // Fallback to token-level properties if metadata is missing
                     const symbol = metadata.symbol || token.symbol || 'UNKNOWN';
                     const name = metadata.name || token.name || 'Unknown Token';
                     const decimals = metadata.decimals || token.decimals || 18;
                     const logoUrl = metadata.logo || token.logoUrl || '';
-                    
                     const balance = ethers.formatUnits(balanceRaw, decimals);
-                    
-                    // Get USD price from Portfolio API response
+
                     let priceUSD = 0;
                     if (token.tokenPrices && token.tokenPrices.length > 0) {
                       const usdPrice = token.tokenPrices.find((p: { currency: string; value: string }) => p.currency === 'USD') || token.tokenPrices[0];
@@ -693,12 +687,22 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
                     }
                     const balanceUSD = parseFloat(balance) * priceUSD;
 
-                    // Return Portfolio API format with computed convenience fields
+                    const tokenAddress = token.tokenAddress ?? token.address ?? null;
+                    const isNative = tokenAddress == null || tokenAddress === '';
+
+                    if (isNative) {
+                      nativeByChainId.set(result.chainId, {
+                        balance,
+                        balanceWei: balanceRaw,
+                        balanceUSD,
+                      });
+                      continue;
+                    }
+
                     allTokens.push({
-                      ...token, // Portfolio API format
+                      ...token,
                       chainId: result.chainId,
                       chainName: networkConfig.name,
-                      // Computed convenience fields
                       balance,
                       balanceRaw,
                       balanceUSD,
@@ -706,7 +710,6 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
                       name,
                       decimals,
                       logoUrl,
-                      // Ensure tokenMetadata exists (even if empty) for compatibility
                       tokenMetadata: metadata,
                     });
                   }
@@ -715,32 +718,47 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
             }
           }
 
-          if (allTokens.length > 0) {
-            // Sort tokens: known tokens first, then by USD value
+          const hasAnyData = allTokens.length > 0 || nativeByChainId.size > 0;
+          if (hasAnyData) {
+            const derivedBalances: MultichainBalance[] = SUPPORTED_NETWORKS.map((network) => {
+              const native = nativeByChainId.get(network.chainId);
+              return {
+                chainId: network.chainId,
+                chainName: network.name,
+                balance: native?.balance ?? '0.00',
+                balanceWei: native?.balanceWei ?? 0n,
+                balanceUSD: native?.balanceUSD ?? 0,
+                currencySymbol: network.nativeCurrency.symbol,
+                currencyName: network.nativeCurrency.name,
+                isLoading: false,
+                error: null,
+              };
+            });
+            setBalances(derivedBalances);
+          }
+
+          if (allTokens.length > 0 || hasAnyData) {
             const commonTokensMap = new Set(
               SUPPORTED_NETWORKS.flatMap(n => getCommonTokens(n.chainId).map(t => t.address.toLowerCase()))
             );
-
             allTokens.sort((a, b) => {
               const aIsKnown = commonTokensMap.has((a.tokenAddress || '').toLowerCase());
               const bIsKnown = commonTokensMap.has((b.tokenAddress || '').toLowerCase());
-              
               if (aIsKnown && !bIsKnown) return -1;
               if (!aIsKnown && bIsKnown) return 1;
               return (b.balanceUSD || 0) - (a.balanceUSD || 0);
             });
-
             setTokens(allTokens);
             setTokensLoading(false);
             return;
           }
         } catch (portfolioError) {
-          // Portfolio API failed, fall back to old method
           console.warn('[useMultichainBalances] Portfolio API failed, falling back to old method:', portfolioError);
         }
       }
 
-      // Fallback to old method (single chain or Portfolio API failed)
+      // Fallback: get native balances (RPC) + ERC20 tokens; only needed when Portfolio API isn't used
+      await refreshBalances();
       const allTokens = await fetchWithDeviceOptimization(
         SUPPORTED_NETWORKS,
         async (network) => await fetchChainTokens(network.chainId)
@@ -754,7 +772,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     } finally {
       setTokensLoading(false);
     }
-  }, [isConnected, address, fetchChainTokens]);
+  }, [isConnected, address, fetchChainTokens, refreshBalances]);
 
   /**
    * Refresh a specific chain (both native and ERC20)
@@ -785,14 +803,12 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
   }, [isConnected, address, fetchChainBalance, fetchChainTokens]);
 
   /**
-   * Refresh all data (both native and ERC20)
+   * Refresh all data (native + ERC20). Uses a single Portfolio API call when possible;
+   * native balances are derived from that response, so we avoid redundant getBalancesBatch.
    */
   const refresh = useCallback(async () => {
-    await Promise.all([
-      refreshBalances(),
-      refreshTokens(),
-    ]);
-  }, [refreshBalances, refreshTokens]);
+    await refreshTokens();
+  }, [refreshTokens]);
 
   // Calculate totals
   const totalBalance = useMemo(() => {

@@ -4,7 +4,7 @@ import { useMultichainDeedNFTs } from './useMultichainDeedNFTs';
 import { useGeneralNFTs } from './useGeneralNFTs';
 import { calculateCashBalance } from '@/utils/tokenUtils';
 import { getAllNFTContracts } from '@/config/nfts';
-import { SUPPORTED_NETWORKS, getContractAddressForNetwork } from '@/config/networks';
+import { SUPPORTED_NETWORKS, getContractAddressForNetwork, getNetworkByChainId } from '@/config/networks';
 import { ethers } from 'ethers';
 
 export interface UnifiedHolding {
@@ -231,9 +231,18 @@ export function usePortfolioHoldings(
       }
     });
     
+    // Build set of chainIds that already have a native balance (so we don't duplicate as "UNKNOWN Token")
+    const chainsWithNativeBalance = new Set(
+      nativeBalances
+        .filter(b => parseFloat(b.balance) > 0 && b.balanceUSD > 0)
+        .map(b => b.chainId)
+    );
+
     // Add ERC20 tokens (Portfolio API format)
     // FIX: Include all tokens with balance > 0, even if they don't have a price (balanceUSD = 0)
     // This ensures tokens like USDC on Polygon show up even if price data is missing
+    // FIX: Skip tokens that are the native token returned by Portfolio API without metadata
+    // (they show as "UNKNOWN Token" and duplicate the native balance we already add from nativeBalances)
     tokenBalances.forEach((token) => {
       // Get token address from Portfolio API format
       const tokenAddress = token.tokenAddress || token.address || '';
@@ -241,6 +250,29 @@ export function usePortfolioHoldings(
       
       // Skip tokens with zero balance
       if (balanceRaw === 0n) return;
+      
+      // Get token name and symbol with fallbacks
+      let tokenName = token.name || token.tokenMetadata?.name || 'Unknown Token';
+      let tokenSymbol = token.symbol || token.tokenMetadata?.symbol || 'UNKNOWN';
+
+      // Skip duplicate native: Portfolio API can return native token with no metadata (UNKNOWN/Unknown Token).
+      // We already add native balances from nativeBalances with correct labels; skip this duplicate row.
+      if (
+        tokenSymbol === 'UNKNOWN' &&
+        tokenName === 'Unknown Token' &&
+        chainsWithNativeBalance.has(token.chainId)
+      ) {
+        return;
+      }
+
+      // If still UNKNOWN/Unknown Token, try to use chain's native currency (e.g. API returned native without metadata)
+      if (tokenSymbol === 'UNKNOWN' && tokenName === 'Unknown Token') {
+        const network = getNetworkByChainId(token.chainId);
+        if (network?.nativeCurrency) {
+          tokenSymbol = network.nativeCurrency.symbol;
+          tokenName = network.nativeCurrency.name;
+        }
+      }
       
       const decimals = token.decimals || token.tokenMetadata?.decimals || 18;
       const balance = token.balance || (token.tokenBalance ? ethers.formatUnits(balanceRaw, decimals) : '0');
@@ -257,10 +289,6 @@ export function usePortfolioHoldings(
         // Return 0 if no price - token will still be included but may be filtered by UI
         return 0;
       })();
-      
-      // Get token name and symbol with fallbacks
-      const tokenName = token.name || token.tokenMetadata?.name || 'Unknown Token';
-      const tokenSymbol = token.symbol || token.tokenMetadata?.symbol || 'UNKNOWN';
       
       allHoldings.push({
         ...token, // Include all token properties (Portfolio API format)
