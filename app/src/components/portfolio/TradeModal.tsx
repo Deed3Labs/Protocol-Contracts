@@ -64,6 +64,20 @@ function chainIdToStripeNetwork(chainId: number | undefined): string {
   return chainId ? map[chainId] ?? "ethereum" : "ethereum";
 }
 
+const TESTNET_CHAIN_IDS = new Set<number>([
+  11155111,   // Sepolia
+  84532,      // Base Sepolia
+  421614,     // Arbitrum Sepolia
+  11155420,   // OP Sepolia
+  80002,      // Polygon Amoy
+  43113,      // Avalanche Fuji
+  97,         // BSC Testnet
+]);
+
+function isTestnetChainId(chainId: number | undefined): boolean {
+  return chainId != null && TESTNET_CHAIN_IDS.has(chainId);
+}
+
 // Generate color for asset based on symbol
 const getAssetColor = (symbol: string): string => {
   const colors: Record<string, string> = {
@@ -165,10 +179,10 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     [cashBalance.totalCash]
   );
 
-  // Convert holdings to assets for selection
+  // Convert holdings to assets for selection (exclude testnet tokens)
   const availableAssets = useMemo<Asset[]>(() => {
     return holdings
-      .filter(h => h.type === 'token' && parseFloat(h.balance || '0') > 0)
+      .filter(h => h.type === 'token' && parseFloat(h.balance || '0') > 0 && !isTestnetChainId(h.chainId))
       .map(h => ({
         symbol: h.asset_symbol,
         name: h.asset_name,
@@ -209,8 +223,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       setFromChainId(defaultChainId);
       setToChainId(defaultChainId);
 
-      if (initialAsset) {
-        // If initial asset provided, set it as the target
+      if (initialAsset && !isTestnetChainId(initialAsset.chainId)) {
+        // If initial asset provided (mainnet only), set it as the target
         if (initialTradeType === "buy") {
           setToAsset(initialAsset);
           setToChainId(initialAsset.chainId || defaultChainId);
