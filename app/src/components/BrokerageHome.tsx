@@ -212,6 +212,79 @@ const ExpandedHoldingDetails = ({
   );
 };
 
+/** Renders the main cash balance from PortfolioContext. Subscribes directly to context so it stays in sync when balance updates (e.g. after deposit) without requiring a page switch. */
+function PortfolioCashBalanceBlock({
+  isConnected,
+  multichainBalancesLength,
+  onDeposit,
+  onWithdraw,
+  totalBalance,
+}: {
+  isConnected: boolean;
+  multichainBalancesLength: number;
+  onDeposit: () => void;
+  onWithdraw: () => void;
+  totalBalance: string;
+}) {
+  const { cashBalance: portfolioCashBalance, previousTotalBalanceUSD } = usePortfolio();
+  const cashBalance = portfolioCashBalance?.totalCash || 0;
+  return (
+    <div>
+      <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
+        <span className="text-sm font-medium">Cash Balance</span>
+        <div className="group relative">
+          <Info className="h-4 w-4 cursor-help" />
+          <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+            Stablecoins only (USDC priority)
+          </div>
+        </div>
+        {!isConnected && (
+          <span className="text-xs text-amber-500">Connect wallet to view balance</span>
+        )}
+        {isConnected && multichainBalancesLength > 1 && (
+          <span className="text-xs text-zinc-400">Across {multichainBalancesLength} networks</span>
+        )}
+      </div>
+      <div className="min-h-[60px] flex items-center">
+        <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
+          {isConnected ? (
+            <>
+              <LargePriceWheel
+                key={`cash-balance-${cashBalance}`}
+                value={cashBalance || 0}
+                previousValue={previousTotalBalanceUSD}
+                className="font-light"
+              />
+              <span className="text-lg text-zinc-500 font-normal">USD</span>
+            </>
+          ) : (
+            <>
+              $0.00
+              <span className="text-lg text-zinc-500 font-normal">USD</span>
+            </>
+          )}
+        </h1>
+      </div>
+      <div className="mt-6 flex flex-wrap gap-3">
+        <button
+          onClick={onDeposit}
+          className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-2"
+        >
+          <ArrowUpRight className="w-4 h-4" />
+          Add Funds
+        </button>
+        <button
+          onClick={onWithdraw}
+          className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800"
+          disabled={!isConnected || parseFloat(totalBalance) === 0}
+        >
+          Withdraw Funds
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const NFTHoldingItem = ({ 
   holding, 
   deed, 
@@ -418,7 +491,6 @@ export default function BrokerageHome() {
     balances: multichainBalances,
     totalBalance,
     totalBalanceUSD,
-    previousTotalBalanceUSD,
     holdings: portfolioHoldings,
     cashBalance: portfolioCashBalance,
     transactions: walletTransactions,
@@ -668,6 +740,8 @@ export default function BrokerageHome() {
   }, []);
   
   // Cash balance is automatically calculated from stablecoin holdings in PortfolioContext
+  // Note: We read cashBalance from context here for use in tabs/holdings; the main hero
+  // balance uses PortfolioCashBalanceBlock so it stays in sync when context updates.
   const cashBalance = portfolioCashBalance?.totalCash || 0;
   
   // Calculate holdings-only total (for portfolio weighting)
@@ -806,60 +880,14 @@ export default function BrokerageHome() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
            {/* Left Column (Chart & Main Data) */}
            <div className="md:col-span-8 space-y-10">
-              {/* Persistent Portfolio Value & Subheader */}
-              <div>
-                   <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
-                     <span className="text-sm font-medium">Cash Balance</span>
-                     <div className="group relative">
-                        <Info className="h-4 w-4 cursor-help" />
-                        <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
-                          Stablecoins only (USDC priority)
-                        </div>
-                     </div>
-                     {!isConnected && (
-                       <span className="text-xs text-amber-500">Connect wallet to view balance</span>
-                     )}
-                     {isConnected && multichainBalances.length > 1 && (
-                       <span className="text-xs text-zinc-400">Across {multichainBalances.length} networks</span>
-                     )}
-                   </div>
-                   <div className="min-h-[60px] flex items-center">
-                     <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
-                       {isConnected ? (
-                         <>
-                           <LargePriceWheel 
-                             value={cashBalance || 0} 
-                             previousValue={previousTotalBalanceUSD}
-                             className="font-light"
-                           />
-                           <span className="text-lg text-zinc-500 font-normal">USD</span>
-                         </>
-                       ) : (
-                         <>
-                           $0.00
-                           <span className="text-lg text-zinc-500 font-normal">USD</span>
-                         </>
-                       )}
-                     </h1>
-                   </div>
-                   
-                   <div className="mt-6 flex flex-wrap gap-3">
-                      <button 
-                        onClick={() => setDepositModalOpen(true)}
-                        className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-2"
-                      >
-                        <ArrowUpRight className="w-4 h-4" />
-                         Add Funds
-                      </button>
-                      <button 
-                        onClick={() => setWithdrawModalOpen(true)}
-                        className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800"
-                        disabled={!isConnected || parseFloat(totalBalance) === 0}
-                      >
-                        Withdraw Funds
-                      </button>
-                   </div>
-              </div>
+              {/* Persistent Portfolio Value & Subheader - uses direct context consumer so balance stays in sync */}
+              <PortfolioCashBalanceBlock
+                isConnected={isConnected}
+                multichainBalancesLength={multichainBalances.length}
+                onDeposit={() => setDepositModalOpen(true)}
+                onWithdraw={() => setWithdrawModalOpen(true)}
+                totalBalance={totalBalance}
+              />
               
               {/* Tabs */}
               <div className="flex gap-6 mb-6 border-b border-zinc-200 dark:border-zinc-800 pb-0 overflow-x-auto no-scrollbar">

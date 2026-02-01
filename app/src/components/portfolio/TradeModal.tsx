@@ -7,11 +7,19 @@ import { usePortfolio } from "@/context/PortfolioContext";
 import { useAccount } from "wagmi";
 import { useLifiTrade } from "@/hooks/useLifiTrade";
 import { SUPPORTED_NETWORKS } from "@/config/networks";
+import { createStripeOnrampSession, getBridgeFundingUrl } from "@/utils/apiClient";
+import { isAddress } from "ethers";
+
+declare global {
+  interface Window {
+    StripeOnramp?: (publishableKey: string) => any;
+  }
+}
 
 type TradeType = "buy" | "sell" | "swap";
-type TradeStep = "input" | "review" | "pending" | "success" | "failed";
-type TradeScreen = "trade" | "selectAsset" | "selectWallet";
-type AssetPickTarget = "buyTo" | "sellFrom" | "swapFrom" | "swapTo";
+type TradeStep = "input" | "review" | "pending" | "success" | "failed" | "funding" | "bank_pending" | "funding_complete";
+type TradeScreen = "trade" | "selectAsset" | "selectWallet" | "selectCardProvider" | "externalWalletAddress";
+type AssetPickTarget = "buyTo" | "buyFrom" | "sellFrom" | "swapFrom" | "swapTo";
 type WalletPickTarget = "pay" | "receive";
 
 interface Asset {
@@ -33,10 +41,28 @@ interface TradeModalProps {
 }
 
 const paymentMethods = [
-  { id: "wallet", name: "USD Wallet", value: null as number | null, icon: "💵" },
-  { id: "debit", name: "Debit Card", value: null as number | null, icon: "💳" },
-  { id: "bank", name: "Bank Account", value: null as number | null, icon: "🏦" },
+  { id: "wallet", name: "Pay with crypto", value: null as number | null, icon: "💵", subtitle: "Select token and chain" },
+  { id: "debit", name: "Fund with Debit/Card", value: null as number | null, icon: "💳", subtitle: "Debit, credit, Apple Pay" },
+  { id: "bank", name: "Fund with Bank", value: null as number | null, icon: "🏦", subtitle: "Connected bank account" },
 ];
+
+const cardFundingProviders = [
+  { id: "stripe", name: "Stripe", subtitle: "Debit, credit, Apple Pay", enabled: true },
+  { id: "transak", name: "Transak", subtitle: "Coming soon", enabled: false },
+  { id: "onramper", name: "Onramper", subtitle: "Coming soon", enabled: false },
+  { id: "moonpay", name: "MoonPay", subtitle: "Coming soon", enabled: false },
+];
+
+function chainIdToStripeNetwork(chainId: number | undefined): string {
+  const map: Record<number, string> = {
+    1: "ethereum",
+    8453: "base",
+    137: "polygon",
+    42161: "arbitrum",
+    10: "optimism",
+  };
+  return chainId ? map[chainId] ?? "ethereum" : "ethereum";
+}
 
 // Generate color for asset based on symbol
 const getAssetColor = (symbol: string): string => {
@@ -53,6 +79,7 @@ const getAssetColor = (symbol: string): string => {
 
 export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initialAsset = null }: TradeModalProps) {
   const { holdings, cashBalance } = usePortfolio();
+  const bankLinked = cashBalance.bankLinked ?? false;
   const { address, chainId } = useAccount();
   const { quote, execution, fetchQuote, executeTrade, resetExecution, clearQuote } = useLifiTrade();
   
@@ -71,7 +98,60 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
   const [receiveAccount, setReceiveAccount] = useState<{ id: string; name: string; subtitle?: string } | null>(null);
   const [quoteExpiryTime, setQuoteExpiryTime] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const [selectedCardProvider, setSelectedCardProvider] = useState<string>("stripe");
+  const [fundingCompleteMessage, setFundingCompleteMessage] = useState<string>("");
+  const [stripeOnrampLoading, setStripeOnrampLoading] = useState(false);
+  const [externalPayoutAddress, setExternalPayoutAddress] = useState("");
+  const [externalPayoutAddressError, setExternalPayoutAddressError] = useState<string | null>(null);
+  const stripeOnrampRef = useRef<HTMLDivElement>(null);
+  const stripeSessionRef = useRef<any>(null);
   const lastAutoRefreshExpiryRef = useRef<number | null>(null);
+
+  const loadStripeScripts = useCallback((): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (window.StripeOnramp) {
+        resolve();
+        return;
+      }
+      if (document.querySelector('script[src*="stripe.js"]')) {
+        const checkInterval = setInterval(() => {
+          if (window.StripeOnramp) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 100);
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          if (!window.StripeOnramp) reject(new Error('Stripe scripts failed to load'));
+        }, 10000);
+        return;
+      }
+      const stripeScript = document.createElement('script');
+      stripeScript.src = 'https://js.stripe.com/clover/stripe.js';
+      stripeScript.async = true;
+      stripeScript.onload = () => {
+        const cryptoScript = document.createElement('script');
+        cryptoScript.src = 'https://crypto-js.stripe.com/crypto-onramp-outer.js';
+        cryptoScript.async = true;
+        cryptoScript.onload = () => {
+          const checkInterval = setInterval(() => {
+            if (window.StripeOnramp) {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 100);
+          setTimeout(() => {
+            clearInterval(checkInterval);
+            if (!window.StripeOnramp) reject(new Error('StripeOnramp not available after loading scripts'));
+          }, 10000);
+        };
+        cryptoScript.onerror = () => reject(new Error('Failed to load Stripe crypto onramp script'));
+        document.head.appendChild(cryptoScript);
+      };
+      stripeScript.onerror = () => reject(new Error('Failed to load Stripe script'));
+      document.head.appendChild(stripeScript);
+    });
+  }, []);
 
   const cashUsdAsset = useMemo<Asset>(
     () => ({
@@ -145,6 +225,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
           // Receive Cash (USD)
           setToAsset(cashUsdAsset);
           setToChainId(defaultChainId);
+          setReceiveAccount({ id: "connected-wallet", name: "Connected wallet", subtitle: "Your wallet" });
         }
         setTradeType(initialTradeType);
       } else if (initialTradeType === "swap") {
@@ -244,18 +325,43 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     }, 300);
   }, [onOpenChange]);
 
-  const handleReview = useCallback(() => {
+  const handleReview = useCallback(async () => {
+    if (tradeType === "buy") {
+      if (paymentMethod.id === "wallet") {
+        setStep("review");
+        return;
+      }
+      if (paymentMethod.id === "bank" && address && toAsset && amount && parseFloat(amount) > 0) {
+        const destCurrency = toAsset.symbol.toUpperCase() === "USD" ? "USDC" : toAsset.symbol;
+        const destNetwork = chainIdToStripeNetwork(toChainId ?? toAsset.chainId);
+        const url = await getBridgeFundingUrl(address, amount, destCurrency, destNetwork);
+        if (url) {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+        setFundingCompleteMessage("Funding initiated. Funds should appear in your wallet within 1-3 business days.");
+        setStep("bank_pending");
+        return;
+      }
+      if (paymentMethod.id === "debit" && selectedCardProvider === "stripe") {
+        setStep("funding");
+        return;
+      }
+    }
     setStep("review");
-  }, []);
+  }, [tradeType, paymentMethod.id, selectedCardProvider, address, toAsset, amount, toChainId]);
 
   // Keyboard event handlers
   useEffect(() => {
     if (!open) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Escape closes from anywhere
+      // Escape closes from anywhere (or goes back from bank_pending)
       if (event.key === "Escape") {
         event.preventDefault();
+        if (step === "bank_pending") {
+          setStep("input");
+          return;
+        }
         if (screen !== "trade") {
           setScreen("trade");
           setSearchQuery("");
@@ -313,6 +419,9 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       if (assetPickTarget === "buyTo") {
         setToAsset(asset);
         setToChainId(asset.chainId || chainId || 1);
+      } else if (assetPickTarget === "buyFrom") {
+        setFromAsset(asset);
+        setFromChainId(asset.chainId || chainId || 1);
       } else if (assetPickTarget === "sellFrom") {
         setFromAsset(asset);
         setFromChainId(asset.chainId || chainId || 1);
@@ -339,17 +448,42 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
           ...found,
           value: id === "wallet" ? cashBalance.totalCash : null,
         });
+        if (id === "debit") {
+          setScreen("selectCardProvider");
+        } else if (id === "wallet") {
+          setAssetPickTarget("buyFrom");
+          setScreen("selectAsset");
+        } else {
+          setScreen("trade");
+        }
       } else {
-        // Receive wallet/account (for now we only support Cash USD)
-        if (id === "cash-usd") {
-          setReceiveAccount({ id: "cash-usd", name: "Cash (USD)", subtitle: "Balance" });
-          setToAsset(cashUsdAsset);
+        // Receive to (sell flow)
+        if (tradeType === "sell") {
+          if (id === "connected-wallet") {
+            setReceiveAccount({ id: "connected-wallet", name: "Connected wallet", subtitle: "Your wallet" });
+            setScreen("trade");
+          } else if (id === "external-wallet") {
+            setReceiveAccount({ id: "external-wallet", name: "External wallet", subtitle: externalPayoutAddress ? `${externalPayoutAddress.slice(0, 6)}...${externalPayoutAddress.slice(-4)}` : "Enter address" });
+            setScreen("externalWalletAddress");
+          } else if (id === "connected-bank") {
+            setReceiveAccount({ id: "connected-bank", name: "Connected bank", subtitle: "Cash out to bank" });
+            setScreen("trade");
+          } else if (id === "connected-bank-setup") {
+            // Open Bridge or Deposit for bank setup; stay on picker or show message
+            window.open("/#/portfolio", "_blank");
+            setScreen("trade");
+          }
+        } else {
+          if (id === "cash-usd") {
+            setReceiveAccount({ id: "cash-usd", name: "Cash (USD)", subtitle: "Balance" });
+            setToAsset(cashUsdAsset);
+          }
+          setScreen("trade");
         }
       }
-      setScreen("trade");
       setSearchQuery("");
     },
-    [walletPickTarget, cashBalance.totalCash, cashUsdAsset]
+    [walletPickTarget, cashBalance.totalCash, cashUsdAsset, tradeType, externalPayoutAddress]
   );
 
   const handleConfirm = async () => {
@@ -378,10 +512,36 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     if (execution.status === "failed") setStep("failed");
   }, [step, execution.status]);
 
+  // Recipient address for sell: connected wallet, external wallet, or connected bank (same as wallet for now)
+  const sellRecipientAddress = useMemo(() => {
+    if (tradeType !== "sell" || !address) return address ?? undefined;
+    const id = receiveAccount?.id;
+    if (id === "connected-wallet" || id === "connected-bank") return address;
+    if (id === "external-wallet" && externalPayoutAddress && isAddress(externalPayoutAddress)) return externalPayoutAddress;
+    return address;
+  }, [tradeType, address, receiveAccount?.id, externalPayoutAddress]);
+
   // Fetch quote when amount or assets change (only on input step)
   useEffect(() => {
+    const isBuyWithFiat = tradeType === "buy" && (paymentMethod.id === "debit" || paymentMethod.id === "bank");
+
+    if (!open) {
+      // Only clear quote when modal is closed, not when transitioning to review step
+      clearQuote();
+      setQuoteExpiryTime(null);
+      setTimeRemaining(null);
+      return;
+    }
+
+    // Buy with bank or debit: no Li.Fi swap, so don't fetch quote and clear any existing one
+    if (isBuyWithFiat) {
+      clearQuote();
+      setQuoteExpiryTime(null);
+      setTimeRemaining(null);
+      return;
+    }
+
     if (
-      open &&
       step === "input" &&
       fromAsset &&
       toAsset &&
@@ -395,7 +555,12 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       if (fromAsset.symbol === "USD" || toAsset.symbol === "USD") {
         return;
       }
+      // For sell with external wallet, require valid address before fetching quote
+      if (tradeType === "sell" && receiveAccount?.id === "external-wallet" && (!externalPayoutAddress || !isAddress(externalPayoutAddress))) {
+        return;
+      }
 
+      const toAddress = tradeType === "sell" ? (sellRecipientAddress ?? address) : address;
       const timeoutId = setTimeout(() => {
         fetchQuote(
           fromChainId,
@@ -403,18 +568,13 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
           amount,
           toChainId,
           toAsset.symbol,
-          address
+          toAddress
         );
       }, 500); // Debounce quote fetching
 
       return () => clearTimeout(timeoutId);
-    } else if (!open) {
-      // Only clear quote when modal is closed, not when transitioning to review step
-      clearQuote();
-      setQuoteExpiryTime(null);
-      setTimeRemaining(null);
     }
-  }, [open, step, fromAsset, toAsset, fromChainId, toChainId, amount, address, fetchQuote, clearQuote]);
+  }, [open, step, fromAsset, toAsset, fromChainId, toChainId, amount, address, tradeType, paymentMethod.id, receiveAccount?.id, externalPayoutAddress, sellRecipientAddress, fetchQuote, clearQuote]);
 
   // Set quote expiry time when quote is received
   useEffect(() => {
@@ -465,7 +625,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     if (lastAutoRefreshExpiryRef.current === quoteExpiryTime) return;
     lastAutoRefreshExpiryRef.current = quoteExpiryTime;
 
-    fetchQuote(fromChainId, fromAsset.symbol, amount, toChainId, toAsset.symbol, address);
+    const toAddress = tradeType === "sell" ? (sellRecipientAddress ?? address) : address;
+    fetchQuote(fromChainId, fromAsset.symbol, amount, toChainId, toAsset.symbol, toAddress);
   }, [
     open,
     step,
@@ -478,7 +639,97 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     toChainId,
     amount,
     address,
+    tradeType,
+    sellRecipientAddress,
     fetchQuote,
+  ]);
+
+  // Stripe Onramp: when step is "funding" and payment is debit/card, create session with toAsset + amount and mount
+  useEffect(() => {
+    if (
+      !open ||
+      step !== "funding" ||
+      paymentMethod.id !== "debit" ||
+      selectedCardProvider !== "stripe" ||
+      !address ||
+      !toAsset ||
+      !amount ||
+      parseFloat(amount) <= 0 ||
+      !stripeOnrampRef.current
+    ) {
+      return;
+    }
+
+    let mounted = true;
+    const network = chainIdToStripeNetwork(toChainId ?? toAsset.chainId);
+    const destCurrency = (toAsset.symbol === "USD" ? "usdc" : toAsset.symbol).toLowerCase();
+
+    const initStripeOnramp = async () => {
+      setStripeOnrampLoading(true);
+      try {
+        await loadStripeScripts();
+        if (!mounted || !stripeOnrampRef.current) return;
+        if (!window.StripeOnramp) throw new Error("Stripe Onramp is not available");
+
+        const sessionData = await createStripeOnrampSession({
+          wallet_addresses: { [network]: address },
+          destination_currency: destCurrency,
+          destination_network: network,
+          destination_amount: amount,
+        });
+        if (!sessionData || !mounted || !stripeOnrampRef.current) return;
+
+        const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+        if (!stripePublishableKey) throw new Error("Stripe publishable key is not configured");
+
+        const stripeOnramp = window.StripeOnramp(stripePublishableKey);
+        const session = stripeOnramp.createSession({
+          clientSecret: sessionData.client_secret,
+          appearance: { theme: document.documentElement.classList.contains("dark") ? "dark" : "light" },
+        });
+
+        session.addEventListener("onramp_session_updated", (event: any) => {
+          const status = event?.payload?.session?.status;
+          if (status === "fulfillment_complete" || status === "rejected") {
+            setFundingCompleteMessage(
+              status === "fulfillment_complete"
+                ? "Order placed. Funds are on the way to your wallet."
+                : "Order was not completed."
+            );
+            setStep("funding_complete");
+          }
+        });
+
+        if (stripeOnrampRef.current) {
+          stripeOnrampRef.current.innerHTML = "";
+          session.mount(stripeOnrampRef.current);
+          stripeSessionRef.current = session;
+        }
+      } catch (err) {
+        console.error("Stripe Onramp init error:", err);
+        setFundingCompleteMessage("Failed to load payment form. Please try again.");
+        setStep("funding_complete");
+      } finally {
+        if (mounted) setStripeOnrampLoading(false);
+      }
+    };
+
+    initStripeOnramp();
+    return () => {
+      mounted = false;
+      if (stripeOnrampRef.current) stripeOnrampRef.current.innerHTML = "";
+      stripeSessionRef.current = null;
+    };
+  }, [
+    open,
+    step,
+    paymentMethod.id,
+    selectedCardProvider,
+    address,
+    toAsset,
+    toChainId,
+    amount,
+    loadStripeScripts,
   ]);
 
   const getConversionAmount = () => {
@@ -510,6 +761,14 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     setFromChainId(toChainId);
     setToChainId(tempChainId);
   };
+
+  // When in sell mode, default receive-to to connected wallet if currently cash-usd (from buy/swap)
+  useEffect(() => {
+    if (!open || tradeType !== "sell") return;
+    if (receiveAccount?.id === "cash-usd" || !receiveAccount) {
+      setReceiveAccount({ id: "connected-wallet", name: "Connected wallet", subtitle: "Your wallet" });
+    }
+  }, [open, tradeType, receiveAccount?.id]);
 
   // Preserve assets when switching between buy/sell/swap tabs
   const prevTradeTypeRef = useRef<TradeType | null>(null);
@@ -660,6 +919,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                     <h2 className="text-lg font-semibold text-black dark:text-white">
                       {assetPickTarget === "buyTo"
                         ? "Select asset to buy"
+                        : assetPickTarget === "buyFrom"
+                        ? "Select asset to pay with"
                         : assetPickTarget === "sellFrom"
                         ? "Select asset to sell"
                         : assetPickTarget === "swapFrom"
@@ -707,6 +968,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                       {filteredAssets.map((a) => {
                         const isSelected =
                           (assetPickTarget === "buyTo" && toAsset?.symbol === a.symbol) ||
+                          (assetPickTarget === "buyFrom" && fromAsset?.symbol === a.symbol && fromAsset?.chainId === a.chainId) ||
                           (assetPickTarget === "sellFrom" && fromAsset?.symbol === a.symbol) ||
                           (assetPickTarget === "swapFrom" && fromAsset?.symbol === a.symbol) ||
                           (assetPickTarget === "swapTo" && toAsset?.symbol === a.symbol);
@@ -790,10 +1052,10 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                             m.id === "wallet" ? `$${cashBalance.totalCash.toFixed(2)}` : m.value ? `$${m.value.toFixed(2)}` : "";
                           const subtitle =
                             m.id === "wallet"
-                              ? "Available balance"
+                              ? (m as { subtitle?: string }).subtitle ?? "Select token and chain"
                               : m.id === "debit"
-                              ? "Debit card"
-                              : "Bank account";
+                              ? "Debit, credit, Apple Pay"
+                              : "Connected bank account";
                           return (
                             <button
                               key={`pay-${m.id}`}
@@ -828,6 +1090,91 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           );
                         })}
                       </>
+                    ) : tradeType === "sell" ? (
+                      <>
+                        <div className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-500 px-2 py-2">
+                          Receive to
+                        </div>
+                        <button
+                          onClick={() => handlePickWallet("connected-wallet")}
+                          className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors border border-zinc-200/0 hover:border-zinc-200 dark:hover:border-zinc-800 text-left"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center">
+                              <Wallet className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+                            </div>
+                            <div>
+                              <div className="text-black dark:text-white font-medium">Connected wallet</div>
+                              <div className="text-sm text-zinc-500 dark:text-zinc-400">Proceeds to your wallet</div>
+                            </div>
+                          </div>
+                          {receiveAccount?.id === "connected-wallet" && (
+                            <div className="w-6 h-6 rounded-full bg-black dark:bg-white flex items-center justify-center">
+                              <Check className="w-4 h-4 text-white dark:text-black" />
+                            </div>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handlePickWallet("external-wallet")}
+                          className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors border border-zinc-200/0 hover:border-zinc-200 dark:hover:border-zinc-800 text-left"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
+                              📤
+                            </div>
+                            <div>
+                              <div className="text-black dark:text-white font-medium">External wallet</div>
+                              <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                                {externalPayoutAddress && isAddress(externalPayoutAddress)
+                                  ? `${externalPayoutAddress.slice(0, 8)}...${externalPayoutAddress.slice(-6)}`
+                                  : "Enter address"}
+                              </div>
+                            </div>
+                          </div>
+                          {receiveAccount?.id === "external-wallet" && (
+                            <div className="w-6 h-6 rounded-full bg-black dark:bg-white flex items-center justify-center">
+                              <Check className="w-4 h-4 text-white dark:text-black" />
+                            </div>
+                          )}
+                        </button>
+                        {bankLinked ? (
+                          <button
+                            onClick={() => handlePickWallet("connected-bank")}
+                            className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors border border-zinc-200/0 hover:border-zinc-200 dark:hover:border-zinc-800 text-left"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
+                                🏦
+                              </div>
+                              <div>
+                                <div className="text-black dark:text-white font-medium">Connected bank</div>
+                                <div className="text-sm text-zinc-500 dark:text-zinc-400">Cash out to bank</div>
+                              </div>
+                            </div>
+                            {receiveAccount?.id === "connected-bank" && (
+                              <div className="w-6 h-6 rounded-full bg-black dark:bg-white flex items-center justify-center">
+                                <Check className="w-4 h-4 text-white dark:text-black" />
+                              </div>
+                            )}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handlePickWallet("connected-bank-setup")}
+                            className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors border border-zinc-200/0 hover:border-zinc-200 dark:hover:border-zinc-800 text-left opacity-90"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
+                                🏦
+                              </div>
+                              <div>
+                                <div className="text-black dark:text-white font-medium">Set up bank payout</div>
+                                <div className="text-sm text-zinc-500 dark:text-zinc-400">Connect bank in Deposit to enable</div>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
+                          </button>
+                        )}
+                      </>
                     ) : (
                       <>
                         <div className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-500 px-2 py-2">
@@ -858,6 +1205,130 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         </button>
                       </>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {screen === "selectCardProvider" && (
+                <div className="flex flex-col h-full">
+                  <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+                    <button
+                      onClick={() => setScreen("selectWallet")}
+                      className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                    </button>
+                    <h2 className="text-lg font-semibold text-black dark:text-white">Fund with Debit/Card</h2>
+                    <div className="w-9" />
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                    <div className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-500 px-2 py-2">
+                      Choose provider
+                    </div>
+                    {cardFundingProviders.map((provider) => {
+                      const isSelected = selectedCardProvider === provider.id;
+                      const isDisabled = !provider.enabled;
+                      return (
+                        <button
+                          key={provider.id}
+                          onClick={() => {
+                            if (provider.enabled) {
+                              setSelectedCardProvider(provider.id);
+                              setScreen("trade");
+                            }
+                          }}
+                          disabled={isDisabled}
+                          className={cn(
+                            "w-full flex items-center justify-between p-4 rounded-xl border border-zinc-200/0 hover:border-zinc-200 dark:hover:border-zinc-800 text-left transition-colors",
+                            isDisabled
+                              ? "opacity-50 cursor-not-allowed pointer-events-none"
+                              : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50",
+                            isSelected && !isDisabled && "border-zinc-200 dark:border-zinc-800"
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
+                              💳
+                            </div>
+                            <div>
+                              <div className="text-black dark:text-white font-medium">{provider.name}</div>
+                              <div className="text-sm text-zinc-500 dark:text-zinc-400">{provider.subtitle}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {isSelected && provider.enabled ? (
+                              <div className="w-6 h-6 rounded-full bg-black dark:bg-white flex items-center justify-center">
+                                <Check className="w-4 h-4 text-white dark:text-black" />
+                              </div>
+                            ) : (
+                              !isDisabled && <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {screen === "externalWalletAddress" && (
+                <div className="flex flex-col h-full">
+                  <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+                    <button
+                      onClick={() => setScreen("selectWallet")}
+                      className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                    </button>
+                    <h2 className="text-lg font-semibold text-black dark:text-white">Receive to external wallet</h2>
+                    <div className="w-9" />
+                  </div>
+                  <div className="flex-1 p-4 space-y-4">
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                      Enter a valid EVM address for the receive chain ({toAsset?.chainName ?? "same chain"}). Proceeds will be sent to this address.
+                    </p>
+                    <input
+                      type="text"
+                      value={externalPayoutAddress}
+                      onChange={(e) => {
+                        setExternalPayoutAddress(e.target.value);
+                        setExternalPayoutAddressError(null);
+                      }}
+                      onBlur={() => {
+                        if (externalPayoutAddress.trim() && !isAddress(externalPayoutAddress.trim())) {
+                          setExternalPayoutAddressError("Invalid wallet address");
+                        } else {
+                          setExternalPayoutAddressError(null);
+                        }
+                      }}
+                      placeholder="0x..."
+                      className={cn(
+                        "w-full rounded-xl border bg-zinc-50 dark:bg-zinc-900 px-4 py-3 text-black dark:text-white placeholder:text-zinc-500",
+                        externalPayoutAddressError ? "border-red-500 dark:border-red-500" : "border-zinc-200 dark:border-zinc-800"
+                      )}
+                    />
+                    {externalPayoutAddressError && (
+                      <p className="text-sm text-red-500 dark:text-red-400">{externalPayoutAddressError}</p>
+                    )}
+                    <Button
+                      onClick={() => {
+                        const trimmed = externalPayoutAddress.trim();
+                        if (!trimmed) {
+                          setExternalPayoutAddressError("Enter an address");
+                          return;
+                        }
+                        if (!isAddress(trimmed)) {
+                          setExternalPayoutAddressError("Invalid wallet address");
+                          return;
+                        }
+                        setExternalPayoutAddressError(null);
+                        setReceiveAccount({ id: "external-wallet", name: "External wallet", subtitle: `${trimmed.slice(0, 8)}...${trimmed.slice(-6)}` });
+                        setScreen("trade");
+                      }}
+                      className="w-full h-12 rounded-full font-semibold bg-black dark:bg-white text-white dark:text-black"
+                    >
+                      Done
+                    </Button>
                   </div>
                 </div>
               )}
@@ -908,25 +1379,29 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         {amount}
                       </span>
                       <span className="text-4xl font-light text-zinc-500 dark:text-zinc-400">
-                        {tradeType === "swap" && fromAsset ? fromAsset.symbol : "USD"}
+                        {tradeType === "swap" || tradeType === "sell"
+                          ? (fromAsset ? fromAsset.symbol : "USD")
+                          : "USD"}
                       </span>
                     </div>
-                    {toAsset && parseFloat(amount) > 0 && (
+                    {toAsset && parseFloat(amount) > 0 && (() => {
+                      const isBuyWithFiat = tradeType === "buy" && (paymentMethod.id === "debit" || paymentMethod.id === "bank");
+                      return (
                       <div className="flex flex-col items-center gap-1 mt-2">
-                        {quote.isLoading && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
+                        {!isBuyWithFiat && quote.isLoading && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
                           <div className="flex items-center gap-1 text-xs text-zinc-500">
                             <Loader2 className="w-3 h-3 animate-spin" />
                             <span>Fetching quote...</span>
                           </div>
                         )}
-                        {quote.error && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
+                        {!isBuyWithFiat && quote.error && fromAsset?.symbol !== "USD" && toAsset.symbol !== "USD" && (
                           <div className="flex items-center gap-1 text-xs text-red-500 max-w-[200px] text-center">
                             <AlertCircle className="w-3 h-3 flex-shrink-0" />
                             <span className="truncate">{quote.error}</span>
                           </div>
                         )}
-                        {/* Only show conversion amount when quote is loaded and valid */}
-                        {quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && (
+                        {/* Only show conversion amount when quote is loaded and valid (not for buy with bank/debit) */}
+                        {!isBuyWithFiat && quote.estimatedOutput && parseFloat(quote.estimatedOutput) > 0 && !quote.error && !quote.isLoading && (
                           <>
                             <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
                               <ArrowUpDown className="w-4 h-4" />
@@ -942,7 +1417,8 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                           </>
                         )}
                       </div>
-                    )}
+                      );
+                    })()}
                   </div>
 
                   {/* Asset Selectors */}
@@ -976,14 +1452,15 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                               )}
                             </div>
                             <div className="flex items-center gap-2">
-                              {fromAsset && (
-                                <>
-                                  <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                                    {formatBalance(fromAsset.balance)} available
-                                  </span>
-                                  <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
-                                </>
+                              {fromAsset?.balance !== undefined && (
+                                <div className="text-right">
+                                  <p className="text-sm font-medium text-black dark:text-white">
+                                    {formatBalance(fromAsset.balance)} {fromAsset.symbol}
+                                  </p>
+                                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Available</p>
+                                </div>
                               )}
+                              <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
                             </div>
                           </button>
                           
@@ -1032,16 +1509,51 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                               className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
                             >
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xl">
-                                  {paymentMethod.icon}
-                                </div>
-                                <div className="text-left">
-                                  <p className="font-medium text-black dark:text-white">Pay with</p>
-                                  <p className="text-sm text-zinc-500 dark:text-zinc-400">{paymentMethod.name}</p>
-                                </div>
+                                {paymentMethod.id === "wallet" && fromAsset ? (
+                                  <>
+                                    <div className={cn("w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold", fromAsset.color)}>
+                                      {fromAsset.symbol.charAt(0)}
+                                    </div>
+                                    <div className="text-left">
+                                      <p className="text-sm text-zinc-500 dark:text-zinc-400">Pay with</p>
+                                      <div className="flex items-center gap-2">
+                                        <p className="font-medium text-black dark:text-white">{fromAsset.name}</p>
+                                        {fromAsset.chainName && (
+                                          <span className="text-xs text-zinc-400 dark:text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
+                                            {fromAsset.chainName}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
+                                      {paymentMethod.icon}
+                                    </div>
+                                    <div className="text-left">
+                                      <p className="font-medium text-black dark:text-white">Pay with</p>
+                                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                                        {paymentMethod.id === "wallet"
+                                          ? "Select token and chain"
+                                          : paymentMethod.id === "debit"
+                                            ? (cardFundingProviders.find((p) => p.id === selectedCardProvider)?.name ?? paymentMethod.name)
+                                            : paymentMethod.name}
+                                      </p>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                               <div className="flex items-center gap-2">
-                                {paymentMethod.value !== null && (
+                                {paymentMethod.id === "wallet" && fromAsset?.balance !== undefined && (
+                                  <div className="text-right">
+                                    <p className="text-sm font-medium text-black dark:text-white">
+                                      {formatBalance(fromAsset.balance)} {fromAsset.symbol}
+                                    </p>
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Available</p>
+                                  </div>
+                                )}
+                                {paymentMethod.id !== "wallet" && paymentMethod.value !== null && (
                                   <div className="text-right">
                                     <p className="text-sm font-medium text-black dark:text-white">
                                       ${paymentMethod.value.toFixed(2)}
@@ -1133,19 +1645,31 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                             >
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
-                                  {paymentMethod.icon}
+                                  {receiveAccount?.id === "connected-wallet" ? (
+                                    <Wallet className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+                                  ) : receiveAccount?.id === "external-wallet" ? (
+                                    "📤"
+                                  ) : receiveAccount?.id === "connected-bank" ? (
+                                    "🏦"
+                                  ) : (
+                                    paymentMethod.icon
+                                  )}
                                 </div>
                                 <div className="text-left">
-                                  <p className="font-medium text-black dark:text-white">Receive</p>
+                                  <p className="font-medium text-black dark:text-white">Receive to</p>
                                   <p className="text-sm text-zinc-500 dark:text-zinc-400">{receiveAccount?.name || cashUsdAsset.name}</p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
                                 <div className="text-right">
                                   <p className="text-sm font-medium text-black dark:text-white">
-                                    ${cashBalance.totalCash.toFixed(2)}
+                                    {receiveAccount?.id === "external-wallet" && externalPayoutAddress
+                                      ? `${externalPayoutAddress.slice(0, 6)}...${externalPayoutAddress.slice(-4)}`
+                                      : receiveAccount?.subtitle ?? `$${cashBalance.totalCash.toFixed(2)}`}
                                   </p>
-                                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Balance</p>
+                                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                    {receiveAccount?.id === "connected-wallet" ? "Your wallet" : receiveAccount?.id === "connected-bank" ? "Cash out" : "Balance"}
+                                  </p>
                                 </div>
                                 <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
                               </div>
@@ -1158,33 +1682,40 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
 
                   {/* Review Button */}
                   <div className="px-4 pb-2">
-                    <Button 
-                      onClick={handleReview}
-                      disabled={
-                        amount === "0" || 
-                        parseFloat(amount) <= 0 || 
-                        !fromAsset || 
+                    {(() => {
+                      const isBuyWithFiat = tradeType === "buy" && (paymentMethod.id === "debit" || paymentMethod.id === "bank");
+                      const disabled =
+                        amount === "0" ||
+                        parseFloat(amount) <= 0 ||
                         !toAsset ||
-                        (!quote.route && fromAsset.symbol !== "USD" && toAsset.symbol !== "USD") ||
-                        quote.isLoading ||
-                        execution.isExecuting
-                      }
-                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50"
-                    >
-                      {execution.isExecuting ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Executing...
-                        </>
-                      ) : quote.isLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Loading quote...
-                        </>
-                      ) : (
-                        "Review order"
-                      )}
-                    </Button>
+                        (!isBuyWithFiat && !fromAsset) ||
+                        (tradeType === "sell" && receiveAccount?.id === "external-wallet" && (!externalPayoutAddress || !isAddress(externalPayoutAddress.trim()))) ||
+                        (!isBuyWithFiat && fromAsset && toAsset && fromAsset.symbol !== "USD" && toAsset.symbol !== "USD" && !quote.route) ||
+                        (!isBuyWithFiat && quote.isLoading) ||
+                        execution.isExecuting;
+                      const showQuoteLoading = quote.isLoading && !isBuyWithFiat;
+                      return (
+                        <Button
+                          onClick={handleReview}
+                          disabled={disabled}
+                          className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50"
+                        >
+                          {execution.isExecuting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Executing...
+                            </>
+                          ) : showQuoteLoading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Loading quote...
+                            </>
+                          ) : (
+                            "Review order"
+                          )}
+                        </Button>
+                      );
+                    })()}
                   </div>
 
                   {/* Number Pad */}
@@ -1202,6 +1733,81 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
                         )}
                       </button>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {step === "bank_pending" && paymentMethod.id === "bank" && (
+                <div className="flex flex-col h-full items-center justify-center p-6 text-center">
+                  <div className="w-16 h-16 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center mb-4">
+                    <Loader2 className="w-8 h-8 text-zinc-500 dark:text-zinc-400 animate-spin" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-black dark:text-white mb-2">
+                    Complete in Bridge
+                  </h2>
+                  <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-6 max-w-[280px]">
+                    Complete your transfer in the Bridge tab. When you&apos;re done, return here and tap the button below.
+                  </p>
+                  <div className="w-full max-w-[280px] space-y-3">
+                    <Button
+                      onClick={() => setStep("funding_complete")}
+                      className="w-full h-12 rounded-full font-semibold bg-black dark:bg-white text-white dark:text-black"
+                    >
+                      I&apos;ve completed funding
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setStep("input")}
+                      className="w-full h-12 rounded-full font-semibold border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      Go back
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {step === "funding_complete" && (
+                <div className="flex flex-col h-full items-center justify-center p-6 text-center">
+                  <div className="w-16 h-16 rounded-full bg-black dark:bg-white flex items-center justify-center mb-4">
+                    <Check className="w-8 h-8 text-white dark:text-black" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-black dark:text-white mb-2">
+                    {paymentMethod.id === "bank" ? "Funding initiated" : "Order placed"}
+                  </h2>
+                  <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-6 max-w-[280px]">
+                    {fundingCompleteMessage}
+                  </p>
+                  <Button
+                    onClick={handleClose}
+                    className="w-full max-w-[280px] h-12 rounded-full font-semibold bg-black dark:bg-white text-white dark:text-black"
+                  >
+                    Done
+                  </Button>
+                </div>
+              )}
+
+              {step === "funding" && paymentMethod.id === "debit" && address && toAsset && (
+                <div className="flex flex-col h-full">
+                  <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+                    <button
+                      onClick={() => setStep("input")}
+                      className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                    </button>
+                    <h2 className="text-lg font-semibold text-black dark:text-white">Fund with card</h2>
+                    <div className="w-9" />
+                  </div>
+                  <div className="flex-1 min-h-0 relative">
+                    {stripeOnrampLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-50 dark:bg-zinc-900/50">
+                        <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+                      </div>
+                    )}
+                    <div
+                      ref={stripeOnrampRef}
+                      className="w-full h-full min-h-[400px]"
+                    />
                   </div>
                 </div>
               )}

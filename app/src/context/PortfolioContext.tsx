@@ -3,6 +3,7 @@ import { useAppKitAccount } from '@reown/appkit/react';
 import { useMultichainBalances } from '@/hooks/useMultichainBalances';
 import { useMultichainActivity } from '@/hooks/useMultichainActivity';
 import { usePortfolioHoldings } from '@/hooks/usePortfolioHoldings';
+import { useBankBalance } from '@/hooks/useBankBalance';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { usePageVisibility } from '@/hooks/usePageVisibility';
 import type { MultichainBalance } from '@/hooks/useMultichainBalances';
@@ -28,11 +29,17 @@ interface PortfolioContextType {
     [key: string]: any;
   }>;
   
-  // Cash balance (automatically calculated from stablecoin holdings)
+  // Cash balance (crypto stablecoins + connected bank balance)
   cashBalance: {
     totalCash: number;
     usdcBalance: number;
     otherStablecoinsBalance: number;
+    /** Sum of connected bank account balances (from Plaid) */
+    bankCash?: number;
+    /** Sum of stablecoin holdings (USDC + other stablecoins) */
+    cryptoCash?: number;
+    /** Whether user has linked a bank account (Plaid) for payouts */
+    bankLinked?: boolean;
   };
   
   // Activity
@@ -68,10 +75,26 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Use unified portfolio holdings hook (optimized - handles tokens + NFTs + cash balance)
   const {
     holdings: portfolioHoldings,
-    cashBalance,
+    cashBalance: portfolioCashBalance,
     isLoading: holdingsLoadingFromHook,
     refresh: refreshHoldingsHook,
   } = usePortfolioHoldings();
+
+  // Bank balance (Plaid) - merged into cash balance for display
+  const { bankCash, linked: bankLinked, refresh: refreshBankBalance } = useBankBalance(address ?? undefined);
+
+  // Consolidated cash balance: crypto (stablecoins) + bank
+  const cashBalance = useMemo(() => {
+    const cryptoCash = portfolioCashBalance.totalCash;
+    const totalCash = cryptoCash + bankCash;
+    return {
+      ...portfolioCashBalance,
+      totalCash,
+      bankCash,
+      cryptoCash,
+      bankLinked,
+    };
+  }, [portfolioCashBalance, bankCash, bankLinked]);
   
   // Use multichain hooks for balances and activity (not covered by usePortfolioHoldings)
   const {
@@ -183,8 +206,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       refreshBalances(),
       refreshHoldings(),
       refreshActivity(),
+      refreshBankBalance(),
     ]);
-  }, [refreshBalances, refreshHoldings, refreshActivity]);
+  }, [refreshBalances, refreshHoldings, refreshActivity, refreshBankBalance]);
   
   // Reset previous balance when wallet disconnects
   useEffect(() => {

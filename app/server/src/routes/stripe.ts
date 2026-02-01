@@ -118,6 +118,9 @@ router.post('/create-onramp-session', async (req: Request, res: Response) => {
       });
     }
 
+    // Note: branding_settings (e.g. border_style=rectangular) may not be supported
+    // on crypto/onramp_sessions - omit to avoid API errors.
+
     // Make request to Stripe API
     const response = await fetch('https://api.stripe.com/v1/crypto/onramp_sessions', {
       method: 'POST',

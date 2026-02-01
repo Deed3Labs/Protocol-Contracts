@@ -574,6 +574,92 @@ export async function createStripeOnrampSession(params: {
 }
 
 /**
+ * Plaid: create link token for Plaid Link (bank linking)
+ */
+export async function getPlaidLinkToken(walletAddress: string): Promise<{ link_token: string } | null> {
+  const response = await apiRequest<{ link_token: string }>('/api/plaid/link-token', {
+    method: 'POST',
+    body: JSON.stringify({ walletAddress }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+/**
+ * Plaid: exchange public token for access token (after user completes Link)
+ */
+export async function exchangePlaidToken(
+  walletAddress: string,
+  publicToken: string
+): Promise<{ success: boolean } | null> {
+  const response = await apiRequest<{ success: boolean }>('/api/plaid/exchange-token', {
+    method: 'POST',
+    body: JSON.stringify({ walletAddress, publicToken }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export interface BankAccountBalance {
+  account_id: string;
+  name: string;
+  mask?: string;
+  current: number | null;
+  available: number | null;
+}
+
+export interface BankBalancesResponse {
+  accounts: BankAccountBalance[];
+  totalBankBalance: number;
+  linked: boolean;
+}
+
+/**
+ * Plaid: get linked bank account balances for a wallet address
+ */
+export async function getBankBalances(walletAddress: string): Promise<BankBalancesResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const response = await apiRequest<BankBalancesResponse>(`/api/plaid/balances?walletAddress=${encoded}`);
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { accounts: [], totalBankBalance: 0, linked: false };
+}
+
+/**
+ * Plaid: disconnect (remove stored access token) for a wallet address
+ */
+export async function disconnectPlaid(walletAddress: string): Promise<{ success: boolean } | null> {
+  const response = await apiRequest<{ success: boolean }>('/api/plaid/disconnect', {
+    method: 'POST',
+    body: JSON.stringify({ walletAddress }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+/**
+ * Bridge: get URL to open Bridge funding flow (ACH/wire) with wallet, amount, destination currency and network
+ */
+export async function getBridgeFundingUrl(
+  walletAddress: string,
+  amount: string,
+  destinationCurrency: string,
+  destinationNetwork: string
+): Promise<string | null> {
+  const response = await apiRequest<{ url: string }>('/api/bridge/funding-url', {
+    method: 'POST',
+    body: JSON.stringify({
+      walletAddress,
+      amount,
+      destinationCurrency,
+      destinationNetwork,
+    }),
+  });
+  if (response.error || !response.data?.url) return null;
+  return response.data.url;
+}
+
+/**
  * Check server health (uses cached version to avoid race conditions)
  * @deprecated Use checkServerHealthCached from serverHealth.ts instead
  */

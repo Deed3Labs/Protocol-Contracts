@@ -2,7 +2,60 @@ import { useState, useEffect, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { useXMTP } from '@/context/XMTPContext';
-import type { Signer } from 'ethers';
+import { AbstractSigner, assert, hexlify, toUtf8Bytes } from 'ethers';
+import type { Provider, Signer, TransactionRequest, TypedDataDomain, TypedDataField } from 'ethers';
+
+/** EIP-1193 provider that can request personal_sign (e.g. WalletConnect, embedded wallet). */
+type Eip1193Provider = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
+
+/**
+ * Signer that uses a known address and only calls personal_sign on the provider.
+ * Used when the provider (e.g. WalletConnect RPC) has deprecated eth_accounts
+ * so BrowserProvider.getSigner() would fail. We get the address from AppKit state instead.
+ */
+class WalletConnectCompatibleSigner extends AbstractSigner {
+  readonly address: string;
+  private readonly eip1193Provider: Eip1193Provider;
+
+  constructor(address: string, eip1193Provider: Eip1193Provider, provider?: Provider | null) {
+    super(provider ?? null);
+    this.address = address;
+    this.eip1193Provider = eip1193Provider;
+  }
+
+  async getAddress(): Promise<string> {
+    return this.address;
+  }
+
+  connect(provider: Provider | null): Signer {
+    return new WalletConnectCompatibleSigner(this.address, this.eip1193Provider, provider);
+  }
+
+  async signMessage(message: string | Uint8Array): Promise<string> {
+    const bytes = typeof message === 'string' ? toUtf8Bytes(message) : message;
+    const result = await this.eip1193Provider.request({
+      method: 'personal_sign',
+      params: [hexlify(bytes), this.address.toLowerCase()],
+    });
+    return result as string;
+  }
+
+  async signTransaction(_tx: TransactionRequest): Promise<string> {
+    assert(false, 'WalletConnectCompatibleSigner cannot sign transactions', 'UNSUPPORTED_OPERATION', {
+      operation: 'signTransaction',
+    });
+  }
+
+  async signTypedData(
+    _domain: TypedDataDomain,
+    _types: Record<string, TypedDataField[]>,
+    _value: Record<string, unknown>,
+  ): Promise<string> {
+    assert(false, 'WalletConnectCompatibleSigner cannot sign typed data', 'UNSUPPORTED_OPERATION', {
+      operation: 'signTypedData',
+    });
+  }
+}
 
 export const useXMTPConnection = () => {
   const { connect, isConnected, disconnect } = useXMTP();
@@ -77,16 +130,27 @@ export const useXMTPConnection = () => {
       const { BrowserProvider } = await import('ethers');
 
       // 1. Prefer AppKit walletProvider when available (covers embedded wallets AND WalletConnect on mobile Safari).
-      // On mobile Safari there is no window.ethereum; WalletConnect sessions use walletProvider from AppKit.
-      if (walletProvider) {
+      // When we have a known address from AppKit, use WalletConnectCompatibleSigner so we never call eth_accounts
+      // (WalletConnect RPC has deprecated eth_accounts; BrowserProvider.getSigner() would fail for email/WC users).
+      if (walletProvider && activeAddress) {
         const hasGetSigner = typeof (walletProvider as { getSigner?: () => unknown }).getSigner === 'function';
         if (hasGetSigner) {
-          console.log('XMTP Connection Hook: Using AppKit wallet provider (getSigner)');
-          signer = await (walletProvider as { getSigner(): Promise<Signer> }).getSigner();
+          try {
+            console.log('XMTP Connection Hook: Using AppKit wallet provider (getSigner)');
+            signer = await (walletProvider as { getSigner(): Promise<Signer> }).getSigner();
+          } catch (getSignerErr) {
+            // getSigner() may fail when provider uses deprecated eth_accounts (e.g. WalletConnect)
+            const msg = getSignerErr instanceof Error ? getSignerErr.message : String(getSignerErr);
+            if (msg.includes('eth_accounts') || msg.includes('deprecated')) {
+              console.log('XMTP Connection Hook: getSigner failed (eth_accounts deprecated), using address-only signer');
+              signer = new WalletConnectCompatibleSigner(activeAddress, walletProvider as Eip1193Provider);
+            } else {
+              throw getSignerErr;
+            }
+          }
         } else {
-          console.log('XMTP Connection Hook: Using AppKit wallet provider (BrowserProvider)');
-          const provider = new BrowserProvider(walletProvider as import('ethers').Eip1193Provider);
-          signer = await provider.getSigner();
+          console.log('XMTP Connection Hook: Using address-only signer (avoids eth_accounts)');
+          signer = new WalletConnectCompatibleSigner(activeAddress, walletProvider as Eip1193Provider);
         }
         console.log('XMTP Connection Hook: AppKit signer created');
       } else if (typeof window !== 'undefined' && (window as { ethereum?: unknown }).ethereum) {
