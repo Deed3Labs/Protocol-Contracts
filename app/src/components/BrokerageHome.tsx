@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
+import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2, Landmark } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { ReturnView, IncomeView, AccountValueView, AllocationView } from './portfolio/TabViews';
@@ -16,8 +16,10 @@ import { useDeedName } from '@/hooks/useDeedName';
 import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
 import { getNetworkByChainId } from '@/config/networks';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { useBankBalance } from '@/hooks/useBankBalance';
 import { LargePriceWheel } from './PriceWheel';
 import type { MultichainDeedNFT } from '@/hooks/useMultichainDeedNFTs';
+import type { BankAccountBalance } from '@/utils/apiClient';
 
 // Types
 interface Holding {
@@ -500,6 +502,14 @@ export default function BrokerageHome() {
     isLoading: portfolioLoading,
     refreshAll,
   } = usePortfolio();
+
+  // Linked bank/investment accounts (Plaid)
+  const {
+    accounts: bankAccounts,
+    linked: bankLinked,
+    isLoading: bankAccountsLoading,
+    refresh: refreshBankAccounts,
+  } = useBankBalance(address ?? undefined);
   
   // Portfolio history tracking
   const { addSnapshot, getSnapshotsForRange, fetchAndMergeHistory } = usePortfolioHistory();
@@ -536,7 +546,10 @@ export default function BrokerageHome() {
   const [activityVisibleCount, setActivityVisibleCount] = useState(7);
   const [menuOpen, setMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
+  const [depositInitialOption, setDepositInitialOption] = useState<'bank' | 'card' | null>(null);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
+  const [isAccountsExpanded, setIsAccountsExpanded] = useState(false);
+  const [accountSort, setAccountSort] = useState<'Balance (high)' | 'Balance (low)' | 'Name (A–Z)'>('Balance (high)');
   const { setActionModalOpen, openTradeModal } = useGlobalModals();
   
   // State for tracking scroll position relative to portfolio value header
@@ -606,6 +619,26 @@ export default function BrokerageHome() {
     if (isPortfolioExpanded) return filteredHoldings;
     return filteredHoldings.slice(0, 5); // Show 5 holdings initially
   }, [filteredHoldings, isPortfolioExpanded]);
+
+  // Sorted and displayed linked bank/investment accounts
+  const sortedBankAccounts = useMemo(() => {
+    const list = [...bankAccounts];
+    const getBalance = (a: BankAccountBalance) => (a.current ?? a.available ?? 0);
+    list.sort((a, b) => {
+      if (accountSort === 'Name (A–Z)') {
+        return (a.name || '').localeCompare(b.name || '');
+      }
+      const va = getBalance(a);
+      const vb = getBalance(b);
+      return accountSort === 'Balance (high)' ? vb - va : va - vb;
+    });
+    return list;
+  }, [bankAccounts, accountSort]);
+
+  const displayedBankAccounts = useMemo(() => {
+    if (isAccountsExpanded) return sortedBankAccounts;
+    return sortedBankAccounts.slice(0, 5);
+  }, [sortedBankAccounts, isAccountsExpanded]);
 
   const activityTransactions = useMemo(() => {
     const getTxTimeMs = (tx: any): number => {
@@ -859,7 +892,9 @@ export default function BrokerageHome() {
       {/* Deposit Modal */}
       <DepositModal 
         isOpen={depositModalOpen} 
-        onClose={() => setDepositModalOpen(false)} 
+        onClose={() => { setDepositModalOpen(false); setDepositInitialOption(null); }} 
+        initialOption={depositInitialOption}
+        onLinkSuccess={refreshBankAccounts}
       />
 
       {/* Withdraw Modal */}
@@ -923,12 +958,145 @@ export default function BrokerageHome() {
            <div className="md:col-span-4 space-y-6">
               {/* CTA Stack - Persistent */}
               <CTAStack />
+
+              {/* Linked Accounts – Bank & investment accounts (same rounded, flat, border-only as Portfolio) */}
+              <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-1">
+                  <div className="p-4">
+                    <div className="flex items-center gap-2.5 mb-0.5">
+                      <div className="w-9 h-9 rounded-lg bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center">
+                        <Landmark className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-light text-black dark:text-white">Linked Accounts</h2>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Bank & investment accounts</p>
+                      </div>
+                    </div>
+                    {bankLinked && bankAccounts.length > 0 && (
+                      <div className="flex items-center justify-between gap-2 mt-3">
+                        <Select
+                          value={accountSort}
+                          onValueChange={(value: 'Balance (high)' | 'Balance (low)' | 'Name (A–Z)') => setAccountSort(value)}
+                        >
+                          <SelectTrigger className="h-8 w-auto min-w-[120px] text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0">
+                            <SelectValue placeholder="Sort by" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg z-50">
+                            <SelectItem value="Balance (high)" className="text-sm cursor-pointer py-2">Balance (high → low)</SelectItem>
+                            <SelectItem value="Balance (low)" className="text-sm cursor-pointer py-2">Balance (low → high)</SelectItem>
+                            <SelectItem value="Name (A–Z)" className="text-sm cursor-pointer py-2">Name (A–Z)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <button
+                          onClick={() => refreshBankAccounts()}
+                          className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                          disabled={bankAccountsLoading}
+                        >
+                          {bankAccountsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                          Refresh
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="px-3 pb-3">
+                    {!isConnected ? (
+                      <div className="py-8 text-center text-zinc-500 text-sm rounded-full border border-dashed border-zinc-200 dark:border-zinc-800">
+                        Connect wallet to view linked accounts
+                      </div>
+                    ) : bankAccountsLoading && bankAccounts.length === 0 ? (
+                      <div className="py-8 flex items-center justify-center gap-2 text-zinc-500 text-sm rounded-lg">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading accounts...
+                      </div>
+                    ) : !bankLinked || bankAccounts.length === 0 ? (
+                      <div className="py-8 text-center space-y-4 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-800">
+                        <p className="text-zinc-500 text-sm">No linked bank or investment accounts yet</p>
+                        <button
+                          onClick={() => { setDepositInitialOption('bank'); setDepositModalOpen(true); }}
+                          className="inline-flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black text-sm font-medium py-2.5 px-4 rounded-full hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors border border-zinc-800 dark:border-zinc-200"
+                        >
+                          <Landmark className="w-4 h-4" />
+                          Link account
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-3">
+                          {displayedBankAccounts.map((account) => {
+                            const balance = account.current ?? account.available ?? 0;
+                            const displayName = account.name || 'Account';
+                            const maskText = account.mask ? `•••• ${account.mask}` : '';
+
+                            return (
+                              <div
+                                key={account.account_id}
+                                className="rounded-md border border-zinc-200 dark:border-zinc-800/50 bg-white dark:bg-zinc-900/30 p-3"
+                              >
+                                <div className="flex items-start justify-between gap-3 mb-3">
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                                      <Landmark className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-black dark:text-white font-medium text-sm truncate">{displayName}</p>
+                                      {maskText ? <p className="text-zinc-500 dark:text-zinc-400 text-xs">{maskText}</p> : null}
+                                    </div>
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    <p className="text-black dark:text-white font-semibold text-sm">
+                                      ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    {account.available != null && account.current !== account.available && (
+                                      <p className="text-zinc-500 dark:text-zinc-400 text-xs">Available: ${(account.available ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                                  <button
+                                    onClick={() => setDepositModalOpen(true)}
+                                    className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
+                                  >
+                                    Deposit
+                                  </button>
+                                  <button
+                                    onClick={() => setWithdrawModalOpen(true)}
+                                    className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
+                                  >
+                                    Withdraw
+                                  </button>
+                                  <button
+                                    onClick={() => { setDepositInitialOption('bank'); setDepositModalOpen(true); }}
+                                    className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
+                                  >
+                                    Manage
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {sortedBankAccounts.length > 5 && (
+                          <div className="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+                            <button
+                              onClick={() => setIsAccountsExpanded(!isAccountsExpanded)}
+                              className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-2"
+                            >
+                              {isAccountsExpanded
+                                ? `Show less (${sortedBankAccounts.length} accounts)`
+                                : `View all (${sortedBankAccounts.length} accounts)`}
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+              </div>
               
               {/* Portfolio Section - Persistent */}
               <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-1">
                   <div className="p-4 flex items-center justify-between">
                     <h2 className="text-xl font-light text-black dark:text-white">Portfolio</h2>
-                    <button className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400 text-sm font-normal border border-zinc-300 dark:border-zinc-700 rounded-xl px-3 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                    <button className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400 text-xs font-normal border border-zinc-300 dark:border-zinc-700 rounded-xl px-3 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
                       1D return
                       <ChevronDown className="w-4 h-4" />
                     </button>
