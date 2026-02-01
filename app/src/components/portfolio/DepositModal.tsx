@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken } from '@/utils/apiClient';
+import { useBankBalance } from '@/hooks/useBankBalance';
 
 // Type declarations for Stripe Onramp (loaded via script tags)
 declare global {
@@ -33,6 +34,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
   const [isLoadingLinkToken, setIsLoadingLinkToken] = useState(false);
   const [bankError, setBankError] = useState<string | null>(null);
   const { address } = useAppKitAccount();
+  const { accounts: bankAccounts, linked: bankLinked, isLoading: bankAccountsLoading, refresh: refreshBankAccounts } = useBankBalance(address ?? undefined);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -312,8 +314,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
         onSuccess: async (public_token: string) => {
           const exchanged = await exchangePlaidToken(address, public_token);
           if (exchanged?.success) {
-            setSelectedOption(null);
-            onClose();
+            setBankError(null);
+            await refreshBankAccounts();
           } else {
             setBankError('Failed to save connection');
           }
@@ -328,7 +330,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     } finally {
       setIsLoadingLinkToken(false);
     }
-  }, [address, onClose]);
+  }, [address, refreshBankAccounts]);
 
   const depositOptions = [
     {
@@ -401,8 +403,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             {/* Content - flex-1 to take remaining space, overflow-auto for scrolling */}
             <div className="flex-1 overflow-hidden flex flex-col">
               {selectedOption === 'bank' ? (
-                <div className="flex flex-col p-6">
-                  <div className="flex items-center justify-between mb-6">
+                <div className="flex flex-col h-full min-h-0">
+                  <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800 flex-shrink-0">
                     <button
                       onClick={() => {
                         setSelectedOption(null);
@@ -415,52 +417,109 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Link Bank Account</h2>
                     <div className="w-9" />
                   </div>
-                  {!address ? (
-                    <div className="text-center py-6">
-                      <p className="text-zinc-500 dark:text-zinc-400 mb-4">
-                        Please connect your wallet to link a bank account
-                      </p>
-                      <button
-                        onClick={() => setSelectedOption(null)}
-                        className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                      >
-                        ← Back
-                      </button>
-                    </div>
-                  ) : bankError ? (
-                    <div className="text-center py-6">
-                      <p className="text-red-500 dark:text-red-400 mb-4">{bankError}</p>
-                      <button
-                        onClick={() => {
-                          setBankError(null);
-                          openPlaidLink();
-                        }}
-                        className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 underline"
-                      >
-                        Try again
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                        Connect your bank via Plaid to see your balance alongside your crypto in the app.
-                      </p>
-                      <button
-                        onClick={openPlaidLink}
-                        disabled={isLoadingLinkToken}
-                        className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-black dark:bg-white text-white dark:text-black font-medium hover:opacity-90 disabled:opacity-50"
-                      >
-                        {isLoadingLinkToken ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Loading...
-                          </>
-                        ) : (
-                          'Connect with Plaid'
-                        )}
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex-1 overflow-auto p-6">
+                    {!address ? (
+                      <div className="text-center py-6">
+                        <p className="text-zinc-500 dark:text-zinc-400 mb-4">
+                          Please connect your wallet to link a bank account
+                        </p>
+                        <button
+                          onClick={() => setSelectedOption(null)}
+                          className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                        >
+                          ← Back
+                        </button>
+                      </div>
+                    ) : bankError ? (
+                      <div className="text-center py-6">
+                        <p className="text-red-500 dark:text-red-400 mb-4">{bankError}</p>
+                        <button
+                          onClick={() => {
+                            setBankError(null);
+                            openPlaidLink();
+                          }}
+                          className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 underline"
+                        >
+                          Try again
+                        </button>
+                      </div>
+                    ) : bankAccountsLoading && bankAccounts.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-8">
+                        <Loader2 className="w-8 h-8 animate-spin text-zinc-400 mb-4" />
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading accounts...</p>
+                      </div>
+                    ) : bankLinked && bankAccounts.length > 0 ? (
+                      <div className="space-y-4">
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                          Your connected accounts. Balances are shown in the app&apos;s cash balance.
+                        </p>
+                        <div className="space-y-2">
+                          <p className="text-xs font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 px-1">
+                            Connected accounts
+                          </p>
+                          {bankAccounts.map((account) => (
+                            <div
+                              key={account.account_id}
+                              className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200/50 dark:border-zinc-800/50"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                                  <Building2 className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-medium text-zinc-900 dark:text-white truncate">{account.name}</p>
+                                  {account.mask != null && (
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-400">•••• {account.mask}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0 ml-2">
+                                {(account.current != null || account.available != null) && (
+                                  <p className="text-sm font-medium text-zinc-900 dark:text-white">
+                                    ${((account.current ?? account.available) ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          onClick={openPlaidLink}
+                          disabled={isLoadingLinkToken}
+                          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 font-medium transition-colors disabled:opacity-50 mt-4"
+                        >
+                          {isLoadingLinkToken ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Loading...
+                            </>
+                          ) : (
+                            'Connect more accounts'
+                          )}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                          Connect your bank via Plaid to see your balance alongside your crypto in the app.
+                        </p>
+                        <button
+                          onClick={openPlaidLink}
+                          disabled={isLoadingLinkToken}
+                          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-black dark:bg-white text-white dark:text-black font-medium hover:opacity-90 disabled:opacity-50"
+                        >
+                          {isLoadingLinkToken ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Loading...
+                            </>
+                          ) : (
+                            'Connect with Plaid'
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : selectedOption === 'card' ? (
                 <div className="flex flex-col h-full">
