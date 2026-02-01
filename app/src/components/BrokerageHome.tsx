@@ -977,7 +977,7 @@ export default function BrokerageHome() {
                           value={accountSort}
                           onValueChange={(value: 'Balance (high)' | 'Balance (low)' | 'Name (A–Z)') => setAccountSort(value)}
                         >
-                          <SelectTrigger className="h-8 w-auto min-w-[120px] text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0">
+                          <SelectTrigger className="h-8 w-auto min-w-[120px] text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0">
                             <SelectValue placeholder="Sort by" />
                           </SelectTrigger>
                           <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg z-50">
@@ -988,7 +988,7 @@ export default function BrokerageHome() {
                         </Select>
                         <button
                           onClick={() => refreshBankAccounts()}
-                          className="h-8 px-3 rounded-lg border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                          className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1.5 disabled:opacity-50"
                           disabled={bankAccountsLoading}
                         >
                           {bankAccountsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
@@ -1000,7 +1000,7 @@ export default function BrokerageHome() {
 
                   <div className="px-3 pb-3">
                     {!isConnected ? (
-                      <div className="py-8 text-center text-zinc-500 text-sm rounded-lg border border-dashed border-zinc-200 dark:border-zinc-800">
+                      <div className="py-8 text-center text-zinc-500 text-sm rounded-full border border-dashed border-zinc-200 dark:border-zinc-800">
                         Connect wallet to view linked accounts
                       </div>
                     ) : bankAccountsLoading && bankAccounts.length === 0 ? (
@@ -1030,7 +1030,7 @@ export default function BrokerageHome() {
                             return (
                               <div
                                 key={account.account_id}
-                                className="rounded-lg border border-zinc-200 dark:border-zinc-800/50 bg-white dark:bg-zinc-900/30 p-3"
+                                className="rounded-md border border-zinc-200 dark:border-zinc-800/50 bg-white dark:bg-zinc-900/30 p-3"
                               >
                                 <div className="flex items-start justify-between gap-3 mb-3">
                                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -1054,19 +1054,19 @@ export default function BrokerageHome() {
                                 <div className="flex gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
                                   <button
                                     onClick={() => setDepositModalOpen(true)}
-                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-full border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                                   >
                                     Deposit
                                   </button>
                                   <button
                                     onClick={() => setWithdrawModalOpen(true)}
-                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-full border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                                   >
                                     Withdraw
                                   </button>
                                   <button
                                     onClick={() => { setDepositInitialOption('bank'); setDepositModalOpen(true); }}
-                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-full border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                                   >
                                     Manage
                                   </button>
@@ -1096,7 +1096,7 @@ export default function BrokerageHome() {
               <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-1">
                   <div className="p-4 flex items-center justify-between">
                     <h2 className="text-xl font-light text-black dark:text-white">Portfolio</h2>
-                    <button className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400 text-sm font-normal border border-zinc-300 dark:border-zinc-700 rounded-xl px-3 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                    <button className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400 text-xs font-normal border border-zinc-300 dark:border-zinc-700 rounded-xl px-3 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
                       1D return
                       <ChevronDown className="w-4 h-4" />
                     </button>
