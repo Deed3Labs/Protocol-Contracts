@@ -915,7 +915,7 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
             onClick={handleClose}
           >
             <div 
-              className="h-[100dvh] max-h-[100dvh] w-full max-w-full sm:max-w-md sm:h-[90vh] sm:max-h-[800px] bg-white dark:bg-[#0e0e0e] border-0 sm:border sm:border-zinc-200 dark:border-zinc-800 sm:rounded-2xl rounded-none overflow-hidden flex flex-col"
+              className="h-[100dvh] max-h-[100dvh] w-full max-w-full sm:max-w-md sm:h-[95vh] sm:max-h-[800px] bg-white dark:bg-[#0e0e0e] border-0 sm:border sm:border-zinc-200 dark:border-zinc-800 sm:rounded rounded-none overflow-hidden flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               {screen === "selectAsset" && (
