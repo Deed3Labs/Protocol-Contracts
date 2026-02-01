@@ -4,6 +4,7 @@ import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2,
 import { useAppKitAccount } from '@reown/appkit/react';
 import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken } from '@/utils/apiClient';
 import { useBankBalance } from '@/hooks/useBankBalance';
+import { usePortfolio } from '@/context/PortfolioContext';
 
 // Type declarations for Stripe Onramp (loaded via script tags)
 declare global {
@@ -33,8 +34,10 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
   const [onrampSession, setOnrampSession] = useState<any>(null);
   const [isLoadingLinkToken, setIsLoadingLinkToken] = useState(false);
   const [bankError, setBankError] = useState<string | null>(null);
+  const [isPullingAccounts, setIsPullingAccounts] = useState(false);
   const { address } = useAppKitAccount();
   const { accounts: bankAccounts, linked: bankLinked, isLoading: bankAccountsLoading, refresh: refreshBankAccounts } = useBankBalance(address ?? undefined);
+  const { refreshAll: refreshPortfolio } = usePortfolio();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -53,6 +56,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
       setError(null);
       setOnrampSession(null);
       setBankError(null);
+      setIsPullingAccounts(false);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
@@ -315,7 +319,20 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
           const exchanged = await exchangePlaidToken(address, public_token);
           if (exchanged?.success) {
             setBankError(null);
-            await refreshBankAccounts();
+            setIsPullingAccounts(true);
+            try {
+              // Give the server a moment to persist the Plaid access token before refetching
+              await new Promise((r) => setTimeout(r, 600));
+              await refreshBankAccounts();
+              await refreshPortfolio?.();
+              // Retry once in case the first request was too early (modal list + app cash balance)
+              setTimeout(() => {
+                refreshBankAccounts();
+                refreshPortfolio?.();
+              }, 1200);
+            } finally {
+              setIsPullingAccounts(false);
+            }
           } else {
             setBankError('Failed to save connection');
           }
@@ -330,7 +347,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     } finally {
       setIsLoadingLinkToken(false);
     }
-  }, [address, refreshBankAccounts]);
+  }, [address, refreshBankAccounts, refreshPortfolio]);
 
   const depositOptions = [
     {
@@ -442,6 +459,16 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                         >
                           Try again
                         </button>
+                      </div>
+                    ) : isPullingAccounts ? (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <Loader2 className="w-10 h-10 animate-spin text-zinc-400 dark:text-zinc-500 mb-5" />
+                        <p className="text-base font-medium text-zinc-900 dark:text-white mb-1">
+                          Pulling in your accounts
+                        </p>
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-[240px] text-center">
+                          We&apos;re fetching your account details. This usually takes a few seconds.
+                        </p>
                       </div>
                     ) : bankAccountsLoading && bankAccounts.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-8">
