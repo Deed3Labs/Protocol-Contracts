@@ -548,9 +548,8 @@ export default function BrokerageHome() {
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [depositInitialOption, setDepositInitialOption] = useState<'bank' | 'card' | null>(null);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
-  const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
   const [isAccountsExpanded, setIsAccountsExpanded] = useState(false);
-  const [accountSort, setAccountSort] = useState<'Balance (high)' | 'Balance (low)'>('Balance (high)');
+  const [accountSort, setAccountSort] = useState<'Balance (high)' | 'Balance (low)' | 'Name (A–Z)'>('Balance (high)');
   const { setActionModalOpen, openTradeModal } = useGlobalModals();
   
   // State for tracking scroll position relative to portfolio value header
@@ -626,6 +625,9 @@ export default function BrokerageHome() {
     const list = [...bankAccounts];
     const getBalance = (a: BankAccountBalance) => (a.current ?? a.available ?? 0);
     list.sort((a, b) => {
+      if (accountSort === 'Name (A–Z)') {
+        return (a.name || '').localeCompare(b.name || '');
+      }
       const va = getBalance(a);
       const vb = getBalance(b);
       return accountSort === 'Balance (high)' ? vb - va : va - vb;
@@ -892,6 +894,7 @@ export default function BrokerageHome() {
         isOpen={depositModalOpen} 
         onClose={() => { setDepositModalOpen(false); setDepositInitialOption(null); }} 
         initialOption={depositInitialOption}
+        onLinkSuccess={refreshBankAccounts}
       />
 
       {/* Withdraw Modal */}
@@ -956,64 +959,61 @@ export default function BrokerageHome() {
               {/* CTA Stack - Persistent */}
               <CTAStack />
 
-              {/* Linked Accounts (Bank / Investment) - same design as Portfolio */}
-              <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-1">
-                  <div className="p-4 flex items-center justify-between">
-                    <h2 className="text-xl font-light text-black dark:text-white">Linked Accounts</h2>
+              {/* Linked Accounts – Bank & investment accounts (distinct from tradable Portfolio) */}
+              <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-gradient-to-b from-slate-50/90 to-white dark:from-slate-900/40 dark:to-slate-900/20 p-1 shadow-sm">
+                  <div className="p-4">
+                    <div className="flex items-center gap-2.5 mb-0.5">
+                      <div className="w-9 h-9 rounded-lg bg-slate-200/80 dark:bg-slate-700/50 flex items-center justify-center">
+                        <Landmark className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Linked Accounts</h2>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Bank & investment accounts</p>
+                      </div>
+                    </div>
                     {bankLinked && bankAccounts.length > 0 && (
-                      <button
-                        onClick={() => refreshBankAccounts()}
-                        className="text-zinc-500 text-sm hover:text-black dark:hover:text-white transition-colors flex items-center gap-1.5"
-                        disabled={bankAccountsLoading}
-                      >
-                        {bankAccountsLoading ? (
-                          <>
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            <span>Refreshing...</span>
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="w-3 h-3" />
-                            <span>Refresh</span>
-                          </>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-2 mt-3 flex-wrap">
+                        <Select
+                          value={accountSort}
+                          onValueChange={(value: 'Balance (high)' | 'Balance (low)' | 'Name (A–Z)') => setAccountSort(value)}
+                        >
+                          <SelectTrigger className="h-8 w-auto min-w-[120px] text-xs font-normal text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800/50 focus:ring-2 focus:ring-slate-400/30">
+                            <SelectValue placeholder="Sort by" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50">
+                            <SelectItem value="Balance (high)" className="text-sm cursor-pointer py-2">Balance (high → low)</SelectItem>
+                            <SelectItem value="Balance (low)" className="text-sm cursor-pointer py-2">Balance (low → high)</SelectItem>
+                            <SelectItem value="Name (A–Z)" className="text-sm cursor-pointer py-2">Name (A–Z)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <button
+                          onClick={() => refreshBankAccounts()}
+                          className="h-8 px-3 rounded-lg border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                          disabled={bankAccountsLoading}
+                        >
+                          {bankAccountsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                          Refresh
+                        </button>
+                      </div>
                     )}
                   </div>
 
-                  {bankLinked && bankAccounts.length > 0 && (
-                    <div className="px-3 mb-2">
-                      <Select
-                        value={accountSort}
-                        onValueChange={(value: 'Balance (high)' | 'Balance (low)') => setAccountSort(value)}
-                      >
-                        <SelectTrigger className="h-6 w-28 sm:w-32 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
-                          <SelectValue placeholder="Sort" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
-                          <SelectItem value="Balance (high)" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Balance (high)</SelectItem>
-                          <SelectItem value="Balance (low)" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-2">Balance (low)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-
-                  <div className="mt-2 px-2 pb-2">
+                  <div className="px-3 pb-3">
                     {!isConnected ? (
-                      <div className="py-8 text-center text-zinc-500 text-sm">
+                      <div className="py-8 text-center text-slate-500 text-sm rounded-lg bg-slate-50/50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-700">
                         Connect wallet to view linked accounts
                       </div>
                     ) : bankAccountsLoading && bankAccounts.length === 0 ? (
-                      <div className="py-8 flex items-center justify-center gap-2 text-zinc-500 text-sm">
+                      <div className="py-8 flex items-center justify-center gap-2 text-slate-500 text-sm rounded-lg bg-slate-50/50 dark:bg-slate-800/30">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Loading accounts...
                       </div>
                     ) : !bankLinked || bankAccounts.length === 0 ? (
-                      <div className="py-8 text-center space-y-3">
-                        <p className="text-zinc-500 text-sm">No linked bank or investment accounts</p>
+                      <div className="py-8 text-center space-y-4 rounded-lg bg-slate-50/50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-700">
+                        <p className="text-slate-500 text-sm">No linked bank or investment accounts yet</p>
                         <button
                           onClick={() => { setDepositInitialOption('bank'); setDepositModalOpen(true); }}
-                          className="inline-flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black text-sm font-medium py-2 px-4 rounded-full hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
+                          className="inline-flex items-center gap-2 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 text-sm font-medium py-2.5 px-4 rounded-lg hover:bg-slate-700 dark:hover:bg-slate-300 transition-colors shadow-sm"
                         >
                           <Landmark className="w-4 h-4" />
                           Link account
@@ -1021,113 +1021,69 @@ export default function BrokerageHome() {
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
-                          <span>Account</span>
-                          <span>Balance</span>
-                        </div>
-                        <div className="space-y-1">
+                        <div className="space-y-3">
                           {displayedBankAccounts.map((account) => {
                             const balance = account.current ?? account.available ?? 0;
-                            const isExpanded = expandedAccounts.has(account.account_id);
                             const displayName = account.name || 'Account';
                             const maskText = account.mask ? `•••• ${account.mask}` : '';
 
                             return (
-                              <div key={account.account_id} className="rounded-lg transition-colors">
-                                <div
-                                  onClick={() => {
-                                    setExpandedAccounts((prev) => {
-                                      const next = new Set(prev);
-                                      if (next.has(account.account_id)) next.delete(account.account_id);
-                                      else next.add(account.account_id);
-                                      return next;
-                                    });
-                                  }}
-                                  className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer group"
-                                >
-                                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                                    <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 rounded-full flex items-center justify-center shrink-0 transition-colors">
-                                      <Landmark className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+                              <div
+                                key={account.account_id}
+                                className="rounded-xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800/40 p-3 shadow-sm"
+                              >
+                                <div className="flex items-start justify-between gap-3 mb-3">
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700/60 flex items-center justify-center shrink-0">
+                                      <Landmark className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                                     </div>
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-black dark:text-white font-medium text-sm truncate">{displayName}</p>
-                                      {maskText ? (
-                                        <p className="text-zinc-500 text-xs truncate">{maskText}</p>
-                                      ) : null}
+                                    <div className="min-w-0">
+                                      <p className="text-slate-900 dark:text-white font-medium text-sm truncate">{displayName}</p>
+                                      {maskText ? <p className="text-slate-500 dark:text-slate-400 text-xs">{maskText}</p> : null}
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-3 shrink-0">
-                                    <div className="text-right">
-                                      <p className="text-black dark:text-white font-medium text-sm">
-                                        ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                      </p>
-                                    </div>
-                                    <motion.div
-                                      animate={{ rotate: isExpanded ? 180 : 0 }}
-                                      transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-                                      className="text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400"
-                                    >
-                                      <ChevronDown className="w-4 h-4" />
-                                    </motion.div>
+                                  <div className="text-right shrink-0">
+                                    <p className="text-slate-900 dark:text-white font-semibold text-sm">
+                                      ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    {account.available != null && account.current !== account.available && (
+                                      <p className="text-slate-500 dark:text-slate-400 text-xs">Available: ${(account.available ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                    )}
                                   </div>
                                 </div>
-                                <AnimatePresence initial={false}>
-                                  {isExpanded && (
-                                    <motion.div
-                                      key="expanded-account"
-                                      initial={{ height: 0, opacity: 0 }}
-                                      animate={{ height: 'auto', opacity: 1 }}
-                                      exit={{ height: 0, opacity: 0 }}
-                                      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                                      className="overflow-hidden"
-                                    >
-                                      <div className="px-3 pb-3 space-y-2.5 border-t border-zinc-200 dark:border-zinc-800 mt-2 pt-3">
-                                        {account.available != null && account.current !== account.available && (
-                                          <div className="flex items-center justify-between text-xs">
-                                            <span className="text-zinc-500 dark:text-zinc-400">Available</span>
-                                            <span className="text-black dark:text-white font-medium">
-                                              ${(account.available ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </span>
-                                          </div>
-                                        )}
-                                        <div className="border-t border-zinc-200 dark:border-zinc-800 my-2" />
-                                        <div className="flex gap-2 pt-2">
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); setDepositModalOpen(true); }}
-                                            className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
-                                          >
-                                            Deposit
-                                          </button>
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); setWithdrawModalOpen(true); }}
-                                            className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
-                                          >
-                                            Withdraw
-                                          </button>
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); setDepositInitialOption('bank'); setDepositModalOpen(true); }}
-                                            className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
-                                          >
-                                            Manage
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </motion.div>
-                                  )}
-                                </AnimatePresence>
+                                <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700/50">
+                                  <button
+                                    onClick={() => setDepositModalOpen(true)}
+                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+                                  >
+                                    Deposit
+                                  </button>
+                                  <button
+                                    onClick={() => setWithdrawModalOpen(true)}
+                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+                                  >
+                                    Withdraw
+                                  </button>
+                                  <button
+                                    onClick={() => { setDepositInitialOption('bank'); setDepositModalOpen(true); }}
+                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+                                  >
+                                    Manage
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}
                         </div>
                         {sortedBankAccounts.length > 5 && (
-                          <div className="mt-4 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                          <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/50">
                             <button
                               onClick={() => setIsAccountsExpanded(!isAccountsExpanded)}
-                              className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-2"
+                              className="w-full text-center text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors py-2"
                             >
                               {isAccountsExpanded
-                                ? `Show Less (${sortedBankAccounts.length} total)`
-                                : `View All (${sortedBankAccounts.length} accounts)`}
+                                ? `Show less (${sortedBankAccounts.length} accounts)`
+                                : `View all (${sortedBankAccounts.length} accounts)`}
                             </button>
                           </div>
                         )}
