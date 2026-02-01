@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft } from 'lucide-react';
+import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft, AlertCircle } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken } from '@/utils/apiClient';
 import { useBankBalance } from '@/hooks/useBankBalance';
@@ -35,6 +35,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
   const [isLoadingLinkToken, setIsLoadingLinkToken] = useState(false);
   const [bankError, setBankError] = useState<string | null>(null);
   const [isPullingAccounts, setIsPullingAccounts] = useState(false);
+  const plaidSuccessFiredRef = useRef(false);
   const { address } = useAppKitAccount();
   const { accounts: bankAccounts, linked: bankLinked, isLoading: bankAccountsLoading, refresh: refreshBankAccounts } = useBankBalance(address ?? undefined);
   const { refreshAll: refreshPortfolio } = usePortfolio();
@@ -304,6 +305,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
       setBankError('Please connect your wallet first');
       return;
     }
+    plaidSuccessFiredRef.current = false;
     setIsLoadingLinkToken(true);
     setBankError(null);
     try {
@@ -316,6 +318,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
       const handler = window.Plaid.create({
         token: linkTokenRes.link_token,
         onSuccess: async (public_token: string) => {
+          plaidSuccessFiredRef.current = true;
           const exchanged = await exchangePlaidToken(address, public_token);
           if (exchanged?.success) {
             setBankError(null);
@@ -338,7 +341,12 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
           }
         },
         onExit: (err) => {
-          if (err) setBankError(err instanceof Error ? err.message : 'Link closed');
+          if (plaidSuccessFiredRef.current) return;
+          if (err) {
+            setBankError(err instanceof Error ? err.message : 'Link closed');
+          } else {
+            setBankError('cancelled');
+          }
         },
       });
       handler.open();
@@ -348,6 +356,10 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
       setIsLoadingLinkToken(false);
     }
   }, [address, refreshBankAccounts, refreshPortfolio]);
+  // Reset ref when modal closes so next open doesn't skip onExit
+  useEffect(() => {
+    if (!isOpen) plaidSuccessFiredRef.current = false;
+  }, [isOpen]);
 
   const depositOptions = [
     {
@@ -448,17 +460,48 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                         </button>
                       </div>
                     ) : bankError ? (
-                      <div className="text-center py-6">
-                        <p className="text-red-500 dark:text-red-400 mb-4">{bankError}</p>
-                        <button
-                          onClick={() => {
-                            setBankError(null);
-                            openPlaidLink();
-                          }}
-                          className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 underline"
-                        >
-                          Try again
-                        </button>
+                      <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                        <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4">
+                          <AlertCircle className="w-7 h-7 text-red-600 dark:text-red-400" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-zinc-900 dark:text-white mb-1">
+                          {bankError === 'cancelled' ? 'Connection cancelled' : 'Something went wrong'}
+                        </h3>
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-6 max-w-[260px]">
+                          {bankError === 'cancelled'
+                            ? "You closed the Plaid window. No account was linked. You can try again or go back."
+                            : typeof bankError === 'string' && bankError !== 'Link closed'
+                              ? bankError
+                              : 'The connection didn\'t complete. You can try again or go back.'}
+                        </p>
+                        <div className="flex flex-col gap-3 w-full max-w-[240px]">
+                          <button
+                            onClick={() => {
+                              setBankError(null);
+                              openPlaidLink();
+                            }}
+                            disabled={isLoadingLinkToken}
+                            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-black dark:bg-white text-white dark:text-black font-medium hover:opacity-90 disabled:opacity-50"
+                          >
+                            {isLoadingLinkToken ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Loading...
+                              </>
+                            ) : (
+                              'Try again'
+                            )}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setBankError(null);
+                              setSelectedOption(null);
+                            }}
+                            className="w-full py-3 px-4 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors"
+                          >
+                            Go back
+                          </button>
+                        </div>
                       </div>
                     ) : isPullingAccounts ? (
                       <div className="flex flex-col items-center justify-center py-12">
