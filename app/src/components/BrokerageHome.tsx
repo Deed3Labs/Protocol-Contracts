@@ -1013,7 +1013,7 @@ export default function BrokerageHome() {
                         <p className="text-zinc-500 text-sm">No linked bank or investment accounts yet</p>
                         <button
                           onClick={() => { setDepositInitialOption('bank'); setDepositModalOpen(true); }}
-                          className="inline-flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black text-sm font-medium py-2.5 px-4 rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors border border-zinc-800 dark:border-zinc-200"
+                          className="inline-flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black text-sm font-medium py-2.5 px-4 rounded-full hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors border border-zinc-800 dark:border-zinc-200"
                         >
                           <Landmark className="w-4 h-4" />
                           Link account
