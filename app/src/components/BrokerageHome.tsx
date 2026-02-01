@@ -967,7 +967,7 @@ export default function BrokerageHome() {
                         <Landmark className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
                       </div>
                       <div>
-                        <h2 className="text-lg font-semibold text-black dark:text-white">Linked Accounts</h2>
+                        <h2 className="text-xl font-light text-black dark:text-white">Linked Accounts</h2>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Bank & investment accounts</p>
                       </div>
                     </div>
