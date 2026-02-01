@@ -493,7 +493,6 @@ export default function BrokerageHome() {
   // Global portfolio context - provides balances, holdings, cash balance, and activity
   const {
     balances: multichainBalances,
-    totalBalance,
     totalBalanceUSD,
     holdings: portfolioHoldings,
     cashBalance: portfolioCashBalance,
@@ -890,7 +889,7 @@ export default function BrokerageHome() {
                 multichainBalancesLength={multichainBalances.length}
                 onDeposit={() => setDepositModalOpen(true)}
                 onWithdraw={() => setWithdrawModalOpen(true)}
-                totalBalance={totalBalance}
+                totalBalance={String(portfolioCashBalance?.totalCash ?? 0)}
               />
               
               {/* Tabs */}
