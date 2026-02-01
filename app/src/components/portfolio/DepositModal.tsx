@@ -23,9 +23,11 @@ declare global {
 interface DepositModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** When set, open directly to this tab (e.g. "bank" when coming from Linked Accounts) */
+  initialOption?: 'bank' | 'card' | null;
 }
 
-const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
+const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const onrampElementRef = useRef<HTMLDivElement>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -50,6 +52,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       document.body.style.overflow = 'hidden';
+      if (initialOption) setSelectedOption(initialOption);
     } else {
       document.body.style.overflow = 'unset';
       // Reset state when modal closes
@@ -63,7 +66,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, initialOption]);
 
   // Load Stripe scripts dynamically
   const loadStripeScripts = (): Promise<void> => {
