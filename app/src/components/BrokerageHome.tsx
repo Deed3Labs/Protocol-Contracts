@@ -1054,19 +1054,19 @@ export default function BrokerageHome() {
                                 <div className="flex gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
                                   <button
                                     onClick={() => setDepositModalOpen(true)}
-                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-full border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                                    className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
                                   >
                                     Deposit
                                   </button>
                                   <button
                                     onClick={() => setWithdrawModalOpen(true)}
-                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-full border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                                    className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
                                   >
                                     Withdraw
                                   </button>
                                   <button
                                     onClick={() => { setDepositInitialOption('bank'); setDepositModalOpen(true); }}
-                                    className="flex-1 text-xs font-medium py-2 px-2 rounded-full border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                                    className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white text-xs font-medium py-2 px-3 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-white/10"
                                   >
                                     Manage
                                   </button>
