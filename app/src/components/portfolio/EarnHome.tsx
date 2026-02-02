@@ -11,6 +11,7 @@ import {
   ArrowUpRight,
   Filter,
   ArrowUpDown,
+  ArrowDownToLine,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import SideMenu from './SideMenu';
@@ -24,6 +25,7 @@ import { usePortfolio } from '@/context/PortfolioContext';
 import { LargePriceWheel } from '@/components/PriceWheel';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const STABLECOINS = [
   { symbol: 'USDC', name: 'USD Coin', color: '#2775CA', balance: '12,500.00' },
@@ -115,6 +117,11 @@ export default function EarnHome() {
   const [loansFilterCollateral, setLoansFilterCollateral] = useState<string>('All');
   const [loansFilterTerm, setLoansFilterTerm] = useState<string>('All');
 
+  type RedeemAction = 'burn' | 'bonds' | 'vault' | 'loans';
+  const [redeemAction, setRedeemAction] = useState<RedeemAction>('burn');
+  const [redeemAmount, setRedeemAmount] = useState('');
+  const [redeemPositionId, setRedeemPositionId] = useState<number | null>(null);
+
   const ACTIVE_POSITIONS_VISIBLE = 3;
   const displayedActivePositions = isActivePositionsExpanded
     ? ACTIVE_POSITIONS
@@ -125,6 +132,17 @@ export default function EarnHome() {
 
   const collateralOptions = useMemo(() => ['All', ...Array.from(new Set(LOANS.map((l) => l.collateral)))], []);
   const termOptions = useMemo(() => ['All', ...Array.from(new Set(LOANS.map((l) => `${l.term}mo`)))], []);
+
+  const redeemableBonds = useMemo(() => ACTIVE_POSITIONS.filter((p) => p.type === 'Bond'), []);
+  const redeemableVaults = useMemo(() => ACTIVE_POSITIONS.filter((p) => p.type === 'Vault'), []);
+  const redeemableLoans = useMemo(() => ACTIVE_POSITIONS.filter((p) => p.type === 'Loan'), []);
+  const selectedRedeemPosition = redeemAction === 'bonds'
+    ? redeemableBonds.find((p) => p.id === redeemPositionId)
+    : redeemAction === 'vault'
+      ? redeemableVaults.find((p) => p.id === redeemPositionId)
+      : redeemAction === 'loans'
+        ? redeemableLoans.find((p) => p.id === redeemPositionId)
+        : null;
 
   const modalLoans = useMemo(() => {
     let list = LOANS.filter((l) => {
@@ -580,6 +598,260 @@ export default function EarnHome() {
               </Button>
             </div>
 
+            {/* Redeem & Unlock – all-in-one */}
+            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden">
+              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-9 h-9 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                    <ArrowDownToLine className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-normal text-lg text-black dark:text-white">Redeem & Unlock</h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Burn to USDC, redeem bonds, or unlock vaults and loans</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 space-y-4">
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      { id: 'burn' as const, label: 'Burn to USDC', icon: Coins },
+                      { id: 'bonds' as const, label: 'Bonds', icon: Ticket },
+                      { id: 'vault' as const, label: 'Vault', icon: Lock },
+                      { id: 'loans' as const, label: 'Loans', icon: Users },
+                    ] as const
+                  ).map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => {
+                        setRedeemAction(id);
+                        setRedeemPositionId(null);
+                        setRedeemAmount('');
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors border ${
+                        redeemAction === id
+                          ? 'bg-zinc-200 dark:bg-zinc-700 text-black dark:text-white border-zinc-300 dark:border-zinc-600'
+                          : 'bg-white dark:bg-black/30 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5 shrink-0" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {redeemAction === 'burn' && (
+                  <div className="space-y-3">
+                    <div className="bg-white dark:bg-black/30 rounded-lg p-3 border border-zinc-200 dark:border-zinc-800">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Amount to burn</p>
+                        <p className="text-xs text-zinc-400 dark:text-zinc-500">Available: {MOCK_CLRUSD_BALANCE.toLocaleString()} CLRUSD</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={redeemAmount}
+                          onChange={(e) => setRedeemAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                          placeholder="0.00"
+                          className="flex-1 bg-transparent text-base font-medium outline-none text-black dark:text-white"
+                        />
+                        <span className="text-zinc-500 dark:text-zinc-400 text-sm">CLRUSD</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRedeemAmount(String(MOCK_CLRUSD_BALANCE))}
+                        className="text-xs text-blue-600 dark:text-blue-400 font-medium mt-1"
+                      >
+                        MAX
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between py-2 px-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-200 dark:border-blue-800/30">
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">You receive</span>
+                      <span className="font-medium text-black dark:text-white text-sm">
+                        {redeemAmount ? `~${(parseFloat(redeemAmount) || 0).toLocaleString()} USDC` : '—'}
+                      </span>
+                    </div>
+                    <Button
+                      disabled={!redeemAmount || parseFloat(redeemAmount) <= 0}
+                      className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-sm font-medium disabled:opacity-40"
+                    >
+                      Burn CLRUSD → USDC
+                    </Button>
+                  </div>
+                )}
+
+                {redeemAction === 'bonds' && (
+                  <div className="space-y-3">
+                    {redeemableBonds.length === 0 ? (
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 py-2">No bonds to redeem.</p>
+                    ) : (
+                      <>
+                        <div>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1.5">Select bond</p>
+                          <Select
+                            value={redeemPositionId != null ? String(redeemPositionId) : ''}
+                            onValueChange={(v) => setRedeemPositionId(v ? Number(v) : null)}
+                          >
+                            <SelectTrigger size="xs" className="w-full text-xs border-zinc-300 dark:border-zinc-700 rounded-lg pl-2 pr-3 py-2 h-9">
+                              <SelectValue placeholder="Choose bond" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg z-[60]">
+                              {redeemableBonds.map((p) => (
+                                <SelectItem key={p.id} value={String(p.id)} className="text-sm py-1.5">
+                                  {p.symbol ? `${p.amount} ${p.symbol}` : `$${p.amount.toLocaleString()}`} • {p.detail}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {selectedRedeemPosition && (
+                          <div className="flex items-center justify-between py-2 px-3 bg-amber-50 dark:bg-amber-900/10 rounded-lg border border-amber-200 dark:border-amber-800/30">
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">Redeem value</span>
+                            <span className="font-medium text-black dark:text-white text-sm">
+                              {selectedRedeemPosition.symbol ? `${selectedRedeemPosition.amount} ${selectedRedeemPosition.symbol}` : `$${selectedRedeemPosition.amount.toLocaleString()}`}
+                            </span>
+                          </div>
+                        )}
+                        <Button
+                          disabled={!selectedRedeemPosition}
+                          className="w-full h-10 bg-amber-600 hover:bg-amber-700 text-white rounded-full text-sm font-medium disabled:opacity-40"
+                        >
+                          Redeem Bond
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {redeemAction === 'vault' && (
+                  <div className="space-y-3">
+                    {redeemableVaults.length === 0 ? (
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 py-2">No vault positions to unlock.</p>
+                    ) : (
+                      <>
+                        <div>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1.5">Select vault</p>
+                          <Select
+                            value={redeemPositionId != null ? String(redeemPositionId) : ''}
+                            onValueChange={(v) => {
+                              setRedeemPositionId(v ? Number(v) : null);
+                              const pos = redeemableVaults.find((p) => p.id === Number(v));
+                              if (pos) setRedeemAmount(String(pos.amount));
+                            }}
+                          >
+                            <SelectTrigger size="xs" className="w-full text-xs border-zinc-300 dark:border-zinc-700 rounded-lg pl-2 pr-3 py-2 h-9">
+                              <SelectValue placeholder="Choose vault" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg z-[60]">
+                              {redeemableVaults.map((p) => (
+                                <SelectItem key={p.id} value={String(p.id)} className="text-sm py-1.5">
+                                  ${p.amount.toLocaleString()} CLRUSD • {p.detail}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {selectedRedeemPosition && (
+                          <>
+                            <div className="bg-white dark:bg-black/30 rounded-lg p-3 border border-zinc-200 dark:border-zinc-800">
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Amount to unlock</p>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={redeemAmount}
+                                  onChange={(e) => setRedeemAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                                  placeholder="0.00"
+                                  className="flex-1 bg-transparent text-base font-medium outline-none text-black dark:text-white"
+                                />
+                                <span className="text-zinc-500 dark:text-zinc-400 text-sm">CLRUSD</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setRedeemAmount(selectedRedeemPosition ? String(selectedRedeemPosition.amount) : '')}
+                                className="text-xs text-purple-600 dark:text-purple-400 font-medium mt-1"
+                              >
+                                MAX
+                              </button>
+                            </div>
+                            <Button
+                              disabled={!redeemAmount || parseFloat(redeemAmount) <= 0}
+                              className="w-full h-10 bg-purple-600 hover:bg-purple-700 text-white rounded-full text-sm font-medium disabled:opacity-40"
+                            >
+                              Unlock from Vault
+                            </Button>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {redeemAction === 'loans' && (
+                  <div className="space-y-3">
+                    {redeemableLoans.length === 0 ? (
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 py-2">No loan positions to unlock.</p>
+                    ) : (
+                      <>
+                        <div>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1.5">Select position</p>
+                          <Select
+                            value={redeemPositionId != null ? String(redeemPositionId) : ''}
+                            onValueChange={(v) => {
+                              setRedeemPositionId(v ? Number(v) : null);
+                              const pos = redeemableLoans.find((p) => p.id === Number(v));
+                              if (pos) setRedeemAmount(String(pos.amount));
+                            }}
+                          >
+                            <SelectTrigger size="xs" className="w-full text-xs border-zinc-300 dark:border-zinc-700 rounded-lg pl-2 pr-3 py-2 h-9">
+                              <SelectValue placeholder="Choose loan stake" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg z-[60]">
+                              {redeemableLoans.map((p) => (
+                                <SelectItem key={p.id} value={String(p.id)} className="text-sm py-1.5">
+                                  ${p.amount.toLocaleString()} • {p.detail}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {selectedRedeemPosition && (
+                          <>
+                            <div className="bg-white dark:bg-black/30 rounded-lg p-3 border border-zinc-200 dark:border-zinc-800">
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Amount to unlock</p>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={redeemAmount}
+                                  onChange={(e) => setRedeemAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                                  placeholder="0.00"
+                                  className="flex-1 bg-transparent text-base font-medium outline-none text-black dark:text-white"
+                                />
+                                <span className="text-zinc-500 dark:text-zinc-400 text-sm">CLRUSD</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setRedeemAmount(selectedRedeemPosition ? String(selectedRedeemPosition.amount) : '')}
+                                className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-1"
+                              >
+                                MAX
+                              </button>
+                            </div>
+                            <Button
+                              disabled={!redeemAmount || parseFloat(redeemAmount) <= 0}
+                              className="w-full h-10 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-sm font-medium disabled:opacity-40"
+                            >
+                              Unlock from Loan
+                            </Button>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50">
                 <h3 className="font-normal text-lg text-black dark:text-white">Active Positions</h3>
@@ -812,38 +1084,50 @@ export default function EarnHome() {
                   <div className="flex items-center gap-1.5 min-w-0 shrink-0">
                     <ArrowUpDown className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 shrink-0" />
                     <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Sort</span>
-                    <select
-                      value={loansSort}
-                      onChange={(e) => setLoansSort(e.target.value as typeof loansSort)}
-                      className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 max-w-[130px] shrink"
-                    >
-                      <option value="apr-desc">APR (high to low)</option>
-                      <option value="amount-desc">Amount (high to low)</option>
-                      <option value="term-asc">Term (short first)</option>
-                      <option value="funded-desc">% Funded (high first)</option>
-                    </select>
+                    <Select value={loansSort} onValueChange={(v) => setLoansSort(v as typeof loansSort)}>
+                      <SelectTrigger
+                        size="xs"
+                        className="min-w-0 max-w-[130px] w-[130px] shrink text-xs font-normal text-zinc-600 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 rounded pl-2 pr-3 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800 [&>svg]:ml-0.5"
+                      >
+                        <SelectValue placeholder="Sort" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-[100]">
+                        <SelectItem value="apr-desc" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-1.5">APR (high to low)</SelectItem>
+                        <SelectItem value="amount-desc" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-1.5">Amount (high to low)</SelectItem>
+                        <SelectItem value="term-asc" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-1.5">Term (short first)</SelectItem>
+                        <SelectItem value="funded-desc" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-1.5">% Funded (high first)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="flex items-center gap-1.5 min-w-0 shrink-0">
                     <Filter className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 shrink-0" />
                     <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Filter</span>
-                    <select
-                      value={loansFilterCollateral}
-                      onChange={(e) => setLoansFilterCollateral(e.target.value)}
-                      className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 max-w-[100px] sm:max-w-[120px] shrink"
-                    >
-                      {collateralOptions.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                    <select
-                      value={loansFilterTerm}
-                      onChange={(e) => setLoansFilterTerm(e.target.value)}
-                      className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 w-[80px] sm:w-[92px] shrink"
-                    >
-                      {termOptions.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
+                    <Select value={loansFilterCollateral} onValueChange={setLoansFilterCollateral}>
+                      <SelectTrigger
+                        size="xs"
+                        className="min-w-0 max-w-[100px] sm:max-w-[120px] w-[100px] sm:w-[120px] shrink text-xs font-normal text-zinc-600 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 rounded pl-2 pr-3 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800 [&>svg]:ml-0.5"
+                      >
+                        <SelectValue placeholder="Collateral" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-[100]">
+                        {collateralOptions.map((opt) => (
+                          <SelectItem key={opt} value={opt} className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-1.5">{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={loansFilterTerm} onValueChange={setLoansFilterTerm}>
+                      <SelectTrigger
+                        size="xs"
+                        className="min-w-0 w-[80px] sm:w-[96px] shrink text-xs font-normal text-zinc-600 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 rounded pl-2 pr-3 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800 [&>svg]:ml-0.5"
+                      >
+                        <SelectValue placeholder="Term" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-[100]">
+                        {termOptions.map((opt) => (
+                          <SelectItem key={opt} value={opt} className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-1.5">{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
