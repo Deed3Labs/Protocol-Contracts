@@ -555,7 +555,7 @@ export default function EarnHome() {
                       <button
                         type="button"
                         onClick={() => setLoansModalOpen(true)}
-                        className="w-full flex items-center justify-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-3 min-h-[44px]"
+                        className="w-full flex items-center justify-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-4 min-h-[52px]"
                       >
                         View All ({LOANS.length} loans)
                       </button>
@@ -666,7 +666,7 @@ export default function EarnHome() {
                   <button
                     type="button"
                     onClick={() => setIsActivePositionsExpanded(!isActivePositionsExpanded)}
-                    className="w-full flex items-center justify-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-3 min-h-[44px]"
+                    className="w-full flex items-center justify-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-4 min-h-[52px]"
                   >
                     {isActivePositionsExpanded
                       ? `Show Less (${ACTIVE_POSITIONS.length} total)`
@@ -794,45 +794,43 @@ export default function EarnHome() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ type: 'spring', duration: 0.3 }}
-              className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-lg z-50 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[85vh] shadow-xl"
+              className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 w-[calc(100vw-2rem)] md:w-full md:max-w-lg max-h-[85vh] z-50 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col shadow-xl min-w-0"
             >
-              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between shrink-0">
-                <h3 className="font-semibold text-black dark:text-white">All Loans</h3>
+              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between shrink-0 min-w-0">
+                <h3 className="font-semibold text-black dark:text-white truncate">All Loans</h3>
                 <button
                   type="button"
                   onClick={() => setLoansModalOpen(false)}
-                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors shrink-0"
                 >
                   <X className="w-5 h-5 text-zinc-500 dark:text-zinc-400" />
                 </button>
               </div>
 
-              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 space-y-3 shrink-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
-                    <ArrowUpDown className="w-3.5 h-3.5" />
-                    Sort
-                  </span>
+              <div className="px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 shrink-0 w-full min-w-0 overflow-hidden">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-2 w-full min-w-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <ArrowUpDown className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                    <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Sort</span>
+                  </div>
                   <select
                     value={loansSort}
                     onChange={(e) => setLoansSort(e.target.value as typeof loansSort)}
-                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-3 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 max-w-[130px] shrink"
                   >
                     <option value="apr-desc">APR (high to low)</option>
                     <option value="amount-desc">Amount (high to low)</option>
                     <option value="term-asc">Term (short first)</option>
                     <option value="funded-desc">% Funded (high first)</option>
                   </select>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
-                    <Filter className="w-3.5 h-3.5" />
-                    Filter
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Filter className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                    <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Filter</span>
+                  </div>
                   <select
                     value={loansFilterCollateral}
                     onChange={(e) => setLoansFilterCollateral(e.target.value)}
-                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-3 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 max-w-[100px] sm:max-w-[120px] shrink"
                   >
                     {collateralOptions.map((opt) => (
                       <option key={opt} value={opt}>{opt}</option>
@@ -841,7 +839,7 @@ export default function EarnHome() {
                   <select
                     value={loansFilterTerm}
                     onChange={(e) => setLoansFilterTerm(e.target.value)}
-                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-3 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 w-[68px] sm:w-[76px] shrink"
                   >
                     {termOptions.map((opt) => (
                       <option key={opt} value={opt}>{opt}</option>
@@ -850,7 +848,7 @@ export default function EarnHome() {
                 </div>
               </div>
 
-              <div className="p-4 overflow-y-auto overscroll-contain space-y-2 flex-1 min-h-0">
+              <div className="p-4 overflow-y-auto overscroll-contain space-y-2 flex-1 min-h-0 min-w-0">
                 {modalLoans.length === 0 ? (
                   <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center py-8">No loans match the current filters.</p>
                 ) : (
