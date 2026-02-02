@@ -549,7 +549,7 @@ export default function EarnHome() {
                   const isExpanded = expandedActivePositionIds.has(pos.id);
                   const estEarnings1y = (pos.amount * pos.apy) / 100;
                   return (
-                    <div key={pos.id} className="rounded transition-colors">
+                    <div key={pos.id} className="transition-colors">
                       <button
                         type="button"
                         onClick={() => togglePositionExpanded(pos.id)}
@@ -568,7 +568,7 @@ export default function EarnHome() {
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
                           <div className="text-right">
-                            <p className="font-medium text-green-600 dark:text-green-500">{pos.apy}% APY</p>
+                            <p className="font-medium text-sm text-green-600 dark:text-green-500">{pos.apy}% APY</p>
                             <p className="text-xs text-zinc-500 dark:text-zinc-400">earning</p>
                           </div>
                           <motion.div
