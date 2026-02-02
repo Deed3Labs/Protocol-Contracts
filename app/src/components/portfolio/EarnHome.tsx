@@ -11,7 +11,7 @@ import {
   ArrowUpRight,
   Filter,
   ArrowUpDown,
-  ArrowDownToLine,
+  LockOpen,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import SideMenu from './SideMenu';
@@ -269,7 +269,7 @@ export default function EarnHome() {
                   className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-4"
                 >
                   <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-1">{stat.label}</p>
-                  <p className={`text-xl font-semibold text-black dark:text-white ${stat.valueClass}`}>{stat.value}</p>
+                  <p className={`text-xl font-semibold ${stat.valueClass || 'text-black dark:text-white'}`}>{stat.value}</p>
                   <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">{stat.sub}</p>
                 </motion.div>
               ))}
@@ -603,7 +603,7 @@ export default function EarnHome() {
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50">
                 <div className="flex items-center gap-2 mb-1">
                   <div className="w-9 h-9 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
-                    <ArrowDownToLine className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+                    <LockOpen className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
                   </div>
                   <div>
                     <h3 className="font-normal text-lg text-black dark:text-white">Unlock & Redeem</h3>
