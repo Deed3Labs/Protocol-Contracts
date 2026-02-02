@@ -246,7 +246,7 @@ export default function EarnHome() {
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Deposit stables → earn 4.5% APY</p>
                       </div>
                     </div>
-                    <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 rounded-full text-sm text-blue-600 dark:text-blue-400 font-medium">4.5% APY</span>
+                    <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 rounded-full text-xs text-blue-600 dark:text-blue-400 font-medium">4.5% APY</span>
                   </div>
                   <div className="p-4">
                     <div className="bg-white dark:bg-black/30 rounded p-3 mb-3 border border-zinc-200 dark:border-zinc-800">
@@ -328,7 +328,7 @@ export default function EarnHome() {
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Lock for boosted yields</p>
                       </div>
                     </div>
-                    <span className="px-3 py-1 bg-purple-50 dark:bg-purple-900/20 rounded-full text-sm text-purple-600 dark:text-purple-400 font-medium">Up to 15% APY</span>
+                    <span className="px-3 py-1 bg-purple-50 dark:bg-purple-900/20 rounded-full text-xs text-purple-600 dark:text-purple-400 font-medium">Upto 15% APY</span>
                   </div>
                   <div className="p-4">
                     <div className="flex gap-1 mb-3">
@@ -393,7 +393,7 @@ export default function EarnHome() {
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Buy at discount, redeem at maturity</p>
                       </div>
                     </div>
-                    <span className="px-3 py-1 bg-amber-50 dark:bg-amber-900/20 rounded-full text-sm text-amber-600 dark:text-amber-400 font-medium">Up to 18% off</span>
+                    <span className="px-3 py-1 bg-amber-50 dark:bg-amber-900/20 rounded-full text-xs text-amber-600 dark:text-amber-400 font-medium">Upto 18% off</span>
                   </div>
                   <div className="p-4">
                     <div className="bg-white dark:bg-black/30 rounded p-3 mb-3 border border-zinc-200 dark:border-zinc-800">
@@ -488,7 +488,7 @@ export default function EarnHome() {
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Fund loans, earn interest pro-rata</p>
                       </div>
                     </div>
-                    <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-full text-sm text-emerald-600 dark:text-emerald-400 font-medium">10–18% APR</span>
+                    <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-full text-xs text-emerald-600 dark:text-emerald-400 font-medium">10–18% APR</span>
                   </div>
                   <div className="p-4 space-y-2 min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ maxHeight: 280 }}>
                     {LOANS.map((loan) => {
