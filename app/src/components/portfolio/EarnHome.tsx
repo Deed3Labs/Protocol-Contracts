@@ -115,7 +115,7 @@ export default function EarnHome() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
           {/* Left: Stats + Product cards */}
           <div className="md:col-span-8 space-y-10">
-            {/* Header */}
+            {/* Header: Earn + CLRUSD balance (placeholder until token deployed) */}
             <div>
               <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
                 <span className="text-sm font-medium">Earn</span>
@@ -125,6 +125,10 @@ export default function EarnHome() {
                 <span className="text-lg text-zinc-500 font-normal">$47,250</span>
               </h1>
               <p className="text-sm text-green-600 dark:text-green-500 mt-1">+12.4% this month</p>
+              <div className="mt-4 flex items-center gap-2 text-sm font-medium text-black dark:text-white">
+                <span>$25,000.00</span>
+                <span className="text-zinc-500 dark:text-zinc-400">CLRUSD</span>
+              </div>
             </div>
 
             {/* Stats row */}
@@ -140,7 +144,7 @@ export default function EarnHome() {
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: i * 0.05 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-2xl p-4"
+                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-4"
                 >
                   <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-1">{stat.label}</p>
                   <p className={`text-xl font-semibold text-black dark:text-white ${stat.valueClass}`}>{stat.value}</p>
@@ -156,11 +160,11 @@ export default function EarnHome() {
                 {/* Mint CLRUSD */}
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-2xl overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
                 >
                   <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
                         <Coins className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                       </div>
                       <div>
@@ -171,10 +175,10 @@ export default function EarnHome() {
                     <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 rounded-full text-sm text-blue-600 dark:text-blue-400 font-medium">4.5% APY</span>
                   </div>
                   <div className="p-4">
-                    <div className="bg-white dark:bg-black/30 rounded-xl p-3 mb-3 border border-zinc-200 dark:border-zinc-800">
+                    <div className="bg-white dark:bg-black/30 rounded p-3 mb-3 border border-zinc-200 dark:border-zinc-800">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-zinc-500">Deposit</span>
-                        <span className="text-xs text-zinc-500">Bal: ${mintToken.balance}</span>
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400">Deposit</span>
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400">${mintToken.balance}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <input
@@ -188,7 +192,7 @@ export default function EarnHome() {
                           <button
                             type="button"
                             onClick={() => setShowMintTokens(!showMintTokens)}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700"
+                            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700"
                           >
                             <div className="w-5 h-5 rounded-full shrink-0" style={{ backgroundColor: mintToken.color }} />
                             <span className="text-sm font-medium">{mintToken.symbol}</span>
@@ -200,7 +204,7 @@ export default function EarnHome() {
                                 initial={{ opacity: 0, y: -4 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -4 }}
-                                className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xl z-10 overflow-hidden"
+                                className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 shadow-xl z-10 overflow-hidden"
                               >
                                 {STABLECOINS.map((t) => (
                                   <button
@@ -219,11 +223,11 @@ export default function EarnHome() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-white dark:bg-black/30 rounded-xl mb-3 border border-zinc-200 dark:border-zinc-800">
+                    <div className="flex items-center justify-between p-3 bg-white dark:bg-black/30 rounded mb-3 border border-zinc-200 dark:border-zinc-800">
                       <span className="text-sm text-zinc-500 dark:text-zinc-400">You receive</span>
                       <span className="font-medium text-black dark:text-white">{mintAmount || '0.00'} CLRUSD</span>
                     </div>
-                    <Button disabled={!mintAmount || parseFloat(mintAmount) <= 0} className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium disabled:opacity-40">
+                    <Button disabled={!mintAmount || parseFloat(mintAmount) <= 0} className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium disabled:opacity-40">
                       Mint CLRUSD
                     </Button>
                   </div>
@@ -232,11 +236,11 @@ export default function EarnHome() {
                 {/* Vault */}
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-2xl overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
                 >
                   <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
                         <Lock className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                       </div>
                       <div>
@@ -253,7 +257,7 @@ export default function EarnHome() {
                           key={tier.months}
                           type="button"
                           onClick={() => setVaultTier(tier)}
-                          className={`flex-1 py-2 rounded-lg text-center transition-all text-sm ${
+                          className={`flex-1 py-2 rounded text-center transition-all text-sm ${
                             vaultTier.months === tier.months
                               ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700'
                               : 'bg-white dark:bg-black/30 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800'
@@ -264,9 +268,9 @@ export default function EarnHome() {
                         </button>
                       ))}
                     </div>
-                    <div className="bg-white dark:bg-black/30 rounded-xl p-3 mb-3 border border-zinc-200 dark:border-zinc-800">
+                    <div className="bg-white dark:bg-black/30 rounded p-3 mb-3 border border-zinc-200 dark:border-zinc-800">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-zinc-500">Lock amount</span>
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400">Lock amount</span>
                         <button type="button" onClick={() => setVaultAmount('25000')} className="text-xs text-purple-600 dark:text-purple-400 font-medium">
                           MAX
                         </button>
@@ -282,13 +286,13 @@ export default function EarnHome() {
                         <span className="text-zinc-500 dark:text-zinc-400">CLRUSD</span>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/10 rounded-xl mb-3 border border-purple-200 dark:border-purple-800/30">
+                    <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/10 rounded mb-3 border border-purple-200 dark:border-purple-800/30">
                       <span className="text-sm text-zinc-500 dark:text-zinc-400">Est. earnings</span>
                       <span className="font-semibold text-green-600 dark:text-green-500">
                         +${((parseFloat(vaultAmount) || 0) * vaultTier.apy / 100 * vaultTier.months / 12).toFixed(2)}
                       </span>
                     </div>
-                    <Button disabled={!vaultAmount || parseFloat(vaultAmount) <= 0} className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-medium disabled:opacity-40">
+                    <Button disabled={!vaultAmount || parseFloat(vaultAmount) <= 0} className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white rounded font-medium disabled:opacity-40">
                       Lock CLRUSD
                     </Button>
                   </div>
@@ -297,11 +301,11 @@ export default function EarnHome() {
                 {/* Savings Bonds */}
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-2xl overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
                 >
                   <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
                         <Ticket className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                       </div>
                       <div>
@@ -312,10 +316,10 @@ export default function EarnHome() {
                     <span className="px-3 py-1 bg-amber-50 dark:bg-amber-900/20 rounded-full text-sm text-amber-600 dark:text-amber-400 font-medium">Up to 18% off</span>
                   </div>
                   <div className="p-4">
-                    <div className="bg-white dark:bg-black/30 rounded-xl p-3 mb-3 border border-zinc-200 dark:border-zinc-800">
+                    <div className="bg-white dark:bg-black/30 rounded p-3 mb-3 border border-zinc-200 dark:border-zinc-800">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-zinc-500">Face value</span>
-                        <span className="text-xs text-zinc-500">Bal: {bondToken.balance} {bondToken.symbol}</span>
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400">Face value</span>
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400">{bondToken.balance} {bondToken.symbol}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <input
@@ -329,7 +333,7 @@ export default function EarnHome() {
                           <button
                             type="button"
                             onClick={() => setShowBondTokens(!showBondTokens)}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700"
+                            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700"
                           >
                             <div className="w-5 h-5 rounded-full shrink-0" style={{ backgroundColor: bondToken.color }} />
                             <span className="text-sm font-medium">{bondToken.symbol}</span>
@@ -341,7 +345,7 @@ export default function EarnHome() {
                                 initial={{ opacity: 0, y: -4 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -4 }}
-                                className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xl z-10 overflow-hidden"
+                                className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 shadow-xl z-10 overflow-hidden"
                               >
                                 {BOND_TOKENS.map((t) => (
                                   <button
@@ -366,7 +370,7 @@ export default function EarnHome() {
                           key={m.years}
                           type="button"
                           onClick={() => setBondMaturity(m)}
-                          className={`flex-1 py-2 rounded-lg text-center transition-all text-sm ${
+                          className={`flex-1 py-2 rounded text-center transition-all text-sm ${
                             bondMaturity.years === m.years
                               ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
                               : 'bg-white dark:bg-black/30 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800'
@@ -377,13 +381,13 @@ export default function EarnHome() {
                         </button>
                       ))}
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl mb-3 border border-amber-200 dark:border-amber-800/30">
+                    <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/10 rounded mb-3 border border-amber-200 dark:border-amber-800/30">
                       <span className="text-sm text-zinc-500 dark:text-zinc-400">You deposit</span>
                       <span className="font-semibold text-black dark:text-white">
                         {((parseFloat(bondAmount) || 0) * (1 - bondMaturity.discount / 100)).toFixed(4)} {bondToken.symbol}
                       </span>
                     </div>
-                    <Button disabled={!bondAmount || parseFloat(bondAmount) <= 0} className="w-full h-11 bg-amber-500 hover:bg-amber-600 text-black rounded-xl font-medium disabled:opacity-40">
+                    <Button disabled={!bondAmount || parseFloat(bondAmount) <= 0} className="w-full h-11 bg-amber-500 hover:bg-amber-600 text-black rounded font-medium disabled:opacity-40">
                       Mint Bond
                     </Button>
                   </div>
@@ -392,11 +396,11 @@ export default function EarnHome() {
                 {/* Loan Staking */}
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-2xl overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors flex flex-col"
                 >
-                  <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50 flex items-center justify-between">
+                  <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
                         <Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <div>
@@ -406,7 +410,7 @@ export default function EarnHome() {
                     </div>
                     <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-full text-sm text-emerald-600 dark:text-emerald-400 font-medium">10–18% APR</span>
                   </div>
-                  <div className="p-4 space-y-2 max-h-[280px] overflow-y-auto">
+                  <div className="p-4 space-y-2 min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ maxHeight: 280 }}>
                     {LOANS.map((loan) => {
                       const pct = (loan.funded / loan.amount) * 100;
                       return (
@@ -414,7 +418,7 @@ export default function EarnHome() {
                           key={loan.id}
                           type="button"
                           onClick={() => setSelectedLoan(loan)}
-                          className="w-full p-3 bg-white dark:bg-black/30 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-800 transition-colors text-left"
+                          className="w-full p-3 bg-white dark:bg-black/30 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-800 transition-colors text-left"
                         >
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-medium text-black dark:text-white">${loan.amount.toLocaleString()}</span>
@@ -443,7 +447,7 @@ export default function EarnHome() {
 
           {/* Right: Active Positions + CTA */}
           <div className="md:col-span-4 space-y-6">
-            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-2xl overflow-hidden sticky top-28">
+            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden md:sticky md:top-28">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50">
                 <h3 className="font-semibold text-black dark:text-white">Active Positions</h3>
               </div>
@@ -454,7 +458,7 @@ export default function EarnHome() {
                     className="p-4 flex items-center justify-between hover:bg-zinc-100/50 dark:hover:bg-zinc-800/30 transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl ${pos.iconBg} flex items-center justify-center shrink-0`}>
+                      <div className={`w-10 h-10 rounded-full ${pos.iconBg} flex items-center justify-center shrink-0`}>
                         <pos.icon className={`w-5 h-5 ${pos.iconColor}`} />
                       </div>
                       <div>
@@ -473,7 +477,7 @@ export default function EarnHome() {
               </div>
             </div>
 
-            <div className="bg-blue-600 rounded-xl p-5 text-white">
+            <div className="bg-blue-600 rounded-lg p-5 text-white">
               <h3 className="font-medium mb-2">Grow your savings</h3>
               <p className="text-sm text-blue-100 mb-4">Mint CLRUSD, lock in vaults, or stake on loans to earn yield on your stablecoins.</p>
               <Button
@@ -506,20 +510,20 @@ export default function EarnHome() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ type: 'spring', duration: 0.3 }}
-              className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-md z-50 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[90vh] shadow-xl"
+              className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-md z-50 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[90vh] shadow-xl"
             >
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between shrink-0">
                 <h3 className="font-semibold text-black dark:text-white">Fund Loan</h3>
                 <button
                   type="button"
                   onClick={() => setSelectedLoan(null)}
-                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
                 >
                   <X className="w-5 h-5 text-zinc-500 dark:text-zinc-400" />
                 </button>
               </div>
-              <div className="p-4 overflow-y-auto">
-                <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-4 mb-4 border border-zinc-200 dark:border-zinc-700">
+              <div className="p-4 overflow-y-auto overscroll-contain">
+                <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded p-4 mb-4 border border-zinc-200 dark:border-zinc-700">
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <p className="text-zinc-500 dark:text-zinc-400">Amount</p>
@@ -539,7 +543,7 @@ export default function EarnHome() {
                     </div>
                   </div>
                 </div>
-                <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3 mb-4 border border-zinc-200 dark:border-zinc-700">
+                <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded p-3 mb-4 border border-zinc-200 dark:border-zinc-700">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-zinc-500 dark:text-zinc-400">Your stake</span>
                     <button
@@ -561,7 +565,7 @@ export default function EarnHome() {
                     <span className="text-zinc-500 dark:text-zinc-400">CLRUSD</span>
                   </div>
                 </div>
-                <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-xl p-4 mb-4 border border-emerald-200 dark:border-emerald-800/30 space-y-2">
+                <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded p-4 mb-4 border border-emerald-200 dark:border-emerald-800/30 space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-zinc-500 dark:text-zinc-400">Your share</span>
                     <span className="font-medium text-black dark:text-white">{((parseFloat(stakeAmount) || 0) / selectedLoan.amount * 100).toFixed(1)}%</span>
@@ -577,7 +581,7 @@ export default function EarnHome() {
                 </div>
                 <Button
                   disabled={!stakeAmount || parseFloat(stakeAmount) <= 0}
-                  className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium disabled:opacity-40"
+                  className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium disabled:opacity-40"
                 >
                   Fund Loan
                 </Button>
