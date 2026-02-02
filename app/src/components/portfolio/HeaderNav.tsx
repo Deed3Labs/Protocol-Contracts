@@ -106,7 +106,12 @@ export default function HeaderNav({
              >
                Markets
              </button>
-             <button className="hover:text-black dark:hover:text-white transition-colors">Earn</button>
+             <button
+               onClick={() => navigate('/earn')}
+               className={`${isActive('/earn') ? 'text-black dark:text-white' : 'hover:text-black dark:hover:text-white'} transition-colors`}
+             >
+               Earn
+             </button>
              <button 
                onClick={() => navigate('/borrow')}
                className={`${isActive('/borrow') ? 'text-black dark:text-white' : 'hover:text-black dark:hover:text-white'} transition-colors`}
