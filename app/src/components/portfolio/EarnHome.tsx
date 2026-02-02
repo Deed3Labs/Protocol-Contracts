@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Coins,
@@ -9,6 +9,8 @@ import {
   X,
   Info,
   ArrowUpRight,
+  Filter,
+  ArrowUpDown,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import SideMenu from './SideMenu';
@@ -108,7 +110,10 @@ export default function EarnHome() {
   const [stakeAmount, setStakeAmount] = useState('');
   const [isActivePositionsExpanded, setIsActivePositionsExpanded] = useState(false);
   const [expandedActivePositionIds, setExpandedActivePositionIds] = useState<Set<number>>(new Set());
-  const [isLoansExpanded, setIsLoansExpanded] = useState(false);
+  const [loansModalOpen, setLoansModalOpen] = useState(false);
+  const [loansSort, setLoansSort] = useState<'apr-desc' | 'amount-desc' | 'term-asc' | 'funded-desc'>('apr-desc');
+  const [loansFilterCollateral, setLoansFilterCollateral] = useState<string>('All');
+  const [loansFilterTerm, setLoansFilterTerm] = useState<string>('All');
 
   const ACTIVE_POSITIONS_VISIBLE = 3;
   const displayedActivePositions = isActivePositionsExpanded
@@ -116,7 +121,27 @@ export default function EarnHome() {
     : ACTIVE_POSITIONS.slice(0, ACTIVE_POSITIONS_VISIBLE);
 
   const LOANS_VISIBLE = 2;
-  const displayedLoans = isLoansExpanded ? LOANS : LOANS.slice(0, LOANS_VISIBLE);
+  const displayedLoans = LOANS.slice(0, LOANS_VISIBLE);
+
+  const collateralOptions = useMemo(() => ['All', ...Array.from(new Set(LOANS.map((l) => l.collateral)))], []);
+  const termOptions = useMemo(() => ['All', ...Array.from(new Set(LOANS.map((l) => `${l.term}mo`)))], []);
+
+  const modalLoans = useMemo(() => {
+    let list = LOANS.filter((l) => {
+      if (loansFilterCollateral !== 'All' && l.collateral !== loansFilterCollateral) return false;
+      if (loansFilterTerm !== 'All' && `${l.term}mo` !== loansFilterTerm) return false;
+      return true;
+    });
+    list = [...list].sort((a, b) => {
+      if (loansSort === 'apr-desc') return b.apr - a.apr;
+      if (loansSort === 'amount-desc') return b.amount - a.amount;
+      if (loansSort === 'term-asc') return a.term - b.term;
+      const pctA = (a.funded / a.amount) * 100;
+      const pctB = (b.funded / b.amount) * 100;
+      return pctB - pctA;
+    });
+    return list;
+  }, [loansSort, loansFilterCollateral, loansFilterTerm]);
 
   const togglePositionExpanded = (id: number) => {
     setExpandedActivePositionIds((prev) => {
@@ -528,12 +553,10 @@ export default function EarnHome() {
                       <div className="border-t border-zinc-200 dark:border-zinc-800/50 pt-0">
                         <button
                           type="button"
-                          onClick={() => setIsLoansExpanded(!isLoansExpanded)}
+                          onClick={() => setLoansModalOpen(true)}
                           className="w-full flex items-center justify-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-3 min-h-[44px]"
                         >
-                          {isLoansExpanded
-                            ? `Show Less (${LOANS.length} total)`
-                            : `View All (${LOANS.length} loans)`}
+                          View All ({LOANS.length} loans)
                         </button>
                       </div>
                     )}
@@ -749,6 +772,120 @@ export default function EarnHome() {
                 >
                   Fund Loan
                 </Button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* All Loans Modal (View All with sort & filter) */}
+      <AnimatePresence>
+        {loansModalOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setLoansModalOpen(false)}
+              className="fixed inset-0 bg-black/60 dark:bg-black/70 z-50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ type: 'spring', duration: 0.3 }}
+              className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-lg z-50 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[85vh] shadow-xl"
+            >
+              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between shrink-0">
+                <h3 className="font-semibold text-black dark:text-white">All Loans</h3>
+                <button
+                  type="button"
+                  onClick={() => setLoansModalOpen(false)}
+                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-zinc-500 dark:text-zinc-400" />
+                </button>
+              </div>
+
+              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 space-y-3 shrink-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                    <ArrowUpDown className="w-3.5 h-3.5" />
+                    Sort
+                  </span>
+                  <select
+                    value={loansSort}
+                    onChange={(e) => setLoansSort(e.target.value as typeof loansSort)}
+                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-3 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="apr-desc">APR (high to low)</option>
+                    <option value="amount-desc">Amount (high to low)</option>
+                    <option value="term-asc">Term (short first)</option>
+                    <option value="funded-desc">% Funded (high first)</option>
+                  </select>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                    <Filter className="w-3.5 h-3.5" />
+                    Filter
+                  </span>
+                  <select
+                    value={loansFilterCollateral}
+                    onChange={(e) => setLoansFilterCollateral(e.target.value)}
+                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-3 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {collateralOptions.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={loansFilterTerm}
+                    onChange={(e) => setLoansFilterTerm(e.target.value)}
+                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-3 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {termOptions.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="p-4 overflow-y-auto overscroll-contain space-y-2 flex-1 min-h-0">
+                {modalLoans.length === 0 ? (
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center py-8">No loans match the current filters.</p>
+                ) : (
+                  modalLoans.map((loan) => {
+                    const pct = (loan.funded / loan.amount) * 100;
+                    return (
+                      <button
+                        key={loan.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLoan(loan);
+                          setLoansModalOpen(false);
+                        }}
+                        className="w-full p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium text-black dark:text-white">${loan.amount.toLocaleString()}</span>
+                          <span className="text-emerald-600 dark:text-emerald-400 text-sm font-medium">{loan.apr}% APR</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400 mb-2">
+                          <span>{loan.collateral}</span>
+                          <span>•</span>
+                          <span>{loan.term}mo</span>
+                          <span>•</span>
+                          <span>{loan.stakers} stakers</span>
+                        </div>
+                        <Progress value={pct} className="h-1.5 bg-zinc-200 dark:bg-zinc-700" />
+                        <div className="flex justify-between mt-1 text-xs">
+                          <span className="text-zinc-500 dark:text-zinc-400">{pct.toFixed(0)}% funded</span>
+                          <span className="text-emerald-600 dark:text-emerald-400">${(loan.amount - loan.funded).toLocaleString()} left</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </motion.div>
           </>
