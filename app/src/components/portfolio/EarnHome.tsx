@@ -7,6 +7,8 @@ import {
   Users,
   ChevronDown,
   X,
+  Info,
+  ArrowUpRight,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import SideMenu from './SideMenu';
@@ -15,6 +17,9 @@ import MobileNav from './MobileNav';
 import DepositModal from './DepositModal';
 import WithdrawModal from './WithdrawModal';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
+import { useAppKitAccount } from '@reown/appkit/react';
+import { usePortfolio } from '@/context/PortfolioContext';
+import { LargePriceWheel } from '@/components/PriceWheel';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 
@@ -70,6 +75,10 @@ const ACTIVE_POSITIONS: ActivePosition[] = [
 ];
 
 export default function EarnHome() {
+  const { isConnected } = useAppKitAccount();
+  const { cashBalance: portfolioCashBalance, previousTotalBalanceUSD, balances: multichainBalances } = usePortfolio();
+  const cashBalance = portfolioCashBalance?.totalCash || 0;
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
@@ -115,16 +124,58 @@ export default function EarnHome() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
           {/* Left: Stats + Product cards */}
           <div className="md:col-span-8 space-y-10">
-            {/* Header: CLRUSD balance as main value (placeholder until token deployed) */}
+            {/* Balance (CLRUSD) Header - same structure as BrokerageHome / MarketsHome */}
             <div>
               <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
-                <span className="text-sm font-medium">Earn</span>
+                <span className="text-sm font-medium">CLRUSD</span>
+                <div className="group relative">
+                  <Info className="h-4 w-4 cursor-help" />
+                  <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+                    Stablecoin balance (placeholder until CLRUSD is deployed)
+                  </div>
+                </div>
+                {!isConnected && (
+                  <span className="text-xs text-amber-500">Connect wallet to view balance</span>
+                )}
+                {isConnected && multichainBalances.length > 1 && (
+                  <span className="text-xs text-zinc-400">Across {multichainBalances.length} networks</span>
+                )}
               </div>
-              <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
-                $25,000.00
-                <span className="text-lg text-zinc-500 font-normal">CLRUSD</span>
-              </h1>
-              <p className="text-sm text-green-600 dark:text-green-500 mt-1">+12.4% this month</p>
+              <div className="min-h-[60px] flex items-center">
+                <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
+                  {isConnected ? (
+                    <>
+                      <LargePriceWheel
+                        value={cashBalance || 0}
+                        previousValue={previousTotalBalanceUSD}
+                        className="font-light"
+                      />
+                      <span className="text-lg text-zinc-500 font-normal">CLRUSD</span>
+                    </>
+                  ) : (
+                    <>
+                      $0.00
+                      <span className="text-lg text-zinc-500 font-normal">CLRUSD</span>
+                    </>
+                  )}
+                </h1>
+              </div>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  onClick={() => setDepositModalOpen(true)}
+                  className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-2"
+                >
+                  <ArrowUpRight className="w-4 h-4" />
+                  Add Funds
+                </button>
+                <button
+                  onClick={() => setWithdrawModalOpen(true)}
+                  className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800"
+                  disabled={!isConnected || cashBalance === 0}
+                >
+                  Withdraw Funds
+                </button>
+              </div>
             </div>
 
             {/* Stats row */}
@@ -188,7 +239,7 @@ export default function EarnHome() {
                           <button
                             type="button"
                             onClick={() => setShowMintTokens(!showMintTokens)}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700"
+                            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700"
                           >
                             <div className="w-5 h-5 rounded-full shrink-0" style={{ backgroundColor: mintToken.color }} />
                             <span className="text-sm font-medium">{mintToken.symbol}</span>
@@ -200,7 +251,7 @@ export default function EarnHome() {
                                 initial={{ opacity: 0, y: -4 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -4 }}
-                                className="absolute right-0 top-full mt-1 w-40 min-w-0 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 shadow-xl z-20"
+                                className="absolute right-0 left-auto top-full mt-1 w-40 min-w-0 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 shadow-xl z-20"
                               >
                                 {STABLECOINS.map((t) => (
                                   <button
@@ -223,7 +274,7 @@ export default function EarnHome() {
                       <span className="text-sm text-zinc-500 dark:text-zinc-400">You receive</span>
                       <span className="font-medium text-black dark:text-white">{mintAmount || '0.00'} CLRUSD</span>
                     </div>
-                    <Button disabled={!mintAmount || parseFloat(mintAmount) <= 0} className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium disabled:opacity-40">
+                    <Button disabled={!mintAmount || parseFloat(mintAmount) <= 0} className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-medium disabled:opacity-40">
                       Mint CLRUSD
                     </Button>
                   </div>
@@ -288,7 +339,7 @@ export default function EarnHome() {
                         +${((parseFloat(vaultAmount) || 0) * vaultTier.apy / 100 * vaultTier.months / 12).toFixed(2)}
                       </span>
                     </div>
-                    <Button disabled={!vaultAmount || parseFloat(vaultAmount) <= 0} className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white rounded font-medium disabled:opacity-40">
+                    <Button disabled={!vaultAmount || parseFloat(vaultAmount) <= 0} className="w-full h-11 bg-purple-600 hover:bg-purple-700 text-white rounded-full font-medium disabled:opacity-40">
                       Lock CLRUSD
                     </Button>
                   </div>
@@ -329,7 +380,7 @@ export default function EarnHome() {
                           <button
                             type="button"
                             onClick={() => setShowBondTokens(!showBondTokens)}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700"
+                            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700"
                           >
                             <div className="w-5 h-5 rounded-full shrink-0" style={{ backgroundColor: bondToken.color }} />
                             <span className="text-sm font-medium">{bondToken.symbol}</span>
@@ -341,7 +392,7 @@ export default function EarnHome() {
                                 initial={{ opacity: 0, y: -4 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -4 }}
-                                className="absolute right-0 top-full mt-1 w-36 min-w-0 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 shadow-xl z-20"
+                                className="absolute right-0 left-auto top-full mt-1 w-36 min-w-0 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 shadow-xl z-20"
                               >
                                 {BOND_TOKENS.map((t) => (
                                   <button
@@ -383,7 +434,7 @@ export default function EarnHome() {
                         {((parseFloat(bondAmount) || 0) * (1 - bondMaturity.discount / 100)).toFixed(4)} {bondToken.symbol}
                       </span>
                     </div>
-                    <Button disabled={!bondAmount || parseFloat(bondAmount) <= 0} className="w-full h-11 bg-amber-500 hover:bg-amber-600 text-black rounded font-medium disabled:opacity-40">
+                    <Button disabled={!bondAmount || parseFloat(bondAmount) <= 0} className="w-full h-11 bg-amber-500 hover:bg-amber-600 text-black rounded-full font-medium disabled:opacity-40">
                       Mint Bond
                     </Button>
                   </div>
@@ -513,7 +564,7 @@ export default function EarnHome() {
                 <button
                   type="button"
                   onClick={() => setSelectedLoan(null)}
-                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
                 >
                   <X className="w-5 h-5 text-zinc-500 dark:text-zinc-400" />
                 </button>
@@ -577,7 +628,7 @@ export default function EarnHome() {
                 </div>
                 <Button
                   disabled={!stakeAmount || parseFloat(stakeAmount) <= 0}
-                  className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-medium disabled:opacity-40"
+                  className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-medium disabled:opacity-40"
                 >
                   Fund Loan
                 </Button>
