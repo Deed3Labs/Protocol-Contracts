@@ -503,7 +503,7 @@ export default function EarnHome() {
                         >
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-medium text-black dark:text-white">${loan.amount.toLocaleString()}</span>
-                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{loan.apr}% APR</span>
+                            <span className="text-emerald-600 text-sm dark:text-emerald-400 font-medium">{loan.apr}% APR</span>
                           </div>
                           <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400 mb-2">
                             <span>{loan.collateral}</span>
