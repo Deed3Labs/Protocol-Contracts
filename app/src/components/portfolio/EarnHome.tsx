@@ -233,9 +233,9 @@ export default function EarnHome() {
                           value={mintAmount}
                           onChange={(e) => setMintAmount(e.target.value.replace(/[^0-9.]/g, ''))}
                           placeholder="0.00"
-                          className="flex-1 bg-transparent text-xl font-medium outline-none text-black dark:text-white"
+                          className="flex-1 min-w-0 bg-transparent text-xl font-medium outline-none text-black dark:text-white"
                         />
-                        <div className="relative shrink-0">
+                        <div className="relative shrink-0 w-28 flex justify-end">
                           <button
                             type="button"
                             onClick={() => setShowMintTokens(!showMintTokens)}
@@ -243,7 +243,7 @@ export default function EarnHome() {
                           >
                             <div className="w-5 h-5 rounded-full shrink-0" style={{ backgroundColor: mintToken.color }} />
                             <span className="text-sm font-medium">{mintToken.symbol}</span>
-                            <ChevronDown className="w-3 h-3 text-zinc-500" />
+                            <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
                           </button>
                           <AnimatePresence>
                             {showMintTokens && (
@@ -374,9 +374,9 @@ export default function EarnHome() {
                           value={bondAmount}
                           onChange={(e) => setBondAmount(e.target.value.replace(/[^0-9.]/g, ''))}
                           placeholder="0.00"
-                          className="flex-1 bg-transparent text-xl font-medium outline-none text-black dark:text-white"
+                          className="flex-1 min-w-0 bg-transparent text-xl font-medium outline-none text-black dark:text-white"
                         />
-                        <div className="relative shrink-0">
+                        <div className="relative shrink-0 w-28 flex justify-end">
                           <button
                             type="button"
                             onClick={() => setShowBondTokens(!showBondTokens)}
@@ -384,7 +384,7 @@ export default function EarnHome() {
                           >
                             <div className="w-5 h-5 rounded-full shrink-0" style={{ backgroundColor: bondToken.color }} />
                             <span className="text-sm font-medium">{bondToken.symbol}</span>
-                            <ChevronDown className="w-3 h-3 text-zinc-500" />
+                            <ChevronDown className="w-3 h-3 text-zinc-500 shrink-0" />
                           </button>
                           <AnimatePresence>
                             {showBondTokens && (
