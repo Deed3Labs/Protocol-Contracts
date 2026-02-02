@@ -389,7 +389,7 @@ export default function EarnHome() {
                         <Ticket className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                       </div>
                       <div>
-                        <h3 className="font-light text-black dark:text-white">Savings Bonds</h3>
+                        <h3 className="font-normal text-black dark:text-white">Savings Bonds</h3>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Buy at discount, redeem at maturity</p>
                       </div>
                     </div>
@@ -484,7 +484,7 @@ export default function EarnHome() {
                         <Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <div>
-                        <h3 className="font-light text-black dark:text-white">Loan Staking</h3>
+                        <h3 className="font-normal text-black dark:text-white">Loan Staking</h3>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Fund loans, earn interest pro-rata</p>
                       </div>
                     </div>
@@ -541,7 +541,7 @@ export default function EarnHome() {
 
             <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50">
-                <h3 className="font-light text-black dark:text-white">Active Positions</h3>
+                <h3 className="font-normal text-black dark:text-white">Active Positions</h3>
               </div>
               <div className="divide-y divide-zinc-200 dark:divide-zinc-800/50">
                 {displayedActivePositions.map((pos) => {
