@@ -541,7 +541,7 @@ export default function EarnHome() {
 
             <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50">
-                <h3 className="font-normal text-xl text-black dark:text-white">Active Positions</h3>
+                <h3 className="font-normal text-lg text-black dark:text-white">Active Positions</h3>
               </div>
               <div className="divide-y divide-zinc-200 dark:divide-zinc-800/50">
                 {displayedActivePositions.map((pos) => {
@@ -621,11 +621,11 @@ export default function EarnHome() {
                 })}
               </div>
               {ACTIVE_POSITIONS.length > ACTIVE_POSITIONS_VISIBLE && (
-                <div className="border-t border-zinc-200 dark:border-zinc-800/50">
+                <div className="mt-4 pt-2 border-t border-zinc-200 dark:border-zinc-800/50">
                   <button
                     type="button"
                     onClick={() => setIsActivePositionsExpanded(!isActivePositionsExpanded)}
-                    className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-2"
+                    className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-3"
                   >
                     {isActivePositionsExpanded
                       ? `Show Less (${ACTIVE_POSITIONS.length} total)`
