@@ -108,11 +108,15 @@ export default function EarnHome() {
   const [stakeAmount, setStakeAmount] = useState('');
   const [isActivePositionsExpanded, setIsActivePositionsExpanded] = useState(false);
   const [expandedActivePositionIds, setExpandedActivePositionIds] = useState<Set<number>>(new Set());
+  const [isLoansExpanded, setIsLoansExpanded] = useState(false);
 
   const ACTIVE_POSITIONS_VISIBLE = 3;
   const displayedActivePositions = isActivePositionsExpanded
     ? ACTIVE_POSITIONS
     : ACTIVE_POSITIONS.slice(0, ACTIVE_POSITIONS_VISIBLE);
+
+  const LOANS_VISIBLE = 2;
+  const displayedLoans = isLoansExpanded ? LOANS : LOANS.slice(0, LOANS_VISIBLE);
 
   const togglePositionExpanded = (id: number) => {
     setExpandedActivePositionIds((prev) => {
@@ -492,7 +496,7 @@ export default function EarnHome() {
                     <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-full text-xs text-emerald-600 dark:text-emerald-400 font-medium">10–18% APR</span>
                   </div>
                   <div className="p-4 space-y-2 min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ maxHeight: 280 }}>
-                    {LOANS.map((loan) => {
+                    {displayedLoans.map((loan) => {
                       const pct = (loan.funded / loan.amount) * 100;
                       return (
                         <button
@@ -520,6 +524,19 @@ export default function EarnHome() {
                         </button>
                       );
                     })}
+                    {LOANS.length > LOANS_VISIBLE && (
+                      <div className="border-t border-zinc-200 dark:border-zinc-800/50 pt-0">
+                        <button
+                          type="button"
+                          onClick={() => setIsLoansExpanded(!isLoansExpanded)}
+                          className="w-full flex items-center justify-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-3 min-h-[44px]"
+                        >
+                          {isLoansExpanded
+                            ? `Show Less (${LOANS.length} total)`
+                            : `View All (${LOANS.length} loans)`}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               </div>
