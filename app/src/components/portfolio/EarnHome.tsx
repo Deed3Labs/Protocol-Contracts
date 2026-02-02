@@ -549,18 +549,18 @@ export default function EarnHome() {
                         </button>
                       );
                     })}
-                    {LOANS.length > LOANS_VISIBLE && (
-                      <div className="border-t border-zinc-200 dark:border-zinc-800/50 pt-0">
-                        <button
-                          type="button"
-                          onClick={() => setLoansModalOpen(true)}
-                          className="w-full flex items-center justify-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-3 min-h-[44px]"
-                        >
-                          View All ({LOANS.length} loans)
-                        </button>
-                      </div>
-                    )}
                   </div>
+                  {LOANS.length > LOANS_VISIBLE && (
+                    <div className="border-t border-zinc-200 dark:border-zinc-800/50 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setLoansModalOpen(true)}
+                        className="w-full flex items-center justify-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-3 min-h-[44px]"
+                      >
+                        View All ({LOANS.length} loans)
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               </div>
             </div>
