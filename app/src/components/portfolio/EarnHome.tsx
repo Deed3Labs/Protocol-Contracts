@@ -57,6 +57,7 @@ const LOANS = [
 ];
 
 interface ActivePosition {
+  id: number;
   type: string;
   amount: number;
   apy: number;
@@ -68,10 +69,10 @@ interface ActivePosition {
 }
 
 const ACTIVE_POSITIONS: ActivePosition[] = [
-  { type: 'Vault', amount: 10000, apy: 12, detail: '245 days left', icon: Lock, iconBg: 'bg-purple-50 dark:bg-purple-900/20', iconColor: 'text-purple-500' },
-  { type: 'Vault', amount: 5000, apy: 9.5, detail: '89 days left', icon: Lock, iconBg: 'bg-purple-50 dark:bg-purple-900/20', iconColor: 'text-purple-500' },
-  { type: 'Loan', amount: 15000, apy: 14, detail: '2 of 6 months', icon: Users, iconBg: 'bg-emerald-50 dark:bg-emerald-900/20', iconColor: 'text-emerald-500' },
-  { type: 'Bond', amount: 2, apy: 12, detail: 'Matures Dec 2031', icon: Ticket, iconBg: 'bg-amber-50 dark:bg-amber-900/20', iconColor: 'text-amber-500', symbol: 'ETH' },
+  { id: 1, type: 'Vault', amount: 10000, apy: 12, detail: '245 days left', icon: Lock, iconBg: 'bg-purple-50 dark:bg-purple-900/20', iconColor: 'text-purple-500' },
+  { id: 2, type: 'Vault', amount: 5000, apy: 9.5, detail: '89 days left', icon: Lock, iconBg: 'bg-purple-50 dark:bg-purple-900/20', iconColor: 'text-purple-500' },
+  { id: 3, type: 'Loan', amount: 15000, apy: 14, detail: '2 of 6 months', icon: Users, iconBg: 'bg-emerald-50 dark:bg-emerald-900/20', iconColor: 'text-emerald-500' },
+  { id: 4, type: 'Bond', amount: 2, apy: 12, detail: 'Matures Dec 2031', icon: Ticket, iconBg: 'bg-amber-50 dark:bg-amber-900/20', iconColor: 'text-amber-500', symbol: 'ETH' },
 ];
 
 // Mock CLRUSD balance data until token is deployed
@@ -105,11 +106,21 @@ export default function EarnHome() {
   const [selectedLoan, setSelectedLoan] = useState<typeof LOANS[0] | null>(null);
   const [stakeAmount, setStakeAmount] = useState('');
   const [isActivePositionsExpanded, setIsActivePositionsExpanded] = useState(false);
+  const [expandedActivePositionIds, setExpandedActivePositionIds] = useState<Set<number>>(new Set());
 
   const ACTIVE_POSITIONS_VISIBLE = 3;
   const displayedActivePositions = isActivePositionsExpanded
     ? ACTIVE_POSITIONS
     : ACTIVE_POSITIONS.slice(0, ACTIVE_POSITIONS_VISIBLE);
+
+  const togglePositionExpanded = (id: number) => {
+    setExpandedActivePositionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -533,28 +544,81 @@ export default function EarnHome() {
                 <h3 className="font-light text-black dark:text-white">Active Positions</h3>
               </div>
               <div className="divide-y divide-zinc-200 dark:divide-zinc-800/50">
-                {displayedActivePositions.map((pos, i) => (
-                  <div
-                    key={i}
-                    className="p-4 flex items-center justify-between hover:bg-zinc-100/50 dark:hover:bg-zinc-800/30 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full ${pos.iconBg} flex items-center justify-center shrink-0`}>
-                        <pos.icon className={`w-5 h-5 ${pos.iconColor}`} />
-                      </div>
-                      <div>
-                        <p className="font-medium text-black dark:text-white">
-                          {pos.symbol ? `${pos.amount} ${pos.symbol}` : `$${pos.amount.toLocaleString()}`}
-                        </p>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">{pos.type} • {pos.detail}</p>
-                      </div>
+                {displayedActivePositions.map((pos) => {
+                  const isExpanded = expandedActivePositionIds.has(pos.id);
+                  const estEarnings1y = (pos.amount * pos.apy) / 100;
+                  return (
+                    <div key={pos.id} className="rounded transition-colors">
+                      <button
+                        type="button"
+                        onClick={() => togglePositionExpanded(pos.id)}
+                        className="w-full p-4 flex items-center justify-between hover:bg-zinc-100/50 dark:hover:bg-zinc-800/30 transition-colors text-left cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full ${pos.iconBg} flex items-center justify-center shrink-0`}>
+                            <pos.icon className={`w-5 h-5 ${pos.iconColor}`} />
+                          </div>
+                          <div>
+                            <p className="font-medium text-black dark:text-white">
+                              {pos.symbol ? `${pos.amount} ${pos.symbol}` : `$${pos.amount.toLocaleString()}`}
+                            </p>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">{pos.type} • {pos.detail}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="text-right">
+                            <p className="font-medium text-green-600 dark:text-green-500">{pos.apy}% APY</p>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">earning</p>
+                          </div>
+                          <motion.div
+                            animate={{ rotate: isExpanded ? 180 : 0 }}
+                            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                            className="text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400"
+                          >
+                            <ChevronDown className="w-4 h-4" />
+                          </motion.div>
+                        </div>
+                      </button>
+                      <AnimatePresence initial={false}>
+                        {isExpanded && (
+                          <motion.div
+                            key="expanded-details"
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                            className="overflow-hidden"
+                          >
+                            <div className="px-4 pb-4 pt-0 space-y-2 border-t border-zinc-200 dark:border-zinc-800/50 mt-0 pt-3">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-zinc-500 dark:text-zinc-400">Position type</span>
+                                <span className="font-medium text-black dark:text-white">{pos.type}</span>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-zinc-500 dark:text-zinc-400">APY</span>
+                                <span className="font-medium text-green-600 dark:text-green-500">{pos.apy}%</span>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-zinc-500 dark:text-zinc-400">Est. earnings (1y)</span>
+                                <span className="font-medium text-black dark:text-white">
+                                  {pos.symbol ? `+${estEarnings1y.toFixed(4)} ${pos.symbol}` : `+$${estEarnings1y.toFixed(2)}`}
+                                </span>
+                              </div>
+                              <div className="pt-2">
+                                <button
+                                  type="button"
+                                  className="w-full py-2 rounded-full text-xs font-medium bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors border border-zinc-200 dark:border-zinc-700"
+                                >
+                                  View details
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium text-green-600 dark:text-green-500">{pos.apy}% APY</p>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">earning</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               {ACTIVE_POSITIONS.length > ACTIVE_POSITIONS_VISIBLE && (
                 <div className="border-t border-zinc-200 dark:border-zinc-800/50">
