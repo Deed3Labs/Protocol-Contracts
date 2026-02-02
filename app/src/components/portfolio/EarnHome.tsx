@@ -77,7 +77,8 @@ const ACTIVE_POSITIONS: ActivePosition[] = [
 
 // Mock CLRUSD balance data until token is deployed
 const MOCK_CLRUSD_BALANCE = 25000;
-const MOCK_CLRUSD_GROWTH_PCT = 12.4;
+const MOCK_CLRUSD_GROWTH_PCT = 7.9;
+const MOCK_TVL_GROWTH_PCT = 12.4;
 const MINT_CLRUSD_APY = 4.5;
 
 export default function EarnHome() {
@@ -149,11 +150,11 @@ export default function EarnHome() {
             {/* Balance (CLRUSD) Header - mock data until $CLRUSD is deployed */}
             <div>
               <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
-                <span className="text-sm font-medium">CLRUSD</span>
+                <span className="text-sm font-medium">CLRUSD Balance</span>
                 <div className="group relative">
                   <Info className="h-4 w-4 cursor-help" />
                   <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap max-w-[220px]">
-                    Your $CLRUSD balance. Native stablecoin of the protocol; earns yield when minted or locked in vaults. Placeholder data until $CLRUSD is deployed.
+                    Your $CLRUSD balance; earns yield when minted or locked in vaults.
                   </div>
                 </div>
                 {!isConnected && (
@@ -184,7 +185,7 @@ export default function EarnHome() {
               </div>
               {isConnected && (
                 <p className="text-sm text-green-600 dark:text-green-500 mt-1">
-                  +{MOCK_CLRUSD_GROWTH_PCT}% this month
+                  +{MOCK_TVL_GROWTH_PCT}% this month
                 </p>
               )}
               <div className="mt-6 flex flex-wrap gap-3">
