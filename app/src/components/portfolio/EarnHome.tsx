@@ -74,9 +74,14 @@ const ACTIVE_POSITIONS: ActivePosition[] = [
   { type: 'Bond', amount: 2, apy: 12, detail: 'Matures Dec 2031', icon: Ticket, iconBg: 'bg-amber-50 dark:bg-amber-900/20', iconColor: 'text-amber-500', symbol: 'ETH' },
 ];
 
+// Mock CLRUSD balance data until token is deployed
+const MOCK_CLRUSD_BALANCE = 25000;
+const MOCK_CLRUSD_GROWTH_PCT = 12.4;
+const MINT_CLRUSD_APY = 4.5;
+
 export default function EarnHome() {
   const { isConnected } = useAppKitAccount();
-  const { cashBalance: portfolioCashBalance, previousTotalBalanceUSD, balances: multichainBalances } = usePortfolio();
+  const { cashBalance: portfolioCashBalance, balances: multichainBalances } = usePortfolio();
   const cashBalance = portfolioCashBalance?.totalCash || 0;
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -99,6 +104,12 @@ export default function EarnHome() {
 
   const [selectedLoan, setSelectedLoan] = useState<typeof LOANS[0] | null>(null);
   const [stakeAmount, setStakeAmount] = useState('');
+  const [isActivePositionsExpanded, setIsActivePositionsExpanded] = useState(false);
+
+  const ACTIVE_POSITIONS_VISIBLE = 3;
+  const displayedActivePositions = isActivePositionsExpanded
+    ? ACTIVE_POSITIONS
+    : ACTIVE_POSITIONS.slice(0, ACTIVE_POSITIONS_VISIBLE);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -124,14 +135,14 @@ export default function EarnHome() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
           {/* Left: Stats + Product cards */}
           <div className="md:col-span-8 space-y-10">
-            {/* Balance (CLRUSD) Header - same structure as BrokerageHome / MarketsHome */}
+            {/* Balance (CLRUSD) Header - mock data until $CLRUSD is deployed */}
             <div>
               <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
                 <span className="text-sm font-medium">CLRUSD</span>
                 <div className="group relative">
                   <Info className="h-4 w-4 cursor-help" />
-                  <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
-                    Stablecoin balance (placeholder until CLRUSD is deployed)
+                  <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap max-w-[220px]">
+                    Your $CLRUSD balance. Native stablecoin of the protocol; earns yield when minted or locked in vaults. Placeholder data until $CLRUSD is deployed.
                   </div>
                 </div>
                 {!isConnected && (
@@ -146,8 +157,8 @@ export default function EarnHome() {
                   {isConnected ? (
                     <>
                       <LargePriceWheel
-                        value={cashBalance || 0}
-                        previousValue={previousTotalBalanceUSD}
+                        value={MOCK_CLRUSD_BALANCE}
+                        previousValue={MOCK_CLRUSD_BALANCE * (1 - MOCK_CLRUSD_GROWTH_PCT / 100)}
                         className="font-light"
                       />
                       <span className="text-lg text-zinc-500 font-normal">CLRUSD</span>
@@ -160,6 +171,11 @@ export default function EarnHome() {
                   )}
                 </h1>
               </div>
+              {isConnected && (
+                <p className="text-sm text-green-600 dark:text-green-500 mt-1">
+                  +{MOCK_CLRUSD_GROWTH_PCT}% this month
+                </p>
+              )}
               <div className="mt-6 flex flex-wrap gap-3">
                 <button
                   onClick={() => setDepositModalOpen(true)}
@@ -215,7 +231,7 @@ export default function EarnHome() {
                         <Coins className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-black dark:text-white">Mint CLRUSD</h3>
+                        <h3 className="font-normal text-black dark:text-white">Mint CLRUSD</h3>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Deposit stables → earn 4.5% APY</p>
                       </div>
                     </div>
@@ -274,6 +290,12 @@ export default function EarnHome() {
                       <span className="text-sm text-zinc-500 dark:text-zinc-400">You receive</span>
                       <span className="font-medium text-black dark:text-white">{mintAmount || '0.00'} CLRUSD</span>
                     </div>
+                    <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/10 rounded mb-3 border border-blue-200 dark:border-blue-800/30">
+                      <span className="text-sm text-zinc-500 dark:text-zinc-400">Est. earnings (1y)</span>
+                      <span className="font-semibold text-green-600 dark:text-green-500">
+                        +${(((parseFloat(mintAmount) || 0) * MINT_CLRUSD_APY) / 100).toFixed(2)}
+                      </span>
+                    </div>
                     <Button disabled={!mintAmount || parseFloat(mintAmount) <= 0} className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-medium disabled:opacity-40">
                       Mint CLRUSD
                     </Button>
@@ -291,7 +313,7 @@ export default function EarnHome() {
                         <Lock className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-black dark:text-white">Vault CLRUSD</h3>
+                        <h3 className="font-normal text-black dark:text-white">Vault CLRUSD</h3>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Lock for boosted yields</p>
                       </div>
                     </div>
@@ -356,7 +378,7 @@ export default function EarnHome() {
                         <Ticket className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-black dark:text-white">Savings Bonds</h3>
+                        <h3 className="font-light text-black dark:text-white">Savings Bonds</h3>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Buy at discount, redeem at maturity</p>
                       </div>
                     </div>
@@ -451,7 +473,7 @@ export default function EarnHome() {
                         <Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-black dark:text-white">Loan Staking</h3>
+                        <h3 className="font-light text-black dark:text-white">Loan Staking</h3>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Fund loans, earn interest pro-rata</p>
                       </div>
                     </div>
@@ -508,10 +530,10 @@ export default function EarnHome() {
 
             <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50">
-                <h3 className="font-semibold text-black dark:text-white">Active Positions</h3>
+                <h3 className="font-light text-black dark:text-white">Active Positions</h3>
               </div>
               <div className="divide-y divide-zinc-200 dark:divide-zinc-800/50">
-                {ACTIVE_POSITIONS.map((pos, i) => (
+                {displayedActivePositions.map((pos, i) => (
                   <div
                     key={i}
                     className="p-4 flex items-center justify-between hover:bg-zinc-100/50 dark:hover:bg-zinc-800/30 transition-colors"
@@ -534,6 +556,19 @@ export default function EarnHome() {
                   </div>
                 ))}
               </div>
+              {ACTIVE_POSITIONS.length > ACTIVE_POSITIONS_VISIBLE && (
+                <div className="border-t border-zinc-200 dark:border-zinc-800/50">
+                  <button
+                    type="button"
+                    onClick={() => setIsActivePositionsExpanded(!isActivePositionsExpanded)}
+                    className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-2"
+                  >
+                    {isActivePositionsExpanded
+                      ? `Show Less (${ACTIVE_POSITIONS.length} total)`
+                      : `View All (${ACTIVE_POSITIONS.length} positions)`}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
