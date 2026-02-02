@@ -808,43 +808,43 @@ export default function EarnHome() {
               </div>
 
               <div className="px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 shrink-0 w-full min-w-0 overflow-hidden">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-2 w-full min-w-0">
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <ArrowUpDown className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 w-full min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0 shrink-0">
+                    <ArrowUpDown className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 shrink-0" />
                     <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Sort</span>
+                    <select
+                      value={loansSort}
+                      onChange={(e) => setLoansSort(e.target.value as typeof loansSort)}
+                      className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 max-w-[130px] shrink"
+                    >
+                      <option value="apr-desc">APR (high to low)</option>
+                      <option value="amount-desc">Amount (high to low)</option>
+                      <option value="term-asc">Term (short first)</option>
+                      <option value="funded-desc">% Funded (high first)</option>
+                    </select>
                   </div>
-                  <select
-                    value={loansSort}
-                    onChange={(e) => setLoansSort(e.target.value as typeof loansSort)}
-                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 max-w-[130px] shrink"
-                  >
-                    <option value="apr-desc">APR (high to low)</option>
-                    <option value="amount-desc">Amount (high to low)</option>
-                    <option value="term-asc">Term (short first)</option>
-                    <option value="funded-desc">% Funded (high first)</option>
-                  </select>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Filter className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                  <div className="flex items-center gap-1.5 min-w-0 shrink-0">
+                    <Filter className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 shrink-0" />
                     <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 whitespace-nowrap">Filter</span>
+                    <select
+                      value={loansFilterCollateral}
+                      onChange={(e) => setLoansFilterCollateral(e.target.value)}
+                      className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 max-w-[100px] sm:max-w-[120px] shrink"
+                    >
+                      {collateralOptions.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={loansFilterTerm}
+                      onChange={(e) => setLoansFilterTerm(e.target.value)}
+                      className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 w-[80px] sm:w-[92px] shrink"
+                    >
+                      {termOptions.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
                   </div>
-                  <select
-                    value={loansFilterCollateral}
-                    onChange={(e) => setLoansFilterCollateral(e.target.value)}
-                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 max-w-[100px] sm:max-w-[120px] shrink"
-                  >
-                    {collateralOptions.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={loansFilterTerm}
-                    onChange={(e) => setLoansFilterTerm(e.target.value)}
-                    className="text-sm bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2.5 py-1.5 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-0 w-[68px] sm:w-[76px] shrink"
-                  >
-                    {termOptions.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
                 </div>
               </div>
 
