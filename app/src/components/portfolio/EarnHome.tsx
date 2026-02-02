@@ -115,20 +115,16 @@ export default function EarnHome() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
           {/* Left: Stats + Product cards */}
           <div className="md:col-span-8 space-y-10">
-            {/* Header: Earn + CLRUSD balance (placeholder until token deployed) */}
+            {/* Header: CLRUSD balance as main value (placeholder until token deployed) */}
             <div>
               <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
                 <span className="text-sm font-medium">Earn</span>
               </div>
               <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
-                Total Value Locked
-                <span className="text-lg text-zinc-500 font-normal">$47,250</span>
+                $25,000.00
+                <span className="text-lg text-zinc-500 font-normal">CLRUSD</span>
               </h1>
               <p className="text-sm text-green-600 dark:text-green-500 mt-1">+12.4% this month</p>
-              <div className="mt-4 flex items-center gap-2 text-sm font-medium text-black dark:text-white">
-                <span>$25,000.00</span>
-                <span className="text-zinc-500 dark:text-zinc-400">CLRUSD</span>
-              </div>
             </div>
 
             {/* Stats row */}
@@ -156,11 +152,11 @@ export default function EarnHome() {
             {/* Product cards grid */}
             <div>
               <h3 className="text-xl font-light text-black dark:text-white mb-6">Earn products</h3>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Mint CLRUSD */}
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-visible hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
                 >
                   <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -188,7 +184,7 @@ export default function EarnHome() {
                           placeholder="0.00"
                           className="flex-1 bg-transparent text-xl font-medium outline-none text-black dark:text-white"
                         />
-                        <div className="relative">
+                        <div className="relative shrink-0">
                           <button
                             type="button"
                             onClick={() => setShowMintTokens(!showMintTokens)}
@@ -204,7 +200,7 @@ export default function EarnHome() {
                                 initial={{ opacity: 0, y: -4 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -4 }}
-                                className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 shadow-xl z-10 overflow-hidden"
+                                className="absolute right-0 top-full mt-1 w-40 min-w-0 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 shadow-xl z-20"
                               >
                                 {STABLECOINS.map((t) => (
                                   <button
@@ -236,7 +232,7 @@ export default function EarnHome() {
                 {/* Vault */}
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-visible hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
                 >
                   <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -301,7 +297,7 @@ export default function EarnHome() {
                 {/* Savings Bonds */}
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-visible hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
                 >
                   <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -329,7 +325,7 @@ export default function EarnHome() {
                           placeholder="0.00"
                           className="flex-1 bg-transparent text-xl font-medium outline-none text-black dark:text-white"
                         />
-                        <div className="relative">
+                        <div className="relative shrink-0">
                           <button
                             type="button"
                             onClick={() => setShowBondTokens(!showBondTokens)}
@@ -345,7 +341,7 @@ export default function EarnHome() {
                                 initial={{ opacity: 0, y: -4 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -4 }}
-                                className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 shadow-xl z-10 overflow-hidden"
+                                className="absolute right-0 top-full mt-1 w-36 min-w-0 bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 shadow-xl z-20"
                               >
                                 {BOND_TOKENS.map((t) => (
                                   <button
@@ -396,7 +392,7 @@ export default function EarnHome() {
                 {/* Loan Staking */}
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors flex flex-col"
+                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-visible hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors flex flex-col"
                 >
                   <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
@@ -445,9 +441,21 @@ export default function EarnHome() {
             </div>
           </div>
 
-          {/* Right: Active Positions + CTA */}
-          <div className="md:col-span-4 space-y-6">
-            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden md:sticky md:top-28">
+          {/* Right: CTA first, then Active Positions (same sticky block so they scroll together) */}
+          <div className="md:col-span-4 space-y-6 md:sticky md:top-28 md:self-start">
+            <div className="bg-blue-600 rounded-lg p-5 text-white">
+              <h3 className="font-medium mb-2">Grow your savings</h3>
+              <p className="text-sm text-blue-100 mb-4">Mint CLRUSD, lock in vaults, or stake on loans to earn yield on your stablecoins.</p>
+              <Button
+                variant="secondary"
+                className="w-full bg-white text-blue-600 hover:bg-blue-50 rounded-full text-sm font-normal"
+                onClick={() => setDepositModalOpen(true)}
+              >
+                Add Funds
+              </Button>
+            </div>
+
+            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50">
                 <h3 className="font-semibold text-black dark:text-white">Active Positions</h3>
               </div>
@@ -475,18 +483,6 @@ export default function EarnHome() {
                   </div>
                 ))}
               </div>
-            </div>
-
-            <div className="bg-blue-600 rounded-lg p-5 text-white">
-              <h3 className="font-medium mb-2">Grow your savings</h3>
-              <p className="text-sm text-blue-100 mb-4">Mint CLRUSD, lock in vaults, or stake on loans to earn yield on your stablecoins.</p>
-              <Button
-                variant="secondary"
-                className="w-full bg-white text-blue-600 hover:bg-blue-50 rounded-full text-sm font-normal"
-                onClick={() => setDepositModalOpen(true)}
-              >
-                Add Funds
-              </Button>
             </div>
           </div>
         </div>
