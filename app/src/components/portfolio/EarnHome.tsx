@@ -606,8 +606,8 @@ export default function EarnHome() {
                     <ArrowDownToLine className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
                   </div>
                   <div>
-                    <h3 className="font-normal text-lg text-black dark:text-white">Redeem & Unlock</h3>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Burn to USDC, redeem bonds, or unlock vaults and loans</p>
+                    <h3 className="font-normal text-lg text-black dark:text-white">Unlock & Redeem</h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Burn $CLRUSD, redeem bonds, or unlock assets</p>
                   </div>
                 </div>
               </div>
@@ -615,7 +615,7 @@ export default function EarnHome() {
                 <div className="flex flex-wrap gap-1.5">
                   {(
                     [
-                      { id: 'burn' as const, label: 'Burn to USDC', icon: Coins },
+                      { id: 'burn' as const, label: 'Burn', icon: Coins },
                       { id: 'bonds' as const, label: 'Bonds', icon: Ticket },
                       { id: 'vault' as const, label: 'Vault', icon: Lock },
                       { id: 'loans' as const, label: 'Loans', icon: Users },
