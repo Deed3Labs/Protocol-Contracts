@@ -621,11 +621,11 @@ export default function EarnHome() {
                 })}
               </div>
               {ACTIVE_POSITIONS.length > ACTIVE_POSITIONS_VISIBLE && (
-                <div className="mt-4 pt-2 border-t border-zinc-200 dark:border-zinc-800/50">
+                <div className="border-t border-zinc-200 dark:border-zinc-800/50">
                   <button
                     type="button"
                     onClick={() => setIsActivePositionsExpanded(!isActivePositionsExpanded)}
-                    className="w-full text-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-3"
+                    className="w-full flex items-center justify-center text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-3 min-h-[44px]"
                   >
                     {isActivePositionsExpanded
                       ? `Show Less (${ACTIVE_POSITIONS.length} total)`
