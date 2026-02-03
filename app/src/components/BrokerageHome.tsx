@@ -967,7 +967,7 @@ export default function BrokerageHome() {
                         <Landmark className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
                       </div>
                       <div>
-                        <h2 className="text-lg font-medium text-black dark:text-white">Linked Accounts</h2>
+                        <h2 className="text-base font-medium text-black dark:text-white">Linked Accounts</h2>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Bank & investment accounts</p>
                       </div>
                     </div>
@@ -1095,7 +1095,7 @@ export default function BrokerageHome() {
               {/* Portfolio Section - Persistent */}
               <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-1">
                   <div className="p-4 flex items-center justify-between">
-                    <h2 className="text-base font-medium text-black dark:text-white">Portfolio</h2>
+                    <h2 className="text-lg font-medium text-black dark:text-white">Portfolio</h2>
                     <button className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400 text-xs font-normal border border-zinc-300 dark:border-zinc-700 rounded-xl px-3 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
                       1D return
                       <ChevronDown className="w-4 h-4" />
