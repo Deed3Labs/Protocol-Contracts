@@ -168,6 +168,48 @@ export function getAlchemyApiKey(): string | null {
 }
 
 /**
+ * Alchemy WebSocket URL for a chain (wss://...).
+ * Use only for eth_subscribe (logs, newHeads) to avoid eth_getFilterChanges polling.
+ * @see https://www.alchemy.com/docs/reference/subscription-api
+ * @see https://www.alchemy.com/docs/reference/subscription-api-endpoints
+ */
+function getAlchemyWebSocketUrlInternal(chainId: number, apiKey: string): string | undefined {
+  const wssUrls: Record<number, string> = {
+    1: `wss://eth-mainnet.g.alchemy.com/v2/${apiKey}`,
+    8453: `wss://base-mainnet.g.alchemy.com/v2/${apiKey}`,
+    137: `wss://polygon-mainnet.g.alchemy.com/v2/${apiKey}`,
+    42161: `wss://arb-mainnet.g.alchemy.com/v2/${apiKey}`,
+    100: `wss://gnosis-mainnet.g.alchemy.com/v2/${apiKey}`,
+    11155111: `wss://eth-sepolia.g.alchemy.com/v2/${apiKey}`,
+    84532: `wss://base-sepolia.g.alchemy.com/v2/${apiKey}`,
+    80001: `wss://polygon-mumbai.g.alchemy.com/v2/${apiKey}`,
+  };
+  return wssUrls[chainId];
+}
+
+/**
+ * Get Alchemy WebSocket URL for a chain if API key is set.
+ * Use for event listening with eth_subscribe to avoid eth_getFilterChanges.
+ */
+export function getAlchemyWebSocketUrl(chainId: number): string | null {
+  const apiKey = process.env.ALCHEMY_API_KEY;
+  if (!apiKey) return null;
+  return getAlchemyWebSocketUrlInternal(chainId, apiKey) ?? null;
+}
+
+/**
+ * Chains where Alchemy supports eth_subscribe (logs, newHeads) over WebSocket.
+ * Per Alchemy docs: Ethereum, Polygon, Arbitrum, Base (4 of our 7 chains).
+ * Other chains use HTTP getLogs polling to avoid eth_getFilterChanges.
+ * @see https://www.alchemy.com/docs/reference/subscription-api-endpoints
+ */
+export const ALCHEMY_WEBSOCKET_SUPPORTED_CHAINS: number[] = [1, 137, 42161, 8453];
+
+export function isAlchemyWebSocketSupported(chainId: number): boolean {
+  return ALCHEMY_WEBSOCKET_SUPPORTED_CHAINS.includes(chainId);
+}
+
+/**
  * Map chain ID to Alchemy network identifier for Prices API
  * Used for the "by-address" endpoint which requires network parameter
  */

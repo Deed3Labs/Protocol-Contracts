@@ -3,117 +3,74 @@
 ## Summary
 You've consumed over 2M compute units since last night. This document identifies the main sources of high compute unit consumption.
 
+## Implementation Status (Recommendations Applied)
+
+| Recommendation | Status | Where |
+|----------------|--------|--------|
+| **EventListenerService**: Use WebSocket (eth_subscribe) for supported chains | ✅ Done | `app/server/src/services/eventListenerService.ts` – WebSocket for chains 1, 137, 42161, 8453 |
+| **EventListenerService**: HTTP getLogs polling for other chains (no eth_getFilterChanges) | ✅ Done | Same file – getLogs every 2 min for chains 100, 11155111, 84532 |
+| **RPC utils**: Alchemy WebSocket URL + supported chains | ✅ Done | `app/server/src/utils/rpc.ts` – `getAlchemyWebSocketUrl()`, `ALCHEMY_WEBSOCKET_SUPPORTED_CHAINS` |
+| TransfersService interval | ✅ Already 10 min | `app/server/src/services/transfersService.ts` |
+| WebSocket service intervals | ✅ Already optimized | Balances 5 min, transactions 10 min, NFTs 5 min, prices 5 min |
+| Price updater | ✅ Already 15 min | `app/server/src/jobs/priceUpdater.ts` |
+| Frontend PortfolioContext | ✅ Already optimized | 30 min / 60 min, page visibility |
+| Smart chain monitoring | ✅ Done | TransfersService: subscribed chains only; inactive chains stopped after 10 checks |
+| Compute unit tracking & alerts | ✅ Done | `computeUnitTracker`: hourly 24h summary; optional env `ALCHEMY_CU_ALERT_THRESHOLD`, `ALCHEMY_CU_DAILY_ALERT_THRESHOLD` |
+
 ## Major Compute Unit Consumers
 
-### 🔴 **CRITICAL: TransfersService (Highest Impact)**
+### 🔴 **CRITICAL: TransfersService** ✅ Optimized
 
 **Location**: `app/server/src/services/transfersService.ts`
 
-**Problem**: 
-- Checks transfers **every 30 seconds** for each monitored address
-- Monitors **7 chains** per address: `[1, 8453, 137, 42161, 100, 11155111, 84532]`
-- Makes **2 API calls per check** (fromAddress + toAddress)
+**Current (optimized) behavior**:
+- Checks transfers **every 10 minutes** per chain (not 30 seconds)
+- **Smart chain monitoring**: Only monitors chains the user subscribed to (from WebSocket); stops monitoring a chain after 10 consecutive checks with no activity
+- **Cache-first**: Skips API call if cache is &lt; 1 minute old
 - Uses Alchemy Transfers API (`alchemy_getAssetTransfers`)
 
-**Compute Unit Calculation**:
-- Per address: 7 chains × 2 calls × 2 checks/minute = **28 calls/minute per address**
-- Per hour: 28 × 60 = **1,680 calls/hour per address**
-- Per day: 1,680 × 24 = **40,320 calls/day per address**
-
-**If you have 2 addresses monitored**:
-- **80,640 calls/day** = ~2.4M compute units/day (assuming ~30 compute units per call)
-
-**Recommendations**:
-1. **Increase interval from 30s to 5 minutes** (10x reduction)
-   - Current: 28 calls/minute
-   - After: 2.8 calls/minute
-   - Savings: **90% reduction**
-
-2. **Only monitor active chains** (not all 7 chains)
-   - If user only uses Base, only monitor Base
-   - Savings: **85% reduction** (1 chain vs 7 chains)
-
-3. **Use incremental block tracking** (already implemented but verify it's working)
-   - Should only fetch new blocks, not full history each time
-
-4. **Add debouncing** - Skip checks if no new blocks since last check
+**Already applied**:
+1. Interval set to 10 minutes (large reduction vs 30s)
+2. Only monitors subscribed chains (websocketService passes `chainIds` from client)
+3. Incremental block tracking and inactive-chain pruning in place
+4. Cache debouncing in place
 
 ---
 
-### 🟠 **HIGH: WebSocket Service Polling**
+### 🟠 **HIGH: WebSocket Service Polling** ✅ Optimized
 
 **Location**: `app/server/src/services/websocketService.ts`
 
-**Current Intervals**:
-1. **Balances/Transactions**: Every **30 seconds** (line 176)
-2. **NFTs**: Every **5 minutes** (line 205) ✅ Already optimized
-3. **Prices**: Every **1 minute** (line 231)
+**Current (optimized) intervals**:
+1. **Balances**: Every **5 minutes**
+2. **Transactions**: Every **10 minutes**
+3. **NFTs**: Every **5 minutes**
+4. **Prices**: Every **5 minutes**
 
-**Compute Unit Impact**:
-- **Balances**: Uses `getBalance()` which may use Alchemy RPC
-- **Transactions**: Uses `transfersService.getTransactions()` which uses Alchemy Transfers API
-- **Prices**: Uses `getTokenPrice()` which uses Alchemy Prices API
-
-**Per connected client**:
-- Balances: 2 checks/minute × 4 chains (default) = 8 calls/minute
-- Transactions: 2 checks/minute × 4 chains = 8 calls/minute  
-- Prices: 1 check/minute × 4 tokens = 4 calls/minute
-- **Total: ~20 calls/minute per client**
-
-**Recommendations**:
-1. **Increase balance/transaction interval to 2 minutes** (4x reduction)
-2. **Increase price interval to 5 minutes** (5x reduction)
-3. **Only poll when WebSocket is actively connected** (already implemented)
-4. **Use cache more aggressively** - Check cache TTL before making API calls
+**Already applied**: Only poll when clients are connected; cache used where applicable.
 
 ---
 
-### 🟡 **MEDIUM: Price Updater Background Job**
+### 🟡 **MEDIUM: Price Updater Background Job** ✅ Optimized
 
 **Location**: `app/server/src/jobs/priceUpdater.ts`
 
-**Current Behavior**:
-- Runs every **5 minutes**
-- Updates **~20 tokens** across multiple chains
-- Uses Alchemy Prices API
-
-**Compute Unit Impact**:
-- 20 tokens × 12 times/hour = **240 calls/hour**
-- Per day: 240 × 24 = **5,760 calls/day**
-
-**Recommendations**:
-1. **Increase interval to 15 minutes** (3x reduction)
-   - Prices don't change that frequently
-   - Savings: **~3,840 calls/day**
-
-2. **Only update tokens that are actively held by users**
-   - Track which tokens users actually own
-   - Don't update unused tokens
-
-3. **Use Portfolio API prices** when available (already included in Portfolio API responses)
+**Current (optimized) behavior**:
+- Runs every **15 minutes** (not 5 minutes)
+- Updates ~20 tokens across multiple chains via Alchemy Prices API
+- Lower call volume than before
 
 ---
 
-### 🟡 **MEDIUM: Frontend Auto-Refresh**
+### 🟡 **MEDIUM: Frontend Auto-Refresh** ✅ Optimized
 
 **Location**: `app/src/context/PortfolioContext.tsx`
 
-**Current Behavior**:
-- Auto-refresh every **10 minutes** (if no WebSocket) or **30 minutes** (if WebSocket connected)
-- Triggers full portfolio fetch:
-  - `useMultichainBalances` → `getAllTokenBalances` (Alchemy API)
-  - `usePortfolioHoldings` → Portfolio API (uses Alchemy)
-  - `useMultichainActivity` → Transfers API
-
-**Compute Unit Impact**:
-- Per user session: ~6-12 refreshes/hour
-- Each refresh: Multiple API calls (balances, NFTs, transactions)
-- **~50-100 calls per refresh**
-
-**Recommendations**:
-1. **Increase interval to 30 minutes** (no WebSocket) or **60 minutes** (with WebSocket)
-2. **Only refresh when tab is active** (use Page Visibility API)
-3. **Use WebSocket updates instead of polling** (already implemented, but verify it's working)
+**Current (optimized) behavior**:
+- **No WebSocket**: refresh every **30 minutes**
+- **WebSocket connected**: backup refresh every **60 minutes**
+- **Page Visibility**: only refresh when tab is visible (`isPageVisible`)
+- Relies on WebSocket updates when connected to reduce polling
 
 ---
 
@@ -136,43 +93,9 @@ You've consumed over 2M compute units since last night. This document identifies
 
 ---
 
-## Immediate Action Items (Priority Order)
+## Immediate Action Items
 
-### 1. **Fix TransfersService (CRITICAL - 90% reduction possible)**
-```typescript
-// app/server/src/services/transfersService.ts
-// Line 103: Change from 30 seconds to 5 minutes
-const interval = setInterval(async () => {
-  await this.checkTransfers(address, chainId);
-}, 5 * 60 * 1000); // 5 minutes instead of 30000
-```
-
-### 2. **Optimize WebSocket Service Intervals**
-```typescript
-// app/server/src/services/websocketService.ts
-// Line 176: Increase balance/transaction interval
-}, 2 * 60 * 1000); // 2 minutes instead of 30000
-
-// Line 231: Increase price interval
-}, 5 * 60 * 1000); // 5 minutes instead of 60000
-```
-
-### 3. **Optimize Price Updater**
-```typescript
-// app/server/src/jobs/priceUpdater.ts
-// Line 93: Increase interval
-}, 15 * 60 * 1000); // 15 minutes instead of 5 minutes
-```
-
-### 4. **Optimize Frontend Auto-Refresh**
-```typescript
-// app/src/context/PortfolioContext.tsx
-// Line 269: Increase interval when no WebSocket
-}, 30 * 60 * 1000); // 30 minutes instead of 10 minutes
-
-// Line 262: Increase backup interval
-}, 60 * 60 * 1000); // 60 minutes instead of 30 minutes
-```
+All items below have been applied. See **Implementation Status** at the top and the **Current (optimized)** notes in each section.
 
 ---
 
@@ -238,6 +161,50 @@ After implementing all recommendations:
 
 ---
 
+## eth_blockNumber and eth_getFilterChanges (High CU Usage)
+
+If Alchemy’s dashboard shows **eth_blockNumber** and **eth_getFilterChanges** as top methods, they are coming from these places:
+
+### eth_getFilterChanges – main source: EventListenerService (server) ✅ MITIGATED
+
+**Location**: `app/server/src/services/eventListenerService.ts`
+
+**What it did**: Listened for DeedNFT `Transfer` events on **7 chains** using ethers `provider.on(filter, callback)` over HTTP, which used **eth_newFilter** + **eth_getFilterChanges** polled very frequently.
+
+**What we did** (per [Alchemy Subscription API](https://www.alchemy.com/docs/reference/subscription-api) and [best practices](https://www.alchemy.com/docs/reference/best-practices-for-using-websockets-in-web3)):
+
+1. **WebSocket (eth_subscribe) for 4 chains** where Alchemy supports it: Ethereum (1), Polygon (137), Arbitrum (42161), Base (8453). Uses `ethers.WebSocketProvider(wssUrl)` + `provider.on(filter, callback)` so ethers uses **eth_subscribe** ("logs") – no `eth_getFilterChanges` or `eth_blockNumber` polling.
+
+2. **HTTP getLogs polling for the other 3 chains** (Gnosis 100, Sepolia 11155111, Base Sepolia 84532): no `provider.on(filter)`; instead a `setInterval` every **2 minutes** calls `provider.getLogs(fromBlock, toBlock, address, topics)` and processes logs. One **eth_getLogs** (+ optional **eth_blockNumber**) per chain per 2 min instead of many **eth_getFilterChanges** per minute.
+
+3. **RPC helpers**: `app/server/src/utils/rpc.ts` now exports `getAlchemyWebSocketUrl(chainId)`, `ALCHEMY_WEBSOCKET_SUPPORTED_CHAINS`, and `isAlchemyWebSocketSupported(chainId)`.
+
+**Further options** (if you need to reduce CUs more on the 3 HTTP chains):
+
+- **Alchemy Notify / Webhooks** for `Transfer` on those contracts (no RPC polling).
+- Increase `HTTP_GETLOGS_POLL_INTERVAL_MS` in `eventListenerService.ts` (e.g. 5 min).
+
+### eth_blockNumber – likely sources
+
+- **EventListenerService (server)**  
+  Ethers’ filter-based event polling often uses the current block to decide when to poll, so the same service that drives `eth_getFilterChanges` can also trigger **eth_blockNumber** frequently (e.g. once per poll per chain).
+
+- **Wagmi / Reown AppKit (frontend)**  
+  If the app or AppKit uses block number (e.g. `useBlockNumber`, “current block” in the UI, or refetch-on-block), that will poll **eth_blockNumber** (often every few seconds). Your app code does not call `useBlockNumber` directly; if the dashboard shows lots of `eth_blockNumber` from the same Alchemy project as the app, check whether AppKit/Wagmi or any shared config enables block polling and increase the interval or disable it where not needed.
+
+- **Other server code**  
+  The rest of the server (e.g. `balanceService`) uses `getBalance` → **eth_getBalance**, not `getBlockNumber`. So **eth_blockNumber** is not expected from balance/portfolio fetches unless some other path explicitly calls block number.
+
+### Summary table
+
+| Source                         | Method(s)              | Where                         | Mitigation                                              |
+|--------------------------------|-------------------------|-------------------------------|---------------------------------------------------------|
+| EventListenerService (server) | eth_getFilterChanges   | `app/server/.../eventListenerService.ts` | Alchemy Notify / WebSocket / less frequent polling     |
+| EventListenerService (server) | eth_blockNumber (tied to filter polling) | Same file                  | Same as above                                           |
+| Wagmi / AppKit (frontend)     | eth_blockNumber        | Config / wallet UI           | Reduce or disable block polling if present              |
+
+---
+
 ## Quick Fix Script
 
 Run this to see current compute unit consumption patterns:
@@ -254,9 +221,9 @@ grep -r "setInterval\|setTimeout" app/server/src/services/ app/server/src/jobs/
 
 ## Next Steps
 
-1. ✅ **Immediate**: Increase TransfersService interval to 5 minutes
-2. ✅ **Immediate**: Increase WebSocket service intervals
-3. ✅ **Short-term**: Optimize price updater interval
-4. ✅ **Short-term**: Optimize frontend refresh intervals
-5. ⏳ **Medium-term**: Implement smart chain monitoring
-6. ⏳ **Medium-term**: Add compute unit tracking and alerts
+1. ✅ **Done**: EventListenerService – WebSocket for 4 chains, getLogs polling for 3 chains (no eth_getFilterChanges)
+2. ✅ **Done**: TransfersService 10 min; WebSocket service and price updater optimized
+3. ✅ **Done**: Frontend refresh 30/60 min and page visibility
+4. ✅ **Done**: Smart chain monitoring – TransfersService uses subscribed chains only and stops inactive chains after 10 checks
+5. ✅ **Done**: Compute unit tracking and alerts – `computeUnitTracker` logs hourly 24h summary; per-user and global alert thresholds (optional env `ALCHEMY_CU_ALERT_THRESHOLD`, `ALCHEMY_CU_DAILY_ALERT_THRESHOLD`)
+6. ⏳ **Optional**: Alchemy Notify webhooks for the 3 HTTP chains to remove getLogs polling entirely
