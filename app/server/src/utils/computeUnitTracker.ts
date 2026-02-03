@@ -12,12 +12,27 @@ interface ComputeUnitLog {
   method: string;
 }
 
+/** Per-user 24h CU alert threshold (optional env ALCHEMY_CU_ALERT_THRESHOLD). */
+function getPerUserAlertThreshold(): number {
+  const v = process.env.ALCHEMY_CU_ALERT_THRESHOLD;
+  if (v == null || v === '') return 100_000;
+  const n = parseInt(v, 10);
+  return Number.isNaN(n) ? 100_000 : n;
+}
+
+/** Global 24h CU alert threshold (optional env ALCHEMY_CU_DAILY_ALERT_THRESHOLD). When set, log warning if 24h total exceeds this. */
+function getDailyAlertThreshold(): number | null {
+  const v = process.env.ALCHEMY_CU_DAILY_ALERT_THRESHOLD;
+  if (v == null || v === '') return null;
+  const n = parseInt(v, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
 class ComputeUnitTracker {
   private logs: ComputeUnitLog[] = [];
   private userUsage: Map<string, number> = new Map(); // address -> total compute units
   private endpointUsage: Map<string, number> = new Map(); // endpoint -> total compute units
   private readonly MAX_LOGS = 10000; // Keep last 10k logs
-  private readonly ALERT_THRESHOLD = 100000; // Alert if user exceeds 100k units/day
 
   /**
    * Log an Alchemy API call with estimated compute units
@@ -68,15 +83,7 @@ class ComputeUnitTracker {
     const currentEndpoint = this.endpointUsage.get(endpoint) || 0;
     this.endpointUsage.set(endpoint, currentEndpoint + units);
 
-    // Check for alerts
-    if (address) {
-      const userTotal = this.userUsage.get(address.toLowerCase()) || 0;
-      if (userTotal > this.ALERT_THRESHOLD) {
-        console.warn(
-          `[ComputeUnitTracker] User ${address} has exceeded threshold: ${userTotal} units`
-        );
-      }
-    }
+    // Per-user alert checked in hourly summary (24h window) instead of here
   }
 
   /**
@@ -218,17 +225,33 @@ class ComputeUnitTracker {
 // Singleton instance
 export const computeUnitTracker = new ComputeUnitTracker();
 
-// Log summary every hour
+// Log summary every hour and run alerts (24h window)
 if (typeof setInterval !== 'undefined') {
   setInterval(() => {
     const summary = computeUnitTracker.getSummary(24);
     console.log('[ComputeUnitTracker] 24h Summary:', {
       totalUnits: summary.totalUnits.toLocaleString(),
       totalCalls: summary.totalCalls.toLocaleString(),
-      avgUnitsPerCall: summary.totalCalls > 0 
+      avgUnitsPerCall: summary.totalCalls > 0
         ? (summary.totalUnits / summary.totalCalls).toFixed(2)
         : 0,
       topEndpoints: summary.topEndpoints.slice(0, 3),
     });
+
+    const dailyThreshold = getDailyAlertThreshold();
+    if (dailyThreshold != null && summary.totalUnits > dailyThreshold) {
+      console.warn(
+        `[ComputeUnitTracker] 24h total (${summary.totalUnits.toLocaleString()}) exceeds ALCHEMY_CU_DAILY_ALERT_THRESHOLD (${dailyThreshold.toLocaleString()})`
+      );
+    }
+
+    const perUserThreshold = getPerUserAlertThreshold();
+    for (const { address, units } of summary.topUsers) {
+      if (units > perUserThreshold) {
+        console.warn(
+          `[ComputeUnitTracker] User ${address} 24h usage (${units.toLocaleString()}) exceeds threshold (${perUserThreshold.toLocaleString()})`
+        );
+      }
+    }
   }, 60 * 60 * 1000); // Every hour
 }
