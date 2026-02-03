@@ -269,7 +269,7 @@ export default function EarnHome() {
                   className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-4"
                 >
                   <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-1">{stat.label}</p>
-                  <p className={`text-xl font-normal ${stat.valueClass || 'text-black dark:text-white'}`}>{stat.value}</p>
+                  <p className={`text-xl font-medium ${stat.valueClass || 'text-black dark:text-white'}`}>{stat.value}</p>
                   <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">{stat.sub}</p>
                 </motion.div>
               ))}
@@ -606,7 +606,7 @@ export default function EarnHome() {
                     <LockOpen className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
                   </div>
                   <div>
-                    <h3 className="font-normal text-lg text-black dark:text-white">Unlock & Redeem</h3>
+                    <h3 className="text-base font-medium text-black dark:text-white">Unlock & Redeem</h3>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Burn $CLRUSD, redeem bonds, or unlock assets</p>
                   </div>
                 </div>
@@ -854,7 +854,7 @@ export default function EarnHome() {
 
             <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50">
-                <h3 className="font-normal text-lg text-black dark:text-white">Active Positions</h3>
+                <h3 className="text-base font-medium text-black dark:text-white">Active Positions</h3>
               </div>
               <div className="divide-y divide-zinc-200 dark:divide-zinc-800/50">
                 {displayedActivePositions.map((pos) => {
