@@ -254,7 +254,7 @@ export default function EarnHome() {
             </div>
 
             {/* Stats row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { label: 'Total Value Locked', value: '$47,250', sub: '+12.4% this month', valueClass: '' },
                 { label: 'Total Earnings', value: '+$1,842', sub: 'All time', valueClass: 'text-green-600 dark:text-green-500' },
