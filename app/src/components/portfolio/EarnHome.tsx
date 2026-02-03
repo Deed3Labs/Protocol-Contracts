@@ -269,7 +269,7 @@ export default function EarnHome() {
                   className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-4"
                 >
                   <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-1">{stat.label}</p>
-                  <p className={`text-xl font-semibold ${stat.valueClass || 'text-black dark:text-white'}`}>{stat.value}</p>
+                  <p className={`text-xl font-normal ${stat.valueClass || 'text-black dark:text-white'}`}>{stat.value}</p>
                   <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">{stat.sub}</p>
                 </motion.div>
               ))}
