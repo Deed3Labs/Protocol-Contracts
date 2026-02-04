@@ -114,11 +114,17 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
           ))}
         </div>
 
-        {/* Calendar Grid - Full month */}
+        {/* Calendar Grid - Full month; all cells same min-height (with or without subscriptions) */}
         <div className="grid grid-cols-7 gap-1">
           {allDays.map((day, index) => {
             if (day === null) {
-              return <div key={`pad-${index}`} className="aspect-square" />;
+              return (
+                <div
+                  key={`pad-${index}`}
+                  className="aspect-square min-h-[2.25rem] md:min-h-[3.5rem] rounded-lg"
+                  aria-hidden
+                />
+              );
             }
 
             const subscriptions = getDaySubscriptions(day);
@@ -132,7 +138,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
               <div
                 key={day}
                 className={cn(
-                  "aspect-square rounded-lg border flex flex-col items-center justify-between p-1 transition-all",
+                  "aspect-square min-h-[2.25rem] md:min-h-[3.5rem] rounded-lg border flex flex-col items-center justify-between p-1 transition-all",
                   isPast ? "border-zinc-200/50 dark:border-zinc-800/50 opacity-60" : "border-zinc-200 dark:border-zinc-800",
                   isToday && "ring-1 ring-zinc-400 dark:ring-zinc-500 bg-zinc-200/50 dark:bg-zinc-800/30"
                 )}
@@ -174,21 +180,21 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
                   </div>
                 )}
 
-                {/* Amount */}
+                {/* Amount - reserve space so empty days match filled days */}
                 {total > 0 ? (
                   <span className="text-[8px] font-medium text-zinc-500 dark:text-zinc-400 truncate w-full text-center">
                     {formatAmount(total)}
                   </span>
                 ) : (
-                  <span className="text-[8px]">&nbsp;</span>
+                  <span className="text-[8px] invisible" aria-hidden>&nbsp;</span>
                 )}
               </div>
             );
           })}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+        {/* Footer - spacing aligned with SpendTracker */}
+        <div className="flex items-center justify-between mt-4 pt-3 min-h-[2rem] border-t border-zinc-200 dark:border-zinc-800">
           <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
             {monthName} {currentDay} - {daysInMonth}
           </span>

@@ -81,11 +81,11 @@ export function SpendTracker({ className }: SpendTrackerProps) {
 
         {/* Total Amount - matches hero balance font style */}
         <p className="text-3xl font-light tracking-tight text-black dark:text-white mb-4">
-          ${totalSpent.toLocaleString()}
+          ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
 
-        {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-1.5">
+        {/* Calendar Grid - min-height on desktop so squares match UpcomingTransactions */}
+        <div className="grid grid-cols-7 gap-1">
           {days.map((day) => {
             const amount = mockSpending[day] || 0;
             const intensity = getIntensity(amount, maxDaySpend);
@@ -96,7 +96,7 @@ export function SpendTracker({ className }: SpendTrackerProps) {
               <div
                 key={day}
                 className={cn(
-                  "aspect-square rounded-lg border flex flex-col items-start justify-between p-1.5 transition-all",
+                  "aspect-square min-h-[2.25rem] md:min-h-[3.5rem] rounded-lg border flex flex-col items-start justify-between p-1.5 transition-all",
                   isPast ? "border-zinc-200 dark:border-zinc-800" : "border-zinc-200/50 dark:border-zinc-800/50",
                   isToday && "ring-1 ring-zinc-400 dark:ring-zinc-500"
                 )}
@@ -128,8 +128,8 @@ export function SpendTracker({ className }: SpendTrackerProps) {
           })}
         </div>
 
-        {/* Legend */}
-        <div className="flex items-center justify-between mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+        {/* Footer - spacing aligned with UpcomingTransactions */}
+        <div className="flex items-center justify-between mt-4 pt-3 min-h-[2rem] border-t border-zinc-200 dark:border-zinc-800">
           <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
             {monthName} 1 - {currentDay}
           </span>
