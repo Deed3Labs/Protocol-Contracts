@@ -35,13 +35,18 @@ class ComputeUnitTracker {
   private readonly MAX_LOGS = 10000; // Keep last 10k logs
 
   /**
-   * Log an Alchemy API call with estimated compute units
-   * Alchemy compute units vary by endpoint:
+   * Log an Alchemy API call with estimated compute units.
+   * Tracks request-based usage only (HTTP/custom API calls). Alchemy compute units vary by endpoint:
    * - Transfers API: ~30-50 units per call
    * - Portfolio API: ~20-40 units per call
    * - Prices API: ~10-20 units per call
    * - Token Balances: ~15-25 units per call
    * - NFT API: ~25-35 units per call
+   *
+   * Not tracked here: Subscription API (WebSocket eth_subscribe for logs/newHeads). We use it in
+   * EventListenerService for 4 chains (Ethereum, Polygon, Arbitrum, Base); that usage is
+   * connection-based (long-lived WebSocket + subscription), not per-request, so it isn't logged
+   * in this tracker. Alchemy may meter WebSocket usage separately; check your dashboard.
    */
   logApiCall(
     endpoint: string,
