@@ -100,8 +100,8 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
           </div>
         </div>
 
-        {/* Total Amount */}
-        <p className="text-3xl font-serif font-semibold text-black dark:text-white mb-4">
+        {/* Total Amount - matches hero balance font style */}
+        <p className="text-3xl font-light tracking-tight text-black dark:text-white mb-4">
           ${totalUpcoming.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
 
@@ -141,7 +141,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
                   className={cn(
                     "text-[10px] font-medium",
                     isToday
-                      ? "bg-black dark:bg-white text-white dark:text-black rounded-full w-4 h-4 flex items-center justify-center text-[9px]"
+                      ? "bg-black dark:bg-white text-white dark:text-black rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-medium"
                       : "text-black dark:text-white"
                   )}
                 >
@@ -189,11 +189,11 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
 
         {/* Footer */}
         <div className="flex items-center justify-between mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
-          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+          <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
             {monthName} {currentDay} - {daysInMonth}
           </span>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">{upcomingCount} upcoming</span>
+            <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">{upcomingCount} upcoming</span>
             <div className="flex -space-x-1">
               {mockSubscriptions.slice(0, 3).map((sub, i) => (
                 <div

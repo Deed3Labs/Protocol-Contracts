@@ -79,8 +79,8 @@ export function SpendTracker({ className }: SpendTrackerProps) {
           </div>
         </div>
 
-        {/* Total Amount */}
-        <p className="text-3xl font-serif font-semibold text-black dark:text-white mb-4">
+        {/* Total Amount - matches hero balance font style */}
+        <p className="text-3xl font-light tracking-tight text-black dark:text-white mb-4">
           ${totalSpent.toLocaleString()}
         </p>
 
@@ -130,21 +130,21 @@ export function SpendTracker({ className }: SpendTrackerProps) {
 
         {/* Legend */}
         <div className="flex items-center justify-between mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
-          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+          <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
             {monthName} 1 - {currentDay}
           </span>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">Less</span>
+            <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">Less</span>
             <div className="flex gap-0.5">
               {[0.1, 0.25, 0.4, 0.55, 0.7].map((opacity, i) => (
                 <div
                   key={i}
-                  className="w-3 h-3 rounded-sm"
+                  className="w-3 h-3 rounded"
                   style={{ backgroundColor: `rgb(var(--foreground) / ${opacity})` }}
                 />
               ))}
             </div>
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">More</span>
+            <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">More</span>
           </div>
         </div>
       </CardContent>

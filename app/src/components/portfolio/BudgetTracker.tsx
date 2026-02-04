@@ -62,17 +62,17 @@ export function BudgetTracker({ className }: BudgetTrackerProps) {
           Budget
         </span>
 
-        {/* Total Budget Section */}
+        {/* Total Budget Section - title matches sidebar "Linked Accounts" style */}
         <div className="mt-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-lg font-serif font-semibold text-black dark:text-white">
+            <span className="text-base font-medium text-black dark:text-white">
               Total Budget
             </span>
             <span className="text-base tabular-nums">
               <span className="font-semibold text-black dark:text-white">
                 ${totalSpent.toLocaleString()}
               </span>
-              <span className="text-zinc-500 dark:text-zinc-400"> of ${totalBudget.toLocaleString()}</span>
+              <span className="font-normal text-zinc-500 dark:text-zinc-400"> of ${totalBudget.toLocaleString()}</span>
             </span>
           </div>
 
@@ -80,7 +80,7 @@ export function BudgetTracker({ className }: BudgetTrackerProps) {
             <div className="flex-1 min-w-0">
               <BudgetProgressBar spent={totalSpent} budget={totalBudget} />
             </div>
-            <span className="text-sm text-zinc-500 dark:text-zinc-400 font-medium shrink-0 w-10 text-right">
+            <span className="text-sm font-normal text-zinc-500 dark:text-zinc-400 shrink-0 w-10 text-right tabular-nums">
               {totalPercentage}%
             </span>
           </div>
@@ -95,10 +95,10 @@ export function BudgetTracker({ className }: BudgetTrackerProps) {
             return (
               <div key={category.id} className="space-y-2">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400 shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400 shrink-0">
                     {category.icon}
                   </div>
-                  <span className="flex-1 font-medium text-black dark:text-white min-w-0 truncate">
+                  <span className="flex-1 text-sm font-medium text-black dark:text-white min-w-0 truncate">
                     {category.name}
                   </span>
                 </div>
@@ -109,9 +109,9 @@ export function BudgetTracker({ className }: BudgetTrackerProps) {
                   </div>
                   <span
                     className={cn(
-                      "text-sm font-medium min-w-[45px] text-right shrink-0 tabular-nums",
+                      "text-sm font-normal min-w-[45px] text-right shrink-0 tabular-nums",
                       isOverBudget
-                        ? "text-red-600 dark:text-red-500"
+                        ? "text-red-600 dark:text-red-500 font-medium"
                         : "text-zinc-500 dark:text-zinc-400"
                     )}
                   >
