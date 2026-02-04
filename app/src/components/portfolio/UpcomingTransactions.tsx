@@ -114,14 +114,14 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
           ))}
         </div>
 
-        {/* Calendar Grid - Full month; all cells same min-height (with or without subscriptions) */}
+        {/* Calendar Grid - Full month; all cells same size, constrained by column so gaps stay visible */}
         <div className="grid grid-cols-7 gap-1">
           {allDays.map((day, index) => {
             if (day === null) {
               return (
                 <div
                   key={`pad-${index}`}
-                  className="aspect-square min-h-[2.25rem] md:min-h-[3.5rem] rounded-lg"
+                  className="aspect-square min-w-0 rounded-lg"
                   aria-hidden
                 />
               );
@@ -138,7 +138,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
               <div
                 key={day}
                 className={cn(
-                  "aspect-square min-h-[2.25rem] md:min-h-[3.5rem] rounded-lg border flex flex-col items-center justify-between p-1 transition-all",
+                  "aspect-square min-w-0 rounded-lg border flex flex-col items-center justify-between p-1 transition-all",
                   isPast ? "border-zinc-200/50 dark:border-zinc-800/50 opacity-60" : "border-zinc-200 dark:border-zinc-800",
                   isToday && "ring-1 ring-zinc-400 dark:ring-zinc-500 bg-zinc-200/50 dark:bg-zinc-800/30"
                 )}

@@ -42,7 +42,13 @@ export function SpendTracker({ className }: SpendTrackerProps) {
   const totalSpent = Object.values(mockSpending).reduce((sum, val) => sum + val, 0);
   const maxDaySpend = Math.max(...Object.values(mockSpending), 1);
 
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const startingDayOfWeek = firstDayOfMonth.getDay();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const paddingDays = Array.from({ length: startingDayOfWeek }, () => null);
+  const allDays = [...paddingDays, ...days];
+
+  const weekDays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
   return (
     <Card
@@ -84,9 +90,28 @@ export function SpendTracker({ className }: SpendTrackerProps) {
           ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
 
-        {/* Calendar Grid - min-height on desktop so squares match UpcomingTransactions */}
+        {/* Week day headers */}
+        <div className="grid grid-cols-7 gap-1 mb-2">
+          {weekDays.map((day) => (
+            <div key={day} className="text-center min-w-0">
+              <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">{day}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar Grid - cells sized by column width so gaps stay visible */}
         <div className="grid grid-cols-7 gap-1">
-          {days.map((day) => {
+          {allDays.map((day, index) => {
+            if (day === null) {
+              return (
+                <div
+                  key={`pad-${index}`}
+                  className="aspect-square min-w-0 rounded-lg"
+                  aria-hidden
+                />
+              );
+            }
+
             const amount = mockSpending[day] || 0;
             const intensity = getIntensity(amount, maxDaySpend);
             const isPast = day <= currentDay;
@@ -96,7 +121,7 @@ export function SpendTracker({ className }: SpendTrackerProps) {
               <div
                 key={day}
                 className={cn(
-                  "aspect-square min-h-[2.25rem] md:min-h-[3.5rem] rounded-lg border flex flex-col items-start justify-between p-1.5 transition-all",
+                  "aspect-square min-w-0 rounded-lg border flex flex-col items-start justify-between p-1.5 transition-all",
                   isPast ? "border-zinc-200 dark:border-zinc-800" : "border-zinc-200/50 dark:border-zinc-800/50",
                   isToday && "ring-1 ring-zinc-400 dark:ring-zinc-500"
                 )}
