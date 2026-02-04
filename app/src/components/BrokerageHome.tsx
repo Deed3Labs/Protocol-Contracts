@@ -11,6 +11,9 @@ import DepositModal from './portfolio/DepositModal';
 import WithdrawModal from './portfolio/WithdrawModal';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import CTAStack from './portfolio/CTAStack';
+import { SpendTracker } from './portfolio/SpendTracker';
+import { UpcomingTransactions } from './portfolio/UpcomingTransactions';
+import { BudgetTracker } from './portfolio/BudgetTracker';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useDeedName } from '@/hooks/useDeedName';
 import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
@@ -952,6 +955,16 @@ export default function BrokerageHome() {
               <div className="min-h-[300px]">
                  {renderTabContent()}
               </div>
+
+              {/* 2x1 Grid: Spend / Calendar row + Budget row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Row 1 - Col 1: Spend Tracker */}
+                <SpendTracker />
+                {/* Row 1 - Col 2: Upcoming Transactions (Subscriptions Tracker) */}
+                <UpcomingTransactions />
+              </div>
+              {/* Row 2: Budget Tracker */}
+              <BudgetTracker />
            </div>
 
            {/* Right Column (Sidebar Widgets) */}
