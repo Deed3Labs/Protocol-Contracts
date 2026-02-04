@@ -13,16 +13,16 @@ interface Subscription {
 
 // Mock subscription data
 const mockSubscriptions: Subscription[] = [
-  { id: "1", name: "Spotify", icon: <Music className="w-3 h-3" />, color: "bg-green-500", amount: 10.99, day: 1 },
-  { id: "2", name: "Netflix", icon: <Tv className="w-3 h-3" />, color: "bg-red-500", amount: 15.99, day: 1 },
-  { id: "3", name: "Home Insurance", icon: <Home className="w-3 h-3" />, color: "bg-blue-400", amount: 2300, day: 5 },
-  { id: "4", name: "Amazon Prime", icon: <ShoppingBag className="w-3 h-3" />, color: "bg-purple-500", amount: 14.99, day: 8 },
-  { id: "5", name: "Xbox Game Pass", icon: <Gamepad2 className="w-3 h-3" />, color: "bg-green-600", amount: 16.99, day: 8 },
-  { id: "6", name: "iCloud", icon: <Cloud className="w-3 h-3" />, color: "bg-gray-400", amount: 2.99, day: 12 },
-  { id: "7", name: "YouTube Premium", icon: <Video className="w-3 h-3" />, color: "bg-red-600", amount: 13.99, day: 15 },
-  { id: "8", name: "Disney+", icon: <Tv className="w-3 h-3" />, color: "bg-blue-600", amount: 10.99, day: 8 },
-  { id: "9", name: "HBO Max", icon: <Tv className="w-3 h-3" />, color: "bg-purple-700", amount: 15.99, day: 22 },
-  { id: "10", name: "Gym", icon: <Home className="w-3 h-3" />, color: "bg-orange-500", amount: 49.99, day: 28 },
+  { id: "1", name: "Spotify", icon: <Music className="w-2.5 h-2.5" />, color: "bg-green-500", amount: 10.99, day: 1 },
+  { id: "2", name: "Netflix", icon: <Tv className="w-2.5 h-2.5" />, color: "bg-red-500", amount: 15.99, day: 1 },
+  { id: "3", name: "Home Insurance", icon: <Home className="w-2.5 h-2.5" />, color: "bg-blue-400", amount: 2300, day: 5 },
+  { id: "4", name: "Amazon Prime", icon: <ShoppingBag className="w-2.5 h-2.5" />, color: "bg-purple-500", amount: 14.99, day: 8 },
+  { id: "5", name: "Xbox Game Pass", icon: <Gamepad2 className="w-2.5 h-2.5" />, color: "bg-green-600", amount: 16.99, day: 8 },
+  { id: "6", name: "iCloud", icon: <Cloud className="w-2.5 h-2.5" />, color: "bg-gray-400", amount: 2.99, day: 12 },
+  { id: "7", name: "YouTube Premium", icon: <Video className="w-2.5 h-2.5" />, color: "bg-red-600", amount: 13.99, day: 15 },
+  { id: "8", name: "Disney+", icon: <Tv className="w-2.5 h-2.5" />, color: "bg-blue-600", amount: 10.99, day: 8 },
+  { id: "9", name: "HBO Max", icon: <Tv className="w-2.5 h-2.5" />, color: "bg-purple-700", amount: 15.99, day: 22 },
+  { id: "10", name: "Gym", icon: <Home className="w-2.5 h-2.5" />, color: "bg-orange-500", amount: 49.99, day: 28 },
 ];
 
 const formatAmount = (amount: number): string => {
@@ -121,7 +121,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
               return (
                 <div
                   key={`pad-${index}`}
-                  className="h-9 min-w-0 rounded-lg"
+                  className="min-h-11 min-w-0 rounded-lg"
                   aria-hidden
                 />
               );
@@ -138,7 +138,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
               <div
                 key={day}
                 className={cn(
-                  "h-9 min-w-0 w-full rounded-lg border flex flex-col items-center justify-between p-1 transition-all",
+                  "min-h-11 min-w-0 w-full rounded-lg border flex flex-col items-center justify-between p-1 transition-all",
                   isPast ? "border-zinc-200/50 dark:border-zinc-800/50 opacity-60" : "border-zinc-200 dark:border-zinc-800",
                   isToday && "ring-1 ring-zinc-400 dark:ring-zinc-500 bg-zinc-200/50 dark:bg-zinc-800/30"
                 )}
@@ -161,7 +161,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
                       <div
                         key={sub.id}
                         className={cn(
-                          "w-4 h-4 rounded-full flex items-center justify-center text-white border-2 border-zinc-50 dark:border-zinc-900/20",
+                          "w-4 h-4 rounded-full flex items-center justify-center text-white border-2 border-black/70 dark:border-white/10",
                           sub.color
                         )}
                         style={{ zIndex: displaySubs.length - i }}
@@ -171,10 +171,10 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
                     ))}
                     {hasMore && (
                       <div
-                        className="w-4 h-4 rounded-full flex items-center justify-center bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 border-2 border-zinc-50 dark:border-zinc-900/20"
+                        className="w-4 h-4 rounded-full flex items-center justify-center bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 border-2 border-black/70 dark:border-white/10"
                         style={{ zIndex: 0 }}
                       >
-                        <Plus className="w-2.5 h-2.5" />
+                        <Plus className="w-2 h-2" />
                       </div>
                     )}
                   </div>
@@ -205,14 +205,14 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
                 <div
                   key={sub.id}
                   className={cn(
-                    "w-4 h-4 rounded-full border-2 border-zinc-50 dark:border-zinc-900/20",
+                    "w-4 h-4 rounded-full border-2 border-black/70 dark:border-white/10",
                     sub.color
                   )}
                   style={{ zIndex: 3 - i }}
                 />
               ))}
               {mockSubscriptions.length > 3 && (
-                <div className="w-4 h-4 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[8px] text-zinc-600 dark:text-zinc-300 border-2 border-zinc-50 dark:border-zinc-900/20">
+                <div className="w-4 h-4 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[8px] text-zinc-600 dark:text-zinc-300 border-2 border-black/70 dark:border-white/10">
                   +{mockSubscriptions.length - 3}
                 </div>
               )}
