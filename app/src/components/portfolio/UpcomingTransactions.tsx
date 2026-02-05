@@ -121,7 +121,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
               return (
                 <div
                   key={`pad-${index}`}
-                  className="min-h-12 min-w-0 rounded-md"
+                  className="min-h-13 min-w-0 rounded-md"
                   aria-hidden
                 />
               );
@@ -138,7 +138,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
               <div
                 key={day}
                 className={cn(
-                  "min-h-12 min-w-0 w-full rounded-md border flex flex-col items-center justify-between p-1 transition-all",
+                  "min-h-13 min-w-0 w-full rounded-md border flex flex-col items-center justify-between p-1 transition-all",
                   isPast ? "border-zinc-200/50 dark:border-zinc-800/50 opacity-60" : "border-zinc-200 dark:border-zinc-800",
                   isToday && "ring-1 ring-zinc-400 dark:ring-zinc-500 bg-zinc-200/50 dark:bg-zinc-800/30"
                 )}
