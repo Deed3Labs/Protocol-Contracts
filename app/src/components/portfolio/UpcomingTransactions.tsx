@@ -161,7 +161,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
                       <div
                         key={sub.id}
                         className={cn(
-                          "w-4 h-4 rounded-full flex items-center justify-center text-white border-2 border-black/70 dark:border-white/10",
+                          "w-4 h-4 rounded-full flex items-center justify-center text-white border border-black/10 dark:border-white/10",
                           sub.color
                         )}
                         style={{ zIndex: displaySubs.length - i }}
@@ -171,7 +171,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
                     ))}
                     {hasMore && (
                       <div
-                        className="w-4 h-4 rounded-full flex items-center justify-center bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 border-2 border-black/70 dark:border-white/10"
+                        className="w-4 h-4 rounded-full flex items-center justify-center bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 border border-black/10 dark:border-white/10"
                         style={{ zIndex: 0 }}
                       >
                         <Plus className="w-2 h-2" />
@@ -205,14 +205,14 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
                 <div
                   key={sub.id}
                   className={cn(
-                    "w-4 h-4 rounded-full border-2 border-black/70 dark:border-white/10",
+                    "w-4 h-4 rounded-full border border-black/10 dark:border-white/10",
                     sub.color
                   )}
                   style={{ zIndex: 3 - i }}
                 />
               ))}
               {mockSubscriptions.length > 3 && (
-                <div className="w-4 h-4 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[8px] text-zinc-600 dark:text-zinc-300 border-2 border-black/70 dark:border-white/10">
+                <div className="w-4 h-4 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[8px] text-zinc-600 dark:text-zinc-300 border border-black/10 dark:border-white/10">
                   +{mockSubscriptions.length - 3}
                 </div>
               )}
