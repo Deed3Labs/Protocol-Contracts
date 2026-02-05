@@ -60,7 +60,7 @@ export function SpendTracker({ className }: SpendTrackerProps) {
       <CardContent className="p-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-normal tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+          <span className="text-[10px] font-normal tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
             Spend this month
           </span>
           <div className="flex items-center gap-1">
