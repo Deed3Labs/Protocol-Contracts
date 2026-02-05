@@ -58,14 +58,14 @@ export function BudgetTracker({ className }: BudgetTrackerProps) {
     >
       <CardContent className="p-4">
         {/* Header */}
-        <span className="text-xs font-normal tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
-          Budget
+        <span className="text-[11px] font-normal tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+          Yearly Budget
         </span>
 
         {/* Total Budget Section - title matches sidebar "Linked Accounts" style */}
         <div className="mt-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-base font-medium text-black dark:text-white">
+            <span className="text-xl font-light text-black dark:text-white">
               Total Budget
             </span>
             <span className="text-base tabular-nums">
