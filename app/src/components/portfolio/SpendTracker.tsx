@@ -117,33 +117,45 @@ export function SpendTracker({ className }: SpendTrackerProps) {
             const isPast = day <= currentDay;
             const isToday = day === currentDay;
 
+            const hasSpendFill = isPast && amount > 0;
+            const fillOpacity = hasSpendFill ? intensity : 0;
+            const useInvertedText = hasSpendFill && intensity > 0.5;
+
             return (
               <div
                 key={day}
                 className={cn(
-                  "min-h-13 min-w-0 w-full rounded-md border flex flex-col items-start justify-between p-1.5 transition-all",
+                  "relative min-h-13 min-w-0 w-full rounded-md border flex flex-col items-start justify-between p-1.5 transition-all",
                   isPast ? "border-zinc-200 dark:border-zinc-800" : "border-zinc-200/50 dark:border-zinc-800/50",
                   isToday && "ring-1 ring-zinc-400 dark:ring-zinc-500"
                 )}
-                style={{
-                  backgroundColor:
-                    isPast && amount > 0
-                      ? `rgb(var(--foreground) / ${0.08 + intensity * 0.35})`
-                      : "transparent",
-                }}
               >
+                {/* Scale: transparent → #0e0e0e (light) / white (dark) */}
+                <div
+                  className="absolute inset-0 rounded-md bg-[#0e0e0e] dark:bg-white pointer-events-none"
+                  style={{ opacity: fillOpacity }}
+                  aria-hidden
+                />
                 <span
                   className={cn(
-                    "text-xs font-medium",
-                    isPast ? "text-black dark:text-white" : "text-zinc-400 dark:text-zinc-500"
+                    "relative z-10 text-xs font-medium",
+                    isPast
+                      ? useInvertedText
+                        ? "text-white dark:text-black"
+                        : "text-black dark:text-white"
+                      : "text-zinc-400 dark:text-zinc-500"
                   )}
                 >
                   {day}
                 </span>
                 <span
                   className={cn(
-                    "text-[10px] font-medium truncate w-full",
-                    amount > 0 ? "text-black/80 dark:text-white/80" : "text-zinc-400 dark:text-zinc-500"
+                    "relative z-10 text-[10px] font-medium truncate w-full",
+                    amount > 0
+                      ? useInvertedText
+                        ? "text-white dark:text-black"
+                        : "text-black/80 dark:text-white/80"
+                      : "text-zinc-400 dark:text-zinc-500"
                   )}
                 >
                   {isPast ? formatAmount(amount) : "-"}
@@ -161,11 +173,11 @@ export function SpendTracker({ className }: SpendTrackerProps) {
           <div className="flex items-center gap-2">
             <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">Less</span>
             <div className="flex gap-0.5">
-              {[0.1, 0.25, 0.4, 0.55, 0.7].map((opacity, i) => (
+              {[0.2, 0.4, 0.6, 0.8, 1].map((opacity, i) => (
                 <div
                   key={i}
-                  className="w-3 h-3 rounded"
-                  style={{ backgroundColor: `rgb(var(--foreground) / ${opacity})` }}
+                  className="w-3 h-3 rounded bg-[#0e0e0e] dark:bg-white"
+                  style={{ opacity }}
                 />
               ))}
             </div>
