@@ -58,7 +58,7 @@ export function BudgetTracker({ className }: BudgetTrackerProps) {
     >
       <CardContent className="p-4">
         {/* Header */}
-        <span className="text-xs font-normal tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+        <span className="text-[11px] font-normal tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
           Yearly Budget
         </span>
 
