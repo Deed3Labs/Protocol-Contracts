@@ -56,14 +56,14 @@ export function BudgetTracker({ className }: BudgetTrackerProps) {
         className
       )}
     >
-      <CardContent className="p-4">
+      <CardContent className="px-3 py-3">
         {/* Header */}
         <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
           Budget
         </span>
 
         {/* Total Budget Section - title matches sidebar "Linked Accounts" style */}
-        <div className="mt-4 space-y-2">
+        <div className="mt-3 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <span className="text-base font-medium text-black dark:text-white">
               Total Budget
@@ -87,7 +87,7 @@ export function BudgetTracker({ className }: BudgetTrackerProps) {
         </div>
 
         {/* Category Breakdown */}
-        <div className="mt-5 space-y-4">
+        <div className="mt-4 space-y-3">
           {mockBudgetCategories.map((category) => {
             const percentage = ((category.spent / category.budget) * 100).toFixed(1);
             const isOverBudget = category.spent > category.budget;

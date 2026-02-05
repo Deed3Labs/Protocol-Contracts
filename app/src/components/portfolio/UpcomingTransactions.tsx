@@ -72,9 +72,9 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
         className
       )}
     >
-      <CardContent className="p-4">
+      <CardContent className="px-3 py-3">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
             Upcoming Transactions
           </span>
@@ -101,12 +101,12 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
         </div>
 
         {/* Total Amount - matches hero balance font style */}
-        <p className="text-3xl font-light tracking-tight text-black dark:text-white mb-4">
+        <p className="text-3xl font-light tracking-tight text-black dark:text-white mb-2">
           ${totalUpcoming.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
 
         {/* Week day headers */}
-        <div className="grid grid-cols-7 gap-1 mb-2">
+        <div className="grid grid-cols-7 gap-1 mb-1.5">
           {weekDays.map((day) => (
             <div key={day} className="text-center">
               <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">{day}</span>
@@ -194,7 +194,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
         </div>
 
         {/* Footer - spacing aligned with SpendTracker */}
-        <div className="flex items-center justify-between mt-4 pt-3 min-h-[2rem] border-t border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-center justify-between mt-3 pt-2 border-t border-zinc-200 dark:border-zinc-800">
           <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
             {monthName} {currentDay} - {daysInMonth}
           </span>
