@@ -75,7 +75,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
       <CardContent className="p-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-normal tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+          <span className="text-[11px] font-normal tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
             Upcoming Transactions
           </span>
           <div className="flex items-center gap-1">

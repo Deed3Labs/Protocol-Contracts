@@ -65,7 +65,7 @@ export function BudgetTracker({ className }: BudgetTrackerProps) {
         {/* Total Budget Section - title matches sidebar "Linked Accounts" style */}
         <div className="mt-4 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-base font-medium text-black dark:text-white">
+            <span className="text-lg font-light text-black dark:text-white">
               Total Budget
             </span>
             <span className="text-base tabular-nums">
