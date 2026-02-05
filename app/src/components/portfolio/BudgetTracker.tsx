@@ -52,7 +52,7 @@ export function BudgetTracker({ className }: BudgetTrackerProps) {
   return (
     <Card
       className={cn(
-        "border-zinc-200 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/20 rounded-xl py-3",
+        "border-zinc-200 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/20 rounded py-3",
         className
       )}
     >

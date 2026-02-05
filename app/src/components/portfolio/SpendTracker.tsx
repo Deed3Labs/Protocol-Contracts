@@ -53,7 +53,7 @@ export function SpendTracker({ className }: SpendTrackerProps) {
   return (
     <Card
       className={cn(
-        "border-zinc-200 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/20 rounded-xl py-3",
+        "border-zinc-200 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/20 rounded py-3",
         className
       )}
     >
@@ -106,7 +106,7 @@ export function SpendTracker({ className }: SpendTrackerProps) {
               return (
                 <div
                   key={`pad-${index}`}
-                  className="min-h-11 min-w-0 rounded-lg"
+                  className="min-h-11 min-w-0 rounded-md"
                   aria-hidden
                 />
               );
@@ -121,7 +121,7 @@ export function SpendTracker({ className }: SpendTrackerProps) {
               <div
                 key={day}
                 className={cn(
-                  "min-h-11 min-w-0 w-full rounded-lg border flex flex-col items-start justify-between p-1.5 transition-all",
+                  "min-h-11 min-w-0 w-full rounded-md border flex flex-col items-start justify-between p-1.5 transition-all",
                   isPast ? "border-zinc-200 dark:border-zinc-800" : "border-zinc-200/50 dark:border-zinc-800/50",
                   isToday && "ring-1 ring-zinc-400 dark:ring-zinc-500"
                 )}

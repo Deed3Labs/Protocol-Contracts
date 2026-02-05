@@ -68,7 +68,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
   return (
     <Card
       className={cn(
-        "border-zinc-200 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/20 rounded-xl py-3",
+        "border-zinc-200 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/20 rounded py-3",
         className
       )}
     >
@@ -121,7 +121,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
               return (
                 <div
                   key={`pad-${index}`}
-                  className="min-h-11 min-w-0 rounded-lg"
+                  className="min-h-11 min-w-0 rounded-md"
                   aria-hidden
                 />
               );
@@ -138,7 +138,7 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
               <div
                 key={day}
                 className={cn(
-                  "min-h-11 min-w-0 w-full rounded-lg border flex flex-col items-center justify-between p-1 transition-all",
+                  "min-h-11 min-w-0 w-full rounded-md border flex flex-col items-center justify-between p-1 transition-all",
                   isPast ? "border-zinc-200/50 dark:border-zinc-800/50 opacity-60" : "border-zinc-200 dark:border-zinc-800",
                   isToday && "ring-1 ring-zinc-400 dark:ring-zinc-500 bg-zinc-200/50 dark:bg-zinc-800/30"
                 )}
