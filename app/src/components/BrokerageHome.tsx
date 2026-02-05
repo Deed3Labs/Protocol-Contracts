@@ -956,15 +956,17 @@ export default function BrokerageHome() {
                  {renderTabContent()}
               </div>
 
-              {/* 2x1 Grid: Spend / Calendar row + Budget row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Row 1 - Col 1: Spend Tracker */}
-                <SpendTracker />
-                {/* Row 1 - Col 2: Upcoming Transactions (Subscriptions Tracker) */}
-                <UpcomingTransactions />
+              {/* 2x1 Grid: Spend / Calendar row + Budget row; column and row gaps match */}
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Row 1 - Col 1: Spend Tracker */}
+                  <SpendTracker />
+                  {/* Row 1 - Col 2: Upcoming Transactions (Subscriptions Tracker) */}
+                  <UpcomingTransactions />
+                </div>
+                {/* Row 2: Budget Tracker */}
+                <BudgetTracker />
               </div>
-              {/* Row 2: Budget Tracker */}
-              <BudgetTracker />
            </div>
 
            {/* Right Column (Sidebar Widgets) */}
