@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Coins,
+  DollarSign,
   Lock,
   Ticket,
   Users,
@@ -287,7 +287,7 @@ export default function EarnHome() {
                   <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                        <Coins className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        <DollarSign className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                       </div>
                       <div>
                         <h3 className="font-normal text-black dark:text-white">Mint CLRUSD</h3>
@@ -615,7 +615,7 @@ export default function EarnHome() {
                 <div className="flex flex-wrap gap-1.5">
                   {(
                     [
-                      { id: 'burn' as const, label: 'Burn', icon: Coins },
+                      { id: 'burn' as const, label: 'Burn', icon: DollarSign },
                       { id: 'bonds' as const, label: 'Bonds', icon: Ticket },
                       { id: 'vault' as const, label: 'Vault', icon: Lock },
                       { id: 'loans' as const, label: 'Loans', icon: Users },
