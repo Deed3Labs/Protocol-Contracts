@@ -333,7 +333,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null, onLinkSuccess }: 
               await new Promise((r) => setTimeout(r, 600));
               await refreshBankAccounts();
               await refreshPortfolio?.();
-              onLinkSuccess?.();
+              await onLinkSuccess?.();
               // Retry once in case the first request was too early (modal list + app cash balance)
               setTimeout(() => {
                 refreshBankAccounts();
