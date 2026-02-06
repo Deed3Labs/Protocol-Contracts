@@ -141,6 +141,10 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
     existing.push({ access_token: accessToken, item_id: itemId });
     accessTokenStore.set(key, existing);
 
+    // Invalidate balance cache so next fetch (or client refresh) returns all linked accounts
+    const cacheService = await getCacheService();
+    if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
+
     res.json({ success: true });
   } catch (error: unknown) {
     const err = error as { response?: { data?: unknown }; message?: string };
@@ -222,6 +226,7 @@ router.get('/balances', async (req: Request, res: Response) => {
     const accountList: BalanceAccount[] = [];
     let totalBankBalance = 0;
     const stillValidItems: StoredItem[] = [];
+    const seenAccountIds = new Set<string>();
 
     for (const item of items) {
       try {
@@ -230,6 +235,8 @@ router.get('/balances', async (req: Request, res: Response) => {
         const accounts = response.data.accounts ?? [];
         stillValidItems.push(item);
         for (const acc of accounts) {
+          if (seenAccountIds.has(acc.account_id)) continue;
+          seenAccountIds.add(acc.account_id);
           const current = acc.balances?.current;
           if (typeof current === 'number' && current !== null) {
             totalBankBalance += current;
