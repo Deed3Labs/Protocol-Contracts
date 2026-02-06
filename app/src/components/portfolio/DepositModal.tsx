@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft, AlertCircle } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken } from '@/utils/apiClient';
-import { useBankBalance } from '@/hooks/useBankBalance';
 import { usePortfolio } from '@/context/PortfolioContext';
 
 // Type declarations for Stripe Onramp (loaded via script tags)
@@ -25,11 +24,9 @@ interface DepositModalProps {
   onClose: () => void;
   /** When set, open directly to this tab (e.g. "bank" when coming from Linked Accounts) */
   initialOption?: 'bank' | 'card' | null;
-  /** Called after user successfully links a bank account so parent can refresh its list */
-  onLinkSuccess?: () => void;
 }
 
-const DepositModal = ({ isOpen, onClose, initialOption = null, onLinkSuccess }: DepositModalProps) => {
+const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const onrampElementRef = useRef<HTMLDivElement>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -41,8 +38,8 @@ const DepositModal = ({ isOpen, onClose, initialOption = null, onLinkSuccess }: 
   const [isPullingAccounts, setIsPullingAccounts] = useState(false);
   const plaidSuccessFiredRef = useRef(false);
   const { address } = useAppKitAccount();
-  const { accounts: bankAccounts, linked: bankLinked, isLoading: bankAccountsLoading, refresh: refreshBankAccounts } = useBankBalance(address ?? undefined);
-  const { refreshAll: refreshPortfolio } = usePortfolio();
+  const { bankAccounts, bankAccountsLoading, cashBalance, refreshAll: refreshPortfolio } = usePortfolio();
+  const bankLinked = cashBalance.bankLinked ?? false;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -331,15 +328,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null, onLinkSuccess }: 
             try {
               // Give the server a moment to persist the Plaid access token before refetching
               await new Promise((r) => setTimeout(r, 600));
-              await refreshBankAccounts();
               await refreshPortfolio?.();
-              await onLinkSuccess?.();
-              // Retry once in case the first request was too early (modal list + app cash balance)
-              setTimeout(() => {
-                refreshBankAccounts();
-                refreshPortfolio?.();
-                onLinkSuccess?.();
-              }, 1200);
             } finally {
               setIsPullingAccounts(false);
             }
@@ -362,7 +351,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null, onLinkSuccess }: 
     } finally {
       setIsLoadingLinkToken(false);
     }
-  }, [address, refreshBankAccounts, refreshPortfolio, onLinkSuccess]);
+  }, [address, refreshPortfolio]);
   // Reset ref when modal closes so next open doesn't skip onExit
   useEffect(() => {
     if (!isOpen) plaidSuccessFiredRef.current = false;

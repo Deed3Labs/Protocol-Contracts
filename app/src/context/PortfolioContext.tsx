@@ -8,6 +8,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { usePageVisibility } from '@/hooks/usePageVisibility';
 import type { MultichainBalance } from '@/hooks/useMultichainBalances';
 import type { WalletTransaction } from '@/types/transactions';
+import type { BankAccountBalance } from '@/utils/apiClient';
 
 interface PortfolioContextType {
   // Balances
@@ -41,7 +42,12 @@ interface PortfolioContextType {
     /** Whether user has linked a bank account (Plaid) for payouts */
     bankLinked?: boolean;
   };
-  
+
+  // Linked bank accounts (Plaid) – single source for modal + Linked Accounts section
+  bankAccounts: BankAccountBalance[];
+  bankAccountsLoading: boolean;
+  refreshBankBalance: () => Promise<void>;
+
   // Activity
   transactions: WalletTransaction[];
   
@@ -80,8 +86,14 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     refresh: refreshHoldingsHook,
   } = usePortfolioHoldings();
 
-  // Bank balance (Plaid) - merged into cash balance for display
-  const { bankCash, linked: bankLinked, refresh: refreshBankBalance } = useBankBalance(address ?? undefined);
+  // Bank balance (Plaid) - single source for modal + Linked Accounts; merged into cash balance
+  const {
+    bankCash,
+    linked: bankLinked,
+    accounts: bankAccounts,
+    isLoading: bankAccountsLoading,
+    refresh: refreshBankBalance,
+  } = useBankBalance(address ?? undefined);
 
   // Consolidated cash balance: crypto (stablecoins) + bank
   const cashBalance = useMemo(() => {
@@ -324,7 +336,10 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     totalBalanceUSD,
     previousTotalBalanceUSD,
     holdings,
-    cashBalance, // Automatically calculated from stablecoin holdings
+    cashBalance,
+    bankAccounts,
+    bankAccountsLoading,
+    refreshBankBalance,
     transactions: walletTransactions,
     isLoading,
     balancesLoading,
