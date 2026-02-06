@@ -625,8 +625,10 @@ export async function getBankBalances(
   options?: { skipCache?: boolean }
 ): Promise<BankBalancesResponse | null> {
   const encoded = encodeURIComponent(walletAddress);
-  const qs = options?.skipCache ? `&refresh=1` : '';
-  const response = await apiRequest<BankBalancesResponse>(`/api/plaid/balances?walletAddress=${encoded}${qs}`);
+  const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<BankBalancesResponse>(`/api/plaid/balances?walletAddress=${encoded}${qs}`, {
+    ...(options?.skipCache && { cache: 'no-store' as RequestCache }),
+  });
   if (response.error) return null;
   if (response.data) return response.data;
   return { accounts: [], totalBankBalance: 0, linked: false };

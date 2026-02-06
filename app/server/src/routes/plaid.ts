@@ -141,6 +141,10 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
     existing.push({ access_token: accessToken, item_id: itemId });
     accessTokenStore.set(key, existing);
 
+    // Invalidate balance cache so next fetch (or client refresh) returns all linked accounts
+    const cacheService = await getCacheService();
+    if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
+
     res.json({ success: true });
   } catch (error: unknown) {
     const err = error as { response?: { data?: unknown }; message?: string };
@@ -222,14 +226,34 @@ router.get('/balances', async (req: Request, res: Response) => {
     const accountList: BalanceAccount[] = [];
     let totalBankBalance = 0;
     const stillValidItems: StoredItem[] = [];
+    // De-dupe accounts even across re-links where Plaid may mint new account_ids
+    // Prefer mask+name when mask exists, otherwise fall back to account_id.
+    const seenAccountKeys = new Set<string>();
+    // Detect duplicate Items (user linked same institution twice) by fingerprinting the account list.
+    // If two Items return the same set of accounts, we keep the first and drop the duplicate to avoid repeated calls.
+    const seenItemFingerprints = new Set<string>();
 
     for (const item of items) {
       try {
         const request: AccountsBalanceGetRequest = { access_token: item.access_token };
         const response = await client.accountsBalanceGet(request);
         const accounts = response.data.accounts ?? [];
+        // Fingerprint for this Item (stable across refresh): sorted list of name+mask pairs
+        const fingerprint = accounts
+          .map((a) => `${a.name}|${a.mask ?? ''}`)
+          .sort()
+          .join('||');
+        if (fingerprint && seenItemFingerprints.has(fingerprint)) {
+          // Duplicate link of the same institution/accounts; drop this item
+          continue;
+        }
+        if (fingerprint) seenItemFingerprints.add(fingerprint);
+
         stillValidItems.push(item);
         for (const acc of accounts) {
+          const key = acc.mask ? `${acc.mask}|${acc.name}` : acc.account_id;
+          if (seenAccountKeys.has(key)) continue;
+          seenAccountKeys.add(key);
           const current = acc.balances?.current;
           if (typeof current === 'number' && current !== null) {
             totalBankBalance += current;

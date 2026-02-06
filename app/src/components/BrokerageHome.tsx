@@ -19,7 +19,6 @@ import { useDeedName } from '@/hooks/useDeedName';
 import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
 import { getNetworkByChainId } from '@/config/networks';
 import { usePortfolio } from '@/context/PortfolioContext';
-import { useBankBalance } from '@/hooks/useBankBalance';
 import { LargePriceWheel } from './PriceWheel';
 import type { MultichainDeedNFT } from '@/hooks/useMultichainDeedNFTs';
 import type { BankAccountBalance } from '@/utils/apiClient';
@@ -504,15 +503,11 @@ export default function BrokerageHome() {
     transactions: walletTransactions,
     isLoading: portfolioLoading,
     refreshAll,
+    bankAccounts,
+    bankAccountsLoading,
+    refreshBankBalance,
   } = usePortfolio();
-
-  // Linked bank/investment accounts (Plaid)
-  const {
-    accounts: bankAccounts,
-    linked: bankLinked,
-    isLoading: bankAccountsLoading,
-    refresh: refreshBankAccounts,
-  } = useBankBalance(address ?? undefined);
+  const bankLinked = portfolioCashBalance.bankLinked ?? false;
   
   // Portfolio history tracking
   const { addSnapshot, getSnapshotsForRange, fetchAndMergeHistory } = usePortfolioHistory();
@@ -897,7 +892,6 @@ export default function BrokerageHome() {
         isOpen={depositModalOpen} 
         onClose={() => { setDepositModalOpen(false); setDepositInitialOption(null); }} 
         initialOption={depositInitialOption}
-        onLinkSuccess={refreshBankAccounts}
       />
 
       {/* Withdraw Modal */}
@@ -1002,7 +996,7 @@ export default function BrokerageHome() {
                           </SelectContent>
                         </Select>
                         <button
-                          onClick={() => refreshBankAccounts()}
+                          onClick={() => refreshBankBalance()}
                           className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1.5 disabled:opacity-50"
                           disabled={bankAccountsLoading}
                         >
