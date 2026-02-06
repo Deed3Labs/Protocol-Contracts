@@ -606,6 +606,8 @@ export interface BankAccountBalance {
   mask?: string;
   current: number | null;
   available: number | null;
+  /** Plaid item id for this connection (for optional per-institution disconnect) */
+  item_id?: string;
 }
 
 export interface BankBalancesResponse {
@@ -633,10 +635,18 @@ export async function getBankBalances(
 /**
  * Plaid: disconnect (remove stored access token) for a wallet address
  */
-export async function disconnectPlaid(walletAddress: string): Promise<{ success: boolean } | null> {
+/**
+ * Disconnect one or all Plaid connections for a wallet.
+ * - Omit itemId to disconnect all linked institutions.
+ * - Pass itemId (from account.item_id) to disconnect only that institution.
+ */
+export async function disconnectPlaid(
+  walletAddress: string,
+  itemId?: string
+): Promise<{ success: boolean } | null> {
   const response = await apiRequest<{ success: boolean }>('/api/plaid/disconnect', {
     method: 'POST',
-    body: JSON.stringify({ walletAddress }),
+    body: JSON.stringify({ walletAddress, ...(itemId != null && { itemId }) }),
   });
   if (response.error || !response.data) return null;
   return response.data;
