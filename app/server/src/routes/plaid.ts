@@ -9,8 +9,19 @@ import {
   type ItemPublicTokenExchangeRequest,
   type AccountsBalanceGetRequest,
 } from 'plaid';
+import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 
 const router = Router();
+
+// Optional cache for balances (reduces Plaid API calls; fails open if Redis unavailable)
+let cacheServicePromise: Promise<CacheService | null> | null = null;
+async function getCacheService(): Promise<CacheService | null> {
+  if (cacheServicePromise !== null) return cacheServicePromise;
+  cacheServicePromise = getRedisClient()
+    .then((client) => new CacheService(client))
+    .catch(() => null);
+  return cacheServicePromise;
+}
 
 // In-memory store: walletAddress (lowercase) -> access_token
 // Replace with Redis or DB in production for persistence across restarts
@@ -133,9 +144,18 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
   }
 });
 
+/** Response shape for GET /api/plaid/balances (with optional cached flag) */
+const balancesResponse = (body: {
+  accounts: Array<{ account_id: string; name: string; mask?: string; current: number | null; available: number | null }>;
+  totalBankBalance: number;
+  linked: boolean;
+  cached?: boolean;
+}) => body;
+
 /**
  * GET /api/plaid/balances?walletAddress=0x...
- * Get balances for linked bank accounts (keyed by wallet address)
+ * Get balances for linked bank accounts (keyed by wallet address).
+ * Cached server-side (Redis) to reduce Plaid API usage (~$0.10/call). TTL via CACHE_TTL_PLAID_BALANCES (default 1 hour).
  */
 router.get('/balances', async (req: Request, res: Response) => {
   try {
@@ -155,13 +175,30 @@ router.get('/balances', async (req: Request, res: Response) => {
       });
     }
 
-    const accessToken = accessTokenStore.get(walletAddress.toLowerCase());
+    const key = walletAddress.toLowerCase();
+    const accessToken = accessTokenStore.get(key);
     if (!accessToken) {
-      return res.json({
+      return res.json(balancesResponse({
         accounts: [],
         totalBankBalance: 0,
         linked: false,
-      });
+      }));
+    }
+
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const cacheService = await getCacheService();
+    const cacheKey = CacheKeys.plaidBalances(key);
+    const ttl = parseInt(process.env.CACHE_TTL_PLAID_BALANCES || '3600', 10); // 1 hour default (~$0.10/call)
+
+    if (cacheService && !skipCache) {
+      const cached = await cacheService.get<{
+        accounts: Array<{ account_id: string; name: string; mask?: string; current: number | null; available: number | null }>;
+        totalBankBalance: number;
+        linked: boolean;
+      }>(cacheKey);
+      if (cached) {
+        return res.json(balancesResponse({ ...cached, cached: true }));
+      }
     }
 
     const request: AccountsBalanceGetRequest = { access_token: accessToken };
@@ -184,11 +221,11 @@ router.get('/balances', async (req: Request, res: Response) => {
       }
     }
 
-    res.json({
-      accounts: accountList,
-      totalBankBalance,
-      linked: true,
-    });
+    const payload = { accounts: accountList, totalBankBalance, linked: true };
+    if (cacheService) {
+      await cacheService.set(cacheKey, payload, ttl);
+    }
+    return res.json(balancesResponse(payload));
   } catch (error: unknown) {
     const err = error as { response?: { data?: { error_code?: string } }; message?: string };
     const errorCode = err.response?.data?.error_code;
@@ -196,13 +233,16 @@ router.get('/balances', async (req: Request, res: Response) => {
     if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
       const walletAddress = req.query.walletAddress as string | undefined;
       if (walletAddress) {
-        accessTokenStore.delete(walletAddress.toLowerCase());
+        const key = walletAddress.toLowerCase();
+        accessTokenStore.delete(key);
+        const cacheService = await getCacheService();
+        if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
       }
-      return res.json({
+      return res.json(balancesResponse({
         accounts: [],
         totalBankBalance: 0,
         linked: false,
-      });
+      }));
     }
     console.error('Plaid balances error:', err.response?.data ?? err.message);
     res.status(500).json({
@@ -214,7 +254,7 @@ router.get('/balances', async (req: Request, res: Response) => {
 
 /**
  * POST /api/plaid/disconnect
- * Remove stored access token for wallet address
+ * Remove stored access token for wallet address and invalidate balance cache
  * Body: { walletAddress: string }
  */
 router.post('/disconnect', async (req: Request, res: Response) => {
@@ -226,7 +266,10 @@ router.post('/disconnect', async (req: Request, res: Response) => {
         message: 'Request body must include walletAddress',
       });
     }
-    accessTokenStore.delete(walletAddress.toLowerCase());
+    const key = walletAddress.toLowerCase();
+    accessTokenStore.delete(key);
+    const cacheService = await getCacheService();
+    if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
     res.json({ success: true });
   } catch (error: unknown) {
     console.error('Plaid disconnect error:', error);

@@ -615,11 +615,16 @@ export interface BankBalancesResponse {
 }
 
 /**
- * Plaid: get linked bank account balances for a wallet address
+ * Plaid: get linked bank account balances for a wallet address.
+ * Server caches responses; pass skipCache: true to force a fresh Plaid call (e.g. on manual refresh).
  */
-export async function getBankBalances(walletAddress: string): Promise<BankBalancesResponse | null> {
+export async function getBankBalances(
+  walletAddress: string,
+  options?: { skipCache?: boolean }
+): Promise<BankBalancesResponse | null> {
   const encoded = encodeURIComponent(walletAddress);
-  const response = await apiRequest<BankBalancesResponse>(`/api/plaid/balances?walletAddress=${encoded}`);
+  const qs = options?.skipCache ? `&refresh=1` : '';
+  const response = await apiRequest<BankBalancesResponse>(`/api/plaid/balances?walletAddress=${encoded}${qs}`);
   if (response.error) return null;
   if (response.data) return response.data;
   return { accounts: [], totalBankBalance: 0, linked: false };

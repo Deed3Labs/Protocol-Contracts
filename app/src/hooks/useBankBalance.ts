@@ -21,7 +21,7 @@ export function useBankBalance(walletAddress: string | undefined): UseBankBalanc
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchBalances = useCallback(async () => {
+  const fetchBalances = useCallback(async (skipCache?: boolean) => {
     if (!walletAddress) {
       setData(null);
       setError(null);
@@ -30,7 +30,7 @@ export function useBankBalance(walletAddress: string | undefined): UseBankBalanc
     setIsLoading(true);
     setError(null);
     try {
-      const result = await getBankBalances(walletAddress);
+      const result = await getBankBalances(walletAddress, skipCache ? { skipCache: true } : undefined);
       setData(result ?? { accounts: [], totalBankBalance: 0, linked: false });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load bank balance');
@@ -51,6 +51,7 @@ export function useBankBalance(walletAddress: string | undefined): UseBankBalanc
     linked: data?.linked ?? false,
     isLoading,
     error,
-    refresh: fetchBalances,
+    /** Refetch and bypass server cache (one Plaid API call). Use for "Refresh" button. */
+    refresh: () => fetchBalances(true),
   };
 }
