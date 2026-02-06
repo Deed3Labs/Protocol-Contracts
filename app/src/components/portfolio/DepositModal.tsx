@@ -38,7 +38,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
   const [isPullingAccounts, setIsPullingAccounts] = useState(false);
   const plaidSuccessFiredRef = useRef(false);
   const { address } = useAppKitAccount();
-  const { bankAccounts, bankAccountsLoading, cashBalance, refreshAll: refreshPortfolio } = usePortfolio();
+  const { bankAccounts, bankAccountsLoading, cashBalance, refreshBankBalance } = usePortfolio();
   const bankLinked = cashBalance.bankLinked ?? false;
 
   useEffect(() => {
@@ -328,7 +328,8 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
             try {
               // Give the server a moment to persist the Plaid access token before refetching
               await new Promise((r) => setTimeout(r, 600));
-              await refreshPortfolio?.();
+              // Only refresh bank balances here (refreshAll can fail fast if another endpoint errors)
+              await refreshBankBalance();
             } finally {
               setIsPullingAccounts(false);
             }
@@ -351,7 +352,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
     } finally {
       setIsLoadingLinkToken(false);
     }
-  }, [address, refreshPortfolio]);
+  }, [address, refreshBankBalance]);
   // Reset ref when modal closes so next open doesn't skip onExit
   useEffect(() => {
     if (!isOpen) plaidSuccessFiredRef.current = false;
