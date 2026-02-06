@@ -347,4 +347,8 @@ export const CacheKeys = {
   // Rate limiting
   rateLimit: (identifier: string, window: string) =>
     `ratelimit:${identifier}:${window}`,
+
+  // Plaid bank balances (per wallet) - reduces Plaid API usage
+  plaidBalances: (walletAddress: string) =>
+    `plaid_balances:${walletAddress.toLowerCase()}`,
 };

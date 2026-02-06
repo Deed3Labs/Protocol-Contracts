@@ -606,6 +606,8 @@ export interface BankAccountBalance {
   mask?: string;
   current: number | null;
   available: number | null;
+  /** Plaid item id for this connection (for optional per-institution disconnect) */
+  item_id?: string;
 }
 
 export interface BankBalancesResponse {
@@ -615,11 +617,16 @@ export interface BankBalancesResponse {
 }
 
 /**
- * Plaid: get linked bank account balances for a wallet address
+ * Plaid: get linked bank account balances for a wallet address.
+ * Server caches responses; pass skipCache: true to force a fresh Plaid call (e.g. on manual refresh).
  */
-export async function getBankBalances(walletAddress: string): Promise<BankBalancesResponse | null> {
+export async function getBankBalances(
+  walletAddress: string,
+  options?: { skipCache?: boolean }
+): Promise<BankBalancesResponse | null> {
   const encoded = encodeURIComponent(walletAddress);
-  const response = await apiRequest<BankBalancesResponse>(`/api/plaid/balances?walletAddress=${encoded}`);
+  const qs = options?.skipCache ? `&refresh=1` : '';
+  const response = await apiRequest<BankBalancesResponse>(`/api/plaid/balances?walletAddress=${encoded}${qs}`);
   if (response.error) return null;
   if (response.data) return response.data;
   return { accounts: [], totalBankBalance: 0, linked: false };
@@ -628,10 +635,18 @@ export async function getBankBalances(walletAddress: string): Promise<BankBalanc
 /**
  * Plaid: disconnect (remove stored access token) for a wallet address
  */
-export async function disconnectPlaid(walletAddress: string): Promise<{ success: boolean } | null> {
+/**
+ * Disconnect one or all Plaid connections for a wallet.
+ * - Omit itemId to disconnect all linked institutions.
+ * - Pass itemId (from account.item_id) to disconnect only that institution.
+ */
+export async function disconnectPlaid(
+  walletAddress: string,
+  itemId?: string
+): Promise<{ success: boolean } | null> {
   const response = await apiRequest<{ success: boolean }>('/api/plaid/disconnect', {
     method: 'POST',
-    body: JSON.stringify({ walletAddress }),
+    body: JSON.stringify({ walletAddress, ...(itemId != null && { itemId }) }),
   });
   if (response.error || !response.data) return null;
   return response.data;
