@@ -326,9 +326,12 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
             setBankError(null);
             setIsPullingAccounts(true);
             try {
-              // Give the server a moment to persist the Plaid access token before refetching
-              await new Promise((r) => setTimeout(r, 600));
-              // Only refresh bank balances here (refreshAll can fail fast if another endpoint errors)
+              // Give the server a moment to persist the new item before refetching
+              await new Promise((r) => setTimeout(r, 800));
+              await refreshBankBalance();
+              // Second refresh after a short delay so the UI reliably shows all accounts
+              // (handles timing/race with server or browser cache)
+              await new Promise((r) => setTimeout(r, 400));
               await refreshBankBalance();
             } finally {
               setIsPullingAccounts(false);
