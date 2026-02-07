@@ -8,6 +8,7 @@ import {
   type LinkTokenCreateRequest,
   type ItemPublicTokenExchangeRequest,
   type AccountsBalanceGetRequest,
+  type TransactionsRecurringGetRequest,
 } from 'plaid';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 
@@ -87,7 +88,8 @@ router.post('/link-token', async (req: Request, res: Response) => {
       language: 'en',
       country_codes: [CountryCode.Us],
       user: { client_user_id: walletAddress.toLowerCase() },
-      products: [Products.Auth],
+      // Auth for balance/account numbers; Transactions required for recurring streams (Upcoming Transactions)
+      products: [Products.Auth, Products.Transactions],
     };
 
     const response = await client.linkTokenCreate(request);
@@ -320,6 +322,138 @@ router.get('/balances', async (req: Request, res: Response) => {
   }
 });
 
+/** Normalized recurring stream for API response (day = day of month from predicted_next_date) */
+type RecurringStreamPayload = {
+  stream_id: string;
+  name: string;
+  amount: number;
+  day: number;
+  iso_currency_code: string | null;
+};
+
+/**
+ * GET /api/plaid/recurring-transactions?walletAddress=0x...
+ * Fetch recurring inflow (deposits) and outflow (subscriptions/expenses) streams via Plaid
+ * /transactions/recurring/get. Cached server-side to avoid excessive Plaid API calls.
+ * Only called when user has linked accounts and Upcoming Transactions is shown.
+ */
+router.get('/recurring-transactions', async (req: Request, res: Response) => {
+  try {
+    const client = getPlaidClient();
+    if (!client) {
+      return res.status(503).json({
+        error: 'Plaid not configured',
+        message: 'PLAID_CLIENT_ID and PLAID_SECRET must be set',
+      });
+    }
+
+    const walletAddress = req.query.walletAddress as string | undefined;
+    if (!walletAddress) {
+      return res.status(400).json({
+        error: 'Missing walletAddress',
+        message: 'Query parameter walletAddress is required',
+      });
+    }
+
+    const key = walletAddress.toLowerCase();
+    const items = accessTokenStore.get(key);
+    if (!items?.length) {
+      return res.json({
+        inflowStreams: [],
+        outflowStreams: [],
+        linked: false,
+        cached: false,
+      });
+    }
+
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const cacheService = await getCacheService();
+    const cacheKey = CacheKeys.plaidRecurringTransactions(key);
+    const ttl = parseInt(process.env.CACHE_TTL_PLAID_RECURRING ?? '86400', 10); // 24h default – recurring streams change rarely (monthly scale)
+
+    if (cacheService && !skipCache) {
+      const cached = await cacheService.get<{
+        inflowStreams: RecurringStreamPayload[];
+        outflowStreams: RecurringStreamPayload[];
+      }>(cacheKey);
+      if (cached) {
+        return res.json({ ...cached, linked: true, cached: true });
+      }
+    }
+
+    const inflowStreams: RecurringStreamPayload[] = [];
+    const outflowStreams: RecurringStreamPayload[] = [];
+    const seenInflow = new Set<string>();
+    const seenOutflow = new Set<string>();
+
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    for (const item of items) {
+      try {
+        const request: TransactionsRecurringGetRequest = { access_token: item.access_token };
+        const response = await client.transactionsRecurringGet(request);
+        const inflow = response.data.inflow_streams ?? [];
+        const outflow = response.data.outflow_streams ?? [];
+
+        for (const s of inflow) {
+          if (seenInflow.has(s.stream_id)) continue;
+          seenInflow.add(s.stream_id);
+          const nextDate = s.predicted_next_date;
+          if (!nextDate) continue;
+          const [y, m, d] = nextDate.split('-').map(Number);
+          if (y !== currentYear || m !== currentMonth + 1) continue;
+          const amount = s.last_amount?.amount != null ? Math.abs(Number(s.last_amount.amount)) : (s.average_amount?.amount != null ? Math.abs(Number(s.average_amount.amount)) : 0);
+          const iso = s.last_amount?.iso_currency_code ?? s.average_amount?.iso_currency_code ?? null;
+          inflowStreams.push({
+            stream_id: s.stream_id,
+            name: s.merchant_name || s.description || 'Deposit',
+            amount,
+            day: d,
+            iso_currency_code: iso,
+          });
+        }
+
+        for (const s of outflow) {
+          if (seenOutflow.has(s.stream_id)) continue;
+          seenOutflow.add(s.stream_id);
+          const nextDate = s.predicted_next_date;
+          if (!nextDate) continue;
+          const [y, m, d] = nextDate.split('-').map(Number);
+          if (y !== currentYear || m !== currentMonth + 1) continue;
+          const amount = s.last_amount?.amount != null ? Math.abs(Number(s.last_amount.amount)) : (s.average_amount?.amount != null ? Math.abs(Number(s.average_amount.amount)) : 0);
+          const iso = s.last_amount?.iso_currency_code ?? s.average_amount?.iso_currency_code ?? null;
+          outflowStreams.push({
+            stream_id: s.stream_id,
+            name: s.merchant_name || s.description || 'Payment',
+            amount,
+            day: d,
+            iso_currency_code: iso,
+          });
+        }
+      } catch (itemErr: unknown) {
+        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
+        const errorCode = err.response?.data?.error_code;
+        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') continue;
+        if (errorCode === 'PRODUCTS_NOT_SUPPORTED' || errorCode === 'PRODUCT_NOT_READY') continue;
+        throw itemErr;
+      }
+    }
+
+    const payload = { inflowStreams, outflowStreams };
+    if (cacheService) await cacheService.set(cacheKey, payload, ttl);
+    return res.json({ ...payload, linked: true, cached: false });
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: unknown }; message?: string };
+    console.error('Plaid recurring-transactions error:', err.response?.data ?? err.message);
+    res.status(500).json({
+      error: 'Failed to get recurring transactions',
+      message: err.message ?? 'Unknown error',
+    });
+  }
+});
+
 /**
  * POST /api/plaid/disconnect
  * Remove one or all linked Plaid items for a wallet and invalidate balance cache.
@@ -352,7 +486,10 @@ router.post('/disconnect', async (req: Request, res: Response) => {
       accessTokenStore.delete(key);
     }
     const cacheService = await getCacheService();
-    if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
+    if (cacheService) {
+      await cacheService.del(CacheKeys.plaidBalances(key));
+      await cacheService.del(CacheKeys.plaidRecurringTransactions(key));
+    }
     res.json({ success: true });
   } catch (error: unknown) {
     console.error('Plaid disconnect error:', error);

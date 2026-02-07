@@ -654,6 +654,41 @@ export async function disconnectPlaid(
   return response.data;
 }
 
+/** Recurring stream from Plaid /transactions/recurring/get (normalized by server) */
+export interface RecurringStream {
+  stream_id: string;
+  name: string;
+  amount: number;
+  day: number;
+  iso_currency_code: string | null;
+}
+
+export interface PlaidRecurringResponse {
+  inflowStreams: RecurringStream[];
+  outflowStreams: RecurringStream[];
+  linked: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get recurring transaction streams (inflow = deposits, outflow = subscriptions/expenses).
+ * Server caches responses; pass refresh: true to force a fresh Plaid call.
+ * Only call when user has linked accounts to avoid unnecessary requests.
+ */
+export async function getPlaidRecurringTransactions(
+  walletAddress: string,
+  options?: { refresh?: boolean }
+): Promise<PlaidRecurringResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.refresh ? '&refresh=1' : '';
+  const response = await apiRequest<PlaidRecurringResponse>(
+    `/api/plaid/recurring-transactions?walletAddress=${encoded}${qs}`
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { inflowStreams: [], outflowStreams: [], linked: false };
+}
+
 /**
  * Bridge: get URL to open Bridge funding flow (ACH/wire) with wallet, amount, destination currency and network
  */
