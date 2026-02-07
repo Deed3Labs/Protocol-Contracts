@@ -549,9 +549,6 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
                         <p className="text-sm text-zinc-500 dark:text-zinc-400">
                           Your connected accounts. Balances are shown in the app&apos;s cash balance.
                         </p>
-                        <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                          Tip: In Plaid, select every account you want (checking, savings, credit card, investment). If some are missing, disconnect and link again.
-                        </p>
                         <div className="space-y-2">
                           <p className="text-xs font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 px-1">
                             Connected accounts

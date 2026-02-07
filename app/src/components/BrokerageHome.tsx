@@ -1025,9 +1025,6 @@ export default function BrokerageHome() {
                     </div>
                     {bankLinked && bankAccounts.length > 0 && (
                       <>
-                        <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
-                          Missing a credit card or investment account? Disconnect this institution and link again—then in Plaid, select every account you want. The list updates after re-linking.
-                        </p>
                         <div className="flex items-center justify-between gap-2 mt-3">
                         <Select
                           value={accountSort}
