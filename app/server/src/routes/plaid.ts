@@ -95,9 +95,11 @@ router.post('/link-token', async (req: Request, res: Response) => {
       language: 'en',
       country_codes: [CountryCode.Us],
       user: { client_user_id: walletAddress.toLowerCase() },
-      // Auth for balance; Transactions for recurring; Liabilities for credit cards; Investments for brokerage holdings.
-      // Required products ensure the Item is created with them so data is available (optional_products can leave them uninitialized).
-      products: [Products.Auth, Products.Transactions, Products.Liabilities, Products.Investments],
+      // Auth for balance/account numbers; Transactions for recurring streams (Upcoming Transactions).
+      // Liabilities and Investments as optional: users see more institutions (any that support Auth + Transactions).
+      // If an institution supports them and the user selects credit/investment accounts, we get that data; otherwise we may get PRODUCT_NOT_READY for those.
+      products: [Products.Auth, Products.Transactions],
+      optional_products: [Products.Liabilities, Products.Investments],
       // When account_filters is set, any type not listed is omitted from Link. Include depository,
       // credit, and investment so users can select bank, credit card, and brokerage/investment accounts.
       account_filters: {
