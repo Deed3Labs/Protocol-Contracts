@@ -15,6 +15,7 @@ import {
   type TransactionsGetRequest,
   type InvestmentsHoldingsGetRequest,
   type InvestmentsRefreshRequest,
+  type LiabilitiesGetRequest,
 } from 'plaid';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 
@@ -96,8 +97,9 @@ router.post('/link-token', async (req: Request, res: Response) => {
       user: { client_user_id: walletAddress.toLowerCase() },
       // Auth for balance/account numbers; Transactions for recurring streams (Upcoming Transactions)
       products: [Products.Auth, Products.Transactions],
-      // Optional: allow brokerage/investment accounts when institution supports them (no restriction on Link)
-      optional_products: [Products.Investments],
+      // Optional: Investments for brokerage holdings; Liabilities for credit card (and loan) data
+      // Credit cards do not appear in /accounts/balance/get; they require /liabilities/get (Liabilities product)
+      optional_products: [Products.Investments, Products.Liabilities],
       // When account_filters is set, any type not listed is omitted from Link. Include depository,
       // credit, and investment so users can select bank, credit card, and brokerage/investment accounts.
       account_filters: {
@@ -306,6 +308,45 @@ router.get('/balances', async (req: Request, res: Response) => {
         if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
           // This institution needs re-link; drop it and continue with others
           console.warn('Plaid item invalid, removing:', item.item_id, err.response?.data ?? err.message);
+          continue;
+        }
+        throw itemErr;
+      }
+    }
+
+    // Credit card (and other liability) accounts are not returned by /accounts/balance/get.
+    // Fetch them via /liabilities/get (Liabilities product) and merge into the account list.
+    for (const item of items) {
+      try {
+        const liabRequest: LiabilitiesGetRequest = { access_token: item.access_token };
+        const liabResponse = await client.liabilitiesGet(liabRequest);
+        const liabilityAccounts = liabResponse.data.accounts ?? [];
+        const creditLiabs = liabResponse.data.liabilities?.credit ?? [];
+        const accountById = new Map(liabilityAccounts.map((a) => [a.account_id, a]));
+        for (const cred of creditLiabs) {
+          const accId = cred.account_id;
+          if (!accId || seenAccountKeys.has(accId)) continue;
+          seenAccountKeys.add(accId);
+          const acc = accountById.get(accId);
+          const name = acc?.name ?? 'Credit card';
+          const mask = acc?.mask ?? undefined;
+          const current = cred.last_statement_balance ?? null;
+          // Do not add credit balance to totalBankBalance (that is for depository/cash only)
+          accountList.push({
+            account_id: accId,
+            name,
+            mask,
+            current,
+            available: null,
+            item_id: item.item_id,
+            type: 'credit',
+            subtype: 'credit card',
+          });
+        }
+      } catch (itemErr: unknown) {
+        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
+        const code = err.response?.data?.error_code;
+        if (code === 'PRODUCT_NOT_READY' || code === 'ITEM_LOGIN_REQUIRED' || code === 'INVALID_ACCESS_TOKEN') {
           continue;
         }
         throw itemErr;
