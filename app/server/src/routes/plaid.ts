@@ -5,6 +5,9 @@ import {
   PlaidEnvironments,
   Products,
   CountryCode,
+  DepositoryAccountSubtype,
+  CreditAccountSubtype,
+  InvestmentAccountSubtype,
   type LinkTokenCreateRequest,
   type ItemPublicTokenExchangeRequest,
   type AccountsBalanceGetRequest,
@@ -95,6 +98,29 @@ router.post('/link-token', async (req: Request, res: Response) => {
       products: [Products.Auth, Products.Transactions],
       // Optional: allow brokerage/investment accounts when institution supports them (no restriction on Link)
       optional_products: [Products.Investments],
+      // When account_filters is set, any type not listed is omitted from Link. Include depository,
+      // credit, and investment so users can select bank, credit card, and brokerage/investment accounts.
+      account_filters: {
+        depository: {
+          account_subtypes: [
+            DepositoryAccountSubtype.Checking,
+            DepositoryAccountSubtype.Savings,
+            DepositoryAccountSubtype.CashManagement,
+          ],
+        },
+        credit: {
+          account_subtypes: [CreditAccountSubtype.CreditCard],
+        },
+        investment: {
+          account_subtypes: [
+            InvestmentAccountSubtype.Brokerage,
+            InvestmentAccountSubtype.Ira,
+            InvestmentAccountSubtype._401k,
+            InvestmentAccountSubtype._403B,
+            InvestmentAccountSubtype._457b,
+          ],
+        },
+      },
     };
 
     const response = await client.linkTokenCreate(request);
