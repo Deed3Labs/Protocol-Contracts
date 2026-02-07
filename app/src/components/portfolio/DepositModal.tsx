@@ -4,6 +4,7 @@ import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2,
 import { useAppKitAccount } from '@reown/appkit/react';
 import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken, type BankAccountBalance } from '@/utils/apiClient';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { PLAID_OAUTH_KEYS } from '@/pages/PlaidOAuthPage';
 
 function formatAccountTypeLabel(account: BankAccountBalance): string {
   const type = (account.type ?? '').toLowerCase();
@@ -27,6 +28,7 @@ declare global {
     Plaid?: {
       create: (config: {
         token: string;
+        receivedRedirectUri?: string;
         onSuccess: (public_token: string) => void;
         onExit?: (err: unknown, metadata: unknown) => void;
       }) => { open: () => void };
@@ -339,16 +341,24 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
     setIsLoadingLinkToken(true);
     setBankError(null);
     try {
-      const linkTokenRes = await getPlaidLinkToken(address);
+      const redirectUri = `${window.location.origin}/plaid-oauth`;
+      const linkTokenRes = await getPlaidLinkToken(address, redirectUri);
       if (!linkTokenRes?.link_token) {
         throw new Error('Could not get link token. Plaid may not be configured.');
       }
+      // Store for OAuth callback page (e.g. Chase redirect flow)
+      sessionStorage.setItem(PLAID_OAUTH_KEYS.linkToken, linkTokenRes.link_token);
+      sessionStorage.setItem(PLAID_OAUTH_KEYS.wallet, address);
+      sessionStorage.setItem(PLAID_OAUTH_KEYS.returnPath, window.location.pathname || '/');
       await loadPlaidScript();
       if (!window.Plaid) throw new Error('Plaid Link is not available');
       const handler = window.Plaid.create({
         token: linkTokenRes.link_token,
         onSuccess: async (public_token: string) => {
           plaidSuccessFiredRef.current = true;
+          sessionStorage.removeItem(PLAID_OAUTH_KEYS.linkToken);
+          sessionStorage.removeItem(PLAID_OAUTH_KEYS.wallet);
+          sessionStorage.removeItem(PLAID_OAUTH_KEYS.returnPath);
           const exchanged = await exchangePlaidToken(address, public_token);
           if (exchanged?.success) {
             setBankError(null);

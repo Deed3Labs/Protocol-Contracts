@@ -82,7 +82,7 @@ router.post('/link-token', async (req: Request, res: Response) => {
       });
     }
 
-    const { walletAddress } = req.body as { walletAddress?: string };
+    const { walletAddress, redirectUri } = req.body as { walletAddress?: string; redirectUri?: string };
     if (!walletAddress || typeof walletAddress !== 'string') {
       return res.status(400).json({
         error: 'Missing walletAddress',
@@ -95,6 +95,8 @@ router.post('/link-token', async (req: Request, res: Response) => {
       language: 'en',
       country_codes: [CountryCode.Us],
       user: { client_user_id: walletAddress.toLowerCase() },
+      // Required for OAuth institutions (e.g. Chase): redirect URI must be allowlisted in Plaid Dashboard
+      ...(redirectUri && typeof redirectUri === 'string' && redirectUri.startsWith('http') && { redirect_uri: redirectUri }),
       // Auth for balance/account numbers; Transactions for recurring streams (Upcoming Transactions)
       products: [Products.Auth, Products.Transactions],
       // Optional: Investments for brokerage holdings; Liabilities for credit card (and loan) data
