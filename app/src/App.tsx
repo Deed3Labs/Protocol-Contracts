@@ -139,7 +139,8 @@ function App() {
                     
                     {/* Share Target - Public */}
                     <Route path="/share" element={<ShareTarget />} />
-                    {/* Plaid OAuth callback - Public (user returns here after bank OAuth e.g. Chase) */}
+                    
+                    {/* Plaid OAuth redirect - Public (user returns here after bank OAuth e.g. Chase) */}
                     <Route path="/plaid-oauth" element={<PlaidOAuthPage />} />
                     
                     {/* App Routes wrapped in PullToRefresh Layout - Protected */}

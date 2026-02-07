@@ -4,7 +4,7 @@ import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2,
 import { useAppKitAccount } from '@reown/appkit/react';
 import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken, type BankAccountBalance } from '@/utils/apiClient';
 import { usePortfolio } from '@/context/PortfolioContext';
-import { PLAID_OAUTH_KEYS } from '@/pages/PlaidOAuthPage';
+import { PLAID_LINK_TOKEN_KEY, PLAID_WALLET_KEY } from '@/pages/PlaidOAuthPage';
 
 function formatAccountTypeLabel(account: BankAccountBalance): string {
   const type = (account.type ?? '').toLowerCase();
@@ -346,19 +346,17 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
       if (!linkTokenRes?.link_token) {
         throw new Error('Could not get link token. Plaid may not be configured.');
       }
-      // Store for OAuth callback page (e.g. Chase redirect flow)
-      sessionStorage.setItem(PLAID_OAUTH_KEYS.linkToken, linkTokenRes.link_token);
-      sessionStorage.setItem(PLAID_OAUTH_KEYS.wallet, address);
-      sessionStorage.setItem(PLAID_OAUTH_KEYS.returnPath, window.location.pathname || '/');
       await loadPlaidScript();
       if (!window.Plaid) throw new Error('Plaid Link is not available');
+      // Store for OAuth redirect page (e.g. Chase): when user returns to /plaid-oauth we reinitialize Link with receivedRedirectUri
+      localStorage.setItem(PLAID_LINK_TOKEN_KEY, linkTokenRes.link_token);
+      localStorage.setItem(PLAID_WALLET_KEY, address);
       const handler = window.Plaid.create({
         token: linkTokenRes.link_token,
         onSuccess: async (public_token: string) => {
           plaidSuccessFiredRef.current = true;
-          sessionStorage.removeItem(PLAID_OAUTH_KEYS.linkToken);
-          sessionStorage.removeItem(PLAID_OAUTH_KEYS.wallet);
-          sessionStorage.removeItem(PLAID_OAUTH_KEYS.returnPath);
+          localStorage.removeItem(PLAID_LINK_TOKEN_KEY);
+          localStorage.removeItem(PLAID_WALLET_KEY);
           const exchanged = await exchangePlaidToken(address, public_token);
           if (exchanged?.success) {
             setBankError(null);

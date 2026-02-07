@@ -575,7 +575,7 @@ export async function createStripeOnrampSession(params: {
 
 /**
  * Plaid: create link token for Plaid Link (bank linking).
- * Pass redirectUri for OAuth institutions (e.g. Chase); must be allowlisted in Plaid Dashboard.
+ * redirectUri: required for OAuth institutions (e.g. Chase). e.g. window.location.origin + '/plaid-oauth'
  */
 export async function getPlaidLinkToken(
   walletAddress: string,
@@ -583,7 +583,10 @@ export async function getPlaidLinkToken(
 ): Promise<{ link_token: string } | null> {
   const response = await apiRequest<{ link_token: string }>('/api/plaid/link-token', {
     method: 'POST',
-    body: JSON.stringify({ walletAddress, ...(redirectUri && { redirectUri }) }),
+    body: JSON.stringify({
+      walletAddress,
+      ...(redirectUri ? { redirect_uri: redirectUri } : {}),
+    }),
   });
   if (response.error || !response.data) return null;
   return response.data;
