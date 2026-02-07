@@ -170,7 +170,9 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
     existing.push({ access_token: accessToken, item_id: itemId });
     accessTokenStore.set(key, existing);
 
-    // Invalidate balance cache so next fetch (or client refresh) returns all linked accounts
+    // Invalidate balance cache so the next balances request is fresh (avoids stale list after re-link).
+    // Re-linking with Liabilities in the link token is required for credit cards to appear; this ensures
+    // (1) old Items without Liabilities are fixed by re-link and (2) cache doesn't serve pre–re-link data.
     const cacheService = await getCacheService();
     if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
 
