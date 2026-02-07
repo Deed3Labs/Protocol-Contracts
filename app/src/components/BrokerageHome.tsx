@@ -19,6 +19,7 @@ import { useDeedName } from '@/hooks/useDeedName';
 import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
 import { getNetworkByChainId } from '@/config/networks';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { useRecurringTransactions } from '@/hooks/useRecurringTransactions';
 import { LargePriceWheel } from './PriceWheel';
 import type { MultichainDeedNFT } from '@/hooks/useMultichainDeedNFTs';
 import type { BankAccountBalance } from '@/utils/apiClient';
@@ -524,6 +525,9 @@ export default function BrokerageHome() {
     refreshBankBalance,
   } = usePortfolio();
   const bankLinked = portfolioCashBalance.bankLinked ?? false;
+
+  // Plaid recurring streams – shared with UpcomingTransactions (React Query dedupes by key); no extra API call
+  const { inflowStreams, outflowStreams } = useRecurringTransactions(address ?? undefined);
   
   // Portfolio history tracking
   const { addSnapshot, getSnapshotsForRange, fetchAndMergeHistory } = usePortfolioHistory();
@@ -881,7 +885,13 @@ export default function BrokerageHome() {
           />
         );
       case 'Income':
-        return <IncomeView totalValue={totalValue} transactions={walletTransactions} />;
+        return (
+          <IncomeView
+            totalValue={totalValue}
+            transactions={walletTransactions}
+            recurringStreams={{ inflowStreams, outflowStreams }}
+          />
+        );
       case 'Account value':
         return (
           <AccountValueView 

@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, Info, ChevronRight, Settings, Share2 } from '
 import InteractiveChart from './InteractiveChart';
 import IncomeChart from './IncomeChart';
 import { isStablecoin } from '@/utils/tokenUtils';
+import type { RecurringStream } from '@/utils/apiClient';
 
 interface ChartPoint {
   time: number;
@@ -49,22 +50,14 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
   const timeRanges = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', 'All'];
   const periodLabels: Record<string, string> = { '1D': 'today', '1W': 'past week', '1M': 'past month', '3M': 'past quarter', '6M': 'past 6 months', 'YTD': 'year to date', '1Y': 'past year', 'All': 'all time' };
   
-  // Memoize buying power calculation - only recalculate when holdings or balance changes
-  // Buying power = cash balance (stablecoins) + crypto tokens + NFTs
-  // Note: balanceUSD is cash balance (stablecoins only), native token balance should be included separately if needed
+  // Memoize buying power – cash + crypto + NFTs only (exclude equity/RWA; those aren’t spendable in-app)
   const buyingPower = useMemo(() => {
     if (!holdings || holdings.length === 0) return balanceUSD || 0;
-    
-    // Calculate crypto tokens (non-stablecoin tokens) and NFTs
     const cryptoAndNFTValue = holdings.reduce((sum, h) => {
-      // Exclude stablecoins (they're already in cash balance)
-      if (h.type === 'token' && isStablecoin(h.asset_symbol)) {
-        return sum;
-      }
+      if (h.type === 'equity' || h.type === 'rwa') return sum;
+      if (h.type === 'token' && isStablecoin(h.asset_symbol)) return sum;
       return sum + (h.valueUSD || 0);
     }, 0);
-    
-    // Buying power = cash (stablecoins) + crypto + NFTs
     return (balanceUSD || 0) + cryptoAndNFTValue;
   }, [holdings, balanceUSD]);
   
@@ -138,56 +131,69 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
   );
 }
 
-// Income Tab View
+// Income Tab View – combines on-chain transactions + Plaid recurring streams (no extra fetch; reuse existing data)
 interface IncomeViewProps {
   totalValue: number;
   transactions?: WalletTransaction[];
+  /** Plaid recurring inflow/outflow streams – merged into monthly income chart (same data as Upcoming Transactions) */
+  recurringStreams?: { inflowStreams: RecurringStream[]; outflowStreams: RecurringStream[] };
 }
 
-export function IncomeView({ totalValue: _totalValue, transactions }: IncomeViewProps) {
+export function IncomeView({ totalValue: _totalValue, transactions, recurringStreams }: IncomeViewProps) {
   const years = ['Next 12M', '2026', '2025', '2024', '2023', '2022'];
   const [selectedYear, setSelectedYear] = useState('2026');
   
-  // Store previous transactions to detect changes
   const prevTransactionsRef = useRef<WalletTransaction[] | undefined>(transactions);
+  const prevRecurringRef = useRef<IncomeViewProps['recurringStreams']>(recurringStreams);
   
-  // Only recalculate if transactions actually changed
   useEffect(() => {
     if (JSON.stringify(transactions) !== JSON.stringify(prevTransactionsRef.current)) {
       prevTransactionsRef.current = transactions;
     }
-  }, [transactions]);
+    if (JSON.stringify(recurringStreams) !== JSON.stringify(prevRecurringRef.current)) {
+      prevRecurringRef.current = recurringStreams;
+    }
+  }, [transactions, recurringStreams]);
   
-  // Memoize income calculation - only recalculate when transactions or year changes
   const getIncomeData = useCallback((year: string) => {
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     const currentYear = new Date().getFullYear();
     const targetYear = year === 'Next 12M' ? currentYear + 1 : parseInt(year);
     
-    // Group transactions by month
     const monthlyData = months.map(month => ({ month, inflow: 0, outflow: 0 }));
     
+    // On-chain: deposit/mint = inflow, withdraw/sell = outflow
     if (transactions && transactions.length > 0) {
       transactions.forEach(tx => {
         if (!tx.timestamp) return;
         const txDate = new Date(tx.timestamp);
         const txYear = txDate.getFullYear();
-        
-        if (txYear === targetYear || (year === 'Next 12M' && txYear >= currentYear)) {
-          const monthIndex = txDate.getMonth();
-          if (monthIndex >= 0 && monthIndex < 12) {
-            if (tx.type === 'deposit' || tx.type === 'mint') {
-              monthlyData[monthIndex].inflow += tx.amount;
-            } else if (tx.type === 'withdraw' || tx.type === 'sell') {
-              monthlyData[monthIndex].outflow += tx.amount;
-            }
+        if (txYear !== targetYear && !(year === 'Next 12M' && txYear >= currentYear)) return;
+        const monthIndex = txDate.getMonth();
+        if (monthIndex >= 0 && monthIndex < 12) {
+          if (tx.type === 'deposit' || tx.type === 'mint') {
+            monthlyData[monthIndex].inflow += tx.amount;
+          } else if (tx.type === 'withdraw' || tx.type === 'sell') {
+            monthlyData[monthIndex].outflow += tx.amount;
           }
         }
       });
     }
     
+    // Plaid recurring: add monthly totals to each month (streams are per-month; day = day of month)
+    if (recurringStreams) {
+      const recurringInflowPerMonth =
+        recurringStreams.inflowStreams?.reduce((sum, s) => sum + (s.amount ?? 0), 0) ?? 0;
+      const recurringOutflowPerMonth =
+        recurringStreams.outflowStreams?.reduce((sum, s) => sum + Math.abs(s.amount ?? 0), 0) ?? 0;
+      for (let i = 0; i < 12; i++) {
+        monthlyData[i].inflow += recurringInflowPerMonth;
+        monthlyData[i].outflow += recurringOutflowPerMonth;
+      }
+    }
+    
     return monthlyData;
-  }, [transactions]);
+  }, [transactions, recurringStreams]);
   
   const incomeData = useMemo(() => getIncomeData(selectedYear), [getIncomeData, selectedYear]);
   const totalIncome = useMemo(() => incomeData.reduce((acc: number, curr: { month: string; inflow: number; outflow: number }) => acc + curr.inflow, 0), [incomeData]);
@@ -358,36 +364,39 @@ export function AllocationView({ totalValue, holdings, balanceUSD }: AllocationV
     }
   }, [totalValue, holdings, balanceUSD]);
   
-  // Memoize allocations calculation - only recalculate when holdings or balance changes
-  // Separate stablecoins (cash) from crypto tokens
-  // Crypto includes native tokens (ETH, BASE, etc.) and non-stablecoin ERC20 tokens
+  // Memoize allocations – crypto, NFTs, cash, equities (Plaid brokerage), RWAs (T-Deeds)
   const cryptoValue = useMemo(() => {
     if (!holdings || holdings.length === 0) return 0;
-    // Filter to only token holdings (native + ERC20) and exclude stablecoins
-    // RWAs and NFTs are not included in crypto value
-    const tokenHoldings = holdings.filter(h => 
+    const tokenHoldings = holdings.filter(h =>
       h.type === 'token' && !isStablecoin(h.asset_symbol)
     );
-    // Use balanceUSD (from PortfolioContext) or valueUSD (from Holding interface) - both should work
     return tokenHoldings.reduce((sum, h) => sum + ((h as any).balanceUSD || (h as any).valueUSD || 0), 0);
   }, [holdings]);
-  const nftValue = useMemo(() => 
+  const nftValue = useMemo(() =>
     holdings?.filter(h => h.type === 'nft').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0,
     [holdings]
   );
-  // Cash value is stablecoins only, passed as balanceUSD
+  const equityValue = useMemo(() =>
+    holdings?.filter(h => h.type === 'equity').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0,
+    [holdings]
+  );
+  const rwaValue = useMemo(() =>
+    holdings?.filter(h => h.type === 'rwa').reduce((sum, h) => sum + (h.valueUSD || 0), 0) || 0,
+    [holdings]
+  );
   const cashValue = useMemo(() => balanceUSD || 0, [balanceUSD]);
-  
+
   const rawAllocations = useMemo(() => [
-    { name: 'Equities', value: 0, color: 'bg-white dark:bg-white bg-zinc-900', hasInfo: false },
+    { name: 'Equities', value: equityValue, color: 'bg-indigo-500', hasInfo: false },
     { name: 'Options', value: 0, color: 'bg-blue-500', hasInfo: false },
     { name: 'Bonds', value: 0, color: 'bg-blue-500', hasInfo: false },
     { name: 'Crypto', value: cryptoValue, color: 'bg-blue-500', hasInfo: false },
+    { name: 'RWAs', value: rwaValue, color: 'bg-amber-500', hasInfo: false },
     { name: 'NFTs', value: nftValue, color: 'bg-purple-500', hasInfo: false },
     { name: 'High-Yield Cash', value: 0, color: 'bg-blue-500', hasInfo: false },
     { name: 'Cash', value: cashValue, color: 'bg-green-500', hasInfo: true },
     { name: 'Margin Usage', value: 0, color: 'bg-zinc-600', hasInfo: false },
-  ], [cryptoValue, nftValue, cashValue]);
+  ], [equityValue, cryptoValue, rwaValue, nftValue, cashValue]);
 
   // Calculate the actual total from allocations to ensure percentages total 100%
   const actualTotal = useMemo(() => {
