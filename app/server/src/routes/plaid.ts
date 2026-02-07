@@ -112,13 +112,7 @@ router.post('/link-token', async (req: Request, res: Response) => {
           account_subtypes: [CreditAccountSubtype.CreditCard],
         },
         investment: {
-          account_subtypes: [
-            InvestmentAccountSubtype.Brokerage,
-            InvestmentAccountSubtype.Ira,
-            InvestmentAccountSubtype._401k,
-            InvestmentAccountSubtype._403B,
-            InvestmentAccountSubtype._457b,
-          ],
+          account_subtypes: [InvestmentAccountSubtype.All],
         },
       },
     };

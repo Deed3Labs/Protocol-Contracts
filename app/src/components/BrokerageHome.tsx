@@ -1012,7 +1012,11 @@ export default function BrokerageHome() {
                       </div>
                     </div>
                     {bankLinked && bankAccounts.length > 0 && (
-                      <div className="flex items-center justify-between gap-2 mt-3">
+                      <>
+                        <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
+                          Missing credit or investment? Disconnect and link again, then select every account you want in Plaid.
+                        </p>
+                        <div className="flex items-center justify-between gap-2 mt-3">
                         <Select
                           value={accountSort}
                           onValueChange={(value: 'Balance (high)' | 'Balance (low)' | 'Name (A–Z)') => setAccountSort(value)}
@@ -1035,6 +1039,7 @@ export default function BrokerageHome() {
                           Refresh
                         </button>
                       </div>
+                      </>
                     )}
                   </div>
 
