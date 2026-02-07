@@ -689,6 +689,34 @@ export async function getPlaidRecurringTransactions(
   return { inflowStreams: [], outflowStreams: [], linked: false };
 }
 
+/** Spend-by-day: day of month (1–31) -> total outflows for that day */
+export type SpendingByDay = Record<number, number>;
+
+export interface PlaidSpendResponse {
+  spendingByDay: SpendingByDay;
+  totalSpent: number;
+  linked: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get spend this month (outflows by day) for SpendTracker.
+ * Server caches responses; pass refresh: true to bypass cache.
+ */
+export async function getPlaidSpend(
+  walletAddress: string,
+  options?: { refresh?: boolean }
+): Promise<PlaidSpendResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.refresh ? '&refresh=1' : '';
+  const response = await apiRequest<PlaidSpendResponse>(
+    `/api/plaid/transactions/spend?walletAddress=${encoded}${qs}`
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { spendingByDay: {}, totalSpent: 0, linked: false };
+}
+
 /**
  * Bridge: get URL to open Bridge funding flow (ACH/wire) with wallet, amount, destination currency and network
  */

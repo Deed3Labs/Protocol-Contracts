@@ -355,4 +355,8 @@ export const CacheKeys = {
   // Plaid recurring transactions (inflow/outflow streams) - reduces Plaid API usage
   plaidRecurringTransactions: (walletAddress: string) =>
     `plaid_recurring_tx:${walletAddress.toLowerCase()}`,
+
+  // Plaid spend this month (outflows by day) - reduces Plaid API usage
+  plaidSpend: (walletAddress: string) =>
+    `plaid_spend:${walletAddress.toLowerCase()}`,
 };

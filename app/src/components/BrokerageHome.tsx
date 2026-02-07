@@ -954,7 +954,7 @@ export default function BrokerageHome() {
               <div className="flex flex-col gap-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Row 1 - Col 1: Spend Tracker */}
-                  <SpendTracker />
+                  <SpendTracker walletAddress={address ?? undefined} />
                   {/* Row 1 - Col 2: Upcoming Transactions (Plaid recurring inflows/outflows) */}
                   <UpcomingTransactions walletAddress={address ?? undefined} />
                 </div>
