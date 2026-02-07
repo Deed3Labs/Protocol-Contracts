@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Music, Tv, Home, ShoppingBag, Gamepad2, Cloud, Video, TrendingUp, Calendar, Bell } from "lucide-react";
+import { Plus, CreditCard, TrendingUp, Calendar, Bell, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRecurringTransactions } from "@/hooks/useRecurringTransactions";
 
 interface Subscription {
   id: string;
@@ -11,18 +12,16 @@ interface Subscription {
   day: number;
 }
 
-// Mock subscription data
-const mockSubscriptions: Subscription[] = [
-  { id: "1", name: "Spotify", icon: <Music className="w-2.5 h-2.5" />, color: "bg-green-500", amount: 10.99, day: 1 },
-  { id: "2", name: "Netflix", icon: <Tv className="w-2.5 h-2.5" />, color: "bg-red-500", amount: 15.99, day: 1 },
-  { id: "3", name: "Home Insurance", icon: <Home className="w-2.5 h-2.5" />, color: "bg-blue-400", amount: 2300, day: 5 },
-  { id: "4", name: "Amazon Prime", icon: <ShoppingBag className="w-2.5 h-2.5" />, color: "bg-purple-500", amount: 14.99, day: 8 },
-  { id: "5", name: "Xbox Game Pass", icon: <Gamepad2 className="w-2.5 h-2.5" />, color: "bg-green-600", amount: 16.99, day: 8 },
-  { id: "6", name: "iCloud", icon: <Cloud className="w-2.5 h-2.5" />, color: "bg-gray-400", amount: 2.99, day: 12 },
-  { id: "7", name: "YouTube Premium", icon: <Video className="w-2.5 h-2.5" />, color: "bg-red-600", amount: 13.99, day: 15 },
-  { id: "8", name: "Disney+", icon: <Tv className="w-2.5 h-2.5" />, color: "bg-blue-600", amount: 10.99, day: 8 },
-  { id: "9", name: "HBO Max", icon: <Tv className="w-2.5 h-2.5" />, color: "bg-purple-700", amount: 15.99, day: 22 },
-  { id: "10", name: "Gym", icon: <Home className="w-2.5 h-2.5" />, color: "bg-orange-500", amount: 49.99, day: 28 },
+interface RecurringDeposit {
+  id: string;
+  name: string;
+  amount: number;
+  day: number;
+}
+
+const SUBSCRIPTION_COLORS = [
+  "bg-red-500", "bg-blue-400", "bg-purple-500", "bg-green-600", "bg-orange-500",
+  "bg-gray-400", "bg-red-600", "bg-blue-600", "bg-purple-700",
 ];
 
 const formatAmount = (amount: number): string => {
@@ -32,19 +31,38 @@ const formatAmount = (amount: number): string => {
   return `$${amount.toFixed(0)}`;
 };
 
-const getDaySubscriptions = (day: number): Subscription[] => {
-  return mockSubscriptions.filter((sub) => sub.day === day);
-};
-
-const getDayTotal = (day: number): number => {
-  return getDaySubscriptions(day).reduce((sum, sub) => sum + sub.amount, 0);
-};
-
 export interface UpcomingTransactionsProps {
   className?: string;
+  /** Wallet address for Plaid recurring streams; when set, fetches real data. Omit to show empty. */
+  walletAddress?: string;
 }
 
-export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
+export function UpcomingTransactions({ className, walletAddress }: UpcomingTransactionsProps) {
+  const { inflowStreams, outflowStreams, linked, isLoading, refresh } = useRecurringTransactions(walletAddress);
+
+  const subscriptions: Subscription[] = outflowStreams.map((s, i) => ({
+    id: s.stream_id,
+    name: s.name,
+    icon: <CreditCard className="w-2.5 h-2.5" />,
+    color: SUBSCRIPTION_COLORS[i % SUBSCRIPTION_COLORS.length],
+    amount: s.amount,
+    day: s.day,
+  }));
+
+  const deposits: RecurringDeposit[] = inflowStreams.map((s) => ({
+    id: s.stream_id,
+    name: s.name,
+    amount: s.amount,
+    day: s.day,
+  }));
+
+  const getDaySubscriptions = (day: number): Subscription[] =>
+    subscriptions.filter((sub) => sub.day === day);
+  const getDayDeposits = (day: number): RecurringDeposit[] =>
+    deposits.filter((d) => d.day === day);
+  const getDayTotal = (day: number): number =>
+    getDaySubscriptions(day).reduce((sum, sub) => sum + sub.amount, 0);
+
   const today = new Date();
   const currentDay = today.getDate();
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -57,11 +75,13 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
   const paddingDays = Array.from({ length: startingDayOfWeek }, () => null);
   const allDays = [...paddingDays, ...days];
 
-  const totalUpcoming = mockSubscriptions
+  const totalUpcoming = subscriptions
     .filter((sub) => sub.day >= currentDay)
     .reduce((sum, sub) => sum + sub.amount, 0);
 
-  const upcomingCount = mockSubscriptions.filter((sub) => sub.day >= currentDay).length;
+  const upcomingSubCount = subscriptions.filter((sub) => sub.day >= currentDay).length;
+  const upcomingDepositCount = deposits.filter((d) => d.day >= currentDay).length;
+  const upcomingCount = upcomingSubCount + upcomingDepositCount;
 
   const weekDays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
@@ -81,7 +101,9 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
           <div className="flex items-center gap-1">
             <button
               type="button"
+              onClick={() => refresh()}
               className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              title="Refresh recurring transactions"
             >
               <TrendingUp className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
             </button>
@@ -100,9 +122,13 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
           </div>
         </div>
 
-        {/* Total Amount - matches hero balance font style */}
+        {/* Total Amount - matches hero balance font style (upcoming outflows only) */}
         <p className="text-3xl font-light tracking-tight text-black dark:text-white mb-4">
-          ${totalUpcoming.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {isLoading && linked ? (
+            <span className="text-zinc-400 dark:text-zinc-500">—</span>
+          ) : (
+            `$${totalUpcoming.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          )}
         </p>
 
         {/* Week day headers */}
@@ -128,11 +154,16 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
             }
 
             const subscriptions = getDaySubscriptions(day);
+            const deposits = getDayDeposits(day);
             const total = getDayTotal(day);
             const isToday = day === currentDay;
             const isPast = day < currentDay;
+            const displayDeposits = deposits.slice(0, 2);
             const displaySubs = subscriptions.slice(0, 2);
-            const hasMore = subscriptions.length > 2;
+            const hasMoreDeposits = deposits.length > 2;
+            const hasMoreSubs = subscriptions.length > 2;
+            const hasMore = hasMoreDeposits || hasMoreSubs;
+            const hasAny = deposits.length > 0 || subscriptions.length > 0;
 
             return (
               <div
@@ -154,9 +185,18 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
                   {day}
                 </span>
 
-                {/* Subscription Icons - Overlapping */}
-                {subscriptions.length > 0 && (
+                {/* Recurring deposits (green circle + USD) and subscription icons */}
+                {hasAny && (
                   <div className="flex items-center justify-center -space-x-1.5">
+                    {displayDeposits.map((dep, i) => (
+                      <div
+                        key={dep.id}
+                        className="w-4 h-4 rounded-full flex items-center justify-center text-white border border-black/10 dark:border-white/10 bg-green-500"
+                        style={{ zIndex: displayDeposits.length + displaySubs.length - i }}
+                      >
+                        <DollarSign className="w-2.5 h-2.5" />
+                      </div>
+                    ))}
                     {displaySubs.map((sub, i) => (
                       <div
                         key={sub.id}
@@ -200,8 +240,16 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
           </span>
           <div className="flex items-center gap-2">
             <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">{upcomingCount} upcoming</span>
-            <div className="flex -space-x-1">
-              {mockSubscriptions.slice(0, 3).map((sub, i) => (
+            <div className="flex -space-x-1 items-center">
+              {deposits.length > 0 && (
+                <div
+                  className="w-4 h-4 rounded-full border border-black/10 dark:border-white/10 bg-green-500 flex items-center justify-center"
+                  title="Recurring deposits"
+                >
+                  <DollarSign className="w-2.5 h-2.5 text-white" />
+                </div>
+              )}
+              {subscriptions.slice(0, deposits.length > 0 ? 2 : 3).map((sub, i) => (
                 <div
                   key={sub.id}
                   className={cn(
@@ -211,9 +259,9 @@ export function UpcomingTransactions({ className }: UpcomingTransactionsProps) {
                   style={{ zIndex: 3 - i }}
                 />
               ))}
-              {mockSubscriptions.length > 3 && (
+              {subscriptions.length + (deposits.length > 0 ? 1 : 0) > 3 && (
                 <div className="w-4 h-4 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[8px] text-zinc-600 dark:text-zinc-300 border border-black/10 dark:border-white/10">
-                  +{mockSubscriptions.length - 3}
+                  +{subscriptions.length + (deposits.length > 0 ? 1 : 0) - 3}
                 </div>
               )}
             </div>

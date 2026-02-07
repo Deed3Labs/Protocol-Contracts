@@ -1,21 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { TrendingDown, Calendar, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-// Mock spending data - in reality this would come from props or API
-const generateMockSpending = () => {
-  const today = new Date().getDate();
-  const spending: Record<number, number> = {};
-
-  for (let i = 1; i <= today; i++) {
-    const hasSpending = Math.random() > 0.3;
-    spending[i] = hasSpending ? Math.floor(Math.random() * 1500) : 0;
-  }
-
-  return spending;
-};
-
-const mockSpending = generateMockSpending();
+import { useSpendTransactions } from "@/hooks/useSpendTransactions";
 
 const formatAmount = (amount: number): string => {
   if (amount >= 1000) {
@@ -31,16 +17,21 @@ const getIntensity = (amount: number, maxAmount: number): number => {
 
 export interface SpendTrackerProps {
   className?: string;
+  /** Wallet address for Plaid spend data; when set, fetches real data. Omit to show empty. */
+  walletAddress?: string;
 }
 
-export function SpendTracker({ className }: SpendTrackerProps) {
+export function SpendTracker({ className, walletAddress }: SpendTrackerProps) {
+  const { spendingByDay, totalSpent: totalSpentFromApi, linked, isLoading, refresh } = useSpendTransactions(walletAddress);
+
   const today = new Date();
   const currentDay = today.getDate();
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const monthName = today.toLocaleDateString("en-US", { month: "long" });
 
-  const totalSpent = Object.values(mockSpending).reduce((sum, val) => sum + val, 0);
-  const maxDaySpend = Math.max(...Object.values(mockSpending), 1);
+  const totalSpent = totalSpentFromApi;
+  const dayValues = Object.keys(spendingByDay).map((d) => spendingByDay[Number(d)]).filter((v) => v > 0);
+  const maxDaySpend = dayValues.length > 0 ? Math.max(...dayValues, 1) : 1;
 
   const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const startingDayOfWeek = firstDayOfMonth.getDay();
@@ -66,7 +57,9 @@ export function SpendTracker({ className }: SpendTrackerProps) {
           <div className="flex items-center gap-1">
             <button
               type="button"
+              onClick={() => refresh()}
               className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              title="Refresh spend data"
             >
               <TrendingDown className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
             </button>
@@ -87,7 +80,11 @@ export function SpendTracker({ className }: SpendTrackerProps) {
 
         {/* Total Amount - matches hero balance font style */}
         <p className="text-3xl font-light tracking-tight text-black dark:text-white mb-4">
-          ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {isLoading && linked ? (
+            <span className="text-zinc-400 dark:text-zinc-500">—</span>
+          ) : (
+            `$${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          )}
         </p>
 
         {/* Week day headers */}
@@ -112,7 +109,7 @@ export function SpendTracker({ className }: SpendTrackerProps) {
               );
             }
 
-            const amount = mockSpending[day] || 0;
+            const amount = spendingByDay[day] ?? 0;
             const intensity = getIntensity(amount, maxDaySpend);
             const isPast = day <= currentDay;
             const isToday = day === currentDay;
