@@ -101,15 +101,12 @@ router.post('/link-token', async (req: Request, res: Response) => {
       // Optional: Investments for brokerage holdings; Liabilities for credit card (and loan) data
       // Credit cards do not appear in /accounts/balance/get; they require /liabilities/get (Liabilities product)
       optional_products: [Products.Investments, Products.Liabilities],
-      // When account_filters is set, any type not listed is omitted from Link. Include depository,
-      // credit, and investment so users can select bank, credit card, and brokerage/investment accounts.
+      // When account_filters is set, any type not listed is omitted from Link. Use All for depository
+      // so OAuth institutions (e.g. Chase) don't get "Insufficient Sharing Permissions" when they
+      // return account subtypes we didn't list (e.g. money market, other).
       account_filters: {
         depository: {
-          account_subtypes: [
-            DepositoryAccountSubtype.Checking,
-            DepositoryAccountSubtype.Savings,
-            DepositoryAccountSubtype.CashManagement,
-          ],
+          account_subtypes: [DepositoryAccountSubtype.All],
         },
         credit: {
           account_subtypes: [CreditAccountSubtype.CreditCard],

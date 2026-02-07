@@ -93,9 +93,10 @@ export function PlaidOAuthPage() {
     loadPlaidScript()
       .then(() => {
         if (cancelled || !window.Plaid) return;
+        const receivedUri = window.location.href;
         const handler = window.Plaid.create({
           token: linkToken,
-          receivedRedirectUri: window.location.href,
+          receivedRedirectUri: receivedUri,
           onSuccess: async (public_token: string) => {
             if (cancelled) return;
             setStatus('loading');
@@ -127,7 +128,13 @@ export function PlaidOAuthPage() {
             setMessage(err ? (err instanceof Error ? err.message : 'Connection was not completed.') : 'Connection cancelled.');
           },
         });
-        handler.open();
+        try {
+          handler.open();
+        } catch (e) {
+          if (cancelled) return;
+          setStatus('error');
+          setMessage(e instanceof Error ? e.message : 'Could not open Link. Try again from the app.');
+        }
       })
       .catch((e) => {
         if (cancelled) return;
@@ -159,6 +166,9 @@ export function PlaidOAuthPage() {
         {(status === 'error' || status === 'expired') && (
           <>
             <p className="font-medium text-zinc-900 dark:text-white">{message}</p>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-[280px] mt-2">
+              If you saw &quot;Insufficient Sharing Permissions&quot;, try again and at your bank select <strong>all</strong> requested account types and grant access to account numbers and transaction history.
+            </p>
             <button
               type="button"
               onClick={() => navigate('/', { replace: true })}
