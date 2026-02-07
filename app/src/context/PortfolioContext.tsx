@@ -4,6 +4,7 @@ import { useMultichainBalances } from '@/hooks/useMultichainBalances';
 import { useMultichainActivity } from '@/hooks/useMultichainActivity';
 import { usePortfolioHoldings } from '@/hooks/usePortfolioHoldings';
 import { useBankBalance } from '@/hooks/useBankBalance';
+import { usePlaidInvestmentsHoldings } from '@/hooks/usePlaidInvestmentsHoldings';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { usePageVisibility } from '@/hooks/usePageVisibility';
 import type { MultichainBalance } from '@/hooks/useMultichainBalances';
@@ -17,10 +18,10 @@ interface PortfolioContextType {
   totalBalanceUSD: number;
   previousTotalBalanceUSD: number; // For animations
   
-  // Holdings
+  // Holdings (crypto/NFTs + Plaid investment/brokerage when linked)
   holdings: Array<{
     id: string;
-    type: 'nft' | 'rwa' | 'token'; // 'rwa' for T-Deeds (Real World Assets)
+    type: 'nft' | 'rwa' | 'token' | 'equity'; // 'equity' = Plaid brokerage holdings
     asset_name: string;
     asset_symbol: string;
     balance?: string;
@@ -94,6 +95,13 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     isLoading: bankAccountsLoading,
     refresh: refreshBankBalance,
   } = useBankBalance(address ?? undefined);
+
+  // Plaid investment holdings (brokerage) – merged into portfolio holdings for display
+  const {
+    holdings: plaidInvestmentHoldings,
+    isLoading: plaidInvestmentsLoading,
+    refresh: refreshPlaidInvestments,
+  } = usePlaidInvestmentsHoldings(address ?? undefined);
 
   // Consolidated cash balance: crypto (stablecoins) + bank
   const cashBalance = useMemo(() => {
@@ -175,8 +183,11 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [isConnected, multichainBalances.length]);
   
-  // Holdings are now provided by usePortfolioHoldings hook (optimized)
-  const holdings = portfolioHoldings;
+  // Holdings: portfolio (tokens/NFTs/RWAs) + Plaid investment holdings (brokerage)
+  const holdings = useMemo(
+    () => [...portfolioHoldings, ...plaidInvestmentHoldings],
+    [portfolioHoldings, plaidInvestmentHoldings]
+  );
   
   // Determine loading states
   const balancesLoading = useMemo(() => {
@@ -185,8 +196,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [balancesLoadingFromHook, isConnected, multichainBalances.length, totalBalanceUSD]);
   
   const holdingsLoading = useMemo(() => {
-    return holdingsLoadingFromHook || (isConnected && holdings.length === 0);
-  }, [holdingsLoadingFromHook, isConnected, holdings.length]);
+    return holdingsLoadingFromHook || plaidInvestmentsLoading || (isConnected && holdings.length === 0);
+  }, [holdingsLoadingFromHook, plaidInvestmentsLoading, isConnected, holdings.length]);
   
   const isLoading = balancesLoading || holdingsLoading || activityLoading;
   
@@ -219,8 +230,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       refreshHoldings(),
       refreshActivity(),
       refreshBankBalance(),
+      refreshPlaidInvestments(),
     ]);
-  }, [refreshBalances, refreshHoldings, refreshActivity, refreshBankBalance]);
+  }, [refreshBalances, refreshHoldings, refreshActivity, refreshBankBalance, refreshPlaidInvestments]);
   
   // Reset previous balance when wallet disconnects
   useEffect(() => {

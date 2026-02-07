@@ -359,4 +359,8 @@ export const CacheKeys = {
   // Plaid spend this month (outflows by day) - reduces Plaid API usage
   plaidSpend: (walletAddress: string) =>
     `plaid_spend:${walletAddress.toLowerCase()}`,
+
+  // Plaid investment holdings (per wallet) - reduces Plaid API usage
+  plaidInvestmentsHoldings: (walletAddress: string) =>
+    `plaid_investments_holdings:${walletAddress.toLowerCase()}`,
 };

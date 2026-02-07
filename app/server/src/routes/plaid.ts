@@ -10,6 +10,8 @@ import {
   type AccountsBalanceGetRequest,
   type TransactionsRecurringGetRequest,
   type TransactionsGetRequest,
+  type InvestmentsHoldingsGetRequest,
+  type InvestmentsRefreshRequest,
 } from 'plaid';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 
@@ -89,8 +91,10 @@ router.post('/link-token', async (req: Request, res: Response) => {
       language: 'en',
       country_codes: [CountryCode.Us],
       user: { client_user_id: walletAddress.toLowerCase() },
-      // Auth for balance/account numbers; Transactions required for recurring streams (Upcoming Transactions)
+      // Auth for balance/account numbers; Transactions for recurring streams (Upcoming Transactions)
       products: [Products.Auth, Products.Transactions],
+      // Optional: allow brokerage/investment accounts when institution supports them (no restriction on Link)
+      optional_products: [Products.Investments],
     };
 
     const response = await client.linkTokenCreate(request);
@@ -167,6 +171,10 @@ type BalanceAccount = {
   current: number | null;
   available: number | null;
   item_id?: string;
+  /** Plaid account type: depository, credit, loan, investment, other */
+  type?: string;
+  /** Plaid account subtype e.g. checking, savings, credit card, brokerage */
+  subtype?: string;
 };
 
 /** Response shape for GET /api/plaid/balances (with optional cached flag) */
@@ -268,6 +276,8 @@ router.get('/balances', async (req: Request, res: Response) => {
             current: acc.balances?.current ?? null,
             available: acc.balances?.available ?? null,
             item_id: item.item_id,
+            type: acc.type ?? undefined,
+            subtype: acc.subtype ?? undefined,
           });
         }
       } catch (itemErr: unknown) {
@@ -318,6 +328,175 @@ router.get('/balances', async (req: Request, res: Response) => {
     console.error('Plaid balances error:', err.response?.data ?? err.message);
     res.status(500).json({
       error: 'Failed to get balances',
+      message: err.message ?? 'Unknown error',
+    });
+  }
+});
+
+/** Normalized investment holding for API response (holding + security joined) */
+type InvestmentHoldingPayload = {
+  holding_id: string;
+  account_id: string;
+  security_id: string;
+  name: string;
+  ticker_symbol: string | null;
+  security_type: string | null;
+  quantity: number;
+  institution_value: number;
+  cost_basis: number | null;
+  institution_price: number;
+  iso_currency_code: string | null;
+  item_id: string;
+};
+
+/**
+ * GET /api/plaid/investments/holdings?walletAddress=0x...
+ * Fetch investment holdings for all linked items (brokerage accounts).
+ * Uses Plaid /investments/holdings/get. Cached server-side. Pass refresh=1 to skip cache.
+ * Returns empty array if no items or Investments product not ready for an item.
+ */
+router.get('/investments/holdings', async (req: Request, res: Response) => {
+  try {
+    const client = getPlaidClient();
+    if (!client) {
+      return res.status(503).json({
+        error: 'Plaid not configured',
+        message: 'PLAID_CLIENT_ID and PLAID_SECRET must be set',
+      });
+    }
+
+    const walletAddress = req.query.walletAddress as string | undefined;
+    if (!walletAddress) {
+      return res.status(400).json({
+        error: 'Missing walletAddress',
+        message: 'Query parameter walletAddress is required',
+      });
+    }
+
+    const key = walletAddress.toLowerCase();
+    const items = accessTokenStore.get(key);
+    if (!items?.length) {
+      return res.json({ holdings: [], linked: false, cached: false });
+    }
+
+    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const cacheService = await getCacheService();
+    const cacheKey = CacheKeys.plaidInvestmentsHoldings(key);
+    const ttl = parseInt(process.env.CACHE_TTL_PLAID_BALANCES || '3600', 10);
+
+    if (cacheService && !skipCache) {
+      const cached = await cacheService.get<{ holdings: InvestmentHoldingPayload[] }>(cacheKey);
+      if (cached?.holdings) {
+        return res.json({ holdings: cached.holdings, linked: true, cached: true });
+      }
+    }
+
+    const allHoldings: InvestmentHoldingPayload[] = [];
+    const seenHoldingKeys = new Set<string>();
+
+    for (const item of items) {
+      try {
+        const request: InvestmentsHoldingsGetRequest = { access_token: item.access_token };
+        const response = await client.investmentsHoldingsGet(request);
+        const holdings = response.data.holdings ?? [];
+        const securities = response.data.securities ?? [];
+        const securityMap = new Map(securities.map((s) => [s.security_id, s]));
+
+        for (const h of holdings) {
+          const sec = securityMap.get(h.security_id);
+          const keyId = `${item.item_id}|${h.account_id}|${h.security_id}`;
+          if (seenHoldingKeys.has(keyId)) continue;
+          seenHoldingKeys.add(keyId);
+          allHoldings.push({
+            holding_id: `${h.account_id}-${h.security_id}`,
+            account_id: h.account_id,
+            security_id: h.security_id,
+            name: sec?.name ?? 'Unknown',
+            ticker_symbol: sec?.ticker_symbol ?? null,
+            security_type: sec?.type ?? null,
+            quantity: h.quantity ?? 0,
+            institution_value: h.institution_value ?? 0,
+            cost_basis: h.cost_basis ?? null,
+            institution_price: h.institution_price ?? 0,
+            iso_currency_code: h.iso_currency_code ?? null,
+            item_id: item.item_id,
+          });
+        }
+      } catch (itemErr: unknown) {
+        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
+        const errorCode = err.response?.data?.error_code;
+        if (errorCode === 'PRODUCT_NOT_READY' || errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+          continue;
+        }
+        throw itemErr;
+      }
+    }
+
+    const payload = { holdings: allHoldings };
+    if (cacheService) {
+      await cacheService.set(cacheKey, payload, ttl);
+    }
+    return res.json({ holdings: allHoldings, linked: items.length > 0, cached: false });
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: unknown }; message?: string };
+    console.error('Plaid investments holdings error:', err.response?.data ?? err.message);
+    res.status(500).json({
+      error: 'Failed to get investment holdings',
+      message: err.message ?? 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/plaid/investments/refresh
+ * Trigger on-demand refresh of investment data for the wallet's linked items.
+ * See https://plaid.com/docs/investments/#investmentsrefresh
+ * Body: { walletAddress: string }
+ */
+router.post('/investments/refresh', async (req: Request, res: Response) => {
+  try {
+    const client = getPlaidClient();
+    if (!client) {
+      return res.status(503).json({
+        error: 'Plaid not configured',
+        message: 'PLAID_CLIENT_ID and PLAID_SECRET must be set',
+      });
+    }
+
+    const { walletAddress } = req.body as { walletAddress?: string };
+    if (!walletAddress || typeof walletAddress !== 'string') {
+      return res.status(400).json({
+        error: 'Missing walletAddress',
+        message: 'Request body must include walletAddress',
+      });
+    }
+
+    const key = walletAddress.toLowerCase();
+    const items = accessTokenStore.get(key);
+    if (!items?.length) {
+      return res.json({ success: true, message: 'No linked items' });
+    }
+
+    for (const item of items) {
+      try {
+        const request: InvestmentsRefreshRequest = { access_token: item.access_token };
+        await client.investmentsRefresh(request);
+      } catch (itemErr: unknown) {
+        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
+        if (err.response?.data?.error_code === 'PRODUCT_NOT_READY') continue;
+        throw itemErr;
+      }
+    }
+
+    const cacheService = await getCacheService();
+    if (cacheService) await cacheService.del(CacheKeys.plaidInvestmentsHoldings(key));
+
+    res.json({ success: true });
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: unknown }; message?: string };
+    console.error('Plaid investments refresh error:', err.response?.data ?? err.message);
+    res.status(500).json({
+      error: 'Failed to refresh investment data',
       message: err.message ?? 'Unknown error',
     });
   }
@@ -608,6 +787,7 @@ router.post('/disconnect', async (req: Request, res: Response) => {
       await cacheService.del(CacheKeys.plaidBalances(key));
       await cacheService.del(CacheKeys.plaidRecurringTransactions(key));
       await cacheService.del(CacheKeys.plaidSpend(key));
+      await cacheService.del(CacheKeys.plaidInvestmentsHoldings(key));
     }
     res.json({ success: true });
   } catch (error: unknown) {

@@ -50,6 +50,22 @@ const formatCompactNumber = (value: number): string => {
   return value.toString();
 };
 
+/** Human-readable label for Plaid account type/subtype (e.g. Checking, Credit card, Brokerage) */
+function formatAccountTypeLabel(account: BankAccountBalance): string {
+  const type = (account.type ?? '').toLowerCase();
+  const subtype = (account.subtype ?? '').toLowerCase();
+  if (type === 'investment' || subtype === 'brokerage') return 'Brokerage';
+  if (type === 'credit') return subtype === 'credit card' ? 'Credit card' : 'Credit';
+  if (type === 'depository') {
+    if (subtype === 'checking') return 'Checking';
+    if (subtype === 'savings') return 'Savings';
+    return 'Bank';
+  }
+  if (type === 'loan') return 'Loan';
+  if (type || subtype) return subtype ? `${subtype.replace(/_/g, ' ')}` : type;
+  return 'Account';
+}
+
 // Transaction type is now imported from useWalletActivity
 
 // Component to display NFT holding with name from metadata
@@ -532,7 +548,7 @@ export default function BrokerageHome() {
   // User data is now derived globally in GlobalModalsContext
   const [selectedTab, setSelectedTab] = useState('Return');
   const [selectedRange, setSelectedRange] = useState('1D');
-  const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'RWAs' | 'NFTs' | 'Tokens'>('All');
+  const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'RWAs' | 'NFTs' | 'Tokens' | 'Investments'>('All');
   const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
   const [showZeroValueAssets, setShowZeroValueAssets] = useState(false); // Hide assets with $0 value by default
   const [expandedHoldings, setExpandedHoldings] = useState<Set<string | number>>(new Set()); // Track which holdings are expanded
@@ -553,36 +569,38 @@ export default function BrokerageHome() {
   // State for tracking scroll position relative to portfolio value header
   const [isScrolledPast, setIsScrolledPast] = useState(false);
   
-  // Convert portfolio holdings to Holding format for compatibility
+  // Convert portfolio holdings to Holding format for compatibility (includes Plaid equity)
   const allHoldings = useMemo<Holding[]>(() => {
     return portfolioHoldings.map((holding) => {
-      // Type guard to check if holding is NFT or RWA
-      // Use type assertion to help TypeScript understand the union type
-      const holdingType = holding.type as 'nft' | 'rwa' | 'token';
+      const holdingType = holding.type as 'nft' | 'rwa' | 'token' | 'equity';
       const isNFTOrRWA = holdingType === 'nft' || holdingType === 'rwa';
-      
-      // Map UnifiedHolding type to Holding type
+      const isEquity = holdingType === 'equity';
+
       let mappedType: Holding['type'];
-      if (holdingType === 'rwa') {
-        mappedType = 'rwa';
-      } else if (holdingType === 'nft') {
-        mappedType = 'nft';
-      } else {
-        mappedType = 'token';
-      }
-      
-      const baseHolding: Holding = {
+      if (holdingType === 'rwa') mappedType = 'rwa';
+      else if (holdingType === 'nft') mappedType = 'nft';
+      else if (holdingType === 'equity') mappedType = 'equity';
+      else mappedType = 'token';
+
+      const quantity = isEquity
+        ? (holding as { quantity?: number }).quantity ?? parseFloat(holding.balance || '0')
+        : isNFTOrRWA
+          ? 1
+          : parseFloat(holding.balance || '0');
+      const price = isEquity
+        ? (holding as { institution_price?: number }).institution_price ?? (holding.balanceUSD / (quantity || 1))
+        : holding.balanceUSD / (isNFTOrRWA ? 1 : parseFloat(holding.balance || '1') || 1);
+
+      return {
         id: holding.id,
         asset_symbol: holding.asset_symbol,
         asset_name: holding.asset_name,
-        quantity: isNFTOrRWA ? 1 : parseFloat(holding.balance || '0'),
-        average_cost: 0,
-        current_price: holding.balanceUSD / (isNFTOrRWA ? 1 : parseFloat(holding.balance || '1')),
+        quantity,
+        average_cost: isEquity ? (holding as { cost_basis?: number }).cost_basis ?? 0 : 0,
+        current_price: price,
         valueUSD: holding.balanceUSD,
         type: mappedType,
       };
-      // Add additional properties if needed
-      return baseHolding;
     });
   }, [portfolioHoldings]);
 
@@ -597,14 +615,16 @@ export default function BrokerageHome() {
       holdings = holdings.filter(h => h.type === 'nft'); // General NFTs
     } else if (portfolioFilter === 'Tokens') {
       holdings = holdings.filter(h => h.type === 'token');
+    } else if (portfolioFilter === 'Investments') {
+      holdings = holdings.filter(h => h.type === 'equity'); // Plaid brokerage holdings
     }
     
-    // Filter by value: Always show NFTs and RWAs, optionally filter tokens with 0 value
+    // Filter by value: Always show NFTs and RWAs, optionally filter tokens/equity with 0 value
     if (!showZeroValueAssets) {
       holdings = holdings.filter(h => {
         // Always show NFTs and RWAs regardless of value
         if (h.type === 'nft' || h.type === 'rwa') return true;
-        // For tokens, only show if value > 0
+        // For tokens and equity, only show if value > 0
         return (h.valueUSD || 0) > 0;
       });
     }
@@ -758,6 +778,7 @@ export default function BrokerageHome() {
         displayedRWAs: displayedHoldings.filter(h => h.type === 'rwa').length,
         displayedNFTs: displayedHoldings.filter(h => h.type === 'nft').length,
         displayedTokens: displayedHoldings.filter(h => h.type === 'token').length,
+        displayedEquity: displayedHoldings.filter(h => h.type === 'equity').length,
       });
     }
   }, [isConnected, address, multichainBalances, totalBalanceUSD, portfolioHoldings, allHoldings, filteredHoldings, displayedHoldings]);
@@ -1048,7 +1069,12 @@ export default function BrokerageHome() {
                                     </div>
                                     <div className="min-w-0">
                                       <p className="text-black dark:text-white font-medium text-sm truncate">{displayName}</p>
-                                      {maskText ? <p className="text-zinc-500 dark:text-zinc-400 text-xs">{maskText}</p> : null}
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        {maskText ? <span className="text-zinc-500 dark:text-zinc-400 text-xs">{maskText}</span> : null}
+                                        <span className="text-zinc-400 dark:text-zinc-500 text-xs">
+                                          {formatAccountTypeLabel(account)}
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
                                   <div className="text-right shrink-0">
@@ -1117,14 +1143,15 @@ export default function BrokerageHome() {
                       {/* Single Filter Selector */}
                       <Select 
                         value={portfolioFilter} 
-                        onValueChange={(value: 'All' | 'RWAs' | 'NFTs' | 'Tokens') => setPortfolioFilter(value)}
+                        onValueChange={(value: 'All' | 'RWAs' | 'NFTs' | 'Tokens' | 'Investments') => setPortfolioFilter(value)}
                       >
-                        <SelectTrigger size="xs" className="w-24 sm:w-28 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
+                        <SelectTrigger size="xs" className="w-28 sm:w-32 text-xs font-normal text-zinc-500 dark:text-zinc-400 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors bg-transparent dark:bg-transparent focus:ring-0 focus:ring-offset-0 data-[state=open]:bg-zinc-100 dark:data-[state=open]:bg-zinc-800">
                           <SelectValue placeholder="Filter" />
                         </SelectTrigger>
                         <SelectContent className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-lg z-50">
                           <SelectItem value="All" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-1.5">All</SelectItem>
                           <SelectItem value="Tokens" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-1.5">Tokens</SelectItem>
+                          <SelectItem value="Investments" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-1.5">Investments</SelectItem>
                           <SelectItem value="RWAs" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-1.5">RWAs</SelectItem>
                           <SelectItem value="NFTs" className="text-sm text-black dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 focus:bg-zinc-100 dark:focus:bg-zinc-800 cursor-pointer py-1.5">NFTs</SelectItem>
                         </SelectContent>
@@ -1213,7 +1240,8 @@ export default function BrokerageHome() {
                             });
                           
                           const tokenHoldings = displayedHoldings.filter(h => h.type === 'token');
-                          
+                          const equityHoldings = displayedHoldings.filter(h => h.type === 'equity');
+
                           return (
                             <>
                               {/* Tokens - Display first */}
@@ -1329,6 +1357,59 @@ export default function BrokerageHome() {
                                               </motion.div>
                                             )}
                                           </AnimatePresence>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Investments (Plaid brokerage) - stocks, funds, etc. */}
+                              {equityHoldings.length > 0 && (portfolioFilter === 'All' || portfolioFilter === 'Investments') && (
+                                <div className="mb-4">
+                                  <div className="flex items-center justify-between text-zinc-500 text-xs uppercase tracking-wider mb-2 px-2">
+                                    <span>Investments</span>
+                                    <span>Value</span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {equityHoldings.map((holding) => {
+                                      const valueUSD = holding.valueUSD || 0;
+                                      const truncateText = (text: string, maxLength: number): string =>
+                                        text.length <= maxLength ? text : text.substring(0, maxLength - 3) + '...';
+                                      const mainText = truncateText(holding.asset_symbol, 25);
+                                      const secondaryText = truncateText(holding.asset_name, 20);
+                                      return (
+                                        <div
+                                          key={holding.id}
+                                          className="flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors"
+                                        >
+                                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                                            <div className="w-9 h-9 bg-zinc-200 dark:bg-zinc-800 rounded-full flex items-center justify-center shrink-0">
+                                              <span className="font-bold text-xs text-black dark:text-white">
+                                                {holding.asset_symbol[0]?.toUpperCase() || '?'}
+                                              </span>
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                              <div className="flex items-center gap-1.5">
+                                                <p className="text-black dark:text-white font-medium text-sm truncate" title={holding.asset_symbol}>{mainText}</p>
+                                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-500 bg-transparent font-normal leading-tight">
+                                                  Brokerage
+                                                </Badge>
+                                              </div>
+                                              <p className="text-zinc-500 text-xs truncate" title={holding.asset_name}>{secondaryText}</p>
+                                            </div>
+                                          </div>
+                                          <div className="text-right shrink-0">
+                                            <p className="text-black dark:text-white font-medium text-sm">
+                                              ${valueUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </p>
+                                            <p className="text-zinc-500 text-xs">
+                                              {holding.quantity.toLocaleString('en-US', {
+                                                minimumFractionDigits: holding.quantity < 1 ? 4 : 2,
+                                                maximumFractionDigits: holding.quantity < 1 ? 4 : 2,
+                                              })} shares
+                                            </p>
+                                          </div>
                                         </div>
                                       );
                                     })}
