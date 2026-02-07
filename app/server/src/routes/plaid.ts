@@ -90,13 +90,27 @@ router.post('/link-token', async (req: Request, res: Response) => {
       });
     }
 
+    // Only send redirect_uri when the origin is allowlisted (Plaid rejects if not in Dashboard).
+    // Set PLAID_ALLOWED_REDIRECT_ORIGINS to a comma-separated list, e.g. https://app.deed3.io,https://protocol-contracts-preview.up.railway.app
+    let effectiveRedirectUri: string | undefined;
+    if (redirectUri && typeof redirectUri === 'string' && redirectUri.startsWith('http')) {
+      try {
+        const origin = new URL(redirectUri).origin;
+        const allowed = process.env.PLAID_ALLOWED_REDIRECT_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) ?? [];
+        if (allowed.includes(origin)) {
+          effectiveRedirectUri = redirectUri;
+        }
+      } catch {
+        // invalid URL, skip redirect_uri
+      }
+    }
+
     const request: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
       language: 'en',
       country_codes: [CountryCode.Us],
       user: { client_user_id: walletAddress.toLowerCase() },
-      // Required for OAuth institutions (e.g. Chase): redirect URI must be allowlisted in Plaid Dashboard
-      ...(redirectUri && typeof redirectUri === 'string' && redirectUri.startsWith('http') && { redirect_uri: redirectUri }),
+      ...(effectiveRedirectUri && { redirect_uri: effectiveRedirectUri }),
       // Auth for balance/account numbers; Transactions for recurring streams (Upcoming Transactions)
       products: [Products.Auth, Products.Transactions],
       // Optional: Investments for brokerage holdings; Liabilities for credit card (and loan) data
@@ -126,11 +140,19 @@ router.post('/link-token', async (req: Request, res: Response) => {
 
     res.json({ link_token: linkToken });
   } catch (error: unknown) {
-    const err = error as { response?: { data?: unknown }; message?: string };
-    console.error('Plaid linkTokenCreate error:', err.response?.data ?? err.message);
-    res.status(500).json({
+    const err = error as { response?: { status?: number; data?: { error_code?: string; error_message?: string }; message?: string }; message?: string };
+    const plaidData = err.response?.data;
+    const status = err.response?.status ?? 500;
+    const message =
+      (typeof plaidData === 'object' && plaidData?.error_message) ||
+      (typeof plaidData === 'object' && plaidData?.error_code && String(plaidData.error_code)) ||
+      err.message ||
+      'Unknown error';
+    console.error('Plaid linkTokenCreate error:', plaidData ?? err.message);
+    res.status(status >= 400 && status < 600 ? status : 500).json({
       error: 'Failed to create link token',
-      message: err.message ?? 'Unknown error',
+      message,
+      ...(typeof plaidData === 'object' && plaidData?.error_code && { plaid_error_code: plaidData.error_code }),
     });
   }
 });
