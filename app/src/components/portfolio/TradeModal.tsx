@@ -179,17 +179,18 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
     [cashBalance.totalCash]
   );
 
-  // Convert holdings to assets for selection (exclude testnet tokens)
+  // Convert holdings to assets for selection (tokens only; exclude equity, testnet)
   const availableAssets = useMemo<Asset[]>(() => {
     return holdings
-      .filter(h => h.type === 'token' && parseFloat(h.balance || '0') > 0 && !isTestnetChainId(h.chainId))
+      .filter((h): h is typeof h & { type: 'token' } =>
+        h.type === 'token' && parseFloat(h.balance || '0') > 0 && !isTestnetChainId(h.chainId))
       .map(h => ({
         symbol: h.asset_symbol,
         name: h.asset_name,
         color: getAssetColor(h.asset_symbol),
         balance: parseFloat(h.balance || '0'),
         balanceUSD: h.balanceUSD,
-        type: h.type,
+        type: 'token' as const,
         chainId: h.chainId,
         chainName: h.chainName,
       }));

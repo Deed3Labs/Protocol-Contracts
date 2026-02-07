@@ -608,6 +608,10 @@ export interface BankAccountBalance {
   available: number | null;
   /** Plaid item id for this connection (for optional per-institution disconnect) */
   item_id?: string;
+  /** Plaid account type: depository, credit, loan, investment, other */
+  type?: string;
+  /** Plaid account subtype e.g. checking, savings, credit card, brokerage */
+  subtype?: string;
 }
 
 export interface BankBalancesResponse {
@@ -649,6 +653,60 @@ export async function disconnectPlaid(
   const response = await apiRequest<{ success: boolean }>('/api/plaid/disconnect', {
     method: 'POST',
     body: JSON.stringify({ walletAddress, ...(itemId != null && { itemId }) }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+/** Plaid investment holding (from /investments/holdings/get, normalized by server) */
+export interface PlaidInvestmentHolding {
+  holding_id: string;
+  account_id: string;
+  security_id: string;
+  name: string;
+  ticker_symbol: string | null;
+  security_type: string | null;
+  quantity: number;
+  institution_value: number;
+  cost_basis: number | null;
+  institution_price: number;
+  iso_currency_code: string | null;
+  item_id: string;
+}
+
+export interface PlaidInvestmentsHoldingsResponse {
+  holdings: PlaidInvestmentHolding[];
+  linked: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get investment holdings for linked brokerage accounts.
+ * Server caches responses; pass skipCache: true to force refresh.
+ */
+export async function getPlaidInvestmentsHoldings(
+  walletAddress: string,
+  options?: { skipCache?: boolean }
+): Promise<PlaidInvestmentsHoldingsResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<PlaidInvestmentsHoldingsResponse>(
+    `/api/plaid/investments/holdings?walletAddress=${encoded}${qs}`,
+    { ...(options?.skipCache && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { holdings: [], linked: false };
+}
+
+/**
+ * Plaid: trigger on-demand refresh of investment data (holdings/transactions).
+ * See https://plaid.com/docs/investments/#investmentsrefresh
+ */
+export async function plaidInvestmentsRefresh(walletAddress: string): Promise<{ success: boolean } | null> {
+  const response = await apiRequest<{ success: boolean }>('/api/plaid/investments/refresh', {
+    method: 'POST',
+    body: JSON.stringify({ walletAddress }),
   });
   if (response.error || !response.data) return null;
   return response.data;
