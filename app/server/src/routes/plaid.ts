@@ -95,11 +95,11 @@ router.post('/link-token', async (req: Request, res: Response) => {
       language: 'en',
       country_codes: [CountryCode.Us],
       user: { client_user_id: walletAddress.toLowerCase() },
-      // Auth for balance/account numbers; Transactions for recurring streams (Upcoming Transactions).
-      // Liabilities and Investments as optional: users see more institutions (any that support Auth + Transactions).
-      // If an institution supports them and the user selects credit/investment accounts, we get that data; otherwise we may get PRODUCT_NOT_READY for those.
+      // Auth for balance/account numbers; Transactions for recurring streams (Upcoming Transactions)
       products: [Products.Auth, Products.Transactions],
-      optional_products: [Products.Liabilities, Products.Investments],
+      // Optional: Investments for brokerage holdings; Liabilities for credit card (and loan) data
+      // Credit cards do not appear in /accounts/balance/get; they require /liabilities/get (Liabilities product)
+      optional_products: [Products.Investments, Products.Liabilities],
       // When account_filters is set, any type not listed is omitted from Link. Include depository,
       // credit, and investment so users can select bank, credit card, and brokerage/investment accounts.
       account_filters: {
@@ -261,8 +261,6 @@ router.get('/balances', async (req: Request, res: Response) => {
     const accountList: BalanceAccount[] = [];
     let totalBankBalance = 0;
     const stillValidItems: StoredItem[] = [];
-    const debug = req.query.debug === '1' || req.query.debug === 'true';
-    const debugItems: { item_id: string; liabilities: string; credit_count?: number }[] = [];
     // De-dupe accounts even across re-links where Plaid may mint new account_ids
     // Prefer mask+name when mask exists, otherwise fall back to account_id.
     const seenAccountKeys = new Set<string>();
@@ -369,9 +367,6 @@ router.get('/balances', async (req: Request, res: Response) => {
     }
 
     const payload = { accounts: accountList, totalBankBalance, linked: accountList.length > 0 };
-    if (debug && debugItems.length > 0) {
-      (payload as Record<string, unknown>)._debug = { items: debugItems };
-    }
     if (cacheService) {
       await cacheService.set(cacheKey, payload, ttl);
     }
