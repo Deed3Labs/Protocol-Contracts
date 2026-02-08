@@ -1012,8 +1012,7 @@ export default function BrokerageHome() {
                       </div>
                     </div>
                     {bankLinked && bankAccounts.length > 0 && (
-                      <>
-                        <div className="flex items-center justify-between gap-2 mt-3">
+                      <div className="flex items-center justify-between gap-2 mt-3">
                         <Select
                           value={accountSort}
                           onValueChange={(value: 'Balance (high)' | 'Balance (low)' | 'Name (A–Z)') => setAccountSort(value)}
@@ -1036,7 +1035,6 @@ export default function BrokerageHome() {
                           Refresh
                         </button>
                       </div>
-                      </>
                     )}
                   </div>
 

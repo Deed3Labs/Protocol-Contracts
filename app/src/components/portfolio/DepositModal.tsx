@@ -2,23 +2,8 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft, AlertCircle } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
-import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken, type BankAccountBalance } from '@/utils/apiClient';
+import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken } from '@/utils/apiClient';
 import { usePortfolio } from '@/context/PortfolioContext';
-
-function formatAccountTypeLabel(account: BankAccountBalance): string {
-  const type = (account.type ?? '').toLowerCase();
-  const subtype = (account.subtype ?? '').toLowerCase();
-  if (type === 'investment' || subtype === 'brokerage') return 'Brokerage';
-  if (type === 'credit') return subtype === 'credit card' ? 'Credit card' : 'Credit';
-  if (type === 'depository') {
-    if (subtype === 'checking') return 'Checking';
-    if (subtype === 'savings') return 'Savings';
-    return 'Bank';
-  }
-  if (type === 'loan') return 'Loan';
-  if (type || subtype) return subtype ? subtype.replace(/_/g, ' ') : type;
-  return 'Account';
-}
 
 // Type declarations for Stripe Onramp (loaded via script tags)
 declare global {
@@ -52,22 +37,9 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
   const [bankError, setBankError] = useState<string | null>(null);
   const [isPullingAccounts, setIsPullingAccounts] = useState(false);
   const plaidSuccessFiredRef = useRef(false);
-  const hasRefreshedBankRef = useRef(false);
   const { address } = useAppKitAccount();
   const { bankAccounts, bankAccountsLoading, cashBalance, refreshBankBalance } = usePortfolio();
   const bankLinked = cashBalance.bankLinked ?? false;
-
-  // When modal opens to bank step and user has linked accounts, refresh once so we show latest (credit/investment if they re-linked)
-  useEffect(() => {
-    if (!isOpen) {
-      hasRefreshedBankRef.current = false;
-      return;
-    }
-    if (isOpen && selectedOption === 'bank' && bankLinked && !hasRefreshedBankRef.current) {
-      hasRefreshedBankRef.current = true;
-      refreshBankBalance();
-    }
-  }, [isOpen, selectedOption, bankLinked, refreshBankBalance]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -354,10 +326,12 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
             setBankError(null);
             setIsPullingAccounts(true);
             try {
-              // Give the server time to persist the new item and Plaid to have Liabilities/Investments ready
-              await new Promise((r) => setTimeout(r, 1200));
-              await refreshBankBalance(); // bypasses cache so new accounts (e.g. credit cards) show
-              await new Promise((r) => setTimeout(r, 500));
+              // Give the server a moment to persist the new item before refetching
+              await new Promise((r) => setTimeout(r, 800));
+              await refreshBankBalance();
+              // Second refresh after a short delay so the UI reliably shows all accounts
+              // (handles timing/race with server or browser cache)
+              await new Promise((r) => setTimeout(r, 400));
               await refreshBankBalance();
             } finally {
               setIsPullingAccounts(false);
@@ -553,37 +527,31 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
                           <p className="text-xs font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 px-1">
                             Connected accounts
                           </p>
-                          {bankAccounts.map((account) => {
-                            const typeLabel = formatAccountTypeLabel(account);
-                            return (
-                              <div
-                                key={account.account_id}
-                                className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200/50 dark:border-zinc-800/50"
-                              >
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
-                                    <Building2 className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="font-medium text-zinc-900 dark:text-white truncate">{account.name}</p>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      {account.mask != null && (
-                                        <span className="text-xs text-zinc-500 dark:text-zinc-400">•••• {account.mask}</span>
-                                      )}
-                                      <span className="text-xs text-zinc-400 dark:text-zinc-500">{typeLabel}</span>
-                                    </div>
-                                  </div>
+                          {bankAccounts.map((account) => (
+                            <div
+                              key={account.account_id}
+                              className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200/50 dark:border-zinc-800/50"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                                  <Building2 className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
                                 </div>
-                                <div className="text-right shrink-0 ml-2">
-                                  {(account.current != null || account.available != null) && (
-                                    <p className="text-sm font-medium text-zinc-900 dark:text-white">
-                                      ${((account.current ?? account.available) ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </p>
+                                <div className="min-w-0">
+                                  <p className="font-medium text-zinc-900 dark:text-white truncate">{account.name}</p>
+                                  {account.mask != null && (
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-400">•••• {account.mask}</p>
                                   )}
                                 </div>
                               </div>
-                            );
-                          })}
+                              <div className="text-right shrink-0 ml-2">
+                                {(account.current != null || account.available != null) && (
+                                  <p className="text-sm font-medium text-zinc-900 dark:text-white">
+                                    ${((account.current ?? account.available) ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                         <button
                           onClick={openPlaidLink}
