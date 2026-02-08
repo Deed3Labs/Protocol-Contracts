@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2, Landmark } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -22,7 +22,7 @@ import { usePortfolio } from '@/context/PortfolioContext';
 import { useRecurringTransactions } from '@/hooks/useRecurringTransactions';
 import { LargePriceWheel } from './PriceWheel';
 import type { MultichainDeedNFT } from '@/hooks/useMultichainDeedNFTs';
-import { disconnectPlaid, type BankAccountBalance } from '@/utils/apiClient';
+import type { BankAccountBalance } from '@/utils/apiClient';
 
 // Types
 interface Holding {
@@ -510,7 +510,6 @@ const generateChartData = (
 export default function BrokerageHome() {
   // Wallet connection
   const { address, isConnected } = useAppKitAccount();
-  const [disconnectLoading, setDisconnectLoading] = useState(false);
   
   // Global portfolio context - provides balances, holdings, cash balance, and activity
   const {
@@ -526,17 +525,6 @@ export default function BrokerageHome() {
     refreshBankBalance,
   } = usePortfolio();
   const bankLinked = portfolioCashBalance.bankLinked ?? false;
-
-  const handleDisconnectAllBank = useCallback(async () => {
-    if (!address || !window.confirm('Disconnect all linked bank and investment accounts? You can link again anytime.')) return;
-    setDisconnectLoading(true);
-    try {
-      const result = await disconnectPlaid(address);
-      if (result?.success) await refreshBankBalance();
-    } finally {
-      setDisconnectLoading(false);
-    }
-  }, [address, refreshBankBalance]);
 
   // Plaid recurring streams – shared with UpcomingTransactions (React Query dedupes by key); no extra API call
   const { inflowStreams, outflowStreams } = useRecurringTransactions(address ?? undefined);
@@ -1046,15 +1034,6 @@ export default function BrokerageHome() {
                         >
                           {bankAccountsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                           Refresh
-                        </button>
-                        <button
-                          onClick={handleDisconnectAllBank}
-                          className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-500 dark:text-zinc-400 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900/50 transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                          disabled={disconnectLoading || bankAccountsLoading}
-                          title="Disconnect all linked bank and investment accounts"
-                        >
-                          {disconnectLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                          Disconnect all
                         </button>
                       </div>
                       </>
