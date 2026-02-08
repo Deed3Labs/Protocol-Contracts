@@ -1,8 +1,8 @@
-import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft, AlertCircle } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
-import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken, disconnectPlaid, type BankAccountBalance } from '@/utils/apiClient';
+import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken, type BankAccountBalance } from '@/utils/apiClient';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { PLAID_LINK_TOKEN_KEY, PLAID_WALLET_KEY } from '@/pages/PlaidOAuthPage';
 
@@ -53,48 +53,11 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
   const [isLoadingLinkToken, setIsLoadingLinkToken] = useState(false);
   const [bankError, setBankError] = useState<string | null>(null);
   const [isPullingAccounts, setIsPullingAccounts] = useState(false);
-  const [disconnectingItemId, setDisconnectingItemId] = useState<string | null>(null);
   const plaidSuccessFiredRef = useRef(false);
   const hasRefreshedBankRef = useRef(false);
   const { address } = useAppKitAccount();
   const { bankAccounts, bankAccountsLoading, cashBalance, refreshBankBalance } = usePortfolio();
   const bankLinked = cashBalance.bankLinked ?? false;
-
-  const handleDisconnectItem = useCallback(
-    async (itemId: string) => {
-      if (!address || !itemId) return;
-      if (!window.confirm('Disconnect this bank or institution? All accounts from it will be removed. You can link again anytime.')) return;
-      setDisconnectingItemId(itemId);
-      try {
-        const result = await disconnectPlaid(address, itemId);
-        if (result?.success) await refreshBankBalance();
-      } finally {
-        setDisconnectingItemId(null);
-      }
-    },
-    [address, refreshBankBalance]
-  );
-
-  const handleDisconnectAll = useCallback(async () => {
-    if (!address || !window.confirm('Disconnect all linked bank and investment accounts? You can link again anytime.')) return;
-    setDisconnectingItemId('all');
-    try {
-      const result = await disconnectPlaid(address);
-      if (result?.success) await refreshBankBalance();
-    } finally {
-      setDisconnectingItemId(null);
-    }
-  }, [address, refreshBankBalance]);
-
-  // First account index per item_id (so we show one "Disconnect" per institution)
-  const firstAccountIndexByItemId = useMemo(() => {
-    const first = new Map<string, number>();
-    bankAccounts.forEach((acc, idx) => {
-      const id = acc.item_id ?? acc.account_id;
-      if (!first.has(id)) first.set(id, idx);
-    });
-    return first;
-  }, [bankAccounts]);
 
   // When modal opens to bank step and user has linked accounts, refresh once so we show latest (credit/investment if they re-linked)
   useEffect(() => {
@@ -378,9 +341,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
     setIsLoadingLinkToken(true);
     setBankError(null);
     try {
-      // Per Plaid: no query params, no trailing slash. Must match Dashboard "Allowed redirect URIs" exactly.
-      const base = window.location.origin.replace(/\/$/, '');
-      const redirectUri = `${base}/plaid-oauth`;
+      const redirectUri = `${window.location.origin}/plaid-oauth`;
       const linkTokenRes = await getPlaidLinkToken(address, redirectUri);
       if (!linkTokenRes?.link_token) {
         throw new Error('Could not get link token. Plaid may not be configured.');
@@ -600,17 +561,14 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
                           <p className="text-xs font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 px-1">
                             Connected accounts
                           </p>
-                          {bankAccounts.map((account, index) => {
+                          {bankAccounts.map((account) => {
                             const typeLabel = formatAccountTypeLabel(account);
-                            const itemId = account.item_id;
-                            const isFirstOfItem = itemId != null && firstAccountIndexByItemId.get(itemId) === index;
-                            const isDisconnectingThis = itemId && disconnectingItemId === itemId;
                             return (
                               <div
                                 key={account.account_id}
-                                className="flex items-center justify-between gap-3 p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200/50 dark:border-zinc-800/50"
+                                className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200/50 dark:border-zinc-800/50"
                               >
-                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div className="flex items-center gap-3 min-w-0">
                                   <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
                                     <Building2 className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
                                   </div>
@@ -624,60 +582,31 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
                                     </div>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0">
+                                <div className="text-right shrink-0 ml-2">
                                   {(account.current != null || account.available != null) && (
                                     <p className="text-sm font-medium text-zinc-900 dark:text-white">
                                       ${((account.current ?? account.available) ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </p>
-                                  )}
-                                  {isFirstOfItem && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDisconnectItem(itemId)}
-                                      disabled={disconnectingItemId != null}
-                                      className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-                                      title="Disconnect this institution"
-                                    >
-                                      {isDisconnectingThis ? (
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                      ) : (
-                                        'Disconnect'
-                                      )}
-                                    </button>
                                   )}
                                 </div>
                               </div>
                             );
                           })}
                         </div>
-                        <div className="flex flex-col gap-2 mt-4">
-                          <button
-                            onClick={openPlaidLink}
-                            disabled={isLoadingLinkToken}
-                            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 font-medium transition-colors disabled:opacity-50"
-                          >
-                            {isLoadingLinkToken ? (
-                              <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                Loading...
-                              </>
-                            ) : (
-                              'Connect more accounts'
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleDisconnectAll}
-                            disabled={disconnectingItemId != null}
-                            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-sm disabled:opacity-50"
-                          >
-                            {disconnectingItemId === 'all' ? (
+                        <button
+                          onClick={openPlaidLink}
+                          disabled={isLoadingLinkToken}
+                          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 font-medium transition-colors disabled:opacity-50 mt-4"
+                        >
+                          {isLoadingLinkToken ? (
+                            <>
                               <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              'Disconnect all accounts'
-                            )}
-                          </button>
-                        </div>
+                              Loading...
+                            </>
+                          ) : (
+                            'Connect more accounts'
+                          )}
+                        </button>
                       </div>
                     ) : (
                       <div className="space-y-4">
