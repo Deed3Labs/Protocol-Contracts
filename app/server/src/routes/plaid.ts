@@ -69,9 +69,8 @@ function getPlaidClient(): PlaidApi | null {
 
 /**
  * POST /api/plaid/link-token
- * Create a Link token for Plaid Link (keyed by wallet address).
- * Body: { walletAddress: string, redirect_uri?: string }
- * redirect_uri is required for OAuth institutions (e.g. Chase). Must be registered in Plaid Dashboard.
+ * Create a Link token for Plaid Link (keyed by wallet address)
+ * Body: { walletAddress: string }
  */
 router.post('/link-token', async (req: Request, res: Response) => {
   try {
@@ -83,7 +82,7 @@ router.post('/link-token', async (req: Request, res: Response) => {
       });
     }
 
-    const { walletAddress, redirect_uri } = req.body as { walletAddress?: string; redirect_uri?: string };
+    const { walletAddress } = req.body as { walletAddress?: string };
     if (!walletAddress || typeof walletAddress !== 'string') {
       return res.status(400).json({
         error: 'Missing walletAddress',
@@ -101,12 +100,15 @@ router.post('/link-token', async (req: Request, res: Response) => {
       // Optional: Investments for brokerage holdings; Liabilities for credit card (and loan) data
       // Credit cards do not appear in /accounts/balance/get; they require /liabilities/get (Liabilities product)
       optional_products: [Products.Investments, Products.Liabilities],
-      // When account_filters is set, any type not listed is omitted from Link. Use All for depository
-      // so OAuth institutions (e.g. Chase) don't get "Insufficient Sharing Permissions" when they
-      // return account subtypes we didn't list (e.g. money market, other).
+      // When account_filters is set, any type not listed is omitted from Link. Include depository,
+      // credit, and investment so users can select bank, credit card, and brokerage/investment accounts.
       account_filters: {
         depository: {
-          account_subtypes: [DepositoryAccountSubtype.All],
+          account_subtypes: [
+            DepositoryAccountSubtype.Checking,
+            DepositoryAccountSubtype.Savings,
+            DepositoryAccountSubtype.CashManagement,
+          ],
         },
         credit: {
           account_subtypes: [CreditAccountSubtype.CreditCard],
@@ -115,8 +117,6 @@ router.post('/link-token', async (req: Request, res: Response) => {
           account_subtypes: [InvestmentAccountSubtype.All],
         },
       },
-      // Required for OAuth institutions (Chase, etc.). User is redirected here after bank auth; app must reinitialize Link with receivedRedirectUri.
-      ...(redirect_uri && typeof redirect_uri === 'string' && redirect_uri.length > 0 ? { redirect_uri } : {}),
     };
 
     const response = await client.linkTokenCreate(request);

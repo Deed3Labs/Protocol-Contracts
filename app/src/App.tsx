@@ -33,7 +33,6 @@ import PullToRefresh from "@/components/ui/PullToRefresh";
 import ScrollToTop from "@/components/ScrollToTop";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { ShareTarget } from "@/pages/ShareTarget";
-import { PlaidOAuthPage } from "@/pages/PlaidOAuthPage";
 import { PWAInitializer } from "@/components/PWAInitializer";
 
 const LegacyLayout = () => {
@@ -139,9 +138,6 @@ function App() {
                     
                     {/* Share Target - Public */}
                     <Route path="/share" element={<ShareTarget />} />
-                    
-                    {/* Plaid OAuth redirect - Public (user returns here after bank OAuth e.g. Chase) */}
-                    <Route path="/plaid-oauth" element={<PlaidOAuthPage />} />
                     
                     {/* App Routes wrapped in PullToRefresh Layout - Protected */}
                     {/* Pass true if splash was skipped OR if splash just finished */}
