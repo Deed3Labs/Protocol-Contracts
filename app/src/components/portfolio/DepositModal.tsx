@@ -341,7 +341,9 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
     setIsLoadingLinkToken(true);
     setBankError(null);
     try {
-      const redirectUri = `${window.location.origin}/plaid-oauth`;
+      // Per Plaid: no query params, no trailing slash. Must match Dashboard "Allowed redirect URIs" exactly.
+      const base = window.location.origin.replace(/\/$/, '');
+      const redirectUri = `${base}/plaid-oauth`;
       const linkTokenRes = await getPlaidLinkToken(address, redirectUri);
       if (!linkTokenRes?.link_token) {
         throw new Error('Could not get link token. Plaid may not be configured.');

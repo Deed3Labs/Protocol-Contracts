@@ -2,7 +2,8 @@
  * Plaid OAuth redirect page.
  * After the user completes bank OAuth (e.g. Chase), Plaid redirects here with ?oauth_state_id=...
  * We reinitialize Link with receivedRedirectUri so the flow can complete and onSuccess fires.
- * See: https://plaid.com/docs/link/oauth/
+ * Config: https://plaid.com/docs/link/oauth/#configure-your-link-token-with-your-redirect-uri
+ * Chase (Production): Security Questionnaire required - https://plaid.com/docs/link/oauth/#institution-specific-behaviors
  */
 
 import { useEffect, useState } from 'react';
@@ -93,7 +94,8 @@ export function PlaidOAuthPage() {
     loadPlaidScript()
       .then(() => {
         if (cancelled || !window.Plaid) return;
-        const receivedUri = window.location.href;
+        // Per Plaid: "must not contain any extra query parameters or fragments other than what is provided upon redirect"
+        const receivedUri = window.location.origin + window.location.pathname + window.location.search;
         const handler = window.Plaid.create({
           token: linkToken,
           receivedRedirectUri: receivedUri,

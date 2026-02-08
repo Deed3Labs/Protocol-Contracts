@@ -83,13 +83,18 @@ router.post('/link-token', async (req: Request, res: Response) => {
       });
     }
 
-    const { walletAddress, redirect_uri } = req.body as { walletAddress?: string; redirect_uri?: string };
+    const { walletAddress, redirect_uri: rawRedirectUri } = req.body as { walletAddress?: string; redirect_uri?: string };
     if (!walletAddress || typeof walletAddress !== 'string') {
       return res.status(400).json({
         error: 'Missing walletAddress',
         message: 'Request body must include walletAddress',
       });
     }
+    // Per Plaid: "Do not use query parameters when specifying the redirect_uri"
+    const redirect_uri =
+      typeof rawRedirectUri === 'string' && rawRedirectUri.length > 0
+        ? rawRedirectUri.replace(/#.*$/, '').replace(/\?.*$/, '').replace(/\/+$/, '')
+        : undefined;
 
     const request: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
@@ -115,8 +120,8 @@ router.post('/link-token', async (req: Request, res: Response) => {
           account_subtypes: [InvestmentAccountSubtype.All],
         },
       },
-      // Required for OAuth institutions (Chase, etc.). User is redirected here after bank auth; app must reinitialize Link with receivedRedirectUri.
-      ...(redirect_uri && typeof redirect_uri === 'string' && redirect_uri.length > 0 ? { redirect_uri } : {}),
+      // Required for OAuth institutions (Chase, etc.). Must match Plaid Dashboard "Allowed redirect URIs" exactly.
+      ...(redirect_uri && redirect_uri.length > 0 ? { redirect_uri } : {}),
     };
 
     const response = await client.linkTokenCreate(request);
