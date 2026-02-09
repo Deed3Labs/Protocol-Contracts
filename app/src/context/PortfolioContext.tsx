@@ -47,7 +47,7 @@ interface PortfolioContextType {
   // Linked bank accounts (Plaid) – single source for modal + Linked Accounts section
   bankAccounts: BankAccountBalance[];
   bankAccountsLoading: boolean;
-  refreshBankBalance: () => Promise<void>;
+  refreshBankBalance: (skipCache?: boolean) => Promise<void>;
 
   // Activity
   transactions: WalletTransaction[];

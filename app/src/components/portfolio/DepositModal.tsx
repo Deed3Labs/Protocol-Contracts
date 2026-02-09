@@ -328,11 +328,11 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
             try {
               // Give the server a moment to persist the new item before refetching
               await new Promise((r) => setTimeout(r, 800));
-              await refreshBankBalance();
+              await refreshBankBalance(true);
               // Second refresh after a short delay so the UI reliably shows all accounts
               // (handles timing/race with server or browser cache)
               await new Promise((r) => setTimeout(r, 400));
-              await refreshBankBalance();
+              await refreshBankBalance(true);
             } finally {
               setIsPullingAccounts(false);
             }

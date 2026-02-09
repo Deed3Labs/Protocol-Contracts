@@ -1027,7 +1027,7 @@ export default function BrokerageHome() {
                           </SelectContent>
                         </Select>
                         <button
-                          onClick={() => refreshBankBalance()}
+                          onClick={() => refreshBankBalance(true)}
                           className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1.5 disabled:opacity-50"
                           disabled={bankAccountsLoading}
                         >

@@ -8,7 +8,8 @@ export interface UseBankBalanceResult {
   linked: boolean;
   isLoading: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  /** Refetch balances. Pass true to bypass server cache (Plaid API call). Use true for "Refresh" button or after linking bank. */
+  refresh: (skipCache?: boolean) => Promise<void>;
 }
 
 /**
@@ -51,7 +52,7 @@ export function useBankBalance(walletAddress: string | undefined): UseBankBalanc
     linked: data?.linked ?? false,
     isLoading,
     error,
-    /** Refetch and bypass server cache (one Plaid API call). Use for "Refresh" button. */
-    refresh: () => fetchBalances(true),
+    /** Refetch. skipCache=false (default) uses server cache for polling; skipCache=true for explicit Refresh or after link. */
+    refresh: (skipCache = false) => fetchBalances(skipCache),
   };
 }
