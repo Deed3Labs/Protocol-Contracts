@@ -743,21 +743,23 @@ export default function UnifiedWealthHome() {
                             <Home className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="text-black dark:text-white font-medium text-sm truncate">{property.address}</p>
+                            <p className="text-black dark:text-white font-medium text-sm truncate">{property.address}</p>
+                            <p className="text-zinc-500 dark:text-zinc-400 text-xs truncate mt-0.5 flex items-center gap-1.5 flex-wrap">
                               {property.verificationStatus === 'Verified' ? (
-                                <span className="flex items-center gap-1 px-1.5 py-0 rounded bg-zinc-100 dark:bg-zinc-800 text-[10px] font-medium text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 shrink-0">
+                                <span className="flex items-center gap-1 shrink-0">
                                   <ShieldCheck className="w-3 h-3 text-green-500" />
-                                  Synced
+                                  <span>Synced</span>
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-amber-600 dark:text-amber-500 font-medium shrink-0">Pending</span>
+                                <span className="text-amber-600 dark:text-amber-500 font-medium shrink-0">Pending</span>
                               )}
-                            </div>
-                            <p className="text-zinc-500 dark:text-zinc-400 text-xs truncate mt-0.5">
-                              {property.type}
+                              <span className="text-zinc-400 dark:text-zinc-500 shrink-0">·</span>
+                              <span className="shrink-0">{property.type}</span>
                               {property.status === 'Renovation' && (
-                                <span className="ml-1.5 px-1.5 py-0 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-medium">Renovation</span>
+                                <>
+                                  <span className="text-zinc-400 dark:text-zinc-500 shrink-0">·</span>
+                                  <span className="px-1.5 py-0 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-medium shrink-0">Renovation</span>
+                                </>
                               )}
                             </p>
                           </div>
