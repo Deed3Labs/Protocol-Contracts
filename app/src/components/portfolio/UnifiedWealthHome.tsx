@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2,
   CreditCard,
@@ -10,6 +10,12 @@ import {
   ShieldCheck,
   Zap,
   Info,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Eye,
+  EyeOff,
+  Receipt,
 } from 'lucide-react';
 import SideMenu from './SideMenu';
 import HeaderNav from './HeaderNav';
@@ -29,8 +35,29 @@ const MOCK_PROPERTIES = [
   { id: 2, address: '456 Alpine Way, Aspen CO', value: 850000, equity: 20000, status: 'Renovation', type: 'Chalet' },
 ];
 
+// Mock Equity Card details (in production would come from API)
+const MOCK_CARD = {
+  last4: '4242',
+  number: '4242424242424242',
+  expiry: '12/28',
+  cvv: '123',
+  accountNumber: 'ACC-ESA-8847-2291',
+};
+
+const MOCK_CARD_TRANSACTIONS = [
+  { id: 1, description: 'Amazon.com', amount: -47.32, date: '2025-02-09', category: 'Shopping' },
+  { id: 2, description: 'Whole Foods', amount: -82.15, date: '2025-02-08', category: 'Groceries' },
+  { id: 3, description: 'Stake credit', amount: 250.0, date: '2025-02-05', category: 'Credit' },
+  { id: 4, description: 'Netflix', amount: -15.99, date: '2025-02-01', category: 'Subscription' },
+];
+
+function formatWalletDisplay(address: string | undefined): string {
+  if (!address) return 'Connect wallet';
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
 export default function UnifiedWealthHome() {
-  const { isConnected } = useAppKitAccount();
+  const { isConnected, address } = useAppKitAccount();
   const { cashBalance: portfolioCashBalance, balances: multichainBalances } = usePortfolio();
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -38,10 +65,19 @@ export default function UnifiedWealthHome() {
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const { setActionModalOpen } = useGlobalModals();
   const [isScrolledPast, setIsScrolledPast] = useState(false);
+  const [cardFlipped, setCardFlipped] = useState(false);
+  const [cardExpanded, setCardExpanded] = useState(false);
+  const [revealNumber, setRevealNumber] = useState(false);
+  const [revealCVV, setRevealCVV] = useState(false);
 
   const cashBalance = portfolioCashBalance?.totalCash || 12500;
   const totalStake = cashBalance + MOCK_PROPERTY_EQUITY;
   const spendingPower = totalStake * 0.5;
+  // Limit is 50% of stake; mock split: cash portion (0% interest) vs equity draw (low interest)
+  const limitFromCash = Math.min(cashBalance * 0.5, spendingPower);
+  const limitFromEquity = spendingPower - limitFromCash;
+  const usedAmount = 0; // mock
+  const utilizationPct = spendingPower > 0 ? (usedAmount / spendingPower) * 100 : 0;
 
   useEffect(() => {
     const handleScroll = () => setIsScrolledPast(window.scrollY > 50);
@@ -135,39 +171,145 @@ export default function UnifiedWealthHome() {
               </div>
             </div>
 
-            {/* Equity Card – same card style as BorrowHome */}
+            {/* Equity Card – flippable card + limit breakdown + expandable details & transactions */}
             <div>
               <h3 className="text-xl font-light text-black dark:text-white mb-6">Equity Card</h3>
-              <motion.div
-                whileHover={{ scale: 1.01 }}
-                className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-lg p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                      <CreditCard className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-black dark:text-white">Available limit</p>
-                      <p className="text-sm text-zinc-500 dark:text-zinc-400">50% of Combined Stake</p>
-                    </div>
+              <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-lg p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
+                {/* Flippable card */}
+                <div className="perspective-[1200px] mb-6">
+                  <div
+                    className="relative w-full max-w-[340px] h-[200px] mx-auto cursor-pointer"
+                    style={{ perspective: '1200px' }}
+                    onClick={() => setCardFlipped((f) => !f)}
+                  >
+                    <motion.div
+                      className="relative w-full h-full"
+                      animate={{ rotateY: cardFlipped ? 180 : 0 }}
+                      transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+                      style={{ transformStyle: 'preserve-3d' }}
+                    >
+                      {/* Front: logo, name/address, chip, last4 */}
+                      <div
+                        className="absolute inset-0 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-900 dark:from-zinc-800 dark:to-zinc-950 border border-zinc-600/50 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-5 text-white"
+                        style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="w-10 h-8 rounded bg-white/20 flex items-center justify-center text-xs font-bold text-white">
+                            CLEAR
+                          </div>
+                          <div className="w-12 h-9 rounded-lg bg-amber-400/90 flex items-center justify-center">
+                            <div className="w-8 h-6 rounded border-2 border-amber-600/50 bg-gradient-to-br from-amber-200 to-amber-400" />
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Equity Card</p>
+                          <p className="font-mono text-sm tracking-wider">
+                            •••• •••• •••• {MOCK_CARD.last4}
+                          </p>
+                          <p className="text-xs text-zinc-400 mt-2 font-mono">
+                            {formatWalletDisplay(address)}
+                          </p>
+                        </div>
+                      </div>
+                      {/* Back: stripe, number, expiry, CVV */}
+                      <div
+                        className="absolute inset-0 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-900 dark:from-zinc-800 dark:to-zinc-950 border border-zinc-600/50 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-5 text-white"
+                        style={{
+                          backfaceVisibility: 'hidden',
+                          WebkitBackfaceVisibility: 'hidden',
+                          transform: 'rotateY(180deg)',
+                        }}
+                      >
+                        <div className="h-10 -mx-5 mt-0 bg-zinc-800/80" />
+                        <div className="space-y-3 text-right">
+                          <p className="text-[10px] text-zinc-400">Card number</p>
+                          <p className="font-mono text-sm tracking-wider">
+                            {revealNumber ? MOCK_CARD.number.replace(/(\d{4})/g, '$1 ').trim() : `•••• •••• •••• ${MOCK_CARD.last4}`}
+                          </p>
+                          <div className="flex justify-end gap-6">
+                            <div>
+                              <p className="text-[10px] text-zinc-400">Expires</p>
+                              <p className="font-mono text-sm">{MOCK_CARD.expiry}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-zinc-400">CVV</p>
+                              <p className="font-mono text-sm">{revealCVV ? MOCK_CARD.cvv : '•••'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
                   </div>
-                  <p className="text-xl font-medium text-black dark:text-white">${spendingPower.toLocaleString()}</p>
+                  <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 mt-2">Tap card to flip</p>
                 </div>
-                <div className="mb-4">
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-zinc-500 dark:text-zinc-400">Utilization</span>
-                    <span className="text-blue-600 dark:text-blue-400 font-medium">0% Used</span>
+
+                {/* Limit breakdown: what makes up the card limit */}
+                <div className="mb-6 p-4 rounded-lg bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800">
+                  <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-3 flex items-center gap-2">
+                    <Info className="w-3.5 h-3.5" />
+                    What makes up your card limit
+                  </p>
+                  <p className="text-sm text-black dark:text-white mb-3">
+                    Your spending limit is <span className="font-medium">50% of your Combined Equity Stake</span>. It is drawn in this order:
+                  </p>
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      <span className="text-zinc-600 dark:text-zinc-300">From ESA (0% interest)</span>
+                      <span className="font-medium text-black dark:text-white">${limitFromCash.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span className="text-zinc-600 dark:text-zinc-300">From Beneficial Interest (low interest)</span>
+                      <span className="font-medium text-black dark:text-white">${limitFromEquity.toLocaleString()}</span>
+                    </div>
                   </div>
-                  <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 w-[0%] rounded-full" />
+                  <div className="mt-3 h-2 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden flex">
+                    <div
+                      className="h-full bg-blue-500 rounded-l-full"
+                      style={{ width: `${(limitFromCash / spendingPower) * 100}%` }}
+                    />
+                    <div
+                      className="h-full bg-amber-500 rounded-r-full"
+                      style={{ width: `${(limitFromEquity / spendingPower) * 100}%` }}
+                    />
                   </div>
                   <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
                     <span>$0</span>
+                    <span>${(spendingPower * 0.25).toLocaleString()}</span>
+                    <span>${(spendingPower * 0.5).toLocaleString()}</span>
+                    <span>${(spendingPower * 0.75).toLocaleString()}</span>
                     <span>${spendingPower.toLocaleString()}</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between pt-4 border-t border-zinc-200 dark:border-zinc-800/50">
+
+                {/* Utilization bar with breaks */}
+                <div className="mb-6">
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className="text-zinc-500 dark:text-zinc-400">Utilization</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-medium">{utilizationPct.toFixed(0)}% Used</span>
+                  </div>
+                  <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden relative">
+                    <div
+                      className="h-full bg-blue-500 rounded-full transition-all"
+                      style={{ width: `${utilizationPct}%` }}
+                    />
+                    {[25, 50, 75].map((p) => (
+                      <div
+                        key={p}
+                        className="absolute top-0 bottom-0 w-px bg-white/30 dark:bg-zinc-600 pointer-events-none"
+                        style={{ left: `${p}%` }}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
+                    <span>$0 used</span>
+                    <span>${spendingPower.toLocaleString()} limit</span>
+                  </div>
+                </div>
+
+                {/* Move Cash to Property */}
+                <div className="flex items-center justify-between py-4 border-t border-zinc-200 dark:border-zinc-800/50">
                   <div>
                     <p className="font-medium text-black dark:text-white text-sm">Move Cash to Property</p>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Buy down principal instantly</p>
@@ -180,7 +322,112 @@ export default function UnifiedWealthHome() {
                     Transfer
                   </Button>
                 </div>
-              </motion.div>
+
+                {/* Expand: card details + transactions */}
+                <div className="border-t border-zinc-200 dark:border-zinc-800/50 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setCardExpanded((e) => !e)}
+                    className="w-full flex items-center justify-between text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-2"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Receipt className="w-4 h-4" />
+                      {cardExpanded ? 'Hide' : 'Show'} card details & activity
+                    </span>
+                    {cardExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {cardExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="pt-4 space-y-6">
+                          {/* Card info: number, expiry, CVV, account number */}
+                          <div className="p-4 rounded-lg bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 space-y-3">
+                            <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Card & account details</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                              <div className="flex items-center justify-between">
+                                <span className="text-zinc-500 dark:text-zinc-400">Card number</span>
+                                <span className="font-mono flex items-center gap-2">
+                                  {revealNumber ? MOCK_CARD.number.replace(/(\d{4})/g, '$1 ').trim() : `•••• •••• •••• ${MOCK_CARD.last4}`}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setRevealNumber((r) => !r); }}
+                                    className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"
+                                    aria-label={revealNumber ? 'Hide number' : 'Show number'}
+                                  >
+                                    {revealNumber ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                  </button>
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-zinc-500 dark:text-zinc-400">Expiration</span>
+                                <span className="font-mono">{MOCK_CARD.expiry}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-zinc-500 dark:text-zinc-400">Security code (CVV)</span>
+                                <span className="font-mono flex items-center gap-2">
+                                  {revealCVV ? MOCK_CARD.cvv : '•••'}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setRevealCVV((r) => !r); }}
+                                    className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"
+                                    aria-label={revealCVV ? 'Hide CVV' : 'Show CVV'}
+                                  >
+                                    {revealCVV ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                  </button>
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between sm:col-span-2">
+                                <span className="text-zinc-500 dark:text-zinc-400">Account number</span>
+                                <span className="font-mono flex items-center gap-2">
+                                  {MOCK_CARD.accountNumber}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(MOCK_CARD.accountNumber); }}
+                                    className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500"
+                                    aria-label="Copy account number"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                  </button>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Recent transactions */}
+                          <div>
+                            <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-3">Recent transactions</p>
+                            <div className="divide-y divide-zinc-200 dark:divide-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                              {MOCK_CARD_TRANSACTIONS.map((tx) => (
+                                <div
+                                  key={tx.id}
+                                  className="flex items-center justify-between py-3 px-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors"
+                                >
+                                  <div>
+                                    <p className="font-medium text-black dark:text-white text-sm">{tx.description}</p>
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-400">{tx.date} · {tx.category}</p>
+                                  </div>
+                                  <span className={`font-medium text-sm ${tx.amount >= 0 ? 'text-green-600 dark:text-green-500' : 'text-black dark:text-white'}`}>
+                                    {tx.amount >= 0 ? '+' : ''}${Math.abs(tx.amount).toFixed(2)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                            <button type="button" className="w-full py-2 mt-2 text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                              View all transactions
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
             </div>
 
             {/* Protocol Logic – same card style as BorrowHome loan cards */}
