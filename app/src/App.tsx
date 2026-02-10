@@ -7,6 +7,7 @@ import Home from "@/components/Home"; // Keeping for reference or fallback
 import BrokerageHome from "@/components/BrokerageHome";
 import BorrowHome from "@/components/portfolio/BorrowHome";
 import EarnHome from "@/components/portfolio/EarnHome";
+import UnifiedWealthHome from "@/components/portfolio/UnifiedWealthHome";
 import MarketsHome from "@/components/portfolio/MarketsHome";
 import LoginPage from "@/components/LoginPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -145,6 +146,7 @@ function App() {
                       <Route path="/" element={<BrokerageHome />} />
                       <Route path="/markets" element={<MarketsHome />} />
                       <Route path="/earn" element={<EarnHome />} />
+                      <Route path="/equity" element={<UnifiedWealthHome />} />
                       <Route path="/borrow" element={<BorrowHome />} />
                     </Route>
                     
