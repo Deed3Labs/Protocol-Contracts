@@ -126,10 +126,10 @@ export default function UnifiedWealthHome() {
 
   const cashBalance = portfolioCashBalance?.totalCash || 12500;
   const totalStake = cashBalance + MOCK_PROPERTY_EQUITY;
-  const spendingPower = totalStake * 0.5;
-  // Limit is 50% of stake; mock split: cash portion (0% interest) vs equity draw (low interest)
-  const limitFromCash = Math.min(cashBalance * 0.5, spendingPower);
-  const limitFromEquity = spendingPower - limitFromCash;
+  // 100% of ESA (cash) + 50% of property equity = card/borrow limit (property cap protects from overdrawing)
+  const limitFromCash = cashBalance;
+  const limitFromEquity = MOCK_PROPERTY_EQUITY * 0.5;
+  const spendingPower = limitFromCash + limitFromEquity;
   const usedAmount = 0; // mock
   const utilizationPct = spendingPower > 0 ? (usedAmount / spendingPower) * 100 : 0;
 
@@ -403,10 +403,10 @@ export default function UnifiedWealthHome() {
                         What makes up your card limit
                       </p>
                       <p className="text-sm text-black dark:text-white mb-2">
-                        Limit = 50% of Combined Stake. Drawn in order:
+                        You can borrow against 100% of your ESA. Limit drawn in order:
                       </p>
                       <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mb-2">
-                        Only 50% of your property equity is available for card and withdrawals—protects you and the protocol from overdrawing.
+                        Only 50% of property equity is available for card and withdrawals—protects you and the protocol from overdrawing.
                       </p>
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center justify-between gap-2">
