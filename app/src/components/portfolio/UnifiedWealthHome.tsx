@@ -325,29 +325,13 @@ export default function UnifiedWealthHome() {
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Combined stake</p>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-blue-500" />
-                        <span className="text-zinc-600 dark:text-zinc-300">Cash</span>
-                        <span className="font-normal text-black dark:text-white">${cashBalance.toLocaleString()}</span>
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-green-500" />
-                        <span className="text-zinc-600 dark:text-zinc-300">Match</span>
-                        <span className="font-normal text-black dark:text-white">${esaMatch.toLocaleString()}</span>
-                      </span>
-                      <span className="text-zinc-400 dark:text-zinc-500">=</span>
-                      <span className="font-normal text-black dark:text-white">${esaTotal.toLocaleString()} ESA</span>
-                      <span className="text-zinc-400 dark:text-zinc-500">+</span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-amber-500" />
-                        <span className="text-zinc-600 dark:text-zinc-300">Property</span>
-                        <span className="font-normal text-black dark:text-white">${MOCK_PROPERTY_EQUITY.toLocaleString()}</span>
-                      </span>
-                      <span className="text-zinc-400 dark:text-zinc-500">=</span>
-                      <span className="font-normal text-black dark:text-white">${totalStake.toLocaleString()} total</span>
-                    </div>
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Combined stake</p>
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                      Cash ${cashBalance.toLocaleString()} + Match ${esaMatch.toLocaleString()} = <span className="font-normal text-black dark:text-white">${esaTotal.toLocaleString()} ESA</span>
+                    </p>
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-0.5">
+                      + Property ${MOCK_PROPERTY_EQUITY.toLocaleString()} = <span className="font-normal text-black dark:text-white">${totalStake.toLocaleString()} total</span>
+                    </p>
                   </div>
                 </div>
               </div>
@@ -504,7 +488,6 @@ export default function UnifiedWealthHome() {
                         </span>
                         <span className="font-normal text-black dark:text-white">${limitFromCash.toLocaleString()}</span>
                       </div>
-                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 pl-5">Cash ${cashBalance.toLocaleString()} + Match ${esaMatch.toLocaleString()}</p>
                       <div className="flex items-center justify-between text-sm mt-1">
                         <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
                           <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
