@@ -25,7 +25,6 @@ import {
   ArrowDownLeft,
   FileText,
 } from 'lucide-react';
-import ClearPathLogo from '../../assets/ClearPath-Logo.png';
 import SideMenu from './SideMenu';
 import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
@@ -420,9 +419,9 @@ export default function UnifiedWealthHome() {
                           style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
                         >
                           <div className="flex justify-between items-start">
-                            <div className="w-9 h-9 rounded border border-black/90 dark:border-white/10 flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]/50 shrink-0">
-                              <img src={ClearPathLogo} alt="CLEAR" className="w-full h-full object-cover" />
-                            </div>
+                            <span className="text-[10px] font-light tracking-widest text-zinc-800 dark:text-white uppercase shrink-0">
+                              CLEAR EQUITY
+                            </span>
                             <div className="w-11 h-8 rounded bg-amber-400/90 flex items-center justify-center shrink-0">
                               <div className="w-7 h-5 rounded border-2 border-amber-600/50 bg-gradient-to-br from-amber-200 to-amber-400" />
                             </div>
