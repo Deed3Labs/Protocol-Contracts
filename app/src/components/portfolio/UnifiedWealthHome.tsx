@@ -17,6 +17,7 @@ import {
   EyeOff,
   Receipt,
 } from 'lucide-react';
+import ClearPathLogo from '../../assets/ClearPath-Logo.png';
 import SideMenu from './SideMenu';
 import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
@@ -171,144 +172,159 @@ export default function UnifiedWealthHome() {
               </div>
             </div>
 
-            {/* Equity Card – flippable card + limit breakdown + expandable details & transactions */}
+            {/* ESA Account summary – above the card so user sees deposits & match context */}
+            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-lg p-4">
+              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-3">ESA Account</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-0.5">Deposits</p>
+                  <p className="font-medium text-black dark:text-white">${cashBalance.toLocaleString()}</p>
+                  <p className="text-[10px] text-zinc-400 mt-0.5">Cash in ESA</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-0.5">Match status</p>
+                  <p className="font-medium text-green-600 dark:text-green-500 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                    1:1 Active
+                  </p>
+                  <p className="text-[10px] text-zinc-400 mt-0.5">Eligible for match</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-0.5">Match value</p>
+                  <p className="font-medium text-black dark:text-white">${cashBalance.toLocaleString()}</p>
+                  <p className="text-[10px] text-zinc-400 mt-0.5">Adds to buying power</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-0.5">Total stake</p>
+                  <p className="font-medium text-black dark:text-white">${totalStake.toLocaleString()}</p>
+                  <p className="text-[10px] text-zinc-400 mt-0.5">Cash + Property</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Equity Card – two columns: card (40%) | limit + utilization (60%) */}
             <div>
               <h3 className="text-xl font-light text-black dark:text-white mb-6">Equity Card</h3>
               <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-lg p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
-                {/* Flippable card */}
-                <div className="perspective-[1200px] mb-6">
-                  <div
-                    className="relative w-full max-w-[340px] h-[200px] mx-auto cursor-pointer"
-                    style={{ perspective: '1200px' }}
-                    onClick={() => setCardFlipped((f) => !f)}
-                  >
-                    <motion.div
-                      className="relative w-full h-full"
-                      animate={{ rotateY: cardFlipped ? 180 : 0 }}
-                      transition={{ type: 'spring', stiffness: 120, damping: 20 }}
-                      style={{ transformStyle: 'preserve-3d' }}
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)] gap-6 lg:gap-8 items-start">
+                  {/* Left: Flippable card – same logo/border as HeaderNav */}
+                  <div className="flex flex-col items-center lg:items-start">
+                    <div
+                      className="relative w-full max-w-[320px] h-[200px] cursor-pointer mx-auto lg:mx-0"
+                      style={{ perspective: '1200px' }}
+                      onClick={() => setCardFlipped((f) => !f)}
                     >
-                      {/* Front: logo, name/address, chip, last4 */}
-                      <div
-                        className="absolute inset-0 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-900 dark:from-zinc-800 dark:to-zinc-950 border border-zinc-600/50 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-5 text-white"
-                        style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                      <motion.div
+                        className="relative w-full h-full"
+                        animate={{ rotateY: cardFlipped ? 180 : 0 }}
+                        transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+                        style={{ transformStyle: 'preserve-3d' }}
                       >
-                        <div className="flex justify-between items-start">
-                          <div className="w-10 h-8 rounded bg-white/20 flex items-center justify-center text-xs font-bold text-white">
-                            CLEAR
-                          </div>
-                          <div className="w-12 h-9 rounded-lg bg-amber-400/90 flex items-center justify-center">
-                            <div className="w-8 h-6 rounded border-2 border-amber-600/50 bg-gradient-to-br from-amber-200 to-amber-400" />
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Equity Card</p>
-                          <p className="font-mono text-sm tracking-wider">
-                            •••• •••• •••• {MOCK_CARD.last4}
-                          </p>
-                          <p className="text-xs text-zinc-400 mt-2 font-mono">
-                            {formatWalletDisplay(address)}
-                          </p>
-                        </div>
-                      </div>
-                      {/* Back: stripe, number, expiry, CVV */}
-                      <div
-                        className="absolute inset-0 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-900 dark:from-zinc-800 dark:to-zinc-950 border border-zinc-600/50 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-5 text-white"
-                        style={{
-                          backfaceVisibility: 'hidden',
-                          WebkitBackfaceVisibility: 'hidden',
-                          transform: 'rotateY(180deg)',
-                        }}
-                      >
-                        <div className="h-10 -mx-5 mt-0 bg-zinc-800/80" />
-                        <div className="space-y-3 text-right">
-                          <p className="text-[10px] text-zinc-400">Card number</p>
-                          <p className="font-mono text-sm tracking-wider">
-                            {revealNumber ? MOCK_CARD.number.replace(/(\d{4})/g, '$1 ').trim() : `•••• •••• •••• ${MOCK_CARD.last4}`}
-                          </p>
-                          <div className="flex justify-end gap-6">
-                            <div>
-                              <p className="text-[10px] text-zinc-400">Expires</p>
-                              <p className="font-mono text-sm">{MOCK_CARD.expiry}</p>
+                        <div
+                          className="absolute inset-0 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-900 dark:from-zinc-800 dark:to-zinc-950 border border-zinc-600/50 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-5 text-white"
+                          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="w-9 h-9 rounded border border-black/90 dark:border-white/10 flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]/50 shrink-0">
+                              <img src={ClearPathLogo} alt="CLEAR" className="w-full h-full object-cover" />
                             </div>
-                            <div>
-                              <p className="text-[10px] text-zinc-400">CVV</p>
-                              <p className="font-mono text-sm">{revealCVV ? MOCK_CARD.cvv : '•••'}</p>
+                            <div className="w-12 h-9 rounded-lg bg-amber-400/90 flex items-center justify-center shrink-0">
+                              <div className="w-8 h-6 rounded border-2 border-amber-600/50 bg-gradient-to-br from-amber-200 to-amber-400" />
                             </div>
                           </div>
+                          <div>
+                            <p className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Equity Card</p>
+                            <p className="font-mono text-sm tracking-wider">•••• •••• •••• {MOCK_CARD.last4}</p>
+                            <p className="text-xs text-zinc-400 mt-2 font-mono">{formatWalletDisplay(address)}</p>
+                          </div>
+                        </div>
+                        <div
+                          className="absolute inset-0 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-900 dark:from-zinc-800 dark:to-zinc-950 border border-zinc-600/50 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-5 text-white"
+                          style={{
+                            backfaceVisibility: 'hidden',
+                            WebkitBackfaceVisibility: 'hidden',
+                            transform: 'rotateY(180deg)',
+                          }}
+                        >
+                          <div className="h-10 -mx-5 mt-0 bg-zinc-800/80" />
+                          <div className="space-y-3 text-right">
+                            <p className="text-[10px] text-zinc-400">Card number</p>
+                            <p className="font-mono text-sm tracking-wider">
+                              {revealNumber ? MOCK_CARD.number.replace(/(\d{4})/g, '$1 ').trim() : `•••• •••• •••• ${MOCK_CARD.last4}`}
+                            </p>
+                            <div className="flex justify-end gap-6">
+                              <div>
+                                <p className="text-[10px] text-zinc-400">Expires</p>
+                                <p className="font-mono text-sm">{MOCK_CARD.expiry}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] text-zinc-400">CVV</p>
+                                <p className="font-mono text-sm">{revealCVV ? MOCK_CARD.cvv : '•••'}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    </div>
+                    <p className="text-center lg:text-left text-xs text-zinc-500 dark:text-zinc-400 mt-2 w-full max-w-[320px] lg:max-w-none">Tap card to flip</p>
+                  </div>
+
+                  {/* Right: What makes up limit + Utilization */}
+                  <div className="space-y-5 min-w-0">
+                    <div className="p-4 rounded-lg bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800">
+                      <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-2">
+                        <Info className="w-3.5 h-3.5" />
+                        What makes up your card limit
+                      </p>
+                      <p className="text-sm text-black dark:text-white mb-2">
+                        Limit = 50% of Combined Stake. Drawn in order:
+                      </p>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
+                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                            From ESA (0% interest)
+                          </span>
+                          <span className="font-medium text-black dark:text-white shrink-0">${limitFromCash.toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                            From Beneficial Interest (low interest)
+                          </span>
+                          <span className="font-medium text-black dark:text-white shrink-0">${limitFromEquity.toLocaleString()}</span>
                         </div>
                       </div>
-                    </motion.div>
-                  </div>
-                  <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 mt-2">Tap card to flip</p>
-                </div>
-
-                {/* Limit breakdown: what makes up the card limit */}
-                <div className="mb-6 p-4 rounded-lg bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800">
-                  <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-3 flex items-center gap-2">
-                    <Info className="w-3.5 h-3.5" />
-                    What makes up your card limit
-                  </p>
-                  <p className="text-sm text-black dark:text-white mb-3">
-                    Your spending limit is <span className="font-medium">50% of your Combined Equity Stake</span>. It is drawn in this order:
-                  </p>
-                  <div className="flex flex-wrap gap-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span className="text-zinc-600 dark:text-zinc-300">From ESA (0% interest)</span>
-                      <span className="font-medium text-black dark:text-white">${limitFromCash.toLocaleString()}</span>
+                      <div className="mt-3 h-2 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden flex">
+                        <div className="h-full bg-blue-500 rounded-l-full" style={{ width: `${(limitFromCash / spendingPower) * 100}%` }} />
+                        <div className="h-full bg-amber-500 rounded-r-full" style={{ width: `${(limitFromEquity / spendingPower) * 100}%` }} />
+                      </div>
+                      <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
+                        <span>$0</span>
+                        <span>${(spendingPower * 0.5).toLocaleString()}</span>
+                        <span>${spendingPower.toLocaleString()}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span className="text-zinc-600 dark:text-zinc-300">From Beneficial Interest (low interest)</span>
-                      <span className="font-medium text-black dark:text-white">${limitFromEquity.toLocaleString()}</span>
+                    <div>
+                      <div className="flex justify-between text-xs mb-1.5">
+                        <span className="text-zinc-500 dark:text-zinc-400">Utilization</span>
+                        <span className="text-blue-600 dark:text-blue-400 font-medium">{utilizationPct.toFixed(0)}% Used</span>
+                      </div>
+                      <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden relative">
+                        <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${utilizationPct}%` }} />
+                        {[25, 50, 75].map((p) => (
+                          <div key={p} className="absolute top-0 bottom-0 w-px bg-white/30 dark:bg-zinc-600 pointer-events-none" style={{ left: `${p}%` }} />
+                        ))}
+                      </div>
+                      <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
+                        <span>$0 used</span>
+                        <span>${spendingPower.toLocaleString()} limit</span>
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-3 h-2 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden flex">
-                    <div
-                      className="h-full bg-blue-500 rounded-l-full"
-                      style={{ width: `${(limitFromCash / spendingPower) * 100}%` }}
-                    />
-                    <div
-                      className="h-full bg-amber-500 rounded-r-full"
-                      style={{ width: `${(limitFromEquity / spendingPower) * 100}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-                    <span>$0</span>
-                    <span>${(spendingPower * 0.25).toLocaleString()}</span>
-                    <span>${(spendingPower * 0.5).toLocaleString()}</span>
-                    <span>${(spendingPower * 0.75).toLocaleString()}</span>
-                    <span>${spendingPower.toLocaleString()}</span>
-                  </div>
                 </div>
 
-                {/* Utilization bar with breaks */}
-                <div className="mb-6">
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-zinc-500 dark:text-zinc-400">Utilization</span>
-                    <span className="text-blue-600 dark:text-blue-400 font-medium">{utilizationPct.toFixed(0)}% Used</span>
-                  </div>
-                  <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden relative">
-                    <div
-                      className="h-full bg-blue-500 rounded-full transition-all"
-                      style={{ width: `${utilizationPct}%` }}
-                    />
-                    {[25, 50, 75].map((p) => (
-                      <div
-                        key={p}
-                        className="absolute top-0 bottom-0 w-px bg-white/30 dark:bg-zinc-600 pointer-events-none"
-                        style={{ left: `${p}%` }}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-                    <span>$0 used</span>
-                    <span>${spendingPower.toLocaleString()} limit</span>
-                  </div>
-                </div>
-
-                {/* Move Cash to Property */}
+                {/* Move Cash to Property – full width below columns */}
                 <div className="flex items-center justify-between py-4 border-t border-zinc-200 dark:border-zinc-800/50">
                   <div>
                     <p className="font-medium text-black dark:text-white text-sm">Move Cash to Property</p>
