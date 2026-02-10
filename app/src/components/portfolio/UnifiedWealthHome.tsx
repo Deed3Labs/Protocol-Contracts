@@ -160,11 +160,11 @@ export default function UnifiedWealthHome() {
             {/* Balance header – single source of truth; no duplicate breakdown (see ESA below) */}
             <div>
               <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
-                <span className="text-sm font-medium">Combined Equity Stake</span>
+                <span className="text-sm font-medium">Equity Balance</span>
                 <div className="group relative">
                   <Info className="h-4 w-4 cursor-help" />
                   <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap max-w-[220px]">
-                    ESA balance + property equity. Breakdown in Equity Savings Account below.
+                    Savings account + property equity.
                   </div>
                 </div>
                 {!isConnected && (
@@ -220,7 +220,7 @@ export default function UnifiedWealthHome() {
                       <Landmark className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                     </motion.div>
                     <div>
-                      <h3 className="text-base font-normal text-black dark:text-white">Equity Savings Account</h3>
+                      <h3 className="text-base font-medium text-black mb-[2px] dark:text-white">Equity Savings Account</h3>
                       <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono">Account {MOCK_ESA_ACCOUNT.accountNumber}</p>
                     </div>
                   </div>
