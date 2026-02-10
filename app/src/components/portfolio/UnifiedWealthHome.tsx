@@ -250,24 +250,23 @@ export default function UnifiedWealthHome() {
                     <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider pb-1">Cash</span>
                   </div>
                   <div className="flex gap-2">
-                    <Button
-                      size="sm"
+                    <button
+                      type="button"
                       onClick={() => setDepositModalOpen(true)}
-                      className="rounded-full h-9 text-xs font-medium shadow-sm"
+                      className="bg-black dark:bg-white text-white dark:text-black px-3 py-1.5 rounded-full text-xs font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-1.5"
                     >
-                      <ArrowUpRight className="w-4 h-4 mr-1.5" />
+                      <ArrowUpRight className="w-3.5 h-3.5" />
                       Deposit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setWithdrawModalOpen(true)}
                       disabled={!isConnected || cashBalance === 0}
-                      className="rounded-full h-9 text-xs font-medium border-zinc-300 dark:border-zinc-700"
+                      className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-3 py-1.5 rounded-full text-xs font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
                     >
-                      <ArrowDownLeft className="w-4 h-4 mr-1.5" />
+                      <ArrowDownLeft className="w-3.5 h-3.5" />
                       Withdraw
-                    </Button>
+                    </button>
                   </div>
                 </div>
                 {/* Combined stake: Cash + Match = ESA total, then + Property */}
@@ -550,13 +549,13 @@ export default function UnifiedWealthHome() {
                 {/* Move Cash to Property */}
                 <div className="flex items-center justify-between py-4 mt-2 border-t border-zinc-200 dark:border-zinc-800/50">
                   <p className="font-normal text-black dark:text-white text-sm">Move Cash to Property</p>
-                  <Button
-                    variant="outline"
-                    className="rounded-full border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm"
+                  <button
+                    type="button"
+                    className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-3 py-1.5 rounded-full text-xs font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800 flex items-center gap-1.5"
                   >
-                    <ArrowRightLeft className="w-4 h-4 mr-1.5" />
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
                     Transfer
-                  </Button>
+                  </button>
                 </div>
 
                 {/* Expand: card details + transactions */}
@@ -712,14 +711,13 @@ export default function UnifiedWealthHome() {
                     <Building2 className="w-5 h-5 text-zinc-600 dark:text-zinc-400 shrink-0" />
                     <h3 className="text-base font-medium text-black dark:text-white">Property Portfolio</h3>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full border-zinc-300 dark:border-zinc-700 text-xs font-medium h-8 px-3 shrink-0 flex items-center gap-1"
+                  <button
+                    type="button"
+                    className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-3 py-1.5 rounded-full text-xs font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800 flex items-center gap-1.5 shrink-0"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Add property
-                  </Button>
+                  </button>
                 </div>
                 <div className="flex items-center gap-4 mt-3 text-xs">
                   <span className="text-zinc-500 dark:text-zinc-400">
