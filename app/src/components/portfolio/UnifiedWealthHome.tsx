@@ -718,15 +718,11 @@ export default function UnifiedWealthHome() {
                     Add property
                   </button>
                 </div>
-                <div className="flex items-center gap-4 mt-3 text-xs">
-                  <span className="text-zinc-500 dark:text-zinc-400">
-                    <span className="font-medium text-black dark:text-white">{MOCK_PROPERTIES.length}</span> properties
-                  </span>
+                <p className="flex items-center gap-1.5 mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                  <span><span className="font-medium text-black dark:text-white">{MOCK_PROPERTIES.length}</span> properties</span>
                   <span className="text-zinc-400 dark:text-zinc-500">·</span>
-                  <span className="text-zinc-500 dark:text-zinc-400">
-                    Total equity <span className="font-medium text-amber-600 dark:text-amber-500">${MOCK_PROPERTIES.reduce((s, p) => s + p.equity, 0).toLocaleString()}</span>
-                  </span>
-                </div>
+                  <span>Total equity <span className="font-medium text-amber-600 dark:text-amber-500">${MOCK_PROPERTIES.reduce((s, p) => s + p.equity, 0).toLocaleString()}</span></span>
+                </p>
               </div>
               <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
                 {MOCK_PROPERTIES.map((property) => {
