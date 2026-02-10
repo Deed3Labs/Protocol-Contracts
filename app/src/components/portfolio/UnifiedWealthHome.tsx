@@ -12,7 +12,6 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
-  ChevronRight,
   Copy,
   Eye,
   EyeOff,
@@ -207,7 +206,7 @@ export default function UnifiedWealthHome() {
             </div>
 
             {/* Equity Savings Account (ESA) – neo-bank style, single place for ESA + composition */}
-            <div className="bg-white dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded overflow-hidden shadow-sm">
+            <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded overflow-hidden">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-3">
@@ -225,7 +224,7 @@ export default function UnifiedWealthHome() {
                   </span>
                 </div>
               </div>
-              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30">
+              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
                 <div className="flex flex-wrap items-baseline justify-between gap-4">
                   <div>
                     <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-0.5">Available balance</p>
@@ -330,7 +329,7 @@ export default function UnifiedWealthHome() {
             {/* Equity Card – two columns: card (40%) | limit + utilization (60%) */}
             <div>
               <h3 className="text-xl font-light text-black dark:text-white mb-6">Equity Card</h3>
-              <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
+              <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)] gap-6 lg:gap-8 items-stretch">
                   {/* Left: Flippable card – centered in column, standard card ratio ~1.586:1 */}
                   <div className="flex flex-col justify-center items-center min-h-[200px] lg:min-h-0 lg:h-full">
@@ -347,7 +346,7 @@ export default function UnifiedWealthHome() {
                       >
                         {/* Front: off-white in light mode, dark gradient in dark mode */}
                         <div
-                          className="absolute inset-0 rounded bg-[#f5f2ee] dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-950 border border-zinc-300 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-4 text-zinc-800 dark:text-white"
+                          className="absolute inset-0 rounded-2xl bg-[#f5f2ee] dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-950 border border-zinc-300 dark:border-zinc-700 flex flex-col justify-between p-4 text-zinc-800 dark:text-white"
                           style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
                         >
                           <div className="flex justify-between items-start">
@@ -366,7 +365,7 @@ export default function UnifiedWealthHome() {
                         </div>
                         {/* Back: off-white in light mode, dark in dark mode */}
                         <div
-                          className="absolute inset-0 rounded bg-[#f5f2ee] dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-950 border border-zinc-300 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-4 text-zinc-800 dark:text-white"
+                          className="absolute inset-0 rounded-2xl bg-[#f5f2ee] dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-950 border border-zinc-300 dark:border-zinc-700 flex flex-col justify-between p-4 text-zinc-800 dark:text-white"
                           style={{
                             backfaceVisibility: 'hidden',
                             WebkitBackfaceVisibility: 'hidden',
@@ -398,13 +397,16 @@ export default function UnifiedWealthHome() {
 
                   {/* Right: What makes up limit + Utilization */}
                   <div className="space-y-5 min-w-0 flex flex-col justify-center">
-                    <div className="p-4 rounded bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800">
+                    <div className="p-4 rounded bg-zinc-50/80 dark:bg-zinc-800/20 border border-zinc-200 dark:border-zinc-800">
                       <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-2">
                         <Info className="w-3.5 h-3.5" />
                         What makes up your card limit
                       </p>
                       <p className="text-sm text-black dark:text-white mb-2">
                         Limit = 50% of Combined Stake. Drawn in order:
+                      </p>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mb-2">
+                        Only 50% of your property equity is available for card and withdrawals—protects you and the protocol from overdrawing.
                       </p>
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center justify-between gap-2">
@@ -490,7 +492,7 @@ export default function UnifiedWealthHome() {
                       >
                         <div className="pt-4 space-y-6">
                           {/* Card info: number, expiry, CVV, account number */}
-                          <div className="p-4 rounded-lg bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 space-y-3">
+                          <div className="p-4 rounded-lg bg-zinc-50/80 dark:bg-zinc-800/20 border border-zinc-200 dark:border-zinc-800 space-y-3">
                             <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Card & account details</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                               <div className="flex items-center justify-between">
@@ -579,7 +581,7 @@ export default function UnifiedWealthHome() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
                 >
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 rounded-full bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
@@ -593,7 +595,7 @@ export default function UnifiedWealthHome() {
                 </motion.div>
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
                 >
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
@@ -612,8 +614,8 @@ export default function UnifiedWealthHome() {
           {/* Right Column – same spacing as BorrowHome */}
           <div className="md:col-span-4 space-y-6">
             {/* Property Portfolio – information-dense, expandable, RWA-ready */}
-            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden">
-              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50">
+            <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded overflow-hidden">
+              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     <Building2 className="w-5 h-5 text-zinc-600 dark:text-zinc-400 shrink-0" />
@@ -638,43 +640,51 @@ export default function UnifiedWealthHome() {
                   </span>
                 </div>
               </div>
-              <div className="divide-y divide-zinc-200 dark:divide-zinc-800/50">
+              <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
                 {MOCK_PROPERTIES.map((property) => {
                   const isExpanded = expandedPropertyId === property.id;
                   return (
-                    <div key={property.id} className="bg-white dark:bg-zinc-950/50">
+                    <div key={property.id} className="rounded transition-colors">
                       <button
                         type="button"
                         onClick={() => setExpandedPropertyId(isExpanded ? null : property.id)}
-                        className="w-full p-4 flex items-center gap-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors"
+                        className="w-full flex items-center justify-between py-3 px-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded transition-colors cursor-pointer group text-left"
                       >
-                        <div className="w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
-                          <Home className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-black dark:text-white text-sm truncate">{property.address}</p>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">{property.type}</span>
-                            <span className="text-[10px] text-zinc-400">·</span>
-                            <span className="text-[10px] font-medium text-amber-600 dark:text-amber-500">${property.equity.toLocaleString()} equity</span>
-                            {property.status === 'Renovation' && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
-                                Renovation
-                              </span>
-                            )}
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-9 h-9 rounded-full bg-zinc-200 dark:bg-zinc-800 group-hover:bg-zinc-300 dark:group-hover:bg-zinc-700 flex items-center justify-center shrink-0 transition-colors">
+                            <Home className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="text-black dark:text-white font-medium text-sm truncate">{property.address}</p>
+                              {property.verificationStatus === 'Verified' ? (
+                                <span className="flex items-center gap-1 px-1.5 py-0 rounded bg-zinc-100 dark:bg-zinc-800 text-[10px] font-medium text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 shrink-0">
+                                  <ShieldCheck className="w-3 h-3 text-green-500" />
+                                  Synced
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-amber-600 dark:text-amber-500 font-medium shrink-0">Pending</span>
+                              )}
+                            </div>
+                            <p className="text-zinc-500 dark:text-zinc-400 text-xs truncate mt-0.5">
+                              {property.type}
+                              {property.status === 'Renovation' && (
+                                <span className="ml-1.5 px-1.5 py-0 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] font-medium">Renovation</span>
+                              )}
+                            </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-[10px] font-medium text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
-                            <ShieldCheck className="w-3 h-3 text-green-500" />
-                            {property.verificationStatus === 'Verified' ? 'Synced' : 'Pending'}
-                          </span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="text-right">
+                            <p className="text-black dark:text-white font-medium text-sm">${property.equity.toLocaleString()}</p>
+                            <p className="text-zinc-500 dark:text-zinc-400 text-xs">equity</p>
+                          </div>
                           <motion.span
-                            animate={{ rotate: isExpanded ? 90 : 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="text-zinc-400 dark:text-zinc-500"
+                            animate={{ rotate: isExpanded ? 180 : 0 }}
+                            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                            className="text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400"
                           >
-                            <ChevronRight className="w-4 h-4" />
+                            <ChevronDown className="w-4 h-4" />
                           </motion.span>
                         </div>
                       </button>
@@ -684,88 +694,66 @@ export default function UnifiedWealthHome() {
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden border-t border-zinc-200 dark:border-zinc-800/50"
+                            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                            className="overflow-hidden"
                           >
-                            <div className="p-4 pt-2 bg-zinc-50/80 dark:bg-zinc-900/40 space-y-4">
-                              <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
-                                <div className="flex justify-between gap-2">
-                                  <span className="text-zinc-500 dark:text-zinc-400">Market value</span>
-                                  <span className="font-medium text-black dark:text-white tabular-nums">${property.value.toLocaleString()}</span>
+                            <div className="px-3 pb-3 pt-0 mt-0 space-y-2.5 border-t border-zinc-200 dark:border-zinc-800 pt-3">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-zinc-500 dark:text-zinc-400">Market value</span>
+                                <span className="text-black dark:text-white font-medium tabular-nums">${property.value.toLocaleString()}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-zinc-500 dark:text-zinc-400">Your equity</span>
+                                <span className="font-medium text-amber-600 dark:text-amber-500 tabular-nums">${property.equity.toLocaleString()}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-zinc-500 dark:text-zinc-400">Equity %</span>
+                                <span className="text-black dark:text-white font-medium tabular-nums">{property.equityPct}%</span>
+                              </div>
+                              {property.lienBalance > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-zinc-500 dark:text-zinc-400">Outstanding lien</span>
+                                  <span className="text-black dark:text-white font-medium tabular-nums">${property.lienBalance.toLocaleString()}</span>
                                 </div>
-                                <div className="flex justify-between gap-2">
-                                  <span className="text-zinc-500 dark:text-zinc-400">Your equity</span>
-                                  <span className="font-medium text-amber-600 dark:text-amber-500 tabular-nums">${property.equity.toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between gap-2">
-                                  <span className="text-zinc-500 dark:text-zinc-400">Equity %</span>
-                                  <span className="font-medium text-black dark:text-white tabular-nums">{property.equityPct}%</span>
-                                </div>
-                                {property.lienBalance > 0 && (
-                                  <div className="flex justify-between gap-2">
-                                    <span className="text-zinc-500 dark:text-zinc-400">Outstanding lien</span>
-                                    <span className="font-medium text-black dark:text-white tabular-nums">${property.lienBalance.toLocaleString()}</span>
-                                  </div>
-                                )}
-                                <div className="flex justify-between gap-2 col-span-2">
-                                  <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
-                                    <Hash className="w-3 h-3" /> Deed / token ID
-                                  </span>
-                                  <span className="font-mono text-[10px] text-zinc-600 dark:text-zinc-300 truncate max-w-[140px]" title={property.deedTokenId}>
-                                    {property.deedTokenId}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between gap-2">
-                                  <span className="text-zinc-500 dark:text-zinc-400">Trust ID</span>
-                                  <span className="font-mono text-[10px] text-black dark:text-white">{property.trustId}</span>
-                                </div>
-                                <div className="flex justify-between gap-2">
-                                  <span className="text-zinc-500 dark:text-zinc-400">Verification</span>
-                                  <span className={`font-medium ${property.verificationStatus === 'Verified' ? 'text-green-600 dark:text-green-500' : 'text-amber-600 dark:text-amber-500'}`}>
-                                    {property.verificationStatus}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between gap-2 col-span-2">
-                                  <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
-                                    <Calendar className="w-3 h-3" /> Last synced
-                                  </span>
-                                  <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                                    {new Date(property.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                  </span>
-                                </div>
+                              )}
+                              <div className="border-t border-zinc-200 dark:border-zinc-800 my-2" />
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1"><Hash className="w-3 h-3" /> Deed / token ID</span>
+                                <span className="font-mono text-[10px] text-zinc-600 dark:text-zinc-300 truncate max-w-[120px]" title={property.deedTokenId}>{property.deedTokenId}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-zinc-500 dark:text-zinc-400">Trust ID</span>
+                                <span className="font-mono text-[10px] text-black dark:text-white">{property.trustId}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-zinc-500 dark:text-zinc-400">Verification</span>
+                                <span className={`font-medium ${property.verificationStatus === 'Verified' ? 'text-green-600 dark:text-green-500' : 'text-amber-600 dark:text-amber-500'}`}>{property.verificationStatus}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1"><Calendar className="w-3 h-3" /> Last synced</span>
+                                <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{new Date(property.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                               </div>
                               {property.status === 'Renovation' && property.renovationSpent != null && property.renovationTarget != null && (
-                                <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800/50">
-                                  <div className="flex justify-between text-[10px] mb-1.5">
-                                    <span className="text-zinc-500 dark:text-zinc-400 font-medium uppercase tracking-wide">Fixer progress</span>
-                                    {property.renovationValueAdd != null && (
-                                      <span className="text-green-600 dark:text-green-500 font-medium">+${(property.renovationValueAdd / 1000).toFixed(0)}k value add</span>
-                                    )}
+                                <>
+                                  <div className="border-t border-zinc-200 dark:border-zinc-800 my-2" />
+                                  <div className="flex items-center justify-between text-xs mb-1.5">
+                                    <span className="text-zinc-500 dark:text-zinc-400 font-medium">Fixer progress</span>
+                                    {property.renovationValueAdd != null && <span className="text-green-600 dark:text-green-500 font-medium">+${(property.renovationValueAdd / 1000).toFixed(0)}k value add</span>}
                                   </div>
-                                  <Progress
-                                    value={Math.min(100, ((property.renovationSpent ?? 0) / (property.renovationTarget ?? 1)) * 100)}
-                                    className="h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full"
-                                  />
+                                  <Progress value={Math.min(100, ((property.renovationSpent ?? 0) / (property.renovationTarget ?? 1)) * 100)} className="h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
                                   <div className="flex justify-between text-[10px] text-zinc-400 mt-1 font-mono">
                                     <span>${((property.renovationSpent ?? 0) / 1000).toFixed(0)}k spent</span>
                                     <span>Target ${((property.renovationTarget ?? 0) / 1000).toFixed(0)}k</span>
                                   </div>
-                                </div>
+                                </>
                               )}
-                              <div className="flex flex-wrap gap-2 pt-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 text-xs rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white"
-                                >
+                              <div className="border-t border-zinc-200 dark:border-zinc-800 my-2" />
+                              <div className="flex gap-2 pt-2">
+                                <Button variant="ghost" size="sm" className="h-7 text-xs rounded-lg flex-1">
                                   <ExternalLink className="w-3 h-3 mr-1.5" />
                                   View on chain
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 text-xs rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white"
-                                >
+                                <Button variant="ghost" size="sm" className="h-7 text-xs rounded-lg flex-1">
                                   <FileCheck className="w-3 h-3 mr-1.5" />
                                   Documents
                                 </Button>
@@ -787,7 +775,7 @@ export default function UnifiedWealthHome() {
             </div>
 
             {/* Path to 100% */}
-            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-5">
+            <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-medium text-black dark:text-white flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-amber-500" />
@@ -795,7 +783,7 @@ export default function UnifiedWealthHome() {
                 </h3>
                 <span className="text-sm font-medium text-amber-600 dark:text-amber-500">+142%</span>
               </div>
-              <div className="h-24 w-full rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 flex items-end justify-around pb-2 gap-px">
+              <div className="h-24 w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/20 flex items-end justify-around pb-2 gap-px">
                 {[20, 35, 45, 55, 70, 85, 100].map((h, i) => (
                   <div
                     key={i}
@@ -808,7 +796,7 @@ export default function UnifiedWealthHome() {
                 <span>Now</span>
                 <span>7 Years</span>
               </div>
-              <div className="mt-3 p-3 rounded bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30">
+              <div className="mt-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
                   <span className="text-xs font-medium text-green-700 dark:text-green-400">Renovation Pop Inbound</span>
