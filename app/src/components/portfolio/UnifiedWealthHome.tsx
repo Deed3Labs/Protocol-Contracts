@@ -205,39 +205,55 @@ export default function UnifiedWealthHome() {
               </div>
             </div>
 
-            {/* Equity Savings Account (ESA) – neo-bank style, single place for ESA + composition */}
-            <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded overflow-hidden">
-              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
+            {/* Equity Savings Account (ESA) – interactive, visual composition, gamified */}
+            <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
+              <div className="p-5">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                      <Landmark className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
+                    <motion.div
+                      className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 dark:from-blue-500/25 dark:to-blue-600/15 flex items-center justify-center border border-blue-200/50 dark:border-blue-800/50"
+                      whileHover={{ scale: 1.05 }}
+                      transition={{ type: 'spring', stiffness: 300 }}
+                    >
+                      <Landmark className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                    </motion.div>
                     <div>
                       <h3 className="text-base font-semibold text-black dark:text-white">Equity Savings Account</h3>
                       <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono">Account {MOCK_ESA_ACCOUNT.accountNumber}</p>
                     </div>
                   </div>
-                  <span className="px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold tracking-wide border border-green-200 dark:border-green-800 flex items-center gap-1.5 shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                  <motion.span
+                    className="px-3 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold tracking-wide border border-green-200 dark:border-green-800 flex items-center gap-2 shrink-0"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.2 }}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
                     1:1 Match Active
-                  </span>
+                  </motion.span>
                 </div>
               </div>
-              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
-                <div className="flex flex-wrap items-baseline justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-0.5">Available balance</p>
-                    <p className="text-2xl font-semibold text-black dark:text-white tabular-nums">${cashBalance.toLocaleString()}</p>
-                    <p className="text-[10px] text-zinc-400 mt-0.5">Cash in ESA · 0% APR (match-first)</p>
+              <div className="px-5 pb-5">
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                  <div className="flex items-baseline gap-3">
+                    <motion.p
+                      className="text-3xl font-bold text-black dark:text-white tabular-nums"
+                      key={cashBalance}
+                      initial={{ scale: 1.05 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: 'spring', stiffness: 400 }}
+                    >
+                      ${cashBalance.toLocaleString()}
+                    </motion.p>
+                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider pb-1">Available</span>
                   </div>
                   <div className="flex gap-2">
                     <Button
                       size="sm"
                       onClick={() => setDepositModalOpen(true)}
-                      className="rounded-full h-8 text-xs font-medium"
+                      className="rounded-full h-9 text-xs font-medium shadow-sm"
                     >
-                      <ArrowUpRight className="w-3.5 h-3.5 mr-1.5" />
+                      <ArrowUpRight className="w-4 h-4 mr-2" />
                       Deposit
                     </Button>
                     <Button
@@ -245,36 +261,74 @@ export default function UnifiedWealthHome() {
                       size="sm"
                       onClick={() => setWithdrawModalOpen(true)}
                       disabled={!isConnected || cashBalance === 0}
-                      className="rounded-full h-8 text-xs font-medium border-zinc-300 dark:border-zinc-700"
+                      className="rounded-full h-9 text-xs font-medium border-zinc-300 dark:border-zinc-700"
                     >
-                      <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" />
+                      <ArrowDownLeft className="w-4 h-4 mr-2" />
                       Withdraw
                     </Button>
                   </div>
                 </div>
-                <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
-                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-2">Composition (combined stake)</p>
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span className="text-zinc-600 dark:text-zinc-300">ESA</span>
-                      <span className="font-medium text-black dark:text-white">${cashBalance.toLocaleString()}</span>
+                {/* Composition: donut-style visual */}
+                <div className="mt-5 flex items-center gap-4">
+                  <div className="relative w-16 h-16 shrink-0" aria-hidden>
+                    <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                      <path
+                        d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        className="text-zinc-200 dark:text-zinc-700"
+                      />
+                      <motion.path
+                        d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
+                        fill="none"
+                        stroke="#3b82f6"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        pathLength={100}
+                        strokeDasharray={`${(cashBalance / totalStake) * 100} 100`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.5 }}
+                      />
+                      <motion.path
+                        d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
+                        fill="none"
+                        stroke="#f59e0b"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        pathLength={100}
+                        strokeDasharray={`${(MOCK_PROPERTY_EQUITY / totalStake) * 100} 100`}
+                        strokeDashoffset={-((cashBalance / totalStake) * 100)}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.5, delay: 0.15 }}
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-black dark:text-white">
+                      ${(totalStake / 1000).toFixed(0)}k
                     </span>
-                    <span className="text-zinc-400 dark:text-zinc-500">+</span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span className="text-zinc-600 dark:text-zinc-300">Property equity</span>
-                      <span className="font-medium text-black dark:text-white">${MOCK_PROPERTY_EQUITY.toLocaleString()}</span>
-                    </span>
-                    <span className="text-zinc-400 dark:text-zinc-500">=</span>
-                    <span className="font-semibold text-black dark:text-white">${totalStake.toLocaleString()} total</span>
                   </div>
-                  <p className="text-[10px] text-zinc-400 mt-1.5">Match adds 1:1 to buying power when you deposit.</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Combined stake</p>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                        <span className="text-zinc-600 dark:text-zinc-300">ESA</span>
+                        <span className="font-semibold text-black dark:text-white">${cashBalance.toLocaleString()}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                        <span className="text-zinc-600 dark:text-zinc-300">Property</span>
+                        <span className="font-semibold text-black dark:text-white">${MOCK_PROPERTY_EQUITY.toLocaleString()}</span>
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Recent activity</p>
+              <div className="px-5 py-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/20">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Recent activity</span>
                   <button
                     type="button"
                     className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-medium"
@@ -283,11 +337,17 @@ export default function UnifiedWealthHome() {
                     {esaActivityExpanded ? 'Show less' : 'View all'}
                   </button>
                 </div>
-                <ul className="space-y-0 divide-y divide-zinc-100 dark:divide-zinc-800/50">
-                  {(esaActivityExpanded ? MOCK_ESA_ACTIVITY : MOCK_ESA_ACTIVITY.slice(0, 2)).map((item) => (
-                    <li key={item.id} className="flex items-center justify-between py-2.5 first:pt-0">
+                <ul className="space-y-0 divide-y divide-zinc-200 dark:divide-zinc-800/50">
+                  {(esaActivityExpanded ? MOCK_ESA_ACTIVITY : MOCK_ESA_ACTIVITY.slice(0, 2)).map((item, i) => (
+                    <motion.li
+                      key={item.id}
+                      initial={{ opacity: 0, x: -4 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="flex items-center justify-between py-2.5 first:pt-0"
+                    >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${item.type === 'deposit' || item.type === 'match' ? 'bg-green-50 dark:bg-green-900/20' : 'bg-zinc-100 dark:bg-zinc-800'}`}>
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${item.type === 'deposit' || item.type === 'match' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-zinc-100 dark:bg-zinc-800'}`}>
                           {item.type === 'match' ? (
                             <Zap className="w-4 h-4 text-green-600 dark:text-green-400" />
                           ) : item.type === 'deposit' ? (
@@ -299,44 +359,46 @@ export default function UnifiedWealthHome() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-black dark:text-white truncate">{item.description}</p>
                           <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                            {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · {item.status}
+                            {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {item.status}
                           </p>
                         </div>
                       </div>
-                      <span className={`text-sm font-medium tabular-nums shrink-0 ml-2 ${item.amount >= 0 ? 'text-green-600 dark:text-green-500' : 'text-black dark:text-white'}`}>
+                      <span className={`text-sm font-semibold tabular-nums shrink-0 ml-2 ${item.amount >= 0 ? 'text-green-600 dark:text-green-500' : 'text-black dark:text-white'}`}>
                         {item.amount >= 0 ? '+' : ''}${item.amount.toLocaleString()}
                       </span>
-                    </li>
+                    </motion.li>
                   ))}
                 </ul>
-                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800/50">
-                  <Button variant="ghost" size="sm" className="h-7 text-xs rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white">
-                    <FileText className="w-3 h-3 mr-1.5" />
+                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-800/50">
+                  <Button variant="ghost" size="sm" className="h-8 text-xs rounded-full text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white">
+                    <FileText className="w-3.5 h-3.5 mr-1.5" />
                     Statements
                   </Button>
                   <button
                     type="button"
                     onClick={() => navigator.clipboard.writeText(MOCK_ESA_ACCOUNT.accountNumber)}
-                    className="inline-flex items-center gap-1.5 h-7 px-2 text-xs text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    className="inline-flex items-center gap-1.5 h-8 px-2.5 text-xs text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
                   >
-                    <Copy className="w-3 h-3" />
-                    Copy account ref
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy ref
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Equity Card – two columns: card (40%) | limit + utilization (60%) */}
+            {/* Equity Card – visual, scannable, utilization gauge */}
             <div>
               <h3 className="text-xl font-light text-black dark:text-white mb-6">Equity Card</h3>
-              <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
+              <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)] gap-6 lg:gap-8 items-stretch">
-                  {/* Left: Flippable card – centered in column, standard card ratio ~1.586:1 */}
+                  {/* Left: Flippable card */}
                   <div className="flex flex-col justify-center items-center min-h-[200px] lg:min-h-0 lg:h-full">
-                    <div
+                    <motion.div
                       className="relative w-[300px] h-[189px] cursor-pointer shrink-0"
                       style={{ perspective: '1200px' }}
                       onClick={() => setCardFlipped((f) => !f)}
+                      whileHover={{ scale: 1.02 }}
+                      transition={{ type: 'spring', stiffness: 300 }}
                     >
                       <motion.div
                         className="relative w-full h-full"
@@ -344,7 +406,7 @@ export default function UnifiedWealthHome() {
                         transition={{ type: 'spring', stiffness: 120, damping: 20 }}
                         style={{ transformStyle: 'preserve-3d' }}
                       >
-                        {/* Front: off-white in light mode, dark gradient in dark mode */}
+                        {/* Front */}
                         <div
                           className="absolute inset-0 rounded-2xl bg-[#f5f2ee] dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-950 border border-zinc-300 dark:border-zinc-700 flex flex-col justify-between p-4 text-zinc-800 dark:text-white"
                           style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
@@ -363,7 +425,7 @@ export default function UnifiedWealthHome() {
                             <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 font-mono">{formatWalletDisplay(address)}</p>
                           </div>
                         </div>
-                        {/* Back: off-white in light mode, dark in dark mode */}
+                        {/* Back */}
                         <div
                           className="absolute inset-0 rounded-2xl bg-[#f5f2ee] dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-950 border border-zinc-300 dark:border-zinc-700 flex flex-col justify-between p-4 text-zinc-800 dark:text-white"
                           style={{
@@ -391,74 +453,94 @@ export default function UnifiedWealthHome() {
                           </div>
                         </div>
                       </motion.div>
-                    </div>
-                    <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 mt-2">Tap card to flip</p>
+                    </motion.div>
+                    <p className="text-center text-[10px] text-zinc-500 dark:text-zinc-400 mt-2">Tap to flip</p>
                   </div>
 
-                  {/* Right: What makes up limit + Utilization */}
+                  {/* Right: Spending power + utilization gauge */}
                   <div className="space-y-5 min-w-0 flex flex-col justify-center">
-                    <div className="p-4 rounded bg-zinc-50/80 dark:bg-zinc-800/20 border border-zinc-200 dark:border-zinc-800">
-                      <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-2">
-                        <Info className="w-3.5 h-3.5" />
-                        What makes up your card limit
-                      </p>
-                      <p className="text-sm text-black dark:text-white mb-2">
-                        You can borrow against 100% of your ESA. Limit drawn in order:
-                      </p>
-                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mb-2">
-                        Only 50% of property equity is available for card and withdrawals—protects you and the protocol from overdrawing.
-                      </p>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
-                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                            From ESA (0% interest)
-                          </span>
-                          <span className="font-medium text-black dark:text-white shrink-0">${limitFromCash.toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
-                            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                            From Beneficial Interest (low interest)
-                          </span>
-                          <span className="font-medium text-black dark:text-white shrink-0">${limitFromEquity.toLocaleString()}</span>
-                        </div>
+                    <div>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1">Spending power</p>
+                      <p className="text-2xl font-bold text-black dark:text-white tabular-nums">${spendingPower.toLocaleString()}</p>
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          100% ESA
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-[10px] font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          50% property
+                        </span>
                       </div>
-                      <div className="mt-3 h-2 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden flex">
-                        <div className="h-full bg-blue-500 rounded-l-full" style={{ width: `${(limitFromCash / spendingPower) * 100}%` }} />
-                        <div className="h-full bg-amber-500 rounded-r-full" style={{ width: `${(limitFromEquity / spendingPower) * 100}%` }} />
+                      <div className="mt-2 flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                          <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                          ESA
+                        </span>
+                        <span className="font-semibold text-black dark:text-white">${limitFromCash.toLocaleString()}</span>
                       </div>
-                      <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-                        <span>$0</span>
-                        <span>${(spendingPower * 0.5).toLocaleString()}</span>
-                        <span>${spendingPower.toLocaleString()}</span>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
+                          <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                          Property
+                        </span>
+                        <span className="font-semibold text-black dark:text-white">${limitFromEquity.toLocaleString()}</span>
+                      </div>
+                      <div className="mt-2 h-2 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden flex">
+                        <motion.div
+                          className="h-full bg-blue-500 rounded-l-full"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(limitFromCash / spendingPower) * 100}%` }}
+                          transition={{ duration: 0.5, ease: 'easeOut' }}
+                        />
+                        <motion.div
+                          className="h-full bg-amber-500 rounded-r-full"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(limitFromEquity / spendingPower) * 100}%` }}
+                          transition={{ duration: 0.5, ease: 'easeOut' }}
+                        />
                       </div>
                     </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span className="text-zinc-500 dark:text-zinc-400">Utilization</span>
-                        <span className="text-blue-600 dark:text-blue-400 font-medium">{utilizationPct.toFixed(0)}% Used</span>
+                    {/* Utilization: circular gauge + one line */}
+                    <div className="flex items-center gap-4">
+                      <div className="relative w-20 h-20 shrink-0" aria-hidden>
+                        <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                          <path
+                            d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            className="text-zinc-200 dark:text-zinc-700"
+                          />
+                          <motion.path
+                            d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
+                            fill="none"
+                            stroke={utilizationPct > 75 ? '#ef4444' : utilizationPct > 50 ? '#f59e0b' : '#22c55e'}
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            pathLength={100}
+                            initial={{ strokeDasharray: '0 100' }}
+                            animate={{ strokeDasharray: `${Math.min(utilizationPct, 100)} 100` }}
+                            transition={{ duration: 0.6, ease: 'easeOut' }}
+                          />
+                        </svg>
+                        <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-black dark:text-white">
+                          {utilizationPct.toFixed(0)}%
+                        </span>
                       </div>
-                      <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden relative">
-                        <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${utilizationPct}%` }} />
-                        {[25, 50, 75].map((p) => (
-                          <div key={p} className="absolute top-0 bottom-0 w-px bg-white/30 dark:bg-zinc-600 pointer-events-none" style={{ left: `${p}%` }} />
-                        ))}
-                      </div>
-                      <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-                        <span>$0 used</span>
-                        <span>${spendingPower.toLocaleString()} limit</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Used</p>
+                        <p className="text-sm font-medium text-black dark:text-white">
+                          $0 → ${spendingPower.toLocaleString()} limit
+                        </p>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Move Cash to Property – full width below columns */}
-                <div className="flex items-center justify-between py-4 border-t border-zinc-200 dark:border-zinc-800/50">
-                  <div>
-                    <p className="font-medium text-black dark:text-white text-sm">Move Cash to Property</p>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Buy down principal instantly</p>
-                  </div>
+                {/* Move Cash to Property */}
+                <div className="flex items-center justify-between py-4 mt-2 border-t border-zinc-200 dark:border-zinc-800/50">
+                  <p className="font-medium text-black dark:text-white text-sm">Move Cash to Property</p>
                   <Button
                     variant="outline"
                     className="rounded-full border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm"
@@ -477,7 +559,7 @@ export default function UnifiedWealthHome() {
                   >
                     <span className="flex items-center gap-2">
                       <Receipt className="w-4 h-4" />
-                      {cardExpanded ? 'Hide' : 'Show'} card details & activity
+                      {cardExpanded ? 'Hide' : 'Show'} details & activity
                     </span>
                     {cardExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
