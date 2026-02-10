@@ -12,10 +12,19 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   Copy,
   Eye,
   EyeOff,
   Receipt,
+  Plus,
+  FileCheck,
+  ExternalLink,
+  Hash,
+  Calendar,
+  Landmark,
+  ArrowDownLeft,
+  FileText,
 } from 'lucide-react';
 import ClearPathLogo from '../../assets/ClearPath-Logo.png';
 import SideMenu from './SideMenu';
@@ -32,8 +41,42 @@ import { Progress } from '@/components/ui/progress';
 
 const MOCK_PROPERTY_EQUITY = 85000;
 const MOCK_PROPERTIES = [
-  { id: 1, address: '123 Ocean Drive, Miami FL', value: 450000, equity: 65000, status: 'Active', type: 'Condo' },
-  { id: 2, address: '456 Alpine Way, Aspen CO', value: 850000, equity: 20000, status: 'Renovation', type: 'Chalet' },
+  {
+    id: 1,
+    address: '123 Ocean Drive, Miami FL',
+    value: 450000,
+    equity: 65000,
+    status: 'Active',
+    type: 'Condo',
+    deedTokenId: '0x7a3...f2b1',
+    trustId: 'WY-NT-8847',
+    chainId: 8453,
+    lastSyncedAt: '2025-02-10T14:32:00Z',
+    verificationStatus: 'Verified',
+    lienBalance: 0,
+    equityPct: 14.4,
+    renovationSpent: null,
+    renovationTarget: null,
+    renovationValueAdd: null,
+  },
+  {
+    id: 2,
+    address: '456 Alpine Way, Aspen CO',
+    value: 850000,
+    equity: 20000,
+    status: 'Renovation',
+    type: 'Chalet',
+    deedTokenId: '0x9c1...d4e2',
+    trustId: 'WY-NT-8848',
+    chainId: 8453,
+    lastSyncedAt: '2025-02-09T09:15:00Z',
+    verificationStatus: 'Pending review',
+    lienBalance: 830000,
+    equityPct: 2.4,
+    renovationSpent: 5000,
+    renovationTarget: 25000,
+    renovationValueAdd: 12000,
+  },
 ];
 
 // Mock Equity Card details (in production would come from API)
@@ -50,6 +93,15 @@ const MOCK_CARD_TRANSACTIONS = [
   { id: 2, description: 'Whole Foods', amount: -82.15, date: '2025-02-08', category: 'Groceries' },
   { id: 3, description: 'Stake credit', amount: 250.0, date: '2025-02-05', category: 'Credit' },
   { id: 4, description: 'Netflix', amount: -15.99, date: '2025-02-01', category: 'Subscription' },
+];
+
+const MOCK_ESA_ACCOUNT = { accountNumber: 'ESA-8847-2291', routingRef: 'CLEAR-ESA' };
+
+const MOCK_ESA_ACTIVITY = [
+  { id: 1, type: 'deposit' as const, amount: 5000, date: '2025-02-08T10:30:00Z', description: 'Bank transfer', status: 'Completed' },
+  { id: 2, type: 'match' as const, amount: 5000, date: '2025-02-08T10:30:00Z', description: '1:1 Match credit', status: 'Completed' },
+  { id: 3, type: 'withdrawal' as const, amount: -1500, date: '2025-02-05T14:00:00Z', description: 'Transfer to Property', status: 'Completed' },
+  { id: 4, type: 'deposit' as const, amount: 2500, date: '2025-02-01T09:15:00Z', description: 'Bank transfer', status: 'Completed' },
 ];
 
 function formatWalletDisplay(address: string | undefined): string {
@@ -70,6 +122,8 @@ export default function UnifiedWealthHome() {
   const [cardExpanded, setCardExpanded] = useState(false);
   const [revealNumber, setRevealNumber] = useState(false);
   const [revealCVV, setRevealCVV] = useState(false);
+  const [expandedPropertyId, setExpandedPropertyId] = useState<number | null>(null);
+  const [esaActivityExpanded, setEsaActivityExpanded] = useState(false);
 
   const cashBalance = portfolioCashBalance?.totalCash || 12500;
   const totalStake = cashBalance + MOCK_PROPERTY_EQUITY;
@@ -102,20 +156,16 @@ export default function UnifiedWealthHome() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
           {/* Left Column */}
           <div className="md:col-span-8 space-y-10">
-            {/* Balance header – same pattern as BrokerageHome / MarketsHome / BorrowHome */}
+            {/* Balance header – single source of truth; no duplicate breakdown (see ESA below) */}
             <div>
               <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-500">
                 <span className="text-sm font-medium">Combined Equity Stake</span>
                 <div className="group relative">
                   <Info className="h-4 w-4 cursor-help" />
                   <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap max-w-[220px]">
-                    Cash (ESA) + property equity. 1:1 match on cash adds to buying power.
+                    ESA balance + property equity. Breakdown in Equity Savings Account below.
                   </div>
                 </div>
-                <span className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold tracking-wide border border-green-200 dark:border-green-800 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                  1:1 Match Active
-                </span>
                 {!isConnected && (
                   <span className="text-xs text-amber-500">Connect wallet to view balance</span>
                 )}
@@ -138,22 +188,6 @@ export default function UnifiedWealthHome() {
                   )}
                 </h1>
               </div>
-              {/* Breakdown with rounded-full dots (cash vs property mix) */}
-              <div className="flex flex-wrap items-center gap-2 mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400" />
-                  ${cashBalance.toLocaleString()} Cash
-                </span>
-                <span className="text-zinc-400 dark:text-zinc-500">+</span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 dark:bg-amber-400" />
-                  ${MOCK_PROPERTY_EQUITY.toLocaleString()} Property
-                </span>
-                <span className="text-zinc-400 dark:text-zinc-500">=</span>
-                <span className="text-black dark:text-white font-medium">
-                  ${totalStake.toLocaleString()} Total
-                </span>
-              </div>
               <div className="mt-6 flex flex-wrap gap-3">
                 <button
                   onClick={() => setDepositModalOpen(true)}
@@ -172,32 +206,123 @@ export default function UnifiedWealthHome() {
               </div>
             </div>
 
-            {/* ESA Account summary – above the card so user sees deposits & match context */}
-            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-lg p-4">
-              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-3">ESA Account</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-0.5">Deposits</p>
-                  <p className="font-medium text-black dark:text-white">${cashBalance.toLocaleString()}</p>
-                  <p className="text-[10px] text-zinc-400 mt-0.5">Cash in ESA</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-0.5">Match status</p>
-                  <p className="font-medium text-green-600 dark:text-green-500 flex items-center gap-1.5">
+            {/* Equity Savings Account (ESA) – neo-bank style, single place for ESA + composition */}
+            <div className="bg-white dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 rounded overflow-hidden shadow-sm">
+              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
+                      <Landmark className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-black dark:text-white">Equity Savings Account</h3>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono">Account {MOCK_ESA_ACCOUNT.accountNumber}</p>
+                    </div>
+                  </div>
+                  <span className="px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold tracking-wide border border-green-200 dark:border-green-800 flex items-center gap-1.5 shrink-0">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                    1:1 Active
-                  </p>
-                  <p className="text-[10px] text-zinc-400 mt-0.5">Eligible for match</p>
+                    1:1 Match Active
+                  </span>
                 </div>
-                <div>
-                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-0.5">Match value</p>
-                  <p className="font-medium text-black dark:text-white">${cashBalance.toLocaleString()}</p>
-                  <p className="text-[10px] text-zinc-400 mt-0.5">Adds to buying power</p>
+              </div>
+              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30">
+                <div className="flex flex-wrap items-baseline justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-0.5">Available balance</p>
+                    <p className="text-2xl font-semibold text-black dark:text-white tabular-nums">${cashBalance.toLocaleString()}</p>
+                    <p className="text-[10px] text-zinc-400 mt-0.5">Cash in ESA · 0% APR (match-first)</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => setDepositModalOpen(true)}
+                      className="rounded-full h-8 text-xs font-medium"
+                    >
+                      <ArrowUpRight className="w-3.5 h-3.5 mr-1.5" />
+                      Deposit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWithdrawModalOpen(true)}
+                      disabled={!isConnected || cashBalance === 0}
+                      className="rounded-full h-8 text-xs font-medium border-zinc-300 dark:border-zinc-700"
+                    >
+                      <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" />
+                      Withdraw
+                    </Button>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-0.5">Total stake</p>
-                  <p className="font-medium text-black dark:text-white">${totalStake.toLocaleString()}</p>
-                  <p className="text-[10px] text-zinc-400 mt-0.5">Cash + Property</p>
+                <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-2">Composition (combined stake)</p>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      <span className="text-zinc-600 dark:text-zinc-300">ESA</span>
+                      <span className="font-medium text-black dark:text-white">${cashBalance.toLocaleString()}</span>
+                    </span>
+                    <span className="text-zinc-400 dark:text-zinc-500">+</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span className="text-zinc-600 dark:text-zinc-300">Property equity</span>
+                      <span className="font-medium text-black dark:text-white">${MOCK_PROPERTY_EQUITY.toLocaleString()}</span>
+                    </span>
+                    <span className="text-zinc-400 dark:text-zinc-500">=</span>
+                    <span className="font-semibold text-black dark:text-white">${totalStake.toLocaleString()} total</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-400 mt-1.5">Match adds 1:1 to buying power when you deposit.</p>
+                </div>
+              </div>
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Recent activity</p>
+                  <button
+                    type="button"
+                    className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                    onClick={() => setEsaActivityExpanded((e) => !e)}
+                  >
+                    {esaActivityExpanded ? 'Show less' : 'View all'}
+                  </button>
+                </div>
+                <ul className="space-y-0 divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                  {(esaActivityExpanded ? MOCK_ESA_ACTIVITY : MOCK_ESA_ACTIVITY.slice(0, 2)).map((item) => (
+                    <li key={item.id} className="flex items-center justify-between py-2.5 first:pt-0">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${item.type === 'deposit' || item.type === 'match' ? 'bg-green-50 dark:bg-green-900/20' : 'bg-zinc-100 dark:bg-zinc-800'}`}>
+                          {item.type === 'match' ? (
+                            <Zap className="w-4 h-4 text-green-600 dark:text-green-400" />
+                          ) : item.type === 'deposit' ? (
+                            <ArrowUpRight className="w-4 h-4 text-green-600 dark:text-green-400" />
+                          ) : (
+                            <ArrowDownLeft className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-black dark:text-white truncate">{item.description}</p>
+                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                            {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · {item.status}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`text-sm font-medium tabular-nums shrink-0 ml-2 ${item.amount >= 0 ? 'text-green-600 dark:text-green-500' : 'text-black dark:text-white'}`}>
+                        {item.amount >= 0 ? '+' : ''}${item.amount.toLocaleString()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800/50">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white">
+                    <FileText className="w-3 h-3 mr-1.5" />
+                    Statements
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(MOCK_ESA_ACCOUNT.accountNumber)}
+                    className="inline-flex items-center gap-1.5 h-7 px-2 text-xs text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  >
+                    <Copy className="w-3 h-3" />
+                    Copy account ref
+                  </button>
                 </div>
               </div>
             </div>
@@ -205,12 +330,12 @@ export default function UnifiedWealthHome() {
             {/* Equity Card – two columns: card (40%) | limit + utilization (60%) */}
             <div>
               <h3 className="text-xl font-light text-black dark:text-white mb-6">Equity Card</h3>
-              <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-lg p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)] gap-6 lg:gap-8 items-start">
-                  {/* Left: Flippable card – same logo/border as HeaderNav */}
-                  <div className="flex flex-col items-center lg:items-start">
+              <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)] gap-6 lg:gap-8 items-stretch">
+                  {/* Left: Flippable card – centered in column, standard card ratio ~1.586:1 */}
+                  <div className="flex flex-col justify-center items-center min-h-[200px] lg:min-h-0 lg:h-full">
                     <div
-                      className="relative w-full max-w-[320px] h-[200px] cursor-pointer mx-auto lg:mx-0"
+                      className="relative w-[300px] h-[189px] cursor-pointer shrink-0"
                       style={{ perspective: '1200px' }}
                       onClick={() => setCardFlipped((f) => !f)}
                     >
@@ -220,58 +345,60 @@ export default function UnifiedWealthHome() {
                         transition={{ type: 'spring', stiffness: 120, damping: 20 }}
                         style={{ transformStyle: 'preserve-3d' }}
                       >
+                        {/* Front: off-white in light mode, dark gradient in dark mode */}
                         <div
-                          className="absolute inset-0 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-900 dark:from-zinc-800 dark:to-zinc-950 border border-zinc-600/50 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-5 text-white"
+                          className="absolute inset-0 rounded bg-[#f5f2ee] dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-950 border border-zinc-300 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-4 text-zinc-800 dark:text-white"
                           style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
                         >
                           <div className="flex justify-between items-start">
                             <div className="w-9 h-9 rounded border border-black/90 dark:border-white/10 flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]/50 shrink-0">
                               <img src={ClearPathLogo} alt="CLEAR" className="w-full h-full object-cover" />
                             </div>
-                            <div className="w-12 h-9 rounded-lg bg-amber-400/90 flex items-center justify-center shrink-0">
-                              <div className="w-8 h-6 rounded border-2 border-amber-600/50 bg-gradient-to-br from-amber-200 to-amber-400" />
+                            <div className="w-11 h-8 rounded bg-amber-400/90 flex items-center justify-center shrink-0">
+                              <div className="w-7 h-5 rounded border-2 border-amber-600/50 bg-gradient-to-br from-amber-200 to-amber-400" />
                             </div>
                           </div>
                           <div>
-                            <p className="text-[10px] text-zinc-400 uppercase tracking-widest mb-1">Equity Card</p>
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-widest mb-0.5">Equity Card</p>
                             <p className="font-mono text-sm tracking-wider">•••• •••• •••• {MOCK_CARD.last4}</p>
-                            <p className="text-xs text-zinc-400 mt-2 font-mono">{formatWalletDisplay(address)}</p>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 font-mono">{formatWalletDisplay(address)}</p>
                           </div>
                         </div>
+                        {/* Back: off-white in light mode, dark in dark mode */}
                         <div
-                          className="absolute inset-0 rounded-xl bg-gradient-to-br from-zinc-700 to-zinc-900 dark:from-zinc-800 dark:to-zinc-950 border border-zinc-600/50 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-5 text-white"
+                          className="absolute inset-0 rounded bg-[#f5f2ee] dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-950 border border-zinc-300 dark:border-zinc-700 shadow-xl flex flex-col justify-between p-4 text-zinc-800 dark:text-white"
                           style={{
                             backfaceVisibility: 'hidden',
                             WebkitBackfaceVisibility: 'hidden',
                             transform: 'rotateY(180deg)',
                           }}
                         >
-                          <div className="h-10 -mx-5 mt-0 bg-zinc-800/80" />
-                          <div className="space-y-3 text-right">
-                            <p className="text-[10px] text-zinc-400">Card number</p>
-                            <p className="font-mono text-sm tracking-wider">
+                          <div className="h-8 -mx-4 mt-0 bg-zinc-300 dark:bg-zinc-800/80" />
+                          <div className="space-y-2 text-right">
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Card number</p>
+                            <p className="font-mono text-xs tracking-wider">
                               {revealNumber ? MOCK_CARD.number.replace(/(\d{4})/g, '$1 ').trim() : `•••• •••• •••• ${MOCK_CARD.last4}`}
                             </p>
-                            <div className="flex justify-end gap-6">
+                            <div className="flex justify-end gap-4">
                               <div>
-                                <p className="text-[10px] text-zinc-400">Expires</p>
-                                <p className="font-mono text-sm">{MOCK_CARD.expiry}</p>
+                                <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Expires</p>
+                                <p className="font-mono text-xs">{MOCK_CARD.expiry}</p>
                               </div>
                               <div>
-                                <p className="text-[10px] text-zinc-400">CVV</p>
-                                <p className="font-mono text-sm">{revealCVV ? MOCK_CARD.cvv : '•••'}</p>
+                                <p className="text-[10px] text-zinc-500 dark:text-zinc-400">CVV</p>
+                                <p className="font-mono text-xs">{revealCVV ? MOCK_CARD.cvv : '•••'}</p>
                               </div>
                             </div>
                           </div>
                         </div>
                       </motion.div>
                     </div>
-                    <p className="text-center lg:text-left text-xs text-zinc-500 dark:text-zinc-400 mt-2 w-full max-w-[320px] lg:max-w-none">Tap card to flip</p>
+                    <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 mt-2">Tap card to flip</p>
                   </div>
 
                   {/* Right: What makes up limit + Utilization */}
-                  <div className="space-y-5 min-w-0">
-                    <div className="p-4 rounded-lg bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800">
+                  <div className="space-y-5 min-w-0 flex flex-col justify-center">
+                    <div className="p-4 rounded bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800">
                       <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2 flex items-center gap-2">
                         <Info className="w-3.5 h-3.5" />
                         What makes up your card limit
@@ -418,7 +545,7 @@ export default function UnifiedWealthHome() {
                           {/* Recent transactions */}
                           <div>
                             <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-3">Recent transactions</p>
-                            <div className="divide-y divide-zinc-200 dark:divide-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                            <div className="divide-y divide-zinc-200 dark:divide-zinc-800 rounded border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                               {MOCK_CARD_TRANSACTIONS.map((tx) => (
                                 <div
                                   key={tx.id}
@@ -452,7 +579,7 @@ export default function UnifiedWealthHome() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-lg p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
                 >
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 rounded-full bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
@@ -466,7 +593,7 @@ export default function UnifiedWealthHome() {
                 </motion.div>
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-lg p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
                 >
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
@@ -484,68 +611,183 @@ export default function UnifiedWealthHome() {
 
           {/* Right Column – same spacing as BorrowHome */}
           <div className="md:col-span-4 space-y-6">
-            {/* Property Portfolio */}
-            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-lg overflow-hidden">
+            {/* Property Portfolio – information-dense, expandable, RWA-ready */}
+            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded overflow-hidden">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/50">
-                <h3 className="text-base font-medium text-black dark:text-white flex items-center gap-2">
-                  <Building2 className="w-5 h-5" />
-                  Property Portfolio
-                </h3>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-zinc-600 dark:text-zinc-400 shrink-0" />
+                    <h3 className="text-base font-medium text-black dark:text-white">Property Portfolio</h3>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full border-zinc-300 dark:border-zinc-700 text-xs font-medium h-8 px-3 shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Add / verify property
+                  </Button>
+                </div>
+                <div className="flex items-center gap-4 mt-3 text-xs">
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    <span className="font-medium text-black dark:text-white">{MOCK_PROPERTIES.length}</span> properties
+                  </span>
+                  <span className="text-zinc-400 dark:text-zinc-500">·</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    Total equity <span className="font-medium text-amber-600 dark:text-amber-500">${MOCK_PROPERTIES.reduce((s, p) => s + p.equity, 0).toLocaleString()}</span>
+                  </span>
+                </div>
               </div>
               <div className="divide-y divide-zinc-200 dark:divide-zinc-800/50">
-                {MOCK_PROPERTIES.map((property) => (
-                  <div
-                    key={property.id}
-                    className="p-4 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/30 transition-colors cursor-pointer"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-                          <Home className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+                {MOCK_PROPERTIES.map((property) => {
+                  const isExpanded = expandedPropertyId === property.id;
+                  return (
+                    <div key={property.id} className="bg-white dark:bg-zinc-950/50">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedPropertyId(isExpanded ? null : property.id)}
+                        className="w-full p-4 flex items-center gap-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors"
+                      >
+                        <div className="w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                          <Home className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
                         </div>
-                        <div>
-                          <p className="font-medium text-black dark:text-white text-sm">{property.address}</p>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400">{property.type} · {property.status}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-black dark:text-white text-sm truncate">{property.address}</p>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">{property.type}</span>
+                            <span className="text-[10px] text-zinc-400">·</span>
+                            <span className="text-[10px] font-medium text-amber-600 dark:text-amber-500">${property.equity.toLocaleString()} equity</span>
+                            {property.status === 'Renovation' && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
+                                Renovation
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-medium text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
-                        <ShieldCheck className="w-3 h-3 text-green-500" />
-                        Synced
-                      </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-[10px] font-medium text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+                            <ShieldCheck className="w-3 h-3 text-green-500" />
+                            {property.verificationStatus === 'Verified' ? 'Synced' : 'Pending'}
+                          </span>
+                          <motion.span
+                            animate={{ rotate: isExpanded ? 90 : 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="text-zinc-400 dark:text-zinc-500"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </motion.span>
+                        </div>
+                      </button>
+                      <AnimatePresence initial={false}>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="overflow-hidden border-t border-zinc-200 dark:border-zinc-800/50"
+                          >
+                            <div className="p-4 pt-2 bg-zinc-50/80 dark:bg-zinc-900/40 space-y-4">
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-zinc-500 dark:text-zinc-400">Market value</span>
+                                  <span className="font-medium text-black dark:text-white tabular-nums">${property.value.toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-zinc-500 dark:text-zinc-400">Your equity</span>
+                                  <span className="font-medium text-amber-600 dark:text-amber-500 tabular-nums">${property.equity.toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-zinc-500 dark:text-zinc-400">Equity %</span>
+                                  <span className="font-medium text-black dark:text-white tabular-nums">{property.equityPct}%</span>
+                                </div>
+                                {property.lienBalance > 0 && (
+                                  <div className="flex justify-between gap-2">
+                                    <span className="text-zinc-500 dark:text-zinc-400">Outstanding lien</span>
+                                    <span className="font-medium text-black dark:text-white tabular-nums">${property.lienBalance.toLocaleString()}</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between gap-2 col-span-2">
+                                  <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                                    <Hash className="w-3 h-3" /> Deed / token ID
+                                  </span>
+                                  <span className="font-mono text-[10px] text-zinc-600 dark:text-zinc-300 truncate max-w-[140px]" title={property.deedTokenId}>
+                                    {property.deedTokenId}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-zinc-500 dark:text-zinc-400">Trust ID</span>
+                                  <span className="font-mono text-[10px] text-black dark:text-white">{property.trustId}</span>
+                                </div>
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-zinc-500 dark:text-zinc-400">Verification</span>
+                                  <span className={`font-medium ${property.verificationStatus === 'Verified' ? 'text-green-600 dark:text-green-500' : 'text-amber-600 dark:text-amber-500'}`}>
+                                    {property.verificationStatus}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between gap-2 col-span-2">
+                                  <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" /> Last synced
+                                  </span>
+                                  <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                                    {new Date(property.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                              </div>
+                              {property.status === 'Renovation' && property.renovationSpent != null && property.renovationTarget != null && (
+                                <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800/50">
+                                  <div className="flex justify-between text-[10px] mb-1.5">
+                                    <span className="text-zinc-500 dark:text-zinc-400 font-medium uppercase tracking-wide">Fixer progress</span>
+                                    {property.renovationValueAdd != null && (
+                                      <span className="text-green-600 dark:text-green-500 font-medium">+${(property.renovationValueAdd / 1000).toFixed(0)}k value add</span>
+                                    )}
+                                  </div>
+                                  <Progress
+                                    value={Math.min(100, ((property.renovationSpent ?? 0) / (property.renovationTarget ?? 1)) * 100)}
+                                    className="h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full"
+                                  />
+                                  <div className="flex justify-between text-[10px] text-zinc-400 mt-1 font-mono">
+                                    <span>${((property.renovationSpent ?? 0) / 1000).toFixed(0)}k spent</span>
+                                    <span>Target ${((property.renovationTarget ?? 0) / 1000).toFixed(0)}k</span>
+                                  </div>
+                                </div>
+                              )}
+                              <div className="flex flex-wrap gap-2 pt-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white"
+                                >
+                                  <ExternalLink className="w-3 h-3 mr-1.5" />
+                                  View on chain
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white"
+                                >
+                                  <FileCheck className="w-3 h-3 mr-1.5" />
+                                  Documents
+                                </Button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
-                      <div>
-                        <p className="text-zinc-500 dark:text-zinc-400 mb-0.5">Market Value</p>
-                        <p className="font-medium text-black dark:text-white">${property.value.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-zinc-500 dark:text-zinc-400 mb-0.5">Your Equity</p>
-                        <p className="font-medium text-amber-600 dark:text-amber-500">${property.equity.toLocaleString()}</p>
-                      </div>
-                    </div>
-                    {property.status === 'Renovation' && (
-                      <div className="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-800/50">
-                        <div className="flex justify-between text-xs mb-1.5">
-                          <span className="text-zinc-500 dark:text-zinc-400">Fixer Progress</span>
-                          <span className="text-green-600 dark:text-green-500 font-medium">+$12k Value</span>
-                        </div>
-                        <Progress value={45} className="h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
-                        <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-                          <span>$5k Spent</span>
-                          <span>Target: $25k</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-              <button className="w-full py-3 text-sm text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-colors">
-                View All Properties
+              <button
+                type="button"
+                className="w-full py-2.5 text-xs text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-colors border-t border-zinc-200 dark:border-zinc-800/50"
+              >
+                View all properties
               </button>
             </div>
 
             {/* Path to 100% */}
-            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded-lg p-5">
+            <div className="bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-200 dark:border-zinc-800/50 rounded p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-medium text-black dark:text-white flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-amber-500" />
@@ -566,7 +808,7 @@ export default function UnifiedWealthHome() {
                 <span>Now</span>
                 <span>7 Years</span>
               </div>
-              <div className="mt-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30">
+              <div className="mt-3 p-3 rounded bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
                   <span className="text-xs font-medium text-green-700 dark:text-green-400">Renovation Pop Inbound</span>
@@ -577,17 +819,6 @@ export default function UnifiedWealthHome() {
               </div>
             </div>
 
-            {/* CTA – same style as BorrowHome help box */}
-            <div className="bg-blue-600 rounded-lg p-5 text-white">
-              <h3 className="font-medium mb-2">Boost your stake</h3>
-              <p className="text-sm text-blue-100 mb-4">Add cash to get a 1:1 match and grow your combined equity stake.</p>
-              <button
-                onClick={() => setDepositModalOpen(true)}
-                className="w-full bg-white text-blue-600 py-2 rounded-full text-sm font-normal hover:bg-blue-50 transition-colors"
-              >
-                Add Funds
-              </button>
-            </div>
           </div>
         </div>
       </main>
