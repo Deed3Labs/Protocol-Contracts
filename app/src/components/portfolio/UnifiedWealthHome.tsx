@@ -124,10 +124,12 @@ export default function UnifiedWealthHome() {
   const [expandedPropertyId, setExpandedPropertyId] = useState<number | null>(null);
   const [esaActivityExpanded, setEsaActivityExpanded] = useState(false);
 
-  const cashBalance = portfolioCashBalance?.totalCash || 12500;
-  const totalStake = cashBalance + MOCK_PROPERTY_EQUITY;
-  // 100% of ESA (cash) + 50% of property equity = card/borrow limit (property cap protects from overdrawing)
-  const limitFromCash = cashBalance;
+  const cashBalance = portfolioCashBalance?.totalCash ?? 7.05;
+  const esaMatch = cashBalance; // 1:1 match
+  const esaTotal = cashBalance + esaMatch; // ESA buying power (cash + match)
+  const totalStake = esaTotal + MOCK_PROPERTY_EQUITY;
+  // Card limit: 100% of ESA (cash + match) + 50% of property equity
+  const limitFromCash = esaTotal;
   const limitFromEquity = MOCK_PROPERTY_EQUITY * 0.5;
   const spendingPower = limitFromCash + limitFromEquity;
   const usedAmount = 0; // mock
@@ -190,14 +192,14 @@ export default function UnifiedWealthHome() {
               <div className="mt-6 flex flex-wrap gap-3">
                 <button
                   onClick={() => setDepositModalOpen(true)}
-                  className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-2"
+                  className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-1.5"
                 >
                   <ArrowUpRight className="w-4 h-4" />
                   Add Funds
                 </button>
                 <button
                   onClick={() => setWithdrawModalOpen(true)}
-                  className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800"
+                  className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800 flex items-center gap-1.5"
                   disabled={!isConnected || totalStake === 0}
                 >
                   Withdraw Funds
@@ -206,24 +208,24 @@ export default function UnifiedWealthHome() {
             </div>
 
             {/* Equity Savings Account (ESA) – interactive, visual composition, gamified */}
-            <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
+            <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
               <div className="p-5">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-3">
                     <motion.div
-                      className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 dark:from-blue-500/25 dark:to-blue-600/15 flex items-center justify-center border border-blue-200/50 dark:border-blue-800/50"
+                      className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-600/10 dark:from-blue-500/25 dark:to-blue-600/15 flex items-center justify-center border border-blue-200/50 dark:border-blue-800/50"
                       whileHover={{ scale: 1.05 }}
                       transition={{ type: 'spring', stiffness: 300 }}
                     >
                       <Landmark className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                     </motion.div>
                     <div>
-                      <h3 className="text-base font-semibold text-black dark:text-white">Equity Savings Account</h3>
+                      <h3 className="text-base font-normal text-black dark:text-white">Equity Savings Account</h3>
                       <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono">Account {MOCK_ESA_ACCOUNT.accountNumber}</p>
                     </div>
                   </div>
                   <motion.span
-                    className="px-3 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold tracking-wide border border-green-200 dark:border-green-800 flex items-center gap-2 shrink-0"
+                    className="px-3 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-normal tracking-wide border border-green-200 dark:border-green-800 flex items-center gap-1.5 shrink-0"
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.2 }}
@@ -237,7 +239,7 @@ export default function UnifiedWealthHome() {
                 <div className="flex flex-wrap items-end justify-between gap-4">
                   <div className="flex items-baseline gap-3">
                     <motion.p
-                      className="text-3xl font-bold text-black dark:text-white tabular-nums"
+                      className="text-3xl font-light text-black dark:text-white tabular-nums"
                       key={cashBalance}
                       initial={{ scale: 1.05 }}
                       animate={{ scale: 1 }}
@@ -245,7 +247,7 @@ export default function UnifiedWealthHome() {
                     >
                       ${cashBalance.toLocaleString()}
                     </motion.p>
-                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider pb-1">Available</span>
+                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider pb-1">Cash</span>
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -253,7 +255,7 @@ export default function UnifiedWealthHome() {
                       onClick={() => setDepositModalOpen(true)}
                       className="rounded-full h-9 text-xs font-medium shadow-sm"
                     >
-                      <ArrowUpRight className="w-4 h-4 mr-2" />
+                      <ArrowUpRight className="w-4 h-4 mr-1.5" />
                       Deposit
                     </Button>
                     <Button
@@ -263,12 +265,12 @@ export default function UnifiedWealthHome() {
                       disabled={!isConnected || cashBalance === 0}
                       className="rounded-full h-9 text-xs font-medium border-zinc-300 dark:border-zinc-700"
                     >
-                      <ArrowDownLeft className="w-4 h-4 mr-2" />
+                      <ArrowDownLeft className="w-4 h-4 mr-1.5" />
                       Withdraw
                     </Button>
                   </div>
                 </div>
-                {/* Composition: donut-style visual */}
+                {/* Combined stake: Cash + Match = ESA total, then + Property */}
                 <div className="mt-5 flex items-center gap-4">
                   <div className="relative w-16 h-16 shrink-0" aria-hidden>
                     <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
@@ -286,10 +288,23 @@ export default function UnifiedWealthHome() {
                         strokeWidth="4"
                         strokeLinecap="round"
                         pathLength={100}
-                        strokeDasharray={`${(cashBalance / totalStake) * 100} 100`}
+                        strokeDasharray={`${totalStake > 0 ? (cashBalance / totalStake) * 100 : 0} 100`}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.5 }}
+                      />
+                      <motion.path
+                        d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
+                        fill="none"
+                        stroke="#22c55e"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        pathLength={100}
+                        strokeDasharray={`${totalStake > 0 ? (esaMatch / totalStake) * 100 : 0} 100`}
+                        strokeDashoffset={totalStake > 0 ? -((cashBalance / totalStake) * 100) : 0}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.5, delay: 0.1 }}
                       />
                       <motion.path
                         d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
@@ -298,30 +313,40 @@ export default function UnifiedWealthHome() {
                         strokeWidth="4"
                         strokeLinecap="round"
                         pathLength={100}
-                        strokeDasharray={`${(MOCK_PROPERTY_EQUITY / totalStake) * 100} 100`}
-                        strokeDashoffset={-((cashBalance / totalStake) * 100)}
+                        strokeDasharray={`${totalStake > 0 ? (MOCK_PROPERTY_EQUITY / totalStake) * 100 : 0} 100`}
+                        strokeDashoffset={totalStake > 0 ? -((esaTotal / totalStake) * 100) : 0}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.5, delay: 0.15 }}
                       />
                     </svg>
-                    <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-black dark:text-white">
-                      ${(totalStake / 1000).toFixed(0)}k
+                    <span className="absolute inset-0 flex items-center justify-center text-[10px] font-normal text-black dark:text-white">
+                      {totalStake >= 1000 ? `$${(totalStake / 1000).toFixed(0)}k` : `$${totalStake.toLocaleString()}`}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Combined stake</p>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-blue-500" />
-                        <span className="text-zinc-600 dark:text-zinc-300">ESA</span>
-                        <span className="font-semibold text-black dark:text-white">${cashBalance.toLocaleString()}</span>
+                        <span className="text-zinc-600 dark:text-zinc-300">Cash</span>
+                        <span className="font-normal text-black dark:text-white">${cashBalance.toLocaleString()}</span>
                       </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-green-500" />
+                        <span className="text-zinc-600 dark:text-zinc-300">Match</span>
+                        <span className="font-normal text-black dark:text-white">${esaMatch.toLocaleString()}</span>
+                      </span>
+                      <span className="text-zinc-400 dark:text-zinc-500">=</span>
+                      <span className="font-normal text-black dark:text-white">${esaTotal.toLocaleString()} ESA</span>
+                      <span className="text-zinc-400 dark:text-zinc-500">+</span>
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-amber-500" />
                         <span className="text-zinc-600 dark:text-zinc-300">Property</span>
-                        <span className="font-semibold text-black dark:text-white">${MOCK_PROPERTY_EQUITY.toLocaleString()}</span>
+                        <span className="font-normal text-black dark:text-white">${MOCK_PROPERTY_EQUITY.toLocaleString()}</span>
                       </span>
+                      <span className="text-zinc-400 dark:text-zinc-500">=</span>
+                      <span className="font-normal text-black dark:text-white">${totalStake.toLocaleString()} total</span>
                     </div>
                   </div>
                 </div>
@@ -363,7 +388,7 @@ export default function UnifiedWealthHome() {
                           </p>
                         </div>
                       </div>
-                      <span className={`text-sm font-semibold tabular-nums shrink-0 ml-2 ${item.amount >= 0 ? 'text-green-600 dark:text-green-500' : 'text-black dark:text-white'}`}>
+                      <span className={`text-sm font-normal tabular-nums shrink-0 ml-2 ${item.amount >= 0 ? 'text-green-600 dark:text-green-500' : 'text-black dark:text-white'}`}>
                         {item.amount >= 0 ? '+' : ''}${item.amount.toLocaleString()}
                       </span>
                     </motion.li>
@@ -389,7 +414,7 @@ export default function UnifiedWealthHome() {
             {/* Equity Card – visual, scannable, utilization gauge */}
             <div>
               <h3 className="text-xl font-light text-black dark:text-white mb-6">Equity Card</h3>
-              <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
+              <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded p-6 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)] gap-6 lg:gap-8 items-stretch">
                   {/* Left: Flippable card */}
                   <div className="flex flex-col justify-center items-center min-h-[200px] lg:min-h-0 lg:h-full">
@@ -461,7 +486,7 @@ export default function UnifiedWealthHome() {
                   <div className="space-y-5 min-w-0 flex flex-col justify-center">
                     <div>
                       <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1">Spending power</p>
-                      <p className="text-2xl font-bold text-black dark:text-white tabular-nums">${spendingPower.toLocaleString()}</p>
+                      <p className="text-2xl font-light text-black dark:text-white tabular-nums">${spendingPower.toLocaleString()}</p>
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] font-medium">
                           <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
@@ -475,28 +500,29 @@ export default function UnifiedWealthHome() {
                       <div className="mt-2 flex items-center justify-between text-sm">
                         <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
                           <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                          ESA
+                          ESA (Cash + Match)
                         </span>
-                        <span className="font-semibold text-black dark:text-white">${limitFromCash.toLocaleString()}</span>
+                        <span className="font-normal text-black dark:text-white">${limitFromCash.toLocaleString()}</span>
                       </div>
-                      <div className="flex items-center justify-between text-sm">
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 pl-5">Cash ${cashBalance.toLocaleString()} + Match ${esaMatch.toLocaleString()}</p>
+                      <div className="flex items-center justify-between text-sm mt-1">
                         <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
                           <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
                           Property
                         </span>
-                        <span className="font-semibold text-black dark:text-white">${limitFromEquity.toLocaleString()}</span>
+                        <span className="font-normal text-black dark:text-white">${limitFromEquity.toLocaleString()}</span>
                       </div>
                       <div className="mt-2 h-2 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden flex">
                         <motion.div
                           className="h-full bg-blue-500 rounded-l-full"
                           initial={{ width: 0 }}
-                          animate={{ width: `${(limitFromCash / spendingPower) * 100}%` }}
+                          animate={{ width: `${spendingPower > 0 ? (limitFromCash / spendingPower) * 100 : 0}%` }}
                           transition={{ duration: 0.5, ease: 'easeOut' }}
                         />
                         <motion.div
                           className="h-full bg-amber-500 rounded-r-full"
                           initial={{ width: 0 }}
-                          animate={{ width: `${(limitFromEquity / spendingPower) * 100}%` }}
+                          animate={{ width: `${spendingPower > 0 ? (limitFromEquity / spendingPower) * 100 : 0}%` }}
                           transition={{ duration: 0.5, ease: 'easeOut' }}
                         />
                       </div>
@@ -524,13 +550,13 @@ export default function UnifiedWealthHome() {
                             transition={{ duration: 0.6, ease: 'easeOut' }}
                           />
                         </svg>
-                        <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-black dark:text-white">
+                        <span className="absolute inset-0 flex items-center justify-center text-xs font-normal text-black dark:text-white">
                           {utilizationPct.toFixed(0)}%
                         </span>
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Used</p>
-                        <p className="text-sm font-medium text-black dark:text-white">
+                        <p className="text-sm font-normal text-black dark:text-white">
                           $0 → ${spendingPower.toLocaleString()} limit
                         </p>
                       </div>
@@ -540,12 +566,12 @@ export default function UnifiedWealthHome() {
 
                 {/* Move Cash to Property */}
                 <div className="flex items-center justify-between py-4 mt-2 border-t border-zinc-200 dark:border-zinc-800/50">
-                  <p className="font-medium text-black dark:text-white text-sm">Move Cash to Property</p>
+                  <p className="font-normal text-black dark:text-white text-sm">Move Cash to Property</p>
                   <Button
                     variant="outline"
                     className="rounded-full border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm"
                   >
-                    <ArrowRightLeft className="w-4 h-4 mr-2" />
+                    <ArrowRightLeft className="w-4 h-4 mr-1.5" />
                     Transfer
                   </Button>
                 </div>
@@ -557,7 +583,7 @@ export default function UnifiedWealthHome() {
                     onClick={() => setCardExpanded((e) => !e)}
                     className="w-full flex items-center justify-between text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors py-2"
                   >
-                    <span className="flex items-center gap-2">
+                    <span className="flex items-center gap-1.5">
                       <Receipt className="w-4 h-4" />
                       {cardExpanded ? 'Hide' : 'Show'} details & activity
                     </span>
@@ -629,7 +655,7 @@ export default function UnifiedWealthHome() {
                           {/* Recent transactions */}
                           <div>
                             <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-3">Recent transactions</p>
-                            <div className="divide-y divide-zinc-200 dark:divide-zinc-800 rounded border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                            <div className="divide-y divide-zinc-200 dark:divide-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                               {MOCK_CARD_TRANSACTIONS.map((tx) => (
                                 <div
                                   key={tx.id}
@@ -698,18 +724,18 @@ export default function UnifiedWealthHome() {
             {/* Property Portfolio – information-dense, expandable, RWA-ready */}
             <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded overflow-hidden">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
                     <Building2 className="w-5 h-5 text-zinc-600 dark:text-zinc-400 shrink-0" />
                     <h3 className="text-base font-medium text-black dark:text-white">Property Portfolio</h3>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="rounded-full border-zinc-300 dark:border-zinc-700 text-xs font-medium h-8 px-3 shrink-0"
+                    className="rounded-full border-zinc-300 dark:border-zinc-700 text-xs font-medium h-8 px-3 shrink-0 flex items-center gap-1"
                   >
-                    <Plus className="w-3.5 h-3.5 mr-1.5" />
-                    Add / verify property
+                    <Plus className="w-3.5 h-3.5" />
+                    Add property
                   </Button>
                 </div>
                 <div className="flex items-center gap-4 mt-3 text-xs">
