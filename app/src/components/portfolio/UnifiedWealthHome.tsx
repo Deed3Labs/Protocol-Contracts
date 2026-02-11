@@ -138,8 +138,8 @@ export default function UnifiedWealthHome() {
   const esaMatch = cashBalance; // 1:1 match
   const esaTotal = cashBalance + esaMatch; // ESA buying power (cash + match)
   const totalStake = esaTotal + MOCK_PROPERTY_EQUITY;
-  // Card limit: 100% of ESA (cash + match) + 50% of property equity
-  const limitFromCash = esaTotal;
+  // Card limit: ESA cash only (no match) + 50% of property equity
+  const limitFromCash = cashBalance;
   const limitFromEquity = MOCK_PROPERTY_EQUITY * 0.5;
   const spendingPower = limitFromCash + limitFromEquity;
   const usedAmount = 0; // mock
@@ -471,7 +471,7 @@ export default function UnifiedWealthHome() {
                       <div className="mt-2 flex items-center justify-between text-sm">
                         <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
                           <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-                          ESA (Cash + Match)
+                          ESA (Cash)
                         </span>
                         <span className="font-normal text-black dark:text-white">${limitFromCash.toLocaleString()}</span>
                       </div>
