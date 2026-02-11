@@ -860,37 +860,71 @@ export default function UnifiedWealthHome() {
               </button>
             </div>
 
-            {/* Path to 100% */}
-            <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-medium text-black dark:text-white flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-amber-500" />
+            {/* Path to 100% – gamified, interactive */}
+            <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded p-5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h3 className="font-normal text-black dark:text-white flex items-center gap-2">
+                  <motion.span
+                    className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center"
+                    whileHover={{ scale: 1.05 }}
+                    transition={{ type: 'spring', stiffness: 300 }}
+                  >
+                    <TrendingUp className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  </motion.span>
                   Path to 100% Equity
                 </h3>
-                <span className="text-sm font-medium text-amber-600 dark:text-amber-500">+142%</span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-lg font-light text-black dark:text-white tabular-nums">20%</span>
+                  <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">now</span>
+                </div>
               </div>
-              <div className="h-24 w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/20 flex items-end justify-around pb-2 gap-px">
+              {/* Milestone strip */}
+              <div className="flex justify-between text-[10px] text-zinc-400 dark:text-zinc-500 mb-2 px-0.5">
+                {[25, 50, 75, 100].map((m) => (
+                  <span key={m} className="tabular-nums">{m}%</span>
+                ))}
+              </div>
+              <div className="h-2 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500 dark:from-amber-500 dark:to-amber-600"
+                  initial={{ width: 0 }}
+                  animate={{ width: '20%' }}
+                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                />
+              </div>
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1.5 flex items-center gap-1.5">
+                <span>Now</span>
+                <span className="text-zinc-300 dark:text-zinc-600">→</span>
+                <span>7 years</span>
+              </p>
+              {/* Projected path bars – animated */}
+              <div className="h-20 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/20 flex items-end justify-around pb-2 gap-px mt-4">
                 {[20, 35, 45, 55, 70, 85, 100].map((h, i) => (
-                  <div
+                  <motion.div
                     key={i}
-                    className="flex-1 bg-amber-500/80 dark:bg-amber-500/60 rounded-t min-h-[4px]"
-                    style={{ height: `${h}%` }}
+                    className="flex-1 bg-amber-500/80 dark:bg-amber-500/60 rounded-t min-h-[4px] cursor-default"
+                    initial={{ height: 0 }}
+                    animate={{ height: `${h}%` }}
+                    transition={{ duration: 0.5, delay: i * 0.06, ease: 'easeOut' }}
+                    whileHover={{ opacity: 1, transition: { duration: 0.15 } }}
+                    title={`Year ${i + 1}: ${h}%`}
                   />
                 ))}
               </div>
-              <div className="flex justify-between text-xs text-zinc-500 dark:text-zinc-400 mt-2">
-                <span>Now</span>
-                <span>7 Years</span>
-              </div>
-              <div className="mt-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                  <span className="text-xs font-medium text-green-700 dark:text-green-400">Renovation Pop Inbound</span>
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1.5 text-center">Projected path</p>
+              {/* Next milestone callout */}
+              <motion.div
+                className="mt-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30 flex items-center justify-between gap-3"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4, duration: 0.3 }}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-green-500 shrink-0 animate-pulse" />
+                  <span className="text-xs font-normal text-green-700 dark:text-green-400 truncate">Next: Aspen completion</span>
                 </div>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                  Est. <span className="font-medium text-black dark:text-white">$15,000</span> gain on Aspen completion.
-                </p>
-              </div>
+                <span className="text-xs font-light text-black dark:text-white tabular-nums shrink-0">+$15k</span>
+              </motion.div>
             </div>
 
           </div>
