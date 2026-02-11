@@ -279,70 +279,48 @@ export default function UnifiedWealthHome() {
                     </button>
                   </div>
                 </div>
-                {/* Combined stake: Cash + Match = ESA total, then + Property */}
-                <div className="mt-5 flex items-center gap-4">
-                  <div className="relative w-16 h-16 shrink-0" aria-hidden>
-                    <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                      <path
-                        d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        className="text-zinc-200 dark:text-zinc-700"
-                      />
-                      <motion.path
-                        d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
-                        fill="none"
-                        stroke="#3b82f6"
-                        strokeWidth="4"
-                        strokeLinecap="round"
-                        pathLength={100}
-                        strokeDasharray={`${totalStake > 0 ? (cashBalance / totalStake) * 100 : 0} 100`}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.5 }}
-                      />
-                      <motion.path
-                        d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
-                        fill="none"
-                        stroke="#22c55e"
-                        strokeWidth="4"
-                        strokeLinecap="round"
-                        pathLength={100}
-                        strokeDasharray={`${totalStake > 0 ? (esaMatch / totalStake) * 100 : 0} 100`}
-                        strokeDashoffset={totalStake > 0 ? -((cashBalance / totalStake) * 100) : 0}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.5, delay: 0.1 }}
-                      />
-                      <motion.path
-                        d="M18 2.5 a 15.5 15.5 0 0 1 0 31 a 15.5 15.5 0 0 1 0 -31"
-                        fill="none"
-                        stroke="#f59e0b"
-                        strokeWidth="4"
-                        strokeLinecap="round"
-                        pathLength={100}
-                        strokeDasharray={`${totalStake > 0 ? (MOCK_PROPERTY_EQUITY / totalStake) * 100 : 0} 100`}
-                        strokeDashoffset={totalStake > 0 ? -((esaTotal / totalStake) * 100) : 0}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.5, delay: 0.15 }}
-                      />
-                    </svg>
-                    <span className="absolute inset-0 flex items-center justify-center text-[10px] font-normal text-black dark:text-white">
-                      {totalStake >= 1000 ? `$${(totalStake / 1000).toFixed(0)}k` : `$${totalStake.toLocaleString()}`}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-1.5">Combined stake</p>
-                    <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                      Cash ${cashBalance.toLocaleString()} + Match ${esaMatch.toLocaleString()} = <span className="font-normal text-black dark:text-white">${esaTotal.toLocaleString()} ESA</span>
-                    </p>
-                    <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-0.5">
-                      + Property ${MOCK_PROPERTY_EQUITY.toLocaleString()} = <span className="font-normal text-black dark:text-white">${totalStake.toLocaleString()} total</span>
-                    </p>
-                  </div>
-                </div>
+                {/* Combined stake: allocation bar + inline breakdown (Cash green, 1:1 Match blue, Earned Equity gold) */}
+                {(() => {
+                  const stakeTotal = totalStake || 1;
+                  const cashPct = (cashBalance / stakeTotal) * 100;
+                  const matchPct = (esaMatch / stakeTotal) * 100;
+                  const earnedPct = (MOCK_PROPERTY_EQUITY / stakeTotal) * 100;
+                  const stakeItems = [
+                    { name: 'Cash', value: cashBalance, pct: cashPct, color: 'bg-green-500', dotClass: 'bg-green-500 ring-1 ring-zinc-300 dark:ring-zinc-600' },
+                    { name: '1:1 Match', value: esaMatch, pct: matchPct, color: 'bg-blue-500', dotClass: 'bg-blue-500 ring-1 ring-zinc-300 dark:ring-zinc-600' },
+                    { name: 'Earned Equity', value: MOCK_PROPERTY_EQUITY, pct: earnedPct, color: 'bg-amber-500', dotClass: 'bg-amber-500 ring-1 ring-zinc-300 dark:ring-zinc-600' },
+                  ];
+                  return (
+                    <div className="mt-5">
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">Combined stake</p>
+                      <div className="h-3 bg-zinc-100 dark:bg-zinc-800 rounded overflow-hidden flex w-full border border-zinc-200 dark:border-zinc-700 mb-2">
+                        {stakeItems.map((item, i) => (
+                          item.pct > 0 && (
+                            <motion.div
+                              key={item.name}
+                              className={`h-full ${item.color}`}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${item.pct}%` }}
+                              transition={{ duration: 0.5, delay: i * 0.05, ease: 'easeOut' }}
+                            />
+                          )
+                        ))}
+                      </div>
+                      <p className="text-sm text-zinc-600 dark:text-zinc-300 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                        {stakeItems.map((item, i) => (
+                          <span key={item.name} className="inline-flex items-center gap-1.5">
+                            {i > 0 && <span className="text-zinc-400 dark:text-zinc-500 shrink-0">·</span>}
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${item.dotClass}`} />
+                            <span>{item.name}</span>
+                            <span className="font-normal text-black dark:text-white tabular-nums">${item.value.toLocaleString()}</span>
+                          </span>
+                        ))}
+                        <span className="text-zinc-400 dark:text-zinc-500 shrink-0">=</span>
+                        <span className="font-normal text-black dark:text-white tabular-nums shrink-0">${totalStake.toLocaleString()} total</span>
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="px-5 py-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/20">
                 <div className="flex items-center justify-between mb-3">
@@ -500,7 +478,7 @@ export default function UnifiedWealthHome() {
                       <div className="flex items-center justify-between text-sm mt-1">
                         <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
                           <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                          Property
+                          Earned Equity
                         </span>
                         <span className="font-normal text-black dark:text-white">${limitFromEquity.toLocaleString()}</span>
                       </div>
