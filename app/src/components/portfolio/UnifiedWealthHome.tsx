@@ -36,6 +36,7 @@ import { usePortfolio } from '@/context/PortfolioContext';
 import { LargePriceWheel } from '@/components/PriceWheel';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 
 const MOCK_PROPERTY_EQUITY = 85000;
 const MOCK_PROPERTIES = [
@@ -100,6 +101,16 @@ const MOCK_ESA_ACTIVITY = [
   { id: 2, type: 'match' as const, amount: 5000, date: '2025-02-08T10:30:00Z', description: '1:1 Match credit', status: 'Completed' },
   { id: 3, type: 'withdrawal' as const, amount: -1500, date: '2025-02-05T14:00:00Z', description: 'Transfer to Property', status: 'Completed' },
   { id: 4, type: 'deposit' as const, amount: 2500, date: '2025-02-01T09:15:00Z', description: 'Bank transfer', status: 'Completed' },
+];
+
+// Projected equity path (consolidated portfolio) – aligns with 5-year vesting for Equity Pop
+const PATH_TO_100_DATA = [
+  { label: 'Now', pct: 20, year: 0 },
+  { label: 'Y1', pct: 35, year: 1 },
+  { label: 'Y2', pct: 45, year: 2 },
+  { label: 'Y3', pct: 60, year: 3 },
+  { label: 'Y4', pct: 75, year: 4 },
+  { label: 'Y5', pct: 100, year: 5 },
 ];
 
 function formatWalletDisplay(address: string | undefined): string {
@@ -860,9 +871,9 @@ export default function UnifiedWealthHome() {
               </button>
             </div>
 
-            {/* Path to 100% – gamified, interactive */}
+            {/* Path to 100% – portfolio view, Recharts, 5-year vesting */}
             <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded p-5 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
-              <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="flex items-center justify-between gap-3 mb-1">
                 <h3 className="font-normal text-black dark:text-white flex items-center gap-2">
                   <motion.span
                     className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center"
@@ -878,7 +889,14 @@ export default function UnifiedWealthHome() {
                   <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">now</span>
                 </div>
               </div>
-              {/* Milestone strip */}
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mb-3 flex items-center gap-1.5">
+                <span>Portfolio</span>
+                <span className="text-zinc-300 dark:text-zinc-600">·</span>
+                <span>All properties</span>
+                <span className="text-zinc-300 dark:text-zinc-600">·</span>
+                <span>Equity Pop vests over 5 years</span>
+              </p>
+              {/* Current progress bar */}
               <div className="flex justify-between text-[10px] text-zinc-400 dark:text-zinc-500 mb-2 px-0.5">
                 {[25, 50, 75, 100].map((m) => (
                   <span key={m} className="tabular-nums">{m}%</span>
@@ -895,24 +913,53 @@ export default function UnifiedWealthHome() {
               <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1.5 flex items-center gap-1.5">
                 <span>Now</span>
                 <span className="text-zinc-300 dark:text-zinc-600">→</span>
-                <span>7 years</span>
+                <span>Year 5 (100% vested)</span>
               </p>
-              {/* Projected path bars – animated */}
-              <div className="h-20 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/20 flex items-end justify-around pb-2 gap-px mt-4">
-                {[20, 35, 45, 55, 70, 85, 100].map((h, i) => (
-                  <motion.div
-                    key={i}
-                    className="flex-1 bg-amber-500/80 dark:bg-amber-500/60 rounded-t min-h-[4px] cursor-default"
-                    initial={{ height: 0 }}
-                    animate={{ height: `${h}%` }}
-                    transition={{ duration: 0.5, delay: i * 0.06, ease: 'easeOut' }}
-                    whileHover={{ opacity: 1, transition: { duration: 0.15 } }}
-                    title={`Year ${i + 1}: ${h}%`}
-                  />
-                ))}
+              {/* Projected path – Recharts (bars align to container bottom) */}
+              <div className="h-24 w-full mt-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-800/20 overflow-hidden">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={PATH_TO_100_DATA}
+                    margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+                    barCategoryGap="12%"
+                    barGap={2}
+                  >
+                    <XAxis
+                      dataKey="label"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: '#71717a', fontSize: 10 }}
+                      dy={4}
+                      className="text-zinc-500 dark:text-zinc-400"
+                    />
+                    <YAxis domain={[0, 100]} hide />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const d = payload[0].payload;
+                        return (
+                          <div className="bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded-lg px-2.5 py-1.5 shadow-lg border border-zinc-700">
+                            <span className="text-zinc-400">{d.label}</span>
+                            <span className="font-normal tabular-nums ml-1.5">{d.pct}% equity</span>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar
+                      dataKey="pct"
+                      fill="rgb(245 158 11 / 0.8)"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={28}
+                      isAnimationActive
+                      animationDuration={600}
+                      animationEasing="ease-out"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
               <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1.5 text-center">Projected path</p>
-              {/* Next milestone callout */}
+              {/* Next milestone – Equity Pop from renovation */}
               <motion.div
                 className="mt-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/30 flex items-center justify-between gap-3"
                 initial={{ opacity: 0, y: 4 }}
