@@ -220,29 +220,31 @@ export default function UnifiedWealthHome() {
             {/* Equity Savings Account (ESA) – interactive, visual composition, gamified */}
             <div className="bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded overflow-hidden hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors">
               <div className="p-5">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0">
                     <motion.div
-                      className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-600/10 dark:from-blue-500/25 dark:to-blue-600/15 flex items-center justify-center border border-blue-200/50 dark:border-blue-800/50"
+                      className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-600/10 dark:from-blue-500/25 dark:to-blue-600/15 flex items-center justify-center border border-blue-200/50 dark:border-blue-800/50 shrink-0"
                       whileHover={{ scale: 1.05 }}
                       transition={{ type: 'spring', stiffness: 300 }}
                     >
                       <Landmark className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                     </motion.div>
-                    <div>
-                      <h3 className="text-base font-medium text-black mb-[2px] dark:text-white">Equity Savings Account</h3>
-                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono">Account {MOCK_ESA_ACCOUNT.accountNumber}</p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-base font-medium text-black dark:text-white">Equity Savings Account</h3>
+                        <motion.span
+                          className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-normal tracking-wide border border-green-200 dark:border-green-800 flex items-center gap-1 shrink-0 whitespace-nowrap"
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: 0.2 }}
+                        >
+                          <Zap className="w-3 h-3 shrink-0" />
+                          1:1 Match
+                        </motion.span>
+                      </div>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5">Account {MOCK_ESA_ACCOUNT.accountNumber}</p>
                     </div>
                   </div>
-                  <motion.span
-                    className="px-3 py-1.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-normal tracking-wide border border-green-200 dark:border-green-800 flex items-center gap-1.5 shrink-0"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.2 }}
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    1:1 Match Active
-                  </motion.span>
                 </div>
               </div>
               <div className="px-5 pb-5">
@@ -315,8 +317,6 @@ export default function UnifiedWealthHome() {
                             <span className="font-normal text-black dark:text-white tabular-nums">${item.value.toLocaleString()}</span>
                           </span>
                         ))}
-                        <span className="text-zinc-400 dark:text-zinc-500 shrink-0">=</span>
-                        <span className="font-normal text-black dark:text-white tabular-nums shrink-0">${totalStake.toLocaleString()} total</span>
                       </p>
                     </div>
                   );
