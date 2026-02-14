@@ -230,26 +230,24 @@ export default function UnifiedWealthHome() {
                       <Landmark className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                     </motion.div>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-base font-medium text-black dark:text-white">Equity Savings Account</h3>
-                        <motion.span
-                          className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-normal tracking-wide border border-green-200 dark:border-green-800 flex items-center gap-1 shrink-0 whitespace-nowrap"
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ delay: 0.2 }}
-                        >
-                          <Zap className="w-3 h-3 shrink-0" />
-                          1:1 Match
-                        </motion.span>
-                      </div>
+                      <h3 className="text-base font-medium text-black dark:text-white">Equity Savings Account</h3>
                       <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5">Account {MOCK_ESA_ACCOUNT.accountNumber}</p>
                     </div>
                   </div>
+                  <motion.span
+                    className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-normal tracking-wide border border-green-200 dark:border-green-800 flex items-center gap-1 shrink-0 whitespace-nowrap"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.2 }}
+                  >
+                    <Zap className="w-3 h-3 shrink-0" />
+                    1:1 Match
+                  </motion.span>
                 </div>
               </div>
               <div className="px-5 pb-5">
-                <div className="flex flex-wrap items-end justify-between gap-4">
-                  <div className="flex items-baseline gap-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-baseline gap-3 min-w-0">
                     <motion.p
                       className="text-3xl font-light text-black dark:text-white tabular-nums"
                       key={cashBalance}
@@ -257,11 +255,11 @@ export default function UnifiedWealthHome() {
                       animate={{ scale: 1 }}
                       transition={{ type: 'spring', stiffness: 400 }}
                     >
-                      ${cashBalance.toLocaleString()}
+                      ${Number(cashBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </motion.p>
-                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider pb-1">Cash</span>
+                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider pb-1 shrink-0">Cash</span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={() => setDepositModalOpen(true)}
