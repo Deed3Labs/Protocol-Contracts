@@ -573,6 +573,28 @@ export async function createStripeOnrampSession(params: {
   return response.data;
 }
 
+
+async function getWalletAuthHeaders(walletAddress: string): Promise<Record<string, string>> {
+  const ethereum = (window as Window & { ethereum?: { request?: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum;
+  if (!ethereum?.request) {
+    throw new Error('Wallet provider not available for authentication');
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const message = `Deed3 Wallet Authentication
+Address: ${walletAddress.toLowerCase()}
+Timestamp: ${timestamp}`;
+  const signature = await ethereum.request({
+    method: 'personal_sign',
+    params: [message, walletAddress],
+  });
+
+  return {
+    'x-wallet-signature': signature,
+    'x-wallet-timestamp': timestamp,
+  };
+}
+
 /**
  * Plaid: create link token for Plaid Link (bank linking).
  * redirectUri: required for OAuth institutions (e.g. Chase). e.g. window.location.origin + '/plaid-oauth'
@@ -581,8 +603,10 @@ export async function getPlaidLinkToken(
   walletAddress: string,
   redirectUri?: string
 ): Promise<{ link_token: string } | null> {
+  const authHeaders = await getWalletAuthHeaders(walletAddress);
   const response = await apiRequest<{ link_token: string }>('/api/plaid/link-token', {
     method: 'POST',
+    headers: authHeaders,
     body: JSON.stringify({
       walletAddress,
       ...(redirectUri ? { redirect_uri: redirectUri } : {}),
@@ -599,8 +623,10 @@ export async function exchangePlaidToken(
   walletAddress: string,
   publicToken: string
 ): Promise<{ success: boolean } | null> {
+  const authHeaders = await getWalletAuthHeaders(walletAddress);
   const response = await apiRequest<{ success: boolean }>('/api/plaid/exchange-token', {
     method: 'POST',
+    headers: authHeaders,
     body: JSON.stringify({ walletAddress, publicToken }),
   });
   if (response.error || !response.data) return null;
@@ -637,7 +663,9 @@ export async function getBankBalances(
 ): Promise<BankBalancesResponse | null> {
   const encoded = encodeURIComponent(walletAddress);
   const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const authHeaders = await getWalletAuthHeaders(walletAddress);
   const response = await apiRequest<BankBalancesResponse>(`/api/plaid/balances?walletAddress=${encoded}${qs}`, {
+    headers: authHeaders,
     ...(options?.skipCache && { cache: 'no-store' as RequestCache }),
   });
   if (response.error) return null;
@@ -657,8 +685,10 @@ export async function disconnectPlaid(
   walletAddress: string,
   itemId?: string
 ): Promise<{ success: boolean } | null> {
+  const authHeaders = await getWalletAuthHeaders(walletAddress);
   const response = await apiRequest<{ success: boolean }>('/api/plaid/disconnect', {
     method: 'POST',
+    headers: authHeaders,
     body: JSON.stringify({ walletAddress, ...(itemId != null && { itemId }) }),
   });
   if (response.error || !response.data) return null;
@@ -697,9 +727,10 @@ export async function getPlaidInvestmentsHoldings(
 ): Promise<PlaidInvestmentsHoldingsResponse | null> {
   const encoded = encodeURIComponent(walletAddress);
   const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const authHeaders = await getWalletAuthHeaders(walletAddress);
   const response = await apiRequest<PlaidInvestmentsHoldingsResponse>(
     `/api/plaid/investments/holdings?walletAddress=${encoded}${qs}`,
-    { ...(options?.skipCache && { cache: 'no-store' as RequestCache }) }
+    { headers: authHeaders, ...(options?.skipCache && { cache: 'no-store' as RequestCache }) }
   );
   if (response.error) return null;
   if (response.data) return response.data;
@@ -711,8 +742,10 @@ export async function getPlaidInvestmentsHoldings(
  * See https://plaid.com/docs/investments/#investmentsrefresh
  */
 export async function plaidInvestmentsRefresh(walletAddress: string): Promise<{ success: boolean } | null> {
+  const authHeaders = await getWalletAuthHeaders(walletAddress);
   const response = await apiRequest<{ success: boolean }>('/api/plaid/investments/refresh', {
     method: 'POST',
+    headers: authHeaders,
     body: JSON.stringify({ walletAddress }),
   });
   if (response.error || !response.data) return null;
@@ -746,8 +779,10 @@ export async function getPlaidRecurringTransactions(
 ): Promise<PlaidRecurringResponse | null> {
   const encoded = encodeURIComponent(walletAddress);
   const qs = options?.refresh ? '&refresh=1' : '';
+  const authHeaders = await getWalletAuthHeaders(walletAddress);
   const response = await apiRequest<PlaidRecurringResponse>(
-    `/api/plaid/recurring-transactions?walletAddress=${encoded}${qs}`
+    `/api/plaid/recurring-transactions?walletAddress=${encoded}${qs}`,
+    { headers: authHeaders }
   );
   if (response.error) return null;
   if (response.data) return response.data;
@@ -774,8 +809,10 @@ export async function getPlaidSpend(
 ): Promise<PlaidSpendResponse | null> {
   const encoded = encodeURIComponent(walletAddress);
   const qs = options?.refresh ? '&refresh=1' : '';
+  const authHeaders = await getWalletAuthHeaders(walletAddress);
   const response = await apiRequest<PlaidSpendResponse>(
-    `/api/plaid/transactions/spend?walletAddress=${encoded}${qs}`
+    `/api/plaid/transactions/spend?walletAddress=${encoded}${qs}`,
+    { headers: authHeaders }
   );
   if (response.error) return null;
   if (response.data) return response.data;

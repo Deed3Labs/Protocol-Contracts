@@ -6,10 +6,10 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "../interfaces/IBurnerBondFactory.sol";
-import "../interfaces/IBurnerBond.sol";
-import "../interfaces/IBurnerBondDeposit.sol";
-import "../interfaces/IAssurancePool.sol";
-import "../interfaces/IAssuranceOracle.sol";
+import "../interfaces/burner-bond/IBurnerBond.sol";
+import "../interfaces/burner-bond/IBurnerBondDeposit.sol";
+import "../interfaces/stable-credit/IAssurancePool.sol";
+import "../interfaces/stable-credit/IAssuranceOracle.sol";
 import "../../peripherals/BurnerBond.sol";
 import "../../peripherals/BurnerBondDeposit.sol";
 

@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import { verifyMessage } from 'ethers';
+import { createHash } from 'crypto';
 import {
   Configuration,
   PlaidApi,
@@ -21,6 +23,94 @@ import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 
 const router = Router();
 
+
+const WALLET_AUTH_MAX_AGE_SECONDS = parseInt(process.env.WALLET_AUTH_MAX_AGE_SECONDS || '300', 10);
+const walletAuthReplayStore = new Map<string, number>();
+
+function buildWalletAuthMessage(walletAddress: string, timestamp: string): string {
+  return `Deed3 Wallet Authentication\nAddress: ${walletAddress.toLowerCase()}\nTimestamp: ${timestamp}`;
+}
+
+function isFreshTimestamp(timestamp: string): boolean {
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return false;
+  const now = Math.floor(Date.now() / 1000);
+  return Math.abs(now - ts) <= WALLET_AUTH_MAX_AGE_SECONDS;
+}
+
+function isReplay(signature: string, timestamp: string): boolean {
+  const now = Date.now();
+  const key = createHash('sha256').update(`${signature}:${timestamp}`).digest('hex');
+
+  for (const [k, expiry] of walletAuthReplayStore.entries()) {
+    if (expiry <= now) walletAuthReplayStore.delete(k);
+  }
+
+  if (walletAuthReplayStore.has(key)) return true;
+  walletAuthReplayStore.set(key, now + WALLET_AUTH_MAX_AGE_SECONDS * 1000);
+  return false;
+}
+
+function getWalletFromRequest(req: Request): string | null {
+  const fromBody = typeof req.body?.walletAddress === 'string' ? req.body.walletAddress : null;
+  const fromQuery = typeof req.query?.walletAddress === 'string' ? req.query.walletAddress : null;
+  return fromBody ?? fromQuery;
+}
+
+function authorizeWalletRequest(req: Request, walletAddress: string): { ok: true } | { ok: false; status: number; error: string; message: string } {
+  const signature = req.header('x-wallet-signature');
+  const timestamp = req.header('x-wallet-timestamp');
+
+  if (!signature || !timestamp) {
+    return {
+      ok: false,
+      status: 401,
+      error: 'Missing wallet authentication',
+      message: 'x-wallet-signature and x-wallet-timestamp headers are required',
+    };
+  }
+
+  if (!isFreshTimestamp(timestamp)) {
+    return {
+      ok: false,
+      status: 401,
+      error: 'Expired wallet authentication',
+      message: 'Wallet authentication timestamp is expired or invalid',
+    };
+  }
+
+  if (isReplay(signature, timestamp)) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'Replay detected',
+      message: 'Wallet authentication payload was already used',
+    };
+  }
+
+  const message = buildWalletAuthMessage(walletAddress, timestamp);
+  try {
+    const recovered = verifyMessage(message, signature).toLowerCase();
+    if (recovered !== walletAddress.toLowerCase()) {
+      return {
+        ok: false,
+        status: 403,
+        error: 'Wallet authentication failed',
+        message: 'Signature does not match walletAddress',
+      };
+    }
+  } catch {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Invalid wallet signature',
+      message: 'Failed to verify wallet signature',
+    };
+  }
+
+  return { ok: true };
+}
+
 // Optional cache for balances (reduces Plaid API calls; fails open if Redis unavailable)
 let cacheServicePromise: Promise<CacheService | null> | null = null;
 async function getCacheService(): Promise<CacheService | null> {
@@ -39,6 +129,63 @@ interface StoredItem {
   item_id: string;
 }
 const accessTokenStore = new Map<string, StoredItem[]>();
+
+function getPlaidItemsCacheKey(walletAddress: string): string {
+  return `plaid:items:${walletAddress.toLowerCase()}`;
+}
+
+async function getStoredItems(walletAddress: string): Promise<StoredItem[]> {
+  const key = walletAddress.toLowerCase();
+  const cacheService = await getCacheService();
+  if (cacheService) {
+    const cached = await cacheService.get<StoredItem[]>(getPlaidItemsCacheKey(key));
+    if (cached && Array.isArray(cached)) {
+      accessTokenStore.set(key, cached);
+      return cached;
+    }
+  }
+  return accessTokenStore.get(key) ?? [];
+}
+
+async function setStoredItems(walletAddress: string, items: StoredItem[]): Promise<void> {
+  const key = walletAddress.toLowerCase();
+  accessTokenStore.set(key, items);
+  const cacheService = await getCacheService();
+  if (cacheService) {
+    await cacheService.set(getPlaidItemsCacheKey(key), items, 60 * 60 * 24 * 30);
+  }
+}
+
+async function deleteStoredItems(walletAddress: string): Promise<void> {
+  const key = walletAddress.toLowerCase();
+  accessTokenStore.delete(key);
+  const cacheService = await getCacheService();
+  if (cacheService) {
+    await cacheService.del(getPlaidItemsCacheKey(key));
+  }
+}
+
+function getAuthorizedWalletAddress(req: Request, res: Response): string | null {
+  const walletAddress = getWalletFromRequest(req);
+  if (!walletAddress) {
+    res.status(400).json({
+      error: 'Missing walletAddress',
+      message: 'walletAddress is required in query or body',
+    });
+    return null;
+  }
+
+  const authResult = authorizeWalletRequest(req, walletAddress);
+  if (!authResult.ok) {
+    res.status(authResult.status).json({
+      error: authResult.error,
+      message: authResult.message,
+    });
+    return null;
+  }
+
+  return walletAddress;
+}
 
 function getPlaidClient(): PlaidApi | null {
   const clientId = process.env.PLAID_CLIENT_ID;
@@ -83,13 +230,9 @@ router.post('/link-token', async (req: Request, res: Response) => {
       });
     }
 
-    const { walletAddress, redirect_uri } = req.body as { walletAddress?: string; redirect_uri?: string };
-    if (!walletAddress || typeof walletAddress !== 'string') {
-      return res.status(400).json({
-        error: 'Missing walletAddress',
-        message: 'Request body must include walletAddress',
-      });
-    }
+    const { redirect_uri } = req.body as { redirect_uri?: string };
+    const walletAddress = getAuthorizedWalletAddress(req, res);
+    if (!walletAddress) return;
 
     const request: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
@@ -148,11 +291,13 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
       });
     }
 
-    const { walletAddress, publicToken } = req.body as {
-      walletAddress?: string;
+    const walletAddress = getAuthorizedWalletAddress(req, res);
+    if (!walletAddress) return;
+
+    const { publicToken } = req.body as {
       publicToken?: string;
     };
-    if (!walletAddress || !publicToken) {
+    if (!publicToken) {
       return res.status(400).json({
         error: 'Missing parameters',
         message: 'Request body must include walletAddress and publicToken',
@@ -166,9 +311,9 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
     const accessToken = response.data.access_token;
     const itemId = response.data.item_id;
     const key = walletAddress.toLowerCase();
-    const existing = accessTokenStore.get(key) ?? [];
+    const existing = await getStoredItems(key);
     existing.push({ access_token: accessToken, item_id: itemId });
-    accessTokenStore.set(key, existing);
+    await setStoredItems(key, existing);
 
     // Invalidate balance cache so the next balances request is fresh (avoids stale list after re-link).
     // Re-linking with Liabilities in the link token is required for credit cards to appear; this ensures
@@ -224,16 +369,11 @@ router.get('/balances', async (req: Request, res: Response) => {
       });
     }
 
-    const walletAddress = req.query.walletAddress as string | undefined;
-    if (!walletAddress) {
-      return res.status(400).json({
-        error: 'Missing walletAddress',
-        message: 'Query parameter walletAddress is required',
-      });
-    }
+    const walletAddress = getAuthorizedWalletAddress(req, res);
+    if (!walletAddress) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
+    const items = await getStoredItems(key);
     if (!items?.length) {
       return res.json(balancesResponse({
         accounts: [],
@@ -358,9 +498,9 @@ router.get('/balances', async (req: Request, res: Response) => {
     // Persist removal of any invalid items
     if (stillValidItems.length !== items.length) {
       if (stillValidItems.length === 0) {
-        accessTokenStore.delete(key);
+        await deleteStoredItems(key);
       } else {
-        accessTokenStore.set(key, stillValidItems);
+        await setStoredItems(key, stillValidItems);
       }
       const cacheServiceForInvalidate = await getCacheService();
       if (cacheServiceForInvalidate) await cacheServiceForInvalidate.del(cacheKey);
@@ -378,7 +518,7 @@ router.get('/balances', async (req: Request, res: Response) => {
       const walletAddress = req.query.walletAddress as string | undefined;
       if (walletAddress) {
         const key = walletAddress.toLowerCase();
-        accessTokenStore.delete(key);
+        await deleteStoredItems(key);
         const cacheService = await getCacheService();
         if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
       }
@@ -428,16 +568,11 @@ router.get('/investments/holdings', async (req: Request, res: Response) => {
       });
     }
 
-    const walletAddress = req.query.walletAddress as string | undefined;
-    if (!walletAddress) {
-      return res.status(400).json({
-        error: 'Missing walletAddress',
-        message: 'Query parameter walletAddress is required',
-      });
-    }
+    const walletAddress = getAuthorizedWalletAddress(req, res);
+    if (!walletAddress) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
+    const items = await getStoredItems(key);
     if (!items?.length) {
       return res.json({ holdings: [], linked: false, cached: false });
     }
@@ -526,16 +661,11 @@ router.post('/investments/refresh', async (req: Request, res: Response) => {
       });
     }
 
-    const { walletAddress } = req.body as { walletAddress?: string };
-    if (!walletAddress || typeof walletAddress !== 'string') {
-      return res.status(400).json({
-        error: 'Missing walletAddress',
-        message: 'Request body must include walletAddress',
-      });
-    }
+    const walletAddress = getAuthorizedWalletAddress(req, res);
+    if (!walletAddress) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
+    const items = await getStoredItems(key);
     if (!items?.length) {
       return res.json({ success: true, message: 'No linked items' });
     }
@@ -590,16 +720,11 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
       });
     }
 
-    const walletAddress = req.query.walletAddress as string | undefined;
-    if (!walletAddress) {
-      return res.status(400).json({
-        error: 'Missing walletAddress',
-        message: 'Query parameter walletAddress is required',
-      });
-    }
+    const walletAddress = getAuthorizedWalletAddress(req, res);
+    if (!walletAddress) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
+    const items = await getStoredItems(key);
     if (!items?.length) {
       return res.json({
         inflowStreams: [],
@@ -717,16 +842,11 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
       });
     }
 
-    const walletAddress = req.query.walletAddress as string | undefined;
-    if (!walletAddress) {
-      return res.status(400).json({
-        error: 'Missing walletAddress',
-        message: 'Query parameter walletAddress is required',
-      });
-    }
+    const walletAddress = getAuthorizedWalletAddress(req, res);
+    if (!walletAddress) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
+    const items = await getStoredItems(key);
     if (!items?.length) {
       return res.json({
         spendingByDay: {} as SpendByDayPayload,
@@ -823,27 +943,23 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
  */
 router.post('/disconnect', async (req: Request, res: Response) => {
   try {
-    const { walletAddress, itemId } = req.body as { walletAddress?: string; itemId?: string };
-    if (!walletAddress || typeof walletAddress !== 'string') {
-      return res.status(400).json({
-        error: 'Missing walletAddress',
-        message: 'Request body must include walletAddress',
-      });
-    }
+    const walletAddress = getAuthorizedWalletAddress(req, res);
+    if (!walletAddress) return;
+    const { itemId } = req.body as { itemId?: string };
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
+    const items = await getStoredItems(key);
     if (!items?.length) {
       return res.json({ success: true });
     }
     if (itemId) {
       const next = items.filter((i) => i.item_id !== itemId);
       if (next.length === 0) {
-        accessTokenStore.delete(key);
+        await deleteStoredItems(key);
       } else {
-        accessTokenStore.set(key, next);
+        await setStoredItems(key, next);
       }
     } else {
-      accessTokenStore.delete(key);
+      await deleteStoredItems(key);
     }
     const cacheService = await getCacheService();
     if (cacheService) {

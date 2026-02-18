@@ -39,8 +39,6 @@ const corsOptions = {
       ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
       : [];
     
-    // Always allow Vercel preview URLs (pattern: *.vercel.app)
-    const isVercelPreview = origin.endsWith('.vercel.app');
     
     // If no CORS_ORIGIN is set, allow all origins (development mode)
     if (allowedOrigins.length === 0) {
@@ -63,11 +61,8 @@ const corsOptions = {
       return origin === allowed;
     });
     
-    // Allow if explicitly allowed OR if it's a Vercel preview URL
-    if (isAllowed || isVercelPreview) {
-      if (isVercelPreview) {
-        console.log(`[CORS] Allowing Vercel preview URL: ${origin}`);
-      }
+    // Allow only explicitly configured origins
+    if (isAllowed) {
       callback(null, true);
     } else {
       // Log the blocked origin for debugging
