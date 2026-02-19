@@ -7,6 +7,8 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const SIWX_AUTH_TOKEN_KEY = '@appkit/siwx-auth-token';
+const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
+const SEND_REOWN_PROJECT_HEADER = import.meta.env.VITE_SEND_REOWN_PROJECT_HEADER === 'true';
 
 // Log API base URL in development to help debug
 if (import.meta.env.DEV) {
@@ -56,6 +58,9 @@ async function apiRequest<T>(
       headers: {
         'Content-Type': 'application/json',
         ...(siwxToken ? { Authorization: `Bearer ${siwxToken}` } : {}),
+        ...(SEND_REOWN_PROJECT_HEADER && REOWN_PROJECT_ID
+          ? { 'X-Reown-Project-Id': REOWN_PROJECT_ID }
+          : {}),
         ...options.headers,
       },
     });

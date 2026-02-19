@@ -46,14 +46,16 @@ const corsOptions = {
     const allowVercelPreviews = process.env.ALLOW_VERCEL_PREVIEWS === 'true';
     const isVercelPreview = allowVercelPreviews && origin.endsWith('.vercel.app');
     
-    // If no CORS_ORIGIN is set, only allow all origins outside production.
+    // If no CORS_ORIGIN is set, default to compatibility mode (allow all origins).
+    // Enable STRICT_CORS=true to force explicit CORS_ORIGIN configuration in production.
     if (allowedOrigins.length === 0) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`[CORS] Allowing origin (development mode): ${origin}`);
+      const strictCors = process.env.STRICT_CORS === 'true';
+      if (!strictCors) {
+        console.warn(`[CORS] CORS_ORIGIN not set. Allowing origin: ${origin}`);
         return callback(null, true);
       }
-      console.warn(`[CORS] Blocked origin in production because CORS_ORIGIN is not configured: ${origin}`);
-      return callback(new Error('CORS_ORIGIN is required in production'));
+      console.warn(`[CORS] Blocked origin because STRICT_CORS=true and CORS_ORIGIN is not configured: ${origin}`);
+      return callback(new Error('CORS_ORIGIN is required when STRICT_CORS=true'));
     }
     
     // If '*' is specified, allow all origins
@@ -85,7 +87,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Reown-Project-Id', 'X-Appkit-Project-Id'],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   maxAge: 86400, // 24 hours
   preflightContinue: false,
@@ -146,18 +148,13 @@ async function startServer() {
 
     // Public API routes (after rate limiter)
     app.use('/api/prices', pricesRouter);
-
-    // All remaining API routes require SIWX authentication.
-    app.use('/api', requireAuth);
-
-    // Protected API routes
     app.use('/api/balances', balancesRouter);
     app.use('/api/token-balances', tokenBalancesRouter); // Uses same service as balances (consolidated)
     app.use('/api/nfts', nftsRouter);
     app.use('/api/transactions', transactionsRouter);
-    app.use('/api/stripe', stripeRouter);
-    app.use('/api/plaid', plaidRouter);
-    app.use('/api/bridge', bridgeRouter);
+    app.use('/api/stripe', requireAuth, stripeRouter);
+    app.use('/api/plaid', requireAuth, plaidRouter);
+    app.use('/api/bridge', requireAuth, bridgeRouter);
     
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');

@@ -36,6 +36,7 @@ interface StoredItem {
   item_id: string;
 }
 const accessTokenStore = new Map<string, StoredItem[]>();
+const MAX_PLAID_ITEMS_PER_WALLET = parseInt(process.env.MAX_PLAID_ITEMS_PER_WALLET || '10', 10);
 
 function getPlaidClient(): PlaidApi | null {
   const clientId = process.env.PLAID_CLIENT_ID;
@@ -148,7 +149,18 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
     const itemId = response.data.item_id;
     const key = walletAddress.toLowerCase();
     const existing = accessTokenStore.get(key) ?? [];
-    existing.push({ access_token: accessToken, item_id: itemId });
+    const existingIdx = existing.findIndex((item) => item.item_id === itemId);
+    if (existingIdx >= 0) {
+      existing[existingIdx] = { access_token: accessToken, item_id: itemId };
+    } else {
+      if (existing.length >= MAX_PLAID_ITEMS_PER_WALLET) {
+        return res.status(400).json({
+          error: 'Too many linked institutions',
+          message: `Maximum ${MAX_PLAID_ITEMS_PER_WALLET} institutions can be linked per wallet`,
+        });
+      }
+      existing.push({ access_token: accessToken, item_id: itemId });
+    }
     accessTokenStore.set(key, existing);
 
     // Invalidate balance cache so next fetch (or client refresh) returns all linked accounts
