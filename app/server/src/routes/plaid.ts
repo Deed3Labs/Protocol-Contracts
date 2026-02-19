@@ -14,6 +14,7 @@ import {
   type InvestmentsRefreshRequest,
 } from 'plaid';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { requireWalletMatch } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -85,6 +86,7 @@ router.post('/link-token', async (req: Request, res: Response) => {
         message: 'Request body must include walletAddress',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
 
     const request: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
@@ -136,6 +138,7 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
         message: 'Request body must include walletAddress and publicToken',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
 
     const request: ItemPublicTokenExchangeRequest = {
       public_token: publicToken,
@@ -207,6 +210,7 @@ router.get('/balances', async (req: Request, res: Response) => {
         message: 'Query parameter walletAddress is required',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
 
     const key = walletAddress.toLowerCase();
     const items = accessTokenStore.get(key);
@@ -372,6 +376,7 @@ router.get('/investments/holdings', async (req: Request, res: Response) => {
         message: 'Query parameter walletAddress is required',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
 
     const key = walletAddress.toLowerCase();
     const items = accessTokenStore.get(key);
@@ -470,6 +475,7 @@ router.post('/investments/refresh', async (req: Request, res: Response) => {
         message: 'Request body must include walletAddress',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
 
     const key = walletAddress.toLowerCase();
     const items = accessTokenStore.get(key);
@@ -534,6 +540,7 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
         message: 'Query parameter walletAddress is required',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
 
     const key = walletAddress.toLowerCase();
     const items = accessTokenStore.get(key);
@@ -661,6 +668,7 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
         message: 'Query parameter walletAddress is required',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
 
     const key = walletAddress.toLowerCase();
     const items = accessTokenStore.get(key);
@@ -767,6 +775,7 @@ router.post('/disconnect', async (req: Request, res: Response) => {
         message: 'Request body must include walletAddress',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
     const key = walletAddress.toLowerCase();
     const items = accessTokenStore.get(key);
     if (!items?.length) {

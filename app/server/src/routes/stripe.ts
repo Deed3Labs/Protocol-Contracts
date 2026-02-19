@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { requireWalletArrayMatch } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -67,6 +68,22 @@ router.post('/create-onramp-session', async (req: Request, res: Response) => {
         message: 'STRIPE_SECRET_KEY environment variable is not set',
       });
     }
+
+    if (!wallet_addresses || typeof wallet_addresses !== 'object') {
+      return res.status(400).json({
+        error: 'Missing wallet_addresses',
+        message: 'wallet_addresses is required',
+      });
+    }
+
+    const requestWallets = Object.values(wallet_addresses).filter((value): value is string => typeof value === 'string');
+    if (requestWallets.length === 0) {
+      return res.status(400).json({
+        error: 'Invalid wallet_addresses',
+        message: 'wallet_addresses must include at least one address',
+      });
+    }
+    if (!requireWalletArrayMatch(req, res, requestWallets, 'wallet_addresses')) return;
 
     // Build the request body for Stripe API
     const formData = new URLSearchParams();

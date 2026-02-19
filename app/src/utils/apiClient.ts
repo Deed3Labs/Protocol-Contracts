@@ -6,6 +6,7 @@
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const SIWX_AUTH_TOKEN_KEY = '@appkit/siwx-auth-token';
 
 // Log API base URL in development to help debug
 if (import.meta.env.DEV) {
@@ -21,6 +22,15 @@ interface ApiResponse<T> {
 
 interface RequestInitWithTimeout extends RequestInit {
   timeout?: number; // Custom timeout in milliseconds (overrides default 30s)
+}
+
+function getSiwxAuthToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(SIWX_AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -39,11 +49,13 @@ async function apiRequest<T>(
 
   try {
     const { timeout: _, ...fetchOptions } = options; // Remove timeout from fetch options
+    const siwxToken = getSiwxAuthToken();
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...fetchOptions,
       signal: timeoutController.signal, // Use timeout signal (user signal will be ignored if provided)
       headers: {
         'Content-Type': 'application/json',
+        ...(siwxToken ? { Authorization: `Bearer ${siwxToken}` } : {}),
         ...options.headers,
       },
     });

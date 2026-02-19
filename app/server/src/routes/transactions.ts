@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { CacheKeys } from '../config/redis.js';
+import { requireWalletArrayMatch, requireWalletMatch } from '../middleware/auth.js';
+import { getCacheServiceSafe } from '../utils/cache.js';
 import { transfersService } from '../services/transfersService.js';
 
 const router = Router();
-const cacheServicePromise = getRedisClient().then((client) => new CacheService(client));
 
 /**
  * GET /api/transactions/:chainId/:address
@@ -13,12 +14,16 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
   try {
     const chainId = parseInt(req.params.chainId, 10);
     const address = req.params.address.toLowerCase();
+    if (!requireWalletMatch(req, res, address, 'address')) return;
+
     const limit = parseInt((req.query.limit as string) || '20', 10);
-    const cacheService = await cacheServicePromise;
+    const cacheService = await getCacheServiceSafe();
 
     // Check cache first
     const cacheKey = CacheKeys.transactions(chainId, address, limit);
-    const cached = await cacheService.get<{ transactions: any[]; timestamp: number }>(cacheKey);
+    const cached = cacheService
+      ? await cacheService.get<{ transactions: any[]; timestamp: number }>(cacheKey)
+      : null;
 
     if (cached) {
       return res.json({
@@ -36,11 +41,13 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     // Transactions don't change frequently, so longer cache reduces Alchemy compute unit usage
     // Using Alchemy Transfers API for fast, comprehensive transaction fetching
     const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '600', 10);
-    await cacheService.set(
-      cacheKey,
-      { transactions, timestamp: Date.now() },
-      cacheTTL
-    );
+    if (cacheService) {
+      await cacheService.set(
+        cacheKey,
+        { transactions, timestamp: Date.now() },
+        cacheTTL
+      );
+    }
 
     res.json({
       transactions,
@@ -74,7 +81,9 @@ router.post('/batch', async (req: Request, res: Response) => {
       });
     }
 
-    const cacheService = await cacheServicePromise;
+    if (!requireWalletArrayMatch(req, res, requests.map((r) => r.address), 'requests[].address')) return;
+
+    const cacheService = await getCacheServiceSafe();
     const results: Array<{
       chainId: number;
       address: string;
@@ -88,7 +97,9 @@ router.post('/batch', async (req: Request, res: Response) => {
     for (let i = 0; i < requests.length; i++) {
       const { chainId, address, limit = 20 } = requests[i];
       const cacheKey = CacheKeys.transactions(chainId, address.toLowerCase(), limit);
-      const cached = await cacheService.get<{ transactions: any[]; timestamp: number }>(cacheKey);
+      const cached = cacheService
+        ? await cacheService.get<{ transactions: any[]; timestamp: number }>(cacheKey)
+        : null;
 
       if (cached) {
         results[i] = {
@@ -112,11 +123,13 @@ router.post('/batch', async (req: Request, res: Response) => {
         const cacheKey = CacheKeys.transactions(chainId, address.toLowerCase(), limit);
         // OPTIMIZATION: Increased cache TTL to 10 minutes (600s) to align with refresh intervals
         const cacheTTL = parseInt(process.env.CACHE_TTL_TRANSACTION || '600', 10);
-        await cacheService.set(
-          cacheKey,
-          { transactions, timestamp: Date.now() },
-          cacheTTL
-        );
+        if (cacheService) {
+          await cacheService.set(
+            cacheKey,
+            { transactions, timestamp: Date.now() },
+            cacheTTL
+          );
+        }
 
         results[index] = {
           chainId,

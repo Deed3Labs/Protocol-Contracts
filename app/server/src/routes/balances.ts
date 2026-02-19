@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { CacheKeys } from '../config/redis.js';
+import { requireWalletArrayMatch, requireWalletMatch } from '../middleware/auth.js';
+import { getCacheServiceSafe } from '../utils/cache.js';
 import { getBalance, getBalancesBatch } from '../services/balanceService.js';
 
 const router = Router();
-const cacheServicePromise = getRedisClient().then((client) => new CacheService(client));
 
 /**
  * GET /api/balances/:chainId/:address
@@ -13,11 +14,15 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
   try {
     const chainId = parseInt(req.params.chainId, 10);
     const address = req.params.address.toLowerCase();
-    const cacheService = await cacheServicePromise;
+    if (!requireWalletMatch(req, res, address, 'address')) return;
+
+    const cacheService = await getCacheServiceSafe();
 
     // Check cache first
     const cacheKey = CacheKeys.balance(chainId, address);
-    const cached = await cacheService.get<{ balance: string; balanceWei: string; timestamp: number }>(cacheKey);
+    const cached = cacheService
+      ? await cacheService.get<{ balance: string; balanceWei: string; timestamp: number }>(cacheKey)
+      : null;
 
     if (cached) {
       return res.json({
@@ -42,11 +47,13 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     // Cache the result
     // Aligned with refresh interval: 10 minutes (600s) for better cache efficiency
     const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '600', 10);
-    await cacheService.set(
-      cacheKey,
-      { balance: result.balance, balanceWei: result.balanceWei, timestamp: Date.now() },
-      cacheTTL
-    );
+    if (cacheService) {
+      await cacheService.set(
+        cacheKey,
+        { balance: result.balance, balanceWei: result.balanceWei, timestamp: Date.now() },
+        cacheTTL
+      );
+    }
 
     res.json({
       balance: result.balance,
@@ -80,7 +87,9 @@ router.post('/batch', async (req: Request, res: Response) => {
       });
     }
 
-    const cacheService = await cacheServicePromise;
+    if (!requireWalletArrayMatch(req, res, balances.map((b) => b.address), 'balances[].address')) return;
+
+    const cacheService = await getCacheServiceSafe();
     const results: Array<{
       chainId: number;
       address: string;
@@ -95,7 +104,9 @@ router.post('/batch', async (req: Request, res: Response) => {
     for (let i = 0; i < balances.length; i++) {
       const { chainId, address } = balances[i];
       const cacheKey = CacheKeys.balance(chainId, address.toLowerCase());
-      const cached = await cacheService.get<{ balance: string; balanceWei: string; timestamp: number }>(cacheKey);
+      const cached = cacheService
+        ? await cacheService.get<{ balance: string; balanceWei: string; timestamp: number }>(cacheKey)
+        : null;
 
       if (cached) {
         results[i] = {
@@ -123,11 +134,13 @@ router.post('/batch', async (req: Request, res: Response) => {
         if (result.balance && result.balanceWei) {
           const cacheKey = CacheKeys.balance(chainId, address.toLowerCase());
           const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '600', 10);
-          await cacheService.set(
-            cacheKey,
-            { balance: result.balance, balanceWei: result.balanceWei, timestamp: Date.now() },
-            cacheTTL
-          );
+          if (cacheService) {
+            await cacheService.set(
+              cacheKey,
+              { balance: result.balance, balanceWei: result.balanceWei, timestamp: Date.now() },
+              cacheTTL
+            );
+          }
 
           results[index] = {
             chainId,

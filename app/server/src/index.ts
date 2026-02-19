@@ -5,6 +5,7 @@ import compression from 'compression';
 import dotenv from 'dotenv';
 import { getRedisClient, closeRedisConnection } from './config/redis.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
+import { requireAuth } from './middleware/auth.js';
 import pricesRouter from './routes/prices.js';
 import balancesRouter from './routes/balances.js';
 import tokenBalancesRouter from './routes/tokenBalances.js';
@@ -23,6 +24,9 @@ const app = express();
 const httpServer = createServer(app);
 const PORT: number = parseInt(process.env.PORT || '3001', 10);
 
+// Trust first proxy hop (Railway/Render/Nginx) so req.ip is accurate for rate limiting.
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(compression());
 
@@ -39,13 +43,17 @@ const corsOptions = {
       ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
       : [];
     
-    // Always allow Vercel preview URLs (pattern: *.vercel.app)
-    const isVercelPreview = origin.endsWith('.vercel.app');
+    const allowVercelPreviews = process.env.ALLOW_VERCEL_PREVIEWS === 'true';
+    const isVercelPreview = allowVercelPreviews && origin.endsWith('.vercel.app');
     
-    // If no CORS_ORIGIN is set, allow all origins (development mode)
+    // If no CORS_ORIGIN is set, only allow all origins outside production.
     if (allowedOrigins.length === 0) {
-      console.log(`[CORS] Allowing origin (no CORS_ORIGIN set): ${origin}`);
-      return callback(null, true);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[CORS] Allowing origin (development mode): ${origin}`);
+        return callback(null, true);
+      }
+      console.warn(`[CORS] Blocked origin in production because CORS_ORIGIN is not configured: ${origin}`);
+      return callback(new Error('CORS_ORIGIN is required in production'));
     }
     
     // If '*' is specified, allow all origins
@@ -63,7 +71,7 @@ const corsOptions = {
       return origin === allowed;
     });
     
-    // Allow if explicitly allowed OR if it's a Vercel preview URL
+    // Allow if explicitly allowed OR if preview URLs are explicitly enabled.
     if (isAllowed || isVercelPreview) {
       if (isVercelPreview) {
         console.log(`[CORS] Allowing Vercel preview URL: ${origin}`);
@@ -136,8 +144,13 @@ async function startServer() {
     // Add rate limiter to all API routes
     app.use('/api', rateLimiterMiddleware);
 
-    // Set up API routes (after rate limiter)
+    // Public API routes (after rate limiter)
     app.use('/api/prices', pricesRouter);
+
+    // All remaining API routes require SIWX authentication.
+    app.use('/api', requireAuth);
+
+    // Protected API routes
     app.use('/api/balances', balancesRouter);
     app.use('/api/token-balances', tokenBalancesRouter); // Uses same service as balances (consolidated)
     app.use('/api/nfts', nftsRouter);

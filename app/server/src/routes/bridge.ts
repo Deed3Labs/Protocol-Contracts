@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { requireWalletMatch } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -18,6 +19,7 @@ router.post('/funding-url', async (req: Request, res: Response) => {
         message: 'walletAddress, amount, destinationCurrency, and destinationNetwork are required',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
 
     const bridgeBaseUrl = process.env.BRIDGE_FUNDING_URL_BASE || process.env.BRIDGE_BASE_URL;
     const bridgeApiKey = process.env.BRIDGE_API_KEY;

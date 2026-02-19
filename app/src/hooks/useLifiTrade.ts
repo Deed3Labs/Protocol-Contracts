@@ -3,7 +3,7 @@
  * Handles quote fetching, route execution, and trade status
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { getQuote, getRoutes, executeRoute, convertQuoteToRoute, type Route, type RouteExtended } from '@lifi/sdk';
 import { getToken } from '@lifi/sdk';
@@ -64,6 +64,7 @@ const resolveTokenAddress = async (symbol: string, chainId: number): Promise<str
  */
 export function useLifiTrade() {
   const { address } = useAccount();
+  const latestQuoteRequestId = useRef(0);
   const [quote, setQuote] = useState<TradeQuote>({
     quote: null,
     route: null,
@@ -99,6 +100,7 @@ export function useLifiTrade() {
       return;
     }
 
+    const requestId = ++latestQuoteRequestId.current;
     setQuote(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
@@ -183,6 +185,10 @@ export function useLifiTrade() {
         routeSteps: routeAny.steps?.length || 0,
       });
 
+      if (requestId !== latestQuoteRequestId.current) {
+        return;
+      }
+
       setQuote({
         quote: quoteResult,
         route,
@@ -195,6 +201,9 @@ export function useLifiTrade() {
       });
     } catch (error: any) {
       console.error('Failed to fetch quote:', error);
+      if (requestId !== latestQuoteRequestId.current) {
+        return;
+      }
       setQuote(prev => ({
         ...prev,
         isLoading: false,
@@ -326,6 +335,7 @@ export function useLifiTrade() {
    * Clear quote
    */
   const clearQuote = useCallback(() => {
+    latestQuoteRequestId.current += 1;
     setQuote({
       quote: null,
       route: null,
