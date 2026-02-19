@@ -15,6 +15,7 @@ import {
 } from 'plaid';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { requireWalletMatch } from '../middleware/auth.js';
+import { plaidTokenStore } from '../services/plaidTokenStore.js';
 
 const router = Router();
 
@@ -28,15 +29,29 @@ async function getCacheService(): Promise<CacheService | null> {
   return cacheServicePromise;
 }
 
-// One Plaid Item = one institution connection (one access_token).
-// In-memory store: walletAddress (lowercase) -> array of items so users can link multiple institutions.
-// Replace with Redis or DB in production for persistence across restarts
-interface StoredItem {
-  access_token: string;
-  item_id: string;
-}
-const accessTokenStore = new Map<string, StoredItem[]>();
 const MAX_PLAID_ITEMS_PER_WALLET = parseInt(process.env.MAX_PLAID_ITEMS_PER_WALLET || '10', 10);
+
+async function ensurePlaidTokenStore(res: Response): Promise<boolean> {
+  if (!plaidTokenStore.isConfigured()) {
+    res.status(503).json({
+      error: 'Plaid token store not configured',
+      message: 'Set DATABASE_URL and PLAID_TOKEN_MASTER_KEY (or PLAID_TOKEN_KEYRING_JSON)',
+    });
+    return false;
+  }
+
+  try {
+    await plaidTokenStore.ensureReady();
+    return true;
+  } catch (error) {
+    console.error('Plaid token store initialization error:', error);
+    res.status(503).json({
+      error: 'Plaid token store unavailable',
+      message: error instanceof Error ? error.message : 'Could not initialize Plaid token store',
+    });
+    return false;
+  }
+}
 
 function getPlaidClient(): PlaidApi | null {
   const clientId = process.env.PLAID_CLIENT_ID;
@@ -88,6 +103,7 @@ router.post('/link-token', async (req: Request, res: Response) => {
       });
     }
     if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const request: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
@@ -140,6 +156,7 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
       });
     }
     if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const request: ItemPublicTokenExchangeRequest = {
       public_token: publicToken,
@@ -148,20 +165,15 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
     const accessToken = response.data.access_token;
     const itemId = response.data.item_id;
     const key = walletAddress.toLowerCase();
-    const existing = accessTokenStore.get(key) ?? [];
-    const existingIdx = existing.findIndex((item) => item.item_id === itemId);
-    if (existingIdx >= 0) {
-      existing[existingIdx] = { access_token: accessToken, item_id: itemId };
-    } else {
-      if (existing.length >= MAX_PLAID_ITEMS_PER_WALLET) {
-        return res.status(400).json({
-          error: 'Too many linked institutions',
-          message: `Maximum ${MAX_PLAID_ITEMS_PER_WALLET} institutions can be linked per wallet`,
-        });
-      }
-      existing.push({ access_token: accessToken, item_id: itemId });
+    const existing = await plaidTokenStore.getItems(key);
+    const alreadyExists = existing.some((item) => item.item_id === itemId);
+    if (!alreadyExists && existing.length >= MAX_PLAID_ITEMS_PER_WALLET) {
+      return res.status(400).json({
+        error: 'Too many linked institutions',
+        message: `Maximum ${MAX_PLAID_ITEMS_PER_WALLET} institutions can be linked per wallet`,
+      });
     }
-    accessTokenStore.set(key, existing);
+    await plaidTokenStore.upsertItem(key, itemId, accessToken);
 
     // Invalidate balance cache so next fetch (or client refresh) returns all linked accounts
     const cacheService = await getCacheService();
@@ -223,10 +235,11 @@ router.get('/balances', async (req: Request, res: Response) => {
       });
     }
     if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json(balancesResponse({
         accounts: [],
         totalBankBalance: 0,
@@ -252,7 +265,7 @@ router.get('/balances', async (req: Request, res: Response) => {
 
     const accountList: BalanceAccount[] = [];
     let totalBankBalance = 0;
-    const stillValidItems: StoredItem[] = [];
+    const staleItemIds = new Set<string>();
     // De-dupe accounts even across re-links where Plaid may mint new account_ids
     // Prefer mask+name when mask exists, otherwise fall back to account_id.
     const seenAccountKeys = new Set<string>();
@@ -272,11 +285,11 @@ router.get('/balances', async (req: Request, res: Response) => {
           .join('||');
         if (fingerprint && seenItemFingerprints.has(fingerprint)) {
           // Duplicate link of the same institution/accounts; drop this item
+          staleItemIds.add(item.item_id);
           continue;
         }
         if (fingerprint) seenItemFingerprints.add(fingerprint);
 
-        stillValidItems.push(item);
         for (const acc of accounts) {
           const key = acc.mask ? `${acc.mask}|${acc.name}` : acc.account_id;
           if (seenAccountKeys.has(key)) continue;
@@ -302,19 +315,16 @@ router.get('/balances', async (req: Request, res: Response) => {
         if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
           // This institution needs re-link; drop it and continue with others
           console.warn('Plaid item invalid, removing:', item.item_id, err.response?.data ?? err.message);
+          staleItemIds.add(item.item_id);
           continue;
         }
         throw itemErr;
       }
     }
 
-    // Persist removal of any invalid items
-    if (stillValidItems.length !== items.length) {
-      if (stillValidItems.length === 0) {
-        accessTokenStore.delete(key);
-      } else {
-        accessTokenStore.set(key, stillValidItems);
-      }
+    // Persist removal of any invalid/duplicate items
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
       const cacheServiceForInvalidate = await getCacheService();
       if (cacheServiceForInvalidate) await cacheServiceForInvalidate.del(cacheKey);
     }
@@ -331,7 +341,11 @@ router.get('/balances', async (req: Request, res: Response) => {
       const walletAddress = req.query.walletAddress as string | undefined;
       if (walletAddress) {
         const key = walletAddress.toLowerCase();
-        accessTokenStore.delete(key);
+        try {
+          await plaidTokenStore.deleteAllItems(key);
+        } catch (storeError) {
+          console.warn('Failed to clear invalid Plaid items:', storeError);
+        }
         const cacheService = await getCacheService();
         if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
       }
@@ -389,10 +403,11 @@ router.get('/investments/holdings', async (req: Request, res: Response) => {
       });
     }
     if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json({ holdings: [], linked: false, cached: false });
     }
 
@@ -410,6 +425,7 @@ router.get('/investments/holdings', async (req: Request, res: Response) => {
 
     const allHoldings: InvestmentHoldingPayload[] = [];
     const seenHoldingKeys = new Set<string>();
+    const staleItemIds = new Set<string>();
 
     for (const item of items) {
       try {
@@ -443,10 +459,17 @@ router.get('/investments/holdings', async (req: Request, res: Response) => {
         const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
         const errorCode = err.response?.data?.error_code;
         if (errorCode === 'PRODUCT_NOT_READY' || errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+          if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+            staleItemIds.add(item.item_id);
+          }
           continue;
         }
         throw itemErr;
       }
+    }
+
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
     }
 
     const payload = { holdings: allHoldings };
@@ -488,10 +511,11 @@ router.post('/investments/refresh', async (req: Request, res: Response) => {
       });
     }
     if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json({ success: true, message: 'No linked items' });
     }
 
@@ -553,10 +577,11 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
       });
     }
     if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json({
         inflowStreams: [],
         outflowStreams: [],
@@ -584,6 +609,7 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
     const outflowStreams: RecurringStreamPayload[] = [];
     const seenInflow = new Set<string>();
     const seenOutflow = new Set<string>();
+    const staleItemIds = new Set<string>();
 
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -634,10 +660,17 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
       } catch (itemErr: unknown) {
         const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
         const errorCode = err.response?.data?.error_code;
-        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') continue;
+        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+          staleItemIds.add(item.item_id);
+          continue;
+        }
         if (errorCode === 'PRODUCTS_NOT_SUPPORTED' || errorCode === 'PRODUCT_NOT_READY') continue;
         throw itemErr;
       }
+    }
+
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
     }
 
     const payload = { inflowStreams, outflowStreams };
@@ -681,10 +714,11 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
       });
     }
     if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json({
         spendingByDay: {} as SpendByDayPayload,
         totalSpent: 0,
@@ -715,6 +749,7 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
 
     const spendingByDay: SpendByDayPayload = {};
     let totalSpent = 0;
+    const staleItemIds = new Set<string>();
 
     for (const item of items) {
       try {
@@ -752,10 +787,17 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
       } catch (itemErr: unknown) {
         const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
         const errorCode = err.response?.data?.error_code;
-        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') continue;
+        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+          staleItemIds.add(item.item_id);
+          continue;
+        }
         if (errorCode === 'PRODUCTS_NOT_SUPPORTED' || errorCode === 'PRODUCT_NOT_READY') continue;
         throw itemErr;
       }
+    }
+
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
     }
 
     const payload = { spendingByDay, totalSpent };
@@ -788,20 +830,16 @@ router.post('/disconnect', async (req: Request, res: Response) => {
       });
     }
     if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json({ success: true });
     }
     if (itemId) {
-      const next = items.filter((i) => i.item_id !== itemId);
-      if (next.length === 0) {
-        accessTokenStore.delete(key);
-      } else {
-        accessTokenStore.set(key, next);
-      }
+      await plaidTokenStore.deleteItem(key, itemId);
     } else {
-      accessTokenStore.delete(key);
+      await plaidTokenStore.deleteAllItems(key);
     }
     const cacheService = await getCacheService();
     if (cacheService) {

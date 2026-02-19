@@ -4,6 +4,7 @@ import cors from 'cors';
 import compression from 'compression';
 import dotenv from 'dotenv';
 import { getRedisClient, closeRedisConnection } from './config/redis.js';
+import { closePostgresPool } from './config/postgres.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { requireAuth } from './middleware/auth.js';
 import pricesRouter from './routes/prices.js';
@@ -219,6 +220,7 @@ process.on('SIGTERM', async () => {
   eventListenerService.cleanup();
   websocketService.cleanup();
   await closeRedisConnection();
+  await closePostgresPool();
   process.exit(0);
 });
 
@@ -227,6 +229,7 @@ process.on('SIGINT', async () => {
   eventListenerService.cleanup();
   websocketService.cleanup();
   await closeRedisConnection();
+  await closePostgresPool();
   process.exit(0);
 });
 
