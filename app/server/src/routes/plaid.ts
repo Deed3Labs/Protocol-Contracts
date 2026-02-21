@@ -8,11 +8,13 @@ import {
   type LinkTokenCreateRequest,
   type ItemPublicTokenExchangeRequest,
   type AccountsBalanceGetRequest,
+  type AccountsGetRequest,
   type TransactionsRecurringGetRequest,
   type TransactionsGetRequest,
   type InvestmentsHoldingsGetRequest,
   type InvestmentsRefreshRequest,
   type LiabilitiesGetRequest,
+  type AccountBase,
 } from 'plaid';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { requireWalletMatch } from '../middleware/auth.js';
@@ -31,6 +33,9 @@ async function getCacheService(): Promise<CacheService | null> {
 }
 
 const MAX_PLAID_ITEMS_PER_WALLET = parseInt(process.env.MAX_PLAID_ITEMS_PER_WALLET || '10', 10);
+// Sent on all /accounts/balance/get calls. Required for some institutions/account types (e.g. Capital One non-depository),
+// ignored by institutions that do not need it.
+const PLAID_BALANCE_MIN_LAST_UPDATED_DATETIME = '2000-01-01T00:00:00Z';
 
 async function ensurePlaidTokenStore(res: Response): Promise<boolean> {
   if (!plaidTokenStore.isConfigured()) {
@@ -159,8 +164,6 @@ router.post('/link-token', async (req: Request, res: Response) => {
       user: { client_user_id: walletAddress.toLowerCase() },
       // Keep required product set minimal to maximize institution/account coverage.
       products: [Products.Transactions],
-      // Require Auth when supported so ACH-related account/routing data is still available where possible.
-      required_if_supported_products: [Products.Auth],
       // Optional: brokerage/investment + liabilities (credit/loans) when institution supports them
       optional_products: [Products.Investments, Products.Liabilities],
     };
@@ -368,7 +371,7 @@ router.get('/balances', async (req: Request, res: Response) => {
       }));
     }
 
-    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const skipCache = parseRefreshFlag(req.query.refresh);
     const cacheService = await getCacheService();
     const cacheKey = CacheKeys.plaidBalances(key);
     const ttl = parseInt(process.env.CACHE_TTL_PLAID_BALANCES || '3600', 10); // 1 hour default (~$0.10/call)
@@ -396,9 +399,71 @@ router.get('/balances', async (req: Request, res: Response) => {
 
     for (const item of items) {
       try {
-        const request: AccountsBalanceGetRequest = { access_token: item.access_token };
-        const response = await client.accountsBalanceGet(request);
-        const accounts = response.data.accounts ?? [];
+        let accounts: AccountBase[] = [];
+
+        try {
+          const request: AccountsBalanceGetRequest = {
+            access_token: item.access_token,
+            options: {
+              min_last_updated_datetime: PLAID_BALANCE_MIN_LAST_UPDATED_DATETIME,
+            },
+          };
+          const response = await client.accountsBalanceGet(request);
+          accounts = response.data.accounts ?? [];
+        } catch (balanceErr: unknown) {
+          const info = getPlaidErrorInfo(balanceErr);
+          const errorCode = info.code;
+          const message = (info.message || '').toLowerCase();
+
+          if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+            console.warn('Plaid item invalid, removing:', item.item_id, info);
+            staleItemIds.add(item.item_id);
+            continue;
+          }
+
+          const shouldFallbackToAccountsGet =
+            info.status === 429 ||
+            errorCode === 'RATE_LIMIT_EXCEEDED' ||
+            errorCode === 'LAST_UPDATED_DATETIME_OUT_OF_RANGE' ||
+            (errorCode === 'INVALID_FIELD' && message.includes('min_last_updated_datetime'));
+
+          if (!shouldFallbackToAccountsGet) {
+            throw balanceErr;
+          }
+
+          console.warn(
+            'Plaid accountsBalanceGet fallback to accountsGet:',
+            item.item_id,
+            info
+          );
+          try {
+            const fallbackRequest: AccountsGetRequest = {
+              access_token: item.access_token,
+            };
+            const fallbackResponse = await client.accountsGet(fallbackRequest);
+            accounts = fallbackResponse.data.accounts ?? [];
+          } catch (fallbackErr: unknown) {
+            const fallbackInfo = getPlaidErrorInfo(fallbackErr);
+            const fallbackErrorCode = fallbackInfo.code;
+            if (
+              fallbackErrorCode === 'ITEM_LOGIN_REQUIRED' ||
+              fallbackErrorCode === 'INVALID_ACCESS_TOKEN'
+            ) {
+              console.warn('Plaid item invalid during accountsGet fallback, removing:', item.item_id, fallbackInfo);
+              staleItemIds.add(item.item_id);
+              continue;
+            }
+            if (
+              fallbackInfo.status === 429 ||
+              fallbackErrorCode === 'RATE_LIMIT_EXCEEDED'
+            ) {
+              console.warn('Plaid accountsGet fallback rate-limited, skipping item for now:', item.item_id, fallbackInfo);
+              continue;
+            }
+            throw fallbackErr;
+          }
+        }
+
         // Fingerprint for this Item (stable across refresh): sorted list of name+mask pairs
         const fingerprint = accounts
           .map((a) => `${a.name}|${a.mask ?? ''}`)
@@ -431,11 +496,11 @@ router.get('/balances', async (req: Request, res: Response) => {
           });
         }
       } catch (itemErr: unknown) {
-        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
-        const errorCode = err.response?.data?.error_code;
+        const info = getPlaidErrorInfo(itemErr);
+        const errorCode = info.code;
         if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
           // This institution needs re-link; drop it and continue with others
-          console.warn('Plaid item invalid, removing:', item.item_id, err.response?.data ?? err.message);
+          console.warn('Plaid item invalid, removing:', item.item_id, info);
           staleItemIds.add(item.item_id);
           continue;
         }
@@ -457,14 +522,15 @@ router.get('/balances', async (req: Request, res: Response) => {
       }
     }
 
-    const payload = { accounts: accountList, totalBankBalance, linked: accountList.length > 0 };
+    const remainingItemsCount = Math.max(0, items.length - staleItemIds.size);
+    const payload = { accounts: accountList, totalBankBalance, linked: remainingItemsCount > 0 };
     if (cacheService) {
       await cacheService.set(cacheKey, payload, ttl);
     }
     return res.json(balancesResponse(payload));
   } catch (error: unknown) {
-    const err = error as { response?: { data?: { error_code?: string } }; message?: string };
-    const errorCode = err.response?.data?.error_code;
+    const info = getPlaidErrorInfo(error);
+    const errorCode = info.code;
     if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
       const walletAddress = req.query.walletAddress as string | undefined;
       if (walletAddress) {
@@ -492,10 +558,13 @@ router.get('/balances', async (req: Request, res: Response) => {
         linked: false,
       }));
     }
-    console.error('Plaid balances error:', err.response?.data ?? err.message);
-    res.status(500).json({
+    const status = info.status && info.status >= 400 && info.status < 600 ? info.status : 500;
+    console.error('Plaid balances error:', info);
+    res.status(status).json({
       error: 'Failed to get balances',
-      message: err.message ?? 'Unknown error',
+      message: info.message ?? 'Unknown error',
+      plaid_error_code: info.code,
+      plaid_error_type: info.type,
     });
   }
 });

@@ -402,11 +402,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
             try {
               // Give the server a moment to persist the new item before refetching
               await new Promise((r) => setTimeout(r, 800));
-              await refreshBankBalance(true);
-              // Second refresh after a short delay so the UI reliably shows all accounts
-              // (handles timing/race with server or browser cache)
-              await new Promise((r) => setTimeout(r, 400));
-              await refreshBankBalance(true);
+              await refreshBankBalance();
             } finally {
               setIsPullingAccounts(false);
             }
@@ -420,7 +416,27 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
             clearPlaidOAuthSession();
           }
           if (err) {
-            setBankError(err instanceof Error ? err.message : 'Link closed');
+            if (typeof err === 'object' && err !== null) {
+              const maybePlaidErr = err as {
+                error_message?: string;
+                display_message?: string | null;
+                error_code?: string;
+                error_type?: string;
+              };
+              const msg = maybePlaidErr.display_message || maybePlaidErr.error_message;
+              if (msg && maybePlaidErr.error_code) {
+                setBankError(`${msg} (${maybePlaidErr.error_code})`);
+              } else if (msg) {
+                setBankError(msg);
+              } else if (maybePlaidErr.error_code) {
+                setBankError(`Plaid Link exited with ${maybePlaidErr.error_code}`);
+              } else {
+                setBankError(err instanceof Error ? err.message : 'Link closed');
+              }
+              console.error('Plaid Link onExit error:', maybePlaidErr);
+            } else {
+              setBankError(err instanceof Error ? err.message : 'Link closed');
+            }
           } else {
             setBankError('cancelled');
           }
