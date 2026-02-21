@@ -326,8 +326,38 @@ type InvestmentAccountSummaryPayload = {
   security_types: string[];
 };
 
+type PendingTransactionLike = {
+  transaction_id?: string;
+  date?: string | null;
+  authorized_date?: string | null;
+  amount?: number | string | null;
+  merchant_name?: string | null;
+  name?: string | null;
+  original_description?: string | null;
+  iso_currency_code?: string | null;
+};
+
 function parseRefreshFlag(value: unknown): boolean {
   return value === '1' || value === 'true';
+}
+
+function formatLocalDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function parseDayFromDate(dateStr: string | null | undefined): number | null {
+  if (!dateStr || typeof dateStr !== 'string' || dateStr.length < 10) return null;
+  const day = Number.parseInt(dateStr.slice(8, 10), 10);
+  if (!Number.isFinite(day) || Number.isNaN(day)) return null;
+  return day;
+}
+
+function isDateWithinRange(dateStr: string | null | undefined, startDate: string, endDate: string): boolean {
+  if (!dateStr || typeof dateStr !== 'string' || dateStr.length < 10) return false;
+  return dateStr >= startDate && dateStr <= endDate;
 }
 
 function preferredAprPercentage(aprs: Array<{ apr_type: string; apr_percentage: number }> | null | undefined): number | null {
@@ -364,10 +394,13 @@ function shouldIncludeInCashBalance(accountType?: string | null, accountSubtype?
 
 function computeTotalBankCash(accounts: BalanceAccount[]): number {
   return accounts.reduce((sum, account) => {
-    const current = account.current;
-    if (typeof current !== 'number' || Number.isNaN(current)) return sum;
+    const availableOrCurrent =
+      typeof account.available === 'number' && !Number.isNaN(account.available)
+        ? account.available
+        : account.current;
+    if (typeof availableOrCurrent !== 'number' || Number.isNaN(availableOrCurrent)) return sum;
     if (!shouldIncludeInCashBalance(account.type, account.subtype)) return sum;
-    return sum + current;
+    return sum + availableOrCurrent;
   }, 0);
 }
 
@@ -1118,7 +1151,7 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
       });
     }
 
-    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const skipCache = parseRefreshFlag(req.query.refresh);
     const cacheService = await getCacheService();
     const cacheKey = CacheKeys.plaidRecurringTransactions(key);
     const ttl = parseInt(process.env.CACHE_TTL_PLAID_RECURRING ?? '86400', 10); // 24h default – recurring streams change rarely (monthly scale)
@@ -1127,6 +1160,7 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
       const cached = await cacheService.get<{
         inflowStreams: RecurringStreamPayload[];
         outflowStreams: RecurringStreamPayload[];
+        notReady?: boolean;
       }>(cacheKey);
       if (cached) {
         return res.json({ ...cached, linked: true, cached: true });
@@ -1138,13 +1172,19 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
     const seenInflow = new Set<string>();
     const seenOutflow = new Set<string>();
     const staleItemIds = new Set<string>();
+    let hadNotReadyItem = false;
+    let usedPendingFallback = false;
 
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
+    const currentDay = now.getDate();
+    const startDate = formatLocalDate(new Date(currentYear, currentMonth, 1));
+    const endDate = formatLocalDate(new Date(currentYear, currentMonth + 1, 0));
 
     for (const item of items) {
       try {
+        let itemHasUpcoming = false;
         const request: TransactionsRecurringGetRequest = { access_token: item.access_token };
         const response = await client.transactionsRecurringGet(request);
         const inflow = response.data.inflow_streams ?? [];
@@ -1166,6 +1206,7 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
             day: d,
             iso_currency_code: iso,
           });
+          itemHasUpcoming = true;
         }
 
         for (const s of outflow) {
@@ -1184,6 +1225,59 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
             day: d,
             iso_currency_code: iso,
           });
+          itemHasUpcoming = true;
+        }
+
+        // Fallback: if recurring streams are empty/not detected yet, use pending transactions for upcoming days.
+        if (!itemHasUpcoming) {
+          const pendingRequest: TransactionsGetRequest = {
+            access_token: item.access_token,
+            start_date: startDate,
+            end_date: endDate,
+            options: { count: 1, offset: 0 },
+          };
+          const pendingResponse = await client.transactionsGet(pendingRequest);
+          const pendingTransactions =
+            (pendingResponse.data as { pending_transactions?: PendingTransactionLike[] })
+              .pending_transactions ?? [];
+
+          for (const pendingTx of pendingTransactions) {
+            const txDate = pendingTx.date ?? pendingTx.authorized_date ?? null;
+            if (!isDateWithinRange(txDate, startDate, endDate)) continue;
+            const day = parseDayFromDate(txDate);
+            if (day == null || day < currentDay) continue;
+
+            const amount = Number(pendingTx.amount);
+            if (!Number.isFinite(amount) || amount === 0) continue;
+
+            const txId =
+              pendingTx.transaction_id ||
+              `${item.item_id}-${pendingTx.name ?? 'pending'}-${txDate ?? ''}-${amount}`;
+            const streamId = `pending-${txId}`;
+            const payload: RecurringStreamPayload = {
+              stream_id: streamId,
+              name:
+                pendingTx.merchant_name ||
+                pendingTx.name ||
+                pendingTx.original_description ||
+                (amount > 0 ? 'Payment' : 'Deposit'),
+              amount: Math.abs(amount),
+              day,
+              iso_currency_code: pendingTx.iso_currency_code ?? null,
+            };
+
+            if (amount > 0) {
+              if (seenOutflow.has(streamId)) continue;
+              seenOutflow.add(streamId);
+              outflowStreams.push(payload);
+            } else {
+              if (seenInflow.has(streamId)) continue;
+              seenInflow.add(streamId);
+              inflowStreams.push(payload);
+            }
+            itemHasUpcoming = true;
+            usedPendingFallback = true;
+          }
         }
       } catch (itemErr: unknown) {
         const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
@@ -1192,7 +1286,11 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
           staleItemIds.add(item.item_id);
           continue;
         }
-        if (errorCode === 'PRODUCTS_NOT_SUPPORTED' || errorCode === 'PRODUCT_NOT_READY') continue;
+        if (errorCode === 'PRODUCT_NOT_READY') {
+          hadNotReadyItem = true;
+          continue;
+        }
+        if (errorCode === 'PRODUCTS_NOT_SUPPORTED') continue;
         throw itemErr;
       }
     }
@@ -1201,8 +1299,13 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
       await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
     }
 
-    const payload = { inflowStreams, outflowStreams };
-    if (cacheService) await cacheService.set(cacheKey, payload, ttl);
+    const payload = { inflowStreams, outflowStreams, notReady: hadNotReadyItem };
+    const hasAnyStream = inflowStreams.length > 0 || outflowStreams.length > 0;
+    const shouldSkipCache = hadNotReadyItem && !hasAnyStream;
+    if (cacheService && !shouldSkipCache) {
+      const effectiveTtl = usedPendingFallback ? Math.min(ttl, 900) : ttl;
+      await cacheService.set(cacheKey, payload, effectiveTtl);
+    }
     return res.json({ ...payload, linked: true, cached: false });
   } catch (error: unknown) {
     const err = error as { response?: { data?: unknown }; message?: string };
@@ -1259,17 +1362,20 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
     const y = now.getFullYear();
     const m = now.getMonth();
     const firstDay = new Date(y, m, 1);
-    const lastDay = new Date(y, m + 1, 0);
-    const startDate = firstDay.toISOString().slice(0, 10);
-    const endDate = lastDay.toISOString().slice(0, 10);
+    const startDate = formatLocalDate(firstDay);
+    const endDate = formatLocalDate(now); // month-to-date (matches SpendTracker footer "1 - today")
 
-    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const skipCache = parseRefreshFlag(req.query.refresh);
     const cacheService = await getCacheService();
     const cacheKey = CacheKeys.plaidSpend(key);
     const ttl = parseInt(process.env.CACHE_TTL_PLAID_SPEND ?? '3600', 10); // 1 hour – spending updates more often than recurring
 
     if (cacheService && !skipCache) {
-      const cached = await cacheService.get<{ spendingByDay: SpendByDayPayload; totalSpent: number }>(cacheKey);
+      const cached = await cacheService.get<{
+        spendingByDay: SpendByDayPayload;
+        totalSpent: number;
+        notReady?: boolean;
+      }>(cacheKey);
       if (cached) {
         return res.json({ ...cached, linked: true, cached: true });
       }
@@ -1278,12 +1384,15 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
     const spendingByDay: SpendByDayPayload = {};
     let totalSpent = 0;
     const staleItemIds = new Set<string>();
+    let hadNotReadyItem = false;
 
     for (const item of items) {
       try {
         let offset = 0;
         const count = 500;
         let totalTransactions = 0;
+        const seenPendingTxIds = new Set<string>();
+        const replacedPendingTxIds = new Set<string>();
 
         do {
           const request: TransactionsGetRequest = {
@@ -1294,20 +1403,43 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
           };
           const response = await client.transactionsGet(request);
           const transactions = response.data.transactions ?? [];
+          const pendingTransactions =
+            (response.data as { pending_transactions?: PendingTransactionLike[] })
+              .pending_transactions ?? [];
           totalTransactions = response.data.total_transactions ?? 0;
 
           for (const tx of transactions) {
-            const amount = Number(tx.amount);
-            if (amount > 0) {
-              const dateStr = tx.date;
-              if (dateStr) {
-                const day = parseInt(dateStr.slice(8, 10), 10);
-                if (!Number.isNaN(day)) {
-                  spendingByDay[day] = (spendingByDay[day] ?? 0) + amount;
-                  totalSpent += amount;
-                }
-              }
+            if (tx.pending_transaction_id) {
+              replacedPendingTxIds.add(tx.pending_transaction_id);
             }
+
+            const amount = Number(tx.amount);
+            if (!(amount > 0)) continue;
+            const dateStr = tx.date ?? tx.authorized_date;
+            if (!isDateWithinRange(dateStr, startDate, endDate)) continue;
+            const day = parseDayFromDate(dateStr);
+            if (day == null) continue;
+            spendingByDay[day] = (spendingByDay[day] ?? 0) + amount;
+            totalSpent += amount;
+          }
+
+          for (const pendingTx of pendingTransactions) {
+            const pendingId = pendingTx.transaction_id;
+            if (pendingId) {
+              if (seenPendingTxIds.has(pendingId)) continue;
+              seenPendingTxIds.add(pendingId);
+              if (replacedPendingTxIds.has(pendingId)) continue;
+            }
+
+            const amount = Number(pendingTx.amount);
+            if (!(amount > 0)) continue;
+
+            const dateStr = pendingTx.date ?? pendingTx.authorized_date;
+            if (!isDateWithinRange(dateStr, startDate, endDate)) continue;
+            const day = parseDayFromDate(dateStr);
+            if (day == null) continue;
+            spendingByDay[day] = (spendingByDay[day] ?? 0) + amount;
+            totalSpent += amount;
           }
 
           offset += transactions.length;
@@ -1319,7 +1451,11 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
           staleItemIds.add(item.item_id);
           continue;
         }
-        if (errorCode === 'PRODUCTS_NOT_SUPPORTED' || errorCode === 'PRODUCT_NOT_READY') continue;
+        if (errorCode === 'PRODUCT_NOT_READY') {
+          hadNotReadyItem = true;
+          continue;
+        }
+        if (errorCode === 'PRODUCTS_NOT_SUPPORTED') continue;
         throw itemErr;
       }
     }
@@ -1328,8 +1464,10 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
       await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
     }
 
-    const payload = { spendingByDay, totalSpent };
-    if (cacheService) await cacheService.set(cacheKey, payload, ttl);
+    const payload = { spendingByDay, totalSpent, notReady: hadNotReadyItem };
+    const hasAnySpend = totalSpent > 0 || Object.keys(spendingByDay).length > 0;
+    const shouldSkipCache = hadNotReadyItem && !hasAnySpend;
+    if (cacheService && !shouldSkipCache) await cacheService.set(cacheKey, payload, ttl);
     return res.json({ ...payload, linked: true, cached: false });
   } catch (error: unknown) {
     const err = error as { response?: { data?: unknown }; message?: string };

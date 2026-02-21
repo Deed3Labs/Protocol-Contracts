@@ -70,10 +70,13 @@ function normalizeBankBalances(response: BankBalancesResponse | null): BankBalan
   if (!response) return EMPTY_STATE;
 
   const totalBankBalance = response.accounts.reduce((sum, account) => {
-    const current = account.current;
-    if (typeof current !== 'number' || Number.isNaN(current)) return sum;
+    const availableOrCurrent =
+      typeof account.available === 'number' && !Number.isNaN(account.available)
+        ? account.available
+        : account.current;
+    if (typeof availableOrCurrent !== 'number' || Number.isNaN(availableOrCurrent)) return sum;
     if (!isCashContributionAccount(account)) return sum;
-    return sum + current;
+    return sum + availableOrCurrent;
   }, 0);
 
   const offchainBorrowingPower = response.accounts.reduce((sum, account) => {

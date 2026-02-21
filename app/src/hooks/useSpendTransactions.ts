@@ -11,6 +11,7 @@ export interface UseSpendTransactionsResult {
   spendingByDay: PlaidSpendResponse['spendingByDay'];
   totalSpent: number;
   linked: boolean;
+  notReady: boolean;
   isLoading: boolean;
   error: string | null;
   refresh: () => void;
@@ -37,7 +38,7 @@ export function useSpendTransactions(
     queryKey,
     queryFn: async (): Promise<PlaidSpendResponse> => {
       const result = await getPlaidSpend(walletAddress!);
-      return result ?? { spendingByDay: {}, totalSpent: 0, linked: false };
+      return result ?? { spendingByDay: {}, totalSpent: 0, linked: false, notReady: false };
     },
     enabled: !!walletAddress,
     staleTime: STALE_MS,
@@ -52,7 +53,7 @@ export function useSpendTransactions(
       queryKey: key,
       queryFn: () =>
         getPlaidSpend(walletAddress, { refresh: true }) ??
-        { spendingByDay: {}, totalSpent: 0, linked: false },
+        { spendingByDay: {}, totalSpent: 0, linked: false, notReady: false },
       staleTime: STALE_MS,
     });
   }, [walletAddress, queryClient]);
@@ -61,6 +62,7 @@ export function useSpendTransactions(
     spendingByDay: data?.spendingByDay ?? {},
     totalSpent: data?.totalSpent ?? 0,
     linked: data?.linked ?? false,
+    notReady: data?.notReady ?? false,
     isLoading: walletAddress ? (isLoading && !data) : false,
     error: error ? (error instanceof Error ? error.message : 'Failed to load spend data') : null,
     refresh,

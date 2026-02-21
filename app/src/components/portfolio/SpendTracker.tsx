@@ -22,7 +22,7 @@ export interface SpendTrackerProps {
 }
 
 export function SpendTracker({ className, walletAddress }: SpendTrackerProps) {
-  const { spendingByDay, totalSpent: totalSpentFromApi, linked, isLoading, refresh } = useSpendTransactions(walletAddress);
+  const { spendingByDay, totalSpent: totalSpentFromApi, linked, notReady, isLoading, refresh } = useSpendTransactions(walletAddress);
 
   const today = new Date();
   const currentDay = today.getDate();
@@ -164,9 +164,16 @@ export function SpendTracker({ className, walletAddress }: SpendTrackerProps) {
 
         {/* Footer - spacing aligned with UpcomingTransactions */}
         <div className="flex items-center justify-between mt-4 pt-3 min-h-[2rem] border-t border-zinc-200 dark:border-zinc-800">
-          <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
-            {monthName} 1 - {currentDay}
-          </span>
+          <div className="flex flex-col">
+            <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
+              {monthName} 1 - {currentDay}
+            </span>
+            {linked && notReady && (
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                Syncing transactions from your institution...
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">Less</span>
             <div className="flex gap-0.5">

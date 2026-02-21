@@ -826,6 +826,8 @@ export interface PlaidRecurringResponse {
   inflowStreams: RecurringStream[];
   outflowStreams: RecurringStream[];
   linked: boolean;
+  /** True when Plaid reports product data is still warming up (PRODUCT_NOT_READY). */
+  notReady?: boolean;
   cached?: boolean;
 }
 
@@ -855,6 +857,8 @@ export interface PlaidSpendResponse {
   spendingByDay: SpendingByDay;
   totalSpent: number;
   linked: boolean;
+  /** True when Plaid reports product data is still warming up (PRODUCT_NOT_READY). */
+  notReady?: boolean;
   cached?: boolean;
 }
 

@@ -744,7 +744,7 @@ export default function BrokerageHome() {
   // Sorted and displayed linked bank/investment accounts
   const sortedBankAccounts = useMemo(() => {
     const list = [...bankAccounts];
-    const getBalance = (a: BankAccountBalance) => (a.current ?? a.available ?? 0);
+    const getBalance = (a: BankAccountBalance) => (a.available ?? a.current ?? 0);
     list.sort((a, b) => {
       if (accountSort === 'Name (A–Z)') {
         return (a.name || '').localeCompare(b.name || '');
@@ -1173,7 +1173,7 @@ export default function BrokerageHome() {
                       <>
                         <div className="space-y-3">
                           {displayedBankAccounts.map((account) => {
-                            const balance = account.current ?? account.available ?? 0;
+                            const balance = account.available ?? account.current ?? 0;
                             const displayName = account.name || 'Account';
                             const maskText = account.mask ? `•••• ${account.mask}` : '';
                             const liability = liabilitiesByAccountId.get(account.account_id);
@@ -1216,8 +1216,8 @@ export default function BrokerageHome() {
                                     <p className="text-black dark:text-white font-semibold text-sm">
                                       ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </p>
-                                    {account.available != null && account.current !== account.available && (
-                                      <p className="text-zinc-500 dark:text-zinc-400 text-xs">Available: ${(account.available ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                    {account.available != null && account.current != null && account.current !== account.available && (
+                                      <p className="text-zinc-500 dark:text-zinc-400 text-xs">Current: ${(account.current ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                     )}
                                   </div>
                                 </div>
