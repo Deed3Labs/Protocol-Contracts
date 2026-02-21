@@ -81,6 +81,51 @@ function getPlaidClient(): PlaidApi | null {
   return new PlaidApi(configuration);
 }
 
+type PlaidErrorInfo = {
+  status?: number;
+  code?: string;
+  message?: string;
+  type?: string;
+};
+
+function getPlaidErrorInfo(error: unknown): PlaidErrorInfo {
+  const err = error as {
+    response?: {
+      status?: number;
+      data?: {
+        error_code?: string;
+        error_message?: string;
+        display_message?: string | null;
+        error_type?: string;
+      };
+    };
+    message?: string;
+  };
+
+  const code = err.response?.data?.error_code;
+  const message =
+    err.response?.data?.display_message ||
+    err.response?.data?.error_message ||
+    err.message;
+
+  return {
+    status: err.response?.status,
+    code,
+    message,
+    type: err.response?.data?.error_type,
+  };
+}
+
+function isRedirectUriError(info: PlaidErrorInfo): boolean {
+  const code = (info.code || '').toLowerCase();
+  const message = (info.message || '').toLowerCase();
+  return (
+    code.includes('redirect') ||
+    message.includes('redirect_uri') ||
+    message.includes('redirect uri')
+  );
+}
+
 /**
  * POST /api/plaid/link-token
  * Create a Link token for Plaid Link (keyed by wallet address)
@@ -107,7 +152,7 @@ router.post('/link-token', async (req: Request, res: Response) => {
     if (!(await ensurePlaidTokenStore(res))) return;
 
     const redirectUri = process.env.PLAID_REDIRECT_URI?.trim();
-    const request: LinkTokenCreateRequest = {
+    const baseRequest: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
       language: 'en',
       country_codes: [CountryCode.Us],
@@ -119,20 +164,41 @@ router.post('/link-token', async (req: Request, res: Response) => {
       // Optional: brokerage/investment + liabilities (credit/loans) when institution supports them
       optional_products: [Products.Investments, Products.Liabilities],
     };
-    if (redirectUri) {
-      request.redirect_uri = redirectUri;
+    const requestWithRedirect: LinkTokenCreateRequest = redirectUri
+      ? { ...baseRequest, redirect_uri: redirectUri }
+      : baseRequest;
+
+    let response;
+    try {
+      response = await client.linkTokenCreate(requestWithRedirect);
+    } catch (linkTokenError) {
+      const plaidError = getPlaidErrorInfo(linkTokenError);
+      // Fallback: if redirect URI is misconfigured, retry without it so non-OAuth institutions still work.
+      if (redirectUri && isRedirectUriError(plaidError)) {
+        console.warn(
+          'Plaid linkTokenCreate redirect_uri rejected; retrying without redirect_uri',
+          plaidError
+        );
+        response = await client.linkTokenCreate(baseRequest);
+      } else {
+        throw linkTokenError;
+      }
     }
 
-    const response = await client.linkTokenCreate(request);
     const linkToken = response.data.link_token;
 
     res.json({ link_token: linkToken });
   } catch (error: unknown) {
-    const err = error as { response?: { data?: unknown }; message?: string };
-    console.error('Plaid linkTokenCreate error:', err.response?.data ?? err.message);
-    res.status(500).json({
+    const plaidError = getPlaidErrorInfo(error);
+    const status = plaidError.status && plaidError.status >= 400 && plaidError.status < 600
+      ? plaidError.status
+      : 500;
+    console.error('Plaid linkTokenCreate error:', plaidError);
+    res.status(status).json({
       error: 'Failed to create link token',
-      message: err.message ?? 'Unknown error',
+      message: plaidError.message ?? 'Unknown error',
+      plaid_error_code: plaidError.code,
+      plaid_error_type: plaidError.type,
     });
   }
 });

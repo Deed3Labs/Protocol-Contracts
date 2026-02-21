@@ -74,13 +74,18 @@ async function apiRequest<T>(
     if (!response.ok) {
       // Try to parse error as JSON, but handle HTML/other responses
       if (isJson) {
-        try {
-          const errorData = await response.json();
-          throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-        } catch (parseError) {
-          // If JSON parsing fails, it's likely HTML or other non-JSON response
-          throw new Error(`HTTP ${response.status}: ${response.statusText} (Server may be down or endpoint incorrect)`);
+        const errorData = await response.json().catch(() => null);
+        if (errorData && typeof errorData === 'object') {
+          const message = (errorData as { message?: unknown }).message;
+          const plaidCode = (errorData as { plaid_error_code?: unknown }).plaid_error_code;
+          if (typeof message === 'string' && message.length > 0) {
+            if (typeof plaidCode === 'string' && plaidCode.length > 0) {
+              throw new Error(`${message} (${plaidCode})`);
+            }
+            throw new Error(message);
+          }
         }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       } else {
         // Non-JSON response (likely HTML error page)
         throw new Error(`HTTP ${response.status}: Server returned non-JSON response (Server may be down or endpoint incorrect)`);
