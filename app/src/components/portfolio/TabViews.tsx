@@ -343,26 +343,30 @@ interface AllocationViewProps {
   totalValue: number;
   holdings?: Holding[];
   balanceUSD?: number;
+  borrowingPower?: number;
 }
 
-export function AllocationView({ totalValue, holdings, balanceUSD }: AllocationViewProps) {
+export function AllocationView({ totalValue, holdings, balanceUSD, borrowingPower }: AllocationViewProps) {
   // Store previous values to detect changes
   const prevTotalValueRef = useRef<number>(totalValue);
   const prevHoldingsRef = useRef<Holding[] | undefined>(holdings);
   const prevBalanceUSDRef = useRef<number | undefined>(balanceUSD);
+  const prevBorrowingPowerRef = useRef<number | undefined>(borrowingPower);
   
   // Only update if data actually changed
   useEffect(() => {
     const valueChanged = totalValue !== prevTotalValueRef.current;
     const holdingsChanged = JSON.stringify(holdings) !== JSON.stringify(prevHoldingsRef.current);
     const balanceChanged = balanceUSD !== prevBalanceUSDRef.current;
+    const borrowingPowerChanged = borrowingPower !== prevBorrowingPowerRef.current;
     
-    if (valueChanged || holdingsChanged || balanceChanged) {
+    if (valueChanged || holdingsChanged || balanceChanged || borrowingPowerChanged) {
       prevTotalValueRef.current = totalValue;
       prevHoldingsRef.current = holdings;
       prevBalanceUSDRef.current = balanceUSD;
+      prevBorrowingPowerRef.current = borrowingPower;
     }
-  }, [totalValue, holdings, balanceUSD]);
+  }, [totalValue, holdings, balanceUSD, borrowingPower]);
   
   // Memoize allocations – crypto, NFTs, cash, equities (Plaid brokerage), RWAs (T-Deeds)
   const cryptoValue = useMemo(() => {
@@ -385,6 +389,7 @@ export function AllocationView({ totalValue, holdings, balanceUSD }: AllocationV
     [holdings]
   );
   const cashValue = useMemo(() => balanceUSD || 0, [balanceUSD]);
+  const borrowingPowerValue = useMemo(() => Math.max(0, borrowingPower || 0), [borrowingPower]);
 
   const rawAllocations = useMemo(() => [
     { name: 'Equities', value: equityValue, color: 'bg-indigo-500', hasInfo: false },
@@ -395,8 +400,9 @@ export function AllocationView({ totalValue, holdings, balanceUSD }: AllocationV
     { name: 'NFTs', value: nftValue, color: 'bg-purple-500', hasInfo: false },
     { name: 'High-Yield Cash', value: 0, color: 'bg-blue-500', hasInfo: false },
     { name: 'Cash', value: cashValue, color: 'bg-green-500', hasInfo: true },
+    { name: 'Borrowing Power', value: borrowingPowerValue, color: 'bg-orange-500', hasInfo: true },
     { name: 'Margin Usage', value: 0, color: 'bg-zinc-600', hasInfo: false },
-  ], [equityValue, cryptoValue, rwaValue, nftValue, cashValue]);
+  ], [equityValue, cryptoValue, rwaValue, nftValue, cashValue, borrowingPowerValue]);
 
   // Calculate the actual total from allocations to ensure percentages total 100%
   const actualTotal = useMemo(() => {

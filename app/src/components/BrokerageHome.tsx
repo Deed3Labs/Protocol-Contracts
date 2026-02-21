@@ -256,6 +256,7 @@ function PortfolioCashBalanceBlock({
 }) {
   const { cashBalance: portfolioCashBalance, previousTotalBalanceUSD } = usePortfolio();
   const cashBalance = portfolioCashBalance?.totalCash || 0;
+  const borrowingPower = portfolioCashBalance?.borrowingPower || 0;
   const bankLinked = portfolioCashBalance?.bankLinked ?? false;
   const cashBalanceTooltip = bankLinked
     ? 'Stablecoins (USDC priority) plus linked bank accounts'
@@ -296,6 +297,12 @@ function PortfolioCashBalanceBlock({
             </>
           )}
         </h1>
+      </div>
+      <div className="mt-1 flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+        <span className="font-medium">Borrowing Power</span>
+        <span className="text-black dark:text-white font-medium">
+          ${borrowingPower.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
       </div>
       <div className="mt-6 flex flex-wrap gap-3">
         <button
@@ -996,7 +1003,14 @@ export default function BrokerageHome() {
           />
         );
       case 'Allocations':
-        return <AllocationView totalValue={totalValue} holdings={allHoldings} balanceUSD={cashBalance} />;
+        return (
+          <AllocationView
+            totalValue={totalValue}
+            holdings={allHoldings}
+            balanceUSD={cashBalance}
+            borrowingPower={portfolioCashBalance?.borrowingPower ?? 0}
+          />
+        );
       default:
         return null;
     }

@@ -40,6 +40,12 @@ interface PortfolioContextType {
     bankCash?: number;
     /** Sum of stablecoin holdings (USDC + other stablecoins) */
     cryptoCash?: number;
+    /** Sum of available credit from liability accounts (off-chain + on-chain). */
+    borrowingPower?: number;
+    /** Off-chain borrowing contribution (Plaid liability/credit accounts). */
+    offchainBorrowingPower?: number;
+    /** On-chain borrowing contribution (protocol credit lines). */
+    onchainBorrowingPower?: number;
     /** Whether user has linked a bank account (Plaid) for payouts */
     bankLinked?: boolean;
   };
@@ -90,6 +96,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Bank balance (Plaid) - single source for modal + Linked Accounts; merged into cash balance
   const {
     bankCash,
+    borrowingPower: bankBorrowingPower,
+    offchainBorrowingPower,
+    onchainBorrowingPower,
     linked: bankLinked,
     accounts: bankAccounts,
     isLoading: bankAccountsLoading,
@@ -112,9 +121,19 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       totalCash,
       bankCash,
       cryptoCash,
+      borrowingPower: bankBorrowingPower,
+      offchainBorrowingPower,
+      onchainBorrowingPower,
       bankLinked,
     };
-  }, [portfolioCashBalance, bankCash, bankLinked]);
+  }, [
+    portfolioCashBalance,
+    bankCash,
+    bankBorrowingPower,
+    offchainBorrowingPower,
+    onchainBorrowingPower,
+    bankLinked,
+  ]);
   
   // Use multichain hooks for balances and activity (not covered by usePortfolioHoldings)
   const {

@@ -336,6 +336,41 @@ function preferredAprPercentage(aprs: Array<{ apr_type: string; apr_percentage: 
   return purchase?.apr_percentage ?? aprs[0]?.apr_percentage ?? null;
 }
 
+function isLiabilityLikeSubtype(subtype: string): boolean {
+  return (
+    subtype.includes('credit') ||
+    subtype.includes('loan') ||
+    subtype.includes('mortgage') ||
+    subtype.includes('student')
+  );
+}
+
+function shouldIncludeInCashBalance(accountType?: string | null, accountSubtype?: string | null): boolean {
+  const type = (accountType ?? '').toLowerCase();
+  const subtype = (accountSubtype ?? '').toLowerCase();
+
+  // Explicitly exclude liability-style and investment accounts from "cash".
+  if (type === 'credit' || type === 'loan' || type === 'investment') return false;
+  // Guard against type/subtype mismatches where subtype still signals liability.
+  if (isLiabilityLikeSubtype(subtype)) return false;
+  // Depository is always cash-like.
+  if (type === 'depository') return true;
+  // Fallback for institutions that omit/misclassify type but provide subtype.
+  if (subtype === 'checking' || subtype === 'savings' || subtype === 'money market' || subtype === 'cash management') {
+    return true;
+  }
+  return false;
+}
+
+function computeTotalBankCash(accounts: BalanceAccount[]): number {
+  return accounts.reduce((sum, account) => {
+    const current = account.current;
+    if (typeof current !== 'number' || Number.isNaN(current)) return sum;
+    if (!shouldIncludeInCashBalance(account.type, account.subtype)) return sum;
+    return sum + current;
+  }, 0);
+}
+
 /**
  * GET /api/plaid/balances?walletAddress=0x...
  * Get balances for all linked bank accounts (all institutions). Aggregates multiple items per wallet.
@@ -383,12 +418,20 @@ router.get('/balances', async (req: Request, res: Response) => {
         linked: boolean;
       }>(cacheKey);
       if (cached) {
+        const normalizedTotalBankBalance = computeTotalBankCash(cached.accounts ?? []);
+        if (Math.abs(normalizedTotalBankBalance - cached.totalBankBalance) > 0.000001) {
+          const normalizedCached = {
+            ...cached,
+            totalBankBalance: normalizedTotalBankBalance,
+          };
+          await cacheService.set(cacheKey, normalizedCached, ttl);
+          return res.json(balancesResponse({ ...normalizedCached, cached: true }));
+        }
         return res.json(balancesResponse({ ...cached, cached: true }));
       }
     }
 
     const accountList: BalanceAccount[] = [];
-    let totalBankBalance = 0;
     const staleItemIds = new Set<string>();
     // De-dupe accounts even across re-links where Plaid may mint new account_ids
     // Prefer mask+name when mask exists, otherwise fall back to account_id.
@@ -480,10 +523,6 @@ router.get('/balances', async (req: Request, res: Response) => {
           const key = acc.mask ? `${acc.mask}|${acc.name}` : acc.account_id;
           if (seenAccountKeys.has(key)) continue;
           seenAccountKeys.add(key);
-          const current = acc.balances?.current;
-          if (typeof current === 'number' && current !== null) {
-            totalBankBalance += current;
-          }
           accountList.push({
             account_id: acc.account_id,
             name: acc.name,
@@ -523,6 +562,7 @@ router.get('/balances', async (req: Request, res: Response) => {
     }
 
     const remainingItemsCount = Math.max(0, items.length - staleItemIds.size);
+    const totalBankBalance = computeTotalBankCash(accountList);
     const payload = { accounts: accountList, totalBankBalance, linked: remainingItemsCount > 0 };
     if (cacheService) {
       await cacheService.set(cacheKey, payload, ttl);
