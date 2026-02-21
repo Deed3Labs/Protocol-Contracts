@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Info, ArrowUpRight, ArrowDownLeft, CheckCircle2, RefreshCw, Loader2, Landmark } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,6 +20,8 @@ import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
 import { getNetworkByChainId } from '@/config/networks';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useRecurringTransactions } from '@/hooks/useRecurringTransactions';
+import { usePlaidLiabilities } from '@/hooks/usePlaidLiabilities';
+import { usePlaidInvestmentAccounts } from '@/hooks/usePlaidInvestmentAccounts';
 import { LargePriceWheel } from './PriceWheel';
 import type { MultichainDeedNFT } from '@/hooks/useMultichainDeedNFTs';
 import type { BankAccountBalance } from '@/utils/apiClient';
@@ -65,6 +67,11 @@ function formatAccountTypeLabel(account: BankAccountBalance): string {
   if (type === 'loan') return 'Loan';
   if (type || subtype) return subtype ? `${subtype.replace(/_/g, ' ')}` : type;
   return 'Account';
+}
+
+function formatCurrencyCompact(value: number | null | undefined): string {
+  if (value == null) return '$0';
+  return `$${formatCompactNumber(value)}`;
 }
 
 // Transaction type is now imported from useWalletActivity
@@ -528,6 +535,82 @@ export default function BrokerageHome() {
 
   // Plaid recurring streams – shared with UpcomingTransactions (React Query dedupes by key); no extra API call
   const { inflowStreams, outflowStreams } = useRecurringTransactions(address ?? undefined);
+
+  const hasLiabilityAccounts = useMemo(
+    () => bankAccounts.some((a) => {
+      const type = (a.type ?? '').toLowerCase();
+      return type === 'credit' || type === 'loan';
+    }),
+    [bankAccounts]
+  );
+
+  const hasInvestmentAccounts = useMemo(
+    () => bankAccounts.some((a) => {
+      const type = (a.type ?? '').toLowerCase();
+      const subtype = (a.subtype ?? '').toLowerCase();
+      return type === 'investment' || subtype === 'brokerage';
+    }),
+    [bankAccounts]
+  );
+
+  const {
+    accounts: liabilityAccounts,
+    refresh: refreshLiabilities,
+  } = usePlaidLiabilities(address ?? undefined, {
+    enabled: hasLiabilityAccounts,
+  });
+
+  const {
+    accounts: investmentAccountSummaries,
+    refresh: refreshInvestmentAccounts,
+  } = usePlaidInvestmentAccounts(address ?? undefined, {
+    enabled: hasInvestmentAccounts,
+  });
+
+  const liabilitiesByAccountId = useMemo(
+    () => new Map(liabilityAccounts.map((account) => [account.account_id, account])),
+    [liabilityAccounts]
+  );
+
+  const investmentSummariesByAccountId = useMemo(
+    () => new Map(investmentAccountSummaries.map((account) => [account.account_id, account])),
+    [investmentAccountSummaries]
+  );
+
+  const linkedAccountFingerprint = useMemo(
+    () => bankAccounts.map((account) => account.account_id).sort().join('|'),
+    [bankAccounts]
+  );
+
+  const previousLinkedAccountFingerprintRef = useRef('');
+
+  useEffect(() => {
+    const previous = previousLinkedAccountFingerprintRef.current;
+    const current = linkedAccountFingerprint;
+
+    if (!current) {
+      previousLinkedAccountFingerprintRef.current = '';
+      return;
+    }
+
+    if (!previous) {
+      // First loaded account set: allow normal query fetch, avoid forced refresh.
+      previousLinkedAccountFingerprintRef.current = current;
+      return;
+    }
+
+    if (previous !== current) {
+      if (hasLiabilityAccounts) refreshLiabilities();
+      if (hasInvestmentAccounts) refreshInvestmentAccounts();
+      previousLinkedAccountFingerprintRef.current = current;
+    }
+  }, [
+    hasLiabilityAccounts,
+    hasInvestmentAccounts,
+    linkedAccountFingerprint,
+    refreshLiabilities,
+    refreshInvestmentAccounts,
+  ]);
   
   // Portfolio history tracking
   const { addSnapshot, getSnapshotsForRange, fetchAndMergeHistory } = usePortfolioHistory();
@@ -572,6 +655,15 @@ export default function BrokerageHome() {
   
   // State for tracking scroll position relative to portfolio value header
   const [isScrolledPast, setIsScrolledPast] = useState(false);
+
+  // OAuth institutions (e.g. Chase) redirect back with oauth_state_id; reopen bank linking to resume Plaid Link.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('oauth_state_id')) return;
+    setDepositInitialOption('bank');
+    setDepositModalOpen(true);
+  }, []);
   
   // Convert portfolio holdings to Holding format for compatibility (includes Plaid equity)
   const allHoldings = useMemo<Holding[]>(() => {
@@ -1027,7 +1119,11 @@ export default function BrokerageHome() {
                           </SelectContent>
                         </Select>
                         <button
-                          onClick={() => refreshBankBalance(true)}
+                          onClick={() => {
+                            void refreshBankBalance(true);
+                            refreshLiabilities();
+                            refreshInvestmentAccounts();
+                          }}
                           className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1.5 disabled:opacity-50"
                           disabled={bankAccountsLoading}
                         >
@@ -1066,6 +1162,8 @@ export default function BrokerageHome() {
                             const balance = account.current ?? account.available ?? 0;
                             const displayName = account.name || 'Account';
                             const maskText = account.mask ? `•••• ${account.mask}` : '';
+                            const liability = liabilitiesByAccountId.get(account.account_id);
+                            const investmentSummary = investmentSummariesByAccountId.get(account.account_id);
 
                             return (
                               <div
@@ -1085,6 +1183,19 @@ export default function BrokerageHome() {
                                           {formatAccountTypeLabel(account)}
                                         </span>
                                       </div>
+                                      {liability && (
+                                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
+                                          {liability.next_payment_due_date ? `Due ${liability.next_payment_due_date}` : 'Payment details available'}
+                                          {liability.minimum_payment_amount != null ? ` · Min ${formatCurrencyCompact(liability.minimum_payment_amount)}` : ''}
+                                          {liability.apr_percentage != null ? ` · APR ${liability.apr_percentage.toFixed(2)}%` : ''}
+                                        </p>
+                                      )}
+                                      {investmentSummary && (
+                                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
+                                          Holdings {investmentSummary.holdings_count}
+                                          {` · Value ${formatCurrencyCompact(investmentSummary.holdings_value)}`}
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="text-right shrink-0">

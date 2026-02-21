@@ -12,12 +12,17 @@ declare global {
     Plaid?: {
       create: (config: {
         token: string;
-        onSuccess: (public_token: string) => void;
+        receivedRedirectUri?: string;
+        onSuccess: (public_token: string, metadata?: unknown) => void;
         onExit?: (err: unknown, metadata: unknown) => void;
       }) => { open: () => void };
     };
   }
 }
+
+const PLAID_OAUTH_STATE_PARAM = 'oauth_state_id';
+const PLAID_OAUTH_LINK_TOKEN_KEY = 'plaid_oauth_link_token';
+const PLAID_OAUTH_WALLET_KEY = 'plaid_oauth_wallet';
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -37,9 +42,40 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
   const [bankError, setBankError] = useState<string | null>(null);
   const [isPullingAccounts, setIsPullingAccounts] = useState(false);
   const plaidSuccessFiredRef = useRef(false);
+  const plaidOAuthResumeAttemptedRef = useRef(false);
   const { address } = useAppKitAccount();
   const { bankAccounts, bankAccountsLoading, cashBalance, refreshBankBalance } = usePortfolio();
   const bankLinked = cashBalance.bankLinked ?? false;
+
+  const hasPlaidOAuthReturnParams = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.has(PLAID_OAUTH_STATE_PARAM);
+  }, []);
+
+  const clearPlaidOAuthSession = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.removeItem(PLAID_OAUTH_LINK_TOKEN_KEY);
+      window.sessionStorage.removeItem(PLAID_OAUTH_WALLET_KEY);
+    } catch {
+      // No-op if sessionStorage is unavailable.
+    }
+
+    const url = new URL(window.location.href);
+    let mutated = false;
+    for (const key of ['oauth_state_id', 'error', 'error_code', 'error_message']) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.delete(key);
+        mutated = true;
+      }
+    }
+
+    if (mutated) {
+      const nextUrl = `${url.pathname}${url.searchParams.toString() ? `?${url.searchParams.toString()}` : ''}${url.hash}`;
+      window.history.replaceState({}, document.title, nextUrl);
+    }
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -311,16 +347,54 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
     setIsLoadingLinkToken(true);
     setBankError(null);
     try {
-      const linkTokenRes = await getPlaidLinkToken(address);
-      if (!linkTokenRes?.link_token) {
-        throw new Error('Could not get link token. Plaid may not be configured.');
+      const isOAuthResume = hasPlaidOAuthReturnParams();
+      let linkToken: string | null = null;
+      let useReceivedRedirectUri = false;
+
+      if (isOAuthResume) {
+        try {
+          const storedWallet = window.sessionStorage.getItem(PLAID_OAUTH_WALLET_KEY);
+          const storedLinkToken = window.sessionStorage.getItem(PLAID_OAUTH_LINK_TOKEN_KEY);
+          if (
+            storedWallet &&
+            storedLinkToken &&
+            storedWallet.toLowerCase() === address.toLowerCase()
+          ) {
+            linkToken = storedLinkToken;
+            useReceivedRedirectUri = true;
+          }
+        } catch {
+          // Ignore storage read errors and fall back to fetching a fresh link token.
+        }
+
+        // If we returned from OAuth but lost the prior Link token, fall back to a fresh non-resume Link session.
+        if (!linkToken) {
+          clearPlaidOAuthSession();
+        }
       }
+
+      if (!linkToken) {
+        const linkTokenRes = await getPlaidLinkToken(address);
+        if (!linkTokenRes?.link_token) {
+          throw new Error('Could not get link token. Plaid may not be configured.');
+        }
+        linkToken = linkTokenRes.link_token;
+        try {
+          window.sessionStorage.setItem(PLAID_OAUTH_WALLET_KEY, address.toLowerCase());
+          window.sessionStorage.setItem(PLAID_OAUTH_LINK_TOKEN_KEY, linkToken);
+        } catch {
+          // Ignore storage write errors; non-OAuth institutions can still complete.
+        }
+      }
+
       await loadPlaidScript();
       if (!window.Plaid) throw new Error('Plaid Link is not available');
       const handler = window.Plaid.create({
-        token: linkTokenRes.link_token,
+        token: linkToken,
+        ...(useReceivedRedirectUri ? { receivedRedirectUri: window.location.href } : {}),
         onSuccess: async (public_token: string) => {
           plaidSuccessFiredRef.current = true;
+          clearPlaidOAuthSession();
           const exchanged = await exchangePlaidToken(address, public_token);
           if (exchanged?.success) {
             setBankError(null);
@@ -342,6 +416,9 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
         },
         onExit: (err) => {
           if (plaidSuccessFiredRef.current) return;
+          if (useReceivedRedirectUri) {
+            clearPlaidOAuthSession();
+          }
           if (err) {
             setBankError(err instanceof Error ? err.message : 'Link closed');
           } else {
@@ -355,11 +432,26 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
     } finally {
       setIsLoadingLinkToken(false);
     }
-  }, [address, refreshBankBalance]);
+  }, [address, clearPlaidOAuthSession, hasPlaidOAuthReturnParams, refreshBankBalance]);
   // Reset ref when modal closes so next open doesn't skip onExit
   useEffect(() => {
-    if (!isOpen) plaidSuccessFiredRef.current = false;
+    if (!isOpen) {
+      plaidSuccessFiredRef.current = false;
+      plaidOAuthResumeAttemptedRef.current = false;
+    }
   }, [isOpen]);
+
+  // If user returns from an OAuth institution (e.g. Chase), resume Link automatically.
+  useEffect(() => {
+    if (!isOpen || selectedOption !== 'bank') {
+      plaidOAuthResumeAttemptedRef.current = false;
+      return;
+    }
+    if (plaidOAuthResumeAttemptedRef.current) return;
+    if (!hasPlaidOAuthReturnParams()) return;
+    plaidOAuthResumeAttemptedRef.current = true;
+    void openPlaidLink();
+  }, [hasPlaidOAuthReturnParams, isOpen, openPlaidLink, selectedOption]);
 
   const depositOptions = [
     {

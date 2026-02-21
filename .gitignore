@@ -42,3 +42,6 @@ webflow/.vite/
 # Misc
 .DS_Store
 *.pem
+
+# Local Python virtualenvs (generated during one-off tooling)
+.venv-pdf/

@@ -519,14 +519,15 @@ contract DeedNFT is
         onlyRole(VALIDATOR_ROLE)
     {
         require(_exists(tokenId), "Deed does not exist");
+        require(validatorAddress == msg.sender, "Validator mismatch");
         require(
-            IValidatorRegistry(validatorRegistry).isValidatorActive(validatorAddress),
+            IValidatorRegistry(validatorRegistry).isValidatorActive(msg.sender),
             "Validator not active"
         );
         
         // Update traits
         _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(isValid));
-        _setTraitValue(tokenId, keccak256("validator"), abi.encode(validatorAddress));
+        _setTraitValue(tokenId, keccak256("validator"), abi.encode(msg.sender));
         
         emit DeedValidated(tokenId, isValid);
     }

@@ -14,6 +14,9 @@ interface IUniswapV3Factory {
 }
 
 interface IUniswapV3Pool {
+    function token0() external view returns (address);
+    function token1() external view returns (address);
+
     function slot0() external view returns (
         uint160 sqrtPriceX96,
         int24 tick,
@@ -87,11 +90,20 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
         override
         returns (uint256)
     {
+        if (depositAmount == 0) {
+            return 0;
+        }
+
         // Get the price ratio between deposit and reserve tokens
         uint256 priceRatio = getPriceRatio(depositToken, reserveToken);
-        
-        // Convert deposit amount to reserve token amount
-        return (depositAmount * priceRatio) / 1e18;
+
+        // Convert deposit amount by price ratio first (18-decimal fixed point)
+        uint256 reserveAmount = (depositAmount * priceRatio) / 1e18;
+
+        // Normalize raw units across token decimals so reserveAmount is in reserve token units.
+        uint8 depositDecimals = IERC20Metadata(depositToken).decimals();
+        uint8 reserveDecimals = IERC20Metadata(reserveToken).decimals();
+        return _rescaleAmount(reserveAmount, depositDecimals, reserveDecimals);
     }
     
     /// @notice Gets the price ratio between two tokens using Uniswap V3 or manual pricing
@@ -107,6 +119,7 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
         // Get USD prices for both tokens
         uint256 priceA = getTokenPriceInUSD(tokenA);
         uint256 priceB = getTokenPriceInUSD(tokenB);
+        require(priceA > 0 && priceB > 0, "No price data");
         
         // Calculate ratio: (priceA / priceB) * 1e18
         return (priceA * 1e18) / priceB;
@@ -140,9 +153,9 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
             uint256 fp = tokenRegistry.getFallbackPrice(token);
             if (fp > 0) return fp;
         }
-        
-        // Default to $1 USD if no price available
-        return 1e18;
+
+        // Unknown pricing must fail closed to prevent reserve accounting exploits.
+        revert("No price data");
     }
     
     /// @notice Gets price from Uniswap V3 pool
@@ -171,10 +184,10 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
     
     /// @notice Gets price from a specific Uniswap V3 pool
     /// @param poolAddress Address of the Uniswap V3 pool
-    /// @param token0 First token in the pair
-    /// @param token1 Second token in the pair
+    /// @param baseToken Token being priced
+    /// @param quoteToken Quote token for the price pair
     /// @return Price as 18-decimal fixed point number
-    function getPoolPrice(address poolAddress, address token0, address token1) 
+    function getPoolPrice(address poolAddress, address baseToken, address quoteToken)
         internal 
         view 
         returns (uint256) 
@@ -188,27 +201,47 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
             uint8,
             bool
         ) {
-            // Convert sqrt price to actual price
-            uint256 price = (uint256(sqrtPriceX96) * uint256(sqrtPriceX96)) >> (96 * 2);
-            
-            // Adjust for token decimals
-            uint256 decimals0 = IERC20Metadata(token0).decimals();
-            uint256 decimals1 = IERC20Metadata(token1).decimals();
-            
-            if (decimals0 > decimals1) {
-                price = price / (10 ** (decimals0 - decimals1));
-            } else if (decimals1 > decimals0) {
-                price = price * (10 ** (decimals1 - decimals0));
+            if (sqrtPriceX96 == 0 || uint256(sqrtPriceX96) > type(uint128).max) {
+                return 0;
             }
-            
-            // Ensure price is in 18 decimals
-            if (decimals0 < 18) {
-                price = price * (10 ** (18 - decimals0));
-            } else if (decimals0 > 18) {
-                price = price / (10 ** (decimals0 - 18));
+
+            address poolToken0;
+            address poolToken1;
+            try IUniswapV3Pool(poolAddress).token0() returns (address t0) {
+                poolToken0 = t0;
+            } catch {
+                return 0;
             }
-            
-            return price;
+            try IUniswapV3Pool(poolAddress).token1() returns (address t1) {
+                poolToken1 = t1;
+            } catch {
+                return 0;
+            }
+
+            // priceRaw = token1_raw / token0_raw, scaled to 1e18
+            uint256 sqrtPriceSquared = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
+            uint256 priceToken1PerToken0 = (sqrtPriceSquared * 1e18) >> 192;
+            if (priceToken1PerToken0 == 0) {
+                return 0;
+            }
+
+            uint8 decimals0 = IERC20Metadata(poolToken0).decimals();
+            uint8 decimals1 = IERC20Metadata(poolToken1).decimals();
+
+            // Convert raw-unit ratio to whole-token ratio.
+            uint256 adjustedPrice =
+                (priceToken1PerToken0 * _pow10(decimals0)) / _pow10(decimals1);
+            if (adjustedPrice == 0) {
+                return 0;
+            }
+
+            if (baseToken == poolToken0 && quoteToken == poolToken1) {
+                return adjustedPrice;
+            }
+            if (baseToken == poolToken1 && quoteToken == poolToken0) {
+                return (1e36) / adjustedPrice;
+            }
+            return 0;
         } catch {
             return 0; // Pool doesn't exist or call failed
         }
@@ -220,6 +253,25 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
         if (token == USDC_ADDRESS || token == USDT_ADDRESS || token == DAI_ADDRESS) return true;
         if (address(tokenRegistry) == address(0)) return false;
         return tokenRegistry.getIsStablecoin(token);
+    }
+
+    function _rescaleAmount(uint256 amount, uint8 fromDecimals, uint8 toDecimals)
+        internal
+        pure
+        returns (uint256)
+    {
+        if (fromDecimals == toDecimals) {
+            return amount;
+        }
+        if (fromDecimals > toDecimals) {
+            return amount / _pow10(fromDecimals - toDecimals);
+        }
+        return amount * _pow10(toDecimals - fromDecimals);
+    }
+
+    function _pow10(uint8 exp) internal pure returns (uint256) {
+        require(exp <= 77, "Unsupported decimals");
+        return 10 ** exp;
     }
     
     // ========== FALLBACK PRICING SELECTION ==========

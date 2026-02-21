@@ -729,6 +729,85 @@ export async function plaidInvestmentsRefresh(walletAddress: string): Promise<{ 
   return response.data;
 }
 
+export interface PlaidLiabilityAccount {
+  account_id: string;
+  item_id: string;
+  liability_type: 'credit' | 'mortgage' | 'student';
+  apr_percentage: number | null;
+  is_overdue: boolean | null;
+  last_payment_amount: number | null;
+  last_payment_date: string | null;
+  last_statement_balance: number | null;
+  minimum_payment_amount: number | null;
+  next_payment_due_date: string | null;
+  origination_principal_amount: number | null;
+  loan_term: string | null;
+}
+
+export interface PlaidLiabilitiesResponse {
+  accounts: PlaidLiabilityAccount[];
+  linked: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get liability details (credit/mortgage/student) for linked accounts.
+ * Server caches responses; pass skipCache: true to force refresh.
+ */
+export async function getPlaidLiabilities(
+  walletAddress: string,
+  options?: { skipCache?: boolean }
+): Promise<PlaidLiabilitiesResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<PlaidLiabilitiesResponse>(
+    `/api/plaid/liabilities?walletAddress=${encoded}${qs}`,
+    { ...(options?.skipCache && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { accounts: [], linked: false };
+}
+
+export interface PlaidInvestmentAccountSummary {
+  account_id: string;
+  item_id: string;
+  name: string;
+  mask?: string;
+  subtype?: string;
+  current: number | null;
+  available: number | null;
+  iso_currency_code: string | null;
+  holdings_count: number;
+  holdings_value: number;
+  security_types: string[];
+}
+
+export interface PlaidInvestmentAccountsResponse {
+  accounts: PlaidInvestmentAccountSummary[];
+  linked: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get investment account summaries (account metadata + aggregated holdings).
+ * Server caches responses; pass skipCache: true to force refresh.
+ */
+export async function getPlaidInvestmentAccounts(
+  walletAddress: string,
+  options?: { skipCache?: boolean }
+): Promise<PlaidInvestmentAccountsResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<PlaidInvestmentAccountsResponse>(
+    `/api/plaid/investments/accounts?walletAddress=${encoded}${qs}`,
+    { ...(options?.skipCache && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { accounts: [], linked: false };
+}
+
 /** Recurring stream from Plaid /transactions/recurring/get (normalized by server) */
 export interface RecurringStream {
   stream_id: string;

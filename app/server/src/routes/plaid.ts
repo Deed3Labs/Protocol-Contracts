@@ -12,6 +12,7 @@ import {
   type TransactionsGetRequest,
   type InvestmentsHoldingsGetRequest,
   type InvestmentsRefreshRequest,
+  type LiabilitiesGetRequest,
 } from 'plaid';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { requireWalletMatch } from '../middleware/auth.js';
@@ -105,16 +106,22 @@ router.post('/link-token', async (req: Request, res: Response) => {
     if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
     if (!(await ensurePlaidTokenStore(res))) return;
 
+    const redirectUri = process.env.PLAID_REDIRECT_URI?.trim();
     const request: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
       language: 'en',
       country_codes: [CountryCode.Us],
       user: { client_user_id: walletAddress.toLowerCase() },
-      // Auth for balance/account numbers; Transactions for recurring streams (Upcoming Transactions)
-      products: [Products.Auth, Products.Transactions],
+      // Keep required product set minimal to maximize institution/account coverage.
+      products: [Products.Transactions],
+      // Require Auth when supported so ACH-related account/routing data is still available where possible.
+      required_if_supported_products: [Products.Auth],
       // Optional: brokerage/investment + liabilities (credit/loans) when institution supports them
       optional_products: [Products.Investments, Products.Liabilities],
     };
+    if (redirectUri) {
+      request.redirect_uri = redirectUri;
+    }
 
     const response = await client.linkTokenCreate(request);
     const linkToken = response.data.link_token;
@@ -177,7 +184,16 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
 
     // Invalidate balance cache so next fetch (or client refresh) returns all linked accounts
     const cacheService = await getCacheService();
-    if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
+    if (cacheService) {
+      await Promise.all([
+        cacheService.del(CacheKeys.plaidBalances(key)),
+        cacheService.del(CacheKeys.plaidRecurringTransactions(key)),
+        cacheService.del(CacheKeys.plaidSpend(key)),
+        cacheService.del(CacheKeys.plaidInvestmentsHoldings(key)),
+        cacheService.del(CacheKeys.plaidLiabilities(key)),
+        cacheService.del(CacheKeys.plaidInvestmentAccounts(key)),
+      ]);
+    }
 
     res.json({ success: true });
   } catch (error: unknown) {
@@ -211,6 +227,45 @@ const balancesResponse = (body: {
   linked: boolean;
   cached?: boolean;
 }) => body;
+
+type LiabilityAccountPayload = {
+  account_id: string;
+  item_id: string;
+  liability_type: 'credit' | 'mortgage' | 'student';
+  apr_percentage: number | null;
+  is_overdue: boolean | null;
+  last_payment_amount: number | null;
+  last_payment_date: string | null;
+  last_statement_balance: number | null;
+  minimum_payment_amount: number | null;
+  next_payment_due_date: string | null;
+  origination_principal_amount: number | null;
+  loan_term: string | null;
+};
+
+type InvestmentAccountSummaryPayload = {
+  account_id: string;
+  item_id: string;
+  name: string;
+  mask?: string;
+  subtype?: string;
+  current: number | null;
+  available: number | null;
+  iso_currency_code: string | null;
+  holdings_count: number;
+  holdings_value: number;
+  security_types: string[];
+};
+
+function parseRefreshFlag(value: unknown): boolean {
+  return value === '1' || value === 'true';
+}
+
+function preferredAprPercentage(aprs: Array<{ apr_type: string; apr_percentage: number }> | null | undefined): number | null {
+  if (!aprs || aprs.length === 0) return null;
+  const purchase = aprs.find((apr) => apr.apr_type === 'purchase_apr');
+  return purchase?.apr_percentage ?? aprs[0]?.apr_percentage ?? null;
+}
 
 /**
  * GET /api/plaid/balances?walletAddress=0x...
@@ -326,7 +381,14 @@ router.get('/balances', async (req: Request, res: Response) => {
     if (staleItemIds.size > 0) {
       await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
       const cacheServiceForInvalidate = await getCacheService();
-      if (cacheServiceForInvalidate) await cacheServiceForInvalidate.del(cacheKey);
+      if (cacheServiceForInvalidate) {
+        await Promise.all([
+          cacheServiceForInvalidate.del(cacheKey),
+          cacheServiceForInvalidate.del(CacheKeys.plaidLiabilities(key)),
+          cacheServiceForInvalidate.del(CacheKeys.plaidInvestmentAccounts(key)),
+          cacheServiceForInvalidate.del(CacheKeys.plaidInvestmentsHoldings(key)),
+        ]);
+      }
     }
 
     const payload = { accounts: accountList, totalBankBalance, linked: accountList.length > 0 };
@@ -347,7 +409,16 @@ router.get('/balances', async (req: Request, res: Response) => {
           console.warn('Failed to clear invalid Plaid items:', storeError);
         }
         const cacheService = await getCacheService();
-        if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
+        if (cacheService) {
+          await Promise.all([
+            cacheService.del(CacheKeys.plaidBalances(key)),
+            cacheService.del(CacheKeys.plaidRecurringTransactions(key)),
+            cacheService.del(CacheKeys.plaidSpend(key)),
+            cacheService.del(CacheKeys.plaidInvestmentsHoldings(key)),
+            cacheService.del(CacheKeys.plaidLiabilities(key)),
+            cacheService.del(CacheKeys.plaidInvestmentAccounts(key)),
+          ]);
+        }
       }
       return res.json(balancesResponse({
         accounts: [],
@@ -358,6 +429,283 @@ router.get('/balances', async (req: Request, res: Response) => {
     console.error('Plaid balances error:', err.response?.data ?? err.message);
     res.status(500).json({
       error: 'Failed to get balances',
+      message: err.message ?? 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /api/plaid/liabilities?walletAddress=0x...
+ * Fetch credit/mortgage/student liability details for linked items.
+ * Uses Plaid /liabilities/get. Cached server-side. Pass refresh=1 to skip cache.
+ */
+router.get('/liabilities', async (req: Request, res: Response) => {
+  try {
+    const client = getPlaidClient();
+    if (!client) {
+      return res.status(503).json({
+        error: 'Plaid not configured',
+        message: 'PLAID_CLIENT_ID and PLAID_SECRET must be set',
+      });
+    }
+
+    const walletAddress = req.query.walletAddress as string | undefined;
+    if (!walletAddress) {
+      return res.status(400).json({
+        error: 'Missing walletAddress',
+        message: 'Query parameter walletAddress is required',
+      });
+    }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
+
+    const key = walletAddress.toLowerCase();
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
+      return res.json({ accounts: [], linked: false, cached: false });
+    }
+
+    const skipCache = parseRefreshFlag(req.query.refresh);
+    const cacheService = await getCacheService();
+    const cacheKey = CacheKeys.plaidLiabilities(key);
+    const ttl = parseInt(process.env.CACHE_TTL_PLAID_LIABILITIES || '3600', 10);
+
+    if (cacheService && !skipCache) {
+      const cached = await cacheService.get<{ accounts: LiabilityAccountPayload[] }>(cacheKey);
+      if (cached?.accounts) {
+        return res.json({ accounts: cached.accounts, linked: true, cached: true });
+      }
+    }
+
+    const liabilityAccounts: LiabilityAccountPayload[] = [];
+    const seenLiabilityAccounts = new Set<string>();
+    const staleItemIds = new Set<string>();
+
+    for (const item of items) {
+      try {
+        const request: LiabilitiesGetRequest = { access_token: item.access_token };
+        const response = await client.liabilitiesGet(request);
+        const liabilities = response.data.liabilities;
+
+        for (const credit of liabilities.credit ?? []) {
+          if (!credit.account_id) continue;
+          const dedupeKey = `${item.item_id}|${credit.account_id}`;
+          if (seenLiabilityAccounts.has(dedupeKey)) continue;
+          seenLiabilityAccounts.add(dedupeKey);
+          liabilityAccounts.push({
+            account_id: credit.account_id,
+            item_id: item.item_id,
+            liability_type: 'credit',
+            apr_percentage: preferredAprPercentage(credit.aprs),
+            is_overdue: credit.is_overdue ?? null,
+            last_payment_amount: credit.last_payment_amount ?? null,
+            last_payment_date: credit.last_payment_date ?? null,
+            last_statement_balance: credit.last_statement_balance ?? null,
+            minimum_payment_amount: credit.minimum_payment_amount ?? null,
+            next_payment_due_date: credit.next_payment_due_date ?? null,
+            origination_principal_amount: null,
+            loan_term: null,
+          });
+        }
+
+        for (const mortgage of liabilities.mortgage ?? []) {
+          const dedupeKey = `${item.item_id}|${mortgage.account_id}`;
+          if (seenLiabilityAccounts.has(dedupeKey)) continue;
+          seenLiabilityAccounts.add(dedupeKey);
+          liabilityAccounts.push({
+            account_id: mortgage.account_id,
+            item_id: item.item_id,
+            liability_type: 'mortgage',
+            apr_percentage: mortgage.interest_rate?.percentage ?? null,
+            is_overdue: mortgage.past_due_amount != null ? mortgage.past_due_amount > 0 : null,
+            last_payment_amount: mortgage.last_payment_amount ?? null,
+            last_payment_date: mortgage.last_payment_date ?? null,
+            last_statement_balance: null,
+            minimum_payment_amount: mortgage.next_monthly_payment ?? null,
+            next_payment_due_date: mortgage.next_payment_due_date ?? null,
+            origination_principal_amount: mortgage.origination_principal_amount ?? null,
+            loan_term: mortgage.loan_term ?? null,
+          });
+        }
+
+        for (const student of liabilities.student ?? []) {
+          if (!student.account_id) continue;
+          const dedupeKey = `${item.item_id}|${student.account_id}`;
+          if (seenLiabilityAccounts.has(dedupeKey)) continue;
+          seenLiabilityAccounts.add(dedupeKey);
+          liabilityAccounts.push({
+            account_id: student.account_id,
+            item_id: item.item_id,
+            liability_type: 'student',
+            apr_percentage: student.interest_rate_percentage ?? null,
+            is_overdue: student.is_overdue ?? null,
+            last_payment_amount: student.last_payment_amount ?? null,
+            last_payment_date: student.last_payment_date ?? null,
+            last_statement_balance: student.last_statement_balance ?? null,
+            minimum_payment_amount: student.minimum_payment_amount ?? null,
+            next_payment_due_date: student.next_payment_due_date ?? null,
+            origination_principal_amount: student.origination_principal_amount ?? null,
+            loan_term: null,
+          });
+        }
+      } catch (itemErr: unknown) {
+        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
+        const errorCode = err.response?.data?.error_code;
+        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+          staleItemIds.add(item.item_id);
+          continue;
+        }
+        if (errorCode === 'PRODUCTS_NOT_SUPPORTED' || errorCode === 'PRODUCT_NOT_READY') continue;
+        throw itemErr;
+      }
+    }
+
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+    }
+
+    const payload = { accounts: liabilityAccounts };
+    if (cacheService) {
+      await cacheService.set(cacheKey, payload, ttl);
+    }
+    return res.json({ ...payload, linked: true, cached: false });
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: unknown }; message?: string };
+    console.error('Plaid liabilities error:', err.response?.data ?? err.message);
+    res.status(500).json({
+      error: 'Failed to get liabilities',
+      message: err.message ?? 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /api/plaid/investments/accounts?walletAddress=0x...
+ * Fetch account-level investment summaries for linked items.
+ * Uses Plaid /investments/holdings/get and aggregates holdings by account.
+ * Cached server-side. Pass refresh=1 to skip cache.
+ */
+router.get('/investments/accounts', async (req: Request, res: Response) => {
+  try {
+    const client = getPlaidClient();
+    if (!client) {
+      return res.status(503).json({
+        error: 'Plaid not configured',
+        message: 'PLAID_CLIENT_ID and PLAID_SECRET must be set',
+      });
+    }
+
+    const walletAddress = req.query.walletAddress as string | undefined;
+    if (!walletAddress) {
+      return res.status(400).json({
+        error: 'Missing walletAddress',
+        message: 'Query parameter walletAddress is required',
+      });
+    }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
+
+    const key = walletAddress.toLowerCase();
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
+      return res.json({ accounts: [], linked: false, cached: false });
+    }
+
+    const skipCache = parseRefreshFlag(req.query.refresh);
+    const cacheService = await getCacheService();
+    const cacheKey = CacheKeys.plaidInvestmentAccounts(key);
+    const ttl = parseInt(process.env.CACHE_TTL_PLAID_INVESTMENT_ACCOUNTS || '3600', 10);
+
+    if (cacheService && !skipCache) {
+      const cached = await cacheService.get<{ accounts: InvestmentAccountSummaryPayload[] }>(cacheKey);
+      if (cached?.accounts) {
+        return res.json({ accounts: cached.accounts, linked: true, cached: true });
+      }
+    }
+
+    const accountSummaries: InvestmentAccountSummaryPayload[] = [];
+    const seenAccounts = new Set<string>();
+    const staleItemIds = new Set<string>();
+
+    for (const item of items) {
+      try {
+        const request: InvestmentsHoldingsGetRequest = { access_token: item.access_token };
+        const response = await client.investmentsHoldingsGet(request);
+        const accounts = response.data.accounts ?? [];
+        const holdings = response.data.holdings ?? [];
+        const securities = response.data.securities ?? [];
+        const securityMap = new Map(securities.map((s) => [s.security_id, s]));
+        const accountMap = new Map<string, InvestmentAccountSummaryPayload>();
+        const securityTypesByAccount = new Map<string, Set<string>>();
+
+        for (const account of accounts) {
+          accountMap.set(account.account_id, {
+            account_id: account.account_id,
+            item_id: item.item_id,
+            name: account.name,
+            mask: account.mask ?? undefined,
+            subtype: account.subtype ?? undefined,
+            current: account.balances?.current ?? null,
+            available: account.balances?.available ?? null,
+            iso_currency_code: account.balances?.iso_currency_code ?? null,
+            holdings_count: 0,
+            holdings_value: 0,
+            security_types: [],
+          });
+        }
+
+        for (const holding of holdings) {
+          const summary = accountMap.get(holding.account_id);
+          if (!summary) continue;
+          summary.holdings_count += 1;
+          summary.holdings_value += holding.institution_value ?? 0;
+          if (!summary.iso_currency_code) {
+            summary.iso_currency_code = holding.iso_currency_code ?? null;
+          }
+          const securityType = securityMap.get(holding.security_id)?.type;
+          if (securityType) {
+            let set = securityTypesByAccount.get(holding.account_id);
+            if (!set) {
+              set = new Set<string>();
+              securityTypesByAccount.set(holding.account_id, set);
+            }
+            set.add(securityType);
+          }
+        }
+
+        for (const [accountId, summary] of accountMap.entries()) {
+          const dedupeKey = `${item.item_id}|${accountId}`;
+          if (seenAccounts.has(dedupeKey)) continue;
+          seenAccounts.add(dedupeKey);
+          summary.security_types = Array.from(securityTypesByAccount.get(accountId) ?? []);
+          accountSummaries.push(summary);
+        }
+      } catch (itemErr: unknown) {
+        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
+        const errorCode = err.response?.data?.error_code;
+        if (errorCode === 'PRODUCT_NOT_READY' || errorCode === 'PRODUCTS_NOT_SUPPORTED') continue;
+        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+          staleItemIds.add(item.item_id);
+          continue;
+        }
+        throw itemErr;
+      }
+    }
+
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+    }
+
+    const payload = { accounts: accountSummaries };
+    if (cacheService) {
+      await cacheService.set(cacheKey, payload, ttl);
+    }
+    return res.json({ ...payload, linked: true, cached: false });
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: unknown }; message?: string };
+    console.error('Plaid investment accounts error:', err.response?.data ?? err.message);
+    res.status(500).json({
+      error: 'Failed to get investment account summaries',
       message: err.message ?? 'Unknown error',
     });
   }
@@ -531,7 +879,12 @@ router.post('/investments/refresh', async (req: Request, res: Response) => {
     }
 
     const cacheService = await getCacheService();
-    if (cacheService) await cacheService.del(CacheKeys.plaidInvestmentsHoldings(key));
+    if (cacheService) {
+      await Promise.all([
+        cacheService.del(CacheKeys.plaidInvestmentsHoldings(key)),
+        cacheService.del(CacheKeys.plaidInvestmentAccounts(key)),
+      ]);
+    }
 
     res.json({ success: true });
   } catch (error: unknown) {
@@ -847,6 +1200,8 @@ router.post('/disconnect', async (req: Request, res: Response) => {
       await cacheService.del(CacheKeys.plaidRecurringTransactions(key));
       await cacheService.del(CacheKeys.plaidSpend(key));
       await cacheService.del(CacheKeys.plaidInvestmentsHoldings(key));
+      await cacheService.del(CacheKeys.plaidLiabilities(key));
+      await cacheService.del(CacheKeys.plaidInvestmentAccounts(key));
     }
     res.json({ success: true });
   } catch (error: unknown) {

@@ -6,10 +6,10 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
-import "../core/interfaces/IBurnerBondDeposit.sol";
-import "../core/interfaces/IBurnerBond.sol";
-import "../core/interfaces/IAssurancePool.sol";
-import "../core/interfaces/IBurnerBondFactory.sol";
+import "../core/interfaces/burner-bond/IBurnerBondDeposit.sol";
+import "../core/interfaces/burner-bond/IBurnerBond.sol";
+import "../core/interfaces/stable-credit/IAssurancePool.sol";
+import "../core/interfaces/burner-bond/IBurnerBondFactory.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 /// @title BurnerBondDeposit
@@ -267,45 +267,7 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
     /// @param depositId Deposit identifier to process
     /// @return bondId Bond ID that was minted
     function processDeposit(uint256 depositId) public override nonReentrant returns (uint256 bondId) {
-        require(deposits[depositId].depositor != address(0), "Deposit does not exist");
-        require(!deposits[depositId].isProcessed, "Deposit already processed");
-        
-        DepositInfo storage deposit = deposits[depositId];
-        
-        // Get the collection for this token
-        IBurnerBond burnerBond = tokenToCollection[deposit.tokenAddress];
-        require(address(burnerBond) != address(0), "Collection does not exist");
-        
-        // Get the underlying token
-        IERC20 underlyingToken = IERC20(deposit.tokenAddress);
-        
-        // Approve AssurancePool to spend underlying token
-        underlyingToken.approve(address(assurancePool), deposit.amount);
-        
-        // Deposit underlying token into AssurancePool excess reserve
-        assurancePool.depositTokenIntoExcess(deposit.tokenAddress, deposit.amount);
-        
-        // Mint bond using BurnerBond contract
-        bondId = burnerBond.mintBond(
-            deposit.faceValue,
-            deposit.maturityDate,
-            deposit.discountPercentage,
-            deposit.depositor
-        );
-        
-        // Update deposit information
-        deposit.bondId = bondId;
-        deposit.isProcessed = true;
-        
-        // Remove from pending deposits
-        _removeFromPendingDeposits(depositId);
-        
-        // Update statistics
-        totalDepositsProcessed++;
-        
-        emit DepositProcessed(depositId, bondId, deposit.depositor);
-        
-        return bondId;
+        return _processDepositInternal(depositId);
     }
     
     /// @notice Batch process multiple deposits
@@ -320,10 +282,7 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
         // Process all deposits
         for (uint256 i = 0; i < depositIds.length; i++) {
             uint256 depositId = depositIds[i];
-            require(deposits[depositId].depositor != address(0), "Deposit does not exist");
-            require(!deposits[depositId].isProcessed, "Deposit already processed");
-            
-            bondIds[i] = processDeposit(depositId);
+            bondIds[i] = _processDepositInternal(depositId);
         }
         
         return bondIds;
@@ -467,12 +426,61 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
         require(address(burnerBond) != address(0), "Collection does not exist");
         return burnerBond.calculateDiscountWithCurve(maturityDate);
     }
+
+    function _processDepositInternal(uint256 depositId) internal returns (uint256 bondId) {
+        require(deposits[depositId].depositor != address(0), "Deposit does not exist");
+        require(!deposits[depositId].isProcessed, "Deposit already processed");
+
+        DepositInfo storage deposit = deposits[depositId];
+
+        // Get the collection for this token
+        IBurnerBond burnerBond = tokenToCollection[deposit.tokenAddress];
+        require(address(burnerBond) != address(0), "Collection does not exist");
+
+        // Get the underlying token
+        IERC20 underlyingToken = IERC20(deposit.tokenAddress);
+
+        // Approve AssurancePool to spend underlying token
+        underlyingToken.approve(address(assurancePool), deposit.amount);
+
+        // Deposit underlying token into AssurancePool excess reserve
+        assurancePool.depositTokenIntoExcess(deposit.tokenAddress, deposit.amount);
+
+        // Mint bond using BurnerBond contract
+        bondId = burnerBond.mintBond(
+            deposit.faceValue,
+            deposit.maturityDate,
+            deposit.discountPercentage,
+            deposit.depositor
+        );
+
+        // Update deposit information
+        deposit.bondId = bondId;
+        deposit.isProcessed = true;
+
+        // Remove from pending deposits
+        _removeFromPendingDeposits(depositId);
+
+        // Update statistics
+        totalDepositsProcessed++;
+
+        emit DepositProcessed(depositId, bondId, deposit.depositor);
+    }
     
     /// @notice Remove deposit from pending deposits array
     /// @param depositId Deposit ID to remove
     function _removeFromPendingDeposits(uint256 depositId) internal {
+        uint256 length = pendingDeposits.length;
+        if (length == 0) {
+            return;
+        }
+
         uint256 index = pendingDepositIndex[depositId];
-        uint256 lastIndex = pendingDeposits.length - 1;
+        if (index >= length || pendingDeposits[index] != depositId) {
+            return;
+        }
+
+        uint256 lastIndex = length - 1;
         
         if (index != lastIndex) {
             // Move last element to the position of the element to delete

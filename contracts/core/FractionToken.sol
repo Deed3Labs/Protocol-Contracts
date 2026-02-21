@@ -157,7 +157,7 @@ contract FractionToken is
      * @notice Override of ERC20 transfer
      * @dev Adds wallet limit validation
      */
-    function transfer(address to, uint256 amount) public virtual override returns (bool) {
+    function transfer(address to, uint256 amount) public virtual override whenNotPaused returns (bool) {
         if (maxSharesPerWallet > 0 && to != address(0)) {
             require(balanceOf(to) + amount <= maxSharesPerWallet, "Exceeds wallet limit");
         }
@@ -168,7 +168,7 @@ contract FractionToken is
      * @notice Override of ERC20 transferFrom
      * @dev Adds wallet limit validation
      */
-    function transferFrom(address from, address to, uint256 amount) public virtual override returns (bool) {
+    function transferFrom(address from, address to, uint256 amount) public virtual override whenNotPaused returns (bool) {
         if (maxSharesPerWallet > 0 && to != address(0)) {
             require(balanceOf(to) + amount <= maxSharesPerWallet, "Exceeds wallet limit");
         }

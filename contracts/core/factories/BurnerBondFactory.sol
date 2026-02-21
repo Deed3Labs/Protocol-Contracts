@@ -5,11 +5,10 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import "../interfaces/IBurnerBondFactory.sol";
-import "../interfaces/IBurnerBond.sol";
-import "../interfaces/IBurnerBondDeposit.sol";
-import "../interfaces/IAssurancePool.sol";
-import "../interfaces/IAssuranceOracle.sol";
+import "../interfaces/burner-bond/IBurnerBondFactory.sol";
+import "../interfaces/burner-bond/IBurnerBondDeposit.sol";
+import "../interfaces/stable-credit/IAssurancePool.sol";
+import "../interfaces/stable-credit/IAssuranceOracle.sol";
 import "../../peripherals/BurnerBond.sol";
 import "../../peripherals/BurnerBondDeposit.sol";
 
@@ -335,16 +334,6 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
         maxDiscount = _maxDiscount;
         minDiscount = _minDiscount;
         maxMaturity = _maxMaturity;
-        
-        // Update all existing collections
-        for (uint256 i = 0; i < allTokens.length; i++) {
-            address tokenAddress = allTokens[i];
-            if (collections[tokenAddress].isActive) {
-                // Update collection parameters
-                IBurnerBond(collections[tokenAddress].collectionAddress).updateDiscountParameters(_maxDiscount, _minDiscount, _maxMaturity);
-                IBurnerBondDeposit(collections[tokenAddress].depositContract).updateDepositParameters(_maxDiscount, _minDiscount, _maxMaturity);
-            }
-        }
     }
     
     /// @notice Set minimum discount percentage
@@ -352,15 +341,6 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     function setMinDiscount(uint256 _minDiscount) external override onlyOwner {
         require(_minDiscount < maxDiscount, "Min discount must be less than max discount");
         minDiscount = _minDiscount;
-        
-        // Update all existing collections
-        for (uint256 i = 0; i < allTokens.length; i++) {
-            address tokenAddress = allTokens[i];
-            if (collections[tokenAddress].isActive) {
-                IBurnerBond(collections[tokenAddress].collectionAddress).setMinDiscount(_minDiscount);
-                IBurnerBondDeposit(collections[tokenAddress].depositContract).setMinDiscount(_minDiscount);
-            }
-        }
     }
     
     /// @notice Update minimum and maximum face value limits for all collections
@@ -374,22 +354,6 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
         
         minFaceValue = _minFaceValue;
         maxFaceValue = _maxFaceValue;
-        
-        // Update all existing collections
-        for (uint256 i = 0; i < allTokens.length; i++) {
-            address tokenAddress = allTokens[i];
-            if (collections[tokenAddress].isActive) {
-                // Update collection parameters
-                // Try to update BurnerBond collection (may not be available in older versions)
-                try IBurnerBond(collections[tokenAddress].collectionAddress).updateFaceValueLimits(_minFaceValue, _maxFaceValue) {
-                    // Success - collection updated
-                } catch {
-                    // If the function doesn't exist, continue without error
-                    // This ensures backward compatibility with older collection versions
-                }
-                IBurnerBondDeposit(collections[tokenAddress].depositContract).updateFaceValueLimits(_minFaceValue, _maxFaceValue);
-            }
-        }
     }
     
     /// @notice Update minimum maturity period for all collections
@@ -400,22 +364,6 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
         require(_minMaturity <= maxMaturity, "Min maturity cannot exceed max maturity");
         
         minMaturity = _minMaturity;
-        
-        // Update all existing collections
-        for (uint256 i = 0; i < allTokens.length; i++) {
-            address tokenAddress = allTokens[i];
-            if (collections[tokenAddress].isActive) {
-                // Update collection parameters
-                // Try to update BurnerBond collection (may not be available in older versions)
-                try IBurnerBond(collections[tokenAddress].collectionAddress).updateMinMaturity(_minMaturity) {
-                    // Success - collection updated
-                } catch {
-                    // If the function doesn't exist, continue without error
-                    // This ensures backward compatibility with older collection versions
-                }
-                IBurnerBondDeposit(collections[tokenAddress].depositContract).updateMinMaturity(_minMaturity);
-            }
-        }
     }
     
     /// @notice Emergency function to recover stuck tokens (owner only)

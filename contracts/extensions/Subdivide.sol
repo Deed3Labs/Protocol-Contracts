@@ -138,6 +138,9 @@ contract Subdivide is
     /// @notice Mapping of DeedNFT IDs to their subdivision information
     /// @dev Key: DeedNFT ID, Value: SubdivisionInfo struct
     mapping(uint256 => SubdivisionInfo) public subdivisions;
+
+    /// @notice Tracks current owner for each non-fungible subdivision unit tokenId.
+    mapping(uint256 => address) private _unitOwners;
     
     // ============ Events ============
 
@@ -226,7 +229,7 @@ contract Subdivide is
     // ============ Upgrade Gap ============
 
     /// @dev Storage gap for future upgrades
-    uint256[50] private __gap;
+    uint256[49] private __gap;
 
     // ============ Constructor ============
 
@@ -530,12 +533,13 @@ contract Subdivide is
         
         address recipient = to == address(0) ? deedOwner : to;
         uint256 tokenId = _generateTokenId(deedId, unitId);
+        require(_unitOwners[tokenId] == address(0), "Unit already minted");
         
         _mint(recipient, tokenId, 1, "");
         subdivisions[deedId].activeUnits += 1;
         
         // Set initial traits for the unit
-        _setInitialUnitTraits(deedId, unitId, tokenId);
+        _setInitialUnitTraits(deedId, tokenId, recipient);
         
         emit UnitMinted(deedId, unitId, recipient);
     }
@@ -578,11 +582,12 @@ contract Subdivide is
             require(unitIds[i] < subdivisions[deedId].totalUnits, "Invalid unit ID");
             
             uint256 tokenId = _generateTokenId(deedId, unitIds[i]);
+            require(_unitOwners[tokenId] == address(0), "Unit already minted");
             address recipient = recipients[i] == address(0) ? deedOwner : recipients[i];
             
             _mint(recipient, tokenId, 1, "");
             subdivisions[deedId].activeUnits += 1;
-            _setInitialUnitTraits(deedId, unitIds[i], tokenId);
+            _setInitialUnitTraits(deedId, tokenId, recipient);
             emit UnitMinted(deedId, unitIds[i], recipient);
         }
     }
@@ -611,15 +616,11 @@ contract Subdivide is
         address deedOwner = deedNFT.ownerOf(deedId);
         require(deedOwner == msg.sender, "Not deed owner");
         require(subdivisions[deedId].isActive, "Subdivision not active");
-        
-        SubdivisionInfo storage subdivision = subdivisions[deedId];
-        
-        // Simplified check: ensure all active units are owned by deed owner
-        require(subdivision.activeUnits == 0 || 
-                subdivision.activeUnits == balanceOf(deedOwner, _generateTokenId(deedId, 0)), 
-                "Outstanding units exist");
-        
-        subdivision.isActive = false;
+
+        // Deactivation is only allowed once all outstanding units are burned.
+        require(subdivisions[deedId].activeUnits == 0, "Outstanding units exist");
+
+        subdivisions[deedId].isActive = false;
         emit SubdivisionDeactivated(deedId);
     }
 
@@ -642,9 +643,11 @@ contract Subdivide is
         require(subdivisions[deedId].isActive, "Subdivision not active");
         require(unitId < subdivisions[deedId].totalUnits, "Invalid unit ID");
         
-        // Use provided validator or subdivision validator
-        address validator = validatorAddress != address(0) ? validatorAddress : getSubdivisionValidator(deedId);
-        require(validator != address(0), "No validator available");
+        require(
+            validatorAddress == address(0) || validatorAddress == msg.sender,
+            "Validator mismatch"
+        );
+        address validator = msg.sender;
         require(
             IValidatorRegistry(validatorRegistry).isValidatorActive(validator),
             "Validator not active"
@@ -707,7 +710,7 @@ contract Subdivide is
         
         // Validate asset type changes if traitKey is assetType
         if (traitKey == keccak256("assetType")) {
-            _validateAssetTypeChange(deedId, unitId, traitValue);
+            _validateAssetTypeChange(deedId, traitValue);
         }
         
         uint256 tokenId = _generateTokenId(deedId, unitId);
@@ -882,7 +885,7 @@ contract Subdivide is
         
         // Validate asset type changes if traitKey is assetType
         if (key == keccak256("assetType")) {
-            _validateAssetTypeChange(deedId, unitId, value);
+            _validateAssetTypeChange(deedId, value);
         }
         
         _setUnitTraitValue(tokenId, key, value);
@@ -1098,15 +1101,15 @@ contract Subdivide is
     /**
      * @dev Sets initial traits for a newly minted unit
      * @param deedId ID of the parent DeedNFT
-     * @param unitId ID of the unit
      * @param tokenId Combined token ID
+     * @param beneficiary Initial beneficiary/current owner of the unit
      */
-    function _setInitialUnitTraits(uint256 deedId, uint256 unitId, uint256 tokenId) internal {
+    function _setInitialUnitTraits(uint256 deedId, uint256 tokenId, address beneficiary) internal {
         // Set default traits
         _setUnitTraitValue(tokenId, keccak256("isValidated"), abi.encode(false));
         _setUnitTraitValue(tokenId, keccak256("parentDeed"), abi.encode(deedId));
         _setUnitTraitValue(tokenId, keccak256("unitType"), abi.encode("Subdivision Unit"));
-        _setUnitTraitValue(tokenId, keccak256("beneficiary"), abi.encode(msg.sender));
+        _setUnitTraitValue(tokenId, keccak256("beneficiary"), abi.encode(beneficiary));
         
         // Inherit traits from parent DeedNFT
         bytes32[4] memory traitKeys = [keccak256("assetType"), keccak256("operatingAgreement"), keccak256("definition"), keccak256("configuration")];
@@ -1149,9 +1152,46 @@ contract Subdivide is
     }
 
     /**
+     * @dev Track per-unit ownership for ERC1155 non-fungible units.
+     */
+    function _beforeTokenTransfer(
+        address operator,
+        address from,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory amounts,
+        bytes memory data
+    ) internal override {
+        super._beforeTokenTransfer(operator, from, to, ids, amounts, data);
+
+        for (uint256 i = 0; i < ids.length; i++) {
+            require(amounts[i] == 1, "Invalid unit amount");
+            uint256 tokenId = ids[i];
+
+            if (from == address(0)) {
+                // Mint
+                require(_unitOwners[tokenId] == address(0), "Unit already minted");
+                _unitOwners[tokenId] = to;
+            } else if (to == address(0)) {
+                // Burn
+                require(_unitOwners[tokenId] == from, "Not unit owner");
+                delete _unitOwners[tokenId];
+            } else {
+                // Transfer
+                require(_unitOwners[tokenId] == from, "Not unit owner");
+                _unitOwners[tokenId] = to;
+
+                uint256 deedId = tokenId >> 128;
+                uint256 unitId = tokenId & ((1 << 128) - 1);
+                _setUnitTraitValue(tokenId, keccak256("beneficiary"), abi.encode(to));
+                emit UnitTraitUpdated(deedId, unitId, keccak256("beneficiary"), abi.encode(to));
+            }
+        }
+    }
+
+    /**
      * @dev Validates asset type changes for subdivision units
      * @param deedId ID of the parent DeedNFT
-     * @param unitId ID of the unit
      * @param newAssetTypeBytes Encoded asset type value
      * @notice Enforces logical asset type constraints based on parent DeedNFT
      * 
@@ -1161,7 +1201,7 @@ contract Subdivide is
      * - Vehicle (1) → Vehicle (1) only (no subdivisions allowed)
      * - CommercialEquipment (3) → CommercialEquipment (3) only (no subdivisions allowed)
      */
-    function _validateAssetTypeChange(uint256 deedId, uint256 unitId, bytes memory newAssetTypeBytes) internal view {
+    function _validateAssetTypeChange(uint256 deedId, bytes memory newAssetTypeBytes) internal view {
         require(newAssetTypeBytes.length > 0, "Invalid asset type");
         
         uint8 newAssetType = uint8(abi.decode(newAssetTypeBytes, (uint8)));
@@ -1192,13 +1232,9 @@ contract Subdivide is
      * @return Address of the token owner
      */
     function ownerOf(uint256 tokenId) external view returns (address) {
-        // For ERC1155, we need to check if the token exists and return the first holder
-        // This is a simplified implementation
-        uint256 deedId = tokenId >> 128;
-        require(subdivisions[deedId].isActive, "Subdivision not active");
-        
-        // Return the collection admin as the "owner" for now
-        return subdivisions[deedId].collectionAdmin;
+        address unitOwner = _unitOwners[tokenId];
+        require(unitOwner != address(0), "Unit not minted");
+        return unitOwner;
     }
 
     /**
