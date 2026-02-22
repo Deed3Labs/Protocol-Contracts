@@ -6,6 +6,9 @@
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const SIWX_AUTH_TOKEN_KEY = '@appkit/siwx-auth-token';
+const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
+const SEND_REOWN_PROJECT_HEADER = import.meta.env.VITE_SEND_REOWN_PROJECT_HEADER === 'true';
 
 // Log API base URL in development to help debug
 if (import.meta.env.DEV) {
@@ -21,6 +24,15 @@ interface ApiResponse<T> {
 
 interface RequestInitWithTimeout extends RequestInit {
   timeout?: number; // Custom timeout in milliseconds (overrides default 30s)
+}
+
+function getSiwxAuthToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(SIWX_AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -39,11 +51,16 @@ async function apiRequest<T>(
 
   try {
     const { timeout: _, ...fetchOptions } = options; // Remove timeout from fetch options
+    const siwxToken = getSiwxAuthToken();
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...fetchOptions,
       signal: timeoutController.signal, // Use timeout signal (user signal will be ignored if provided)
       headers: {
         'Content-Type': 'application/json',
+        ...(siwxToken ? { Authorization: `Bearer ${siwxToken}` } : {}),
+        ...(SEND_REOWN_PROJECT_HEADER && REOWN_PROJECT_ID
+          ? { 'X-Reown-Project-Id': REOWN_PROJECT_ID }
+          : {}),
         ...options.headers,
       },
     });
@@ -57,13 +74,18 @@ async function apiRequest<T>(
     if (!response.ok) {
       // Try to parse error as JSON, but handle HTML/other responses
       if (isJson) {
-        try {
-          const errorData = await response.json();
-          throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-        } catch (parseError) {
-          // If JSON parsing fails, it's likely HTML or other non-JSON response
-          throw new Error(`HTTP ${response.status}: ${response.statusText} (Server may be down or endpoint incorrect)`);
+        const errorData = await response.json().catch(() => null);
+        if (errorData && typeof errorData === 'object') {
+          const message = (errorData as { message?: unknown }).message;
+          const plaidCode = (errorData as { plaid_error_code?: unknown }).plaid_error_code;
+          if (typeof message === 'string' && message.length > 0) {
+            if (typeof plaidCode === 'string' && plaidCode.length > 0) {
+              throw new Error(`${message} (${plaidCode})`);
+            }
+            throw new Error(message);
+          }
         }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       } else {
         // Non-JSON response (likely HTML error page)
         throw new Error(`HTTP ${response.status}: Server returned non-JSON response (Server may be down or endpoint incorrect)`);
@@ -574,19 +596,12 @@ export async function createStripeOnrampSession(params: {
 }
 
 /**
- * Plaid: create link token for Plaid Link (bank linking).
- * redirectUri: required for OAuth institutions (e.g. Chase). e.g. window.location.origin + '/plaid-oauth'
+ * Plaid: create link token for Plaid Link (bank linking)
  */
-export async function getPlaidLinkToken(
-  walletAddress: string,
-  redirectUri?: string
-): Promise<{ link_token: string } | null> {
+export async function getPlaidLinkToken(walletAddress: string): Promise<{ link_token: string } | null> {
   const response = await apiRequest<{ link_token: string }>('/api/plaid/link-token', {
     method: 'POST',
-    body: JSON.stringify({
-      walletAddress,
-      ...(redirectUri ? { redirect_uri: redirectUri } : {}),
-    }),
+    body: JSON.stringify({ walletAddress }),
   });
   if (response.error || !response.data) return null;
   return response.data;
@@ -719,6 +734,85 @@ export async function plaidInvestmentsRefresh(walletAddress: string): Promise<{ 
   return response.data;
 }
 
+export interface PlaidLiabilityAccount {
+  account_id: string;
+  item_id: string;
+  liability_type: 'credit' | 'mortgage' | 'student';
+  apr_percentage: number | null;
+  is_overdue: boolean | null;
+  last_payment_amount: number | null;
+  last_payment_date: string | null;
+  last_statement_balance: number | null;
+  minimum_payment_amount: number | null;
+  next_payment_due_date: string | null;
+  origination_principal_amount: number | null;
+  loan_term: string | null;
+}
+
+export interface PlaidLiabilitiesResponse {
+  accounts: PlaidLiabilityAccount[];
+  linked: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get liability details (credit/mortgage/student) for linked accounts.
+ * Server caches responses; pass skipCache: true to force refresh.
+ */
+export async function getPlaidLiabilities(
+  walletAddress: string,
+  options?: { skipCache?: boolean }
+): Promise<PlaidLiabilitiesResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<PlaidLiabilitiesResponse>(
+    `/api/plaid/liabilities?walletAddress=${encoded}${qs}`,
+    { ...(options?.skipCache && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { accounts: [], linked: false };
+}
+
+export interface PlaidInvestmentAccountSummary {
+  account_id: string;
+  item_id: string;
+  name: string;
+  mask?: string;
+  subtype?: string;
+  current: number | null;
+  available: number | null;
+  iso_currency_code: string | null;
+  holdings_count: number;
+  holdings_value: number;
+  security_types: string[];
+}
+
+export interface PlaidInvestmentAccountsResponse {
+  accounts: PlaidInvestmentAccountSummary[];
+  linked: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get investment account summaries (account metadata + aggregated holdings).
+ * Server caches responses; pass skipCache: true to force refresh.
+ */
+export async function getPlaidInvestmentAccounts(
+  walletAddress: string,
+  options?: { skipCache?: boolean }
+): Promise<PlaidInvestmentAccountsResponse | null> {
+  const encoded = encodeURIComponent(walletAddress);
+  const qs = options?.skipCache ? `&refresh=1&_t=${Date.now()}` : '';
+  const response = await apiRequest<PlaidInvestmentAccountsResponse>(
+    `/api/plaid/investments/accounts?walletAddress=${encoded}${qs}`,
+    { ...(options?.skipCache && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { accounts: [], linked: false };
+}
+
 /** Recurring stream from Plaid /transactions/recurring/get (normalized by server) */
 export interface RecurringStream {
   stream_id: string;
@@ -732,6 +826,8 @@ export interface PlaidRecurringResponse {
   inflowStreams: RecurringStream[];
   outflowStreams: RecurringStream[];
   linked: boolean;
+  /** True when Plaid reports product data is still warming up (PRODUCT_NOT_READY). */
+  notReady?: boolean;
   cached?: boolean;
 }
 
@@ -761,6 +857,8 @@ export interface PlaidSpendResponse {
   spendingByDay: SpendingByDay;
   totalSpent: number;
   linked: boolean;
+  /** True when Plaid reports product data is still warming up (PRODUCT_NOT_READY). */
+  notReady?: boolean;
   cached?: boolean;
 }
 
@@ -780,6 +878,40 @@ export async function getPlaidSpend(
   if (response.error) return null;
   if (response.data) return response.data;
   return { spendingByDay: {}, totalSpent: 0, linked: false };
+}
+
+/**
+ * Bridge: get URL to open Bridge onboarding flow for direct deposit setup
+ */
+export interface BridgeOnboardingResponse {
+  url: string;
+  source?: 'existing_customer' | 'new_customer' | 'configured_url';
+  customerId?: string | null;
+  kycUrl?: string | null;
+  tosUrl?: string | null;
+}
+
+export async function getBridgeOnboardingUrl(
+  walletAddress: string,
+  options?: {
+    hasPlaidAccount?: boolean;
+    fullName?: string;
+    email?: string;
+    customerType?: 'individual' | 'business';
+  }
+): Promise<BridgeOnboardingResponse | null> {
+  const response = await apiRequest<BridgeOnboardingResponse>('/api/bridge/onboarding-url', {
+    method: 'POST',
+    body: JSON.stringify({
+      walletAddress,
+      ...(options?.hasPlaidAccount != null ? { hasPlaidAccount: options.hasPlaidAccount } : {}),
+      ...(options?.fullName ? { fullName: options.fullName } : {}),
+      ...(options?.email ? { email: options.email } : {}),
+      ...(options?.customerType ? { customerType: options.customerType } : {}),
+    }),
+  });
+  if (response.error || !response.data?.url) return null;
+  return response.data;
 }
 
 /**

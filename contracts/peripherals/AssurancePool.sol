@@ -327,7 +327,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
             amount = reserveAmount;
         }
         // transfer the reserve token amount to account
-        reserveToken.transfer(account, amount);
+        reserveToken.safeTransfer(account, amount);
         emit AccountReimbursed(account, amount);
         return amount;
     }
@@ -436,23 +436,27 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     
     /// @notice Internal function to rebalance reserves from primary when RTD is above target
     function _rebalanceFromPrimary() internal {
-        uint256 currentRTD = RTD();
-        uint256 _targetRTD = targetRTD();
-        
-        if (currentRTD <= _targetRTD) return;
-        
-        // Calculate how much to move from primary
-        uint256 excessAmount = ((currentRTD - _targetRTD) * primaryBalance()) / 1 ether;
-        
-        // Move to buffer first (for emergency reimbursements)
-        uint256 bufferNeeded = bufferBalance() == 0 ? excessAmount / 2 : 0; // Fill buffer if empty
+        uint256 totalSupply = stableCredit.totalSupply();
+        if (totalSupply == 0) return;
+
+        uint256 debtInReserve = convertStableCreditToReserveToken(totalSupply);
+        uint256 currentPrimary = primaryBalance();
+        uint256 targetPrimary = (targetRTD() * debtInReserve) / 1 ether;
+
+        if (currentPrimary <= targetPrimary) return;
+
+        // Amount that can be safely moved out of primary without dropping below target.
+        uint256 excessAmount = currentPrimary - targetPrimary;
+
+        // Move to buffer first (for emergency reimbursements).
+        uint256 bufferNeeded = bufferBalance() == 0 ? excessAmount / 2 : 0;
         if (bufferNeeded > 0) {
             bufferReserve[address(reserveToken)] += bufferNeeded;
             primaryReserve[address(reserveToken)] -= bufferNeeded;
             excessAmount -= bufferNeeded;
         }
-        
-        // Move remaining to excess reserve
+
+        // Move remaining to excess reserve.
         if (excessAmount > 0) {
             excessReserve[address(reserveToken)] += excessAmount;
             primaryReserve[address(reserveToken)] -= excessAmount;
@@ -473,6 +477,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         // Recalculate reserve values based on current prices
         for (uint256 i = 0; i < heldTokens.length; i++) {
             address token = heldTokens[i];
+            if (token == address(0)) continue;
             uint256 tokenBalance = IERC20Upgradeable(token).balanceOf(address(this));
             
             if (tokenBalance > 0) {
@@ -494,26 +499,18 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         uint256 index = 0;
         
         // Add reserve token
-        if (address(reserveToken) != address(0)) {
-            tokens[index] = address(reserveToken);
-            index++;
-        }
+        index = _appendUniqueToken(tokens, index, address(reserveToken));
         
         // Add stablecoins
-        if (USDC_ADDRESS != address(0)) {
-            tokens[index] = USDC_ADDRESS;
-            index++;
-        }
-        if (USDT_ADDRESS != address(0)) {
-            tokens[index] = USDT_ADDRESS;
-            index++;
-        }
-        if (DAI_ADDRESS != address(0)) {
-            tokens[index] = DAI_ADDRESS;
-            index++;
-        }
+        index = _appendUniqueToken(tokens, index, USDC_ADDRESS);
+        index = _appendUniqueToken(tokens, index, USDT_ADDRESS);
+        index = _appendUniqueToken(tokens, index, DAI_ADDRESS);
         
-        return tokens;
+        address[] memory trimmed = new address[](index);
+        for (uint256 i = 0; i < index; i++) {
+            trimmed[i] = tokens[i];
+        }
+        return trimmed;
     }
     
     /// @notice Allocate reserve token equivalent to appropriate reserves
@@ -600,7 +597,8 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         }
         
         // Need rebalancing if price impact is significant (>5%)
-        needsRebalancing = priceImpact > 500; // 5% in basis points
+        // priceImpact is represented as a whole percentage value.
+        needsRebalancing = priceImpact > 5;
     }
     
     /// @notice Calculate current RTD using live pricing data
@@ -614,6 +612,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         
         for (uint256 i = 0; i < heldTokens.length; i++) {
             address token = heldTokens[i];
+            if (token == address(0)) continue;
             uint256 tokenBalance = IERC20Upgradeable(token).balanceOf(address(this));
             
             if (tokenBalance > 0) {
@@ -821,33 +820,48 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @return Array of token addresses in priority order
     function _getWithdrawalPriority() internal view returns (address[] memory) {
         // Priority order: Reserve token first, then stablecoins, then whitelisted tokens
-        address[] memory priorityTokens = new address[](10); // Adjust size as needed
+        address[] memory priorityTokens = new address[](4);
         uint256 index = 0;
         
         // 1. Reserve token (most liquid, no conversion needed)
-        if (address(reserveToken) != address(0)) {
-            priorityTokens[index] = address(reserveToken);
-            index++;
-        }
+        index = _appendUniqueToken(priorityTokens, index, address(reserveToken));
         
         // 2. Stablecoins (highly liquid, stable value)
-        if (assuranceOracle.checkIsStablecoin(USDC_ADDRESS)) {
-            priorityTokens[index] = USDC_ADDRESS;
-            index++;
+        if (USDC_ADDRESS != address(0) && assuranceOracle.checkIsStablecoin(USDC_ADDRESS)) {
+            index = _appendUniqueToken(priorityTokens, index, USDC_ADDRESS);
         }
-        if (assuranceOracle.checkIsStablecoin(USDT_ADDRESS)) {
-            priorityTokens[index] = USDT_ADDRESS;
-            index++;
+        if (USDT_ADDRESS != address(0) && assuranceOracle.checkIsStablecoin(USDT_ADDRESS)) {
+            index = _appendUniqueToken(priorityTokens, index, USDT_ADDRESS);
         }
-        if (assuranceOracle.checkIsStablecoin(DAI_ADDRESS)) {
-            priorityTokens[index] = DAI_ADDRESS;
-            index++;
+        if (DAI_ADDRESS != address(0) && assuranceOracle.checkIsStablecoin(DAI_ADDRESS)) {
+            index = _appendUniqueToken(priorityTokens, index, DAI_ADDRESS);
         }
         
         // 3. Other whitelisted tokens (in order of preference)
         // Note: This is a simplified implementation
         // In practice, you might want to order by liquidity, volatility, etc.
         
-        return priorityTokens;
+        address[] memory trimmed = new address[](index);
+        for (uint256 i = 0; i < index; i++) {
+            trimmed[i] = priorityTokens[i];
+        }
+        return trimmed;
+    }
+
+    function _appendUniqueToken(
+        address[] memory array,
+        uint256 currentLength,
+        address token
+    ) internal pure returns (uint256) {
+        if (token == address(0)) {
+            return currentLength;
+        }
+        for (uint256 i = 0; i < currentLength; i++) {
+            if (array[i] == token) {
+                return currentLength;
+            }
+        }
+        array[currentLength] = token;
+        return currentLength + 1;
     }
 }

@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { CacheKeys } from '../config/redis.js';
+import { requireWalletArrayMatch, requireWalletMatch } from '../middleware/auth.js';
+import { getCacheServiceSafe } from '../utils/cache.js';
 import { getTokenBalance, getTokenBalancesBatch, getAllTokenBalances, getAllTokenBalancesMultiChain } from '../services/balanceService.js';
 
 const router = Router();
-const cacheServicePromise = getRedisClient().then((client) => new CacheService(client));
 
 /**
  * GET /api/token-balances/all/:chainId/:userAddress
@@ -14,11 +15,15 @@ router.get('/all/:chainId/:userAddress', async (req: Request, res: Response) => 
   try {
     const chainId = parseInt(req.params.chainId, 10);
     const userAddress = req.params.userAddress.toLowerCase();
-    const cacheService = await cacheServicePromise;
+    if (!requireWalletMatch(req, res, userAddress, 'userAddress')) return;
+
+    const cacheService = await getCacheServiceSafe();
 
     // Check cache first
     const cacheKey = `all_token_balances:${chainId}:${userAddress}`;
-    const cached = await cacheService.get<{ data: any[]; timestamp: number }>(cacheKey);
+    const cached = cacheService
+      ? await cacheService.get<{ data: any[]; timestamp: number }>(cacheKey)
+      : null;
 
     if (cached) {
       return res.json({
@@ -45,11 +50,13 @@ router.get('/all/:chainId/:userAddress', async (req: Request, res: Response) => 
     // Cache the result
     // OPTIMIZATION: Increased cache TTL to 5 minutes (300s) to align with refresh intervals
     const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
-    await cacheService.set(
-      cacheKey,
-      { data: tokens, timestamp: Date.now() },
-      cacheTTL
-    );
+    if (cacheService) {
+      await cacheService.set(
+        cacheKey,
+        { data: tokens, timestamp: Date.now() },
+        cacheTTL
+      );
+    }
 
     res.json({
       tokens,
@@ -74,11 +81,15 @@ router.get('/:chainId/:userAddress/:tokenAddress', async (req: Request, res: Res
     const chainId = parseInt(req.params.chainId, 10);
     const userAddress = req.params.userAddress.toLowerCase();
     const tokenAddress = req.params.tokenAddress.toLowerCase();
-    const cacheService = await cacheServicePromise;
+    if (!requireWalletMatch(req, res, userAddress, 'userAddress')) return;
+
+    const cacheService = await getCacheServiceSafe();
 
     // Check cache first
     const cacheKey = CacheKeys.tokenBalance(chainId, userAddress, tokenAddress);
-    const cached = await cacheService.get<{ data: any; timestamp: number }>(cacheKey);
+    const cached = cacheService
+      ? await cacheService.get<{ data: any; timestamp: number }>(cacheKey)
+      : null;
 
     if (cached) {
       return res.json({
@@ -101,11 +112,13 @@ router.get('/:chainId/:userAddress/:tokenAddress', async (req: Request, res: Res
     // Cache the result
     // OPTIMIZATION: Increased cache TTL to 5 minutes (300s) to align with refresh intervals
     const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
-    await cacheService.set(
-      cacheKey,
-      { data: result, timestamp: Date.now() },
-      cacheTTL
-    );
+    if (cacheService) {
+      await cacheService.set(
+        cacheKey,
+        { data: result, timestamp: Date.now() },
+        cacheTTL
+      );
+    }
 
     res.json({
       ...result,
@@ -140,7 +153,9 @@ router.post('/all/batch', async (req: Request, res: Response) => {
       });
     }
 
-    const cacheService = await cacheServicePromise;
+    if (!requireWalletArrayMatch(req, res, requests.map((r) => r.userAddress), 'requests[].userAddress')) return;
+
+    const cacheService = await getCacheServiceSafe();
     const results: Array<{
       chainId: number;
       userAddress: string;
@@ -154,7 +169,9 @@ router.post('/all/batch', async (req: Request, res: Response) => {
     for (let i = 0; i < requests.length; i++) {
       const { chainId, userAddress } = requests[i];
       const cacheKey = `all_token_balances:${chainId}:${userAddress.toLowerCase()}`;
-      const cached = await cacheService.get<{ data: any[]; timestamp: number }>(cacheKey);
+      const cached = cacheService
+        ? await cacheService.get<{ data: any[]; timestamp: number }>(cacheKey)
+        : null;
 
       if (cached) {
         results[i] = {
@@ -181,12 +198,14 @@ router.post('/all/batch', async (req: Request, res: Response) => {
             // Cache the result
             const cacheKey = `all_token_balances:${chainId}:${userAddress.toLowerCase()}`;
             // OPTIMIZATION: Increased cache TTL to 5 minutes (300s) to align with refresh intervals
-    const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
-            await cacheService.set(
-              cacheKey,
-              { data: tokens, timestamp: Date.now() },
-              cacheTTL
-            );
+            const cacheTTL = parseInt(process.env.CACHE_TTL_BALANCE || '300', 10);
+            if (cacheService) {
+              await cacheService.set(
+                cacheKey,
+                { data: tokens, timestamp: Date.now() },
+                cacheTTL
+              );
+            }
 
             results[index] = {
               chainId,
@@ -272,7 +291,9 @@ router.post('/portfolio', async (req: Request, res: Response) => {
       }
     }
 
-    const cacheService = await cacheServicePromise;
+    if (!requireWalletArrayMatch(req, res, requests.map((r) => r.address), 'requests[].address')) return;
+
+    const cacheService = await getCacheServiceSafe();
     const results: Array<{
       address: string;
       chainId: number;
@@ -291,7 +312,9 @@ router.post('/portfolio', async (req: Request, res: Response) => {
 
       for (const chainId of chainIds) {
         const cacheKey = `portfolio_all_token_balances:${chainId}:${addressLower}`;
-        const cached = await cacheService.get<{ data: any[]; timestamp: number }>(cacheKey);
+        const cached = cacheService
+          ? await cacheService.get<{ data: any[]; timestamp: number }>(cacheKey)
+          : null;
 
         if (cached) {
           results.push({
@@ -335,11 +358,13 @@ router.post('/portfolio', async (req: Request, res: Response) => {
             // OPTIMIZATION: Increased cache TTL from 10s to 5 minutes (300s) to reduce Alchemy compute unit usage
             const cacheKey = `portfolio_all_token_balances:${chainId}:${address}`;
             const cacheTTL = parseInt(process.env.CACHE_TTL_PORTFOLIO_TOKENS || process.env.CACHE_TTL_BALANCE || '300', 10);
-            await cacheService.set(
-              cacheKey,
-              { data: tokens, timestamp: Date.now() },
-              cacheTTL
-            );
+            if (cacheService) {
+              await cacheService.set(
+                cacheKey,
+                { data: tokens, timestamp: Date.now() },
+                cacheTTL
+              );
+            }
 
             results.push({
               address,

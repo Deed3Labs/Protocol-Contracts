@@ -352,9 +352,12 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
         const url = await getBridgeFundingUrl(address, amount, destCurrency, destNetwork);
         if (url) {
           window.open(url, "_blank", "noopener,noreferrer");
+          setFundingCompleteMessage("Funding initiated. Funds should appear in your wallet within 1-3 business days.");
+          setStep("bank_pending");
+          return;
         }
-        setFundingCompleteMessage("Funding initiated. Funds should appear in your wallet within 1-3 business days.");
-        setStep("bank_pending");
+        setFundingCompleteMessage("Bank funding is currently unavailable. Please try card funding instead.");
+        setStep("funding_complete");
         return;
       }
       if (paymentMethod.id === "debit" && selectedCardProvider === "stripe") {

@@ -11,6 +11,7 @@ export interface UseRecurringTransactionsResult {
   inflowStreams: PlaidRecurringResponse['inflowStreams'];
   outflowStreams: PlaidRecurringResponse['outflowStreams'];
   linked: boolean;
+  notReady: boolean;
   isLoading: boolean;
   error: string | null;
   refresh: () => void;
@@ -37,7 +38,7 @@ export function useRecurringTransactions(
     queryKey,
     queryFn: async (): Promise<PlaidRecurringResponse> => {
       const result = await getPlaidRecurringTransactions(walletAddress!);
-      return result ?? { inflowStreams: [], outflowStreams: [], linked: false };
+      return result ?? { inflowStreams: [], outflowStreams: [], linked: false, notReady: false };
     },
     enabled: !!walletAddress,
     staleTime: STALE_MS,
@@ -52,7 +53,7 @@ export function useRecurringTransactions(
       queryKey: key,
       queryFn: () =>
         getPlaidRecurringTransactions(walletAddress, { refresh: true }) ??
-        { inflowStreams: [], outflowStreams: [], linked: false },
+        { inflowStreams: [], outflowStreams: [], linked: false, notReady: false },
       staleTime: STALE_MS,
     });
   }, [walletAddress, queryClient]);
@@ -61,6 +62,7 @@ export function useRecurringTransactions(
     inflowStreams: data?.inflowStreams ?? [],
     outflowStreams: data?.outflowStreams ?? [],
     linked: data?.linked ?? false,
+    notReady: data?.notReady ?? false,
     isLoading: walletAddress ? (isLoading && !data) : false,
     error: error ? (error instanceof Error ? error.message : 'Failed to load recurring transactions') : null,
     refresh,

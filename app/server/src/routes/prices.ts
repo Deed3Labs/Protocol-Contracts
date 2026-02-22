@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { CacheKeys } from '../config/redis.js';
+import { getCacheServiceSafe } from '../utils/cache.js';
 import { getTokenPrice } from '../services/priceService.js';
 
 const router = Router();
-const cacheServicePromise = getRedisClient().then((client) => new CacheService(client));
 
 /**
  * GET /api/prices/:chainId/:tokenAddress
@@ -13,11 +13,13 @@ router.get('/:chainId/:tokenAddress', async (req: Request, res: Response) => {
   try {
     const chainId = parseInt(req.params.chainId, 10);
     const tokenAddress = req.params.tokenAddress.toLowerCase();
-    const cacheService = await cacheServicePromise;
+    const cacheService = await getCacheServiceSafe();
 
     // Check cache first
     const cacheKey = CacheKeys.tokenPrice(chainId, tokenAddress);
-    const cached = await cacheService.get<{ price: number; timestamp: number }>(cacheKey);
+    const cached = cacheService
+      ? await cacheService.get<{ price: number; timestamp: number }>(cacheKey)
+      : null;
 
     if (cached) {
       return res.json({
@@ -40,11 +42,13 @@ router.get('/:chainId/:tokenAddress', async (req: Request, res: Response) => {
 
     // Cache the result
     const cacheTTL = parseInt(process.env.CACHE_TTL_PRICE || '300', 10);
-    await cacheService.set(
-      cacheKey,
-      { price, timestamp: Date.now() },
-      cacheTTL
-    );
+    if (cacheService) {
+      await cacheService.set(
+        cacheKey,
+        { price, timestamp: Date.now() },
+        cacheTTL
+      );
+    }
 
     res.json({
       price,
@@ -76,7 +80,7 @@ router.post('/batch', async (req: Request, res: Response) => {
       });
     }
 
-    const cacheService = await cacheServicePromise;
+    const cacheService = await getCacheServiceSafe();
     const results: Array<{ chainId: number; tokenAddress: string; price: number | null; cached: boolean }> = [];
     const uncached: Array<{ chainId: number; tokenAddress: string; index: number }> = [];
 
@@ -84,7 +88,9 @@ router.post('/batch', async (req: Request, res: Response) => {
     for (let i = 0; i < prices.length; i++) {
       const { chainId, tokenAddress } = prices[i];
       const cacheKey = CacheKeys.tokenPrice(chainId, tokenAddress.toLowerCase());
-      const cached = await cacheService.get<{ price: number; timestamp: number }>(cacheKey);
+      const cached = cacheService
+        ? await cacheService.get<{ price: number; timestamp: number }>(cacheKey)
+        : null;
 
       if (cached) {
         results[i] = {
@@ -110,15 +116,17 @@ router.post('/batch', async (req: Request, res: Response) => {
 
       for (const { chainId, tokenAddress, index } of uncached) {
         const normalizedAddress = tokenAddress.toLowerCase();
-        const price = priceMap.get(normalizedAddress) || null;
+        const price = priceMap.get(`${chainId}:${normalizedAddress}`) || null;
 
         if (price && price > 0) {
           const cacheKey = CacheKeys.tokenPrice(chainId, normalizedAddress);
-          await cacheService.set(
-            cacheKey,
-            { price, timestamp: Date.now() },
-            cacheTTL
-          );
+          if (cacheService) {
+            await cacheService.set(
+              cacheKey,
+              { price, timestamp: Date.now() },
+              cacheTTL
+            );
+          }
         }
 
         results[index] = {

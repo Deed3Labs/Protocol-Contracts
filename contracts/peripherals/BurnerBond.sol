@@ -8,10 +8,10 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import "../core/interfaces/IBurnerBond.sol";
-import "../core/interfaces/IBurnerBondDeposit.sol";
-import "../core/interfaces/IBurnerBondFactory.sol";
-import "../core/interfaces/IAssurancePool.sol";
+import "../core/interfaces/burner-bond/IBurnerBond.sol";
+import "../core/interfaces/burner-bond/IBurnerBondDeposit.sol";
+import "../core/interfaces/burner-bond/IBurnerBondFactory.sol";
+import "../core/interfaces/stable-credit/IAssurancePool.sol";
 
 /// @title BurnerBond
 /// @notice ERC-1155 based bond system that allows users to mint bonds at a discount

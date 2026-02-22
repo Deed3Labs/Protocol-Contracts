@@ -363,4 +363,12 @@ export const CacheKeys = {
   // Plaid investment holdings (per wallet) - reduces Plaid API usage
   plaidInvestmentsHoldings: (walletAddress: string) =>
     `plaid_investments_holdings:${walletAddress.toLowerCase()}`,
+
+  // Plaid liabilities (credit/loan details) per wallet
+  plaidLiabilities: (walletAddress: string) =>
+    `plaid_liabilities:${walletAddress.toLowerCase()}`,
+
+  // Plaid investment account summaries (account-level metadata + aggregate holdings)
+  plaidInvestmentAccounts: (walletAddress: string) =>
+    `plaid_investment_accounts:${walletAddress.toLowerCase()}`,
 };

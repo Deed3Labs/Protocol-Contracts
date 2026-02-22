@@ -56,6 +56,10 @@ contract StableCredit is MutualCredit, IStableCredit {
         override
         returns (uint256)
     {
+        require(
+            member == _msgSender() || access.isOperator(_msgSender()),
+            "StableCredit: Unauthorized caller"
+        );
         require(balanceOf(member) >= amount, "StableCredit: Insufficient balance");
         require(amount <= lostDebt(), "StableCredit: Insufficient lost debt");
         _transfer(member, address(this), amount);

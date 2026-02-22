@@ -4,7 +4,9 @@ import cors from 'cors';
 import compression from 'compression';
 import dotenv from 'dotenv';
 import { getRedisClient, closeRedisConnection } from './config/redis.js';
+import { closePostgresPool } from './config/postgres.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
+import { requireAuth } from './middleware/auth.js';
 import pricesRouter from './routes/prices.js';
 import balancesRouter from './routes/balances.js';
 import tokenBalancesRouter from './routes/tokenBalances.js';
@@ -23,6 +25,9 @@ const app = express();
 const httpServer = createServer(app);
 const PORT: number = parseInt(process.env.PORT || '3001', 10);
 
+// Trust first proxy hop (Railway/Render/Nginx) so req.ip is accurate for rate limiting.
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(compression());
 
@@ -39,13 +44,19 @@ const corsOptions = {
       ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
       : [];
     
-    // Always allow Vercel preview URLs (pattern: *.vercel.app)
-    const isVercelPreview = origin.endsWith('.vercel.app');
+    const allowVercelPreviews = process.env.ALLOW_VERCEL_PREVIEWS === 'true';
+    const isVercelPreview = allowVercelPreviews && origin.endsWith('.vercel.app');
     
-    // If no CORS_ORIGIN is set, allow all origins (development mode)
+    // If no CORS_ORIGIN is set, default to compatibility mode (allow all origins).
+    // Enable STRICT_CORS=true to force explicit CORS_ORIGIN configuration in production.
     if (allowedOrigins.length === 0) {
-      console.log(`[CORS] Allowing origin (no CORS_ORIGIN set): ${origin}`);
-      return callback(null, true);
+      const strictCors = process.env.STRICT_CORS === 'true';
+      if (!strictCors) {
+        console.warn(`[CORS] CORS_ORIGIN not set. Allowing origin: ${origin}`);
+        return callback(null, true);
+      }
+      console.warn(`[CORS] Blocked origin because STRICT_CORS=true and CORS_ORIGIN is not configured: ${origin}`);
+      return callback(new Error('CORS_ORIGIN is required when STRICT_CORS=true'));
     }
     
     // If '*' is specified, allow all origins
@@ -63,7 +74,7 @@ const corsOptions = {
       return origin === allowed;
     });
     
-    // Allow if explicitly allowed OR if it's a Vercel preview URL
+    // Allow if explicitly allowed OR if preview URLs are explicitly enabled.
     if (isAllowed || isVercelPreview) {
       if (isVercelPreview) {
         console.log(`[CORS] Allowing Vercel preview URL: ${origin}`);
@@ -77,7 +88,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Reown-Project-Id', 'X-Appkit-Project-Id'],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   maxAge: 86400, // 24 hours
   preflightContinue: false,
@@ -136,15 +147,15 @@ async function startServer() {
     // Add rate limiter to all API routes
     app.use('/api', rateLimiterMiddleware);
 
-    // Set up API routes (after rate limiter)
+    // Public API routes (after rate limiter)
     app.use('/api/prices', pricesRouter);
     app.use('/api/balances', balancesRouter);
     app.use('/api/token-balances', tokenBalancesRouter); // Uses same service as balances (consolidated)
     app.use('/api/nfts', nftsRouter);
     app.use('/api/transactions', transactionsRouter);
-    app.use('/api/stripe', stripeRouter);
-    app.use('/api/plaid', plaidRouter);
-    app.use('/api/bridge', bridgeRouter);
+    app.use('/api/stripe', requireAuth, stripeRouter);
+    app.use('/api/plaid', requireAuth, plaidRouter);
+    app.use('/api/bridge', requireAuth, bridgeRouter);
     
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');
@@ -209,6 +220,7 @@ process.on('SIGTERM', async () => {
   eventListenerService.cleanup();
   websocketService.cleanup();
   await closeRedisConnection();
+  await closePostgresPool();
   process.exit(0);
 });
 
@@ -217,6 +229,7 @@ process.on('SIGINT', async () => {
   eventListenerService.cleanup();
   websocketService.cleanup();
   await closeRedisConnection();
+  await closePostgresPool();
   process.exit(0);
 });
 

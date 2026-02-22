@@ -5,19 +5,20 @@ import {
   PlaidEnvironments,
   Products,
   CountryCode,
-  DepositoryAccountSubtype,
-  CreditAccountSubtype,
-  InvestmentAccountSubtype,
   type LinkTokenCreateRequest,
   type ItemPublicTokenExchangeRequest,
   type AccountsBalanceGetRequest,
+  type AccountsGetRequest,
   type TransactionsRecurringGetRequest,
   type TransactionsGetRequest,
   type InvestmentsHoldingsGetRequest,
   type InvestmentsRefreshRequest,
   type LiabilitiesGetRequest,
+  type AccountBase,
 } from 'plaid';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { requireWalletMatch } from '../middleware/auth.js';
+import { plaidTokenStore } from '../services/plaidTokenStore.js';
 
 const router = Router();
 
@@ -31,14 +32,32 @@ async function getCacheService(): Promise<CacheService | null> {
   return cacheServicePromise;
 }
 
-// One Plaid Item = one institution connection (one access_token).
-// In-memory store: walletAddress (lowercase) -> array of items so users can link multiple institutions.
-// Replace with Redis or DB in production for persistence across restarts
-interface StoredItem {
-  access_token: string;
-  item_id: string;
+const MAX_PLAID_ITEMS_PER_WALLET = parseInt(process.env.MAX_PLAID_ITEMS_PER_WALLET || '10', 10);
+// Sent on all /accounts/balance/get calls. Required for some institutions/account types (e.g. Capital One non-depository),
+// ignored by institutions that do not need it.
+const PLAID_BALANCE_MIN_LAST_UPDATED_DATETIME = '2000-01-01T00:00:00Z';
+
+async function ensurePlaidTokenStore(res: Response): Promise<boolean> {
+  if (!plaidTokenStore.isConfigured()) {
+    res.status(503).json({
+      error: 'Plaid token store not configured',
+      message: 'Set DATABASE_URL and PLAID_TOKEN_MASTER_KEY (or PLAID_TOKEN_KEYRING_JSON)',
+    });
+    return false;
+  }
+
+  try {
+    await plaidTokenStore.ensureReady();
+    return true;
+  } catch (error) {
+    console.error('Plaid token store initialization error:', error);
+    res.status(503).json({
+      error: 'Plaid token store unavailable',
+      message: error instanceof Error ? error.message : 'Could not initialize Plaid token store',
+    });
+    return false;
+  }
 }
-const accessTokenStore = new Map<string, StoredItem[]>();
 
 function getPlaidClient(): PlaidApi | null {
   const clientId = process.env.PLAID_CLIENT_ID;
@@ -67,11 +86,55 @@ function getPlaidClient(): PlaidApi | null {
   return new PlaidApi(configuration);
 }
 
+type PlaidErrorInfo = {
+  status?: number;
+  code?: string;
+  message?: string;
+  type?: string;
+};
+
+function getPlaidErrorInfo(error: unknown): PlaidErrorInfo {
+  const err = error as {
+    response?: {
+      status?: number;
+      data?: {
+        error_code?: string;
+        error_message?: string;
+        display_message?: string | null;
+        error_type?: string;
+      };
+    };
+    message?: string;
+  };
+
+  const code = err.response?.data?.error_code;
+  const message =
+    err.response?.data?.display_message ||
+    err.response?.data?.error_message ||
+    err.message;
+
+  return {
+    status: err.response?.status,
+    code,
+    message,
+    type: err.response?.data?.error_type,
+  };
+}
+
+function isRedirectUriError(info: PlaidErrorInfo): boolean {
+  const code = (info.code || '').toLowerCase();
+  const message = (info.message || '').toLowerCase();
+  return (
+    code.includes('redirect') ||
+    message.includes('redirect_uri') ||
+    message.includes('redirect uri')
+  );
+}
+
 /**
  * POST /api/plaid/link-token
- * Create a Link token for Plaid Link (keyed by wallet address).
- * Body: { walletAddress: string, redirect_uri?: string }
- * redirect_uri is required for OAuth institutions (e.g. Chase). Must be registered in Plaid Dashboard.
+ * Create a Link token for Plaid Link (keyed by wallet address)
+ * Body: { walletAddress: string }
  */
 router.post('/link-token', async (req: Request, res: Response) => {
   try {
@@ -83,52 +146,62 @@ router.post('/link-token', async (req: Request, res: Response) => {
       });
     }
 
-    const { walletAddress, redirect_uri } = req.body as { walletAddress?: string; redirect_uri?: string };
+    const { walletAddress } = req.body as { walletAddress?: string };
     if (!walletAddress || typeof walletAddress !== 'string') {
       return res.status(400).json({
         error: 'Missing walletAddress',
         message: 'Request body must include walletAddress',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
-    const request: LinkTokenCreateRequest = {
+    const redirectUri = process.env.PLAID_REDIRECT_URI?.trim();
+    const baseRequest: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
       language: 'en',
       country_codes: [CountryCode.Us],
       user: { client_user_id: walletAddress.toLowerCase() },
-      // Auth for balance/account numbers; Transactions for recurring streams (Upcoming Transactions)
-      products: [Products.Auth, Products.Transactions],
-      // Optional: Investments for brokerage holdings; Liabilities for credit card (and loan) data
-      // Credit cards do not appear in /accounts/balance/get; they require /liabilities/get (Liabilities product)
+      // Keep required product set minimal to maximize institution/account coverage.
+      products: [Products.Transactions],
+      // Optional: brokerage/investment + liabilities (credit/loans) when institution supports them
       optional_products: [Products.Investments, Products.Liabilities],
-      // When account_filters is set, any type not listed is omitted from Link. Use All for depository
-      // so OAuth institutions (e.g. Chase) don't get "Insufficient Sharing Permissions" when they
-      // return account subtypes we didn't list (e.g. money market, other).
-      account_filters: {
-        depository: {
-          account_subtypes: [DepositoryAccountSubtype.All],
-        },
-        credit: {
-          account_subtypes: [CreditAccountSubtype.CreditCard],
-        },
-        investment: {
-          account_subtypes: [InvestmentAccountSubtype.All],
-        },
-      },
-      // Required for OAuth institutions (Chase, etc.). User is redirected here after bank auth; app must reinitialize Link with receivedRedirectUri.
-      ...(redirect_uri && typeof redirect_uri === 'string' && redirect_uri.length > 0 ? { redirect_uri } : {}),
     };
+    const requestWithRedirect: LinkTokenCreateRequest = redirectUri
+      ? { ...baseRequest, redirect_uri: redirectUri }
+      : baseRequest;
 
-    const response = await client.linkTokenCreate(request);
+    let response;
+    try {
+      response = await client.linkTokenCreate(requestWithRedirect);
+    } catch (linkTokenError) {
+      const plaidError = getPlaidErrorInfo(linkTokenError);
+      // Fallback: if redirect URI is misconfigured, retry without it so non-OAuth institutions still work.
+      if (redirectUri && isRedirectUriError(plaidError)) {
+        console.warn(
+          'Plaid linkTokenCreate redirect_uri rejected; retrying without redirect_uri',
+          plaidError
+        );
+        response = await client.linkTokenCreate(baseRequest);
+      } else {
+        throw linkTokenError;
+      }
+    }
+
     const linkToken = response.data.link_token;
 
     res.json({ link_token: linkToken });
   } catch (error: unknown) {
-    const err = error as { response?: { data?: unknown }; message?: string };
-    console.error('Plaid linkTokenCreate error:', err.response?.data ?? err.message);
-    res.status(500).json({
+    const plaidError = getPlaidErrorInfo(error);
+    const status = plaidError.status && plaidError.status >= 400 && plaidError.status < 600
+      ? plaidError.status
+      : 500;
+    console.error('Plaid linkTokenCreate error:', plaidError);
+    res.status(status).json({
       error: 'Failed to create link token',
-      message: err.message ?? 'Unknown error',
+      message: plaidError.message ?? 'Unknown error',
+      plaid_error_code: plaidError.code,
+      plaid_error_type: plaidError.type,
     });
   }
 });
@@ -158,6 +231,8 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
         message: 'Request body must include walletAddress and publicToken',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const request: ItemPublicTokenExchangeRequest = {
       public_token: publicToken,
@@ -166,15 +241,28 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
     const accessToken = response.data.access_token;
     const itemId = response.data.item_id;
     const key = walletAddress.toLowerCase();
-    const existing = accessTokenStore.get(key) ?? [];
-    existing.push({ access_token: accessToken, item_id: itemId });
-    accessTokenStore.set(key, existing);
+    const existing = await plaidTokenStore.getItems(key);
+    const alreadyExists = existing.some((item) => item.item_id === itemId);
+    if (!alreadyExists && existing.length >= MAX_PLAID_ITEMS_PER_WALLET) {
+      return res.status(400).json({
+        error: 'Too many linked institutions',
+        message: `Maximum ${MAX_PLAID_ITEMS_PER_WALLET} institutions can be linked per wallet`,
+      });
+    }
+    await plaidTokenStore.upsertItem(key, itemId, accessToken);
 
-    // Invalidate balance cache so the next balances request is fresh (avoids stale list after re-link).
-    // Re-linking with Liabilities in the link token is required for credit cards to appear; this ensures
-    // (1) old Items without Liabilities are fixed by re-link and (2) cache doesn't serve pre–re-link data.
+    // Invalidate balance cache so next fetch (or client refresh) returns all linked accounts
     const cacheService = await getCacheService();
-    if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
+    if (cacheService) {
+      await Promise.all([
+        cacheService.del(CacheKeys.plaidBalances(key)),
+        cacheService.del(CacheKeys.plaidRecurringTransactions(key)),
+        cacheService.del(CacheKeys.plaidSpend(key)),
+        cacheService.del(CacheKeys.plaidInvestmentsHoldings(key)),
+        cacheService.del(CacheKeys.plaidLiabilities(key)),
+        cacheService.del(CacheKeys.plaidInvestmentAccounts(key)),
+      ]);
+    }
 
     res.json({ success: true });
   } catch (error: unknown) {
@@ -209,6 +297,113 @@ const balancesResponse = (body: {
   cached?: boolean;
 }) => body;
 
+type LiabilityAccountPayload = {
+  account_id: string;
+  item_id: string;
+  liability_type: 'credit' | 'mortgage' | 'student';
+  apr_percentage: number | null;
+  is_overdue: boolean | null;
+  last_payment_amount: number | null;
+  last_payment_date: string | null;
+  last_statement_balance: number | null;
+  minimum_payment_amount: number | null;
+  next_payment_due_date: string | null;
+  origination_principal_amount: number | null;
+  loan_term: string | null;
+};
+
+type InvestmentAccountSummaryPayload = {
+  account_id: string;
+  item_id: string;
+  name: string;
+  mask?: string;
+  subtype?: string;
+  current: number | null;
+  available: number | null;
+  iso_currency_code: string | null;
+  holdings_count: number;
+  holdings_value: number;
+  security_types: string[];
+};
+
+type PendingTransactionLike = {
+  transaction_id?: string;
+  date?: string | null;
+  authorized_date?: string | null;
+  amount?: number | string | null;
+  merchant_name?: string | null;
+  name?: string | null;
+  original_description?: string | null;
+  iso_currency_code?: string | null;
+};
+
+function parseRefreshFlag(value: unknown): boolean {
+  return value === '1' || value === 'true';
+}
+
+function formatLocalDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function parseDayFromDate(dateStr: string | null | undefined): number | null {
+  if (!dateStr || typeof dateStr !== 'string' || dateStr.length < 10) return null;
+  const day = Number.parseInt(dateStr.slice(8, 10), 10);
+  if (!Number.isFinite(day) || Number.isNaN(day)) return null;
+  return day;
+}
+
+function isDateWithinRange(dateStr: string | null | undefined, startDate: string, endDate: string): boolean {
+  if (!dateStr || typeof dateStr !== 'string' || dateStr.length < 10) return false;
+  return dateStr >= startDate && dateStr <= endDate;
+}
+
+function preferredAprPercentage(aprs: Array<{ apr_type: string; apr_percentage: number }> | null | undefined): number | null {
+  if (!aprs || aprs.length === 0) return null;
+  const purchase = aprs.find((apr) => apr.apr_type === 'purchase_apr');
+  return purchase?.apr_percentage ?? aprs[0]?.apr_percentage ?? null;
+}
+
+function isLiabilityLikeSubtype(subtype: string): boolean {
+  return (
+    subtype.includes('credit') ||
+    subtype.includes('loan') ||
+    subtype.includes('mortgage') ||
+    subtype.includes('student')
+  );
+}
+
+function shouldIncludeInCashBalance(accountType?: string | null, accountSubtype?: string | null): boolean {
+  const type = (accountType ?? '').toLowerCase();
+  const subtype = (accountSubtype ?? '').toLowerCase();
+
+  // Explicitly exclude liability-style and investment accounts from "cash".
+  if (type === 'credit' || type === 'loan' || type === 'investment') return false;
+  // Guard against type/subtype mismatches where subtype still signals liability.
+  if (isLiabilityLikeSubtype(subtype)) return false;
+  // Depository is always cash-like.
+  if (type === 'depository') return true;
+  // Fallback for institutions that omit/misclassify type but provide subtype.
+  if (subtype === 'checking' || subtype === 'savings' || subtype === 'money market' || subtype === 'cash management') {
+    return true;
+  }
+  return false;
+}
+
+function computeTotalBankCash(accounts: BalanceAccount[]): number {
+  return accounts.reduce((sum, account) => {
+    const availableOrCurrent =
+      typeof account.available === 'number' && !Number.isNaN(account.available)
+        ? account.available
+        : account.current;
+    if (typeof availableOrCurrent !== 'number' || Number.isNaN(availableOrCurrent)) return sum;
+    if (!shouldIncludeInCashBalance(account.type, account.subtype)) return sum;
+    return sum + availableOrCurrent;
+  }, 0);
+}
+
 /**
  * GET /api/plaid/balances?walletAddress=0x...
  * Get balances for all linked bank accounts (all institutions). Aggregates multiple items per wallet.
@@ -231,10 +426,12 @@ router.get('/balances', async (req: Request, res: Response) => {
         message: 'Query parameter walletAddress is required',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json(balancesResponse({
         accounts: [],
         totalBankBalance: 0,
@@ -242,7 +439,7 @@ router.get('/balances', async (req: Request, res: Response) => {
       }));
     }
 
-    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const skipCache = parseRefreshFlag(req.query.refresh);
     const cacheService = await getCacheService();
     const cacheKey = CacheKeys.plaidBalances(key);
     const ttl = parseInt(process.env.CACHE_TTL_PLAID_BALANCES || '3600', 10); // 1 hour default (~$0.10/call)
@@ -254,13 +451,21 @@ router.get('/balances', async (req: Request, res: Response) => {
         linked: boolean;
       }>(cacheKey);
       if (cached) {
+        const normalizedTotalBankBalance = computeTotalBankCash(cached.accounts ?? []);
+        if (Math.abs(normalizedTotalBankBalance - cached.totalBankBalance) > 0.000001) {
+          const normalizedCached = {
+            ...cached,
+            totalBankBalance: normalizedTotalBankBalance,
+          };
+          await cacheService.set(cacheKey, normalizedCached, ttl);
+          return res.json(balancesResponse({ ...normalizedCached, cached: true }));
+        }
         return res.json(balancesResponse({ ...cached, cached: true }));
       }
     }
 
     const accountList: BalanceAccount[] = [];
-    let totalBankBalance = 0;
-    const stillValidItems: StoredItem[] = [];
+    const staleItemIds = new Set<string>();
     // De-dupe accounts even across re-links where Plaid may mint new account_ids
     // Prefer mask+name when mask exists, otherwise fall back to account_id.
     const seenAccountKeys = new Set<string>();
@@ -270,9 +475,71 @@ router.get('/balances', async (req: Request, res: Response) => {
 
     for (const item of items) {
       try {
-        const request: AccountsBalanceGetRequest = { access_token: item.access_token };
-        const response = await client.accountsBalanceGet(request);
-        const accounts = response.data.accounts ?? [];
+        let accounts: AccountBase[] = [];
+
+        try {
+          const request: AccountsBalanceGetRequest = {
+            access_token: item.access_token,
+            options: {
+              min_last_updated_datetime: PLAID_BALANCE_MIN_LAST_UPDATED_DATETIME,
+            },
+          };
+          const response = await client.accountsBalanceGet(request);
+          accounts = response.data.accounts ?? [];
+        } catch (balanceErr: unknown) {
+          const info = getPlaidErrorInfo(balanceErr);
+          const errorCode = info.code;
+          const message = (info.message || '').toLowerCase();
+
+          if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+            console.warn('Plaid item invalid, removing:', item.item_id, info);
+            staleItemIds.add(item.item_id);
+            continue;
+          }
+
+          const shouldFallbackToAccountsGet =
+            info.status === 429 ||
+            errorCode === 'RATE_LIMIT_EXCEEDED' ||
+            errorCode === 'LAST_UPDATED_DATETIME_OUT_OF_RANGE' ||
+            (errorCode === 'INVALID_FIELD' && message.includes('min_last_updated_datetime'));
+
+          if (!shouldFallbackToAccountsGet) {
+            throw balanceErr;
+          }
+
+          console.warn(
+            'Plaid accountsBalanceGet fallback to accountsGet:',
+            item.item_id,
+            info
+          );
+          try {
+            const fallbackRequest: AccountsGetRequest = {
+              access_token: item.access_token,
+            };
+            const fallbackResponse = await client.accountsGet(fallbackRequest);
+            accounts = fallbackResponse.data.accounts ?? [];
+          } catch (fallbackErr: unknown) {
+            const fallbackInfo = getPlaidErrorInfo(fallbackErr);
+            const fallbackErrorCode = fallbackInfo.code;
+            if (
+              fallbackErrorCode === 'ITEM_LOGIN_REQUIRED' ||
+              fallbackErrorCode === 'INVALID_ACCESS_TOKEN'
+            ) {
+              console.warn('Plaid item invalid during accountsGet fallback, removing:', item.item_id, fallbackInfo);
+              staleItemIds.add(item.item_id);
+              continue;
+            }
+            if (
+              fallbackInfo.status === 429 ||
+              fallbackErrorCode === 'RATE_LIMIT_EXCEEDED'
+            ) {
+              console.warn('Plaid accountsGet fallback rate-limited, skipping item for now:', item.item_id, fallbackInfo);
+              continue;
+            }
+            throw fallbackErr;
+          }
+        }
+
         // Fingerprint for this Item (stable across refresh): sorted list of name+mask pairs
         const fingerprint = accounts
           .map((a) => `${a.name}|${a.mask ?? ''}`)
@@ -280,19 +547,15 @@ router.get('/balances', async (req: Request, res: Response) => {
           .join('||');
         if (fingerprint && seenItemFingerprints.has(fingerprint)) {
           // Duplicate link of the same institution/accounts; drop this item
+          staleItemIds.add(item.item_id);
           continue;
         }
         if (fingerprint) seenItemFingerprints.add(fingerprint);
 
-        stillValidItems.push(item);
         for (const acc of accounts) {
           const key = acc.mask ? `${acc.mask}|${acc.name}` : acc.account_id;
           if (seenAccountKeys.has(key)) continue;
           seenAccountKeys.add(key);
-          const current = acc.balances?.current;
-          if (typeof current === 'number' && current !== null) {
-            totalBankBalance += current;
-          }
           accountList.push({
             account_id: acc.account_id,
             name: acc.name,
@@ -305,82 +568,62 @@ router.get('/balances', async (req: Request, res: Response) => {
           });
         }
       } catch (itemErr: unknown) {
-        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
-        const errorCode = err.response?.data?.error_code;
+        const info = getPlaidErrorInfo(itemErr);
+        const errorCode = info.code;
         if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
           // This institution needs re-link; drop it and continue with others
-          console.warn('Plaid item invalid, removing:', item.item_id, err.response?.data ?? err.message);
+          console.warn('Plaid item invalid, removing:', item.item_id, info);
+          staleItemIds.add(item.item_id);
           continue;
         }
         throw itemErr;
       }
     }
 
-    // Credit card (and other liability) accounts are not returned by /accounts/balance/get.
-    // Fetch them via /liabilities/get (Liabilities product) and merge into the account list.
-    for (const item of items) {
-      try {
-        const liabRequest: LiabilitiesGetRequest = { access_token: item.access_token };
-        const liabResponse = await client.liabilitiesGet(liabRequest);
-        const liabilityAccounts = liabResponse.data.accounts ?? [];
-        const creditLiabs = liabResponse.data.liabilities?.credit ?? [];
-        const accountById = new Map(liabilityAccounts.map((a) => [a.account_id, a]));
-        for (const cred of creditLiabs) {
-          const accId = cred.account_id;
-          if (!accId || seenAccountKeys.has(accId)) continue;
-          seenAccountKeys.add(accId);
-          const acc = accountById.get(accId);
-          const name = acc?.name ?? 'Credit card';
-          const mask = acc?.mask ?? undefined;
-          const current = cred.last_statement_balance ?? null;
-          // Do not add credit balance to totalBankBalance (that is for depository/cash only)
-          accountList.push({
-            account_id: accId,
-            name,
-            mask,
-            current,
-            available: null,
-            item_id: item.item_id,
-            type: 'credit',
-            subtype: 'credit card',
-          });
-        }
-      } catch (itemErr: unknown) {
-        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
-        const code = err.response?.data?.error_code;
-        if (code === 'PRODUCT_NOT_READY' || code === 'ITEM_LOGIN_REQUIRED' || code === 'INVALID_ACCESS_TOKEN') {
-          continue;
-        }
-        throw itemErr;
-      }
-    }
-
-    // Persist removal of any invalid items
-    if (stillValidItems.length !== items.length) {
-      if (stillValidItems.length === 0) {
-        accessTokenStore.delete(key);
-      } else {
-        accessTokenStore.set(key, stillValidItems);
-      }
+    // Persist removal of any invalid/duplicate items
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
       const cacheServiceForInvalidate = await getCacheService();
-      if (cacheServiceForInvalidate) await cacheServiceForInvalidate.del(cacheKey);
+      if (cacheServiceForInvalidate) {
+        await Promise.all([
+          cacheServiceForInvalidate.del(cacheKey),
+          cacheServiceForInvalidate.del(CacheKeys.plaidLiabilities(key)),
+          cacheServiceForInvalidate.del(CacheKeys.plaidInvestmentAccounts(key)),
+          cacheServiceForInvalidate.del(CacheKeys.plaidInvestmentsHoldings(key)),
+        ]);
+      }
     }
 
-    const payload = { accounts: accountList, totalBankBalance, linked: accountList.length > 0 };
+    const remainingItemsCount = Math.max(0, items.length - staleItemIds.size);
+    const totalBankBalance = computeTotalBankCash(accountList);
+    const payload = { accounts: accountList, totalBankBalance, linked: remainingItemsCount > 0 };
     if (cacheService) {
       await cacheService.set(cacheKey, payload, ttl);
     }
     return res.json(balancesResponse(payload));
   } catch (error: unknown) {
-    const err = error as { response?: { data?: { error_code?: string } }; message?: string };
-    const errorCode = err.response?.data?.error_code;
+    const info = getPlaidErrorInfo(error);
+    const errorCode = info.code;
     if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
       const walletAddress = req.query.walletAddress as string | undefined;
       if (walletAddress) {
         const key = walletAddress.toLowerCase();
-        accessTokenStore.delete(key);
+        try {
+          await plaidTokenStore.deleteAllItems(key);
+        } catch (storeError) {
+          console.warn('Failed to clear invalid Plaid items:', storeError);
+        }
         const cacheService = await getCacheService();
-        if (cacheService) await cacheService.del(CacheKeys.plaidBalances(key));
+        if (cacheService) {
+          await Promise.all([
+            cacheService.del(CacheKeys.plaidBalances(key)),
+            cacheService.del(CacheKeys.plaidRecurringTransactions(key)),
+            cacheService.del(CacheKeys.plaidSpend(key)),
+            cacheService.del(CacheKeys.plaidInvestmentsHoldings(key)),
+            cacheService.del(CacheKeys.plaidLiabilities(key)),
+            cacheService.del(CacheKeys.plaidInvestmentAccounts(key)),
+          ]);
+        }
       }
       return res.json(balancesResponse({
         accounts: [],
@@ -388,9 +631,289 @@ router.get('/balances', async (req: Request, res: Response) => {
         linked: false,
       }));
     }
-    console.error('Plaid balances error:', err.response?.data ?? err.message);
-    res.status(500).json({
+    const status = info.status && info.status >= 400 && info.status < 600 ? info.status : 500;
+    console.error('Plaid balances error:', info);
+    res.status(status).json({
       error: 'Failed to get balances',
+      message: info.message ?? 'Unknown error',
+      plaid_error_code: info.code,
+      plaid_error_type: info.type,
+    });
+  }
+});
+
+/**
+ * GET /api/plaid/liabilities?walletAddress=0x...
+ * Fetch credit/mortgage/student liability details for linked items.
+ * Uses Plaid /liabilities/get. Cached server-side. Pass refresh=1 to skip cache.
+ */
+router.get('/liabilities', async (req: Request, res: Response) => {
+  try {
+    const client = getPlaidClient();
+    if (!client) {
+      return res.status(503).json({
+        error: 'Plaid not configured',
+        message: 'PLAID_CLIENT_ID and PLAID_SECRET must be set',
+      });
+    }
+
+    const walletAddress = req.query.walletAddress as string | undefined;
+    if (!walletAddress) {
+      return res.status(400).json({
+        error: 'Missing walletAddress',
+        message: 'Query parameter walletAddress is required',
+      });
+    }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
+
+    const key = walletAddress.toLowerCase();
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
+      return res.json({ accounts: [], linked: false, cached: false });
+    }
+
+    const skipCache = parseRefreshFlag(req.query.refresh);
+    const cacheService = await getCacheService();
+    const cacheKey = CacheKeys.plaidLiabilities(key);
+    const ttl = parseInt(process.env.CACHE_TTL_PLAID_LIABILITIES || '3600', 10);
+
+    if (cacheService && !skipCache) {
+      const cached = await cacheService.get<{ accounts: LiabilityAccountPayload[] }>(cacheKey);
+      if (cached?.accounts) {
+        return res.json({ accounts: cached.accounts, linked: true, cached: true });
+      }
+    }
+
+    const liabilityAccounts: LiabilityAccountPayload[] = [];
+    const seenLiabilityAccounts = new Set<string>();
+    const staleItemIds = new Set<string>();
+
+    for (const item of items) {
+      try {
+        const request: LiabilitiesGetRequest = { access_token: item.access_token };
+        const response = await client.liabilitiesGet(request);
+        const liabilities = response.data.liabilities;
+
+        for (const credit of liabilities.credit ?? []) {
+          if (!credit.account_id) continue;
+          const dedupeKey = `${item.item_id}|${credit.account_id}`;
+          if (seenLiabilityAccounts.has(dedupeKey)) continue;
+          seenLiabilityAccounts.add(dedupeKey);
+          liabilityAccounts.push({
+            account_id: credit.account_id,
+            item_id: item.item_id,
+            liability_type: 'credit',
+            apr_percentage: preferredAprPercentage(credit.aprs),
+            is_overdue: credit.is_overdue ?? null,
+            last_payment_amount: credit.last_payment_amount ?? null,
+            last_payment_date: credit.last_payment_date ?? null,
+            last_statement_balance: credit.last_statement_balance ?? null,
+            minimum_payment_amount: credit.minimum_payment_amount ?? null,
+            next_payment_due_date: credit.next_payment_due_date ?? null,
+            origination_principal_amount: null,
+            loan_term: null,
+          });
+        }
+
+        for (const mortgage of liabilities.mortgage ?? []) {
+          const dedupeKey = `${item.item_id}|${mortgage.account_id}`;
+          if (seenLiabilityAccounts.has(dedupeKey)) continue;
+          seenLiabilityAccounts.add(dedupeKey);
+          liabilityAccounts.push({
+            account_id: mortgage.account_id,
+            item_id: item.item_id,
+            liability_type: 'mortgage',
+            apr_percentage: mortgage.interest_rate?.percentage ?? null,
+            is_overdue: mortgage.past_due_amount != null ? mortgage.past_due_amount > 0 : null,
+            last_payment_amount: mortgage.last_payment_amount ?? null,
+            last_payment_date: mortgage.last_payment_date ?? null,
+            last_statement_balance: null,
+            minimum_payment_amount: mortgage.next_monthly_payment ?? null,
+            next_payment_due_date: mortgage.next_payment_due_date ?? null,
+            origination_principal_amount: mortgage.origination_principal_amount ?? null,
+            loan_term: mortgage.loan_term ?? null,
+          });
+        }
+
+        for (const student of liabilities.student ?? []) {
+          if (!student.account_id) continue;
+          const dedupeKey = `${item.item_id}|${student.account_id}`;
+          if (seenLiabilityAccounts.has(dedupeKey)) continue;
+          seenLiabilityAccounts.add(dedupeKey);
+          liabilityAccounts.push({
+            account_id: student.account_id,
+            item_id: item.item_id,
+            liability_type: 'student',
+            apr_percentage: student.interest_rate_percentage ?? null,
+            is_overdue: student.is_overdue ?? null,
+            last_payment_amount: student.last_payment_amount ?? null,
+            last_payment_date: student.last_payment_date ?? null,
+            last_statement_balance: student.last_statement_balance ?? null,
+            minimum_payment_amount: student.minimum_payment_amount ?? null,
+            next_payment_due_date: student.next_payment_due_date ?? null,
+            origination_principal_amount: student.origination_principal_amount ?? null,
+            loan_term: null,
+          });
+        }
+      } catch (itemErr: unknown) {
+        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
+        const errorCode = err.response?.data?.error_code;
+        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+          staleItemIds.add(item.item_id);
+          continue;
+        }
+        if (errorCode === 'PRODUCTS_NOT_SUPPORTED' || errorCode === 'PRODUCT_NOT_READY') continue;
+        throw itemErr;
+      }
+    }
+
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+    }
+
+    const payload = { accounts: liabilityAccounts };
+    if (cacheService) {
+      await cacheService.set(cacheKey, payload, ttl);
+    }
+    return res.json({ ...payload, linked: true, cached: false });
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: unknown }; message?: string };
+    console.error('Plaid liabilities error:', err.response?.data ?? err.message);
+    res.status(500).json({
+      error: 'Failed to get liabilities',
+      message: err.message ?? 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /api/plaid/investments/accounts?walletAddress=0x...
+ * Fetch account-level investment summaries for linked items.
+ * Uses Plaid /investments/holdings/get and aggregates holdings by account.
+ * Cached server-side. Pass refresh=1 to skip cache.
+ */
+router.get('/investments/accounts', async (req: Request, res: Response) => {
+  try {
+    const client = getPlaidClient();
+    if (!client) {
+      return res.status(503).json({
+        error: 'Plaid not configured',
+        message: 'PLAID_CLIENT_ID and PLAID_SECRET must be set',
+      });
+    }
+
+    const walletAddress = req.query.walletAddress as string | undefined;
+    if (!walletAddress) {
+      return res.status(400).json({
+        error: 'Missing walletAddress',
+        message: 'Query parameter walletAddress is required',
+      });
+    }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
+
+    const key = walletAddress.toLowerCase();
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
+      return res.json({ accounts: [], linked: false, cached: false });
+    }
+
+    const skipCache = parseRefreshFlag(req.query.refresh);
+    const cacheService = await getCacheService();
+    const cacheKey = CacheKeys.plaidInvestmentAccounts(key);
+    const ttl = parseInt(process.env.CACHE_TTL_PLAID_INVESTMENT_ACCOUNTS || '3600', 10);
+
+    if (cacheService && !skipCache) {
+      const cached = await cacheService.get<{ accounts: InvestmentAccountSummaryPayload[] }>(cacheKey);
+      if (cached?.accounts) {
+        return res.json({ accounts: cached.accounts, linked: true, cached: true });
+      }
+    }
+
+    const accountSummaries: InvestmentAccountSummaryPayload[] = [];
+    const seenAccounts = new Set<string>();
+    const staleItemIds = new Set<string>();
+
+    for (const item of items) {
+      try {
+        const request: InvestmentsHoldingsGetRequest = { access_token: item.access_token };
+        const response = await client.investmentsHoldingsGet(request);
+        const accounts = response.data.accounts ?? [];
+        const holdings = response.data.holdings ?? [];
+        const securities = response.data.securities ?? [];
+        const securityMap = new Map(securities.map((s) => [s.security_id, s]));
+        const accountMap = new Map<string, InvestmentAccountSummaryPayload>();
+        const securityTypesByAccount = new Map<string, Set<string>>();
+
+        for (const account of accounts) {
+          accountMap.set(account.account_id, {
+            account_id: account.account_id,
+            item_id: item.item_id,
+            name: account.name,
+            mask: account.mask ?? undefined,
+            subtype: account.subtype ?? undefined,
+            current: account.balances?.current ?? null,
+            available: account.balances?.available ?? null,
+            iso_currency_code: account.balances?.iso_currency_code ?? null,
+            holdings_count: 0,
+            holdings_value: 0,
+            security_types: [],
+          });
+        }
+
+        for (const holding of holdings) {
+          const summary = accountMap.get(holding.account_id);
+          if (!summary) continue;
+          summary.holdings_count += 1;
+          summary.holdings_value += holding.institution_value ?? 0;
+          if (!summary.iso_currency_code) {
+            summary.iso_currency_code = holding.iso_currency_code ?? null;
+          }
+          const securityType = securityMap.get(holding.security_id)?.type;
+          if (securityType) {
+            let set = securityTypesByAccount.get(holding.account_id);
+            if (!set) {
+              set = new Set<string>();
+              securityTypesByAccount.set(holding.account_id, set);
+            }
+            set.add(securityType);
+          }
+        }
+
+        for (const [accountId, summary] of accountMap.entries()) {
+          const dedupeKey = `${item.item_id}|${accountId}`;
+          if (seenAccounts.has(dedupeKey)) continue;
+          seenAccounts.add(dedupeKey);
+          summary.security_types = Array.from(securityTypesByAccount.get(accountId) ?? []);
+          accountSummaries.push(summary);
+        }
+      } catch (itemErr: unknown) {
+        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
+        const errorCode = err.response?.data?.error_code;
+        if (errorCode === 'PRODUCT_NOT_READY' || errorCode === 'PRODUCTS_NOT_SUPPORTED') continue;
+        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+          staleItemIds.add(item.item_id);
+          continue;
+        }
+        throw itemErr;
+      }
+    }
+
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+    }
+
+    const payload = { accounts: accountSummaries };
+    if (cacheService) {
+      await cacheService.set(cacheKey, payload, ttl);
+    }
+    return res.json({ ...payload, linked: true, cached: false });
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: unknown }; message?: string };
+    console.error('Plaid investment accounts error:', err.response?.data ?? err.message);
+    res.status(500).json({
+      error: 'Failed to get investment account summaries',
       message: err.message ?? 'Unknown error',
     });
   }
@@ -435,10 +958,12 @@ router.get('/investments/holdings', async (req: Request, res: Response) => {
         message: 'Query parameter walletAddress is required',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json({ holdings: [], linked: false, cached: false });
     }
 
@@ -456,6 +981,7 @@ router.get('/investments/holdings', async (req: Request, res: Response) => {
 
     const allHoldings: InvestmentHoldingPayload[] = [];
     const seenHoldingKeys = new Set<string>();
+    const staleItemIds = new Set<string>();
 
     for (const item of items) {
       try {
@@ -489,10 +1015,17 @@ router.get('/investments/holdings', async (req: Request, res: Response) => {
         const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
         const errorCode = err.response?.data?.error_code;
         if (errorCode === 'PRODUCT_NOT_READY' || errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+          if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+            staleItemIds.add(item.item_id);
+          }
           continue;
         }
         throw itemErr;
       }
+    }
+
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
     }
 
     const payload = { holdings: allHoldings };
@@ -533,10 +1066,12 @@ router.post('/investments/refresh', async (req: Request, res: Response) => {
         message: 'Request body must include walletAddress',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json({ success: true, message: 'No linked items' });
     }
 
@@ -552,7 +1087,12 @@ router.post('/investments/refresh', async (req: Request, res: Response) => {
     }
 
     const cacheService = await getCacheService();
-    if (cacheService) await cacheService.del(CacheKeys.plaidInvestmentsHoldings(key));
+    if (cacheService) {
+      await Promise.all([
+        cacheService.del(CacheKeys.plaidInvestmentsHoldings(key)),
+        cacheService.del(CacheKeys.plaidInvestmentAccounts(key)),
+      ]);
+    }
 
     res.json({ success: true });
   } catch (error: unknown) {
@@ -597,10 +1137,12 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
         message: 'Query parameter walletAddress is required',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json({
         inflowStreams: [],
         outflowStreams: [],
@@ -609,7 +1151,7 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
       });
     }
 
-    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const skipCache = parseRefreshFlag(req.query.refresh);
     const cacheService = await getCacheService();
     const cacheKey = CacheKeys.plaidRecurringTransactions(key);
     const ttl = parseInt(process.env.CACHE_TTL_PLAID_RECURRING ?? '86400', 10); // 24h default – recurring streams change rarely (monthly scale)
@@ -618,6 +1160,7 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
       const cached = await cacheService.get<{
         inflowStreams: RecurringStreamPayload[];
         outflowStreams: RecurringStreamPayload[];
+        notReady?: boolean;
       }>(cacheKey);
       if (cached) {
         return res.json({ ...cached, linked: true, cached: true });
@@ -628,13 +1171,20 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
     const outflowStreams: RecurringStreamPayload[] = [];
     const seenInflow = new Set<string>();
     const seenOutflow = new Set<string>();
+    const staleItemIds = new Set<string>();
+    let hadNotReadyItem = false;
+    let usedPendingFallback = false;
 
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
+    const currentDay = now.getDate();
+    const startDate = formatLocalDate(new Date(currentYear, currentMonth, 1));
+    const endDate = formatLocalDate(new Date(currentYear, currentMonth + 1, 0));
 
     for (const item of items) {
       try {
+        let itemHasUpcoming = false;
         const request: TransactionsRecurringGetRequest = { access_token: item.access_token };
         const response = await client.transactionsRecurringGet(request);
         const inflow = response.data.inflow_streams ?? [];
@@ -656,6 +1206,7 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
             day: d,
             iso_currency_code: iso,
           });
+          itemHasUpcoming = true;
         }
 
         for (const s of outflow) {
@@ -674,18 +1225,87 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
             day: d,
             iso_currency_code: iso,
           });
+          itemHasUpcoming = true;
+        }
+
+        // Fallback: if recurring streams are empty/not detected yet, use pending transactions for upcoming days.
+        if (!itemHasUpcoming) {
+          const pendingRequest: TransactionsGetRequest = {
+            access_token: item.access_token,
+            start_date: startDate,
+            end_date: endDate,
+            options: { count: 1, offset: 0 },
+          };
+          const pendingResponse = await client.transactionsGet(pendingRequest);
+          const pendingTransactions =
+            (pendingResponse.data as { pending_transactions?: PendingTransactionLike[] })
+              .pending_transactions ?? [];
+
+          for (const pendingTx of pendingTransactions) {
+            const txDate = pendingTx.date ?? pendingTx.authorized_date ?? null;
+            if (!isDateWithinRange(txDate, startDate, endDate)) continue;
+            const day = parseDayFromDate(txDate);
+            if (day == null || day < currentDay) continue;
+
+            const amount = Number(pendingTx.amount);
+            if (!Number.isFinite(amount) || amount === 0) continue;
+
+            const txId =
+              pendingTx.transaction_id ||
+              `${item.item_id}-${pendingTx.name ?? 'pending'}-${txDate ?? ''}-${amount}`;
+            const streamId = `pending-${txId}`;
+            const payload: RecurringStreamPayload = {
+              stream_id: streamId,
+              name:
+                pendingTx.merchant_name ||
+                pendingTx.name ||
+                pendingTx.original_description ||
+                (amount > 0 ? 'Payment' : 'Deposit'),
+              amount: Math.abs(amount),
+              day,
+              iso_currency_code: pendingTx.iso_currency_code ?? null,
+            };
+
+            if (amount > 0) {
+              if (seenOutflow.has(streamId)) continue;
+              seenOutflow.add(streamId);
+              outflowStreams.push(payload);
+            } else {
+              if (seenInflow.has(streamId)) continue;
+              seenInflow.add(streamId);
+              inflowStreams.push(payload);
+            }
+            itemHasUpcoming = true;
+            usedPendingFallback = true;
+          }
         }
       } catch (itemErr: unknown) {
         const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
         const errorCode = err.response?.data?.error_code;
-        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') continue;
-        if (errorCode === 'PRODUCTS_NOT_SUPPORTED' || errorCode === 'PRODUCT_NOT_READY') continue;
+        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+          staleItemIds.add(item.item_id);
+          continue;
+        }
+        if (errorCode === 'PRODUCT_NOT_READY') {
+          hadNotReadyItem = true;
+          continue;
+        }
+        if (errorCode === 'PRODUCTS_NOT_SUPPORTED') continue;
         throw itemErr;
       }
     }
 
-    const payload = { inflowStreams, outflowStreams };
-    if (cacheService) await cacheService.set(cacheKey, payload, ttl);
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+    }
+
+    const payload = { inflowStreams, outflowStreams, notReady: hadNotReadyItem };
+    const hasAnyStream = inflowStreams.length > 0 || outflowStreams.length > 0;
+    const shouldSkipCache = hadNotReadyItem && !hasAnyStream;
+    if (cacheService && !shouldSkipCache) {
+      const effectiveTtl = usedPendingFallback ? Math.min(ttl, 900) : ttl;
+      await cacheService.set(cacheKey, payload, effectiveTtl);
+    }
     return res.json({ ...payload, linked: true, cached: false });
   } catch (error: unknown) {
     const err = error as { response?: { data?: unknown }; message?: string };
@@ -724,10 +1344,12 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
         message: 'Query parameter walletAddress is required',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json({
         spendingByDay: {} as SpendByDayPayload,
         totalSpent: 0,
@@ -740,17 +1362,20 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
     const y = now.getFullYear();
     const m = now.getMonth();
     const firstDay = new Date(y, m, 1);
-    const lastDay = new Date(y, m + 1, 0);
-    const startDate = firstDay.toISOString().slice(0, 10);
-    const endDate = lastDay.toISOString().slice(0, 10);
+    const startDate = formatLocalDate(firstDay);
+    const endDate = formatLocalDate(now); // month-to-date (matches SpendTracker footer "1 - today")
 
-    const skipCache = req.query.refresh === '1' || req.query.refresh === 'true';
+    const skipCache = parseRefreshFlag(req.query.refresh);
     const cacheService = await getCacheService();
     const cacheKey = CacheKeys.plaidSpend(key);
     const ttl = parseInt(process.env.CACHE_TTL_PLAID_SPEND ?? '3600', 10); // 1 hour – spending updates more often than recurring
 
     if (cacheService && !skipCache) {
-      const cached = await cacheService.get<{ spendingByDay: SpendByDayPayload; totalSpent: number }>(cacheKey);
+      const cached = await cacheService.get<{
+        spendingByDay: SpendByDayPayload;
+        totalSpent: number;
+        notReady?: boolean;
+      }>(cacheKey);
       if (cached) {
         return res.json({ ...cached, linked: true, cached: true });
       }
@@ -758,12 +1383,16 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
 
     const spendingByDay: SpendByDayPayload = {};
     let totalSpent = 0;
+    const staleItemIds = new Set<string>();
+    let hadNotReadyItem = false;
 
     for (const item of items) {
       try {
         let offset = 0;
         const count = 500;
         let totalTransactions = 0;
+        const seenPendingTxIds = new Set<string>();
+        const replacedPendingTxIds = new Set<string>();
 
         do {
           const request: TransactionsGetRequest = {
@@ -774,20 +1403,43 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
           };
           const response = await client.transactionsGet(request);
           const transactions = response.data.transactions ?? [];
+          const pendingTransactions =
+            (response.data as { pending_transactions?: PendingTransactionLike[] })
+              .pending_transactions ?? [];
           totalTransactions = response.data.total_transactions ?? 0;
 
           for (const tx of transactions) {
-            const amount = Number(tx.amount);
-            if (amount > 0) {
-              const dateStr = tx.date;
-              if (dateStr) {
-                const day = parseInt(dateStr.slice(8, 10), 10);
-                if (!Number.isNaN(day)) {
-                  spendingByDay[day] = (spendingByDay[day] ?? 0) + amount;
-                  totalSpent += amount;
-                }
-              }
+            if (tx.pending_transaction_id) {
+              replacedPendingTxIds.add(tx.pending_transaction_id);
             }
+
+            const amount = Number(tx.amount);
+            if (!(amount > 0)) continue;
+            const dateStr = tx.date ?? tx.authorized_date;
+            if (!isDateWithinRange(dateStr, startDate, endDate)) continue;
+            const day = parseDayFromDate(dateStr);
+            if (day == null) continue;
+            spendingByDay[day] = (spendingByDay[day] ?? 0) + amount;
+            totalSpent += amount;
+          }
+
+          for (const pendingTx of pendingTransactions) {
+            const pendingId = pendingTx.transaction_id;
+            if (pendingId) {
+              if (seenPendingTxIds.has(pendingId)) continue;
+              seenPendingTxIds.add(pendingId);
+              if (replacedPendingTxIds.has(pendingId)) continue;
+            }
+
+            const amount = Number(pendingTx.amount);
+            if (!(amount > 0)) continue;
+
+            const dateStr = pendingTx.date ?? pendingTx.authorized_date;
+            if (!isDateWithinRange(dateStr, startDate, endDate)) continue;
+            const day = parseDayFromDate(dateStr);
+            if (day == null) continue;
+            spendingByDay[day] = (spendingByDay[day] ?? 0) + amount;
+            totalSpent += amount;
           }
 
           offset += transactions.length;
@@ -795,14 +1447,27 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
       } catch (itemErr: unknown) {
         const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
         const errorCode = err.response?.data?.error_code;
-        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') continue;
-        if (errorCode === 'PRODUCTS_NOT_SUPPORTED' || errorCode === 'PRODUCT_NOT_READY') continue;
+        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+          staleItemIds.add(item.item_id);
+          continue;
+        }
+        if (errorCode === 'PRODUCT_NOT_READY') {
+          hadNotReadyItem = true;
+          continue;
+        }
+        if (errorCode === 'PRODUCTS_NOT_SUPPORTED') continue;
         throw itemErr;
       }
     }
 
-    const payload = { spendingByDay, totalSpent };
-    if (cacheService) await cacheService.set(cacheKey, payload, ttl);
+    if (staleItemIds.size > 0) {
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+    }
+
+    const payload = { spendingByDay, totalSpent, notReady: hadNotReadyItem };
+    const hasAnySpend = totalSpent > 0 || Object.keys(spendingByDay).length > 0;
+    const shouldSkipCache = hadNotReadyItem && !hasAnySpend;
+    if (cacheService && !shouldSkipCache) await cacheService.set(cacheKey, payload, ttl);
     return res.json({ ...payload, linked: true, cached: false });
   } catch (error: unknown) {
     const err = error as { response?: { data?: unknown }; message?: string };
@@ -830,20 +1495,17 @@ router.post('/disconnect', async (req: Request, res: Response) => {
         message: 'Request body must include walletAddress',
       });
     }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
     const key = walletAddress.toLowerCase();
-    const items = accessTokenStore.get(key);
-    if (!items?.length) {
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
       return res.json({ success: true });
     }
     if (itemId) {
-      const next = items.filter((i) => i.item_id !== itemId);
-      if (next.length === 0) {
-        accessTokenStore.delete(key);
-      } else {
-        accessTokenStore.set(key, next);
-      }
+      await plaidTokenStore.deleteItem(key, itemId);
     } else {
-      accessTokenStore.delete(key);
+      await plaidTokenStore.deleteAllItems(key);
     }
     const cacheService = await getCacheService();
     if (cacheService) {
@@ -851,6 +1513,8 @@ router.post('/disconnect', async (req: Request, res: Response) => {
       await cacheService.del(CacheKeys.plaidRecurringTransactions(key));
       await cacheService.del(CacheKeys.plaidSpend(key));
       await cacheService.del(CacheKeys.plaidInvestmentsHoldings(key));
+      await cacheService.del(CacheKeys.plaidLiabilities(key));
+      await cacheService.del(CacheKeys.plaidInvestmentAccounts(key));
     }
     res.json({ success: true });
   } catch (error: unknown) {

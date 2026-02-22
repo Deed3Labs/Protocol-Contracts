@@ -38,7 +38,7 @@ export interface UpcomingTransactionsProps {
 }
 
 export function UpcomingTransactions({ className, walletAddress }: UpcomingTransactionsProps) {
-  const { inflowStreams, outflowStreams, linked, isLoading, refresh } = useRecurringTransactions(walletAddress);
+  const { inflowStreams, outflowStreams, linked, notReady, isLoading, refresh } = useRecurringTransactions(walletAddress);
 
   const subscriptions: Subscription[] = outflowStreams.map((s, i) => ({
     id: s.stream_id,
@@ -235,9 +235,16 @@ export function UpcomingTransactions({ className, walletAddress }: UpcomingTrans
 
         {/* Footer - spacing aligned with SpendTracker */}
         <div className="flex items-center justify-between mt-4 pt-3 min-h-[2rem] border-t border-zinc-200 dark:border-zinc-800">
-          <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
-            {monthName} {currentDay} - {daysInMonth}
-          </span>
+          <div className="flex flex-col">
+            <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
+              {monthName} {currentDay} - {daysInMonth}
+            </span>
+            {linked && notReady && (
+              <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                Recurring data is still being prepared by your institution...
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">{upcomingCount} upcoming</span>
             <div className="flex -space-x-1 items-center">

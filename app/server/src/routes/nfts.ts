@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
+import { CacheKeys } from '../config/redis.js';
+import { requireWalletArrayMatch, requireWalletMatch } from '../middleware/auth.js';
+import { getCacheServiceSafe } from '../utils/cache.js';
 import { getDeedNFTs, getGeneralNFTs, getAllNFTsMultiChain } from '../services/nftService.js';
 
 const router = Router();
-const cacheServicePromise = getRedisClient().then((client) => new CacheService(client));
 
 /**
  * GET /api/nfts/:chainId/:address
@@ -33,15 +34,19 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
   try {
     const chainId = parseInt(req.params.chainId, 10);
     const address = req.params.address.toLowerCase();
+    if (!requireWalletMatch(req, res, address, 'address')) return;
+
     const contractAddress = req.query.contractAddress as string | undefined;
     const nftType = (req.query.type as string) || (contractAddress ? 'general' : 't-deed');
-    const cacheService = await cacheServicePromise;
+    const cacheService = await getCacheServiceSafe();
 
     // Check cache first
     const cacheKey = contractAddress 
       ? CacheKeys.nftList(chainId, address, contractAddress)
       : CacheKeys.nftList(chainId, address);
-    const cached = await cacheService.get<{ nfts: any[]; timestamp: number }>(cacheKey);
+    const cached = cacheService
+      ? await cacheService.get<{ nfts: any[]; timestamp: number }>(cacheKey)
+      : null;
     // Note: We deliberately don't return early here to ensure we don't trigger "headers already sent"
     // The previous implementation had a race condition or logic error where it might try to send response twice
     
@@ -68,11 +73,13 @@ router.get('/:chainId/:address', async (req: Request, res: Response) => {
     // Cache the result
     // Increased to 30 minutes (1800s) to reduce Alchemy compute unit usage - NFTs change infrequently
     const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '1800', 10);
-    await cacheService.set(
-      cacheKey,
-      { nfts, timestamp: Date.now() },
-      cacheTTL
-    );
+    if (cacheService) {
+      await cacheService.set(
+        cacheKey,
+        { nfts, timestamp: Date.now() },
+        cacheTTL
+      );
+    }
 
     clearTimeout(timeout);
     // Only send response if headers haven't been sent yet
@@ -136,7 +143,9 @@ router.post('/batch', async (req: Request, res: Response) => {
       });
     }
 
-    const cacheService = await cacheServicePromise;
+    if (!requireWalletArrayMatch(req, res, requests.map((r) => r.address), 'requests[].address')) return;
+
+    const cacheService = await getCacheServiceSafe();
     const results: Array<{
       chainId: number;
       address: string;
@@ -150,7 +159,9 @@ router.post('/batch', async (req: Request, res: Response) => {
     for (let i = 0; i < requests.length; i++) {
       const { chainId, address } = requests[i];
       const cacheKey = CacheKeys.nftList(chainId, address.toLowerCase());
-      const cached = await cacheService.get<{ nfts: any[]; timestamp: number }>(cacheKey);
+      const cached = cacheService
+        ? await cacheService.get<{ nfts: any[]; timestamp: number }>(cacheKey)
+        : null;
 
       if (cached) {
         results[i] = {
@@ -181,11 +192,13 @@ router.post('/batch', async (req: Request, res: Response) => {
 
         const cacheKey = CacheKeys.nftList(chainId, address.toLowerCase(), contractAddress);
         const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '1800', 10);
-        await cacheService.set(
-          cacheKey,
-          { nfts, timestamp: Date.now() },
-          cacheTTL
-        );
+        if (cacheService) {
+          await cacheService.set(
+            cacheKey,
+            { nfts, timestamp: Date.now() },
+            cacheTTL
+          );
+        }
 
         results[index] = {
           chainId,
@@ -310,7 +323,9 @@ router.post('/portfolio', async (req: Request, res: Response) => {
       }
     }
 
-    const cacheService = await cacheServicePromise;
+    if (!requireWalletArrayMatch(req, res, requests.map((r) => r.address), 'requests[].address')) return;
+
+    const cacheService = await getCacheServiceSafe();
     const results: Array<{
       address: string;
       chainId: number;
@@ -330,7 +345,9 @@ router.post('/portfolio', async (req: Request, res: Response) => {
 
       for (const chainId of chainIds) {
         const cacheKey = CacheKeys.nftList(chainId, addressLower);
-        const cached = await cacheService.get<{ nfts: any[]; timestamp: number }>(cacheKey);
+        const cached = cacheService
+          ? await cacheService.get<{ nfts: any[]; timestamp: number }>(cacheKey)
+          : null;
 
         if (cached) {
           results.push({
@@ -380,11 +397,13 @@ router.post('/portfolio', async (req: Request, res: Response) => {
             // Cache the result (Portfolio API format)
             const cacheKey = CacheKeys.nftList(chainId, address);
             const cacheTTL = parseInt(process.env.CACHE_TTL_NFT || '1800', 10);
-            await cacheService.set(
-              cacheKey,
-              { nfts, timestamp: Date.now() },
-              cacheTTL
-            );
+            if (cacheService) {
+              await cacheService.set(
+                cacheKey,
+                { nfts, timestamp: Date.now() },
+                cacheTTL
+              );
+            }
 
             results.push({
               address,

@@ -7,6 +7,7 @@ import Home from "@/components/Home"; // Keeping for reference or fallback
 import BrokerageHome from "@/components/BrokerageHome";
 import BorrowHome from "@/components/portfolio/BorrowHome";
 import EarnHome from "@/components/portfolio/EarnHome";
+import UnifiedWealthHome from "@/components/portfolio/UnifiedWealthHome";
 import MarketsHome from "@/components/portfolio/MarketsHome";
 import LoginPage from "@/components/LoginPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -33,7 +34,6 @@ import PullToRefresh from "@/components/ui/PullToRefresh";
 import ScrollToTop from "@/components/ScrollToTop";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { ShareTarget } from "@/pages/ShareTarget";
-import { PlaidOAuthPage } from "@/pages/PlaidOAuthPage";
 import { PWAInitializer } from "@/components/PWAInitializer";
 
 const LegacyLayout = () => {
@@ -140,15 +140,13 @@ function App() {
                     {/* Share Target - Public */}
                     <Route path="/share" element={<ShareTarget />} />
                     
-                    {/* Plaid OAuth redirect - Public (user returns here after bank OAuth e.g. Chase) */}
-                    <Route path="/plaid-oauth" element={<PlaidOAuthPage />} />
-                    
                     {/* App Routes wrapped in PullToRefresh Layout - Protected */}
                     {/* Pass true if splash was skipped OR if splash just finished */}
                     <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} />}>
                       <Route path="/" element={<BrokerageHome />} />
                       <Route path="/markets" element={<MarketsHome />} />
                       <Route path="/earn" element={<EarnHome />} />
+                      <Route path="/equity" element={<UnifiedWealthHome />} />
                       <Route path="/borrow" element={<BorrowHome />} />
                     </Route>
                     

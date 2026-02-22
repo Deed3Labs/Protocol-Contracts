@@ -14,15 +14,8 @@ export async function rateLimiter(
     try {
       const cacheService = await cacheServicePromise;
       
-      // Use IP address or user identifier
-      // Handle x-forwarded-for which can be string or string[]
-      const forwardedFor = req.headers['x-forwarded-for'];
-      const forwardedIp = Array.isArray(forwardedFor) 
-        ? forwardedFor[0] 
-        : typeof forwardedFor === 'string' 
-          ? forwardedFor.split(',')[0].trim() 
-          : null;
-      const identifier = req.ip || forwardedIp || 'unknown';
+      // req.ip is proxy-aware because app.set('trust proxy', 1) is enabled in index.ts.
+      const identifier = req.ip || req.socket.remoteAddress || 'unknown';
       const window = Math.floor(Date.now() / windowMs).toString();
       const key = CacheKeys.rateLimit(identifier, window);
 

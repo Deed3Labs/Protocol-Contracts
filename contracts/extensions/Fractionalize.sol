@@ -7,6 +7,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {StringsUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC1155Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC1155/IERC1155Upgradeable.sol";
 import "../core/interfaces/IDeedNFT.sol";
 import "../core/interfaces/ISubdivide.sol";
 import "../core/interfaces/IFractionalize.sol";
@@ -148,7 +149,6 @@ contract Fractionalize is
         // Transfer asset from caller to contract
         if (params.assetType == FractionAssetType.DeedNFT) {
             require(deedNFT.ownerOf(params.originalTokenId) == msg.sender, "Not asset owner");
-            require(deedNFT._exists(params.originalTokenId), "DeedNFT does not exist");
             deedNFT.transferFrom(msg.sender, address(this), params.originalTokenId);
         } else {
             require(subdivideNFT.ownerOf(params.originalTokenId) == msg.sender, "Not asset owner");
@@ -211,11 +211,7 @@ contract Fractionalize is
         FractionInfo storage fraction = fractions[params.fractionId];
         require(fraction.isActive, "Fraction not active");
         require(params.amounts.length == params.recipients.length, "Array length mismatch");
-
-        address originalOwner = (fraction.assetType == FractionAssetType.DeedNFT)
-            ? deedNFT.ownerOf(fraction.originalTokenId)
-            : subdivideNFT.ownerOf(fraction.originalTokenId);
-        require(msg.sender == originalOwner, "Not original owner");
+        require(msg.sender == fraction.collectionAdmin, "Not collection admin");
 
         for (uint256 i = 0; i < params.amounts.length; i++) {
             require(params.amounts[i] > 0, "Amount must be greater than zero");
@@ -258,15 +254,19 @@ contract Fractionalize is
         FractionInfo storage fraction = fractions[params.fractionId];
         require(fraction.isActive, "Fraction not active");
 
-        if (params.checkApprovals) {
+        // If no shares have been minted yet, only the collection admin can recover the locked asset.
+        if (fraction.activeShares == 0) {
+            require(msg.sender == fraction.collectionAdmin, "Only collection admin can unlock without shares");
+        } else if (params.checkApprovals) {
             require(_checkApproval(params.fractionId), "Transfer not approved");
         } else {
             require(getVotingPower(params.fractionId, msg.sender) == fraction.activeShares, "Must own all shares");
         }
 
+        // Mark inactive before external transfers; state will roll back if transfer fails.
+        fraction.isActive = false;
         _burnAllShares(params.fractionId);
         _transferAsset(fraction, params.to);
-        fraction.isActive = false;
         emit AssetUnlocked(params.fractionId, fraction.originalTokenId, params.to);
     }
 
@@ -282,18 +282,24 @@ contract Fractionalize is
         FractionInfo storage fraction = fractions[fractionId];
         require(fraction.isActive, "Fraction not active");
         require(fraction.assetType == FractionAssetType.DeedNFT, "Not a DeedNFT asset");
-        
-        if (!deedNFT._exists(fraction.originalTokenId)) {
+
+        // ownerOf will revert for nonexistent tokens.
+        try deedNFT.ownerOf(fraction.originalTokenId) returns (address) {} catch {
             return (false, "DeedNFT does not exist");
         }
-        
+
         (bool isDeedValidated, address validator) = deedNFT.getValidationStatus(fraction.originalTokenId);
         if (!isDeedValidated) {
             return (false, "DeedNFT is not validated");
         }
-        
-        uint8 assetType = deedNFT.getAssetType(fraction.originalTokenId);
-        bool canSubdivide = deedNFT.canSubdivide(fraction.originalTokenId);
+
+        uint8 assetType = 0;
+        bytes memory assetTypeBytes = deedNFT.getTraitValue(fraction.originalTokenId, keccak256("assetType"));
+        if (assetTypeBytes.length > 0) {
+            assetType = uint8(abi.decode(assetTypeBytes, (uint8)));
+        }
+
+        bool canSubdivide = (assetType == 0 || assetType == 2);
         return (true, string(abi.encodePacked(
             "Valid DeedNFT, Asset Type: ", uint256(assetType).toString(), 
             ", Validator: ", _addressToString(validator),
@@ -318,8 +324,12 @@ contract Fractionalize is
         FractionInfo storage fraction = fractions[fractionId];
         require(fraction.isActive, "Fraction not active");
         require(fraction.assetType == FractionAssetType.DeedNFT, "Not a DeedNFT asset");
-        
-        assetType = deedNFT.getAssetType(fraction.originalTokenId);
+
+        bytes memory assetTypeBytes = deedNFT.getTraitValue(fraction.originalTokenId, keccak256("assetType"));
+        if (assetTypeBytes.length > 0) {
+            assetType = uint8(abi.decode(assetTypeBytes, (uint8)));
+        }
+
         (isValidated, validator) = deedNFT.getValidationStatus(fraction.originalTokenId);
         tokenURI = deedNFT.tokenURI(fraction.originalTokenId);
     }
@@ -597,10 +607,7 @@ contract Fractionalize is
         uint256 amount,
         address recipient
     ) internal {
-        address originalOwner = (fraction.assetType == FractionAssetType.DeedNFT)
-            ? deedNFT.ownerOf(fraction.originalTokenId)
-            : subdivideNFT.ownerOf(fraction.originalTokenId);
-        require(msg.sender == originalOwner, "Not original owner");
+        require(msg.sender == fraction.collectionAdmin, "Not collection admin");
 
         _mintShares(fraction, fractionId, amount, recipient);
     }

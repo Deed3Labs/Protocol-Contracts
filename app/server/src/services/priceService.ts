@@ -86,7 +86,7 @@ export async function getTokenPrice(
  * https://www.alchemy.com/docs/reference/get-token-prices-by-address
  * 
  * @param requests - Array of { chainId, tokenAddress } to fetch prices for
- * @returns Map of tokenAddress -> price (normalized to lowercase)
+ * @returns Map of `${chainId}:${tokenAddressLower}` -> price
  */
 export async function getAlchemyPricesBatch(
   requests: Array<{ chainId: number; tokenAddress: string }>
@@ -173,7 +173,10 @@ export async function getAlchemyPricesBatch(
             if (usdPrice?.value) {
               const price = parseFloat(usdPrice.value);
               if (price && price > 0 && isFinite(price)) {
-                networkPriceMap.set(originalRequest.tokenAddress.toLowerCase(), price);
+                networkPriceMap.set(
+                  `${originalRequest.chainId}:${originalRequest.tokenAddress.toLowerCase()}`,
+                  price
+                );
               }
             }
           }
