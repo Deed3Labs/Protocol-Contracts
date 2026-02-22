@@ -82,6 +82,12 @@ function isLiabilityLikeAccount(account: BankAccountBalance): boolean {
   );
 }
 
+function isCreditLikeAccount(account: BankAccountBalance): boolean {
+  const type = (account.type ?? '').toLowerCase();
+  const subtype = (account.subtype ?? '').toLowerCase();
+  return type === 'credit' || subtype.includes('credit');
+}
+
 function getAvailableLikeBalance(account: BankAccountBalance): number {
   if (typeof account.available === 'number' && !Number.isNaN(account.available)) {
     return account.available;
@@ -107,6 +113,14 @@ function getSecondaryBalanceLabel(account: BankAccountBalance): string | null {
   if (typeof current !== 'number' || Number.isNaN(current)) return null;
   if (current === primary) return null;
   return isLiabilityLikeAccount(account) ? `Used: $${current.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `Current: $${current.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function getCreditLimitLabel(account: BankAccountBalance): string | null {
+  if (!isCreditLikeAccount(account)) return null;
+  if (typeof account.limit === 'number' && !Number.isNaN(account.limit)) {
+    return `Limit: $${account.limit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return 'Limit: unavailable';
 }
 
 function formatCurrencyCompact(value: number | null | undefined): string {
@@ -1216,6 +1230,7 @@ export default function BrokerageHome() {
                           {displayedBankAccounts.map((account) => {
                             const balance = getAvailableLikeBalance(account);
                             const secondaryBalanceLabel = getSecondaryBalanceLabel(account);
+                            const creditLimitLabel = getCreditLimitLabel(account);
                             const displayName = account.name || 'Account';
                             const maskText = account.mask ? `•••• ${account.mask}` : '';
                             const liability = liabilitiesByAccountId.get(account.account_id);
@@ -1260,6 +1275,9 @@ export default function BrokerageHome() {
                                     </p>
                                     {secondaryBalanceLabel ? (
                                       <p className="text-zinc-500 dark:text-zinc-400 text-xs">{secondaryBalanceLabel}</p>
+                                    ) : null}
+                                    {creditLimitLabel ? (
+                                      <p className="text-zinc-500 dark:text-zinc-400 text-xs">{creditLimitLabel}</p>
                                     ) : null}
                                   </div>
                                 </div>
