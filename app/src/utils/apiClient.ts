@@ -841,9 +841,10 @@ export async function getPlaidRecurringTransactions(
   options?: { refresh?: boolean }
 ): Promise<PlaidRecurringResponse | null> {
   const encoded = encodeURIComponent(walletAddress);
-  const qs = options?.refresh ? '&refresh=1' : '';
+  const qs = options?.refresh ? `&refresh=1&_t=${Date.now()}` : '';
   const response = await apiRequest<PlaidRecurringResponse>(
-    `/api/plaid/recurring-transactions?walletAddress=${encoded}${qs}`
+    `/api/plaid/recurring-transactions?walletAddress=${encoded}${qs}`,
+    { ...(options?.refresh && { cache: 'no-store' as RequestCache }) }
   );
   if (response.error) return null;
   if (response.data) return response.data;
@@ -871,9 +872,10 @@ export async function getPlaidSpend(
   options?: { refresh?: boolean }
 ): Promise<PlaidSpendResponse | null> {
   const encoded = encodeURIComponent(walletAddress);
-  const qs = options?.refresh ? '&refresh=1' : '';
+  const qs = options?.refresh ? `&refresh=1&_t=${Date.now()}` : '';
   const response = await apiRequest<PlaidSpendResponse>(
-    `/api/plaid/transactions/spend?walletAddress=${encoded}${qs}`
+    `/api/plaid/transactions/spend?walletAddress=${encoded}${qs}`,
+    { ...(options?.refresh && { cache: 'no-store' as RequestCache }) }
   );
   if (response.error) return null;
   if (response.data) return response.data;

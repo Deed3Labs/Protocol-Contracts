@@ -349,12 +349,27 @@ export function TradeModal({ open, onOpenChange, initialTradeType = "buy", initi
       if (paymentMethod.id === "bank" && address && toAsset && amount && parseFloat(amount) > 0) {
         const destCurrency = toAsset.symbol.toUpperCase() === "USD" ? "USDC" : toAsset.symbol;
         const destNetwork = chainIdToStripeNetwork(toChainId ?? toAsset.chainId);
+        const isStandalone =
+          window.matchMedia('(display-mode: standalone)').matches ||
+          (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+        let pendingWindow: Window | null = null;
+        if (!isStandalone) {
+          // Open synchronously to avoid popup blocking on iOS Safari after async awaits.
+          pendingWindow = window.open("", "_blank", "noopener,noreferrer");
+        }
         const url = await getBridgeFundingUrl(address, amount, destCurrency, destNetwork);
         if (url) {
-          window.open(url, "_blank", "noopener,noreferrer");
+          if (pendingWindow && !pendingWindow.closed) {
+            pendingWindow.location.href = url;
+          } else {
+            window.location.assign(url);
+          }
           setFundingCompleteMessage("Funding initiated. Funds should appear in your wallet within 1-3 business days.");
           setStep("bank_pending");
           return;
+        }
+        if (pendingWindow && !pendingWindow.closed) {
+          pendingWindow.close();
         }
         setFundingCompleteMessage("Bank funding is currently unavailable. Please try card funding instead.");
         setStep("funding_complete");
