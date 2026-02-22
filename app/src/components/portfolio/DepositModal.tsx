@@ -2,7 +2,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft, AlertCircle } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
-import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken } from '@/utils/apiClient';
+import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken, getBridgeOnboardingUrl } from '@/utils/apiClient';
 import { usePortfolio } from '@/context/PortfolioContext';
 
 // Type declarations for Stripe Onramp (loaded via script tags)
@@ -31,16 +31,24 @@ interface DepositModalProps {
   initialOption?: 'bank' | 'card' | null;
 }
 
+type DepositOption = 'bank' | 'wire' | 'crypto' | 'card';
+
 const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const onrampElementRef = useRef<HTMLDivElement>(null);
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [selectedOption, setSelectedOption] = useState<DepositOption | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [onrampSession, setOnrampSession] = useState<any>(null);
   const [isLoadingLinkToken, setIsLoadingLinkToken] = useState(false);
   const [bankError, setBankError] = useState<string | null>(null);
   const [isPullingAccounts, setIsPullingAccounts] = useState(false);
+  const [isLoadingBridgeOnboarding, setIsLoadingBridgeOnboarding] = useState(false);
+  const [bridgeError, setBridgeError] = useState<string | null>(null);
+  const [bridgeOnboardingOpened, setBridgeOnboardingOpened] = useState(false);
+  const [bridgeFullName, setBridgeFullName] = useState('');
+  const [bridgeEmail, setBridgeEmail] = useState('');
+  const [bridgeCustomerType, setBridgeCustomerType] = useState<'individual' | 'business'>('individual');
   const plaidSuccessFiredRef = useRef(false);
   const plaidOAuthResumeAttemptedRef = useRef(false);
   const { address } = useAppKitAccount();
@@ -96,6 +104,12 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
       setOnrampSession(null);
       setBankError(null);
       setIsPullingAccounts(false);
+      setBridgeError(null);
+      setBridgeOnboardingOpened(false);
+      setIsLoadingBridgeOnboarding(false);
+      setBridgeFullName('');
+      setBridgeEmail('');
+      setBridgeCustomerType('individual');
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
@@ -469,6 +483,51 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
     void openPlaidLink();
   }, [hasPlaidOAuthReturnParams, isOpen, openPlaidLink, selectedOption]);
 
+  const openBridgeOnboarding = useCallback(async () => {
+    if (!address) {
+      setBridgeError('Please connect your wallet first');
+      return;
+    }
+
+    const normalizedFullName = bridgeFullName.trim();
+    const normalizedEmail = bridgeEmail.trim().toLowerCase();
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(normalizedEmail);
+    if (normalizedFullName.length < 2) {
+      setBridgeError('Please enter your legal full name');
+      return;
+    }
+    if (!emailValid) {
+      setBridgeError('Please enter a valid email address');
+      return;
+    }
+
+    setIsLoadingBridgeOnboarding(true);
+    setBridgeError(null);
+    setBridgeOnboardingOpened(false);
+
+    try {
+      const onboarding = await getBridgeOnboardingUrl(address, {
+        hasPlaidAccount: bankLinked && bankAccounts.length > 0,
+        fullName: normalizedFullName,
+        email: normalizedEmail,
+        customerType: bridgeCustomerType,
+      });
+      if (!onboarding?.url) {
+        throw new Error('Bridge onboarding is unavailable right now');
+      }
+
+      window.open(onboarding.url, '_blank', 'noopener,noreferrer');
+      setBridgeOnboardingOpened(true);
+    } catch (e) {
+      setBridgeError(e instanceof Error ? e.message : 'Failed to open Bridge onboarding');
+    } finally {
+      setIsLoadingBridgeOnboarding(false);
+    }
+  }, [address, bankLinked, bankAccounts.length, bridgeCustomerType, bridgeEmail, bridgeFullName]);
+
+  const bridgeEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(bridgeEmail.trim());
+  const canStartBridgeOnboarding = bridgeFullName.trim().length >= 2 && bridgeEmailValid;
+
   const depositOptions = [
     {
       id: 'bank',
@@ -479,8 +538,8 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
     },
     {
       id: 'wire',
-      title: 'Wire Transfer',
-      description: 'Domestic & international wire instructions',
+      title: 'Direct Deposit (Bridge)',
+      description: 'Onboard in Bridge for payroll and bank deposit rails',
       icon: ArrowDownLeft,
       delay: 0.15,
     },
@@ -522,7 +581,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
             className="relative w-full max-w-lg bg-white dark:bg-[#0e0e0e] rounded shadow-2xl border-[0.5px] border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col max-h-[90vh]"
           >
             {/* Main Header - only show when not on card or bank screen */}
-            {selectedOption !== 'card' && selectedOption !== 'bank' && (
+            {selectedOption !== 'card' && selectedOption !== 'bank' && selectedOption !== 'wire' && (
               <div className="flex items-center justify-between p-6 pb-2">
                 <div>
                   <h2 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight">Deposit</h2>
@@ -675,6 +734,16 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
                             'Connect more accounts'
                           )}
                         </button>
+                        <button
+                          onClick={() => {
+                            setBridgeError(null);
+                            setBridgeOnboardingOpened(false);
+                            setSelectedOption('wire');
+                          }}
+                          className="w-full py-3 px-4 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors"
+                        >
+                          Set up direct deposit in Bridge
+                        </button>
                       </div>
                     ) : (
                       <div className="space-y-4">
@@ -694,6 +763,143 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
                           ) : (
                             'Connect with Plaid'
                           )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : selectedOption === 'wire' ? (
+                <div className="flex flex-col h-full min-h-0">
+                  <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800 flex-shrink-0">
+                    <button
+                      onClick={() => {
+                        setSelectedOption(null);
+                        setBridgeError(null);
+                        setBridgeOnboardingOpened(false);
+                      }}
+                      className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                    </button>
+                    <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Direct Deposit Setup</h2>
+                    <div className="w-9" />
+                  </div>
+                  <div className="flex-1 overflow-auto p-6">
+                    {!address ? (
+                      <div className="text-center py-6">
+                        <p className="text-zinc-500 dark:text-zinc-400 mb-4">
+                          Please connect your wallet to continue
+                        </p>
+                        <button
+                          onClick={() => setSelectedOption(null)}
+                          className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                        >
+                          ← Back
+                        </button>
+                      </div>
+                    ) : !bankLinked || bankAccounts.length === 0 ? (
+                      <div className="space-y-4">
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                          Link a bank account with Plaid first, then continue in Bridge to set up direct deposit onboarding.
+                        </p>
+                        <button
+                          onClick={() => {
+                            setBridgeError(null);
+                            setSelectedOption('bank');
+                          }}
+                          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-black dark:bg-white text-white dark:text-black font-medium hover:opacity-90"
+                        >
+                          Link bank with Plaid
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                          Your bank is linked. Continue in Bridge to complete onboarding and direct deposit setup.
+                        </p>
+                        <div className="space-y-3 p-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50">
+                          <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                            Bridge onboarding details
+                          </p>
+                          <input
+                            type="text"
+                            value={bridgeFullName}
+                            onChange={(e) => {
+                              setBridgeFullName(e.target.value);
+                              if (bridgeError) setBridgeError(null);
+                            }}
+                            placeholder="Legal full name"
+                            className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-[#0e0e0e] px-3 py-2 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
+                          />
+                          <input
+                            type="email"
+                            value={bridgeEmail}
+                            onChange={(e) => {
+                              setBridgeEmail(e.target.value);
+                              if (bridgeError) setBridgeError(null);
+                            }}
+                            placeholder="Email address"
+                            className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-[#0e0e0e] px-3 py-2 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setBridgeCustomerType('individual')}
+                              className={`py-2 px-3 rounded-lg border text-sm transition-colors ${
+                                bridgeCustomerType === 'individual'
+                                  ? 'border-zinc-900 dark:border-zinc-100 text-zinc-900 dark:text-zinc-100 bg-white dark:bg-black'
+                                  : 'border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 bg-transparent'
+                              }`}
+                            >
+                              Individual
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBridgeCustomerType('business')}
+                              className={`py-2 px-3 rounded-lg border text-sm transition-colors ${
+                                bridgeCustomerType === 'business'
+                                  ? 'border-zinc-900 dark:border-zinc-100 text-zinc-900 dark:text-zinc-100 bg-white dark:bg-black'
+                                  : 'border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 bg-transparent'
+                              }`}
+                            >
+                              Business
+                            </button>
+                          </div>
+                          {!bridgeEmailValid && bridgeEmail.trim().length > 0 && (
+                            <p className="text-xs text-red-600 dark:text-red-400">
+                              Enter a valid email address to continue.
+                            </p>
+                          )}
+                        </div>
+                        {bridgeError && (
+                          <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+                            {bridgeError}
+                          </div>
+                        )}
+                        {bridgeOnboardingOpened && (
+                          <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50 px-3 py-2 text-sm text-zinc-600 dark:text-zinc-300">
+                            Bridge opened in a new tab. Complete onboarding there, then come back here.
+                          </div>
+                        )}
+                        <button
+                          onClick={openBridgeOnboarding}
+                          disabled={isLoadingBridgeOnboarding || !canStartBridgeOnboarding}
+                          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-black dark:bg-white text-white dark:text-black font-medium hover:opacity-90 disabled:opacity-50"
+                        >
+                          {isLoadingBridgeOnboarding ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Opening Bridge...
+                            </>
+                          ) : (
+                            'Continue onboarding in Bridge'
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setSelectedOption('bank')}
+                          className="w-full py-3 px-4 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors"
+                        >
+                          Manage linked bank accounts
                         </button>
                       </div>
                     )}
@@ -779,6 +985,10 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
                         setSelectedOption('card');
                       } else if (option.id === 'bank') {
                         setSelectedOption('bank');
+                      } else if (option.id === 'wire') {
+                        setBridgeError(null);
+                        setBridgeOnboardingOpened(false);
+                        setSelectedOption('wire');
                       } else {
                         console.log('Selected option:', option.id);
                       }
@@ -804,7 +1014,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
             </div>
 
             {/* Footer - hide when on card or bank screen */}
-            {selectedOption !== 'card' && selectedOption !== 'bank' && (
+            {selectedOption !== 'card' && selectedOption !== 'bank' && selectedOption !== 'wire' && (
               <div className="p-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30 text-center">
                 <p className="text-[11px] text-zinc-400 dark:text-zinc-500 max-w-xs mx-auto leading-relaxed">
                   By making a deposit, you agree to our Terms of Service. 

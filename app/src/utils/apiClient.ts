@@ -881,6 +881,40 @@ export async function getPlaidSpend(
 }
 
 /**
+ * Bridge: get URL to open Bridge onboarding flow for direct deposit setup
+ */
+export interface BridgeOnboardingResponse {
+  url: string;
+  source?: 'existing_customer' | 'new_customer' | 'configured_url';
+  customerId?: string | null;
+  kycUrl?: string | null;
+  tosUrl?: string | null;
+}
+
+export async function getBridgeOnboardingUrl(
+  walletAddress: string,
+  options?: {
+    hasPlaidAccount?: boolean;
+    fullName?: string;
+    email?: string;
+    customerType?: 'individual' | 'business';
+  }
+): Promise<BridgeOnboardingResponse | null> {
+  const response = await apiRequest<BridgeOnboardingResponse>('/api/bridge/onboarding-url', {
+    method: 'POST',
+    body: JSON.stringify({
+      walletAddress,
+      ...(options?.hasPlaidAccount != null ? { hasPlaidAccount: options.hasPlaidAccount } : {}),
+      ...(options?.fullName ? { fullName: options.fullName } : {}),
+      ...(options?.email ? { email: options.email } : {}),
+      ...(options?.customerType ? { customerType: options.customerType } : {}),
+    }),
+  });
+  if (response.error || !response.data?.url) return null;
+  return response.data;
+}
+
+/**
  * Bridge: get URL to open Bridge funding flow (ACH/wire) with wallet, amount, destination currency and network
  */
 export async function getBridgeFundingUrl(
