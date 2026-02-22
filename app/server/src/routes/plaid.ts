@@ -282,6 +282,7 @@ type BalanceAccount = {
   mask?: string;
   current: number | null;
   available: number | null;
+  limit: number | null;
   item_id?: string;
   /** Plaid account type: depository, credit, loan, investment, other */
   type?: string;
@@ -562,6 +563,7 @@ router.get('/balances', async (req: Request, res: Response) => {
             mask: acc.mask ?? undefined,
             current: acc.balances?.current ?? null,
             available: acc.balances?.available ?? null,
+            limit: acc.balances?.limit ?? null,
             item_id: item.item_id,
             type: acc.type ?? undefined,
             subtype: acc.subtype ?? undefined,

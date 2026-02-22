@@ -43,23 +43,25 @@ interface ReturnViewProps {
   isNegative: boolean;
   holdings?: Holding[];
   balanceUSD?: number;
+  borrowingPower?: number;
 }
 
 // Return Tab View
-export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChange, dailyChangePercent, isNegative, holdings, balanceUSD }: ReturnViewProps) {
+export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChange, dailyChangePercent, isNegative, holdings, balanceUSD, borrowingPower }: ReturnViewProps) {
   const timeRanges = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', 'All'];
   const periodLabels: Record<string, string> = { '1D': 'today', '1W': 'past week', '1M': 'past month', '3M': 'past quarter', '6M': 'past 6 months', 'YTD': 'year to date', '1Y': 'past year', 'All': 'all time' };
   
-  // Memoize buying power – cash + crypto + NFTs only (exclude equity/RWA; those aren’t spendable in-app)
+  // Memoize buying power – cash + available credit + spendable assets
+  // (exclude equity/RWA; those aren’t directly spendable in-app)
   const buyingPower = useMemo(() => {
-    if (!holdings || holdings.length === 0) return balanceUSD || 0;
+    if (!holdings || holdings.length === 0) return (balanceUSD || 0) + (borrowingPower || 0);
     const cryptoAndNFTValue = holdings.reduce((sum, h) => {
       if (h.type === 'equity' || h.type === 'rwa') return sum;
       if (h.type === 'token' && isStablecoin(h.asset_symbol)) return sum;
       return sum + (h.valueUSD || 0);
     }, 0);
-    return (balanceUSD || 0) + cryptoAndNFTValue;
-  }, [holdings, balanceUSD]);
+    return (balanceUSD || 0) + (borrowingPower || 0) + cryptoAndNFTValue;
+  }, [holdings, balanceUSD, borrowingPower]);
   
   // Store previous values to detect changes
   const prevChartDataRef = useRef<ChartPoint[]>(chartData);

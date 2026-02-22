@@ -66,6 +66,24 @@ function isCashContributionAccount(account: BankAccountBalance): boolean {
   );
 }
 
+function getInferredLiabilityAvailableCredit(account: BankAccountBalance): number | null {
+  if (!isLiabilityLikeAccount(account)) return null;
+  if (typeof account.available === 'number' && !Number.isNaN(account.available)) {
+    return Math.max(account.available, 0);
+  }
+  const limit = account.limit;
+  const current = account.current;
+  if (
+    typeof limit === 'number' &&
+    !Number.isNaN(limit) &&
+    typeof current === 'number' &&
+    !Number.isNaN(current)
+  ) {
+    return Math.max(limit - current, 0);
+  }
+  return null;
+}
+
 function normalizeBankBalances(response: BankBalancesResponse | null): BankBalanceState {
   if (!response) return EMPTY_STATE;
 
@@ -81,9 +99,9 @@ function normalizeBankBalances(response: BankBalancesResponse | null): BankBalan
 
   const offchainBorrowingPower = response.accounts.reduce((sum, account) => {
     if (!isLiabilityLikeAccount(account)) return sum;
-    const available = account.available;
-    if (typeof available !== 'number' || Number.isNaN(available)) return sum;
-    return sum + Math.max(available, 0);
+    const availableCredit = getInferredLiabilityAvailableCredit(account);
+    if (availableCredit == null) return sum;
+    return sum + availableCredit;
   }, 0);
 
   const onchainBorrowingPower = 0;
