@@ -504,6 +504,14 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
     setIsLoadingBridgeOnboarding(true);
     setBridgeError(null);
     setBridgeOnboardingOpened(false);
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    let pendingWindow: Window | null = null;
+    if (!isStandalone) {
+      // Open synchronously to avoid popup blocking on iOS Safari after async awaits.
+      pendingWindow = window.open('', '_blank', 'noopener,noreferrer');
+    }
 
     try {
       const onboarding = await getBridgeOnboardingUrl(address, {
@@ -516,9 +524,16 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
         throw new Error('Bridge onboarding is unavailable right now');
       }
 
-      window.open(onboarding.url, '_blank', 'noopener,noreferrer');
-      setBridgeOnboardingOpened(true);
+      if (pendingWindow && !pendingWindow.closed) {
+        pendingWindow.location.href = onboarding.url;
+        setBridgeOnboardingOpened(true);
+      } else {
+        window.location.assign(onboarding.url);
+      }
     } catch (e) {
+      if (pendingWindow && !pendingWindow.closed) {
+        pendingWindow.close();
+      }
       setBridgeError(e instanceof Error ? e.message : 'Failed to open Bridge onboarding');
     } finally {
       setIsLoadingBridgeOnboarding(false);

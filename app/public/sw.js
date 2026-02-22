@@ -81,6 +81,11 @@ self.addEventListener('fetch', (event) => {
 
   // Strategy 3: API calls - Stale-While-Revalidate for better performance
   if (isAPI(url)) {
+    // Plaid endpoints are highly stateful and should always hit network to avoid stale OAuth/transaction data on mobile/PWA.
+    if (isPlaidAPI(url)) {
+      event.respondWith(networkOnly(request));
+      return;
+    }
     event.respondWith(staleWhileRevalidate(request, API_CACHE));
     return;
   }
@@ -181,6 +186,21 @@ async function staleWhileRevalidate(request, cacheName) {
   }
 }
 
+// Network only strategy for sensitive/stateful endpoints (e.g. Plaid)
+async function networkOnly(request) {
+  try {
+    return await fetch(request);
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: 'Network error', offline: true }),
+      {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+}
+
 // Helper functions
 function isStaticAsset(url) {
   return url.pathname.match(/\.(js|css|woff|woff2|ttf|otf)$/);
@@ -192,6 +212,10 @@ function isImage(url) {
 
 function isAPI(url) {
   return url.pathname.startsWith('/api/');
+}
+
+function isPlaidAPI(url) {
+  return url.pathname.startsWith('/api/plaid/');
 }
 
 function isHTML(url) {
