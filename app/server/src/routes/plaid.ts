@@ -329,6 +329,7 @@ type InvestmentAccountSummaryPayload = {
 
 type PendingTransactionLike = {
   transaction_id?: string;
+  account_id?: string;
   date?: string | null;
   authorized_date?: string | null;
   amount?: number | string | null;
@@ -367,6 +368,19 @@ function preferredAprPercentage(aprs: Array<{ apr_type: string; apr_percentage: 
   return purchase?.apr_percentage ?? aprs[0]?.apr_percentage ?? null;
 }
 
+function asFiniteNumber(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && !Number.isNaN(value) ? value : null;
+}
+
+function pickFirstFiniteNumber(...values: Array<number | null | undefined>): number | null {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value) && !Number.isNaN(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
 function isLiabilityLikeSubtype(subtype: string): boolean {
   return (
     subtype.includes('credit') ||
@@ -374,6 +388,12 @@ function isLiabilityLikeSubtype(subtype: string): boolean {
     subtype.includes('mortgage') ||
     subtype.includes('student')
   );
+}
+
+function isLiabilityLikeAccountType(accountType?: string | null, accountSubtype?: string | null): boolean {
+  const type = (accountType ?? '').toLowerCase();
+  const subtype = (accountSubtype ?? '').toLowerCase();
+  return type === 'credit' || type === 'loan' || isLiabilityLikeSubtype(subtype);
 }
 
 function shouldIncludeInCashBalance(accountType?: string | null, accountSubtype?: string | null): boolean {
@@ -391,6 +411,175 @@ function shouldIncludeInCashBalance(accountType?: string | null, accountSubtype?
     return true;
   }
   return false;
+}
+
+/**
+ * /accounts/get fallback can omit liability balance fields (limit/available) for some institutions.
+ * Try to enrich missing liability balance fields from /liabilities/get before deriving available credit.
+ */
+async function enrichLiabilityBalancesFromLiabilities(
+  client: PlaidApi,
+  accessToken: string,
+  accounts: AccountBase[],
+): Promise<AccountBase[]> {
+  const shouldEnrich = accounts.some((acc) => {
+    if (!isLiabilityLikeAccountType(acc.type, acc.subtype)) return false;
+    const balances = acc.balances;
+    return (
+      asFiniteNumber(balances?.current) == null ||
+      asFiniteNumber(balances?.available) == null ||
+      asFiniteNumber(balances?.limit) == null
+    );
+  });
+
+  if (!shouldEnrich) return accounts;
+
+  try {
+    const request: LiabilitiesGetRequest = { access_token: accessToken };
+    const response = await client.liabilitiesGet(request);
+    const liabilityAccounts = response.data.accounts ?? [];
+    if (liabilityAccounts.length === 0) return accounts;
+
+    const byId = new Map(liabilityAccounts.map((account) => [account.account_id, account]));
+    return accounts.map((acc) => {
+      if (!isLiabilityLikeAccountType(acc.type, acc.subtype)) return acc;
+      const liabilityAccount = byId.get(acc.account_id);
+      if (!liabilityAccount) return acc;
+
+      const existingBalances = acc.balances ?? liabilityAccount.balances;
+      if (!existingBalances) return acc;
+
+      const resolvedCurrent = pickFirstFiniteNumber(
+        asFiniteNumber(acc.balances?.current),
+        asFiniteNumber(liabilityAccount.balances?.current),
+      );
+      const resolvedAvailable = pickFirstFiniteNumber(
+        asFiniteNumber(acc.balances?.available),
+        asFiniteNumber(liabilityAccount.balances?.available),
+      );
+      const resolvedLimit = pickFirstFiniteNumber(
+        asFiniteNumber(acc.balances?.limit),
+        asFiniteNumber(liabilityAccount.balances?.limit),
+      );
+
+      return {
+        ...acc,
+        balances: {
+          ...existingBalances,
+          current: resolvedCurrent,
+          available: resolvedAvailable,
+          limit: resolvedLimit,
+        },
+      };
+    });
+  } catch (err: unknown) {
+    const info = getPlaidErrorInfo(err);
+    if (info.code === 'ITEM_LOGIN_REQUIRED' || info.code === 'INVALID_ACCESS_TOKEN') {
+      throw err;
+    }
+    if (
+      info.code === 'PRODUCTS_NOT_SUPPORTED' ||
+      info.code === 'PRODUCT_NOT_READY' ||
+      info.code === 'RATE_LIMIT_EXCEEDED' ||
+      info.status === 429
+    ) {
+      return accounts;
+    }
+    console.warn('Plaid liabilities fallback for balances failed:', info);
+    return accounts;
+  }
+}
+
+/**
+ * For some institutions, /accounts/get fallback can omit `available` for liability accounts.
+ * In that case derive available credit using Plaid's documented relationship:
+ * available ~= limit - current - pending_outflows + pending_inflows
+ * where pending transaction amounts are signed (outflows positive, inflows negative),
+ * so: limit - current - pendingSigned.
+ */
+async function applyDerivedLiabilityAvailable(
+  client: PlaidApi,
+  accessToken: string,
+  accounts: AccountBase[],
+): Promise<AccountBase[]> {
+  const targetAccountIds = new Set(
+    accounts
+      .filter((acc) => {
+        const available = acc.balances?.available;
+        const limit = acc.balances?.limit;
+        const current = acc.balances?.current;
+        const needsDerivation =
+          (available == null || Number.isNaN(available)) &&
+          typeof limit === 'number' &&
+          !Number.isNaN(limit) &&
+          typeof current === 'number' &&
+          !Number.isNaN(current);
+        return needsDerivation && isLiabilityLikeAccountType(acc.type, acc.subtype);
+      })
+      .map((acc) => acc.account_id)
+  );
+
+  if (targetAccountIds.size === 0) return accounts;
+
+  try {
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(start.getDate() - 30);
+    const pendingRequest: TransactionsGetRequest = {
+      access_token: accessToken,
+      start_date: formatLocalDate(start),
+      end_date: formatLocalDate(now),
+      // We only need pending_transactions from this response.
+      options: { count: 1, offset: 0 },
+    };
+    const pendingResponse = await client.transactionsGet(pendingRequest);
+    const pendingTransactions =
+      (pendingResponse.data as { pending_transactions?: PendingTransactionLike[] })
+        .pending_transactions ?? [];
+
+    const pendingSignedByAccount = new Map<string, number>();
+    for (const pendingTx of pendingTransactions) {
+      const accountId = pendingTx.account_id;
+      if (!accountId || !targetAccountIds.has(accountId)) continue;
+      const amount = Number(pendingTx.amount);
+      if (!Number.isFinite(amount) || Number.isNaN(amount)) continue;
+      pendingSignedByAccount.set(
+        accountId,
+        (pendingSignedByAccount.get(accountId) ?? 0) + amount
+      );
+    }
+
+    return accounts.map((acc) => {
+      if (!targetAccountIds.has(acc.account_id)) return acc;
+      const limit = acc.balances?.limit;
+      const current = acc.balances?.current;
+      if (
+        typeof limit !== 'number' ||
+        Number.isNaN(limit) ||
+        typeof current !== 'number' ||
+        Number.isNaN(current)
+      ) {
+        return acc;
+      }
+
+      const pendingSigned = pendingSignedByAccount.get(acc.account_id) ?? 0;
+      const derivedAvailable = Math.max(limit - current - pendingSigned, 0);
+      if (!acc.balances) return acc;
+
+      return {
+        ...acc,
+        balances: {
+          ...acc.balances,
+          available: derivedAvailable,
+        },
+      };
+    });
+  } catch (err: unknown) {
+    const info = getPlaidErrorInfo(err);
+    // Fail open: if pending lookup fails/rate-limits, keep original balances.
+    console.warn('Plaid pending fallback for derived liability available failed:', info);
+    return accounts;
+  }
 }
 
 function computeTotalBankCash(accounts: BalanceAccount[]): number {
@@ -540,6 +729,17 @@ router.get('/balances', async (req: Request, res: Response) => {
             throw fallbackErr;
           }
         }
+
+        accounts = await enrichLiabilityBalancesFromLiabilities(
+          client,
+          item.access_token,
+          accounts
+        );
+        accounts = await applyDerivedLiabilityAvailable(
+          client,
+          item.access_token,
+          accounts
+        );
 
         // Fingerprint for this Item (stable across refresh): sorted list of name+mask pairs
         const fingerprint = accounts
