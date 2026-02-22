@@ -24,6 +24,46 @@ const PLAID_OAUTH_STATE_PARAM = 'oauth_state_id';
 const PLAID_OAUTH_LINK_TOKEN_KEY = 'plaid_oauth_link_token';
 const PLAID_OAUTH_WALLET_KEY = 'plaid_oauth_wallet';
 
+type LiabilityLikeAccount = {
+  type?: string;
+  subtype?: string;
+  available: number | null;
+  current: number | null;
+  limit?: number | null;
+};
+
+function isLiabilityLikeAccount(account: LiabilityLikeAccount): boolean {
+  const type = (account.type ?? '').toLowerCase();
+  const subtype = (account.subtype ?? '').toLowerCase();
+  return (
+    type === 'credit' ||
+    type === 'loan' ||
+    subtype.includes('credit') ||
+    subtype.includes('loan') ||
+    subtype.includes('mortgage') ||
+    subtype.includes('student')
+  );
+}
+
+function getAvailableLikeBalance(account: LiabilityLikeAccount): number {
+  if (typeof account.available === 'number' && !Number.isNaN(account.available)) {
+    return account.available;
+  }
+  if (isLiabilityLikeAccount(account)) {
+    const limit = account.limit;
+    const current = account.current;
+    if (
+      typeof limit === 'number' &&
+      !Number.isNaN(limit) &&
+      typeof current === 'number' &&
+      !Number.isNaN(current)
+    ) {
+      return Math.max(limit - current, 0);
+    }
+  }
+  return account.current ?? 0;
+}
+
 interface DepositModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -726,10 +766,19 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
                                 </div>
                               </div>
                               <div className="text-right shrink-0 ml-2">
-                                {(account.current != null || account.available != null) && (
-                                  <p className="text-sm font-medium text-zinc-900 dark:text-white">
-                                    ${((account.current ?? account.available) ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </p>
+                                {(account.current != null || account.available != null || account.limit != null) && (
+                                  <>
+                                    <p className="text-sm font-medium text-zinc-900 dark:text-white">
+                                      ${getAvailableLikeBalance(account).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    {typeof account.current === 'number' &&
+                                      !Number.isNaN(account.current) &&
+                                      account.current !== getAvailableLikeBalance(account) && (
+                                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                                          {isLiabilityLikeAccount(account) ? 'Used' : 'Current'}: ${account.current.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                      )}
+                                  </>
                                 )}
                               </div>
                             </div>

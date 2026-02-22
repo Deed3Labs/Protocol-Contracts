@@ -69,6 +69,46 @@ function formatAccountTypeLabel(account: BankAccountBalance): string {
   return 'Account';
 }
 
+function isLiabilityLikeAccount(account: BankAccountBalance): boolean {
+  const type = (account.type ?? '').toLowerCase();
+  const subtype = (account.subtype ?? '').toLowerCase();
+  return (
+    type === 'credit' ||
+    type === 'loan' ||
+    subtype.includes('credit') ||
+    subtype.includes('loan') ||
+    subtype.includes('mortgage') ||
+    subtype.includes('student')
+  );
+}
+
+function getAvailableLikeBalance(account: BankAccountBalance): number {
+  if (typeof account.available === 'number' && !Number.isNaN(account.available)) {
+    return account.available;
+  }
+  if (isLiabilityLikeAccount(account)) {
+    const limit = account.limit;
+    const current = account.current;
+    if (
+      typeof limit === 'number' &&
+      !Number.isNaN(limit) &&
+      typeof current === 'number' &&
+      !Number.isNaN(current)
+    ) {
+      return Math.max(limit - current, 0);
+    }
+  }
+  return account.current ?? 0;
+}
+
+function getSecondaryBalanceLabel(account: BankAccountBalance): string | null {
+  const primary = getAvailableLikeBalance(account);
+  const current = account.current;
+  if (typeof current !== 'number' || Number.isNaN(current)) return null;
+  if (current === primary) return null;
+  return isLiabilityLikeAccount(account) ? `Used: $${current.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `Current: $${current.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function formatCurrencyCompact(value: number | null | undefined): string {
   if (value == null) return '$0';
   return `$${formatCompactNumber(value)}`;
@@ -744,7 +784,7 @@ export default function BrokerageHome() {
   // Sorted and displayed linked bank/investment accounts
   const sortedBankAccounts = useMemo(() => {
     const list = [...bankAccounts];
-    const getBalance = (a: BankAccountBalance) => (a.available ?? a.current ?? 0);
+    const getBalance = (a: BankAccountBalance) => getAvailableLikeBalance(a);
     list.sort((a, b) => {
       if (accountSort === 'Name (A–Z)') {
         return (a.name || '').localeCompare(b.name || '');
@@ -972,7 +1012,7 @@ export default function BrokerageHome() {
     switch (selectedTab) {
       case 'Return':
         return (
-          <ReturnView 
+          <ReturnView
             chartData={chartData}
             selectedRange={selectedRange}
             onRangeChange={handleRangeChange}
@@ -981,6 +1021,7 @@ export default function BrokerageHome() {
             isNegative={isNegative}
             holdings={allHoldings}
             balanceUSD={cashBalance}
+            borrowingPower={portfolioCashBalance?.borrowingPower ?? 0}
           />
         );
       case 'Income':
@@ -1173,7 +1214,8 @@ export default function BrokerageHome() {
                       <>
                         <div className="space-y-3">
                           {displayedBankAccounts.map((account) => {
-                            const balance = account.available ?? account.current ?? 0;
+                            const balance = getAvailableLikeBalance(account);
+                            const secondaryBalanceLabel = getSecondaryBalanceLabel(account);
                             const displayName = account.name || 'Account';
                             const maskText = account.mask ? `•••• ${account.mask}` : '';
                             const liability = liabilitiesByAccountId.get(account.account_id);
@@ -1216,9 +1258,9 @@ export default function BrokerageHome() {
                                     <p className="text-black dark:text-white font-semibold text-sm">
                                       ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </p>
-                                    {account.available != null && account.current != null && account.current !== account.available && (
-                                      <p className="text-zinc-500 dark:text-zinc-400 text-xs">Current: ${(account.current ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                                    )}
+                                    {secondaryBalanceLabel ? (
+                                      <p className="text-zinc-500 dark:text-zinc-400 text-xs">{secondaryBalanceLabel}</p>
+                                    ) : null}
                                   </div>
                                 </div>
                                 <div className="flex gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">

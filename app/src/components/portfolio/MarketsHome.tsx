@@ -76,6 +76,7 @@ export default function MarketsHome() {
 
   // Cash balance is automatically calculated from stablecoin holdings in PortfolioContext
   const cashBalance = portfolioCashBalance?.totalCash || 0;
+  const borrowingPower = portfolioCashBalance?.borrowingPower || 0;
   
   // Convert portfolio holdings to format compatible with buying power calculation
   const holdings = useMemo(() => {
@@ -92,9 +93,9 @@ export default function MarketsHome() {
   }, [portfolioHoldings]);
 
   // Calculate buying power - same formula as in TabViews.tsx
-  // Buying power = cash balance (stablecoins) + crypto tokens + NFTs
+  // Buying power = cash balance + available credit + crypto tokens + NFTs
   const buyingPower = useMemo(() => {
-    if (!holdings || holdings.length === 0) return cashBalance || 0;
+    if (!holdings || holdings.length === 0) return (cashBalance || 0) + (borrowingPower || 0);
     
     // Calculate crypto tokens (non-stablecoin tokens) and NFTs
     const cryptoAndNFTValue = holdings.reduce((sum, h) => {
@@ -105,9 +106,9 @@ export default function MarketsHome() {
       return sum + (h.valueUSD || 0);
     }, 0);
     
-    // Buying power = cash (stablecoins) + crypto + NFTs
-    return (cashBalance || 0) + cryptoAndNFTValue;
-  }, [holdings, cashBalance]);
+    // Buying power = cash (stablecoins + bank) + available credit + crypto + NFTs
+    return (cashBalance || 0) + (borrowingPower || 0) + cryptoAndNFTValue;
+  }, [holdings, cashBalance, borrowingPower]);
 
   useEffect(() => {
     const handleScroll = () => {

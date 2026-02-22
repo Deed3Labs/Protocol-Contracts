@@ -628,6 +628,8 @@ export interface BankAccountBalance {
   mask?: string;
   current: number | null;
   available: number | null;
+  /** Credit limit for liability accounts when provided by institution */
+  limit?: number | null;
   /** Plaid item id for this connection (for optional per-institution disconnect) */
   item_id?: string;
   /** Plaid account type: depository, credit, loan, investment, other */
