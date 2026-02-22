@@ -45,6 +45,12 @@ function isLiabilityLikeAccount(account: LiabilityLikeAccount): boolean {
   );
 }
 
+function isCreditLikeAccount(account: LiabilityLikeAccount): boolean {
+  const type = (account.type ?? '').toLowerCase();
+  const subtype = (account.subtype ?? '').toLowerCase();
+  return type === 'credit' || subtype.includes('credit');
+}
+
 function getAvailableLikeBalance(account: LiabilityLikeAccount): number {
   if (typeof account.available === 'number' && !Number.isNaN(account.available)) {
     return account.available;
@@ -62,6 +68,24 @@ function getAvailableLikeBalance(account: LiabilityLikeAccount): number {
     }
   }
   return account.current ?? 0;
+}
+
+function getSecondaryBalanceLabel(account: LiabilityLikeAccount): string | null {
+  const primary = getAvailableLikeBalance(account);
+  const current = account.current;
+  if (typeof current !== 'number' || Number.isNaN(current)) return null;
+  if (current === primary) return null;
+  return isLiabilityLikeAccount(account)
+    ? `Used: $${current.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : `Current: $${current.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function getCreditLimitLabel(account: LiabilityLikeAccount): string | null {
+  if (!isCreditLikeAccount(account)) return null;
+  if (typeof account.limit === 'number' && !Number.isNaN(account.limit)) {
+    return `Limit: $${account.limit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return 'Limit: unavailable';
 }
 
 interface DepositModalProps {
@@ -749,40 +773,48 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
                           <p className="text-xs font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 px-1">
                             Connected accounts
                           </p>
-                          {bankAccounts.map((account) => (
-                            <div
-                              key={account.account_id}
-                              className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200/50 dark:border-zinc-800/50"
-                            >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
-                                  <Building2 className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+                          {bankAccounts.map((account) => {
+                            const balance = getAvailableLikeBalance(account);
+                            const secondaryBalanceLabel = getSecondaryBalanceLabel(account);
+                            const creditLimitLabel = getCreditLimitLabel(account);
+                            return (
+                              <div
+                                key={account.account_id}
+                                className="flex items-center justify-between p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200/50 dark:border-zinc-800/50"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                                    <Building2 className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-zinc-900 dark:text-white truncate">{account.name}</p>
+                                    {account.mask != null && (
+                                      <p className="text-xs text-zinc-500 dark:text-zinc-400">•••• {account.mask}</p>
+                                    )}
+                                  </div>
                                 </div>
-                                <div className="min-w-0">
-                                  <p className="font-medium text-zinc-900 dark:text-white truncate">{account.name}</p>
-                                  {account.mask != null && (
-                                    <p className="text-xs text-zinc-500 dark:text-zinc-400">•••• {account.mask}</p>
+                                <div className="text-right shrink-0 ml-2">
+                                  {(account.current != null || account.available != null || account.limit != null) && (
+                                    <>
+                                      <p className="text-sm font-medium text-zinc-900 dark:text-white">
+                                        ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </p>
+                                      {secondaryBalanceLabel ? (
+                                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                                          {secondaryBalanceLabel}
+                                        </p>
+                                      ) : null}
+                                      {creditLimitLabel ? (
+                                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                                          {creditLimitLabel}
+                                        </p>
+                                      ) : null}
+                                    </>
                                   )}
                                 </div>
                               </div>
-                              <div className="text-right shrink-0 ml-2">
-                                {(account.current != null || account.available != null || account.limit != null) && (
-                                  <>
-                                    <p className="text-sm font-medium text-zinc-900 dark:text-white">
-                                      ${getAvailableLikeBalance(account).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </p>
-                                    {typeof account.current === 'number' &&
-                                      !Number.isNaN(account.current) &&
-                                      account.current !== getAvailableLikeBalance(account) && (
-                                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                                          {isLiabilityLikeAccount(account) ? 'Used' : 'Current'}: ${account.current.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </p>
-                                      )}
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                         <button
                           onClick={openPlaidLink}
