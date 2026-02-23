@@ -21,6 +21,8 @@ export type SendTransferStatus =
 export type SendClaimSessionStatus = 'OTP_SENT' | 'OTP_VERIFIED' | 'LOCKED' | 'COMPLETED' | 'EXPIRED';
 export type SendPayoutMethod = 'DEBIT' | 'BANK' | 'WALLET';
 export type SendPayoutAttemptStatus = 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'FALLBACK_REQUIRED';
+export type SendStripeRecipientStatus = 'PENDING_ONBOARDING' | 'READY' | 'RESTRICTED';
+export type SendBridgeRecipientStatus = 'PENDING_ONBOARDING' | 'READY' | 'RESTRICTED';
 
 export interface SendTransferRecord {
   id: number;
@@ -83,6 +85,33 @@ export interface SendClaimSessionWithTransfer {
   transfer: SendTransferRecord;
 }
 
+export interface SendStripeRecipientRecord {
+  id: number;
+  recipientContactHash: string;
+  recipientHintHash: string;
+  stripeAccountId: string;
+  onboardingStatus: SendStripeRecipientStatus;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  lastAccountLinkUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SendBridgeRecipientRecord {
+  id: number;
+  recipientContactHash: string;
+  recipientHintHash: string;
+  bridgeCustomerId: string | null;
+  bridgeExternalAccountId: string | null;
+  onboardingStatus: SendBridgeRecipientStatus;
+  lastOnboardingUrl: string | null;
+  lastKycUrl: string | null;
+  lastTosUrl: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface CreateSendTransferInput {
   transferId: string;
   senderWallet: string;
@@ -129,6 +158,27 @@ export interface CreateNotificationInput {
   provider: string;
   providerMessageId: string;
   status: string;
+}
+
+export interface UpsertStripeRecipientInput {
+  recipientContactHash: string;
+  recipientHintHash: string;
+  stripeAccountId: string;
+  onboardingStatus: SendStripeRecipientStatus;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  lastAccountLinkUrl?: string | null;
+}
+
+export interface UpsertBridgeRecipientInput {
+  recipientContactHash: string;
+  recipientHintHash: string;
+  bridgeCustomerId?: string | null;
+  bridgeExternalAccountId?: string | null;
+  onboardingStatus: SendBridgeRecipientStatus;
+  lastOnboardingUrl?: string | null;
+  lastKycUrl?: string | null;
+  lastTosUrl?: string | null;
 }
 
 type SendTransferDbRow = {
@@ -225,10 +275,39 @@ type ClaimSessionJoinDbRow = {
   st_updated_at: Date | string;
 };
 
+type SendStripeRecipientDbRow = {
+  id: string | number;
+  recipient_contact_hash: string;
+  recipient_hint_hash: string;
+  stripe_account_id: string;
+  onboarding_status: SendStripeRecipientStatus;
+  payouts_enabled: boolean;
+  details_submitted: boolean;
+  last_account_link_url: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
+type SendBridgeRecipientDbRow = {
+  id: string | number;
+  recipient_contact_hash: string;
+  recipient_hint_hash: string;
+  bridge_customer_id: string | null;
+  bridge_external_account_id: string | null;
+  onboarding_status: SendBridgeRecipientStatus;
+  last_onboarding_url: string | null;
+  last_kyc_url: string | null;
+  last_tos_url: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
 const TABLE_SEND_TRANSFERS = 'send_transfers';
 const TABLE_SEND_CLAIM_SESSIONS = 'send_claim_sessions';
 const TABLE_SEND_PAYOUT_ATTEMPTS = 'send_payout_attempts';
 const TABLE_SEND_NOTIFICATIONS = 'send_notifications';
+const TABLE_SEND_STRIPE_RECIPIENTS = 'send_stripe_recipients';
+const TABLE_SEND_BRIDGE_RECIPIENTS = 'send_bridge_recipients';
 const DEFAULT_MAX_ATTEMPTS = 3;
 
 function normalizeWalletAddress(walletAddress: string): string {
@@ -450,6 +529,29 @@ class SendTransferStore {
         LIMIT 1
         `,
         [id, normalizeWalletAddress(senderWallet)]
+      );
+    });
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return this.mapTransferRow(result.rows[0]);
+  }
+
+  async getTransferById(id: number): Promise<SendTransferRecord | null> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+
+    const result = await withRetry(async () => {
+      return pool.query<SendTransferDbRow>(
+        `
+        SELECT *
+        FROM ${TABLE_SEND_TRANSFERS}
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [id]
       );
     });
 
@@ -686,6 +788,29 @@ class SendTransferStore {
     });
   }
 
+  async getClaimSessionById(claimSessionId: number): Promise<SendClaimSessionRecord | null> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+
+    const result = await withRetry(async () => {
+      return pool.query<SendClaimSessionDbRow>(
+        `
+        SELECT *
+        FROM ${TABLE_SEND_CLAIM_SESSIONS}
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [claimSessionId]
+      );
+    });
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return this.mapClaimSessionRow(result.rows[0]);
+  }
+
   async createPayoutAttempt(input: CreatePayoutAttemptInput): Promise<SendPayoutAttemptRecord> {
     await this.ensureReady();
     const pool = this.mustPool();
@@ -727,6 +852,7 @@ class SendTransferStore {
     payoutAttemptId: number,
     input: {
       status: SendPayoutAttemptStatus;
+      provider?: string | null;
       providerReference?: string | null;
       failureCode?: string | null;
       failureReason?: string | null;
@@ -742,15 +868,17 @@ class SendTransferStore {
         UPDATE ${TABLE_SEND_PAYOUT_ATTEMPTS}
         SET
           status = $1,
-          provider_reference = COALESCE($2, provider_reference),
-          failure_code = $3,
-          failure_reason = $4,
-          wallet_tx_hash = COALESCE($5, wallet_tx_hash),
+          provider = COALESCE($2, provider),
+          provider_reference = COALESCE($3, provider_reference),
+          failure_code = $4,
+          failure_reason = $5,
+          wallet_tx_hash = COALESCE($6, wallet_tx_hash),
           updated_at = NOW()
-        WHERE id = $6
+        WHERE id = $7
         `,
         [
           input.status,
+          input.provider ?? null,
           input.providerReference ?? null,
           input.failureCode ?? null,
           input.failureReason ?? null,
@@ -759,6 +887,30 @@ class SendTransferStore {
         ]
       );
     });
+  }
+
+  async getPayoutAttemptByProviderReference(provider: string, providerReference: string): Promise<SendPayoutAttemptRecord | null> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+
+    const result = await withRetry(async () => {
+      return pool.query<SendPayoutAttemptDbRow>(
+        `
+        SELECT *
+        FROM ${TABLE_SEND_PAYOUT_ATTEMPTS}
+        WHERE provider = $1
+          AND provider_reference = $2
+        LIMIT 1
+        `,
+        [provider, providerReference]
+      );
+    });
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return this.mapPayoutAttemptRow(result.rows[0]);
   }
 
   async createNotification(input: CreateNotificationInput): Promise<void> {
@@ -787,6 +939,149 @@ class SendTransferStore {
         ]
       );
     });
+  }
+
+  async getStripeRecipientByHashes(
+    recipientContactHash: string,
+    recipientHintHash: string
+  ): Promise<SendStripeRecipientRecord | null> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+
+    const result = await withRetry(async () => {
+      return pool.query<SendStripeRecipientDbRow>(
+        `
+        SELECT *
+        FROM ${TABLE_SEND_STRIPE_RECIPIENTS}
+        WHERE recipient_contact_hash = $1
+           OR recipient_hint_hash = $2
+        ORDER BY (recipient_contact_hash = $1) DESC
+        LIMIT 1
+        `,
+        [recipientContactHash, recipientHintHash]
+      );
+    });
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return this.mapStripeRecipientRow(result.rows[0]);
+  }
+
+  async upsertStripeRecipient(input: UpsertStripeRecipientInput): Promise<SendStripeRecipientRecord> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+
+    const result = await withRetry(async () => {
+      return pool.query<SendStripeRecipientDbRow>(
+        `
+        INSERT INTO ${TABLE_SEND_STRIPE_RECIPIENTS} (
+          recipient_contact_hash,
+          recipient_hint_hash,
+          stripe_account_id,
+          onboarding_status,
+          payouts_enabled,
+          details_submitted,
+          last_account_link_url
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+        ON CONFLICT (recipient_contact_hash)
+        DO UPDATE SET
+          recipient_hint_hash = EXCLUDED.recipient_hint_hash,
+          stripe_account_id = EXCLUDED.stripe_account_id,
+          onboarding_status = EXCLUDED.onboarding_status,
+          payouts_enabled = EXCLUDED.payouts_enabled,
+          details_submitted = EXCLUDED.details_submitted,
+          last_account_link_url = EXCLUDED.last_account_link_url,
+          updated_at = NOW()
+        RETURNING *
+        `,
+        [
+          input.recipientContactHash,
+          input.recipientHintHash,
+          input.stripeAccountId,
+          input.onboardingStatus,
+          input.payoutsEnabled,
+          input.detailsSubmitted,
+          input.lastAccountLinkUrl ?? null,
+        ]
+      );
+    });
+
+    return this.mapStripeRecipientRow(result.rows[0]);
+  }
+
+  async getBridgeRecipientByHashes(
+    recipientContactHash: string,
+    recipientHintHash: string
+  ): Promise<SendBridgeRecipientRecord | null> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+
+    const result = await withRetry(async () => {
+      return pool.query<SendBridgeRecipientDbRow>(
+        `
+        SELECT *
+        FROM ${TABLE_SEND_BRIDGE_RECIPIENTS}
+        WHERE recipient_contact_hash = $1
+           OR recipient_hint_hash = $2
+        ORDER BY (recipient_contact_hash = $1) DESC
+        LIMIT 1
+        `,
+        [recipientContactHash, recipientHintHash]
+      );
+    });
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return this.mapBridgeRecipientRow(result.rows[0]);
+  }
+
+  async upsertBridgeRecipient(input: UpsertBridgeRecipientInput): Promise<SendBridgeRecipientRecord> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+
+    const result = await withRetry(async () => {
+      return pool.query<SendBridgeRecipientDbRow>(
+        `
+        INSERT INTO ${TABLE_SEND_BRIDGE_RECIPIENTS} (
+          recipient_contact_hash,
+          recipient_hint_hash,
+          bridge_customer_id,
+          bridge_external_account_id,
+          onboarding_status,
+          last_onboarding_url,
+          last_kyc_url,
+          last_tos_url
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        ON CONFLICT (recipient_contact_hash)
+        DO UPDATE SET
+          recipient_hint_hash = EXCLUDED.recipient_hint_hash,
+          bridge_customer_id = COALESCE(EXCLUDED.bridge_customer_id, ${TABLE_SEND_BRIDGE_RECIPIENTS}.bridge_customer_id),
+          bridge_external_account_id = COALESCE(EXCLUDED.bridge_external_account_id, ${TABLE_SEND_BRIDGE_RECIPIENTS}.bridge_external_account_id),
+          onboarding_status = EXCLUDED.onboarding_status,
+          last_onboarding_url = COALESCE(EXCLUDED.last_onboarding_url, ${TABLE_SEND_BRIDGE_RECIPIENTS}.last_onboarding_url),
+          last_kyc_url = COALESCE(EXCLUDED.last_kyc_url, ${TABLE_SEND_BRIDGE_RECIPIENTS}.last_kyc_url),
+          last_tos_url = COALESCE(EXCLUDED.last_tos_url, ${TABLE_SEND_BRIDGE_RECIPIENTS}.last_tos_url),
+          updated_at = NOW()
+        RETURNING *
+        `,
+        [
+          input.recipientContactHash,
+          input.recipientHintHash,
+          input.bridgeCustomerId ?? null,
+          input.bridgeExternalAccountId ?? null,
+          input.onboardingStatus,
+          input.lastOnboardingUrl ?? null,
+          input.lastKycUrl ?? null,
+          input.lastTosUrl ?? null,
+        ]
+      );
+    });
+
+    return this.mapBridgeRecipientRow(result.rows[0]);
   }
 
   decryptRecipientContact(record: SendTransferRecord): string {
@@ -894,6 +1189,37 @@ class SendTransferStore {
       failureCode: row.failure_code,
       failureReason: row.failure_reason,
       walletTxHash: row.wallet_tx_hash,
+      createdAt: parseDate(row.created_at) ?? new Date(0),
+      updatedAt: parseDate(row.updated_at) ?? new Date(0),
+    };
+  }
+
+  private mapStripeRecipientRow(row: SendStripeRecipientDbRow): SendStripeRecipientRecord {
+    return {
+      id: parseNumericId(row.id),
+      recipientContactHash: row.recipient_contact_hash,
+      recipientHintHash: row.recipient_hint_hash,
+      stripeAccountId: row.stripe_account_id,
+      onboardingStatus: row.onboarding_status,
+      payoutsEnabled: row.payouts_enabled,
+      detailsSubmitted: row.details_submitted,
+      lastAccountLinkUrl: row.last_account_link_url,
+      createdAt: parseDate(row.created_at) ?? new Date(0),
+      updatedAt: parseDate(row.updated_at) ?? new Date(0),
+    };
+  }
+
+  private mapBridgeRecipientRow(row: SendBridgeRecipientDbRow): SendBridgeRecipientRecord {
+    return {
+      id: parseNumericId(row.id),
+      recipientContactHash: row.recipient_contact_hash,
+      recipientHintHash: row.recipient_hint_hash,
+      bridgeCustomerId: row.bridge_customer_id,
+      bridgeExternalAccountId: row.bridge_external_account_id,
+      onboardingStatus: row.onboarding_status,
+      lastOnboardingUrl: row.last_onboarding_url,
+      lastKycUrl: row.last_kyc_url,
+      lastTosUrl: row.last_tos_url,
       createdAt: parseDate(row.created_at) ?? new Date(0),
       updatedAt: parseDate(row.updated_at) ?? new Date(0),
     };
@@ -1058,6 +1384,52 @@ class SendTransferStore {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_${TABLE_SEND_NOTIFICATIONS}_transfer_row_id
         ON ${TABLE_SEND_NOTIFICATIONS} (transfer_row_id)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_SEND_STRIPE_RECIPIENTS} (
+          id BIGSERIAL PRIMARY KEY,
+          recipient_contact_hash TEXT NOT NULL UNIQUE,
+          recipient_hint_hash TEXT NOT NULL,
+          stripe_account_id TEXT NOT NULL UNIQUE,
+          onboarding_status TEXT NOT NULL DEFAULT 'PENDING_ONBOARDING',
+          payouts_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+          details_submitted BOOLEAN NOT NULL DEFAULT FALSE,
+          last_account_link_url TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_SEND_STRIPE_RECIPIENTS}_recipient_hint_hash
+        ON ${TABLE_SEND_STRIPE_RECIPIENTS} (recipient_hint_hash)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_SEND_BRIDGE_RECIPIENTS} (
+          id BIGSERIAL PRIMARY KEY,
+          recipient_contact_hash TEXT NOT NULL UNIQUE,
+          recipient_hint_hash TEXT NOT NULL,
+          bridge_customer_id TEXT,
+          bridge_external_account_id TEXT,
+          onboarding_status TEXT NOT NULL DEFAULT 'PENDING_ONBOARDING',
+          last_onboarding_url TEXT,
+          last_kyc_url TEXT,
+          last_tos_url TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_SEND_BRIDGE_RECIPIENTS}_recipient_hint_hash
+        ON ${TABLE_SEND_BRIDGE_RECIPIENTS} (recipient_hint_hash)
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_SEND_BRIDGE_RECIPIENTS}_bridge_customer_id
+        ON ${TABLE_SEND_BRIDGE_RECIPIENTS} (bridge_customer_id)
       `);
     });
   }

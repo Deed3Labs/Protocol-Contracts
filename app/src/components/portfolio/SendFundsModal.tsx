@@ -1,13 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, ArrowLeft, CheckCircle2, Copy, Loader2, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Copy, Loader2, Wallet, X } from 'lucide-react';
+import { ethers } from 'ethers';
+import { useAppKit, useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import {
   confirmSendTransferLock,
   prepareSendTransfer,
 } from '@/utils/apiClient';
 import type { SendFundingSource, SendTransferSummary } from '@/types/send';
+import {
+  CLAIM_ESCROW_ABI,
+  getSendClaimEscrowAddress,
+  getSendSupportedChainIds,
+  getSendUsdcAddress,
+  SEND_USDC_ABI,
+} from '@/config/send';
+import type { Eip1193Provider } from 'ethers';
 
 type SendStep = 'input' | 'review' | 'pending' | 'success' | 'failed';
+
+type PendingPhase =
+  | 'Preparing transfer...'
+  | 'Checking wallet approval...'
+  | 'Waiting for approval confirmation...'
+  | 'Submitting escrow lock transaction...'
+  | 'Waiting for on-chain confirmation...'
+  | 'Finalizing claim link...';
 
 interface SendFundsModalProps {
   open: boolean;
@@ -29,12 +47,12 @@ const fundingOptions: FundingOption[] = [
   {
     id: 'CARD_ONRAMP',
     label: 'Debit / Card',
-    subtitle: 'Convert card funding into USDC first',
+    subtitle: 'Card funding converts to USDC before lock',
   },
   {
     id: 'BANK_ONRAMP',
     label: 'Bank Account',
-    subtitle: 'Convert bank funding into USDC first',
+    subtitle: 'Bank funding converts to USDC before lock',
   },
 ];
 
@@ -61,19 +79,62 @@ function normalizeRecipient(raw: string): string | null {
   return E164_REGEX.test(normalized) ? normalized : null;
 }
 
-function randomTxHash(): string {
-  const bytes = new Uint8Array(32);
-  window.crypto.getRandomValues(bytes);
-  const hex = Array.from(bytes)
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join('');
-  return `0x${hex}`;
+function toChainHex(chainId: number): string {
+  return `0x${chainId.toString(16)}`;
+}
+
+async function switchNetworkIfRequired(provider: Eip1193Provider, targetChainId: number): Promise<void> {
+  const browserProvider = new ethers.BrowserProvider(provider);
+  const network = await browserProvider.getNetwork();
+  if (Number(network.chainId) === targetChainId) {
+    return;
+  }
+
+  const requestProvider = provider as Eip1193Provider & {
+    request?: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  };
+
+  if (!requestProvider.request) {
+    throw new Error(`Please switch your wallet to chain ${targetChainId}.`);
+  }
+
+  await requestProvider.request({
+    method: 'wallet_switchEthereumChain',
+    params: [{ chainId: toChainHex(targetChainId) }],
+  });
+}
+
+function getWalletProvider(candidate: unknown): Eip1193Provider | null {
+  if (candidate && typeof candidate === 'object') {
+    return candidate as Eip1193Provider;
+  }
+
+  if (typeof window !== 'undefined' && (window as { ethereum?: Eip1193Provider }).ethereum) {
+    return (window as { ethereum?: Eip1193Provider }).ethereum || null;
+  }
+
+  return null;
+}
+
+function formatWalletError(error: unknown): string {
+  const err = error as { code?: number; message?: string };
+  if (err?.code === 4001) {
+    return 'Transaction rejected in wallet.';
+  }
+  if (err?.code === 4902) {
+    return 'Target network is not added in wallet.';
+  }
+  return err?.message || 'Wallet transaction failed.';
 }
 
 export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
+  const { open: openAppKit } = useAppKit();
+  const { address: appKitAddress, isConnected } = useAppKitAccount();
+  const { walletProvider } = useAppKitProvider('eip155');
 
   const [step, setStep] = useState<SendStep>('input');
+  const [pendingPhase, setPendingPhase] = useState<PendingPhase>('Preparing transfer...');
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [memo, setMemo] = useState('');
@@ -108,6 +169,7 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
   useEffect(() => {
     if (!open) {
       setStep('input');
+      setPendingPhase('Preparing transfer...');
       setRecipient('');
       setAmount('');
       setMemo('');
@@ -136,6 +198,68 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
     setStep('review');
   };
 
+  const submitEscrowLock = async (transfer: SendTransferSummary): Promise<string> => {
+    const supportedChains = getSendSupportedChainIds();
+    if (!supportedChains.includes(transfer.chainId)) {
+      throw new Error(`Send funds only supports chains: ${supportedChains.join(', ')}`);
+    }
+
+    const usdcAddress = getSendUsdcAddress(transfer.chainId);
+    const claimEscrowAddress = getSendClaimEscrowAddress(transfer.chainId);
+
+    if (!usdcAddress || !claimEscrowAddress) {
+      throw new Error(`Missing send contract configuration for chain ${transfer.chainId}.`);
+    }
+
+    const provider = getWalletProvider(walletProvider);
+    if (!provider) {
+      throw new Error('Connect wallet before confirming transfer lock.');
+    }
+
+    await switchNetworkIfRequired(provider, transfer.chainId);
+
+    const browserProvider = new ethers.BrowserProvider(provider);
+    const signer = await browserProvider.getSigner();
+    const senderAddress = await signer.getAddress();
+
+    const usdc = new ethers.Contract(usdcAddress, SEND_USDC_ABI, signer);
+    const escrow = new ethers.Contract(claimEscrowAddress, CLAIM_ESCROW_ABI, signer);
+
+    const principalMicros = ethers.parseUnits(transfer.principalUsdc, 6);
+    const sponsorMicros = ethers.parseUnits(transfer.sponsorFeeUsdc, 6);
+    const totalMicros = ethers.parseUnits(transfer.totalLockedUsdc, 6);
+    const expirySeconds = BigInt(Math.floor(new Date(transfer.expiresAt).getTime() / 1000));
+
+    setPendingPhase('Checking wallet approval...');
+    const allowance: bigint = await usdc.allowance(senderAddress, claimEscrowAddress);
+
+    if (allowance < totalMicros) {
+      setPendingPhase('Waiting for approval confirmation...');
+      const approvalTx = await usdc.approve(claimEscrowAddress, totalMicros);
+      const approvalReceipt = await approvalTx.wait();
+      if (!approvalReceipt || approvalReceipt.status !== 1) {
+        throw new Error('USDC approval failed or was reverted.');
+      }
+    }
+
+    setPendingPhase('Submitting escrow lock transaction...');
+    const createTx = await escrow.createTransfer(
+      transfer.transferId,
+      principalMicros,
+      sponsorMicros,
+      expirySeconds,
+      transfer.recipientHintHash
+    );
+
+    setPendingPhase('Waiting for on-chain confirmation...');
+    const createReceipt = await createTx.wait();
+    if (!createReceipt || createReceipt.status !== 1) {
+      throw new Error('Escrow lock transaction failed or reverted.');
+    }
+
+    return createTx.hash as string;
+  };
+
   const handleConfirmLock = async () => {
     setStep('pending');
     setError(null);
@@ -145,6 +269,11 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
         throw new Error('Recipient is invalid.');
       }
 
+      if (!isConnected || !appKitAddress) {
+        throw new Error('Connect wallet before sending funds.');
+      }
+
+      setPendingPhase('Preparing transfer...');
       const prepared = await prepareSendTransfer({
         recipient: normalizedRecipient,
         amount,
@@ -158,20 +287,23 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
 
       setPreparedTransfer(prepared.transfer);
 
+      const escrowTxHash = await submitEscrowLock(prepared.transfer);
+
+      setPendingPhase('Finalizing claim link...');
       const lock = await confirmSendTransferLock(prepared.transfer.id, {
         transferId: prepared.transfer.transferId,
-        escrowTxHash: randomTxHash(),
+        escrowTxHash,
       });
 
       if (!lock) {
-        throw new Error('Failed to confirm transfer lock.');
+        throw new Error('Escrow lock succeeded, but backend confirmation failed.');
       }
 
       setClaimUrl(lock.claimUrl);
       setPreparedTransfer(lock.transfer);
       setStep('success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send funds.');
+      setError(formatWalletError(err));
       setStep('failed');
     }
   };
@@ -242,6 +374,20 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
             <div className="p-5">
               {step === 'input' && (
                 <div className="space-y-4">
+                  {!isConnected && (
+                    <div className="rounded-sm border border-zinc-200 bg-zinc-50 p-3 text-xs dark:border-zinc-700 dark:bg-zinc-900/60">
+                      <p className="text-zinc-700 dark:text-zinc-300">Connect a wallet to sign escrow lock transactions.</p>
+                      <button
+                        type="button"
+                        onClick={() => openAppKit({ view: 'Connect' })}
+                        className="mt-2 inline-flex items-center gap-1 rounded-sm border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                      >
+                        <Wallet className="h-3.5 w-3.5" />
+                        Connect Wallet
+                      </button>
+                    </div>
+                  )}
+
                   <label className="block space-y-1">
                     <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Recipient</span>
                     <input
@@ -329,6 +475,12 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
                     <p className="mt-1 text-base font-medium text-zinc-900 dark:text-zinc-100">${totalPreview}</p>
                   </div>
 
+                  {fundingSource !== 'WALLET_USDC' && (
+                    <div className="rounded-sm border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+                      Card/Bank selections are recorded as funding intent. Current lock step still signs wallet USDC escrow lock.
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -351,8 +503,8 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
               {step === 'pending' && (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
-                  <p className="mt-4 text-sm text-zinc-900 dark:text-zinc-100">Locking transfer and creating claim link...</p>
-                  <p className="mt-1 text-xs text-zinc-500">Preparing escrow + notification record</p>
+                  <p className="mt-4 text-sm text-zinc-900 dark:text-zinc-100">{pendingPhase}</p>
+                  <p className="mt-1 text-xs text-zinc-500">Signing and confirming on-chain escrow lock</p>
                 </div>
               )}
 

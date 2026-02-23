@@ -33,6 +33,22 @@ function getRpcUrl(chainId: number): string | null {
   return null;
 }
 
+function getEscrowAddress(chainId: number): string | null {
+  const chainSpecific = process.env[`SEND_CLAIM_ESCROW_ADDRESS_${chainId}` as keyof NodeJS.ProcessEnv];
+  if (typeof chainSpecific === 'string' && chainSpecific.trim().length > 0) {
+    return chainSpecific.trim().toLowerCase();
+  }
+
+  const globalValue = (process.env.SEND_CLAIM_ESCROW_ADDRESS || '').trim();
+  if (globalValue) {
+    return globalValue.toLowerCase();
+  }
+
+  return null;
+}
+
+const CREATE_TRANSFER_SELECTOR = ethers.id('createTransfer(bytes32,uint256,uint256,uint64,bytes32)').slice(0, 10);
+
 class SendCryptoService {
   generateTransferId(input: {
     senderWallet: string;
@@ -86,6 +102,15 @@ class SendCryptoService {
 
       if (!tx.from || normalizeAddress(tx.from) !== normalizeAddress(params.expectedSenderWallet)) {
         return { valid: false, reason: 'Transaction sender mismatch' };
+      }
+
+      const expectedEscrow = getEscrowAddress(params.chainId);
+      if (expectedEscrow && (!tx.to || normalizeAddress(tx.to) !== expectedEscrow)) {
+        return { valid: false, reason: 'Transaction target does not match escrow contract' };
+      }
+
+      if (!tx.data || !tx.data.startsWith(CREATE_TRANSFER_SELECTOR)) {
+        return { valid: false, reason: 'Transaction is not createTransfer call data' };
       }
 
       const receipt = await provider.getTransactionReceipt(params.txHash);

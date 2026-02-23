@@ -1050,10 +1050,17 @@ export async function resendClaimOtp(
   return response.data;
 }
 
-export async function claimPayoutDebit(claimSessionToken: string): Promise<ClaimPayoutResponse | null> {
+export async function claimPayoutDebit(
+  claimSessionToken: string,
+  options?: { bridgeFullName?: string; bridgeEmail?: string }
+): Promise<ClaimPayoutResponse | null> {
   const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/debit', {
     method: 'POST',
-    body: JSON.stringify({ claimSessionToken }),
+    body: JSON.stringify({
+      claimSessionToken,
+      ...(options?.bridgeFullName ? { bridgeFullName: options.bridgeFullName } : {}),
+      ...(options?.bridgeEmail ? { bridgeEmail: options.bridgeEmail } : {}),
+    }),
   });
 
   if (response.error || !response.data) {
@@ -1063,10 +1070,17 @@ export async function claimPayoutDebit(claimSessionToken: string): Promise<Claim
   return response.data;
 }
 
-export async function claimPayoutBank(claimSessionToken: string): Promise<ClaimPayoutResponse | null> {
+export async function claimPayoutBank(
+  claimSessionToken: string,
+  options?: { bridgeFullName?: string; bridgeEmail?: string }
+): Promise<ClaimPayoutResponse | null> {
   const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/bank', {
     method: 'POST',
-    body: JSON.stringify({ claimSessionToken }),
+    body: JSON.stringify({
+      claimSessionToken,
+      ...(options?.bridgeFullName ? { bridgeFullName: options.bridgeFullName } : {}),
+      ...(options?.bridgeEmail ? { bridgeEmail: options.bridgeEmail } : {}),
+    }),
   });
 
   if (response.error || !response.data) {

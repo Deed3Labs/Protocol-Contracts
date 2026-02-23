@@ -26,6 +26,8 @@ const app = express();
 const httpServer = createServer(app);
 const PORT: number = parseInt(process.env.PORT || '3001', 10);
 
+type RawBodyRequest = express.Request & { rawBody?: Buffer };
+
 // Trust first proxy hop (Railway/Render/Nginx) so req.ip is accurate for rate limiting.
 app.set('trust proxy', 1);
 
@@ -97,7 +99,13 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as RawBodyRequest).rawBody = Buffer.from(buf);
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 
 // Health check (before rate limiter so it's always accessible)

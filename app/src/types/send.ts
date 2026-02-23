@@ -19,6 +19,8 @@ export interface SendTransferSummary {
   principalUsdc: string;
   sponsorFeeUsdc: string;
   totalLockedUsdc: string;
+  recipientHintHash: string;
+  chainId: number;
   expiresAt: string;
   status: SendTransferStatus;
   region: string;
@@ -83,4 +85,8 @@ export interface ClaimPayoutResponse {
   status?: string;
   fallbackMethod?: 'BANK';
   reason?: string;
+  action?: 'STRIPE_ONBOARDING' | 'BRIDGE_ONBOARDING';
+  onboardingUrl?: string;
+  bridgeCustomerId?: string;
+  bridgeExternalAccountId?: string;
 }

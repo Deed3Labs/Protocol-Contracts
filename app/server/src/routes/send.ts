@@ -1,16 +1,25 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { isAddress } from 'ethers';
 import { requireAuth, requireWalletMatch } from '../middleware/auth.js';
-import { sendTransferStore, type RecipientType, type SendFundingSource } from '../services/sendTransferStore.js';
+import {
+  sendTransferStore,
+  type RecipientType,
+  type SendClaimSessionWithTransfer,
+  type SendFundingSource,
+} from '../services/sendTransferStore.js';
 import { sendCryptoService } from '../services/sendCryptoService.js';
 import { sendClaimService } from '../services/sendClaimService.js';
+import { mapBridgeStateToDispatchStatus } from '../services/sendBridgePayoutService.js';
+import { sendBridgeWebhookVerifier } from '../services/sendBridgeWebhookVerifier.js';
 import { sendPayoutService } from '../services/sendPayoutService.js';
+import { sendStripePayoutService } from '../services/sendStripePayoutService.js';
 import { sendNotificationService } from '../services/sendNotificationService.js';
 
 const sendRouter = Router();
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
+type RequestWithRawBody = Request & { rawBody?: Buffer };
 
 function parseIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -166,6 +175,8 @@ function publicTransferView(transfer: {
   principalUsdc: string;
   sponsorFeeUsdc: string;
   totalLockedUsdc: string;
+  recipientHintHash: string;
+  chainId: number;
   expiresAt: Date;
   status: string;
   region: string;
@@ -176,11 +187,30 @@ function publicTransferView(transfer: {
     principalUsdc: formatUsdcMicros(transfer.principalUsdc),
     sponsorFeeUsdc: formatUsdcMicros(transfer.sponsorFeeUsdc),
     totalLockedUsdc: formatUsdcMicros(transfer.totalLockedUsdc),
+    recipientHintHash: transfer.recipientHintHash,
+    chainId: transfer.chainId,
     expiresAt: transfer.expiresAt.toISOString(),
     status: transfer.status,
     region: transfer.region,
     payoutMethods: payoutMethodsForRegion(transfer.region),
   };
+}
+
+async function markTransferClaimedFromMethod(
+  transferRowId: number,
+  method: 'DEBIT' | 'BANK' | 'WALLET'
+): Promise<void> {
+  if (method === 'DEBIT') {
+    await sendTransferStore.markTransferClaimed(transferRowId, 'CLAIMED_DEBIT');
+    return;
+  }
+
+  if (method === 'BANK') {
+    await sendTransferStore.markTransferClaimed(transferRowId, 'CLAIMED_BANK');
+    return;
+  }
+
+  await sendTransferStore.markTransferClaimed(transferRowId, 'CLAIMED_WALLET');
 }
 
 async function ensureSendStoreReady(res: Response): Promise<boolean> {
@@ -882,7 +912,11 @@ sendRouter.post('/claim/resend-otp', otpResendRateLimiter, async (req: Request, 
   }
 });
 
-async function getVerifiedClaimSessionContext(claimSessionToken: unknown) {
+type VerifiedClaimSessionContextResult =
+  | { error: { status: number; body: { error: string; message: string } } }
+  | { sessionContext: SendClaimSessionWithTransfer };
+
+async function getVerifiedClaimSessionContext(claimSessionToken: unknown): Promise<VerifiedClaimSessionContextResult> {
   if (typeof claimSessionToken !== 'string' || claimSessionToken.trim().length < 16) {
     return { error: { status: 400, body: { error: 'Invalid claimSessionToken', message: 'claimSessionToken is required' } } };
   }
@@ -939,7 +973,12 @@ sendRouter.post('/claim/payout/debit', payoutRateLimiter, async (req: Request, r
   if (!(await ensureSendStoreReady(res))) return;
 
   try {
-    const resolved = await getVerifiedClaimSessionContext((req.body as { claimSessionToken?: unknown }).claimSessionToken);
+    const body = req.body as {
+      claimSessionToken?: unknown;
+      bridgeFullName?: unknown;
+      bridgeEmail?: unknown;
+    };
+    const resolved = await getVerifiedClaimSessionContext(body.claimSessionToken);
     if ('error' in resolved) {
       return res.status(resolved.error.status).json(resolved.error.body);
     }
@@ -962,11 +1001,38 @@ sendRouter.post('/claim/payout/debit', payoutRateLimiter, async (req: Request, r
       status: 'PROCESSING',
     });
 
-    const payoutResult = await sendPayoutService.executeDebitPayout(transfer);
+    const recipientContact = sendTransferStore.decryptRecipientContact(transfer);
+    const payoutResult = await sendPayoutService.executeDebitPayout(transfer, {
+      recipientType: transfer.recipientType,
+      recipientContact,
+      bridgeFullName: typeof body.bridgeFullName === 'string' ? body.bridgeFullName.trim() : undefined,
+      bridgeEmail: typeof body.bridgeEmail === 'string' ? body.bridgeEmail.trim().toLowerCase() : undefined,
+    });
+
+    if (payoutResult.status === 'ACTION_REQUIRED') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'FAILED',
+        provider: payoutResult.provider,
+        failureCode: payoutResult.failureCode || 'RECIPIENT_ONBOARDING_REQUIRED',
+        failureReason: payoutResult.failureReason || 'Recipient payout onboarding is required',
+      });
+
+      return res.status(200).json({
+        success: false,
+        status: 'ACTION_REQUIRED',
+        reason: payoutResult.failureReason || 'Complete payout onboarding before retrying debit payout',
+        action: payoutResult.action || 'BRIDGE_ONBOARDING',
+        onboardingUrl: payoutResult.onboardingUrl,
+        bridgeCustomerId: payoutResult.bridgeCustomerId,
+        bridgeExternalAccountId: payoutResult.bridgeExternalAccountId,
+      });
+    }
 
     if (payoutResult.status === 'FALLBACK_REQUIRED') {
       await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
         status: 'FALLBACK_REQUIRED',
+        provider: payoutResult.provider,
+        providerReference: payoutResult.providerReference,
         failureCode: payoutResult.failureCode,
         failureReason: payoutResult.failureReason,
       });
@@ -982,6 +1048,7 @@ sendRouter.post('/claim/payout/debit', payoutRateLimiter, async (req: Request, r
     if (payoutResult.status === 'FAILED') {
       await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
         status: 'FAILED',
+        provider: payoutResult.provider,
         failureCode: payoutResult.failureCode,
         failureReason: payoutResult.failureReason,
       });
@@ -992,8 +1059,28 @@ sendRouter.post('/claim/payout/debit', payoutRateLimiter, async (req: Request, r
       });
     }
 
+    if (payoutResult.status === 'PROCESSING') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'PROCESSING',
+        provider: payoutResult.provider,
+        providerReference: payoutResult.providerReference,
+        walletTxHash: payoutResult.treasuryTxHash,
+      });
+      await sendTransferStore.markClaimSessionCompleted(claimSession.id);
+
+      return res.json({
+        success: true,
+        status: 'PROCESSING',
+        method: 'DEBIT',
+        provider: payoutResult.provider,
+        providerReference: payoutResult.providerReference,
+        treasuryTxHash: payoutResult.treasuryTxHash,
+      });
+    }
+
     await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
       status: 'SUCCESS',
+      provider: payoutResult.provider,
       providerReference: payoutResult.providerReference,
       walletTxHash: payoutResult.treasuryTxHash,
     });
@@ -1020,7 +1107,12 @@ sendRouter.post('/claim/payout/bank', payoutRateLimiter, async (req: Request, re
   if (!(await ensureSendStoreReady(res))) return;
 
   try {
-    const resolved = await getVerifiedClaimSessionContext((req.body as { claimSessionToken?: unknown }).claimSessionToken);
+    const body = req.body as {
+      claimSessionToken?: unknown;
+      bridgeFullName?: unknown;
+      bridgeEmail?: unknown;
+    };
+    const resolved = await getVerifiedClaimSessionContext(body.claimSessionToken);
     if ('error' in resolved) {
       return res.status(resolved.error.status).json(resolved.error.body);
     }
@@ -1042,10 +1134,38 @@ sendRouter.post('/claim/payout/bank', payoutRateLimiter, async (req: Request, re
       status: 'PROCESSING',
     });
 
-    const payoutResult = await sendPayoutService.executeBankPayout(transfer);
+    const recipientContact = sendTransferStore.decryptRecipientContact(transfer);
+    const payoutResult = await sendPayoutService.executeBankPayout(transfer, {
+      recipientType: transfer.recipientType,
+      recipientContact,
+      bridgeFullName: typeof body.bridgeFullName === 'string' ? body.bridgeFullName.trim() : undefined,
+      bridgeEmail: typeof body.bridgeEmail === 'string' ? body.bridgeEmail.trim().toLowerCase() : undefined,
+    });
+
+    if (payoutResult.status === 'ACTION_REQUIRED') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'FAILED',
+        provider: payoutResult.provider,
+        failureCode: payoutResult.failureCode || 'RECIPIENT_ONBOARDING_REQUIRED',
+        failureReason: payoutResult.failureReason || 'Recipient payout onboarding is required',
+      });
+
+      return res.status(200).json({
+        success: false,
+        status: 'ACTION_REQUIRED',
+        reason: payoutResult.failureReason || 'Complete payout onboarding before retrying bank payout',
+        action: payoutResult.action || 'BRIDGE_ONBOARDING',
+        onboardingUrl: payoutResult.onboardingUrl,
+        bridgeCustomerId: payoutResult.bridgeCustomerId,
+        bridgeExternalAccountId: payoutResult.bridgeExternalAccountId,
+      });
+    }
+
     if (payoutResult.status === 'FAILED') {
       await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
         status: 'FAILED',
+        provider: payoutResult.provider,
+        providerReference: payoutResult.providerReference,
         failureCode: payoutResult.failureCode,
         failureReason: payoutResult.failureReason,
       });
@@ -1056,8 +1176,29 @@ sendRouter.post('/claim/payout/bank', payoutRateLimiter, async (req: Request, re
       });
     }
 
+    if (payoutResult.status === 'PROCESSING') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'PROCESSING',
+        provider: payoutResult.provider,
+        providerReference: payoutResult.providerReference,
+        walletTxHash: payoutResult.treasuryTxHash,
+      });
+      await sendTransferStore.markClaimSessionCompleted(claimSession.id);
+
+      return res.json({
+        success: true,
+        status: 'PROCESSING',
+        method: 'BANK',
+        provider: payoutResult.provider,
+        providerReference: payoutResult.providerReference,
+        treasuryTxHash: payoutResult.treasuryTxHash,
+        eta: payoutResult.eta,
+      });
+    }
+
     await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
       status: 'SUCCESS',
+      provider: payoutResult.provider,
       providerReference: payoutResult.providerReference,
       walletTxHash: payoutResult.treasuryTxHash,
     });
@@ -1121,6 +1262,7 @@ sendRouter.post('/claim/payout/wallet', payoutRateLimiter, async (req: Request, 
     if (payoutResult.status === 'FAILED') {
       await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
         status: 'FAILED',
+        provider: payoutResult.provider,
         failureCode: payoutResult.failureCode,
         failureReason: payoutResult.failureReason,
       });
@@ -1133,6 +1275,7 @@ sendRouter.post('/claim/payout/wallet', payoutRateLimiter, async (req: Request, 
 
     await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
       status: 'SUCCESS',
+      provider: payoutResult.provider,
       providerReference: payoutResult.providerReference,
       walletTxHash: payoutResult.walletTxHash,
     });
@@ -1150,6 +1293,371 @@ sendRouter.post('/claim/payout/wallet', payoutRateLimiter, async (req: Request, 
     console.error('Wallet payout error:', error);
     return res.status(500).json({
       error: 'Wallet payout failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+sendRouter.post('/webhooks/payout', async (req: Request, res: Response) => {
+  if (!(await ensureSendStoreReady(res))) return;
+
+  try {
+    const expectedSecret = (process.env.SEND_PAYOUT_WEBHOOK_SECRET || '').trim();
+    if (expectedSecret) {
+      const providedSecretHeader = req.headers['x-send-webhook-secret'];
+      const providedSecret = Array.isArray(providedSecretHeader)
+        ? providedSecretHeader[0]
+        : providedSecretHeader || '';
+
+      if (providedSecret !== expectedSecret) {
+        return res.status(401).json({
+          error: 'Unauthorized webhook',
+          message: 'Invalid webhook secret',
+        });
+      }
+    }
+
+    const body = req.body as {
+      provider?: unknown;
+      providerReference?: unknown;
+      status?: unknown;
+      failureCode?: unknown;
+      failureReason?: unknown;
+      walletTxHash?: unknown;
+    };
+
+    if (typeof body.provider !== 'string' || body.provider.trim().length === 0) {
+      return res.status(400).json({
+        error: 'Invalid provider',
+        message: 'provider is required',
+      });
+    }
+
+    if (typeof body.providerReference !== 'string' || body.providerReference.trim().length === 0) {
+      return res.status(400).json({
+        error: 'Invalid providerReference',
+        message: 'providerReference is required',
+      });
+    }
+
+    const normalizedStatus = String(body.status || '').trim().toUpperCase();
+    if (!['PROCESSING', 'SUCCESS', 'FAILED', 'FALLBACK_REQUIRED'].includes(normalizedStatus)) {
+      return res.status(400).json({
+        error: 'Invalid status',
+        message: 'status must be PROCESSING, SUCCESS, FAILED, or FALLBACK_REQUIRED',
+      });
+    }
+
+    const payoutAttempt = await sendTransferStore.getPayoutAttemptByProviderReference(
+      body.provider.trim(),
+      body.providerReference.trim()
+    );
+
+    if (!payoutAttempt) {
+      return res.status(404).json({
+        error: 'Payout attempt not found',
+        message: 'No payout attempt matched provider + reference',
+      });
+    }
+
+    if (normalizedStatus === 'PROCESSING') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'PROCESSING',
+        provider: body.provider.trim(),
+        failureCode: null,
+        failureReason: null,
+        walletTxHash: typeof body.walletTxHash === 'string' ? body.walletTxHash : undefined,
+      });
+
+      return res.json({ success: true, updated: 'PROCESSING' });
+    }
+
+    if (normalizedStatus === 'FALLBACK_REQUIRED') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'FALLBACK_REQUIRED',
+        provider: body.provider.trim(),
+        failureCode: typeof body.failureCode === 'string' ? body.failureCode : 'FALLBACK_REQUIRED',
+        failureReason:
+          typeof body.failureReason === 'string'
+            ? body.failureReason
+            : 'Provider requested payout fallback',
+      });
+
+      return res.json({ success: true, updated: 'FALLBACK_REQUIRED' });
+    }
+
+    if (normalizedStatus === 'FAILED') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'FAILED',
+        provider: body.provider.trim(),
+        failureCode: typeof body.failureCode === 'string' ? body.failureCode : 'PAYOUT_FAILED',
+        failureReason: typeof body.failureReason === 'string' ? body.failureReason : 'Payout failed',
+        walletTxHash: typeof body.walletTxHash === 'string' ? body.walletTxHash : undefined,
+      });
+      await sendTransferStore.updateTransferStatus(payoutAttempt.transferRowId, 'FAILED');
+      await sendTransferStore.markClaimSessionCompleted(payoutAttempt.claimSessionId);
+
+      return res.json({ success: true, updated: 'FAILED' });
+    }
+
+    await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+      status: 'SUCCESS',
+      provider: body.provider.trim(),
+      failureCode: null,
+      failureReason: null,
+      walletTxHash: typeof body.walletTxHash === 'string' ? body.walletTxHash : undefined,
+    });
+
+    await markTransferClaimedFromMethod(payoutAttempt.transferRowId, payoutAttempt.method);
+    await sendTransferStore.markClaimSessionCompleted(payoutAttempt.claimSessionId);
+
+    return res.json({ success: true, updated: 'SUCCESS' });
+  } catch (error) {
+    console.error('Payout webhook error:', error);
+    return res.status(500).json({
+      error: 'Payout webhook processing failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+sendRouter.post('/webhooks/bridge-transfer', async (req: Request, res: Response) => {
+  if (!(await ensureSendStoreReady(res))) return;
+
+  try {
+    const signatureHeaderValue = req.headers['x-webhook-signature'];
+    const signatureHeader = Array.isArray(signatureHeaderValue)
+      ? signatureHeaderValue[0]
+      : signatureHeaderValue;
+
+    const hasBridgeWebhookPublicKey =
+      (process.env.SEND_BRIDGE_WEBHOOK_PUBLIC_KEY || '').trim().length > 0 ||
+      (process.env.SEND_BRIDGE_WEBHOOK_PUBLIC_KEYS || '').trim().length > 0;
+
+    if (hasBridgeWebhookPublicKey) {
+      const verification = sendBridgeWebhookVerifier.verify({
+        rawBody: (req as RequestWithRawBody).rawBody,
+        signatureHeader: typeof signatureHeader === 'string' ? signatureHeader : undefined,
+      });
+
+      if (!verification.valid) {
+        return res.status(401).json({
+          error: 'Unauthorized webhook',
+          message: verification.reason || 'Bridge webhook signature verification failed',
+        });
+      }
+    } else {
+      const expectedLegacySecret = (process.env.SEND_BRIDGE_WEBHOOK_SECRET || '').trim();
+      if (!expectedLegacySecret) {
+        return res.status(503).json({
+          error: 'Bridge webhook verification not configured',
+          message: 'Set SEND_BRIDGE_WEBHOOK_PUBLIC_KEY (preferred) or SEND_BRIDGE_WEBHOOK_SECRET (legacy)',
+        });
+      }
+
+      const providedSecretHeader =
+        req.headers['x-send-bridge-webhook-secret'] || req.headers['x-bridge-webhook-secret'];
+      const providedSecret = Array.isArray(providedSecretHeader)
+        ? providedSecretHeader[0]
+        : providedSecretHeader || '';
+
+      if (providedSecret !== expectedLegacySecret) {
+        return res.status(401).json({
+          error: 'Unauthorized webhook',
+          message: 'Invalid Bridge webhook secret',
+        });
+      }
+    }
+
+    const body = req.body as {
+      id?: unknown;
+      transfer_id?: unknown;
+      transferId?: unknown;
+      state?: unknown;
+      status?: unknown;
+      data?: {
+        id?: unknown;
+        transfer_id?: unknown;
+        state?: unknown;
+        status?: unknown;
+      };
+      message?: unknown;
+      error?: unknown;
+      reason?: unknown;
+      failureReason?: unknown;
+      failureCode?: unknown;
+    };
+
+    const providerReferenceCandidate =
+      body.id ??
+      body.transfer_id ??
+      body.transferId ??
+      body.data?.id ??
+      body.data?.transfer_id;
+
+    if (typeof providerReferenceCandidate !== 'string' || providerReferenceCandidate.trim().length === 0) {
+      return res.status(400).json({
+        error: 'Invalid Bridge webhook payload',
+        message: 'Missing transfer reference id',
+      });
+    }
+
+    const providerReference = providerReferenceCandidate.trim();
+    const bridgeStatus = mapBridgeStateToDispatchStatus(
+      body.state ?? body.status ?? body.data?.state ?? body.data?.status
+    );
+    const bridgeProvider = (process.env.SEND_BRIDGE_PAYOUT_PROVIDER_NAME || 'bridge').trim() || 'bridge';
+    const payoutProviderMode = (process.env.SEND_PAYOUT_PROVIDER || 'mock').trim().toLowerCase();
+    const bridgeOnlyMode = payoutProviderMode === 'bridge_only' || payoutProviderMode === 'bridge';
+
+    const payoutAttempt = await sendTransferStore.getPayoutAttemptByProviderReference(
+      bridgeProvider,
+      providerReference
+    );
+    if (!payoutAttempt) {
+      return res.status(404).json({
+        error: 'Payout attempt not found',
+        message: 'No payout attempt matched bridge provider + transfer id',
+      });
+    }
+
+    if (bridgeStatus === 'PROCESSING') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'PROCESSING',
+        provider: bridgeProvider,
+        providerReference,
+      });
+
+      return res.json({ success: true, updated: 'PROCESSING' });
+    }
+
+    if (bridgeStatus === 'FAILED') {
+      const failureReasonCandidate =
+        body.failureReason ??
+        body.reason ??
+        body.message ??
+        (typeof body.error === 'string' ? body.error : undefined);
+
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'FAILED',
+        provider: bridgeProvider,
+        providerReference,
+        failureCode:
+          typeof body.failureCode === 'string' ? body.failureCode : 'BRIDGE_TRANSFER_FAILED',
+        failureReason:
+          typeof failureReasonCandidate === 'string'
+            ? failureReasonCandidate
+            : 'Bridge transfer failed',
+      });
+      await sendTransferStore.updateTransferStatus(payoutAttempt.transferRowId, 'FAILED');
+      await sendTransferStore.markClaimSessionCompleted(payoutAttempt.claimSessionId);
+
+      return res.json({ success: true, updated: 'FAILED' });
+    }
+
+    const transfer = await sendTransferStore.getTransferById(payoutAttempt.transferRowId);
+    if (!transfer) {
+      return res.status(404).json({
+        error: 'Transfer not found',
+        message: 'No transfer matched payout attempt',
+      });
+    }
+
+    if (payoutAttempt.method === 'WALLET' || bridgeOnlyMode) {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'SUCCESS',
+        provider: bridgeProvider,
+        providerReference,
+      });
+      await markTransferClaimedFromMethod(payoutAttempt.transferRowId, payoutAttempt.method);
+      await sendTransferStore.markClaimSessionCompleted(payoutAttempt.claimSessionId);
+      return res.json({ success: true, updated: 'SUCCESS' });
+    }
+
+    const recipientContact = sendTransferStore.decryptRecipientContact(transfer);
+    const stripeResult = await sendStripePayoutService.createRecipientPayout({
+      method: payoutAttempt.method,
+      transfer,
+      bridgeTransferReference: providerReference,
+      recipientContext: {
+        recipientType: transfer.recipientType,
+        recipientContact,
+      },
+    });
+
+    if (stripeResult.status === 'FAILED') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'FAILED',
+        provider: stripeResult.provider,
+        providerReference: stripeResult.providerReference,
+        failureCode: stripeResult.failureCode || 'STRIPE_PAYOUT_FAILED',
+        failureReason: stripeResult.failureReason || 'Stripe payout failed after bridge conversion',
+      });
+      await sendTransferStore.updateTransferStatus(payoutAttempt.transferRowId, 'FAILED');
+      await sendTransferStore.markClaimSessionCompleted(payoutAttempt.claimSessionId);
+
+      return res.status(502).json({
+        error: 'Stripe payout failed',
+        message: stripeResult.failureReason || 'Stripe payout failed after bridge conversion',
+      });
+    }
+
+    if (stripeResult.status === 'FALLBACK_REQUIRED') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'FALLBACK_REQUIRED',
+        provider: stripeResult.provider,
+        providerReference: stripeResult.providerReference,
+        failureCode: stripeResult.failureCode || 'STRIPE_FALLBACK_REQUIRED',
+        failureReason: stripeResult.failureReason || 'Stripe payout fallback required',
+      });
+
+      return res.json({ success: true, updated: 'FALLBACK_REQUIRED' });
+    }
+
+    if (stripeResult.status === 'ACTION_REQUIRED') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'FAILED',
+        provider: stripeResult.provider,
+        providerReference: stripeResult.providerReference,
+        failureCode: stripeResult.failureCode || 'STRIPE_ONBOARDING_REQUIRED_AFTER_SETTLEMENT',
+        failureReason:
+          stripeResult.failureReason ||
+          'Recipient onboarding became required after Bridge conversion settlement',
+      });
+      await sendTransferStore.updateTransferStatus(payoutAttempt.transferRowId, 'FAILED');
+      await sendTransferStore.markClaimSessionCompleted(payoutAttempt.claimSessionId);
+
+      return res.status(409).json({
+        error: 'Recipient onboarding required',
+        message:
+          stripeResult.failureReason ||
+          'Recipient onboarding became required after Bridge conversion settlement',
+      });
+    }
+
+    if (stripeResult.status === 'PROCESSING') {
+      await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+        status: 'PROCESSING',
+        provider: stripeResult.provider,
+        providerReference: stripeResult.providerReference,
+      });
+
+      return res.json({ success: true, updated: 'PROCESSING' });
+    }
+
+    await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
+      status: 'SUCCESS',
+      provider: stripeResult.provider,
+      providerReference: stripeResult.providerReference,
+    });
+    await markTransferClaimedFromMethod(payoutAttempt.transferRowId, payoutAttempt.method);
+    await sendTransferStore.markClaimSessionCompleted(payoutAttempt.claimSessionId);
+
+    return res.json({ success: true, updated: 'SUCCESS' });
+  } catch (error) {
+    console.error('Bridge transfer webhook error:', error);
+    return res.status(500).json({
+      error: 'Bridge webhook processing failed',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

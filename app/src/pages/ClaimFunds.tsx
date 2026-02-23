@@ -31,6 +31,8 @@ export default function ClaimFunds() {
   const [otpCooldownUntil, setOtpCooldownUntil] = useState<number>(0);
   const [selectedMethod, setSelectedMethod] = useState<ClaimPayoutMethod | null>(null);
   const [walletInput, setWalletInput] = useState('');
+  const [bridgeFullName, setBridgeFullName] = useState('');
+  const [bridgeEmail, setBridgeEmail] = useState('');
   const [payoutResult, setPayoutResult] = useState<ClaimPayoutResponse | null>(null);
 
   const retryAfterSeconds = useMemo(() => {
@@ -142,7 +144,10 @@ export default function ClaimFunds() {
     let response: ClaimPayoutResponse | null = null;
 
     if (method === 'DEBIT') {
-      response = await claimPayoutDebit(verifiedClaim.claimSessionToken);
+      response = await claimPayoutDebit(verifiedClaim.claimSessionToken, {
+        bridgeFullName: bridgeFullName.trim() || undefined,
+        bridgeEmail: bridgeEmail.trim().toLowerCase() || undefined,
+      });
       if (response && response.success === false && response.fallbackMethod === 'BANK') {
         setPayoutResult(response);
         setError('Debit payout unavailable for this recipient. You can continue with bank payout.');
@@ -152,7 +157,10 @@ export default function ClaimFunds() {
     }
 
     if (method === 'BANK') {
-      response = await claimPayoutBank(verifiedClaim.claimSessionToken);
+      response = await claimPayoutBank(verifiedClaim.claimSessionToken, {
+        bridgeFullName: bridgeFullName.trim() || undefined,
+        bridgeEmail: bridgeEmail.trim().toLowerCase() || undefined,
+      });
     }
 
     if (method === 'WALLET') {
@@ -306,6 +314,31 @@ export default function ClaimFunds() {
               )}
             </div>
 
+            {(verifiedClaim.payoutMethods.includes('DEBIT') || verifiedClaim.payoutMethods.includes('BANK')) && (
+              <div className="rounded-sm border border-zinc-200 p-3 dark:border-zinc-700">
+                <p className="text-sm font-medium">Fiat Onboarding Details</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Required only if your payout provider requests Bridge onboarding.
+                </p>
+
+                <div className="mt-3 grid gap-2">
+                  <input
+                    value={bridgeFullName}
+                    onChange={(event) => setBridgeFullName(event.target.value)}
+                    placeholder="Full legal name"
+                    className="w-full rounded-sm border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900"
+                  />
+                  <input
+                    value={bridgeEmail}
+                    onChange={(event) => setBridgeEmail(event.target.value)}
+                    type="email"
+                    placeholder="Email for onboarding"
+                    className="w-full rounded-sm border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900"
+                  />
+                </div>
+              </div>
+            )}
+
             {payoutResult?.status === 'DEBIT_FALLBACK_REQUIRED' && verifiedClaim.payoutMethods.includes('BANK') && (
               <button
                 type="button"
@@ -314,6 +347,17 @@ export default function ClaimFunds() {
               >
                 Continue with Bank Payout
               </button>
+            )}
+
+            {payoutResult?.status === 'ACTION_REQUIRED' && payoutResult.onboardingUrl && (
+              <a
+                href={payoutResult.onboardingUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block w-full rounded-sm border border-zinc-200 px-3 py-2 text-center text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Continue Onboarding
+              </a>
             )}
           </div>
         )}

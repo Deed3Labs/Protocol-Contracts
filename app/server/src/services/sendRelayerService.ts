@@ -16,10 +16,17 @@ function simulatedTxHash(seed: string): string {
 }
 
 class SendRelayerService {
-  private buildSigner(): { provider: ethers.JsonRpcProvider; signer: ethers.Wallet; escrowAddress: string } | null {
+  private resolveEscrowAddress(chainId?: number): string {
+    if (chainId && process.env[`SEND_CLAIM_ESCROW_ADDRESS_${chainId}` as keyof NodeJS.ProcessEnv]) {
+      return (process.env[`SEND_CLAIM_ESCROW_ADDRESS_${chainId}` as keyof NodeJS.ProcessEnv] || '').trim();
+    }
+    return (process.env.SEND_CLAIM_ESCROW_ADDRESS || '').trim();
+  }
+
+  private buildSigner(chainId?: number): { provider: ethers.JsonRpcProvider; signer: ethers.Wallet; escrowAddress: string } | null {
     const rpcUrl = process.env.SEND_RELAYER_RPC_URL || '';
     const relayerKey = process.env.SEND_RELAYER_PRIVATE_KEY || '';
-    const escrowAddress = process.env.SEND_CLAIM_ESCROW_ADDRESS || '';
+    const escrowAddress = this.resolveEscrowAddress(chainId);
 
     if (!rpcUrl || !relayerKey || !escrowAddress) {
       return null;
@@ -34,8 +41,8 @@ class SendRelayerService {
     return { provider, signer, escrowAddress };
   }
 
-  async claimToWallet(transferId: string, recipientWallet: string): Promise<RelayerTxResult> {
-    const signerContext = this.buildSigner();
+  async claimToWallet(transferId: string, recipientWallet: string, chainId?: number): Promise<RelayerTxResult> {
+    const signerContext = this.buildSigner(chainId);
     if (!signerContext) {
       return {
         txHash: simulatedTxHash(`wallet:${transferId}:${recipientWallet}:${Date.now()}`),
@@ -57,8 +64,8 @@ class SendRelayerService {
     };
   }
 
-  async claimToPayoutTreasury(transferId: string): Promise<RelayerTxResult> {
-    const signerContext = this.buildSigner();
+  async claimToPayoutTreasury(transferId: string, chainId?: number): Promise<RelayerTxResult> {
+    const signerContext = this.buildSigner(chainId);
     if (!signerContext) {
       return {
         txHash: simulatedTxHash(`treasury:${transferId}:${Date.now()}`),
