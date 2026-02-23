@@ -18,15 +18,22 @@ function storageKey(prefix: string, token: string): string {
   return `send_claim_${prefix}_${token}`;
 }
 
-function safeSessionGet(key: string): string | null {
+function safeStorageGet(key: string): string | null {
   try {
+    const local = window.localStorage.getItem(key);
+    if (local !== null) return local;
     return window.sessionStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function safeSessionSet(key: string, value: string): void {
+function safeStorageSet(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // no-op
+  }
   try {
     window.sessionStorage.setItem(key, value);
   } catch {
@@ -34,7 +41,12 @@ function safeSessionSet(key: string, value: string): void {
   }
 }
 
-function safeSessionRemove(key: string): void {
+function safeStorageRemove(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // no-op
+  }
   try {
     window.sessionStorage.removeItem(key);
   } catch {
@@ -76,7 +88,7 @@ export default function ClaimFunds() {
 
     setClaimSession(started);
     setOtpCooldownUntil(Date.now() + started.resendCooldownSeconds * 1000);
-    safeSessionSet(storageKey('session_id', token), String(started.claimSessionId));
+    safeStorageSet(storageKey('session', token), JSON.stringify(started));
     setStep('otp');
   }, [token]);
 
@@ -98,7 +110,7 @@ export default function ClaimFunds() {
       return;
     }
 
-    const savedVerifiedRaw = safeSessionGet(storageKey('verified', token));
+    const savedVerifiedRaw = safeStorageGet(storageKey('verified', token));
     if (savedVerifiedRaw) {
       try {
         const parsed = JSON.parse(savedVerifiedRaw) as VerifyClaimOtpResponse;
@@ -107,7 +119,20 @@ export default function ClaimFunds() {
         setStep('method');
         return;
       } catch {
-        safeSessionRemove(storageKey('verified', token));
+        safeStorageRemove(storageKey('verified', token));
+      }
+    }
+
+    const savedSessionRaw = safeStorageGet(storageKey('session', token));
+    if (savedSessionRaw) {
+      try {
+        const parsed = JSON.parse(savedSessionRaw) as ClaimSession;
+        setClaimSession(parsed);
+        setOtpCooldownUntil(Date.now());
+        setStep('otp');
+        return;
+      } catch {
+        safeStorageRemove(storageKey('session', token));
       }
     }
 
@@ -146,7 +171,8 @@ export default function ClaimFunds() {
     }
 
     setVerifiedClaim(verified);
-    safeSessionSet(storageKey('verified', token), JSON.stringify(verified));
+    safeStorageSet(storageKey('verified', token), JSON.stringify(verified));
+    safeStorageRemove(storageKey('session', token));
     setStep('method');
   };
 
@@ -221,8 +247,8 @@ export default function ClaimFunds() {
     }
 
     setPayoutResult(response);
-    safeSessionRemove(storageKey('verified', token));
-    safeSessionRemove(storageKey('session_id', token));
+    safeStorageRemove(storageKey('verified', token));
+    safeStorageRemove(storageKey('session', token));
     setStep('success');
   };
 

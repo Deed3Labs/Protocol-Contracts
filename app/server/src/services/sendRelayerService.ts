@@ -147,9 +147,25 @@ function isCdpInitializationError(error: unknown): boolean {
   );
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 class SendRelayerService {
   private cdpClientPromise: Promise<CdpClientLike> | null = null;
   private cdpAccountAddressByChain = new Map<number, string>();
+
+  private requireReceiptConfirmation(): boolean {
+    return (process.env.SEND_RELAYER_REQUIRE_RECEIPT_CONFIRMATION || 'true').trim().toLowerCase() !== 'false';
+  }
+
+  private receiptTimeoutMs(): number {
+    return parseIntEnv('SEND_RELAYER_RECEIPT_TIMEOUT_MS', 120000);
+  }
+
+  private receiptPollMs(): number {
+    return parseIntEnv('SEND_RELAYER_RECEIPT_POLL_MS', 2000);
+  }
 
   private resolveEscrowAddress(chainId?: number): string {
     if (chainId && process.env[`SEND_CLAIM_ESCROW_ADDRESS_${chainId}` as keyof NodeJS.ProcessEnv]) {
@@ -371,6 +387,8 @@ class SendRelayerService {
       throw new Error('CDP sendTransaction did not return a valid transaction hash');
     }
 
+    await this.waitForConfirmedReceipt(txHash, request.chainId);
+
     return {
       txHash,
       mode: 'onchain',
@@ -455,6 +473,8 @@ class SendRelayerService {
         throw new Error('Managed signer response did not include a valid tx hash');
       }
 
+      await this.waitForConfirmedReceipt(txHash, request.chainId, request.rpcUrl);
+
       return {
         txHash,
         mode: 'onchain',
@@ -462,6 +482,48 @@ class SendRelayerService {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  private async waitForConfirmedReceipt(txHash: string, chainId?: number, rpcUrlOverride?: string): Promise<void> {
+    if (!this.requireReceiptConfirmation()) {
+      return;
+    }
+
+    const rpcUrl = (rpcUrlOverride || this.resolveRpcUrl(chainId)).trim();
+    if (!rpcUrl) {
+      throw new Error(
+        'Cannot confirm relayer transaction receipt: configure SEND_RELAYER_RPC_URL or SEND_RPC_URL_<chainId>'
+      );
+    }
+
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const deadline = Date.now() + this.receiptTimeoutMs();
+    let lastError: unknown = null;
+
+    while (Date.now() < deadline) {
+      try {
+        const receipt = await provider.getTransactionReceipt(txHash);
+        if (receipt) {
+          if (receipt.status !== 1) {
+            throw new Error(`Relayer transaction reverted on-chain (${txHash})`);
+          }
+          return;
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('reverted on-chain')) {
+          throw error;
+        }
+        lastError = error;
+      }
+
+      await delay(this.receiptPollMs());
+    }
+
+    if (lastError instanceof Error) {
+      throw new Error(`Timed out waiting for relayer receipt (${txHash}): ${lastError.message}`);
+    }
+
+    throw new Error(`Timed out waiting for relayer receipt (${txHash})`);
   }
 
   async claimToWallet(transferId: string, recipientWallet: string, chainId?: number): Promise<RelayerTxResult> {

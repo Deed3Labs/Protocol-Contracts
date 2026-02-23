@@ -824,12 +824,6 @@ sendRouter.post('/claim/verify-otp', otpVerifyRateLimiter, async (req: Request, 
     const claimSessionToken = sendClaimService.generateSessionToken();
     await sendTransferStore.verifyClaimSession(claimSession.id, sendClaimService.hashSessionToken(claimSessionToken));
 
-    // Rotate one-time claim token after OTP verification.
-    await sendTransferStore.rotateClaimTokenHash(
-      transfer.id,
-      sendClaimService.hashClaimToken(sendClaimService.generateClaimToken())
-    );
-
     return res.json({
       claimSessionToken,
       transfer: publicTransferView(transfer),

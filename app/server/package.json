@@ -10,7 +10,8 @@
     "start": "bun src/index.ts",
     "lint": "eslint src --ext .ts",
     "test": "bun test-api.ts",
-    "send:cdp:account": "node scripts/cdp-relayer-account.mjs"
+    "send:cdp:account": "node scripts/cdp-relayer-account.mjs",
+    "send:recover-claim": "node scripts/send-recover-claim-link.mjs"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.41.0",
