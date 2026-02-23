@@ -6,9 +6,10 @@ interface ActionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSwapClick?: () => void;
+  onSendFundsClick?: () => void;
 }
 
-const ActionModal = ({ isOpen, onClose, onSwapClick }: ActionModalProps) => {
+const ActionModal = ({ isOpen, onClose, onSwapClick, onSendFundsClick }: ActionModalProps) => {
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -105,6 +106,11 @@ const ActionModal = ({ isOpen, onClose, onSwapClick }: ActionModalProps) => {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: action.delay, duration: 0.3 }}
                   onClick={() => {
+                    if (action.id === 'send' && onSendFundsClick) {
+                      onSendFundsClick();
+                      onClose();
+                      return;
+                    }
                     if (action.id === 'swap' && onSwapClick) {
                       onSwapClick();
                       onClose();
@@ -142,4 +148,3 @@ const ActionModal = ({ isOpen, onClose, onSwapClick }: ActionModalProps) => {
 };
 
 export default ActionModal;
-

@@ -15,6 +15,7 @@ import transactionsRouter from './routes/transactions.js';
 import stripeRouter from './routes/stripe.js';
 import plaidRouter from './routes/plaid.js';
 import bridgeRouter from './routes/bridge.js';
+import sendRouter from './routes/send.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
@@ -24,6 +25,8 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 const PORT: number = parseInt(process.env.PORT || '3001', 10);
+
+type RawBodyRequest = express.Request & { rawBody?: Buffer };
 
 // Trust first proxy hop (Railway/Render/Nginx) so req.ip is accurate for rate limiting.
 app.set('trust proxy', 1);
@@ -96,7 +99,13 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as RawBodyRequest).rawBody = Buffer.from(buf);
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 
 // Health check (before rate limiter so it's always accessible)
@@ -156,6 +165,7 @@ async function startServer() {
     app.use('/api/stripe', requireAuth, stripeRouter);
     app.use('/api/plaid', requireAuth, plaidRouter);
     app.use('/api/bridge', requireAuth, bridgeRouter);
+    app.use('/api/send', sendRouter);
     
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');
@@ -166,6 +176,7 @@ async function startServer() {
     console.log('  - /api/stripe');
     console.log('  - /api/plaid');
     console.log('  - /api/bridge');
+    console.log('  - /api/send');
 
     // 404 handler (must be after all routes)
     app.use((req: express.Request, res: express.Response) => {

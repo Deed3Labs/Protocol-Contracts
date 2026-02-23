@@ -34,6 +34,7 @@ import PullToRefresh from "@/components/ui/PullToRefresh";
 import ScrollToTop from "@/components/ScrollToTop";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { ShareTarget } from "@/pages/ShareTarget";
+import ClaimFunds from "@/pages/ClaimFunds";
 import { PWAInitializer } from "@/components/PWAInitializer";
 
 const LegacyLayout = () => {
@@ -139,6 +140,7 @@ function App() {
                     
                     {/* Share Target - Public */}
                     <Route path="/share" element={<ShareTarget />} />
+                    <Route path="/claim/:token" element={<ClaimFunds />} />
                     
                     {/* App Routes wrapped in PullToRefresh Layout - Protected */}
                     {/* Pass true if splash was skipped OR if splash just finished */}
