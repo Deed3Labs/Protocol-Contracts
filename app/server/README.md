@@ -38,6 +38,15 @@ Key variables:
 - `REDIS_PASSWORD`: Redis password (if required)
 - `CACHE_TTL_PRICE`: Cache TTL for prices in seconds (default: 300)
 
+### CDP Relayer (Managed Signer)
+
+To run Send Funds claim settlement with Coinbase Server Wallets (no raw private key in app env):
+
+1. Set `SEND_RELAYER_MODE=cdp_server_wallet`.
+2. Set CDP credentials (`SEND_CDP_API_KEY_ID`, `SEND_CDP_API_KEY_SECRET`, `SEND_CDP_WALLET_SECRET`) or the default `CDP_*` envs.
+3. Set `SEND_CDP_NETWORK=base` (or chain-specific override like `SEND_CDP_NETWORK_84532=base-sepolia`).
+4. Run `npm run send:cdp:account` from `app/server` to create/get the managed relayer account and print its address for funding.
+
 ### Running Redis
 
 **Local (Docker):**

@@ -19,6 +19,8 @@
     "deploy:assurance-pool": "npx hardhat run deploy/08_deploy_AssurancePool.ts --network",
     "deploy:assurance-oracle": "npx hardhat run deploy/09_deploy_AssuranceOracle.ts --network",
     "deploy:burner-bond-factory": "npx hardhat run deploy/10_deploy_BurnerBondFactory.ts --network",
+    "send:grant-settler:base": "npx hardhat run scripts/grant_claim_escrow_settler.ts --network base",
+    "send:grant-settler:base-sepolia": "npx hardhat run scripts/grant_claim_escrow_settler.ts --network base-sepolia",
     "verify:deployments": "npx hardhat run deploy/verify_deployments.ts --network",
     "verify:deployments:sepolia": "npx hardhat run deploy/verify_deployments.ts --network base-sepolia",
     "upgrade:check": "npx hardhat run deploy/upgrade/checkUpgrade.ts --network",

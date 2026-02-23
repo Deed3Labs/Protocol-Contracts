@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAppKit, useAppKitAccount } from '@reown/appkit/react';
 import {
@@ -12,16 +12,42 @@ import {
 import type { ClaimPayoutMethod, ClaimPayoutResponse, ClaimSession, VerifyClaimOtpResponse } from '@/types/send';
 import { AlertCircle, CheckCircle2, Loader2, RefreshCcw, Wallet } from 'lucide-react';
 
-type ClaimStep = 'loading' | 'otp' | 'method' | 'processing' | 'success' | 'error';
+type ClaimStep = 'connect' | 'loading' | 'otp' | 'method' | 'processing' | 'success' | 'error';
 
 function storageKey(prefix: string, token: string): string {
   return `send_claim_${prefix}_${token}`;
+}
+
+function safeSessionGet(key: string): string | null {
+  try {
+    return window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSessionSet(key: string, value: string): void {
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // no-op
+  }
+}
+
+function safeSessionRemove(key: string): void {
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // no-op
+  }
 }
 
 export default function ClaimFunds() {
   const { token = '' } = useParams();
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
+  const requireAppKitForClaim =
+    (import.meta.env.VITE_SEND_CLAIM_REQUIRE_APPKIT || 'true').trim().toLowerCase() === 'true';
 
   const [step, setStep] = useState<ClaimStep>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +61,25 @@ export default function ClaimFunds() {
   const [bridgeEmail, setBridgeEmail] = useState('');
   const [payoutResult, setPayoutResult] = useState<ClaimPayoutResponse | null>(null);
 
+  const bootstrapClaim = useCallback(async () => {
+    if (!token) return;
+
+    setStep('loading');
+    setError(null);
+
+    const started = await startClaim(token);
+    if (!started) {
+      setError('Could not start claim session. Reconnect and retry. If it still fails, the link may be expired.');
+      setStep('error');
+      return;
+    }
+
+    setClaimSession(started);
+    setOtpCooldownUntil(Date.now() + started.resendCooldownSeconds * 1000);
+    safeSessionSet(storageKey('session_id', token), String(started.claimSessionId));
+    setStep('otp');
+  }, [token]);
+
   const retryAfterSeconds = useMemo(() => {
     const remainingMs = otpCooldownUntil - Date.now();
     return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
@@ -47,41 +92,30 @@ export default function ClaimFunds() {
       return;
     }
 
-    const savedVerifiedRaw = window.sessionStorage.getItem(storageKey('verified', token));
+    if (requireAppKitForClaim && !isConnected) {
+      setError(null);
+      setStep('connect');
+      return;
+    }
+
+    const savedVerifiedRaw = safeSessionGet(storageKey('verified', token));
     if (savedVerifiedRaw) {
       try {
         const parsed = JSON.parse(savedVerifiedRaw) as VerifyClaimOtpResponse;
         setVerifiedClaim(parsed);
-        setWalletInput(address || '');
+        setWalletInput('');
         setStep('method');
         return;
       } catch {
-        window.sessionStorage.removeItem(storageKey('verified', token));
+        safeSessionRemove(storageKey('verified', token));
       }
     }
-
-    const bootstrapClaim = async () => {
-      setStep('loading');
-      setError(null);
-
-      const started = await startClaim(token);
-      if (!started) {
-        setError('Could not start claim session. The link may be expired.');
-        setStep('error');
-        return;
-      }
-
-      setClaimSession(started);
-      setOtpCooldownUntil(Date.now() + started.resendCooldownSeconds * 1000);
-      window.sessionStorage.setItem(storageKey('session_id', token), String(started.claimSessionId));
-      setStep('otp');
-    };
 
     bootstrapClaim().catch((err) => {
       setError(err instanceof Error ? err.message : 'Failed to initialize claim flow');
       setStep('error');
     });
-  }, [token, address]);
+  }, [token, isConnected, requireAppKitForClaim, bootstrapClaim]);
 
   useEffect(() => {
     if (isConnected && address) {
@@ -112,7 +146,7 @@ export default function ClaimFunds() {
     }
 
     setVerifiedClaim(verified);
-    window.sessionStorage.setItem(storageKey('verified', token), JSON.stringify(verified));
+    safeSessionSet(storageKey('verified', token), JSON.stringify(verified));
     setStep('method');
   };
 
@@ -187,8 +221,8 @@ export default function ClaimFunds() {
     }
 
     setPayoutResult(response);
-    window.sessionStorage.removeItem(storageKey('verified', token));
-    window.sessionStorage.removeItem(storageKey('session_id', token));
+    safeSessionRemove(storageKey('verified', token));
+    safeSessionRemove(storageKey('session_id', token));
     setStep('success');
   };
 
@@ -202,6 +236,28 @@ export default function ClaimFunds() {
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
             <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">Loading claim details...</p>
+          </div>
+        )}
+
+        {step === 'connect' && (
+          <div className="mt-5 space-y-4">
+            <div className="rounded-sm border border-zinc-200 bg-zinc-50 p-3 text-xs dark:border-zinc-800 dark:bg-zinc-900/50">
+              <p className="font-medium text-zinc-900 dark:text-zinc-100">Create account / connect wallet to claim</p>
+              <p className="mt-1 text-zinc-500">
+                To protect claim access, connect with AppKit first. If prompted, complete the sign-in step.
+              </p>
+              <p className="mt-1 text-zinc-500">
+                On iOS Safari, use this button and finish the in-modal flow for email/social embedded wallet login.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => open({ view: isConnected ? 'Account' : 'Connect' })}
+              className="w-full rounded-sm bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              {isConnected ? 'Open Account' : 'Connect / Create Account'}
+            </button>
           </div>
         )}
 
@@ -404,6 +460,23 @@ export default function ClaimFunds() {
           <div className="mt-6 flex flex-col items-center text-center">
             <AlertCircle className="h-8 w-8 text-red-500" />
             <p className="mt-3 text-sm text-zinc-700 dark:text-zinc-300">{error || 'Claim flow failed.'}</p>
+            <button
+              type="button"
+              onClick={() => {
+                if (requireAppKitForClaim && !isConnected) {
+                  setStep('connect');
+                  return;
+                }
+
+                bootstrapClaim().catch((err) => {
+                  setError(err instanceof Error ? err.message : 'Failed to restart claim flow');
+                  setStep('error');
+                });
+              }}
+              className="mt-3 rounded-sm border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              Retry Claim
+            </button>
           </div>
         )}
 

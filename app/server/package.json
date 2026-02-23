@@ -9,9 +9,11 @@
     "build": "bun build src/index.ts --outdir dist",
     "start": "bun src/index.ts",
     "lint": "eslint src --ext .ts",
-    "test": "bun test-api.ts"
+    "test": "bun test-api.ts",
+    "send:cdp:account": "node scripts/cdp-relayer-account.mjs"
   },
   "dependencies": {
+    "@coinbase/cdp-sdk": "^1.41.0",
     "@types/pg": "^8.16.0",
     "@types/socket.io": "^3.0.1",
     "compression": "^1.7.4",
