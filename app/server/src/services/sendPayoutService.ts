@@ -67,6 +67,15 @@ function webhookTimeoutMs(): number {
   return parseIntEnv('SEND_PAYOUT_WEBHOOK_TIMEOUT_MS', 15000);
 }
 
+function isBridgeDebitFallbackCode(code: string | undefined): boolean {
+  return (
+    code === 'BRIDGE_DEBIT_EXTERNAL_ACCOUNT_INELIGIBLE' ||
+    code === 'BRIDGE_DEBIT_RAIL_UNCONFIGURED' ||
+    code === 'BRIDGE_DEBIT_EXTERNAL_ACCOUNT_MISSING' ||
+    code === 'BRIDGE_DEBIT_DESTINATION_CONFIG_MISSING'
+  );
+}
+
 class SendPayoutService {
   private readonly providerMode = (process.env.SEND_PAYOUT_PROVIDER || 'mock').trim().toLowerCase();
   private readonly debitProvider = process.env.SEND_DEBIT_PROVIDER || 'mock-debit';
@@ -232,6 +241,8 @@ class SendPayoutService {
         phase: 'precheck',
         method: 'BANK',
         transfer: sendBridgePayoutService.fromTransferRecord(transfer),
+        recipientBridgeCustomerId: bridgeRecipientEligibility.bridgeCustomerId,
+        recipientBridgeExternalAccountId: bridgeRecipientEligibility.bridgeExternalAccountId,
       });
 
       if (precheck.status === 'FALLBACK_REQUIRED') {
@@ -403,6 +414,18 @@ class SendPayoutService {
       }
 
       if (bridgeRecipientEligibility.status === 'FAILED') {
+        if (isBridgeDebitFallbackCode(bridgeRecipientEligibility.failureCode)) {
+          return {
+            status: 'FALLBACK_REQUIRED',
+            provider: bridgeRecipientEligibility.provider,
+            failureCode: bridgeRecipientEligibility.failureCode || 'DEBIT_INELIGIBLE',
+            failureReason:
+              bridgeRecipientEligibility.failureReason ||
+              'Debit payout is ineligible for this recipient; bank payout is available.',
+            fallbackMethod: 'BANK',
+          };
+        }
+
         return {
           status: 'FAILED',
           provider: bridgeRecipientEligibility.provider,
@@ -415,6 +438,8 @@ class SendPayoutService {
         phase: 'precheck',
         method: 'DEBIT',
         transfer: sendBridgePayoutService.fromTransferRecord(transfer),
+        recipientBridgeCustomerId: bridgeRecipientEligibility.bridgeCustomerId,
+        recipientBridgeExternalAccountId: bridgeRecipientEligibility.bridgeExternalAccountId,
       });
 
       if (precheck.status === 'FALLBACK_REQUIRED') {
@@ -428,6 +453,16 @@ class SendPayoutService {
       }
 
       if (precheck.status === 'FAILED') {
+        if (isBridgeDebitFallbackCode(precheck.failureCode)) {
+          return {
+            status: 'FALLBACK_REQUIRED',
+            provider: precheck.provider,
+            failureCode: precheck.failureCode || 'DEBIT_INELIGIBLE',
+            failureReason: precheck.failureReason || 'Debit payout is ineligible',
+            fallbackMethod: 'BANK',
+          };
+        }
+
         return {
           status: 'FAILED',
           provider: precheck.provider,

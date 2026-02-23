@@ -37,6 +37,21 @@ interface BridgeExternalAccountRecord {
   status?: string;
   state?: string;
   disabled?: boolean;
+  payment_rail?: string;
+  paymentRail?: string;
+  payment_rails?: unknown;
+  supported_payment_rails?: unknown;
+  rail?: string;
+  rails?: unknown;
+  payment_method?: string;
+  paymentMethod?: string;
+  payment_methods?: unknown;
+  type?: string;
+  account_type?: string;
+  accountType?: string;
+  network?: string;
+  currency?: string;
+  currencies?: unknown;
 }
 
 interface BridgeListExternalAccountsResponse {
@@ -246,6 +261,159 @@ function recipientDestinationCurrency(): string {
   return (process.env.SEND_BRIDGE_RECIPIENT_DESTINATION_CURRENCY || '').trim().toLowerCase();
 }
 
+function normalizeRailToken(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+}
+
+function parseCsvSet(raw: string | undefined): Set<string> {
+  if (!raw) return new Set();
+  return new Set(
+    raw
+      .split(',')
+      .map((value) => normalizeRailToken(value))
+      .filter(Boolean)
+  );
+}
+
+function isLikelyDebitRail(rail: string): boolean {
+  const normalized = normalizeRailToken(rail);
+  return (
+    normalized.includes('debit') ||
+    normalized.includes('card') ||
+    normalized.includes('visa') ||
+    normalized.includes('mastercard') ||
+    normalized.includes('master_card') ||
+    normalized.includes('maestro')
+  );
+}
+
+function isLikelyBankRail(rail: string): boolean {
+  const normalized = normalizeRailToken(rail);
+  return (
+    normalized.includes('ach') ||
+    normalized.includes('bank') ||
+    normalized.includes('sepa') ||
+    normalized.includes('wire') ||
+    normalized.includes('swift') ||
+    normalized.includes('fps') ||
+    normalized.includes('pix')
+  );
+}
+
+function methodRecipientDestinationPaymentRail(method: DispatchMethod): string {
+  const explicit =
+    method === 'DEBIT'
+      ? (process.env.SEND_BRIDGE_RECIPIENT_DEBIT_DESTINATION_PAYMENT_RAIL || '').trim()
+      : (process.env.SEND_BRIDGE_RECIPIENT_BANK_DESTINATION_PAYMENT_RAIL || '').trim();
+  if (explicit) return explicit;
+
+  const shared = recipientDestinationPaymentRail();
+  if (!shared) return '';
+
+  // Do not silently reuse a bank rail for debit selection.
+  if (method === 'DEBIT' && !isLikelyDebitRail(shared)) {
+    return '';
+  }
+
+  return shared;
+}
+
+function methodRecipientDestinationCurrency(method: DispatchMethod): string {
+  const explicit =
+    method === 'DEBIT'
+      ? (process.env.SEND_BRIDGE_RECIPIENT_DEBIT_DESTINATION_CURRENCY || '').trim().toLowerCase()
+      : (process.env.SEND_BRIDGE_RECIPIENT_BANK_DESTINATION_CURRENCY || '').trim().toLowerCase();
+  if (explicit) return explicit;
+
+  const shared = recipientDestinationCurrency();
+  return shared || 'usd';
+}
+
+function methodExternalRailHints(method: DispatchMethod): Set<string> {
+  const explicitCsv =
+    method === 'DEBIT'
+      ? process.env.SEND_BRIDGE_RECIPIENT_DEBIT_EXTERNAL_ACCOUNT_RAILS
+      : process.env.SEND_BRIDGE_RECIPIENT_BANK_EXTERNAL_ACCOUNT_RAILS;
+  const explicit = parseCsvSet(explicitCsv);
+  if (explicit.size > 0) return explicit;
+
+  const destinationRail = methodRecipientDestinationPaymentRail(method);
+  if (destinationRail) {
+    return new Set([normalizeRailToken(destinationRail)]);
+  }
+
+  return new Set();
+}
+
+function collectRailTokensFromUnknown(value: unknown, target: Set<string>): void {
+  if (!value) return;
+  if (typeof value === 'string') {
+    const normalized = normalizeRailToken(value);
+    if (normalized) {
+      target.add(normalized);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectRailTokensFromUnknown(entry, target);
+    }
+    return;
+  }
+  if (typeof value === 'object') {
+    const objectRecord = value as Record<string, unknown>;
+    for (const entry of Object.values(objectRecord)) {
+      collectRailTokensFromUnknown(entry, target);
+    }
+  }
+}
+
+function externalAccountRailTokens(account: BridgeExternalAccountRecord): Set<string> {
+  const tokens = new Set<string>();
+  collectRailTokensFromUnknown(account.payment_rail, tokens);
+  collectRailTokensFromUnknown(account.paymentRail, tokens);
+  collectRailTokensFromUnknown(account.rail, tokens);
+  collectRailTokensFromUnknown(account.payment_rails, tokens);
+  collectRailTokensFromUnknown(account.supported_payment_rails, tokens);
+  collectRailTokensFromUnknown(account.rails, tokens);
+  collectRailTokensFromUnknown(account.payment_method, tokens);
+  collectRailTokensFromUnknown(account.paymentMethod, tokens);
+  collectRailTokensFromUnknown(account.payment_methods, tokens);
+  collectRailTokensFromUnknown(account.type, tokens);
+  collectRailTokensFromUnknown(account.account_type, tokens);
+  collectRailTokensFromUnknown(account.accountType, tokens);
+  collectRailTokensFromUnknown(account.network, tokens);
+  return tokens;
+}
+
+function externalAccountMatchesMethod(
+  account: BridgeExternalAccountRecord,
+  method: DispatchMethod,
+  expectedRails: Set<string>
+): boolean {
+  const accountRails = externalAccountRailTokens(account);
+
+  if (expectedRails.size > 0) {
+    // If Bridge does not expose rails on this object shape, avoid hard-blocking.
+    if (accountRails.size === 0) return true;
+    for (const rail of accountRails) {
+      if (expectedRails.has(rail)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  if (accountRails.size === 0) return true;
+  const matcher = method === 'DEBIT' ? isLikelyDebitRail : isLikelyBankRail;
+  for (const rail of accountRails) {
+    if (matcher(rail)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function recipientDefaultFullName(): string {
   const configured = (process.env.SEND_BRIDGE_RECIPIENT_DEFAULT_FULL_NAME || '').trim();
   return configured || 'Recipient User';
@@ -392,6 +560,7 @@ class SendBridgePayoutService {
 
     let customerId = persisted?.bridgeCustomerId || null;
     let externalAccountId = persisted?.bridgeExternalAccountId || null;
+    let hasActiveExternalAccounts = false;
 
     if (!customerId) {
       const existingByEmail = await this.findKycByEmail(apiKey, normalizedEmail);
@@ -400,8 +569,10 @@ class SendBridgePayoutService {
       }
     }
 
-    if (customerId && !externalAccountId) {
-      externalAccountId = await this.findActiveExternalAccountId(apiKey, customerId);
+    if (customerId) {
+      const lookup = await this.findEligibleExternalAccount(apiKey, customerId, params.method, externalAccountId);
+      externalAccountId = lookup.externalAccountId;
+      hasActiveExternalAccounts = lookup.hasActiveAccounts;
     }
 
     if (customerId && externalAccountId) {
@@ -418,6 +589,34 @@ class SendBridgePayoutService {
         provider,
         bridgeCustomerId: customerId,
         bridgeExternalAccountId: externalAccountId,
+      };
+    }
+
+    if (customerId && hasActiveExternalAccounts) {
+      await sendTransferStore.upsertBridgeRecipient({
+        recipientContactHash: params.transfer.recipientContactHash,
+        recipientHintHash: params.transfer.recipientHintHash,
+        bridgeCustomerId: customerId,
+        bridgeExternalAccountId: null,
+        onboardingStatus: 'READY',
+      });
+
+      if (params.method === 'DEBIT') {
+        return {
+          status: 'FAILED',
+          provider,
+          bridgeCustomerId: customerId,
+          failureCode: 'BRIDGE_DEBIT_EXTERNAL_ACCOUNT_INELIGIBLE',
+          failureReason: 'Recipient does not have an eligible debit payout account. Use bank payout instead.',
+        };
+      }
+
+      return {
+        status: 'FAILED',
+        provider,
+        bridgeCustomerId: customerId,
+        failureCode: 'BRIDGE_BANK_EXTERNAL_ACCOUNT_INELIGIBLE',
+        failureReason: 'Recipient does not have an eligible bank payout account.',
       };
     }
 
@@ -513,13 +712,64 @@ class SendBridgePayoutService {
     }
 
     if (payload.phase === 'precheck') {
+      const recipientRail = methodRecipientDestinationPaymentRail(payload.method);
+      if (payload.method === 'DEBIT' && !recipientRail) {
+        return {
+          status: 'FALLBACK_REQUIRED',
+          provider,
+          failureCode: 'BRIDGE_DEBIT_RAIL_UNCONFIGURED',
+          failureReason:
+            'Debit payout rail is not configured. Set SEND_BRIDGE_RECIPIENT_DEBIT_DESTINATION_PAYMENT_RAIL.',
+          fallbackMethod: 'BANK',
+        };
+      }
+
+      if (recipientOnboardingRequired() && !payload.recipientBridgeExternalAccountId) {
+        if (payload.method === 'DEBIT') {
+          return {
+            status: 'FALLBACK_REQUIRED',
+            provider,
+            failureCode: 'BRIDGE_DEBIT_EXTERNAL_ACCOUNT_MISSING',
+            failureReason: 'Recipient has no eligible debit payout account on file.',
+            fallbackMethod: 'BANK',
+          };
+        }
+
+        return {
+          status: 'FAILED',
+          provider,
+          failureCode: 'BRIDGE_BANK_EXTERNAL_ACCOUNT_MISSING',
+          failureReason: 'Recipient has no eligible bank payout account on file.',
+        };
+      }
+
+      const destination = this.buildBridgeDestination(payload.method, payload.recipientBridgeExternalAccountId);
+      if (!destination) {
+        if (payload.method === 'DEBIT') {
+          return {
+            status: 'FALLBACK_REQUIRED',
+            provider,
+            failureCode: 'BRIDGE_DEBIT_DESTINATION_CONFIG_MISSING',
+            failureReason: 'Debit destination config is missing or invalid.',
+            fallbackMethod: 'BANK',
+          };
+        }
+
+        return {
+          status: 'FAILED',
+          provider,
+          failureCode: 'BRIDGE_BANK_DESTINATION_CONFIG_MISSING',
+          failureReason: 'Bank destination config is missing or invalid.',
+        };
+      }
+
       return {
         status: 'SUCCESS',
         provider,
       };
     }
 
-    return this.executeBankDispatch(payload);
+    return this.executeBridgeDispatch(payload);
   }
 
   private buildBridgeSource(): Record<string, unknown> | null {
@@ -556,14 +806,21 @@ class SendBridgePayoutService {
     return source;
   }
 
-  private buildBridgeDestination(recipientBridgeExternalAccountId?: string): Record<string, unknown> | null {
+  private buildBridgeDestination(
+    method: DispatchMethod,
+    recipientBridgeExternalAccountId?: string
+  ): Record<string, unknown> | null {
     const rawOverride = parseJsonEnv('SEND_BRIDGE_TRANSFER_DESTINATION_JSON');
+    const recipientRail = methodRecipientDestinationPaymentRail(method);
+    const recipientCurrency = methodRecipientDestinationCurrency(method);
+
     if (rawOverride) {
       const destination = { ...rawOverride };
 
       if (recipientBridgeExternalAccountId) {
-        const recipientRail = recipientDestinationPaymentRail();
-        const recipientCurrency = recipientDestinationCurrency();
+        if (method === 'DEBIT' && !recipientRail) {
+          return null;
+        }
         if (recipientRail) {
           destination.payment_rail = recipientRail;
         }
@@ -603,8 +860,9 @@ class SendBridgePayoutService {
     }
 
     if (recipientBridgeExternalAccountId) {
-      const recipientRail = recipientDestinationPaymentRail();
-      const recipientCurrency = recipientDestinationCurrency();
+      if (method === 'DEBIT' && !recipientRail) {
+        return null;
+      }
       if (recipientRail) {
         destination.payment_rail = recipientRail;
       }
@@ -618,7 +876,7 @@ class SendBridgePayoutService {
     return destination;
   }
 
-  private async executeBankDispatch(
+  private async executeBridgeDispatch(
     payload: BridgePayoutDispatchRequest
   ): Promise<BridgePayoutDispatchResponse> {
     const provider = bridgeProviderName();
@@ -634,7 +892,7 @@ class SendBridgePayoutService {
     }
 
     const source = this.buildBridgeSource();
-    const destination = this.buildBridgeDestination(payload.recipientBridgeExternalAccountId);
+    const destination = this.buildBridgeDestination(payload.method, payload.recipientBridgeExternalAccountId);
     if (!source || !destination) {
       return {
         status: 'FAILED',
@@ -862,7 +1120,12 @@ class SendBridgePayoutService {
     };
   }
 
-  private async findActiveExternalAccountId(apiKey: string, customerId: string): Promise<string | null> {
+  private async findEligibleExternalAccount(
+    apiKey: string,
+    customerId: string,
+    method: DispatchMethod,
+    preferredExternalAccountId?: string | null
+  ): Promise<{ externalAccountId: string | null; hasActiveAccounts: boolean }> {
     const result = await this.bridgeApiRequest<BridgeListExternalAccountsResponse>(
       apiKey,
       `/customers/${encodeURIComponent(customerId)}/external_accounts?limit=${bridgeExternalAccountLookupLimit()}`,
@@ -870,12 +1133,33 @@ class SendBridgePayoutService {
     );
 
     if (!result.ok || !Array.isArray(result.data.data)) {
-      return null;
+      return { externalAccountId: null, hasActiveAccounts: false };
     }
 
-    const active = result.data.data.find((account) => isExternalAccountActive(account));
-    if (!active?.id) return null;
-    return active.id;
+    const activeAccounts = result.data.data.filter((account) => isExternalAccountActive(account) && !!account.id);
+    if (activeAccounts.length === 0) {
+      return { externalAccountId: null, hasActiveAccounts: false };
+    }
+
+    const expectedRails = methodExternalRailHints(method);
+
+    if (preferredExternalAccountId) {
+      const preferred = activeAccounts.find(
+        (account) =>
+          account.id === preferredExternalAccountId &&
+          externalAccountMatchesMethod(account, method, expectedRails)
+      );
+      if (preferred?.id) {
+        return { externalAccountId: preferred.id, hasActiveAccounts: true };
+      }
+    }
+
+    const matched = activeAccounts.find((account) => externalAccountMatchesMethod(account, method, expectedRails));
+    if (matched?.id) {
+      return { externalAccountId: matched.id, hasActiveAccounts: true };
+    }
+
+    return { externalAccountId: null, hasActiveAccounts: true };
   }
 
   fromTransferRecord(transfer: SendTransferRecord): BridgePayoutDispatchRequest['transfer'] {

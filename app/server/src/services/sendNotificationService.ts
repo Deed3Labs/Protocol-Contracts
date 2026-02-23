@@ -17,6 +17,13 @@ type GenericWebhookResponse = {
   status?: string;
 };
 
+type TwilioMessageResponse = {
+  sid?: string;
+  status?: string;
+  message?: string;
+  code?: number;
+};
+
 function hashDestination(destination: string): string {
   return crypto.createHash('sha256').update(destination, 'utf8').digest('hex');
 }
@@ -107,11 +114,112 @@ class SendNotificationService {
     destination: string;
     payload: Record<string, string>;
   }): Promise<{ provider: string; providerMessageId: string; status: string }> {
+    if (this.providerMode === 'twilio') {
+      return this.dispatchTwilio(params);
+    }
+
     if (this.providerMode === 'generic_webhook') {
       return this.dispatchGenericWebhook(params);
     }
 
     return this.dispatchMock(params);
+  }
+
+  private buildSmsMessage(params: {
+    kind: NotificationKind;
+    payload: Record<string, string>;
+  }): string {
+    if (params.kind === 'otp') {
+      const otp = params.payload.otp || '';
+      return `Your claim verification code is ${otp}.`;
+    }
+
+    const claimUrl = params.payload.claimUrl || '';
+    return `You received funds. Claim here: ${claimUrl}`;
+  }
+
+  private async dispatchTwilio(params: {
+    channel: NotificationChannel;
+    kind: NotificationKind;
+    destination: string;
+    payload: Record<string, string>;
+  }): Promise<{ provider: string; providerMessageId: string; status: string }> {
+    if (params.channel !== 'sms') {
+      if ((process.env.SEND_NOTIFICATION_WEBHOOK_URL || '').trim()) {
+        return this.dispatchGenericWebhook(params);
+      }
+      throw new Error(
+        'Twilio notification provider currently supports SMS recipients only. For email recipients configure SEND_NOTIFICATION_WEBHOOK_URL or use phone recipient.'
+      );
+    }
+
+    const accountSid = (process.env.SEND_TWILIO_ACCOUNT_SID || process.env.TWILIO_ACCOUNT_SID || '').trim();
+    const authToken = (process.env.SEND_TWILIO_AUTH_TOKEN || process.env.TWILIO_AUTH_TOKEN || '').trim();
+    const messagingServiceSid = (
+      process.env.SEND_TWILIO_MESSAGING_SERVICE_SID ||
+      process.env.TWILIO_MESSAGING_SERVICE_SID ||
+      ''
+    ).trim();
+    const fromNumber = (process.env.SEND_TWILIO_FROM_PHONE_NUMBER || process.env.TWILIO_FROM_PHONE_NUMBER || '').trim();
+    const statusCallbackUrl = (process.env.SEND_TWILIO_STATUS_CALLBACK_URL || '').trim();
+
+    if (!accountSid || !authToken) {
+      throw new Error('Twilio credentials are missing. Set SEND_TWILIO_ACCOUNT_SID and SEND_TWILIO_AUTH_TOKEN.');
+    }
+
+    if (!messagingServiceSid && !fromNumber) {
+      throw new Error(
+        'Twilio sender is missing. Set SEND_TWILIO_MESSAGING_SERVICE_SID or SEND_TWILIO_FROM_PHONE_NUMBER.'
+      );
+    }
+
+    const baseUrl = (process.env.SEND_TWILIO_API_BASE_URL || 'https://api.twilio.com/2010-04-01').trim().replace(/\/+$/, '');
+    const url = `${baseUrl}/Accounts/${encodeURIComponent(accountSid)}/Messages.json`;
+
+    const timeoutMs = parseIntEnv('SEND_NOTIFICATION_WEBHOOK_TIMEOUT_MS', 12000);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const body = new URLSearchParams();
+      body.set('To', params.destination);
+      body.set('Body', this.buildSmsMessage({ kind: params.kind, payload: params.payload }));
+      if (messagingServiceSid) {
+        body.set('MessagingServiceSid', messagingServiceSid);
+      } else if (fromNumber) {
+        body.set('From', fromNumber);
+      }
+      if (statusCallbackUrl) {
+        body.set('StatusCallback', statusCallbackUrl);
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+        signal: controller.signal,
+      });
+
+      const twilioBody = (await response.json().catch(() => ({}))) as TwilioMessageResponse;
+      if (!response.ok) {
+        const details =
+          typeof twilioBody.message === 'string'
+            ? twilioBody.message
+            : `Twilio request failed (${response.status})`;
+        throw new Error(details);
+      }
+
+      return {
+        provider: 'twilio',
+        providerMessageId: twilioBody.sid || providerMessageId(params.channel),
+        status: twilioBody.status || 'QUEUED',
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   private async dispatchGenericWebhook(params: {
