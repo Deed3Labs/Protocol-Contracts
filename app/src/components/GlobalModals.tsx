@@ -1,4 +1,5 @@
 import ActionModal from "@/components/portfolio/ActionModal";
+import SendFundsModal from "@/components/portfolio/SendFundsModal";
 import { TradeModal } from "@/components/portfolio/TradeModal";
 import SearchModal from "@/components/portfolio/SearchModal";
 import XMTPMessaging from "@/components/XMTPMessaging";
@@ -13,6 +14,8 @@ export default function GlobalModals() {
   const {
     actionModalOpen,
     setActionModalOpen,
+    sendFundsModalOpen,
+    setSendFundsModalOpen,
     tradeModalOpen,
     setTradeModalOpen,
     tradeModalType,
@@ -27,6 +30,7 @@ export default function GlobalModals() {
     setXmtpModalOpen,
     xmtpConversationId,
     openTradeModal,
+    openSendFundsModal,
   } = useGlobalModals();
 
   // Filter categories for search (same as HeaderNav)
@@ -65,6 +69,12 @@ export default function GlobalModals() {
         isOpen={actionModalOpen}
         onClose={() => setActionModalOpen(false)}
         onSwapClick={() => openTradeModal('swap', null)}
+        onSendFundsClick={() => openSendFundsModal()}
+      />
+
+      <SendFundsModal
+        open={sendFundsModalOpen}
+        onOpenChange={setSendFundsModalOpen}
       />
       
       {/* Global TradeModal - accessible from any page */}

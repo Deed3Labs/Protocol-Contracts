@@ -18,6 +18,8 @@ interface GlobalModalsContextType {
   // ActionModal
   actionModalOpen: boolean;
   setActionModalOpen: (open: boolean) => void;
+  sendFundsModalOpen: boolean;
+  setSendFundsModalOpen: (open: boolean) => void;
   
   // TradeModal
   tradeModalOpen: boolean;
@@ -51,6 +53,7 @@ interface GlobalModalsContextType {
   
   // Helper functions
   openTradeModal: (type: 'buy' | 'sell' | 'swap', asset?: TradeModalAsset | null) => void;
+  openSendFundsModal: () => void;
   openSearchModal: () => void;
   openXmtpModal: (conversationId?: string) => void;
   toggleProfileMenu: () => void;
@@ -64,6 +67,7 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
   const { user: appKitUser } = useAppKitAuth();
   
   const [actionModalOpen, setActionModalOpen] = useState(false);
+  const [sendFundsModalOpen, setSendFundsModalOpen] = useState(false);
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [tradeModalType, setTradeModalType] = useState<'buy' | 'sell' | 'swap'>('buy');
   const [tradeModalAsset, setTradeModalAsset] = useState<TradeModalAsset | null>(null);
@@ -105,6 +109,10 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
   const openSearchModal = () => {
     setSearchModalOpen(true);
   };
+
+  const openSendFundsModal = () => {
+    setSendFundsModalOpen(true);
+  };
   
   const openXmtpModal = (conversationId?: string) => {
     setXmtpConversationId(conversationId || null);
@@ -120,6 +128,8 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
       value={{
         actionModalOpen,
         setActionModalOpen,
+        sendFundsModalOpen,
+        setSendFundsModalOpen,
         tradeModalOpen,
         setTradeModalOpen,
         tradeModalType,
@@ -140,6 +150,7 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
         setProfileMenuOpen,
         profileMenuUser,
         openTradeModal,
+        openSendFundsModal,
         openSearchModal,
         openXmtpModal,
         toggleProfileMenu,

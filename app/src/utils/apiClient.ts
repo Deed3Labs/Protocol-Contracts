@@ -4,6 +4,16 @@
  * This utility provides a centralized way to call the backend API
  * with automatic caching and error handling.
  */
+import type {
+  ClaimPayoutResponse,
+  ClaimSession,
+  ConfirmSendTransferLockRequest,
+  ConfirmSendTransferLockResponse,
+  PrepareSendTransferRequest,
+  PrepareSendTransferResponse,
+  SendTransferSummary,
+  VerifyClaimOtpResponse,
+} from '@/types/send';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const SIWX_AUTH_TOKEN_KEY = '@appkit/siwx-auth-token';
@@ -938,6 +948,148 @@ export async function getBridgeFundingUrl(
   });
   if (response.error || !response.data?.url) return null;
   return response.data.url;
+}
+
+export async function prepareSendTransfer(
+  payload: PrepareSendTransferRequest
+): Promise<PrepareSendTransferResponse | null> {
+  const response = await apiRequest<PrepareSendTransferResponse>('/api/send/transfers/prepare', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function confirmSendTransferLock(
+  id: number,
+  payload: ConfirmSendTransferLockRequest
+): Promise<ConfirmSendTransferLockResponse | null> {
+  const response = await apiRequest<ConfirmSendTransferLockResponse>(`/api/send/transfers/${id}/confirm-lock`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function listSendTransfers(limit: number = 50): Promise<SendTransferSummary[]> {
+  const response = await apiRequest<{ transfers: SendTransferSummary[] }>(`/api/send/transfers?limit=${limit}`);
+
+  if (response.error || !response.data) {
+    return [];
+  }
+
+  return response.data.transfers;
+}
+
+export async function getSendTransferById(id: number): Promise<SendTransferSummary | null> {
+  const response = await apiRequest<{ transfer: SendTransferSummary }>(`/api/send/transfers/${id}`);
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data.transfer;
+}
+
+export async function startClaim(claimToken: string): Promise<ClaimSession | null> {
+  const response = await apiRequest<ClaimSession>('/api/send/claim/start', {
+    method: 'POST',
+    body: JSON.stringify({ claimToken }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function verifyClaimOtp(
+  claimSessionId: number,
+  otp: string
+): Promise<VerifyClaimOtpResponse | null> {
+  const response = await apiRequest<VerifyClaimOtpResponse>('/api/send/claim/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify({ claimSessionId, otp }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function resendClaimOtp(
+  claimSessionId: number
+): Promise<{ success: boolean; resendCount: number; otpExpiresAt: string; resendCooldownSeconds: number } | null> {
+  const response = await apiRequest<{
+    success: boolean;
+    resendCount: number;
+    otpExpiresAt: string;
+    resendCooldownSeconds: number;
+  }>('/api/send/claim/resend-otp', {
+    method: 'POST',
+    body: JSON.stringify({ claimSessionId }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function claimPayoutDebit(claimSessionToken: string): Promise<ClaimPayoutResponse | null> {
+  const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/debit', {
+    method: 'POST',
+    body: JSON.stringify({ claimSessionToken }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function claimPayoutBank(claimSessionToken: string): Promise<ClaimPayoutResponse | null> {
+  const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/bank', {
+    method: 'POST',
+    body: JSON.stringify({ claimSessionToken }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
+}
+
+export async function claimPayoutWallet(
+  claimSessionToken: string,
+  recipientWallet: string
+): Promise<ClaimPayoutResponse | null> {
+  const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/wallet', {
+    method: 'POST',
+    body: JSON.stringify({ claimSessionToken, recipientWallet }),
+  });
+
+  if (response.error || !response.data) {
+    return null;
+  }
+
+  return response.data;
 }
 
 /**
