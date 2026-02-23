@@ -543,15 +543,22 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
                   {claimUrl && (
                     <div className="rounded-sm border border-zinc-200 p-3 dark:border-zinc-800">
                       <p className="text-xs uppercase tracking-wide text-zinc-500">Claim Link</p>
-                      <p className="mt-1 break-all text-xs text-zinc-800 dark:text-zinc-200">{claimUrl}</p>
-                      <button
-                        type="button"
-                        onClick={copyClaimUrl}
-                        className="mt-2 inline-flex items-center gap-1 rounded-sm border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                        {copied ? 'Copied' : 'Copy link'}
-                      </button>
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          readOnly
+                          value={claimUrl}
+                          onFocus={(event) => event.currentTarget.select()}
+                          className="flex-1 rounded-sm border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-xs text-zinc-800 outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={copyClaimUrl}
+                          className="inline-flex items-center gap-1 rounded-sm border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          {copied ? 'Copied' : 'Copy'}
+                        </button>
+                      </div>
                     </div>
                   )}
 

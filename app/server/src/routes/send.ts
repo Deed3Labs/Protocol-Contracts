@@ -152,6 +152,15 @@ function claimAppBaseUrl(): string {
   ).replace(/\/+$/, '');
 }
 
+function otpBypassEnabled(): boolean {
+  return (process.env.SEND_OTP_BYPASS_ENABLED || 'false').trim().toLowerCase() === 'true';
+}
+
+function otpBypassCode(): string {
+  const raw = (process.env.SEND_OTP_BYPASS_CODE || '000000').trim();
+  return /^\d{6}$/.test(raw) ? raw : '000000';
+}
+
 function payoutMethodsForRegion(region: string): Array<'DEBIT' | 'BANK' | 'WALLET'> {
   const normalized = region.toUpperCase();
   const methods: Array<'DEBIT' | 'BANK' | 'WALLET'> = [];
@@ -686,7 +695,7 @@ sendRouter.post('/claim/start', claimStartRateLimiter, async (req: Request, res:
     }
 
     const otpConfig = sendClaimService.getOtpConfig();
-    const otp = sendClaimService.generateOtp();
+    const otp = otpBypassEnabled() ? otpBypassCode() : sendClaimService.generateOtp();
     const otpExpiry = sendClaimService.calculateOtpExpiry(now);
 
     const createdSession = await sendTransferStore.createClaimSession({
@@ -714,12 +723,16 @@ sendRouter.post('/claim/start', claimStartRateLimiter, async (req: Request, res:
     }
 
     const recipientContact = sendTransferStore.decryptRecipientContact(transfer);
-    await sendNotificationService.sendOtp({
-      transferRowId: transfer.id,
-      recipientType: transfer.recipientType,
-      recipientContact,
-      otp,
-    });
+    if (otpBypassEnabled()) {
+      console.warn(`[SendFunds] OTP bypass enabled for claimSessionId=${createdSession.id}.`);
+    } else {
+      await sendNotificationService.sendOtp({
+        transferRowId: transfer.id,
+        recipientType: transfer.recipientType,
+        recipientContact,
+        otp,
+      });
+    }
 
     return res.json({
       claimSessionId: createdSession.id,
@@ -792,7 +805,9 @@ sendRouter.post('/claim/verify-otp', otpVerifyRateLimiter, async (req: Request, 
       });
     }
 
-    const isValidOtp = sendClaimService.verifyOtp(body.otp.trim(), claimSession.otpHash, claimSession.id);
+    const providedOtp = body.otp.trim();
+    const bypassMatched = otpBypassEnabled() && providedOtp === otpBypassCode();
+    const isValidOtp = bypassMatched || sendClaimService.verifyOtp(providedOtp, claimSession.otpHash, claimSession.id);
     if (!isValidOtp) {
       const nextAttempts = claimSession.otpAttempts + 1;
       const isLocked = nextAttempts >= claimSession.maxAttempts;
@@ -879,7 +894,7 @@ sendRouter.post('/claim/resend-otp', otpResendRateLimiter, async (req: Request, 
       });
     }
 
-    const otp = sendClaimService.generateOtp();
+    const otp = otpBypassEnabled() ? otpBypassCode() : sendClaimService.generateOtp();
     const otpExpiresAt = sendClaimService.calculateOtpExpiry(new Date(now));
 
     await sendTransferStore.refreshClaimSessionOtp({
@@ -890,12 +905,16 @@ sendRouter.post('/claim/resend-otp', otpResendRateLimiter, async (req: Request, 
     });
 
     const recipientContact = sendTransferStore.decryptRecipientContact(transfer);
-    await sendNotificationService.sendOtp({
-      transferRowId: transfer.id,
-      recipientType: transfer.recipientType,
-      recipientContact,
-      otp,
-    });
+    if (otpBypassEnabled()) {
+      console.warn(`[SendFunds] OTP bypass enabled for claimSessionId=${claimSession.id} (resend).`);
+    } else {
+      await sendNotificationService.sendOtp({
+        transferRowId: transfer.id,
+        recipientType: transfer.recipientType,
+        recipientContact,
+        otp,
+      });
+    }
 
     return res.json({
       success: true,
