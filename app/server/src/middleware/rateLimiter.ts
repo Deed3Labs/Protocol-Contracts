@@ -16,8 +16,13 @@ export async function rateLimiter(
       
       // req.ip is proxy-aware because app.set('trust proxy', 1) is enabled in index.ts.
       const identifier = req.ip || req.socket.remoteAddress || 'unknown';
+      const scope = (process.env.RATE_LIMIT_SCOPE || 'path').trim().toLowerCase();
+      const scopedIdentifier =
+        scope === 'ip'
+          ? identifier
+          : `${identifier}:${req.method}:${(req.baseUrl || '')}${req.path || ''}`;
       const window = Math.floor(Date.now() / windowMs).toString();
-      const key = CacheKeys.rateLimit(identifier, window);
+      const key = CacheKeys.rateLimit(scopedIdentifier, window);
 
       const count = await cacheService.incr(key, Math.ceil(windowMs / 1000));
 

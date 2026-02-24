@@ -366,10 +366,7 @@ class SendRelayerService {
       throw error;
     }
 
-    const idempotencyKey = crypto
-      .createHash('sha256')
-      .update(`send:${request.action}:${request.transferId}:${request.recipientWallet || ''}:${Date.now()}`)
-      .digest('hex');
+    const idempotencyKey = crypto.randomUUID();
 
     const txResult = await cdp.evm.sendTransaction({
       address,
