@@ -301,9 +301,8 @@ const payoutRateLimiter = createLocalRateLimiter({
 });
 
 const senderRouter = Router();
-senderRouter.use(requireAuth);
 
-senderRouter.post('/transfers/prepare', async (req: Request, res: Response) => {
+senderRouter.post('/transfers/prepare', requireAuth, async (req: Request, res: Response) => {
   if (!(await ensureSendStoreReady(res))) return;
 
   try {
@@ -459,7 +458,7 @@ senderRouter.post('/transfers/prepare', async (req: Request, res: Response) => {
   }
 });
 
-senderRouter.post('/transfers/:id/confirm-lock', async (req: Request, res: Response) => {
+senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Request, res: Response) => {
   if (!(await ensureSendStoreReady(res))) return;
 
   try {
@@ -585,7 +584,7 @@ senderRouter.post('/transfers/:id/confirm-lock', async (req: Request, res: Respo
   }
 });
 
-senderRouter.get('/transfers', async (req: Request, res: Response) => {
+senderRouter.get('/transfers', requireAuth, async (req: Request, res: Response) => {
   if (!(await ensureSendStoreReady(res))) return;
 
   try {
@@ -614,7 +613,7 @@ senderRouter.get('/transfers', async (req: Request, res: Response) => {
   }
 });
 
-senderRouter.get('/transfers/:id', async (req: Request, res: Response) => {
+senderRouter.get('/transfers/:id', requireAuth, async (req: Request, res: Response) => {
   if (!(await ensureSendStoreReady(res))) return;
 
   try {
