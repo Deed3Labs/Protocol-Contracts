@@ -153,7 +153,20 @@ function claimAppBaseUrl(): string {
 }
 
 function otpBypassEnabled(): boolean {
-  return (process.env.SEND_OTP_BYPASS_ENABLED || 'false').trim().toLowerCase() === 'true';
+  const requested = (process.env.SEND_OTP_BYPASS_ENABLED || 'false').trim().toLowerCase() === 'true';
+  if (!requested) {
+    return false;
+  }
+
+  const isProduction = (process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+  if (isProduction) {
+    console.warn(
+      '[SendFunds] SEND_OTP_BYPASS_ENABLED=true ignored in production.'
+    );
+    return false;
+  }
+
+  return true;
 }
 
 function otpBypassCode(): string {
@@ -404,9 +417,8 @@ senderRouter.post('/transfers/prepare', requireAuth, async (req: Request, res: R
       });
     }
 
-    const sponsorFeeMicros =
-      parseUsdcMicros(process.env.SEND_SPONSOR_FEE_USDC || '0.50') ||
-      500_000n;
+    const parsedSponsorFeeMicros = parseUsdcMicros(process.env.SEND_SPONSOR_FEE_USDC || '0.50');
+    const sponsorFeeMicros = parsedSponsorFeeMicros == null ? 500_000n : parsedSponsorFeeMicros;
 
     const totalMicros = principalMicros + sponsorFeeMicros;
     const expiresInDays = parseIntEnv('SEND_TRANSFER_EXPIRY_DAYS', 7);
@@ -528,6 +540,12 @@ senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Reques
       txHash: body.escrowTxHash,
       expectedSenderWallet: senderWallet,
       chainId: existingTransfer.chainId,
+      expectedTransferId: existingTransfer.transferId,
+      expectedPrincipalUsdcMicros: existingTransfer.principalUsdc,
+      expectedSponsorFeeUsdcMicros: existingTransfer.sponsorFeeUsdc,
+      expectedTotalLockedUsdcMicros: existingTransfer.totalLockedUsdc,
+      expectedExpiry: existingTransfer.expiresAt,
+      expectedRecipientHintHash: existingTransfer.recipientHintHash,
     });
 
     if (!verification.valid) {

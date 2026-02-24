@@ -5,6 +5,12 @@ export interface VerifyEscrowLockParams {
   txHash: string;
   expectedSenderWallet: string;
   chainId: number;
+  expectedTransferId: string;
+  expectedPrincipalUsdcMicros: string;
+  expectedSponsorFeeUsdcMicros: string;
+  expectedTotalLockedUsdcMicros: string;
+  expectedExpiry: Date | string;
+  expectedRecipientHintHash: string;
 }
 
 export interface EscrowVerificationResult {
@@ -48,6 +54,26 @@ function getEscrowAddress(chainId: number): string | null {
 }
 
 const CREATE_TRANSFER_SELECTOR = ethers.id('createTransfer(bytes32,uint256,uint256,uint64,bytes32)').slice(0, 10);
+const CLAIM_ESCROW_INTERFACE = new ethers.Interface([
+  'function createTransfer(bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash)',
+]);
+
+function shouldSkipEscrowTxVerification(): boolean {
+  const requestedSkip = (process.env.SEND_SKIP_ESCROW_TX_VERIFICATION || 'false').trim().toLowerCase() === 'true';
+  if (!requestedSkip) {
+    return false;
+  }
+
+  const isProduction = (process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+  if (isProduction) {
+    console.warn(
+      '[SendFunds] SEND_SKIP_ESCROW_TX_VERIFICATION=true ignored in production.'
+    );
+    return false;
+  }
+
+  return true;
+}
 
 class SendCryptoService {
   generateTransferId(input: {
@@ -83,7 +109,40 @@ class SendCryptoService {
       return { valid: false, reason: 'Invalid transaction hash format' };
     }
 
-    const skipVerification = (process.env.SEND_SKIP_ESCROW_TX_VERIFICATION || 'true') === 'true';
+    if (!this.isValidBytes32(params.expectedTransferId)) {
+      return { valid: false, reason: 'Expected transfer id is invalid' };
+    }
+
+    if (!this.isValidBytes32(params.expectedRecipientHintHash)) {
+      return { valid: false, reason: 'Expected recipient hint hash is invalid' };
+    }
+
+    let expectedPrincipal: bigint;
+    let expectedSponsorFee: bigint;
+    let expectedTotalLocked: bigint;
+    try {
+      expectedPrincipal = BigInt(params.expectedPrincipalUsdcMicros);
+      expectedSponsorFee = BigInt(params.expectedSponsorFeeUsdcMicros);
+      expectedTotalLocked = BigInt(params.expectedTotalLockedUsdcMicros);
+    } catch {
+      return { valid: false, reason: 'Expected USDC amounts are invalid' };
+    }
+
+    if (expectedPrincipal <= 0n) {
+      return { valid: false, reason: 'Expected principal must be positive' };
+    }
+
+    if (expectedPrincipal + expectedSponsorFee !== expectedTotalLocked) {
+      return { valid: false, reason: 'Expected total lock does not match principal + sponsor fee' };
+    }
+
+    const expiryDate = params.expectedExpiry instanceof Date ? params.expectedExpiry : new Date(params.expectedExpiry);
+    if (Number.isNaN(expiryDate.getTime())) {
+      return { valid: false, reason: 'Expected expiry is invalid' };
+    }
+    const expectedExpirySeconds = BigInt(Math.floor(expiryDate.getTime() / 1000));
+
+    const skipVerification = shouldSkipEscrowTxVerification();
     if (skipVerification) {
       return { valid: true };
     }
@@ -105,12 +164,65 @@ class SendCryptoService {
       }
 
       const expectedEscrow = getEscrowAddress(params.chainId);
-      if (expectedEscrow && (!tx.to || normalizeAddress(tx.to) !== expectedEscrow)) {
+      if (!expectedEscrow) {
+        return { valid: false, reason: 'Escrow address is not configured for chain' };
+      }
+      if (!tx.to || normalizeAddress(tx.to) !== expectedEscrow) {
         return { valid: false, reason: 'Transaction target does not match escrow contract' };
       }
 
       if (!tx.data || !tx.data.startsWith(CREATE_TRANSFER_SELECTOR)) {
         return { valid: false, reason: 'Transaction is not createTransfer call data' };
+      }
+
+      let decoded:
+        | {
+            transferId: string;
+            principalUsdc: bigint;
+            sponsorFeeUsdc: bigint;
+            expiry: bigint;
+            recipientHintHash: string;
+          }
+        | null = null;
+      try {
+        const parsed = CLAIM_ESCROW_INTERFACE.parseTransaction({ data: tx.data, value: tx.value });
+        if (!parsed || parsed.name !== 'createTransfer') {
+          return { valid: false, reason: 'Transaction did not decode as createTransfer' };
+        }
+
+        decoded = {
+          transferId: String(parsed.args[0]),
+          principalUsdc: parsed.args[1] as bigint,
+          sponsorFeeUsdc: parsed.args[2] as bigint,
+          expiry: parsed.args[3] as bigint,
+          recipientHintHash: String(parsed.args[4]),
+        };
+      } catch {
+        return { valid: false, reason: 'Failed to decode createTransfer call data' };
+      }
+
+      if (normalizeAddress(decoded.transferId) !== normalizeAddress(params.expectedTransferId)) {
+        return { valid: false, reason: 'Transfer id in transaction does not match expected transfer id' };
+      }
+
+      if (normalizeAddress(decoded.recipientHintHash) !== normalizeAddress(params.expectedRecipientHintHash)) {
+        return { valid: false, reason: 'Recipient hint hash in transaction does not match expected value' };
+      }
+
+      if (decoded.principalUsdc !== expectedPrincipal) {
+        return { valid: false, reason: 'Principal amount in transaction does not match expected value' };
+      }
+
+      if (decoded.sponsorFeeUsdc !== expectedSponsorFee) {
+        return { valid: false, reason: 'Sponsor fee in transaction does not match expected value' };
+      }
+
+      if (decoded.principalUsdc + decoded.sponsorFeeUsdc !== expectedTotalLocked) {
+        return { valid: false, reason: 'Total lock amount in transaction does not match expected value' };
+      }
+
+      if (decoded.expiry !== expectedExpirySeconds) {
+        return { valid: false, reason: 'Expiry in transaction does not match expected value' };
       }
 
       const receipt = await provider.getTransactionReceipt(params.txHash);
