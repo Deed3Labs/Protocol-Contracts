@@ -59,7 +59,8 @@ const corsOptions = {
         return callback(null, true);
       }
       console.warn(`[CORS] Blocked origin because STRICT_CORS=true and CORS_ORIGIN is not configured: ${origin}`);
-      return callback(new Error('CORS_ORIGIN is required when STRICT_CORS=true'));
+      // Fail closed without throwing a 500 through Express error middleware.
+      return callback(null, false);
     }
     
     // If '*' is specified, allow all origins
@@ -86,7 +87,8 @@ const corsOptions = {
     } else {
       // Log the blocked origin for debugging
       console.warn(`[CORS] Blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
-      callback(new Error(`Not allowed by CORS: ${origin}`));
+      // Fail closed without throwing a 500 through Express error middleware.
+      callback(null, false);
     }
   },
   credentials: true,

@@ -153,7 +153,20 @@ function claimAppBaseUrl(): string {
 }
 
 function otpBypassEnabled(): boolean {
-  return (process.env.SEND_OTP_BYPASS_ENABLED || 'false').trim().toLowerCase() === 'true';
+  const requested = (process.env.SEND_OTP_BYPASS_ENABLED || 'false').trim().toLowerCase() === 'true';
+  if (!requested) {
+    return false;
+  }
+
+  const isProduction = (process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+  if (isProduction) {
+    console.warn(
+      '[SendFunds] SEND_OTP_BYPASS_ENABLED=true ignored in production.'
+    );
+    return false;
+  }
+
+  return true;
 }
 
 function otpBypassCode(): string {
@@ -301,9 +314,8 @@ const payoutRateLimiter = createLocalRateLimiter({
 });
 
 const senderRouter = Router();
-senderRouter.use(requireAuth);
 
-senderRouter.post('/transfers/prepare', async (req: Request, res: Response) => {
+senderRouter.post('/transfers/prepare', requireAuth, async (req: Request, res: Response) => {
   if (!(await ensureSendStoreReady(res))) return;
 
   try {
@@ -405,9 +417,8 @@ senderRouter.post('/transfers/prepare', async (req: Request, res: Response) => {
       });
     }
 
-    const sponsorFeeMicros =
-      parseUsdcMicros(process.env.SEND_SPONSOR_FEE_USDC || '0.50') ||
-      500_000n;
+    const parsedSponsorFeeMicros = parseUsdcMicros(process.env.SEND_SPONSOR_FEE_USDC || '0.50');
+    const sponsorFeeMicros = parsedSponsorFeeMicros == null ? 500_000n : parsedSponsorFeeMicros;
 
     const totalMicros = principalMicros + sponsorFeeMicros;
     const expiresInDays = parseIntEnv('SEND_TRANSFER_EXPIRY_DAYS', 7);
@@ -459,7 +470,7 @@ senderRouter.post('/transfers/prepare', async (req: Request, res: Response) => {
   }
 });
 
-senderRouter.post('/transfers/:id/confirm-lock', async (req: Request, res: Response) => {
+senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Request, res: Response) => {
   if (!(await ensureSendStoreReady(res))) return;
 
   try {
@@ -529,6 +540,12 @@ senderRouter.post('/transfers/:id/confirm-lock', async (req: Request, res: Respo
       txHash: body.escrowTxHash,
       expectedSenderWallet: senderWallet,
       chainId: existingTransfer.chainId,
+      expectedTransferId: existingTransfer.transferId,
+      expectedPrincipalUsdcMicros: existingTransfer.principalUsdc,
+      expectedSponsorFeeUsdcMicros: existingTransfer.sponsorFeeUsdc,
+      expectedTotalLockedUsdcMicros: existingTransfer.totalLockedUsdc,
+      expectedExpiry: existingTransfer.expiresAt,
+      expectedRecipientHintHash: existingTransfer.recipientHintHash,
     });
 
     if (!verification.valid) {
@@ -585,7 +602,7 @@ senderRouter.post('/transfers/:id/confirm-lock', async (req: Request, res: Respo
   }
 });
 
-senderRouter.get('/transfers', async (req: Request, res: Response) => {
+senderRouter.get('/transfers', requireAuth, async (req: Request, res: Response) => {
   if (!(await ensureSendStoreReady(res))) return;
 
   try {
@@ -614,7 +631,7 @@ senderRouter.get('/transfers', async (req: Request, res: Response) => {
   }
 });
 
-senderRouter.get('/transfers/:id', async (req: Request, res: Response) => {
+senderRouter.get('/transfers/:id', requireAuth, async (req: Request, res: Response) => {
   if (!(await ensureSendStoreReady(res))) return;
 
   try {
@@ -823,12 +840,6 @@ sendRouter.post('/claim/verify-otp', otpVerifyRateLimiter, async (req: Request, 
 
     const claimSessionToken = sendClaimService.generateSessionToken();
     await sendTransferStore.verifyClaimSession(claimSession.id, sendClaimService.hashSessionToken(claimSessionToken));
-
-    // Rotate one-time claim token after OTP verification.
-    await sendTransferStore.rotateClaimTokenHash(
-      transfer.id,
-      sendClaimService.hashClaimToken(sendClaimService.generateClaimToken())
-    );
 
     return res.json({
       claimSessionToken,

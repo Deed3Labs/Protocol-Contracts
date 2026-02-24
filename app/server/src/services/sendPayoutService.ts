@@ -124,6 +124,14 @@ class SendPayoutService {
 
     try {
       const treasuryTx = await sendRelayerService.claimToPayoutTreasury(transfer.transferId, transfer.chainId);
+      if (treasuryTx.mode !== 'onchain') {
+        return {
+          status: 'FAILED',
+          provider: this.debitProvider,
+          failureCode: 'RELAYER_SIMULATED_TX',
+          failureReason: 'Debit payout was blocked because relayer returned a simulated tx hash',
+        };
+      }
       const payoutDispatch = await this.dispatchFiatPayout({
         method: 'DEBIT',
         transfer,
@@ -268,6 +276,14 @@ class SendPayoutService {
 
     try {
       const treasuryTx = await sendRelayerService.claimToPayoutTreasury(transfer.transferId, transfer.chainId);
+      if (treasuryTx.mode !== 'onchain') {
+        return {
+          status: 'FAILED',
+          provider: this.bankProvider,
+          failureCode: 'RELAYER_SIMULATED_TX',
+          failureReason: 'Bank payout was blocked because relayer returned a simulated tx hash',
+        };
+      }
       const payoutDispatch = await this.dispatchFiatPayout({
         method: 'BANK',
         transfer,
@@ -335,6 +351,14 @@ class SendPayoutService {
   async executeWalletPayout(transfer: SendTransferRecord, recipientWallet: string): Promise<WalletPayoutResult> {
     try {
       const walletTx = await sendRelayerService.claimToWallet(transfer.transferId, recipientWallet, transfer.chainId);
+      if (walletTx.mode !== 'onchain') {
+        return {
+          status: 'FAILED',
+          provider: 'send-relayer',
+          failureCode: 'RELAYER_SIMULATED_TX',
+          failureReason: 'Wallet payout was blocked because relayer returned a simulated tx hash',
+        };
+      }
       return {
         status: 'SUCCESS',
         provider: 'send-relayer',
