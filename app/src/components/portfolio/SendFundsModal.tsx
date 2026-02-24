@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, ArrowLeft, Check, Copy, Loader2, Wallet } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, ChevronRight, Copy, Loader2, Wallet } from 'lucide-react';
 import { ethers } from 'ethers';
 import { useAppKit, useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import {
 import type { Eip1193Provider } from 'ethers';
 
 type SendStep = 'input' | 'review' | 'pending' | 'success' | 'failed';
+type InputScreen = 'main' | 'fundingSource' | 'recipient';
 
 type PendingPhase =
   | 'Preparing transfer...'
@@ -57,6 +58,12 @@ const fundingOptions: FundingOption[] = [
     subtitle: 'Bank funding converts to USDC before lock',
   },
 ];
+
+const fundingOptionIcons: Record<SendFundingSource, string> = {
+  WALLET_USDC: '💵',
+  CARD_ONRAMP: '💳',
+  BANK_ONRAMP: '🏦',
+};
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const E164_REGEX = /^\+[1-9]\d{7,14}$/;
@@ -135,9 +142,10 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
   const { walletProvider } = useAppKitProvider('eip155');
 
   const [step, setStep] = useState<SendStep>('input');
+  const [inputScreen, setInputScreen] = useState<InputScreen>('main');
   const [pendingPhase, setPendingPhase] = useState<PendingPhase>('Preparing transfer...');
   const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState('0');
   const [memo, setMemo] = useState('');
   const [fundingSource, setFundingSource] = useState<SendFundingSource>('WALLET_USDC');
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +154,15 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
   const [copied, setCopied] = useState(false);
 
   const normalizedRecipient = useMemo(() => normalizeRecipient(recipient), [recipient]);
+  const selectedFundingOption = useMemo(
+    () => fundingOptions.find((option) => option.id === fundingSource) ?? fundingOptions[0],
+    [fundingSource]
+  );
+  const recipientDisplay = useMemo(() => {
+    const value = normalizedRecipient ?? recipient.trim();
+    if (!value) return 'Enter email or phone';
+    return value.length > 26 ? `${value.slice(0, 18)}...${value.slice(-6)}` : value;
+  }, [normalizedRecipient, recipient]);
 
   useEffect(() => {
     if (open) {
@@ -162,9 +179,10 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
   useEffect(() => {
     if (!open) {
       setStep('input');
+      setInputScreen('main');
       setPendingPhase('Preparing transfer...');
       setRecipient('');
-      setAmount('');
+      setAmount('0');
       setMemo('');
       setFundingSource('WALLET_USDC');
       setError(null);
@@ -174,7 +192,7 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
     }
   }, [open]);
 
-  const handleInputContinue = () => {
+  const handleInputContinue = useCallback(() => {
     setError(null);
 
     if (!normalizedRecipient) {
@@ -189,7 +207,65 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
     }
 
     setStep('review');
-  };
+  }, [amount, normalizedRecipient]);
+
+  const handleNumberPress = useCallback((value: string) => {
+    setError(null);
+    setAmount((current) => {
+      const normalizedAmount = current || '0';
+      if (value === '.' && normalizedAmount.includes('.')) return normalizedAmount;
+      if (normalizedAmount === '0' && value !== '.') return value;
+      if (normalizedAmount === '0' && value === '.') return '0.';
+      return normalizedAmount + value;
+    });
+  }, []);
+
+  const handleBackspace = useCallback(() => {
+    setAmount((current) => {
+      const normalizedAmount = current || '0';
+      if (normalizedAmount.length <= 1) return '0';
+      const nextAmount = normalizedAmount.slice(0, -1);
+      if (nextAmount === '' || nextAmount === '-') return '0';
+      return nextAmount;
+    });
+  }, []);
+
+  const handleRecipientDone = useCallback(() => {
+    setError(null);
+    if (!normalizedRecipient) {
+      setError('Enter a valid recipient email or phone number.');
+      return;
+    }
+    setInputScreen('main');
+  }, [normalizedRecipient]);
+
+  useEffect(() => {
+    if (!open || step !== 'input' || inputScreen !== 'main') return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onOpenChange(false);
+        return;
+      }
+
+      if (event.key >= '0' && event.key <= '9') {
+        event.preventDefault();
+        handleNumberPress(event.key);
+      } else if (event.key === '.' || event.key === ',') {
+        event.preventDefault();
+        handleNumberPress('.');
+      } else if (event.key === 'Backspace' || event.key === 'Delete') {
+        event.preventDefault();
+        handleBackspace();
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        handleInputContinue();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, step, inputScreen, onOpenChange, handleBackspace, handleInputContinue, handleNumberPress]);
 
   const submitEscrowLock = async (transfer: SendTransferSummary): Promise<string> => {
     const supportedChains = getSendSupportedChainIds();
@@ -346,118 +422,266 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
             >
               {step === 'input' && (
                 <div className="flex flex-col h-full">
-                  <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
-                    <button
-                      type="button"
-                      onClick={() => onOpenChange(false)}
-                      className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
-                    >
-                      <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
-                    </button>
-                    <div className="flex items-center gap-1 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-900 rounded-full text-sm text-zinc-600 dark:text-zinc-400">
-                      One-time transfer
-                    </div>
-                    <div className="w-9" />
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-6">
-                    {!isConnected && (
-                      <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 p-3">
-                        <p className="text-sm text-zinc-700 dark:text-zinc-300">
-                          Connect a wallet to sign escrow lock transactions.
-                        </p>
-                        <Button
+                  {inputScreen === 'fundingSource' && (
+                    <>
+                      <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+                        <button
                           type="button"
-                          onClick={() => openAppKit({ view: 'Connect' })}
-                          className="mt-3 h-10 rounded-full px-4 bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                          onClick={() => setInputScreen('main')}
+                          className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
                         >
-                          <Wallet className="mr-2 h-4 w-4" />
-                          Connect Wallet
-                        </Button>
+                          <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                        </button>
+                        <h2 className="text-lg font-semibold text-black dark:text-white">Pay with</h2>
+                        <div className="w-9" />
                       </div>
-                    )}
 
-                    <label className="block space-y-1.5">
-                      <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Recipient</span>
-                      <input
-                        value={recipient}
-                        onChange={(event) => setRecipient(event.target.value)}
-                        placeholder="email@example.com or +15551234567"
-                        className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-zinc-400 dark:focus:border-zinc-600"
-                      />
-                    </label>
-
-                    <label className="block space-y-1.5">
-                      <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Funding source</span>
-                      <div className="space-y-2">
+                      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                        <div className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-500 px-2 py-2">
+                          Funding source
+                        </div>
                         {fundingOptions.map((option) => {
                           const isSelected = fundingSource === option.id;
                           return (
                             <button
                               key={option.id}
                               type="button"
-                              onClick={() => setFundingSource(option.id)}
-                              className={cn(
-                                'w-full flex items-center justify-between p-4 rounded-xl border text-left transition-colors',
-                                isSelected
-                                  ? 'border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/70'
-                                  : 'border-zinc-200/70 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/50'
-                              )}
+                              onClick={() => {
+                                setFundingSource(option.id);
+                                setInputScreen('main');
+                                setError(null);
+                              }}
+                              className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors border border-zinc-200/0 hover:border-zinc-200 dark:hover:border-zinc-800 text-left"
                             >
-                              <div>
-                                <p className="font-medium text-black dark:text-white">{option.label}</p>
-                                <p className="text-sm text-zinc-500 dark:text-zinc-400">{option.subtitle}</p>
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
+                                  {fundingOptionIcons[option.id]}
+                                </div>
+                                <div>
+                                  <div className="text-black dark:text-white font-medium">{option.label}</div>
+                                  <div className="text-sm text-zinc-500 dark:text-zinc-400">{option.subtitle}</div>
+                                </div>
                               </div>
                               {isSelected ? (
                                 <div className="w-6 h-6 rounded-full bg-black dark:bg-white flex items-center justify-center">
                                   <Check className="w-4 h-4 text-white dark:text-black" />
                                 </div>
                               ) : (
-                                <div className="w-6 h-6 rounded-full border border-zinc-300 dark:border-zinc-700" />
+                                <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
                               )}
                             </button>
                           );
                         })}
                       </div>
-                    </label>
+                    </>
+                  )}
 
-                    <label className="block space-y-1.5">
-                      <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Amount (USD)</span>
-                      <input
-                        value={amount}
-                        onChange={(event) => setAmount(event.target.value)}
-                        placeholder="0.00"
-                        inputMode="decimal"
-                        className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-zinc-400 dark:focus:border-zinc-600"
-                      />
-                    </label>
-
-                    <label className="block space-y-1.5">
-                      <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Memo (optional)</span>
-                      <input
-                        value={memo}
-                        onChange={(event) => setMemo(event.target.value)}
-                        placeholder="Add a note"
-                        maxLength={256}
-                        className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-zinc-400 dark:focus:border-zinc-600"
-                      />
-                    </label>
-
-                    {error && (
-                      <div className="flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-700 dark:text-red-300">
-                        <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                        <span>{error}</span>
+                  {inputScreen === 'recipient' && (
+                    <>
+                      <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInputScreen('main');
+                            setError(null);
+                          }}
+                          className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                        >
+                          <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                        </button>
+                        <h2 className="text-lg font-semibold text-black dark:text-white">Send to</h2>
+                        <div className="w-9" />
                       </div>
-                    )}
 
-                    <Button
-                      type="button"
-                      onClick={handleInputContinue}
-                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
-                    >
-                      Continue
-                    </Button>
-                  </div>
+                      <div className="flex-1 p-4 space-y-4">
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                          Enter an email or phone number to create the claim link recipient.
+                        </p>
+                        <input
+                          type="text"
+                          value={recipient}
+                          onChange={(event) => {
+                            setRecipient(event.target.value);
+                            setError(null);
+                          }}
+                          placeholder="email@example.com or +15551234567"
+                          className={cn(
+                            'w-full rounded-xl border bg-zinc-50 dark:bg-zinc-900 px-4 py-3 text-black dark:text-white placeholder:text-zinc-500 outline-none',
+                            recipient.trim() && !normalizedRecipient
+                              ? 'border-red-500 dark:border-red-500'
+                              : 'border-zinc-200 dark:border-zinc-800'
+                          )}
+                        />
+                        {recipient.trim() && !normalizedRecipient && (
+                          <p className="text-sm text-red-500 dark:text-red-400">
+                            Enter a valid email address or E.164 phone number.
+                          </p>
+                        )}
+
+                        <input
+                          type="text"
+                          value={memo}
+                          onChange={(event) => setMemo(event.target.value)}
+                          placeholder="Memo (optional)"
+                          maxLength={256}
+                          className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 px-4 py-3 text-black dark:text-white placeholder:text-zinc-500 outline-none"
+                        />
+
+                        {error && (
+                          <div className="flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-700 dark:text-red-300">
+                            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                            <span>{error}</span>
+                          </div>
+                        )}
+
+                        <Button
+                          type="button"
+                          onClick={handleRecipientDone}
+                          className="w-full h-12 rounded-full font-semibold bg-black dark:bg-white text-white dark:text-black"
+                        >
+                          Done
+                        </Button>
+                      </div>
+                    </>
+                  )}
+
+                  {inputScreen === 'main' && (
+                    <>
+                      <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+                        <button
+                          type="button"
+                          onClick={() => onOpenChange(false)}
+                          className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                        >
+                          <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                        </button>
+                        <div className="flex items-center gap-1 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-900 rounded-full text-sm text-zinc-600 dark:text-zinc-400">
+                          One-time transfer
+                        </div>
+                        <div className="w-9" />
+                      </div>
+
+                      <div className="flex-1 flex flex-col">
+                        <div className="flex-1 flex flex-col items-center justify-center px-4 py-6">
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-6xl font-light tracking-tight text-black dark:text-white">
+                              {amount || '0'}
+                            </span>
+                            <span className="text-4xl font-light text-zinc-500 dark:text-zinc-400">USD</span>
+                          </div>
+                          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+                            Total lock: ${totalPreview}
+                          </p>
+                          {!isConnected && (
+                            <button
+                              type="button"
+                              onClick={() => openAppKit({ view: 'Connect' })}
+                              className="mt-3 inline-flex items-center gap-2 rounded-full border border-zinc-200 dark:border-zinc-700 px-3 py-1.5 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                            >
+                              <Wallet className="h-3.5 w-3.5" />
+                              Connect wallet
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="px-4 space-y-1 mb-4">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInputScreen('recipient');
+                              setError(null);
+                            }}
+                            className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
+                                👤
+                              </div>
+                              <div className="text-left">
+                                <p className="font-medium text-black dark:text-white">Send to</p>
+                                <p className="text-sm text-zinc-500 dark:text-zinc-400">{recipientDisplay}</p>
+                                {memo && <p className="text-xs text-zinc-500 dark:text-zinc-500">Memo: {memo}</p>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-right">
+                                <p className="text-sm font-medium text-black dark:text-white">
+                                  {normalizedRecipient ? 'Ready' : 'Required'}
+                                </p>
+                                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                  {normalizedRecipient ? 'Validated' : 'Add contact'}
+                                </p>
+                              </div>
+                              <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
+                            </div>
+                          </button>
+
+                          <div className="flex items-center justify-center py-1">
+                            <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800" />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInputScreen('fundingSource');
+                              setError(null);
+                            }}
+                            className="w-full flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors border border-zinc-200 dark:border-white/10"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xl">
+                                {fundingOptionIcons[selectedFundingOption.id]}
+                              </div>
+                              <div className="text-left">
+                                <p className="font-medium text-black dark:text-white">Pay with</p>
+                                <p className="text-sm text-zinc-500 dark:text-zinc-400">{selectedFundingOption.label}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-right">
+                                <p className="text-sm font-medium text-black dark:text-white">Funding source</p>
+                                <p className="text-xs text-zinc-500 dark:text-zinc-400">{selectedFundingOption.subtitle}</p>
+                              </div>
+                              <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600" />
+                            </div>
+                          </button>
+                        </div>
+
+                        {error && (
+                          <div className="px-4 mb-2">
+                            <div className="flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-700 dark:text-red-300">
+                              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                              <span>{error}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="px-4 pb-2">
+                          <Button
+                            type="button"
+                            onClick={handleInputContinue}
+                            disabled={!Number.isFinite(Number(amount)) || Number(amount) <= 0}
+                            className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50"
+                          >
+                            Continue
+                          </Button>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-1 p-4 pt-2">
+                          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'].map((key) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => (key === 'back' ? handleBackspace() : handleNumberPress(key))}
+                              className="h-14 rounded-lg text-2xl font-medium hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center justify-center text-black dark:text-white"
+                            >
+                              {key === 'back' ? <ArrowLeft className="w-6 h-6" /> : key}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -466,7 +690,10 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
                   <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
                     <button
                       type="button"
-                      onClick={() => setStep('input')}
+                      onClick={() => {
+                        setInputScreen('main');
+                        setStep('input');
+                      }}
                       className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
                     >
                       <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
