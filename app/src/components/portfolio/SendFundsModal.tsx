@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, ArrowLeft, Check, ChevronRight, Copy, Loader2, Wallet } from 'lucide-react';
 import { ethers } from 'ethers';
 import { useAppKit, useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { useAccount } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
   confirmSendTransferLock,
+  createStripeOnrampSessionDetailed,
   prepareSendTransfer,
 } from '@/utils/apiClient';
 import type { SendFundingSource, SendTransferSummary } from '@/types/send';
@@ -19,7 +21,23 @@ import {
 } from '@/config/send';
 import type { Eip1193Provider } from 'ethers';
 
-type SendStep = 'input' | 'review' | 'pending' | 'success' | 'failed';
+type StripeOnrampSessionUpdatedEvent = {
+  payload?: {
+    session?: {
+      status?: string;
+    };
+  };
+};
+
+type StripeOnrampSession = {
+  mount: (element: HTMLElement) => void;
+  addEventListener: (
+    eventName: string,
+    callback: (event: StripeOnrampSessionUpdatedEvent) => void
+  ) => void;
+};
+
+type SendStep = 'input' | 'review' | 'funding' | 'pending' | 'success' | 'failed';
 type InputScreen = 'main' | 'fundingSource' | 'recipient';
 
 type PendingPhase =
@@ -136,10 +154,24 @@ function formatWalletError(error: unknown): string {
   return err?.message || 'Wallet transaction failed.';
 }
 
+function chainIdToStripeNetwork(chainId: number): string {
+  const networkMap: Record<number, string> = {
+    1: 'ethereum',
+    10: 'optimism',
+    137: 'polygon',
+    8453: 'base',
+    42161: 'arbitrum',
+  };
+
+  return networkMap[chainId] || 'base';
+}
+
 export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
   const { open: openAppKit } = useAppKit();
   const { address: appKitAddress, isConnected } = useAppKitAccount();
+  const { address: wagmiAddress } = useAccount();
   const { walletProvider } = useAppKitProvider('eip155');
+  const onrampWalletAddress = wagmiAddress || appKitAddress;
 
   const [step, setStep] = useState<SendStep>('input');
   const [inputScreen, setInputScreen] = useState<InputScreen>('main');
@@ -152,6 +184,13 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
   const [claimUrl, setClaimUrl] = useState<string | null>(null);
   const [preparedTransfer, setPreparedTransfer] = useState<SendTransferSummary | null>(null);
   const [copied, setCopied] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [stripeOnrampLoading, setStripeOnrampLoading] = useState(false);
+  const [fundingStatusMessage, setFundingStatusMessage] = useState<string | null>(null);
+  const [lockingFromFunding, setLockingFromFunding] = useState(false);
+
+  const stripeOnrampRef = useRef<HTMLDivElement>(null);
+  const stripeSessionRef = useRef<StripeOnrampSession | null>(null);
 
   const normalizedRecipient = useMemo(() => normalizeRecipient(recipient), [recipient]);
   const selectedFundingOption = useMemo(
@@ -189,6 +228,10 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
       setClaimUrl(null);
       setPreparedTransfer(null);
       setCopied(false);
+      setReviewSubmitting(false);
+      setStripeOnrampLoading(false);
+      setFundingStatusMessage(null);
+      setLockingFromFunding(false);
     }
   }, [open]);
 
@@ -329,9 +372,188 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
     return createTx.hash as string;
   };
 
-  const handleConfirmLock = async () => {
+  const completeEscrowLock = async (transfer: SendTransferSummary): Promise<void> => {
     setStep('pending');
+    const escrowTxHash = await submitEscrowLock(transfer);
+
+    setPendingPhase('Finalizing claim link...');
+    const lock = await confirmSendTransferLock(transfer.id, {
+      transferId: transfer.transferId,
+      escrowTxHash,
+    });
+
+    if (!lock) {
+      throw new Error('Escrow lock succeeded, but backend confirmation failed.');
+    }
+
+    setClaimUrl(lock.claimUrl);
+    setPreparedTransfer(lock.transfer);
+    setStep('success');
+  };
+
+  const loadStripeScripts = useCallback((): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (window.StripeOnramp) {
+        resolve();
+        return;
+      }
+
+      if (document.querySelector('script[src*="stripe.js"]')) {
+        const checkInterval = setInterval(() => {
+          if (window.StripeOnramp) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 100);
+
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          if (!window.StripeOnramp) {
+            reject(new Error('Stripe scripts failed to load.'));
+          }
+        }, 10000);
+        return;
+      }
+
+      const stripeScript = document.createElement('script');
+      stripeScript.src = 'https://js.stripe.com/clover/stripe.js';
+      stripeScript.async = true;
+      stripeScript.onload = () => {
+        const cryptoScript = document.createElement('script');
+        cryptoScript.src = 'https://crypto-js.stripe.com/crypto-onramp-outer.js';
+        cryptoScript.async = true;
+
+        cryptoScript.onload = () => {
+          const checkInterval = setInterval(() => {
+            if (window.StripeOnramp) {
+              clearInterval(checkInterval);
+              resolve();
+            }
+          }, 100);
+
+          setTimeout(() => {
+            clearInterval(checkInterval);
+            if (!window.StripeOnramp) {
+              reject(new Error('Stripe Onramp is not available after loading scripts.'));
+            }
+          }, 10000);
+        };
+
+        cryptoScript.onerror = () => reject(new Error('Failed to load Stripe crypto onramp script.'));
+        document.head.appendChild(cryptoScript);
+      };
+
+      stripeScript.onerror = () => reject(new Error('Failed to load Stripe script.'));
+      document.head.appendChild(stripeScript);
+    });
+  }, []);
+
+  useEffect(() => {
+    const mountElement = stripeOnrampRef.current;
+
+    if (
+      !open ||
+      step !== 'funding' ||
+      fundingSource !== 'CARD_ONRAMP' ||
+      !onrampWalletAddress ||
+      !preparedTransfer ||
+      !mountElement
+    ) {
+      return;
+    }
+
+    let mounted = true;
+
+    const initializeStripeOnramp = async () => {
+      setStripeOnrampLoading(true);
+      setFundingStatusMessage(null);
+      setError(null);
+
+      try {
+        const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+        if (!stripePublishableKey) {
+          throw new Error('Stripe publishable key is not configured.');
+        }
+
+        await loadStripeScripts();
+        if (!mounted) return;
+        if (!window.StripeOnramp) {
+          throw new Error('Stripe Onramp is not available.');
+        }
+
+        const destinationNetwork = chainIdToStripeNetwork(preparedTransfer.chainId);
+        const strictAttempt = await createStripeOnrampSessionDetailed({
+          wallet_addresses: { [destinationNetwork]: onrampWalletAddress },
+          destination_currency: 'usdc',
+          destination_network: destinationNetwork,
+          destination_amount: preparedTransfer.totalLockedUsdc,
+        });
+
+        let sessionData = strictAttempt.session;
+        let sessionError = strictAttempt.error;
+
+        // Mirror TradeModal behavior, then retry once without a fixed amount for Stripe accounts
+        // that reject destination_amount constraints.
+        if (!sessionData) {
+          const relaxedAttempt = await createStripeOnrampSessionDetailed({
+            wallet_addresses: { [destinationNetwork]: onrampWalletAddress },
+            destination_currency: 'usdc',
+            destination_network: destinationNetwork,
+          });
+          sessionData = relaxedAttempt.session;
+          sessionError = relaxedAttempt.error || sessionError;
+        }
+
+        if (!sessionData) {
+          throw new Error(sessionError || 'Failed to create Stripe onramp session.');
+        }
+
+        const stripeOnramp = window.StripeOnramp(stripePublishableKey);
+        if (!stripeOnramp) {
+          throw new Error('Failed to initialize Stripe Onramp.');
+        }
+
+        const session = stripeOnramp.createSession({
+          clientSecret: sessionData.client_secret,
+          appearance: {
+            theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+          },
+        }) as StripeOnrampSession;
+
+        session.addEventListener('onramp_session_updated', (event: StripeOnrampSessionUpdatedEvent) => {
+          const status = event?.payload?.session?.status;
+          if (status === 'fulfillment_complete') {
+            setFundingStatusMessage('Order placed. Continue to wallet approval to lock escrow.');
+          } else if (status === 'rejected') {
+            setFundingStatusMessage('Order was not completed. Retry in Stripe or continue if already funded.');
+          }
+        });
+
+        mountElement.innerHTML = '';
+        session.mount(mountElement);
+        stripeSessionRef.current = session;
+      } catch (err) {
+        if (!mounted) return;
+        setError(err instanceof Error ? err.message : 'Failed to load Stripe funding.');
+      } finally {
+        if (mounted) {
+          setStripeOnrampLoading(false);
+        }
+      }
+    };
+
+    initializeStripeOnramp();
+
+    return () => {
+      mounted = false;
+      mountElement.innerHTML = '';
+      stripeSessionRef.current = null;
+    };
+  }, [fundingSource, loadStripeScripts, onrampWalletAddress, open, preparedTransfer, step]);
+
+  const handleConfirmLock = async () => {
     setError(null);
+    setReviewSubmitting(true);
 
     try {
       if (!normalizedRecipient) {
@@ -356,24 +578,36 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
 
       setPreparedTransfer(prepared.transfer);
 
-      const escrowTxHash = await submitEscrowLock(prepared.transfer);
-
-      setPendingPhase('Finalizing claim link...');
-      const lock = await confirmSendTransferLock(prepared.transfer.id, {
-        transferId: prepared.transfer.transferId,
-        escrowTxHash,
-      });
-
-      if (!lock) {
-        throw new Error('Escrow lock succeeded, but backend confirmation failed.');
+      if (fundingSource === 'CARD_ONRAMP') {
+        setStep('funding');
+      } else {
+        await completeEscrowLock(prepared.transfer);
       }
-
-      setClaimUrl(lock.claimUrl);
-      setPreparedTransfer(lock.transfer);
-      setStep('success');
     } catch (err) {
       setError(formatWalletError(err));
       setStep('failed');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const handleContinueFromFunding = async () => {
+    if (!preparedTransfer) {
+      setError('Transfer session is missing. Please start again.');
+      setStep('review');
+      return;
+    }
+
+    setError(null);
+    setLockingFromFunding(true);
+
+    try {
+      await completeEscrowLock(preparedTransfer);
+    } catch (err) {
+      setError(formatWalletError(err));
+      setStep('failed');
+    } finally {
+      setLockingFromFunding(false);
     }
   };
 
@@ -730,9 +964,15 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
                       </div>
                     </div>
 
-                    {fundingSource !== 'WALLET_USDC' && (
+                    {fundingSource === 'CARD_ONRAMP' && (
                       <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-700 dark:text-amber-300">
-                        Card and bank selections are recorded as funding intent. Current lock step still signs wallet USDC escrow lock.
+                        Debit/card funding opens Stripe Onramp first so you can buy USDC on Base before wallet approval.
+                      </div>
+                    )}
+
+                    {fundingSource === 'BANK_ONRAMP' && (
+                      <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-700 dark:text-amber-300">
+                        Bank funding intent is recorded, but this flow still uses wallet USDC for the escrow lock.
                       </div>
                     )}
                   </div>
@@ -750,11 +990,89 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
                       <Button
                         type="button"
                         onClick={handleConfirmLock}
+                        disabled={reviewSubmitting}
                         className="flex-1 h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
                       >
-                        Confirm &amp; Lock
+                        {reviewSubmitting ? (
+                          <span className="inline-flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Preparing...
+                          </span>
+                        ) : fundingSource === 'CARD_ONRAMP' ? (
+                          'Continue to funding'
+                        ) : (
+                          'Confirm & Lock'
+                        )}
                       </Button>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {step === 'funding' && fundingSource === 'CARD_ONRAMP' && (
+                <div className="flex flex-col h-full">
+                  <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError(null);
+                        setStep('review');
+                      }}
+                      className="p-2 -ml-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                    >
+                      <ArrowLeft className="w-5 h-5 text-zinc-900 dark:text-white" />
+                    </button>
+                    <h2 className="text-lg font-semibold text-black dark:text-white">Fund with card</h2>
+                    <div className="w-9" />
+                  </div>
+
+                  <div className="p-4 pb-2">
+                    <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 p-3 text-sm text-zinc-700 dark:text-zinc-300">
+                      Buy at least ${preparedTransfer?.totalLockedUsdc || totalPreview} USDC on Base, then continue to spend approval.
+                    </div>
+                  </div>
+
+                  {fundingStatusMessage && (
+                    <div className="px-4 pb-2">
+                      <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 p-3 text-sm text-emerald-700 dark:text-emerald-300">
+                        {fundingStatusMessage}
+                      </div>
+                    </div>
+                  )}
+
+                  {error && (
+                    <div className="px-4 pb-2">
+                      <div className="rounded-xl border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-700 dark:text-red-300">
+                        {error}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex-1 min-h-0 relative">
+                    {stripeOnrampLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-50/80 dark:bg-zinc-900/60 z-10">
+                        <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+                      </div>
+                    )}
+                    <div ref={stripeOnrampRef} className="w-full h-full min-h-[420px]" />
+                  </div>
+
+                  <div className="border-t border-zinc-200 dark:border-zinc-800 p-4">
+                    <Button
+                      type="button"
+                      onClick={handleContinueFromFunding}
+                      disabled={lockingFromFunding || !preparedTransfer}
+                      className="w-full h-12 rounded-full font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200"
+                    >
+                      {lockingFromFunding ? (
+                        <span className="inline-flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Opening wallet approval...
+                        </span>
+                      ) : (
+                        'Continue to spend approval'
+                      )}
+                    </Button>
                   </div>
                 </div>
               )}

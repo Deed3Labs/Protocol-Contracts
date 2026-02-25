@@ -4,6 +4,23 @@ import { requireWalletArrayMatch } from '../middleware/auth.js';
 const router = Router();
 const MAX_DESTINATION_FILTERS = 10;
 
+function normalizeWalletAddressNetwork(network: string): string {
+  const normalized = network.trim().toLowerCase();
+
+  // Stripe onramp wallet_addresses accepts a limited key set. EVM L2 addresses
+  // should be provided under the ethereum wallet key.
+  switch (normalized) {
+    case 'base':
+    case 'arbitrum':
+    case 'optimism':
+      return 'ethereum';
+    case 'matic':
+      return 'polygon';
+    default:
+      return normalized;
+  }
+}
+
 // Type definitions for Stripe API responses
 interface StripeError {
   message?: string;
@@ -128,7 +145,8 @@ router.post('/create-onramp-session', async (req: Request, res: Response) => {
     
     // Add wallet addresses
     walletEntries.forEach(([network, address]) => {
-      formData.append(`wallet_addresses[${network}]`, address.trim());
+      const normalizedNetwork = normalizeWalletAddressNetwork(network);
+      formData.append(`wallet_addresses[${normalizedNetwork}]`, address.trim());
     });
 
     // Add optional parameters

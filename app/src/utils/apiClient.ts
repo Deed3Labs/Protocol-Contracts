@@ -601,6 +601,45 @@ export async function createStripeOnrampSession(params: {
   return response.data;
 }
 
+export async function createStripeOnrampSessionDetailed(params: {
+  wallet_addresses?: Record<string, string>;
+  customer_ip_address?: string;
+  source_currency?: string;
+  destination_currency?: string;
+  destination_network?: string;
+  destination_amount?: string;
+  source_amount?: string;
+  destination_currencies?: string[];
+  destination_networks?: string[];
+}): Promise<{
+  session: {
+    id: string;
+    client_secret: string;
+    status: string;
+    transaction_details: any;
+  } | null;
+  error?: string;
+}> {
+  const response = await apiRequest<{
+    id: string;
+    client_secret: string;
+    status: string;
+    transaction_details: any;
+  }>('/api/stripe/create-onramp-session', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+
+  if (response.error || !response.data) {
+    return {
+      session: null,
+      error: response.error || 'Failed to create Stripe onramp session.',
+    };
+  }
+
+  return { session: response.data };
+}
+
 /**
  * Plaid: create link token for Plaid Link (bank linking)
  */
