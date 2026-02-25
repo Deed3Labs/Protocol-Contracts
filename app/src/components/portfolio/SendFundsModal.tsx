@@ -3,11 +3,12 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, ArrowLeft, Check, ChevronRight, Copy, Loader2, Wallet } from 'lucide-react';
 import { ethers } from 'ethers';
 import { useAppKit, useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { useAccount } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
   confirmSendTransferLock,
-  createStripeOnrampSession,
+  createStripeOnrampSessionDetailed,
   prepareSendTransfer,
 } from '@/utils/apiClient';
 import type { SendFundingSource, SendTransferSummary } from '@/types/send';
@@ -168,7 +169,9 @@ function chainIdToStripeNetwork(chainId: number): string {
 export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
   const { open: openAppKit } = useAppKit();
   const { address: appKitAddress, isConnected } = useAppKitAccount();
+  const { address: wagmiAddress } = useAccount();
   const { walletProvider } = useAppKitProvider('eip155');
+  const onrampWalletAddress = wagmiAddress || appKitAddress;
 
   const [step, setStep] = useState<SendStep>('input');
   const [inputScreen, setInputScreen] = useState<InputScreen>('main');
@@ -452,7 +455,7 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
       !open ||
       step !== 'funding' ||
       fundingSource !== 'CARD_ONRAMP' ||
-      !appKitAddress ||
+      !onrampWalletAddress ||
       !preparedTransfer ||
       !mountElement
     ) {
@@ -479,16 +482,30 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
         }
 
         const destinationNetwork = chainIdToStripeNetwork(preparedTransfer.chainId);
-        const sessionData = await createStripeOnrampSession({
-          wallet_addresses: { [destinationNetwork]: appKitAddress },
-          source_currency: 'usd',
+        const strictAttempt = await createStripeOnrampSessionDetailed({
+          wallet_addresses: { [destinationNetwork]: onrampWalletAddress },
           destination_currency: 'usdc',
           destination_network: destinationNetwork,
           destination_amount: preparedTransfer.totalLockedUsdc,
         });
 
+        let sessionData = strictAttempt.session;
+        let sessionError = strictAttempt.error;
+
+        // Mirror TradeModal behavior, then retry once without a fixed amount for Stripe accounts
+        // that reject destination_amount constraints.
         if (!sessionData) {
-          throw new Error('Failed to create Stripe onramp session.');
+          const relaxedAttempt = await createStripeOnrampSessionDetailed({
+            wallet_addresses: { [destinationNetwork]: onrampWalletAddress },
+            destination_currency: 'usdc',
+            destination_network: destinationNetwork,
+          });
+          sessionData = relaxedAttempt.session;
+          sessionError = relaxedAttempt.error || sessionError;
+        }
+
+        if (!sessionData) {
+          throw new Error(sessionError || 'Failed to create Stripe onramp session.');
         }
 
         const stripeOnramp = window.StripeOnramp(stripePublishableKey);
@@ -532,7 +549,7 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
       mountElement.innerHTML = '';
       stripeSessionRef.current = null;
     };
-  }, [appKitAddress, fundingSource, loadStripeScripts, open, preparedTransfer, step]);
+  }, [fundingSource, loadStripeScripts, onrampWalletAddress, open, preparedTransfer, step]);
 
   const handleConfirmLock = async () => {
     setError(null);
