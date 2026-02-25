@@ -10,7 +10,7 @@ interface PullToRefreshProps {
 }
 
 const Skeleton = () => (
-  <div className="container mx-auto max-w-7xl pt-24 px-4 md:px-6">
+  <div className="container mx-auto pt-24 px-4 md:px-6">
     <div className="animate-pulse space-y-8">
       {/* Header Area */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 md:gap-0">
