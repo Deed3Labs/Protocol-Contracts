@@ -101,9 +101,7 @@ export function AppKitAuthProvider({ children }: { children: React.ReactNode }) 
     return Number.isFinite(parsed) ? parsed : undefined;
   }, [caipNetworkId]);
 
-  const isEmbeddedWalletConnected = Boolean(
-    embeddedWalletInfo && embeddedWalletInfo.user && embeddedWalletInfo.user.email
-  );
+  const isEmbeddedWalletConnected = Boolean(embeddedWalletInfo && status === 'connected');
   const isRegularWalletConnected = Boolean(isAppKitConnected && address && status === 'connected');
   const isConnected = isEmbeddedWalletConnected || isRegularWalletConnected;
 
@@ -139,6 +137,14 @@ export function AppKitAuthProvider({ children }: { children: React.ReactNode }) 
     const checkPromise = (async () => {
       try {
         const sessionAccount = await siwx.getSessionAccount();
+        const hasSession = Boolean(sessionAccount && typeof sessionAccount === 'object');
+
+        if (!hasSession) {
+          setIsAuthenticated(false);
+          setUser(undefined);
+          return false;
+        }
+
         setIsAuthenticated(true);
         setUser(mapSessionAccountToUser(sessionAccount));
         return true;
