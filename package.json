@@ -7,7 +7,7 @@
     "test": "hardhat test",
     "test:coverage": "hardhat coverage",
     "test:gas": "REPORT_GAS=true hardhat test",
-    "test:core": "hardhat test test/core/*.test.ts",
+    "test:core": "hardhat test test/core/*.spec.ts",
     "test:extensions": "hardhat test test/extensions/*.test.ts",
     "test:integration": "hardhat test test/integration/*.test.ts",
     "compile": "npx hardhat compile",
