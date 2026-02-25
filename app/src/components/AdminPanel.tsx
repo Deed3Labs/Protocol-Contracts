@@ -820,7 +820,7 @@ const AdminPanel = () => {
 
   if (!isWalletConnected) {
     return (
-      <div className="container mx-auto max-w-full py-12 px-4">
+      <div className="container mx-auto py-12 px-4">
         <div className="text-center text-gray-600 dark:text-gray-300 text-lg py-12">
           <Shield className="w-12 h-12 mx-auto mb-4 text-gray-400" />
           <p>Please connect your wallet to access the admin panel.</p>
@@ -831,7 +831,7 @@ const AdminPanel = () => {
 
   if (!isCorrectNetwork) {
     return (
-      <div className="container mx-auto max-w-full py-12 px-4">
+      <div className="container mx-auto py-12 px-4">
         <NetworkWarning />
         <div className="text-center text-gray-600 dark:text-gray-300 text-lg py-12">
           <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
@@ -843,7 +843,7 @@ const AdminPanel = () => {
 
   if (isLoadingRoles) {
     return (
-      <div className="container mx-auto max-w-full py-12 px-4">
+      <div className="container mx-auto py-12 px-4">
         <div className="text-center text-gray-600 dark:text-gray-300 text-lg py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-600 mx-auto mb-4"></div>
           <p>Checking admin privileges...</p>
@@ -854,7 +854,7 @@ const AdminPanel = () => {
 
   if (!hasAdminRole) {
     return (
-      <div className="container mx-auto max-w-full py-12 px-4">
+      <div className="container mx-auto py-12 px-4">
         <div className="text-center text-gray-600 dark:text-gray-300 text-lg py-12">
           <Lock className="w-12 h-12 mx-auto mb-4 text-gray-400" />
           <p>You don't have admin privileges. Only users with admin roles can access this panel.</p>
@@ -868,7 +868,7 @@ const AdminPanel = () => {
   }
 
   return (
-    <div className="container mx-auto max-w-full pt-4 pb-8 px-4">
+    <div className="container mx-auto pt-4 pb-8 px-4">
       {/* Debug Information */}
       {isWalletConnected && isCorrectNetwork && (
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">

@@ -281,7 +281,7 @@ export function SWIXDemo() {
 
   if (!isConnected) {
     return (
-      <div className="container mx-auto max-w-full px-4 py-8">
+      <div className="container mx-auto px-4 py-8">
         <div className="text-center space-y-4">
           <h1 className="text-5xl lg:text-6xl font-bold font-coolvetica">USER PROFILE & SETTINGS</h1>
           <p className="text-xl text-muted-foreground">
@@ -296,7 +296,7 @@ export function SWIXDemo() {
   }
 
   return (
-    <div className="container mx-auto max-w-full px-4 pt-4 pb-8 space-y-8">
+    <div className="container mx-auto px-4 pt-4 pb-8 space-y-8">
       {/* Debug Information */}
       {isWalletConnected && isCorrectNetwork && (
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">

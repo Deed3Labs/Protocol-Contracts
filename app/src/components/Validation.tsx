@@ -1908,7 +1908,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
   if (!isWalletConnected) {
     return (
-      <div className="container mx-auto max-w-full px-4 py-8">
+      <div className="container mx-auto px-4 py-8">
         <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
           <CardContent className="p-8 text-center">
             <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -1926,7 +1926,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
 
   if (!isCorrectNetwork && isWalletConnected) {
     return (
-      <div className="container mx-auto max-w-full px-4 py-8">
+      <div className="container mx-auto px-4 py-8">
         <Card className="border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#141414]/90 backdrop-blur-sm">
           <CardContent className="p-8 text-center">
             <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -1943,7 +1943,7 @@ const Validation: React.FC<ValidationPageProps> = () => {
   }
 
   return (
-    <div className="container mx-auto max-w-full px-4 pt-4">
+    <div className="container mx-auto px-4 pt-4">
       {/* Debug Information */}
       {isWalletConnected && isCorrectNetwork && (
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">

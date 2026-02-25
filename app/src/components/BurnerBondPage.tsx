@@ -45,7 +45,7 @@ const BurnerBondPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0e0e0e]">
-      <div className="container mx-auto max-w-full px-4 pt-4 pb-8">
+      <div className="container mx-auto px-4 pt-4 pb-8">
         {/* Debug Information */}
         {isWalletConnected && isCorrectNetwork && (
           <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">

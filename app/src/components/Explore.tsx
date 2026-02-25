@@ -72,7 +72,7 @@ const Explore = () => {
   };
 
   return (
-    <main className="container mx-auto max-w-full pt-4 pb-12 px-4">
+    <main className="container mx-auto pt-4 pb-12 px-4">
 
       {/* Debug Information */}
       {isConnected && isCorrectNetwork && (
