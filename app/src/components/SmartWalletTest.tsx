@@ -115,7 +115,7 @@ const SmartWalletTest = () => {
   };
 
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className="container mx-auto max-w-full py-8 px-4">
       <Card className="max-w-2xl mx-auto">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

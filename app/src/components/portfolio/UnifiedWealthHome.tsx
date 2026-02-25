@@ -163,7 +163,7 @@ export default function UnifiedWealthHome() {
         onActionOpen={() => setActionModalOpen(true)}
       />
 
-      <main className="pt-24 pb-28 container mx-auto md:pt-32">
+      <main className="pt-24 pb-28 container mx-auto max-w-full md:pt-32">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
           {/* Left Column */}
           <div className="md:col-span-8 space-y-10">

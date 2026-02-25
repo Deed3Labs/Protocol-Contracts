@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 const Home = () => {
   return (
-    <main className="container mx-auto pt-10 pb-14 px-4">
+    <main className="container mx-auto max-w-full pt-10 pb-14 px-4">
       <div className="text-center mb-12">
         <h1 className="text-7xl lg:text-9xl font-bold text-gray-900 dark:text-white mb-6 font-coolvetica">
           YOUR NEW HOME <br /> FOR REAL WORLD ASSETS

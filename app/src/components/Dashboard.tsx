@@ -81,7 +81,7 @@ const Dashboard = () => {
   };
 
   return (
-    <main className="container mx-auto pt-4 px-4">
+    <main className="container mx-auto max-w-full pt-4 px-4">
       {/* Debug Information */}
       {isWalletConnected && isCorrectNetwork && (
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
