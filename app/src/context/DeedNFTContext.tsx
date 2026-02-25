@@ -603,7 +603,7 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [chainId, getContractAddress, executeAppKitCall, walletProvider, embeddedWalletInfo]);
 
   // More accurate connection detection
-  const isEmbeddedWalletConnected = Boolean(embeddedWalletInfo && embeddedWalletInfo.user && embeddedWalletInfo.user.email);
+  const isEmbeddedWalletConnected = Boolean(embeddedWalletInfo && status === 'connected');
   const isRegularWalletConnected = Boolean(isConnected && address && status === 'connected');
   const isWalletConnected = isEmbeddedWalletConnected || isRegularWalletConnected;
 

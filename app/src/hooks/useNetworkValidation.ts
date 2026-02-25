@@ -19,9 +19,9 @@ export function useNetworkValidation() {
 
   useEffect(() => {
     // More accurate connection detection
-    // For embedded wallets: check if embeddedWalletInfo exists and has user data
+    // For embedded wallets: treat AppKit embedded session as connected when account status is connected
     // For regular wallets: check if isConnected is true AND we have an address
-    const isEmbeddedWalletConnected = Boolean(embeddedWalletInfo && embeddedWalletInfo.user && embeddedWalletInfo.user.email);
+    const isEmbeddedWalletConnected = Boolean(embeddedWalletInfo && status === 'connected');
     const isRegularWalletConnected = Boolean(isConnected && address && status === 'connected');
     const isWalletConnected = isEmbeddedWalletConnected || isRegularWalletConnected;
     
@@ -77,7 +77,7 @@ export function useNetworkValidation() {
   }, []);
 
   // More accurate connection detection
-  const isEmbeddedWalletConnected = Boolean(embeddedWalletInfo && embeddedWalletInfo.user && embeddedWalletInfo.user.email);
+  const isEmbeddedWalletConnected = Boolean(embeddedWalletInfo && status === 'connected');
   const isRegularWalletConnected = Boolean(isConnected && address && status === 'connected');
   const isWalletConnected = isEmbeddedWalletConnected || isRegularWalletConnected;
   
