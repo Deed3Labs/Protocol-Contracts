@@ -95,22 +95,8 @@
           }
         }, 1000);
 
-        // Force modal refresh after icons are preloaded
-        setTimeout(() => {
-          const modal = window.appKitModal;
-          if (modal && modal.open) {
-            console.log('Forcing AppKit modal refresh to load icons');
-            // Trigger a modal refresh to ensure icons load
-            try {
-              modal.open();
-              setTimeout(() => {
-                modal.close();
-              }, 100);
-            } catch (error) {
-              console.log('Modal refresh failed:', error);
-            }
-          }
-        }, 2000);
+        // Do not auto-open the modal here. On iOS deep-link flows this can
+        // retrigger connect/sign prompts before WalletConnect state restores.
       });
     </script>
   </body>
