@@ -14,11 +14,10 @@ import type {
   SendTransferSummary,
   VerifyClaimOtpResponse,
 } from '@/types/send';
+import { clearSiwxAuthToken, getSiwxAuthToken, notifyAuthExpired } from './authSession';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
-const SIWX_AUTH_TOKEN_KEY = '@appkit/siwx-auth-token';
 const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
-const SEND_REOWN_PROJECT_HEADER = import.meta.env.VITE_SEND_REOWN_PROJECT_HEADER === 'true';
 
 // Log API base URL in development to help debug
 if (import.meta.env.DEV) {
@@ -34,15 +33,6 @@ interface ApiResponse<T> {
 
 interface RequestInitWithTimeout extends RequestInit {
   timeout?: number; // Custom timeout in milliseconds (overrides default 30s)
-}
-
-function getSiwxAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage.getItem(SIWX_AUTH_TOKEN_KEY);
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -68,7 +58,7 @@ async function apiRequest<T>(
       headers: {
         'Content-Type': 'application/json',
         ...(siwxToken ? { Authorization: `Bearer ${siwxToken}` } : {}),
-        ...(SEND_REOWN_PROJECT_HEADER && REOWN_PROJECT_ID
+        ...(REOWN_PROJECT_ID
           ? { 'X-Reown-Project-Id': REOWN_PROJECT_ID }
           : {}),
         ...options.headers,
@@ -82,6 +72,12 @@ async function apiRequest<T>(
     const isJson = contentType?.includes('application/json');
 
     if (!response.ok) {
+      if (response.status === 401) {
+        clearSiwxAuthToken();
+        notifyAuthExpired({ endpoint, status: response.status });
+        throw new Error('Authentication expired. Please reconnect and sign in again.');
+      }
+
       // Try to parse error as JSON, but handle HTML/other responses
       if (isJson) {
         const errorData = await response.json().catch(() => null);

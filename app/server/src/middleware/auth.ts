@@ -61,6 +61,19 @@ function normalizeAddress(address: string): string {
   return address.trim().toLowerCase();
 }
 
+function sendUnauthorized(res: Response, message: string, code: string) {
+  const safeMessage = message.replace(/"/g, '');
+  res.setHeader(
+    'WWW-Authenticate',
+    `Bearer realm="reown", error="invalid_token", error_description="${safeMessage}"`
+  );
+  return res.status(401).json({
+    error: 'Unauthorized',
+    code,
+    message,
+  });
+}
+
 function decodeJwtPayload(token: string): JwtPayload | null {
   try {
     const parts = token.split('.');
@@ -176,10 +189,7 @@ async function validateToken(token: string, projectId: string): Promise<Authenti
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = getBearerToken(req);
   if (!token) {
-    return res.status(401).json({
-      error: 'Unauthorized',
-      message: 'Missing bearer token',
-    });
+    return sendUnauthorized(res, 'Missing bearer token', 'AUTH_TOKEN_MISSING');
   }
 
   const projectId = resolveProjectId(req, token);
@@ -193,20 +203,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   try {
     const session = await validateToken(token, projectId);
     if (!session) {
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Invalid or expired authentication token',
-      });
+      return sendUnauthorized(res, 'Invalid or expired authentication token', 'AUTH_TOKEN_INVALID');
     }
 
     req.auth = session;
     return next();
   } catch (error) {
     console.error('Authentication error:', error);
-    return res.status(401).json({
-      error: 'Unauthorized',
-      message: 'Authentication failed',
-    });
+    return sendUnauthorized(res, 'Authentication failed', 'AUTH_FAILED');
   }
 }
 

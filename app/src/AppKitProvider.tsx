@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
 import { ReownAuthentication } from '@reown/appkit-siwx';
 import React from 'react';
+import { AppKitAuthProvider } from '@/hooks/useAppKitAuth';
 
 const queryClient = new QueryClient();
 
@@ -334,7 +335,7 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
     <WagmiProvider config={wagmiAdapter.wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         {isAppKitInitialized && <AppKitThemeSync />}
-        {children}
+        <AppKitAuthProvider>{children}</AppKitAuthProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );

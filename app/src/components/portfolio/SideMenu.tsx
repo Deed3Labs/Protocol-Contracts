@@ -1,15 +1,15 @@
 import { X, ChevronRight, User, Settings, Lock, HelpCircle, LogOut, Sun, Moon, FileText, CreditCard } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
-import { useDisconnect } from 'wagmi';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 
 const SideMenu = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const { profileMenuUser } = useGlobalModals();
   const user = profileMenuUser;
   const { theme, setTheme } = useTheme();
-  const { disconnect } = useDisconnect();
+  const { disconnect } = useAppKitAuth();
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
   const [isDark, setIsDark] = useState(false);
@@ -155,15 +155,20 @@ const SideMenu = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void })
 
         <div className="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-800">
         <button 
-          onClick={() => {
-            disconnect();
-            onClose(); // Close the menu
-            // Dispatch event to trigger splash screen
-            window.dispatchEvent(new Event('wallet-disconnected'));
-            // Navigate to login after a short delay
-            setTimeout(() => {
-              navigate('/login');
-            }, 500);
+          onClick={async () => {
+            try {
+              await disconnect();
+            } catch (error) {
+              console.error('Failed to disconnect wallet:', error);
+            } finally {
+              onClose(); // Close the menu
+              // Dispatch event to trigger splash screen
+              window.dispatchEvent(new Event('wallet-disconnected'));
+              // Navigate to login after a short delay
+              setTimeout(() => {
+                navigate('/login');
+              }, 500);
+            }
           }}
           className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors text-red-600 dark:text-red-500 group"
         >
