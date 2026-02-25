@@ -122,7 +122,7 @@ export default function LoginPage() {
       />
 
       {/* Main Content */}
-      <main className="relative z-10 pt-24 pb-28 md:pt-0 md:pb-0 container mx-auto max-w-7xl px-4 md:px-6 flex-1 flex items-center">
+      <main className="relative z-10 pt-24 pb-28 md:pt-0 md:pb-0 container mx-auto px-4 md:px-6 flex-1 flex items-center">
         <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12 items-center">
           
           {/* Left Column - Branding */}
