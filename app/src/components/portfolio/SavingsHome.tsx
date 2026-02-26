@@ -331,7 +331,7 @@ function SavingsStreakCard({
 
   return (
     <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-      <CardContent className="px-3 py-0 space-y-2.5">
+      <CardContent className="px-3 py-2 space-y-2.5">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
             Savings Streak
@@ -511,7 +511,7 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
   return (
     <div className="space-y-2.5">
       <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-        <CardContent className="px-3 py-0">
+        <CardContent className="px-3 py-2">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
               Achievements
@@ -1027,7 +1027,7 @@ export default function SavingsHome() {
                 <span className="text-lg text-zinc-500 font-normal">USD</span>
               </h1>
 
-              <div className="mt-5 flex flex-wrap gap-3">
+              <div className="mt-6 flex flex-wrap gap-3">
                 <button
                   onClick={() => setDepositModalOpen(true)}
                   className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-2"
@@ -1063,16 +1063,16 @@ export default function SavingsHome() {
               </div>
 
               <div className="p-4 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:grid sm:grid-cols-3 sm:gap-3 sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
+                  <div className="min-w-[180px] sm:min-w-0 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Savings Balance</p>
                     <p className="text-lg font-medium mt-1">{formatCurrency(savingsBalance)}</p>
                   </div>
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
+                  <div className="min-w-[180px] sm:min-w-0 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Semi-Valid Credits</p>
                     <p className="text-lg font-medium mt-1">{formatCurrency(semiValidCredits)}</p>
                   </div>
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
+                  <div className="min-w-[180px] sm:min-w-0 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Pending Credits</p>
                     <p className="text-lg font-medium mt-1">{formatCurrency(pendingCredits)}</p>
                   </div>
@@ -1288,13 +1288,13 @@ export default function SavingsHome() {
                   <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
                     Create Goal
                   </p>
-                  <div className="flex flex-wrap gap-1.5 mb-3">
+                  <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 -mx-1 px-1 sm:mx-0 sm:px-0 sm:pb-0">
                     {GOAL_TEMPLATES.map((template) => (
                       <button
                         key={template.name}
                         type="button"
                         onClick={() => handleApplyGoalTemplate(template)}
-                        className="text-[10px] px-2.5 py-1 rounded-full border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        className="shrink-0 text-[10px] px-2.5 py-1 rounded-full border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                       >
                         {template.name} · {formatSliderCurrency(template.target)}
                       </button>
@@ -1337,14 +1337,14 @@ export default function SavingsHome() {
                   <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
                     Planning Presets
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:grid sm:grid-cols-3 sm:gap-2 sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
                     {CALCULATOR_SCENARIOS.map((scenario) => (
                       <button
                         key={scenario.id}
                         type="button"
                         onClick={() => applyCalculatorScenario(scenario)}
                         className={cn(
-                          'rounded border p-2.5 text-left transition-colors',
+                          'shrink-0 min-w-[150px] sm:min-w-0 rounded border p-2.5 text-left transition-colors',
                           calculatorScenarioId === scenario.id
                             ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
                             : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#0e0e0e] hover:bg-zinc-100 dark:hover:bg-zinc-800'
