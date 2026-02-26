@@ -89,6 +89,20 @@ interface ActivityEvent {
   status: 'posted' | 'pending' | 'locked';
 }
 
+interface GoalTemplate {
+  name: string;
+  target: number;
+}
+
+interface CalculatorScenario {
+  id: 'conservative' | 'balanced' | 'fast-track';
+  label: string;
+  detail: string;
+  homePrice: number;
+  downPct: number;
+  monthlySave: number;
+}
+
 const ACCOUNT_NUMBER = 'ESA-4923-1209';
 const ROUTING_NUMBER = '110000019';
 const INITIAL_GOALS: SavingsGoal[] = [
@@ -102,6 +116,39 @@ const BASE_MILESTONES: Omit<Milestone, 'achieved'>[] = [
   { month: 6, label: 'Half Year', icon: Flame, reward: '$100 bonus' },
   { month: 9, label: 'Strong Saver', icon: Gift, reward: '$150 bonus' },
   { month: 12, label: 'ELPA Ready', icon: Lock, reward: 'ELPA Eligible' },
+];
+
+const GOAL_TEMPLATES: GoalTemplate[] = [
+  { name: 'Move-In Cushion', target: 5000 },
+  { name: 'Inspection + Fees', target: 2500 },
+  { name: 'Furnishing Fund', target: 3500 },
+];
+
+const CALCULATOR_SCENARIOS: CalculatorScenario[] = [
+  {
+    id: 'conservative',
+    label: 'Conservative',
+    detail: 'Lower monthly pace',
+    homePrice: 350000,
+    downPct: 2,
+    monthlySave: 650,
+  },
+  {
+    id: 'balanced',
+    label: 'Balanced',
+    detail: 'Default planning',
+    homePrice: 420000,
+    downPct: 2,
+    monthlySave: 900,
+  },
+  {
+    id: 'fast-track',
+    label: 'Fast Track',
+    detail: 'Accelerated savings',
+    homePrice: 520000,
+    downPct: 5,
+    monthlySave: 1500,
+  },
 ];
 
 const rarityColors = {
@@ -125,6 +172,9 @@ const formatCurrency = (value: number) =>
 const formatDateShort = (date: Date) =>
   date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
+const formatPercent = (value: number) =>
+  `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)}%`;
+
 const sanitizeNumericInput = (value: string) => value.replace(/[^0-9.]/g, '');
 
 const daysBetween = (from: Date, to: Date) => {
@@ -136,6 +186,16 @@ const startOfDay = (value: Date) => {
   const next = new Date(value);
   next.setHours(0, 0, 0, 0);
   return next;
+};
+
+const parseDueMonth = (value: string) => {
+  const parsed = new Date(`1 ${value}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getMonthDistance = (from: Date, to: Date) => {
+  const total = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+  return Math.max(total, 0);
 };
 
 const clampNumber = (value: number, min: number, max: number) =>
@@ -566,6 +626,8 @@ export default function SavingsHome() {
   const [homePrice, setHomePrice] = useState(420000);
   const [downPct, setDownPct] = useState(2);
   const [monthlySave, setMonthlySave] = useState(900);
+  const [calculatorScenarioId, setCalculatorScenarioId] =
+    useState<CalculatorScenario['id'] | 'custom'>('balanced');
   const [copiedField, setCopiedField] = useState<'account' | 'routing' | null>(null);
   const [activityFilter, setActivityFilter] = useState<'all' | 'deposit' | 'credit' | 'reward'>('all');
 
@@ -607,11 +669,53 @@ export default function SavingsHome() {
     estimate.setMonth(estimate.getMonth() + monthsToDeposit);
     return estimate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   }, [monthsToDeposit]);
+  const depositProgressPct = requiredDeposit > 0 ? Math.min((currentTowardDeposit / requiredDeposit) * 100, 100) : 0;
+  const monthlyMatchContribution = monthlySave;
+  const monthlyTotalContribution = monthlySave + monthlyMatchContribution;
+
+  const calculatorRecommendation = useMemo(() => {
+    if (remainingDeposit <= 0) return 'You are deposit-ready now. Next step is selecting an ELPA home and lock date.';
+    if (!monthsToDeposit) return 'Set monthly savings to view your projected readiness timeline.';
+    if (monthsToDeposit <= 6) return 'Strong pace. Keep your streak active and you can reach your target this year.';
+    if (monthsToDeposit <= 12) return 'Good progress. Increasing monthly savings by $200 can pull your date forward.';
+    return 'Long runway detected. Consider a higher monthly deposit or a lower initial target home price.';
+  }, [monthsToDeposit, remainingDeposit]);
 
   const totalGoalTarget = goals.reduce((sum, goal) => sum + goal.target, 0);
   const totalGoalSaved = goals.reduce((sum, goal) => sum + goal.saved, 0);
   const goalsProgressPct = totalGoalTarget > 0 ? Math.min((totalGoalSaved / totalGoalTarget) * 100, 100) : 0;
   const completedGoals = goals.filter((goal) => goal.saved >= goal.target).length;
+  const totalGoalRemaining = Math.max(totalGoalTarget - totalGoalSaved, 0);
+
+  const goalForecast = useMemo(() => {
+    return goals.map((goal) => {
+      const progress = goal.target > 0 ? Math.min((goal.saved / goal.target) * 100, 100) : 0;
+      const remaining = Math.max(goal.target - goal.saved, 0);
+      const dueDate = parseDueMonth(goal.due);
+      const monthsUntilDue = dueDate ? Math.max(getMonthDistance(today, dueDate), 1) : null;
+      const allocationWeight = totalGoalTarget > 0 ? goal.target / totalGoalTarget : 0;
+      const effectiveForGoal = effectiveMonthly * allocationWeight;
+      const projectedMonths = remaining > 0 && effectiveForGoal > 0 ? Math.ceil(remaining / effectiveForGoal) : 0;
+      const monthlyNeeded = monthsUntilDue && remaining > 0 ? remaining / monthsUntilDue : 0;
+
+      let status: 'complete' | 'on-track' | 'at-risk' = 'on-track';
+      if (remaining <= 0) status = 'complete';
+      else if (monthsUntilDue && projectedMonths > monthsUntilDue) status = 'at-risk';
+
+      return {
+        ...goal,
+        progress,
+        remaining,
+        monthsUntilDue,
+        projectedMonths,
+        monthlyNeeded,
+        status,
+      };
+    });
+  }, [effectiveMonthly, goals, today, totalGoalTarget]);
+
+  const onTrackGoals = goalForecast.filter((goal) => goal.status !== 'at-risk').length;
+  const totalMonthlyNeeded = goalForecast.reduce((sum, goal) => sum + goal.monthlyNeeded, 0);
 
   const milestones = useMemo<Milestone[]>(
     () =>
@@ -824,6 +928,28 @@ export default function SavingsHome() {
     setRewardPoints((prev) => prev + 25);
   };
 
+  const applyCalculatorScenario = (scenario: CalculatorScenario) => {
+    setHomePrice(scenario.homePrice);
+    setDownPct(scenario.downPct);
+    setMonthlySave(scenario.monthlySave);
+    setCalculatorScenarioId(scenario.id);
+  };
+
+  const updateHomePrice = (value: number) => {
+    setHomePrice(clampNumber(value, 150000, 1200000));
+    setCalculatorScenarioId('custom');
+  };
+
+  const updateDownPct = (value: number) => {
+    setDownPct(clampNumber(value, 2, 20));
+    setCalculatorScenarioId('custom');
+  };
+
+  const updateMonthlySave = (value: number) => {
+    setMonthlySave(clampNumber(value, 100, 5000));
+    setCalculatorScenarioId('custom');
+  };
+
   const handleAddGoal = () => {
     const target = Number(newGoalTarget);
     if (!newGoalName.trim() || !target || target <= 0) return;
@@ -840,6 +966,11 @@ export default function SavingsHome() {
     ]);
     setNewGoalName('');
     setNewGoalTarget('');
+  };
+
+  const handleApplyGoalTemplate = (template: GoalTemplate) => {
+    setNewGoalName(template.name);
+    setNewGoalTarget(String(template.target));
   };
 
   const handleTopUpGoal = (goalId: string, amount: number) => {
@@ -1028,63 +1159,147 @@ export default function SavingsHome() {
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
-                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
-                  <div className="flex items-center justify-between text-xs mb-2">
-                    <span className="text-zinc-500 dark:text-zinc-400">Total goal progress</span>
-                    <span className="font-medium">{Math.round(goalsProgressPct)}%</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Total Progress</p>
+                    <p className="text-base font-medium mt-1">{Math.round(goalsProgressPct)}%</p>
+                    <Progress value={goalsProgressPct} className="h-1.5 mt-2" />
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">{formatCurrency(totalGoalRemaining)} remaining</p>
                   </div>
-                  <Progress value={goalsProgressPct} className="h-2" />
-                  <div className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    {formatCurrency(totalGoalSaved)} / {formatCurrency(totalGoalTarget)}
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">On Track</p>
+                    <p className="text-base font-medium mt-1">{onTrackGoals}/{goals.length}</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">Goals meeting forecast</p>
+                  </div>
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Needed / Month</p>
+                    <p className="text-base font-medium mt-1">{formatCurrency(totalMonthlyNeeded)}</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">To stay on goal timeline</p>
                   </div>
                 </div>
 
-                {goals.map((goal) => {
-                  const progress = goal.target > 0 ? Math.min((goal.saved / goal.target) * 100, 100) : 0;
-                  const remaining = Math.max(goal.target - goal.saved, 0);
-                  return (
-                    <motion.div
-                      key={goal.id}
-                      whileHover={{ scale: 1.01 }}
-                      className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-medium">{goal.name}</p>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400">Target date: {goal.due}</p>
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                  <div className="flex items-center justify-between text-[11px] mb-2">
+                    <span className="text-zinc-500 dark:text-zinc-400">Goal allocation by size</span>
+                    <span className="font-medium">{formatCurrency(totalGoalTarget)}</span>
+                  </div>
+                  <div className="h-2 rounded overflow-hidden border border-zinc-200 dark:border-zinc-800 flex">
+                    {goalForecast.map((goal, index) => (
+                      <div
+                        key={goal.id}
+                        className={cn(
+                          index % 4 === 0 && 'bg-emerald-500',
+                          index % 4 === 1 && 'bg-amber-500',
+                          index % 4 === 2 && 'bg-orange-500',
+                          index % 4 === 3 && 'bg-teal-500'
+                        )}
+                        style={{ width: `${totalGoalTarget > 0 ? (goal.target / totalGoalTarget) * 100 : 0}%` }}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {goalForecast.map((goal, index) => (
+                      <div key={goal.id} className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className={cn(
+                              'w-2 h-2 rounded-full shrink-0',
+                              index % 4 === 0 && 'bg-emerald-500',
+                              index % 4 === 1 && 'bg-amber-500',
+                              index % 4 === 2 && 'bg-orange-500',
+                              index % 4 === 3 && 'bg-teal-500'
+                            )}
+                          />
+                          <span className="truncate">{goal.name}</span>
                         </div>
-                        <Badge variant="outline" className="text-[10px]">{Math.round(progress)}%</Badge>
+                        <span>{Math.round(goal.progress)}%</span>
                       </div>
-                      <Progress value={progress} className="h-2 mt-3" />
-                      <div className="flex items-center justify-between mt-3">
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {formatCurrency(goal.saved)} saved · {formatCurrency(remaining)} remaining
-                        </p>
-                        <div className="flex items-center gap-1">
+                    ))}
+                  </div>
+                </div>
+
+                {goalForecast.map((goal) => (
+                  <motion.div
+                    key={goal.id}
+                    whileHover={{ scale: 1.008 }}
+                    className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">{goal.name}</p>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Target date: {goal.due}</p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-[10px]',
+                          goal.status === 'complete' &&
+                            'border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10',
+                          goal.status === 'on-track' &&
+                            'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-[#141414]',
+                          goal.status === 'at-risk' &&
+                            'border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10'
+                        )}
+                      >
+                        {goal.status === 'complete' ? 'Complete' : goal.status === 'on-track' ? 'On Track' : 'Attention'}
+                      </Badge>
+                    </div>
+
+                    <Progress value={goal.progress} className="h-2 mt-2.5" />
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Saved / Target</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(goal.saved)} / {formatCurrency(goal.target)}</p>
+                      </div>
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Remaining</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(goal.remaining)}</p>
+                      </div>
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Needed / Month</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(goal.monthlyNeeded)}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                        {goal.remaining <= 0
+                          ? 'Goal reached. Redirect monthly savings to your next target.'
+                          : `Projected completion: ${goal.projectedMonths > 0 ? `${goal.projectedMonths} month${goal.projectedMonths === 1 ? '' : 's'}` : 'pending plan'}`}
+                      </p>
+                      <div className="flex items-center gap-1">
+                        {[100, 250, 500].map((amount) => (
                           <button
+                            key={amount}
                             type="button"
-                            onClick={() => handleTopUpGoal(goal.id, 100)}
+                            onClick={() => handleTopUpGoal(goal.id, amount)}
                             className="text-[10px] px-2.5 py-1 rounded-full border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                           >
-                            +$100
+                            +${amount}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleTopUpGoal(goal.id, 250)}
-                            className="text-[10px] px-2.5 py-1 rounded-full border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                          >
-                            +$250
-                          </button>
-                        </div>
+                        ))}
                       </div>
-                    </motion.div>
-                  );
-                })}
+                    </div>
+                  </motion.div>
+                ))}
 
                 <div className="rounded border border-dashed border-zinc-300 dark:border-zinc-700 p-3">
                   <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
-                    Add Goal
+                    Create Goal
                   </p>
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {GOAL_TEMPLATES.map((template) => (
+                      <button
+                        key={template.name}
+                        type="button"
+                        onClick={() => handleApplyGoalTemplate(template)}
+                        className="text-[10px] px-2.5 py-1 rounded-full border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                      >
+                        {template.name} · {formatSliderCurrency(template.target)}
+                      </button>
+                    ))}
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2">
                     <input
                       value={newGoalName}
@@ -1118,68 +1333,175 @@ export default function SavingsHome() {
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
-                <div className="space-y-3">
-                  <CalculatorSlider
-                    label="Home Price"
-                    value={homePrice}
-                    min={150000}
-                    max={1200000}
-                    step={5000}
-                    onChange={(value) => setHomePrice(clampNumber(value, 150000, 1200000))}
-                    formatValue={formatSliderCurrency}
-                    presets={[300000, 450000, 650000]}
-                  />
-                  <CalculatorSlider
-                    label="Deposit %"
-                    value={downPct}
-                    min={2}
-                    max={20}
-                    step={0.5}
-                    onChange={(value) => setDownPct(clampNumber(value, 2, 20))}
-                    formatValue={(value) =>
-                      `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)}%`
-                    }
-                    presets={[2, 5, 10]}
-                  />
-                  <CalculatorSlider
-                    label="Monthly Savings"
-                    value={monthlySave}
-                    min={100}
-                    max={5000}
-                    step={50}
-                    onChange={(value) => setMonthlySave(clampNumber(value, 100, 5000))}
-                    formatValue={formatSliderCurrency}
-                    presets={[500, 1000, 1500]}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Required Deposit ({downPct}%)</p>
-                    <p className="text-lg font-medium mt-1">{formatCurrency(requiredDeposit)}</p>
-                  </div>
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Current toward Deposit</p>
-                    <p className="text-lg font-medium mt-1">{formatCurrency(currentTowardDeposit)}</p>
-                  </div>
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Remaining</p>
-                    <p className="text-lg font-medium mt-1">{formatCurrency(remainingDeposit)}</p>
-                  </div>
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Estimated Timeline</p>
-                    <p className="text-lg font-medium mt-1">
-                      {monthsToDeposit == null ? 'Set monthly amount' : `${monthsToDeposit} months`}
-                    </p>
-                    {projectedDepositDate && (
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Target month: {projectedDepositDate}</p>
-                    )}
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+                    Planning Presets
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {CALCULATOR_SCENARIOS.map((scenario) => (
+                      <button
+                        key={scenario.id}
+                        type="button"
+                        onClick={() => applyCalculatorScenario(scenario)}
+                        className={cn(
+                          'rounded border p-2.5 text-left transition-colors',
+                          calculatorScenarioId === scenario.id
+                            ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                            : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#0e0e0e] hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        )}
+                      >
+                        <p className="text-xs font-medium">{scenario.label}</p>
+                        <p className={cn('text-[10px] mt-0.5', calculatorScenarioId === scenario.id ? 'text-white/80 dark:text-zinc-800' : 'text-zinc-500 dark:text-zinc-400')}>
+                          {scenario.detail}
+                        </p>
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Effective monthly contribution is doubled after credits post semi-valid.
-                </p>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div className="space-y-3">
+                    <CalculatorSlider
+                      label="Home Price"
+                      value={homePrice}
+                      min={150000}
+                      max={1200000}
+                      step={5000}
+                      onChange={updateHomePrice}
+                      formatValue={formatSliderCurrency}
+                      presets={[300000, 450000, 650000]}
+                    />
+                    <CalculatorSlider
+                      label="Deposit %"
+                      value={downPct}
+                      min={2}
+                      max={20}
+                      step={0.5}
+                      onChange={updateDownPct}
+                      formatValue={formatPercent}
+                      presets={[2, 5, 10]}
+                    />
+                    <CalculatorSlider
+                      label="Monthly Savings"
+                      value={monthlySave}
+                      min={100}
+                      max={5000}
+                      step={50}
+                      onChange={updateMonthlySave}
+                      formatValue={formatSliderCurrency}
+                      presets={[500, 1000, 1500]}
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                            Deposit Readiness
+                          </p>
+                          <p className="text-2xl font-light mt-1">
+                            {remainingDeposit <= 0 ? 'Ready now' : projectedDepositDate ?? '--'}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-[10px]">
+                          {monthsToDeposit == null ? 'Plan Needed' : `${monthsToDeposit} mo`}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2">
+                        {formatCurrency(currentTowardDeposit)} of {formatCurrency(requiredDeposit)} toward your deposit target.
+                      </p>
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between text-[11px] mb-1 text-zinc-500 dark:text-zinc-400">
+                          <span>Progress to target</span>
+                          <span>{Math.round(depositProgressPct)}%</span>
+                        </div>
+                        <Progress value={depositProgressPct} className="h-2" />
+                      </div>
+                    </div>
+
+                    <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                      <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+                        Monthly Contribution Mix
+                      </p>
+                      <div className="h-2 rounded overflow-hidden border border-zinc-200 dark:border-zinc-800 flex">
+                        <div className="bg-zinc-900 dark:bg-zinc-100 w-1/2" />
+                        <div className="bg-emerald-500 w-1/2" />
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-zinc-500 dark:text-zinc-400">Your monthly savings</span>
+                          <span className="font-medium">{formatCurrency(monthlySave)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-zinc-500 dark:text-zinc-400">1:1 equity credits</span>
+                          <span className="font-medium">{formatCurrency(monthlyMatchContribution)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-zinc-500 dark:text-zinc-400">Effective monthly power</span>
+                          <span className="font-medium">{formatCurrency(monthlyTotalContribution)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+                    Readiness Timeline
+                  </p>
+                  <div className="space-y-2.5">
+                    {[
+                      {
+                        key: 'posting',
+                        title: '30-day credit posting',
+                        detail:
+                          daysUntilPosting > 0
+                            ? `${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'} to latest semi-valid credit`
+                            : 'Latest credit posted as semi-valid',
+                        complete: daysUntilPosting === 0,
+                      },
+                      {
+                        key: 'deposit',
+                        title: 'Deposit target readiness',
+                        detail:
+                          remainingDeposit <= 0
+                            ? 'Deposit target reached'
+                            : monthsToDeposit == null
+                              ? 'Set monthly savings to project date'
+                              : `${monthsToDeposit} month${monthsToDeposit === 1 ? '' : 's'} to readiness`,
+                        complete: remainingDeposit <= 0,
+                      },
+                      {
+                        key: 'elpa',
+                        title: 'ELPA usage unlock',
+                        detail:
+                          daysUntilElpa > 0
+                            ? `${daysUntilElpa} day${daysUntilElpa === 1 ? '' : 's'} until ELPA-usable credits`
+                            : 'ELPA credits available now',
+                        complete: daysUntilElpa === 0,
+                      },
+                    ].map((item) => (
+                      <div key={item.key} className="flex items-start gap-2.5">
+                        <div
+                          className={cn(
+                            'mt-0.5 w-2.5 h-2.5 rounded-full shrink-0',
+                            item.complete ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
+                          )}
+                        />
+                        <div>
+                          <p className="text-xs font-medium">{item.title}</p>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{item.detail}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#0e0e0e]">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Guidance</p>
+                  <p className="text-sm">{calculatorRecommendation}</p>
+                </div>
               </CardContent>
             </Card>
 
@@ -1289,7 +1611,7 @@ export default function SavingsHome() {
             <RewardsPerksCard achievements={achievements} perks={perks} />
 
             <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-zinc-100 to-emerald-50/60 dark:from-[#141414] dark:to-[#0e0e0e]">
-              <CardContent className="py-0 space-y-2">
+              <CardContent className="py-2.5 space-y-2">
                 <p className="text-sm font-medium">Stop Renting. Start Owning. Take the CLEAR path.</p>
                 <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
                   EquityShare is a 2026-first home financing solution. We buy the home you want, you move in, and a
