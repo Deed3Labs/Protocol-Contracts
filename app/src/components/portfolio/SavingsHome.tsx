@@ -23,6 +23,21 @@ import {
   Zap,
 } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import SideMenu from './SideMenu';
 import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
@@ -43,6 +58,7 @@ interface SavingsGoal {
   target: number;
   saved: number;
   due: string;
+  origin?: 'manual' | 'calculator';
 }
 
 interface Achievement {
@@ -102,6 +118,8 @@ interface CalculatorScenario {
   downPct: number;
   monthlySave: number;
 }
+
+type CalculatorView = 'projection' | 'allocation' | 'timeline';
 
 const ACCOUNT_NUMBER = 'ESA-4923-1209';
 const ROUTING_NUMBER = '110000019';
@@ -207,6 +225,12 @@ const formatSliderCurrency = (value: number) => {
   return formatCurrency(value);
 };
 
+const formatAxisCurrency = (value: number) => {
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${Math.round(value / 1_000)}k`;
+  return `$${Math.round(value)}`;
+};
+
 interface CalculatorSliderProps {
   label: string;
   value: number;
@@ -216,6 +240,8 @@ interface CalculatorSliderProps {
   onChange: (value: number) => void;
   formatValue: (value: number) => string;
   presets: number[];
+  inputPrefix?: string;
+  helperText?: string;
 }
 
 function CalculatorSlider({
@@ -227,14 +253,34 @@ function CalculatorSlider({
   onChange,
   formatValue,
   presets,
+  inputPrefix,
+  helperText,
 }: CalculatorSliderProps) {
   const progress = ((value - min) / (max - min)) * 100;
 
   return (
     <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">{label}</p>
-        <span className="text-xs font-medium">{formatValue(value)}</span>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">{label}</p>
+          {helperText && <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">{helperText}</p>}
+        </div>
+        <div className="h-8 px-2 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414] flex items-center gap-1">
+          {inputPrefix && <span className="text-xs text-zinc-500 dark:text-zinc-400">{inputPrefix}</span>}
+          <input
+            type="number"
+            min={min}
+            max={max}
+            step={step}
+            value={Number.isFinite(value) ? value : ''}
+            onChange={(event) => {
+              const nextValue = Number(event.target.value);
+              if (Number.isNaN(nextValue)) return;
+              onChange(nextValue);
+            }}
+            className="w-20 bg-transparent text-right text-xs font-medium outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+        </div>
       </div>
       <input
         type="range"
@@ -252,7 +298,7 @@ function CalculatorSlider({
         <span>{formatValue(min)}</span>
         <span>{formatValue(max)}</span>
       </div>
-      <div className="flex items-center gap-1 mt-2">
+      <div className="flex items-center gap-1 mt-2 overflow-x-auto pb-1">
         {presets.map((preset) => (
           <button
             key={preset}
@@ -324,10 +370,15 @@ function SavingsStreakCard({
   const unlockedMilestones = milestones.filter((milestone) => milestone.achieved).length;
   const nextMilestone = milestones.find((milestone) => !milestone.achieved);
   const daysToNextMilestone = nextMilestone ? Math.max(nextMilestone.month * 30 - accountMonth * 30, 0) : 0;
-  const ringRadius = 34;
-  const ringCircumference = 2 * Math.PI * ringRadius;
-  const ringDashOffset = ringCircumference - (ringCircumference * streakProgress) / 100;
   const daysToLevelUp = Math.max(streakTarget - currentStreak, 0);
+  const streakRingData = [
+    { name: 'Active', value: Math.min(currentStreak, streakTarget), color: '#10b981' },
+    { name: 'Remaining', value: Math.max(streakTarget - Math.min(currentStreak, streakTarget), 0), color: '#3f3f46' },
+  ];
+  const weeklyConsistencyData = weeklyTotals.map((total, index) => ({
+    label: `W${index + 1}`,
+    total,
+  }));
 
   return (
     <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
@@ -349,31 +400,26 @@ function SavingsStreakCard({
         <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-zinc-50 dark:bg-[#0e0e0e]">
           <div className="flex items-center gap-3">
             <div className="relative w-24 h-24 shrink-0">
-              <svg className="w-full h-full -rotate-90">
-                <circle
-                  cx="48"
-                  cy="48"
-                  r={ringRadius}
-                  stroke="currentColor"
-                  strokeWidth="7"
-                  fill="transparent"
-                  className="text-zinc-200 dark:text-zinc-800"
-                />
-                <motion.circle
-                  initial={{ strokeDashoffset: ringCircumference }}
-                  animate={{ strokeDashoffset: ringDashOffset }}
-                  transition={{ duration: 0.9, ease: 'easeOut' }}
-                  cx="48"
-                  cy="48"
-                  r={ringRadius}
-                  stroke="currentColor"
-                  strokeWidth="7"
-                  fill="transparent"
-                  strokeDasharray={ringCircumference}
-                  strokeLinecap="round"
-                  className="text-emerald-500"
-                />
-              </svg>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={streakRingData}
+                    dataKey="value"
+                    innerRadius={31}
+                    outerRadius={42}
+                    startAngle={90}
+                    endAngle={-270}
+                    stroke="none"
+                    paddingAngle={streakRingData[1].value > 0 ? 2 : 0}
+                    isAnimationActive
+                    animationDuration={700}
+                  >
+                    {streakRingData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <Flame className="w-3.5 h-3.5 text-orange-500 mb-0.5" />
                 <span className="text-base font-semibold leading-none">{currentStreak}</span>
@@ -485,13 +531,48 @@ function SavingsStreakCard({
               <span className="text-[10px] text-zinc-500 dark:text-zinc-400">More</span>
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-2">
-            {weeklyTotals.map((weekTotal, index) => (
-              <div key={index} className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-[#0e0e0e]">
-                <p className="text-xs font-semibold">{formatCurrency(weekTotal)}</p>
-                <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Week {index + 1}</p>
-              </div>
-            ))}
+          <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+            <div className="h-24">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={weeklyConsistencyData} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: '#71717a', fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis hide domain={[0, 'dataMax + 40']} />
+                  <Tooltip
+                    cursor={{ fill: 'transparent' }}
+                    contentStyle={{
+                      background: '#18181b',
+                      border: '1px solid #3f3f46',
+                      borderRadius: '8px',
+                      padding: '8px 10px',
+                    }}
+                    labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
+                    itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
+                    formatter={(value: number | string | undefined) => [formatCurrency(Number(value ?? 0)), 'Saved']}
+                  />
+                  <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                    {weeklyConsistencyData.map((week, index) => (
+                      <Cell
+                        key={week.label}
+                        fill="hsl(var(--equity))"
+                        fillOpacity={0.5 + (index / Math.max(weeklyConsistencyData.length - 1, 1)) * 0.4}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5 mt-2">
+              {weeklyTotals.map((weekTotal, index) => (
+                <p key={index} className="text-[10px] text-zinc-500 dark:text-zinc-400 text-center">
+                  W{index + 1}: {formatSliderCurrency(weekTotal)}
+                </p>
+              ))}
+            </div>
           </div>
         </div>
       </CardContent>
@@ -628,6 +709,10 @@ export default function SavingsHome() {
   const [monthlySave, setMonthlySave] = useState(900);
   const [calculatorScenarioId, setCalculatorScenarioId] =
     useState<CalculatorScenario['id'] | 'custom'>('balanced');
+  const [calculatorView, setCalculatorView] = useState<CalculatorView>('projection');
+  const [calculatorLinkedGoalId, setCalculatorLinkedGoalId] = useState<string>(
+    INITIAL_GOALS[0]?.id ?? ''
+  );
   const [copiedField, setCopiedField] = useState<'account' | 'routing' | null>(null);
   const [activityFilter, setActivityFilter] = useState<'all' | 'deposit' | 'credit' | 'reward'>('all');
 
@@ -672,6 +757,71 @@ export default function SavingsHome() {
   const depositProgressPct = requiredDeposit > 0 ? Math.min((currentTowardDeposit / requiredDeposit) * 100, 100) : 0;
   const monthlyMatchContribution = monthlySave;
   const monthlyTotalContribution = monthlySave + monthlyMatchContribution;
+  const activeScenarioLabel =
+    calculatorScenarioId === 'custom'
+      ? 'Custom'
+      : CALCULATOR_SCENARIOS.find((scenario) => scenario.id === calculatorScenarioId)?.label ?? 'Custom';
+
+  const projectionHorizon = useMemo(() => {
+    if (monthsToDeposit == null) return 12;
+    return clampNumber(monthsToDeposit + 4, 12, 24);
+  }, [monthsToDeposit]);
+
+  const projectionSeries = useMemo(
+    () =>
+      Array.from({ length: projectionHorizon + 1 }, (_, month) => ({
+        month,
+        monthLabel: month === 0 ? 'Now' : `M${month}`,
+        total: currentTowardDeposit + monthlyTotalContribution * month,
+      })),
+    [currentTowardDeposit, monthlyTotalContribution, projectionHorizon]
+  );
+
+  const sixMonthProjection = useMemo(
+    () =>
+      Array.from({ length: 6 }, (_, index) => {
+        const month = index + 1;
+        const projectedTotal = currentTowardDeposit + monthlyTotalContribution * month;
+        const progressPct = requiredDeposit > 0 ? Math.min((projectedTotal / requiredDeposit) * 100, 100) : 0;
+        return { month, projectedTotal, progressPct };
+      }),
+    [currentTowardDeposit, monthlyTotalContribution, requiredDeposit]
+  );
+
+  const towardTarget = Math.min(currentTowardDeposit, requiredDeposit);
+  const towardFromSavings = Math.min(savingsBalance, towardTarget);
+  const towardFromCredits = Math.max(Math.min(semiValidCredits, towardTarget - towardFromSavings), 0);
+  const remainingForTarget = Math.max(requiredDeposit - towardTarget, 0);
+  const allocationCompositionData = useMemo(
+    () => [
+      { name: 'Savings', value: towardFromSavings, color: 'hsl(var(--foreground))' },
+      { name: 'Credits', value: towardFromCredits, color: 'hsl(var(--equity))' },
+      { name: 'Remaining', value: remainingForTarget, color: '#a1a1aa' },
+    ],
+    [remainingForTarget, towardFromCredits, towardFromSavings]
+  );
+  const sixMonthProjectionData = useMemo(
+    () =>
+      sixMonthProjection.map((point) => ({
+        monthLabel: `M${point.month}`,
+        progressPct: Number(point.progressPct.toFixed(1)),
+        projectedTotal: point.projectedTotal,
+      })),
+    [sixMonthProjection]
+  );
+
+  const postingPhaseDays = daysUntilPosting;
+  const depositPhaseDays = monthsToDeposit ? monthsToDeposit * 30 : 0;
+  const elpaPhaseDays = daysUntilElpa;
+  const totalPhaseDays = Math.max(postingPhaseDays + depositPhaseDays + elpaPhaseDays, 1);
+  const phaseDurationChartData = [
+    {
+      name: 'Phase Mix',
+      posting: postingPhaseDays,
+      deposit: depositPhaseDays,
+      elpa: elpaPhaseDays,
+    },
+  ];
 
   const calculatorRecommendation = useMemo(() => {
     if (remainingDeposit <= 0) return 'You are deposit-ready now. Next step is selecting an ELPA home and lock date.';
@@ -716,6 +866,12 @@ export default function SavingsHome() {
 
   const onTrackGoals = goalForecast.filter((goal) => goal.status !== 'at-risk').length;
   const totalMonthlyNeeded = goalForecast.reduce((sum, goal) => sum + goal.monthlyNeeded, 0);
+  const linkedGoalForecast = goalForecast.find((goal) => goal.id === calculatorLinkedGoalId) ?? null;
+  const linkedGoalProjectedMonths =
+    linkedGoalForecast && monthlyTotalContribution > 0
+      ? Math.ceil(linkedGoalForecast.remaining / monthlyTotalContribution)
+      : null;
+  const calculatorToLinkedGoalDelta = linkedGoalForecast ? requiredDeposit - linkedGoalForecast.target : 0;
 
   const milestones = useMemo<Milestone[]>(
     () =>
@@ -921,6 +1077,16 @@ export default function SavingsHome() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    if (!calculatorLinkedGoalId && goals.length > 0) {
+      setCalculatorLinkedGoalId(goals[0].id);
+      return;
+    }
+    if (calculatorLinkedGoalId && !goals.some((goal) => goal.id === calculatorLinkedGoalId)) {
+      setCalculatorLinkedGoalId(goals[0]?.id ?? '');
+    }
+  }, [calculatorLinkedGoalId, goals]);
+
   const handleCheckIn = () => {
     if (checkedInToday) return;
     setCheckedInToday(true);
@@ -950,6 +1116,29 @@ export default function SavingsHome() {
     setCalculatorScenarioId('custom');
   };
 
+  const handleLinkGoalToCalculator = (goalId: string) => {
+    setCalculatorLinkedGoalId(goalId);
+    setCalculatorView('projection');
+  };
+
+  const handleSyncCalculatorToLinkedGoal = () => {
+    if (!calculatorLinkedGoalId) return;
+    const nextTarget = Math.max(Math.round(requiredDeposit), 1);
+    setGoals((prev) =>
+      prev.map((goal) =>
+        goal.id === calculatorLinkedGoalId
+          ? {
+              ...goal,
+              target: nextTarget,
+              saved: Math.max(goal.saved, Math.min(currentTowardDeposit, nextTarget)),
+              due: projectedDepositDate ?? goal.due,
+              origin: 'calculator',
+            }
+          : goal
+      )
+    );
+  };
+
   const handleAddGoal = () => {
     const target = Number(newGoalTarget);
     if (!newGoalName.trim() || !target || target <= 0) return;
@@ -962,6 +1151,7 @@ export default function SavingsHome() {
         target,
         saved: 0,
         due: 'TBD',
+        origin: 'manual',
       },
     ]);
     setNewGoalName('');
@@ -1152,10 +1342,27 @@ export default function SavingsHome() {
             <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
               <CardHeader className="pb-3 border-b border-zinc-200 dark:border-zinc-800">
                 <div className="flex items-center justify-between gap-3">
-                  <CardTitle className="text-base font-medium">Savings Goals</CardTitle>
-                  <Badge variant="outline" className="text-[10px]">
-                    {completedGoals}/{goals.length} complete
-                  </Badge>
+                  <div>
+                    <CardTitle className="text-base font-medium">Savings Goals</CardTitle>
+                    {linkedGoalForecast && (
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        Linked to calculator: {linkedGoalForecast.name}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline" className="text-[10px]">
+                      {completedGoals}/{goals.length} complete
+                    </Badge>
+                    {linkedGoalForecast && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300"
+                      >
+                        Linked
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
@@ -1229,20 +1436,34 @@ export default function SavingsHome() {
                         <p className="text-sm font-medium">{goal.name}</p>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Target date: {goal.due}</p>
                       </div>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'text-[10px]',
-                          goal.status === 'complete' &&
-                            'border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10',
-                          goal.status === 'on-track' &&
-                            'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-[#141414]',
-                          goal.status === 'at-risk' &&
-                            'border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10'
-                        )}
-                      >
-                        {goal.status === 'complete' ? 'Complete' : goal.status === 'on-track' ? 'On Track' : 'Attention'}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleLinkGoalToCalculator(goal.id)}
+                          className={cn(
+                            'text-[10px] h-6 px-2.5 rounded-full border transition-colors',
+                            calculatorLinkedGoalId === goal.id
+                              ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                              : 'border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                          )}
+                        >
+                          {calculatorLinkedGoalId === goal.id ? 'Linked' : 'Link'}
+                        </button>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-[10px]',
+                            goal.status === 'complete' &&
+                              'border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10',
+                            goal.status === 'on-track' &&
+                              'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-[#141414]',
+                            goal.status === 'at-risk' &&
+                              'border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10'
+                          )}
+                        >
+                          {goal.status === 'complete' ? 'Complete' : goal.status === 'on-track' ? 'On Track' : 'Attention'}
+                        </Badge>
+                      </div>
                     </div>
 
                     <Progress value={goal.progress} className="h-2 mt-2.5" />
@@ -1333,10 +1554,13 @@ export default function SavingsHome() {
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
-                <div>
-                  <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
-                    Planning Presets
-                  </p>
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Plan Builder</p>
+                    <Badge variant="outline" className="text-[10px]">
+                      {activeScenarioLabel}
+                    </Badge>
+                  </div>
                   <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:grid sm:grid-cols-3 sm:gap-2 sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
                     {CALCULATOR_SCENARIOS.map((scenario) => (
                       <button
@@ -1347,7 +1571,7 @@ export default function SavingsHome() {
                           'shrink-0 min-w-[150px] sm:min-w-0 rounded border p-2.5 text-left transition-colors',
                           calculatorScenarioId === scenario.id
                             ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
-                            : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#0e0e0e] hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                            : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414] hover:bg-zinc-100 dark:hover:bg-zinc-800'
                         )}
                       >
                         <p className="text-xs font-medium">{scenario.label}</p>
@@ -1359,7 +1583,71 @@ export default function SavingsHome() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Goal Sync
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleSyncCalculatorToLinkedGoal}
+                      disabled={!linkedGoalForecast}
+                      className="h-7 px-2.5 rounded-full text-[10px] border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Sync Calculator to Goal
+                    </button>
+                  </div>
+                  <div className="flex gap-1.5 overflow-x-auto pb-1">
+                    {goalForecast.map((goal) => (
+                      <button
+                        key={goal.id}
+                        type="button"
+                        onClick={() => handleLinkGoalToCalculator(goal.id)}
+                        className={cn(
+                          'shrink-0 text-[10px] h-7 px-2.5 rounded-full border transition-colors',
+                          calculatorLinkedGoalId === goal.id
+                            ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                            : 'border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        )}
+                      >
+                        {goal.name}
+                      </button>
+                    ))}
+                  </div>
+                  {linkedGoalForecast && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Linked Goal Target</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(linkedGoalForecast.target)}</p>
+                      </div>
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Calculator Deposit Target</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(requiredDeposit)}</p>
+                      </div>
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Linked Goal ETA</p>
+                        <p className="text-xs font-medium mt-1">
+                          {linkedGoalForecast.remaining <= 0
+                            ? 'Complete'
+                            : linkedGoalProjectedMonths
+                              ? `${linkedGoalProjectedMonths} mo`
+                              : 'Set monthly pace'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {linkedGoalForecast && (
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2">
+                      {Math.abs(calculatorToLinkedGoalDelta) < 1
+                        ? 'Linked goal is aligned with calculator target.'
+                        : calculatorToLinkedGoalDelta > 0
+                          ? `Linked goal is ${formatCurrency(calculatorToLinkedGoalDelta)} below current calculator target.`
+                          : `Linked goal is ${formatCurrency(Math.abs(calculatorToLinkedGoalDelta))} above current calculator target.`}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-3">
                   <div className="space-y-3">
                     <CalculatorSlider
                       label="Home Price"
@@ -1370,6 +1658,8 @@ export default function SavingsHome() {
                       onChange={updateHomePrice}
                       formatValue={formatSliderCurrency}
                       presets={[300000, 450000, 650000]}
+                      inputPrefix="$"
+                      helperText="Target listing price"
                     />
                     <CalculatorSlider
                       label="Deposit %"
@@ -1380,6 +1670,7 @@ export default function SavingsHome() {
                       onChange={updateDownPct}
                       formatValue={formatPercent}
                       presets={[2, 5, 10]}
+                      helperText="ELPA upfront target"
                     />
                     <CalculatorSlider
                       label="Monthly Savings"
@@ -1390,117 +1681,398 @@ export default function SavingsHome() {
                       onChange={updateMonthlySave}
                       formatValue={formatSliderCurrency}
                       presets={[500, 1000, 1500]}
+                      inputPrefix="$"
+                      helperText="Recurring monthly deposit"
                     />
                   </div>
 
-                  <div className="space-y-3">
-                    <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                            Deposit Readiness
-                          </p>
-                          <p className="text-2xl font-light mt-1">
-                            {remainingDeposit <= 0 ? 'Ready now' : projectedDepositDate ?? '--'}
-                          </p>
-                        </div>
-                        <Badge variant="outline" className="text-[10px]">
-                          {monthsToDeposit == null ? 'Plan Needed' : `${monthsToDeposit} mo`}
-                        </Badge>
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e] space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                          Projected Deposit Readiness
+                        </p>
+                        <p className="text-2xl font-light mt-1">
+                          {remainingDeposit <= 0 ? 'Ready now' : projectedDepositDate ?? '--'}
+                        </p>
                       </div>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2">
-                        {formatCurrency(currentTowardDeposit)} of {formatCurrency(requiredDeposit)} toward your deposit target.
-                      </p>
-                      <div className="mt-2">
-                        <div className="flex items-center justify-between text-[11px] mb-1 text-zinc-500 dark:text-zinc-400">
-                          <span>Progress to target</span>
-                          <span>{Math.round(depositProgressPct)}%</span>
-                        </div>
-                        <Progress value={depositProgressPct} className="h-2" />
+                      <Badge variant="outline" className="text-[10px]">
+                        {monthsToDeposit == null ? 'Plan Needed' : `${monthsToDeposit} mo`}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Required</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(requiredDeposit)}</p>
+                      </div>
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Current</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(currentTowardDeposit)}</p>
+                      </div>
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Remaining</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(remainingDeposit)}</p>
+                      </div>
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Monthly Power</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(monthlyTotalContribution)}</p>
                       </div>
                     </div>
 
-                    <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
-                        Monthly Contribution Mix
-                      </p>
-                      <div className="h-2 rounded overflow-hidden border border-zinc-200 dark:border-zinc-800 flex">
-                        <div className="bg-zinc-900 dark:bg-zinc-100 w-1/2" />
-                        <div className="bg-emerald-500 w-1/2" />
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] mb-1 text-zinc-500 dark:text-zinc-400">
+                        <span>Progress to target</span>
+                        <span>{Math.round(depositProgressPct)}%</span>
                       </div>
-                      <div className="mt-2 space-y-1">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-zinc-500 dark:text-zinc-400">Your monthly savings</span>
-                          <span className="font-medium">{formatCurrency(monthlySave)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-zinc-500 dark:text-zinc-400">1:1 equity credits</span>
-                          <span className="font-medium">{formatCurrency(monthlyMatchContribution)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-zinc-500 dark:text-zinc-400">Effective monthly power</span>
-                          <span className="font-medium">{formatCurrency(monthlyTotalContribution)}</span>
-                        </div>
-                      </div>
+                      <Progress value={depositProgressPct} className="h-2" />
                     </div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">{calculatorRecommendation}</p>
                   </div>
                 </div>
 
                 <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
-                  <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
-                    Readiness Timeline
-                  </p>
-                  <div className="space-y-2.5">
+                  <div className="flex items-center gap-4 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 pb-2">
                     {[
-                      {
-                        key: 'posting',
-                        title: '30-day credit posting',
-                        detail:
-                          daysUntilPosting > 0
-                            ? `${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'} to latest semi-valid credit`
-                            : 'Latest credit posted as semi-valid',
-                        complete: daysUntilPosting === 0,
-                      },
-                      {
-                        key: 'deposit',
-                        title: 'Deposit target readiness',
-                        detail:
-                          remainingDeposit <= 0
-                            ? 'Deposit target reached'
-                            : monthsToDeposit == null
-                              ? 'Set monthly savings to project date'
-                              : `${monthsToDeposit} month${monthsToDeposit === 1 ? '' : 's'} to readiness`,
-                        complete: remainingDeposit <= 0,
-                      },
-                      {
-                        key: 'elpa',
-                        title: 'ELPA usage unlock',
-                        detail:
-                          daysUntilElpa > 0
-                            ? `${daysUntilElpa} day${daysUntilElpa === 1 ? '' : 's'} until ELPA-usable credits`
-                            : 'ELPA credits available now',
-                        complete: daysUntilElpa === 0,
-                      },
-                    ].map((item) => (
-                      <div key={item.key} className="flex items-start gap-2.5">
-                        <div
-                          className={cn(
-                            'mt-0.5 w-2.5 h-2.5 rounded-full shrink-0',
-                            item.complete ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
-                          )}
-                        />
-                        <div>
-                          <p className="text-xs font-medium">{item.title}</p>
-                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{item.detail}</p>
-                        </div>
-                      </div>
+                      { key: 'projection', label: 'Projection' },
+                      { key: 'allocation', label: 'Allocation' },
+                      { key: 'timeline', label: 'Timeline' },
+                    ].map((view) => (
+                      <button
+                        key={view.key}
+                        type="button"
+                        onClick={() => setCalculatorView(view.key as CalculatorView)}
+                        className={cn(
+                          'relative pb-1.5 text-xs font-medium whitespace-nowrap transition-colors',
+                          calculatorView === view.key
+                            ? 'text-zinc-900 dark:text-zinc-100'
+                            : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                        )}
+                      >
+                        {view.label}
+                        {calculatorView === view.key && (
+                          <span className="absolute left-0 right-0 -bottom-[9px] h-0.5 rounded-full bg-zinc-900 dark:bg-zinc-100" />
+                        )}
+                      </button>
                     ))}
                   </div>
-                </div>
 
-                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#0e0e0e]">
-                  <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Guidance</p>
-                  <p className="text-sm">{calculatorRecommendation}</p>
+                  <div className="mt-3">
+                    {calculatorView === 'projection' && (
+                      <div className="space-y-3">
+                        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#141414]">
+                          <div className="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400 mb-2">
+                            <span>Projected deposit power curve</span>
+                            <span>{formatCurrency(monthlyTotalContribution)}/mo effective</span>
+                          </div>
+                          <div className="h-44">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={projectionSeries} margin={{ top: 6, right: 8, left: 4, bottom: 0 }}>
+                                <defs>
+                                  <linearGradient id="savingsProjectionFill" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="hsl(var(--equity))" stopOpacity={0.28} />
+                                    <stop offset="95%" stopColor="hsl(var(--equity))" stopOpacity={0.02} />
+                                  </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" opacity={0.35} vertical={false} />
+                                <XAxis
+                                  dataKey="monthLabel"
+                                  tick={{ fill: '#71717a', fontSize: 10 }}
+                                  tickLine={false}
+                                  axisLine={false}
+                                  interval="preserveStartEnd"
+                                />
+                                <YAxis
+                                  tick={{ fill: '#71717a', fontSize: 10 }}
+                                  tickLine={false}
+                                  axisLine={false}
+                                  width={46}
+                                  tickFormatter={(value) => formatAxisCurrency(Number(value))}
+                                />
+                                <Tooltip
+                                  cursor={{ stroke: '#71717a', strokeDasharray: '4 4' }}
+                                  contentStyle={{
+                                    background: '#18181b',
+                                    border: '1px solid #3f3f46',
+                                    borderRadius: '8px',
+                                    padding: '8px 10px',
+                                  }}
+                                  labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
+                                  itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
+                                  formatter={(value: number | string | undefined) => [formatCurrency(Number(value ?? 0)), 'Deposit power']}
+                                />
+                                <ReferenceLine
+                                  y={requiredDeposit}
+                                  stroke="#71717a"
+                                  strokeDasharray="5 5"
+                                  strokeWidth={1.5}
+                                />
+                                {linkedGoalForecast && Math.abs(linkedGoalForecast.target - requiredDeposit) >= 1 && (
+                                  <ReferenceLine
+                                    y={linkedGoalForecast.target}
+                                    stroke="#f59e0b"
+                                    strokeDasharray="3 4"
+                                    strokeWidth={1.5}
+                                  />
+                                )}
+                                <Area
+                                  type="monotone"
+                                  dataKey="total"
+                                  stroke="hsl(var(--equity))"
+                                  strokeWidth={2.25}
+                                  fill="url(#savingsProjectionFill)"
+                                  dot={false}
+                                  activeDot={{ r: 4, fill: 'hsl(var(--equity))', stroke: '#ffffff', strokeWidth: 1.25 }}
+                                />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
+                            <span>Now</span>
+                            <span>+{projectionHorizon} months</span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
+                            <span className="flex items-center gap-1">
+                              <span className="w-2.5 h-0.5 bg-zinc-500 dark:bg-zinc-400 rounded-full" />
+                              Calculator target
+                            </span>
+                            {linkedGoalForecast && Math.abs(linkedGoalForecast.target - requiredDeposit) >= 1 && (
+                              <span className="flex items-center gap-1">
+                                <span className="w-2.5 h-0.5 bg-amber-500 rounded-full" />
+                                Linked goal target
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-white dark:bg-[#141414]">
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Projected in 6 months</p>
+                            <p className="text-sm font-medium mt-1">
+                              {formatCurrency(sixMonthProjection[5]?.projectedTotal ?? currentTowardDeposit)}
+                            </p>
+                          </div>
+                          <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-white dark:bg-[#141414]">
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">6-month target gap</p>
+                            <p className="text-sm font-medium mt-1">
+                              {formatCurrency(
+                                Math.max(
+                                  requiredDeposit -
+                                    (sixMonthProjection[5]?.projectedTotal ?? currentTowardDeposit),
+                                  0
+                                )
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {calculatorView === 'allocation' && (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#141414]">
+                          <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+                            Deposit Composition
+                          </p>
+                          <div className="flex items-center gap-3">
+                            <div className="relative w-28 h-28 shrink-0">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie
+                                    data={allocationCompositionData}
+                                    dataKey="value"
+                                    innerRadius={33}
+                                    outerRadius={50}
+                                    stroke="none"
+                                    startAngle={90}
+                                    endAngle={-270}
+                                    paddingAngle={1.4}
+                                  >
+                                    {allocationCompositionData.map((entry) => (
+                                      <Cell key={entry.name} fill={entry.color} />
+                                    ))}
+                                  </Pie>
+                                </PieChart>
+                              </ResponsiveContainer>
+                              <div className="absolute inset-[18px] rounded-full bg-white dark:bg-[#141414] border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center">
+                                <span className="text-sm font-semibold">{Math.round(depositProgressPct)}%</span>
+                                <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Funded</span>
+                              </div>
+                            </div>
+                            <div className="flex-1 space-y-1.5">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-zinc-900 dark:bg-zinc-100" />
+                                  Savings
+                                </span>
+                                <span className="font-medium">{formatCurrency(towardFromSavings)}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                                  Credits
+                                </span>
+                                <span className="font-medium">{formatCurrency(towardFromCredits)}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                                  Remaining
+                                </span>
+                                <span className="font-medium">{formatCurrency(remainingForTarget)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#141414]">
+                          <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+                            6-Month Progress Bars
+                          </p>
+                          <div className="h-32 mt-2">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={sixMonthProjectionData} margin={{ top: 8, right: 4, left: 2, bottom: 0 }} barCategoryGap={9}>
+                                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#3f3f46" opacity={0.2} />
+                                <XAxis
+                                  dataKey="monthLabel"
+                                  tick={{ fill: '#71717a', fontSize: 10 }}
+                                  axisLine={false}
+                                  tickLine={false}
+                                />
+                                <YAxis hide domain={[0, 100]} />
+                                <Tooltip
+                                  cursor={{ fill: 'transparent' }}
+                                  contentStyle={{
+                                    background: '#18181b',
+                                    border: '1px solid #3f3f46',
+                                    borderRadius: '8px',
+                                    padding: '8px 10px',
+                                  }}
+                                  labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
+                                  itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
+                                  labelFormatter={(label: string) => {
+                                    const point = sixMonthProjectionData.find((entry) => entry.monthLabel === label);
+                                    return point ? `${label} · ${formatCurrency(point.projectedTotal)}` : label;
+                                  }}
+                                  formatter={(value: number | string | undefined) => [`${Math.round(Number(value ?? 0))}%`, 'Target progress']}
+                                />
+                                <Bar dataKey="progressPct" radius={[4, 4, 0, 0]}>
+                                  {sixMonthProjectionData.map((point, index) => (
+                                    <Cell
+                                      key={point.monthLabel}
+                                      fill="hsl(var(--equity))"
+                                      fillOpacity={0.5 + (index / Math.max(sixMonthProjectionData.length - 1, 1)) * 0.4}
+                                    />
+                                  ))}
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2">
+                            Target {formatCurrency(requiredDeposit)} · current plan reaches
+                            {' '}
+                            {formatCurrency(sixMonthProjection[5]?.projectedTotal ?? currentTowardDeposit)}
+                            {' '}
+                            in 6 months.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {calculatorView === 'timeline' && (
+                      <div className="space-y-2.5">
+                        {[
+                          {
+                            key: 'posting',
+                            title: '30-day credit posting',
+                            progress: postingProgress,
+                            detail:
+                              daysUntilPosting > 0
+                                ? `${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'} until latest semi-valid post`
+                                : 'Latest credit posted as semi-valid.',
+                          },
+                          {
+                            key: 'deposit',
+                            title: 'Deposit target readiness',
+                            progress: depositProgressPct,
+                            detail:
+                              remainingDeposit <= 0
+                                ? 'Deposit target reached.'
+                                : monthsToDeposit == null
+                                  ? 'Set monthly savings to project readiness.'
+                                  : `${monthsToDeposit} month${monthsToDeposit === 1 ? '' : 's'} projected to target.`,
+                          },
+                          {
+                            key: 'elpa',
+                            title: '12-month ELPA unlock',
+                            progress: elpaProgress,
+                            detail:
+                              daysUntilElpa > 0
+                                ? `${daysUntilElpa} day${daysUntilElpa === 1 ? '' : 's'} until credits are ELPA-usable`
+                                : 'ELPA credits available now.',
+                          },
+                        ].map((item) => (
+                          <div
+                            key={item.key}
+                            className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-white dark:bg-[#141414]"
+                          >
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span>{item.title}</span>
+                              <span className="text-zinc-500 dark:text-zinc-400">{Math.round(item.progress)}%</span>
+                            </div>
+                            <Progress value={item.progress} className="h-1.5" />
+                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1.5">{item.detail}</p>
+                          </div>
+                        ))}
+
+                        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-white dark:bg-[#141414]">
+                          <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+                            Phase Duration Mix
+                          </p>
+                          <div className="h-10 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-[#0e0e0e] px-1">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={phaseDurationChartData} layout="vertical" margin={{ top: 7, right: 4, left: 4, bottom: 7 }}>
+                                <XAxis type="number" hide domain={[0, totalPhaseDays]} />
+                                <YAxis type="category" dataKey="name" hide />
+                                <Tooltip
+                                  cursor={{ fill: 'transparent' }}
+                                  contentStyle={{
+                                    background: '#18181b',
+                                    border: '1px solid #3f3f46',
+                                    borderRadius: '8px',
+                                    padding: '8px 10px',
+                                  }}
+                                  labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
+                                  itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
+                                  formatter={(value: number | string | undefined, name: string | undefined) => [
+                                    `${Math.round(Number(value ?? 0))} days`,
+                                    name ?? 'Phase',
+                                  ]}
+                                />
+                                <Bar dataKey="posting" stackId="phase" fill="hsl(var(--foreground))" radius={[4, 0, 0, 4]} />
+                                <Bar dataKey="deposit" stackId="phase" fill="hsl(var(--equity))" />
+                                <Bar dataKey="elpa" stackId="phase" fill="#a1a1aa" radius={[0, 4, 4, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 mt-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+                            <div>
+                              <p className="font-medium text-zinc-900 dark:text-zinc-100">{postingPhaseDays}d</p>
+                              <p>Posting</p>
+                            </div>
+                            <div>
+                              <p className="font-medium text-zinc-900 dark:text-zinc-100">{depositPhaseDays}d</p>
+                              <p>Deposit</p>
+                            </div>
+                            <div>
+                              <p className="font-medium text-zinc-900 dark:text-zinc-100">{elpaPhaseDays}d</p>
+                              <p>ELPA</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
