@@ -107,10 +107,10 @@ export default function HeaderNav({
                Markets
              </button>
              <button
-               onClick={() => navigate('/earn')}
-               className={`${isActive('/earn') ? 'text-black dark:text-white' : 'hover:text-black dark:hover:text-white'} transition-colors`}
+               onClick={() => navigate('/savings')}
+               className={`${isActive('/savings') || isActive('/earn') ? 'text-black dark:text-white' : 'hover:text-black dark:hover:text-white'} transition-colors`}
              >
-               Earn
+               Savings
              </button>
              <button 
                onClick={() => navigate('/borrow')}
@@ -187,4 +187,3 @@ export default function HeaderNav({
     </>
   );
 }
-

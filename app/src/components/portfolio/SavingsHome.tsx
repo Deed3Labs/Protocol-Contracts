@@ -1,0 +1,1633 @@
+import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Check,
+  Clock3,
+  Copy,
+  Crown,
+  Flame,
+  Gift,
+  Home,
+  Info,
+  Landmark,
+  Lock,
+  Percent,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Target,
+  Trophy,
+  TrendingUp,
+  Zap,
+} from 'lucide-react';
+import { useAppKitAccount } from '@reown/appkit/react';
+import SideMenu from './SideMenu';
+import HeaderNav from './HeaderNav';
+import MobileNav from './MobileNav';
+import DepositModal from './DepositModal';
+import WithdrawModal from './WithdrawModal';
+import { useGlobalModals } from '@/context/GlobalModalsContext';
+import { usePortfolio } from '@/context/PortfolioContext';
+import { LargePriceWheel } from '@/components/PriceWheel';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
+import type { LucideIcon } from 'lucide-react';
+
+interface SavingsGoal {
+  id: string;
+  name: string;
+  target: number;
+  saved: number;
+  due: string;
+}
+
+interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: LucideIcon;
+  unlocked: boolean;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  date?: string;
+}
+
+interface Perk {
+  id: string;
+  name: string;
+  description: string;
+  icon: LucideIcon;
+  unlocked: boolean;
+  requirement: string;
+}
+
+interface Milestone {
+  month: number;
+  label: string;
+  icon: LucideIcon;
+  reward: string;
+  achieved: boolean;
+}
+
+interface HeatmapDay {
+  date: Date;
+  saved: boolean;
+  amount: number;
+  isPast: boolean;
+}
+
+interface ActivityEvent {
+  id: string;
+  title: string;
+  description: string;
+  amount: number;
+  date: Date;
+  type: 'deposit' | 'credit' | 'reward';
+  status: 'posted' | 'pending' | 'locked';
+}
+
+interface GoalTemplate {
+  name: string;
+  target: number;
+}
+
+interface CalculatorScenario {
+  id: 'conservative' | 'balanced' | 'fast-track';
+  label: string;
+  detail: string;
+  homePrice: number;
+  downPct: number;
+  monthlySave: number;
+}
+
+const ACCOUNT_NUMBER = 'ESA-4923-1209';
+const ROUTING_NUMBER = '110000019';
+const INITIAL_GOALS: SavingsGoal[] = [
+  { id: 'deposit-target', name: '2% Deposit Target', target: 12000, saved: 8450, due: 'Nov 2026' },
+  { id: 'closing-costs', name: 'Closing Costs Buffer', target: 4500, saved: 2200, due: 'Jan 2027' },
+];
+
+const BASE_MILESTONES: Omit<Milestone, 'achieved'>[] = [
+  { month: 1, label: 'First Month', icon: Star, reward: '$10 bonus' },
+  { month: 3, label: 'Committed', icon: Zap, reward: '$50 bonus' },
+  { month: 6, label: 'Half Year', icon: Flame, reward: '$100 bonus' },
+  { month: 9, label: 'Strong Saver', icon: Gift, reward: '$150 bonus' },
+  { month: 12, label: 'ELPA Ready', icon: Lock, reward: 'ELPA Eligible' },
+];
+
+const GOAL_TEMPLATES: GoalTemplate[] = [
+  { name: 'Move-In Cushion', target: 5000 },
+  { name: 'Inspection + Fees', target: 2500 },
+  { name: 'Furnishing Fund', target: 3500 },
+];
+
+const CALCULATOR_SCENARIOS: CalculatorScenario[] = [
+  {
+    id: 'conservative',
+    label: 'Conservative',
+    detail: 'Lower monthly pace',
+    homePrice: 350000,
+    downPct: 2,
+    monthlySave: 650,
+  },
+  {
+    id: 'balanced',
+    label: 'Balanced',
+    detail: 'Default planning',
+    homePrice: 420000,
+    downPct: 2,
+    monthlySave: 900,
+  },
+  {
+    id: 'fast-track',
+    label: 'Fast Track',
+    detail: 'Accelerated savings',
+    homePrice: 520000,
+    downPct: 5,
+    monthlySave: 1500,
+  },
+];
+
+const rarityColors = {
+  common: 'text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 bg-zinc-100/70 dark:bg-[#141414]',
+  rare: 'text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-[#141414]',
+  epic: 'text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-[#141414]',
+  legendary:
+    'text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-[#141414]',
+};
+
+const rarityGlow = {
+  common: '',
+  rare: '',
+  epic: 'shadow-[0_0_12px_hsl(var(--equity)/0.10)]',
+  legendary: 'shadow-[0_0_14px_rgba(245,158,11,0.18)]',
+};
+
+const formatCurrency = (value: number) =>
+  `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const formatDateShort = (date: Date) =>
+  date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+const formatPercent = (value: number) =>
+  `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)}%`;
+
+const sanitizeNumericInput = (value: string) => value.replace(/[^0-9.]/g, '');
+
+const daysBetween = (from: Date, to: Date) => {
+  const diff = to.getTime() - from.getTime();
+  return Math.max(Math.floor(diff / 86_400_000), 0);
+};
+
+const startOfDay = (value: Date) => {
+  const next = new Date(value);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const parseDueMonth = (value: string) => {
+  const parsed = new Date(`1 ${value}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getMonthDistance = (from: Date, to: Date) => {
+  const total = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+  return Math.max(total, 0);
+};
+
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
+
+const formatSliderCurrency = (value: number) => {
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${Math.round(value / 1_000)}k`;
+  return formatCurrency(value);
+};
+
+interface CalculatorSliderProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  formatValue: (value: number) => string;
+  presets: number[];
+}
+
+function CalculatorSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  formatValue,
+  presets,
+}: CalculatorSliderProps) {
+  const progress = ((value - min) / (max - min)) * 100;
+
+  return (
+    <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">{label}</p>
+        <span className="text-xs font-medium">{formatValue(value)}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full h-1.5 appearance-none rounded-full bg-zinc-200 dark:bg-zinc-800 accent-zinc-900 dark:accent-zinc-100 cursor-pointer"
+        style={{
+          background: `linear-gradient(to right, hsl(var(--foreground)) 0%, hsl(var(--foreground)) ${progress}%, hsl(var(--secondary)) ${progress}%, hsl(var(--secondary)) 100%)`,
+        }}
+      />
+      <div className="flex items-center justify-between mt-1.5 text-[10px] text-zinc-500 dark:text-zinc-400">
+        <span>{formatValue(min)}</span>
+        <span>{formatValue(max)}</span>
+      </div>
+      <div className="flex items-center gap-1 mt-2">
+        {presets.map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            onClick={() => onChange(preset)}
+            className={cn(
+              'text-[10px] px-2 py-0.5 rounded-full border transition-colors',
+              value === preset
+                ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                : 'border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+            )}
+          >
+            {formatValue(preset)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function generateHeatmap(today: Date, seed: number): HeatmapDay[][] {
+  const todayStart = startOfDay(today);
+  const weeks: HeatmapDay[][] = [];
+
+  for (let w = 3; w >= 0; w -= 1) {
+    const week: HeatmapDay[] = [];
+    for (let d = 0; d < 7; d += 1) {
+      const date = new Date(todayStart);
+      date.setDate(date.getDate() - (w * 7 + (6 - d)));
+      const isPast = date <= todayStart;
+      const score = ((w + 1) * 97 + (d + 1) * 31 + seed * 17) % 100;
+      const saved = isPast && score > 22;
+      const amount = saved ? 20 + ((score * 9) % 180) : 0;
+      week.push({ date, saved, amount, isPast });
+    }
+    weeks.push(week);
+  }
+
+  return weeks;
+}
+
+interface SavingsStreakCardProps {
+  currentStreak: number;
+  bestStreak: number;
+  accountMonth: number;
+  rewardPoints: number;
+  weeks: HeatmapDay[][];
+  milestones: Milestone[];
+  checkedInToday: boolean;
+  onCheckIn: () => void;
+}
+
+function SavingsStreakCard({
+  currentStreak,
+  bestStreak,
+  accountMonth,
+  rewardPoints,
+  weeks,
+  milestones,
+  checkedInToday,
+  onCheckIn,
+}: SavingsStreakCardProps) {
+  const saverLevel = currentStreak >= 60 ? 'Lv.4' : currentStreak >= 30 ? 'Lv.3' : currentStreak >= 14 ? 'Lv.2' : 'Lv.1';
+  const streakTarget = 60;
+  const streakProgress = Math.min((currentStreak / streakTarget) * 100, 100);
+  const recentDays = weeks.flat().slice(-14);
+  const weeklyTotals = weeks.map((week) => week.reduce((sum, day) => sum + (day.saved ? day.amount : 0), 0));
+  const savedRecentDays = recentDays.filter((day) => day.saved).length;
+  const unlockedMilestones = milestones.filter((milestone) => milestone.achieved).length;
+  const nextMilestone = milestones.find((milestone) => !milestone.achieved);
+  const daysToNextMilestone = nextMilestone ? Math.max(nextMilestone.month * 30 - accountMonth * 30, 0) : 0;
+  const ringRadius = 34;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringDashOffset = ringCircumference - (ringCircumference * streakProgress) / 100;
+  const daysToLevelUp = Math.max(streakTarget - currentStreak, 0);
+
+  return (
+    <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
+      <CardContent className="px-3 py-2 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+            Savings Streak
+          </span>
+          <button
+            type="button"
+            onClick={onCheckIn}
+            disabled={checkedInToday}
+            className="h-8 px-3 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {checkedInToday ? 'Checked in' : 'Check in'}
+          </button>
+        </div>
+
+        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-zinc-50 dark:bg-[#0e0e0e]">
+          <div className="flex items-center gap-3">
+            <div className="relative w-24 h-24 shrink-0">
+              <svg className="w-full h-full -rotate-90">
+                <circle
+                  cx="48"
+                  cy="48"
+                  r={ringRadius}
+                  stroke="currentColor"
+                  strokeWidth="7"
+                  fill="transparent"
+                  className="text-zinc-200 dark:text-zinc-800"
+                />
+                <motion.circle
+                  initial={{ strokeDashoffset: ringCircumference }}
+                  animate={{ strokeDashoffset: ringDashOffset }}
+                  transition={{ duration: 0.9, ease: 'easeOut' }}
+                  cx="48"
+                  cy="48"
+                  r={ringRadius}
+                  stroke="currentColor"
+                  strokeWidth="7"
+                  fill="transparent"
+                  strokeDasharray={ringCircumference}
+                  strokeLinecap="round"
+                  className="text-emerald-500"
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <Flame className="w-3.5 h-3.5 text-orange-500 mb-0.5" />
+                <span className="text-base font-semibold leading-none">{currentStreak}</span>
+                <span className="text-[9px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mt-0.5">
+                  Days
+                </span>
+              </div>
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">Consistency Level {saverLevel}</p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                {nextMilestone
+                  ? `Next: ${nextMilestone.label} in ${daysToNextMilestone} days`
+                  : 'All streak milestones unlocked'}
+              </p>
+              <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-[#0e0e0e]">
+                  <p className="text-sm font-semibold">{bestStreak}</p>
+                  <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Best</p>
+                </div>
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-[#0e0e0e]">
+                  <p className="text-sm font-semibold">{unlockedMilestones}</p>
+                  <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Unlocked</p>
+                </div>
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-[#0e0e0e]">
+                  <p className="text-sm font-semibold">{rewardPoints}</p>
+                  <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Points</p>
+                </div>
+              </div>
+              <div className="mt-2">
+                <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mb-1">
+                  <span>{Math.round(streakProgress)}% to {streakTarget}-day tier</span>
+                  <span>{daysToLevelUp} days left</span>
+                </div>
+                <Progress value={streakProgress} className="h-1.5" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-zinc-50 dark:bg-[#0e0e0e]">
+          <div className="flex items-center justify-between mb-2.5">
+            <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
+              Milestone Track
+            </p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">{unlockedMilestones}/{milestones.length}</p>
+          </div>
+
+          <div className="relative">
+            <div className="absolute left-4 right-4 top-[14px] h-px bg-zinc-200 dark:bg-zinc-700" />
+            <div className="grid grid-cols-5 gap-2">
+              {milestones.map((milestone) => (
+                <div key={milestone.month} className="text-center">
+                  <div
+                    className={cn(
+                      'w-7 h-7 mx-auto rounded-full border flex items-center justify-center relative z-10',
+                      milestone.achieved
+                        ? 'bg-emerald-600 border-emerald-600 text-white'
+                        : 'bg-white dark:bg-[#0e0e0e] border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400'
+                    )}
+                  >
+                    <milestone.icon className="w-3 h-3" />
+                  </div>
+                  <p className={cn('mt-2 text-[10px] font-medium', milestone.achieved ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400')}>
+                    M{milestone.month}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-zinc-50 dark:bg-[#0e0e0e]">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
+              Recent Consistency
+            </p>
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+              {savedRecentDays}/14 active days
+            </p>
+          </div>
+          <div className="grid grid-cols-14 gap-1 mb-2.5">
+            {recentDays.map((day, index) => (
+              <div
+                key={`${day.date.toISOString()}-${index}`}
+                className={cn(
+                  'h-5 rounded-sm border border-zinc-200/80 dark:border-zinc-800',
+                  !day.saved && 'bg-zinc-100 dark:bg-[#141414]'
+                )}
+                style={day.saved ? { backgroundColor: `hsl(var(--equity) / ${0.22 + Math.min(day.amount / 180, 1) * 0.62})` } : undefined}
+                title={day.saved ? `${formatDateShort(day.date)} · $${day.amount}` : `${formatDateShort(day.date)} · no deposit`}
+              />
+            ))}
+          </div>
+          <div className="flex items-center justify-between mb-2.5">
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Last 14 days</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Less</span>
+              <div className="flex gap-0.5">
+                {[0.2, 0.45, 0.7, 0.95].map((opacity) => (
+                  <div
+                    key={opacity}
+                    className="w-2.5 h-2.5 rounded-sm bg-emerald-500"
+                    style={{ opacity }}
+                  />
+                ))}
+              </div>
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">More</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {weeklyTotals.map((weekTotal, index) => (
+              <div key={index} className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-[#0e0e0e]">
+                <p className="text-xs font-semibold">{formatCurrency(weekTotal)}</p>
+                <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Week {index + 1}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface RewardsPerksCardProps {
+  achievements: Achievement[];
+  perks: Perk[];
+}
+
+function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
+  const unlockedCount = achievements.filter((achievement) => achievement.unlocked).length;
+  const unlockedPerks = perks.filter((perk) => perk.unlocked).length;
+
+  return (
+    <div className="space-y-2.5">
+      <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
+        <CardContent className="px-3 py-2">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+              Achievements
+            </span>
+            <Badge variant="outline" className="text-[10px] text-emerald-700 dark:text-emerald-300 border-emerald-500/30 bg-emerald-500/10">
+              <Trophy className="w-3 h-3 mr-1" /> {unlockedCount}/{achievements.length}
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2">
+            {achievements.map((achievement) => (
+              <button
+                key={achievement.id}
+                className={cn(
+                  'flex flex-col items-center gap-1 p-2.5 rounded border transition-all',
+                  achievement.unlocked
+                    ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-105')
+                    : 'border-zinc-200 dark:border-zinc-800 bg-zinc-100/60 dark:bg-[#0e0e0e] opacity-45'
+                )}
+              >
+                <div
+                  className={cn(
+                    'w-8 h-8 rounded-full flex items-center justify-center',
+                    achievement.unlocked ? 'bg-current/10' : 'bg-zinc-200 dark:bg-[#0e0e0e]'
+                  )}
+                >
+                  {achievement.unlocked ? (
+                    <achievement.icon className="w-4 h-4" />
+                  ) : (
+                    <Lock className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                  )}
+                </div>
+                <span className="text-[10px] font-medium text-center leading-tight">{achievement.name}</span>
+                {achievement.date && <span className="text-[8px] text-zinc-500 dark:text-zinc-400">{achievement.date}</span>}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
+        <CardContent className="px-3 py-2">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+              Perks & Rewards
+            </span>
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</span>
+          </div>
+
+          <div className="space-y-2">
+            {perks.map((perk) => (
+              <div
+                key={perk.id}
+                className={cn(
+                  'flex items-center gap-3 p-2.5 rounded transition-all',
+                  perk.unlocked
+                    ? 'bg-emerald-500/5 border border-emerald-500/20 hover:bg-emerald-500/10'
+                    : 'bg-zinc-100/60 dark:bg-[#0e0e0e] opacity-65'
+                )}
+              >
+                <div
+                  className={cn(
+                    'w-9 h-9 rounded flex items-center justify-center shrink-0',
+                    perk.unlocked
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-zinc-200 dark:bg-[#0e0e0e] text-zinc-500'
+                  )}
+                >
+                  {perk.unlocked ? <perk.icon className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{perk.name}</p>
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{perk.description}</p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'text-[9px] shrink-0',
+                    perk.unlocked
+                      ? 'text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                      : 'text-zinc-500 dark:text-zinc-400'
+                  )}
+                >
+                  {perk.unlocked ? 'Active' : perk.requirement}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function SavingsHome() {
+  const { isConnected } = useAppKitAccount();
+  const { cashBalance: portfolioCashBalance, previousTotalBalanceUSD } = usePortfolio();
+  const cashBalance = portfolioCashBalance?.totalCash ?? 0;
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [depositModalOpen, setDepositModalOpen] = useState(false);
+  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
+  const [isScrolledPast, setIsScrolledPast] = useState(false);
+  const { setActionModalOpen } = useGlobalModals();
+
+  const [streakDays, setStreakDays] = useState(45);
+  const [checkedInToday, setCheckedInToday] = useState(false);
+  const [rewardPoints, setRewardPoints] = useState(860);
+  const [goals, setGoals] = useState<SavingsGoal[]>(INITIAL_GOALS);
+  const [newGoalName, setNewGoalName] = useState('');
+  const [newGoalTarget, setNewGoalTarget] = useState('');
+  const [homePrice, setHomePrice] = useState(420000);
+  const [downPct, setDownPct] = useState(2);
+  const [monthlySave, setMonthlySave] = useState(900);
+  const [calculatorScenarioId, setCalculatorScenarioId] =
+    useState<CalculatorScenario['id'] | 'custom'>('balanced');
+  const [copiedField, setCopiedField] = useState<'account' | 'routing' | null>(null);
+  const [activityFilter, setActivityFilter] = useState<'all' | 'deposit' | 'credit' | 'reward'>('all');
+
+  const today = useMemo(() => new Date(), []);
+  const accountOpenedDate = useMemo(() => {
+    const opened = new Date();
+    opened.setDate(opened.getDate() - 248);
+    return opened;
+  }, []);
+  const lastDepositDate = useMemo(() => {
+    const lastDeposit = new Date();
+    lastDeposit.setDate(lastDeposit.getDate() - 18);
+    return lastDeposit;
+  }, []);
+
+  const savingsBalance = isConnected ? Math.max(cashBalance, 0) : 0;
+  const daysOpen = daysBetween(accountOpenedDate, today);
+  const accountMonth = Math.max(Math.floor(daysOpen / 30), 1);
+  const daysFromLastDeposit = daysBetween(lastDepositDate, today);
+  const postingProgress = Math.min((daysFromLastDeposit / 30) * 100, 100);
+  const elpaProgress = Math.min((daysOpen / 365) * 100, 100);
+  const daysUntilPosting = Math.max(30 - daysFromLastDeposit, 0);
+  const daysUntilElpa = Math.max(365 - daysOpen, 0);
+
+  const pendingMatchCredits = savingsBalance;
+  const semiValidCredits = pendingMatchCredits * (postingProgress / 100);
+  const pendingCredits = Math.max(pendingMatchCredits - semiValidCredits, 0);
+  const elpaUsableCredits = daysOpen >= 365 ? semiValidCredits : 0;
+  const elpaDepositPower = savingsBalance + elpaUsableCredits;
+
+  const requiredDeposit = homePrice * (downPct / 100);
+  const effectiveMonthly = monthlySave * 2;
+  const currentTowardDeposit = savingsBalance + semiValidCredits;
+  const remainingDeposit = Math.max(requiredDeposit - currentTowardDeposit, 0);
+  const monthsToDeposit = effectiveMonthly > 0 ? Math.ceil(remainingDeposit / effectiveMonthly) : null;
+  const projectedDepositDate = useMemo(() => {
+    if (!monthsToDeposit) return null;
+    const estimate = new Date();
+    estimate.setMonth(estimate.getMonth() + monthsToDeposit);
+    return estimate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }, [monthsToDeposit]);
+  const depositProgressPct = requiredDeposit > 0 ? Math.min((currentTowardDeposit / requiredDeposit) * 100, 100) : 0;
+  const monthlyMatchContribution = monthlySave;
+  const monthlyTotalContribution = monthlySave + monthlyMatchContribution;
+
+  const calculatorRecommendation = useMemo(() => {
+    if (remainingDeposit <= 0) return 'You are deposit-ready now. Next step is selecting an ELPA home and lock date.';
+    if (!monthsToDeposit) return 'Set monthly savings to view your projected readiness timeline.';
+    if (monthsToDeposit <= 6) return 'Strong pace. Keep your streak active and you can reach your target this year.';
+    if (monthsToDeposit <= 12) return 'Good progress. Increasing monthly savings by $200 can pull your date forward.';
+    return 'Long runway detected. Consider a higher monthly deposit or a lower initial target home price.';
+  }, [monthsToDeposit, remainingDeposit]);
+
+  const totalGoalTarget = goals.reduce((sum, goal) => sum + goal.target, 0);
+  const totalGoalSaved = goals.reduce((sum, goal) => sum + goal.saved, 0);
+  const goalsProgressPct = totalGoalTarget > 0 ? Math.min((totalGoalSaved / totalGoalTarget) * 100, 100) : 0;
+  const completedGoals = goals.filter((goal) => goal.saved >= goal.target).length;
+  const totalGoalRemaining = Math.max(totalGoalTarget - totalGoalSaved, 0);
+
+  const goalForecast = useMemo(() => {
+    return goals.map((goal) => {
+      const progress = goal.target > 0 ? Math.min((goal.saved / goal.target) * 100, 100) : 0;
+      const remaining = Math.max(goal.target - goal.saved, 0);
+      const dueDate = parseDueMonth(goal.due);
+      const monthsUntilDue = dueDate ? Math.max(getMonthDistance(today, dueDate), 1) : null;
+      const allocationWeight = totalGoalTarget > 0 ? goal.target / totalGoalTarget : 0;
+      const effectiveForGoal = effectiveMonthly * allocationWeight;
+      const projectedMonths = remaining > 0 && effectiveForGoal > 0 ? Math.ceil(remaining / effectiveForGoal) : 0;
+      const monthlyNeeded = monthsUntilDue && remaining > 0 ? remaining / monthsUntilDue : 0;
+
+      let status: 'complete' | 'on-track' | 'at-risk' = 'on-track';
+      if (remaining <= 0) status = 'complete';
+      else if (monthsUntilDue && projectedMonths > monthsUntilDue) status = 'at-risk';
+
+      return {
+        ...goal,
+        progress,
+        remaining,
+        monthsUntilDue,
+        projectedMonths,
+        monthlyNeeded,
+        status,
+      };
+    });
+  }, [effectiveMonthly, goals, today, totalGoalTarget]);
+
+  const onTrackGoals = goalForecast.filter((goal) => goal.status !== 'at-risk').length;
+  const totalMonthlyNeeded = goalForecast.reduce((sum, goal) => sum + goal.monthlyNeeded, 0);
+
+  const milestones = useMemo<Milestone[]>(
+    () =>
+      BASE_MILESTONES.map((milestone) => ({
+        ...milestone,
+        achieved: accountMonth >= milestone.month,
+      })),
+    [accountMonth]
+  );
+
+  const heatmapWeeks = useMemo(() => generateHeatmap(today, accountMonth + streakDays), [today, accountMonth, streakDays]);
+  const totalSavedInHeatmap = useMemo(
+    () => heatmapWeeks.flat().reduce((sum, day) => sum + (day.saved ? day.amount : 0), 0),
+    [heatmapWeeks]
+  );
+
+  const achievements = useMemo<Achievement[]>(
+    () => [
+      {
+        id: '1',
+        name: 'First Deposit',
+        description: 'Made your first deposit',
+        icon: Star,
+        unlocked: savingsBalance > 0,
+        rarity: 'common',
+        date: 'Jun 2025',
+      },
+      {
+        id: '2',
+        name: 'Week Warrior',
+        description: 'Saved 7 days in a row',
+        icon: Zap,
+        unlocked: streakDays >= 7,
+        rarity: 'common',
+        date: 'Jul 2025',
+      },
+      {
+        id: '3',
+        name: 'Month Master',
+        description: 'Saved every month for 3 months',
+        icon: Flame,
+        unlocked: streakDays >= 30,
+        rarity: 'rare',
+        date: 'Sep 2025',
+      },
+      {
+        id: '4',
+        name: 'Credit Collector',
+        description: 'Earned $1,000 in equity credits',
+        icon: Trophy,
+        unlocked: semiValidCredits >= 1000,
+        rarity: 'rare',
+        date: 'Oct 2025',
+      },
+      {
+        id: '5',
+        name: 'Goal Getter',
+        description: 'Completed a savings goal',
+        icon: Target,
+        unlocked: completedGoals > 0,
+        rarity: 'rare',
+        date: 'Nov 2025',
+      },
+      {
+        id: '6',
+        name: 'Halfway There',
+        description: 'Reached 50% of ELPA eligibility',
+        icon: TrendingUp,
+        unlocked: elpaProgress >= 50,
+        rarity: 'epic',
+        date: 'Dec 2025',
+      },
+      {
+        id: '7',
+        name: 'Power Saver',
+        description: 'Deposit $5,000+ in a single month',
+        icon: Crown,
+        unlocked: totalSavedInHeatmap >= 5000,
+        rarity: 'epic',
+      },
+      {
+        id: '8',
+        name: 'ELPA Pioneer',
+        description: 'Reach full ELPA eligibility',
+        icon: Home,
+        unlocked: daysOpen >= 365,
+        rarity: 'legendary',
+      },
+    ],
+    [completedGoals, daysOpen, elpaProgress, semiValidCredits, savingsBalance, streakDays, totalSavedInHeatmap]
+  );
+
+  const perks = useMemo<Perk[]>(
+    () => [
+      {
+        id: '1',
+        name: 'Bonus Credits',
+        description: '+5% bonus on deposits over $500',
+        icon: Percent,
+        unlocked: streakDays >= 90,
+        requirement: '3-month streak',
+      },
+      {
+        id: '2',
+        name: 'Priority Support',
+        description: 'Dedicated savings advisor access',
+        icon: ShieldCheck,
+        unlocked: daysOpen >= 180,
+        requirement: '6-month account',
+      },
+      {
+        id: '3',
+        name: 'Early ELPA Preview',
+        description: 'Preview homes before eligibility',
+        icon: Home,
+        unlocked: daysOpen >= 270,
+        requirement: '9-month account',
+      },
+      {
+        id: '4',
+        name: 'Referral Bonus 2x',
+        description: 'Double referral credits',
+        icon: Gift,
+        unlocked: savingsBalance >= 10000,
+        requirement: '$10K total saved',
+      },
+    ],
+    [daysOpen, savingsBalance, streakDays]
+  );
+
+  const activityEvents = useMemo<ActivityEvent[]>(
+    () => [
+      {
+        id: 'evt-1',
+        title: 'Auto-save deposit',
+        description: 'Weekly bank transfer posted to ESA.',
+        amount: 250,
+        date: today,
+        type: 'deposit',
+        status: 'posted',
+      },
+      {
+        id: 'evt-2',
+        title: '1:1 equity credit',
+        description:
+          daysUntilPosting > 0
+            ? `Posts as semi-valid in ${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'}.`
+            : 'Credit posted as semi-valid.',
+        amount: 250,
+        date: lastDepositDate,
+        type: 'credit',
+        status: daysUntilPosting > 0 ? 'pending' : 'posted',
+      },
+      {
+        id: 'evt-3',
+        title: 'Streak reward',
+        description: 'Consistency reward credited to your perk balance.',
+        amount: 25,
+        date: new Date(today.getTime() - 86_400_000 * 2),
+        type: 'reward',
+        status: 'posted',
+      },
+      {
+        id: 'evt-4',
+        title: 'ELPA unlock gate',
+        description:
+          daysUntilElpa > 0
+            ? `Credits unlock for ELPA usage in ${daysUntilElpa} day${daysUntilElpa === 1 ? '' : 's'}.`
+            : 'Credits are now ELPA-eligible.',
+        amount: semiValidCredits,
+        date: accountOpenedDate,
+        type: 'credit',
+        status: daysUntilElpa > 0 ? 'locked' : 'posted',
+      },
+    ],
+    [accountOpenedDate, daysUntilElpa, daysUntilPosting, lastDepositDate, semiValidCredits, today]
+  );
+
+  const filteredActivity = useMemo(
+    () =>
+      activityFilter === 'all'
+        ? activityEvents
+        : activityEvents.filter((event) => event.type === activityFilter),
+    [activityEvents, activityFilter]
+  );
+
+  const activityTotals = useMemo(() => {
+    const deposits = activityEvents
+      .filter((event) => event.type === 'deposit')
+      .reduce((sum, event) => sum + event.amount, 0);
+    const postedCredits = activityEvents
+      .filter((event) => event.type === 'credit' && event.status === 'posted')
+      .reduce((sum, event) => sum + event.amount, 0);
+    const lockedCredits = activityEvents
+      .filter((event) => event.type === 'credit' && event.status !== 'posted')
+      .reduce((sum, event) => sum + event.amount, 0);
+    return { deposits, postedCredits, lockedCredits };
+  }, [activityEvents]);
+
+  useEffect(() => {
+    const handleScroll = () => setIsScrolledPast(window.scrollY > 50);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const handleCheckIn = () => {
+    if (checkedInToday) return;
+    setCheckedInToday(true);
+    setStreakDays((prev) => prev + 1);
+    setRewardPoints((prev) => prev + 25);
+  };
+
+  const applyCalculatorScenario = (scenario: CalculatorScenario) => {
+    setHomePrice(scenario.homePrice);
+    setDownPct(scenario.downPct);
+    setMonthlySave(scenario.monthlySave);
+    setCalculatorScenarioId(scenario.id);
+  };
+
+  const updateHomePrice = (value: number) => {
+    setHomePrice(clampNumber(value, 150000, 1200000));
+    setCalculatorScenarioId('custom');
+  };
+
+  const updateDownPct = (value: number) => {
+    setDownPct(clampNumber(value, 2, 20));
+    setCalculatorScenarioId('custom');
+  };
+
+  const updateMonthlySave = (value: number) => {
+    setMonthlySave(clampNumber(value, 100, 5000));
+    setCalculatorScenarioId('custom');
+  };
+
+  const handleAddGoal = () => {
+    const target = Number(newGoalTarget);
+    if (!newGoalName.trim() || !target || target <= 0) return;
+
+    setGoals((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name: newGoalName.trim(),
+        target,
+        saved: 0,
+        due: 'TBD',
+      },
+    ]);
+    setNewGoalName('');
+    setNewGoalTarget('');
+  };
+
+  const handleApplyGoalTemplate = (template: GoalTemplate) => {
+    setNewGoalName(template.name);
+    setNewGoalTarget(String(template.target));
+  };
+
+  const handleTopUpGoal = (goalId: string, amount: number) => {
+    setGoals((prev) =>
+      prev.map((goal) =>
+        goal.id === goalId
+          ? {
+              ...goal,
+              saved: Math.min(goal.saved + amount, goal.target),
+            }
+          : goal
+      )
+    );
+  };
+
+  const handleCopy = async (field: 'account' | 'routing', value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(field);
+      window.setTimeout(() => setCopiedField(null), 1500);
+    } catch {
+      setCopiedField(null);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-white dark:bg-[#0e0e0e] text-black dark:text-white font-sans pb-20 md:pb-0 transition-colors duration-200">
+      <SideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
+      <DepositModal isOpen={depositModalOpen} onClose={() => setDepositModalOpen(false)} />
+      <WithdrawModal isOpen={withdrawModalOpen} onClose={() => setWithdrawModalOpen(false)} />
+
+      <HeaderNav
+        isScrolledPast={isScrolledPast}
+        onMenuOpen={() => setMenuOpen(true)}
+        onActionOpen={() => setActionModalOpen(true)}
+      />
+
+      <main className="pt-24 pb-28 container mx-auto md:pt-32">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
+          <div className="md:col-span-8 space-y-6">
+            <div>
+              <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-400">
+                <span className="text-sm font-medium">ELPA Deposit Power</span>
+                <div className="group relative">
+                  <Info className="h-4 w-4 cursor-help" />
+                  <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap max-w-[240px]">
+                    Savings balance + ELPA-eligible equity credits.
+                  </div>
+                </div>
+              </div>
+
+              <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
+                <LargePriceWheel value={elpaDepositPower} previousValue={previousTotalBalanceUSD} className="font-light" />
+                <span className="text-lg text-zinc-500 font-normal">USD</span>
+              </h1>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  onClick={() => setDepositModalOpen(true)}
+                  className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-2"
+                >
+                  <ArrowUpRight className="w-4 h-4" />
+                  Add Savings
+                </button>
+                <button
+                  onClick={() => setWithdrawModalOpen(true)}
+                  className="bg-zinc-100 dark:bg-[#141414] text-black dark:text-white px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 disabled:opacity-50"
+                  disabled={!isConnected || savingsBalance === 0}
+                >
+                  <ArrowDownLeft className="w-4 h-4" />
+                  Withdraw
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-zinc-50 dark:bg-[#141414] rounded border border-zinc-200 dark:border-zinc-800/50 p-1">
+              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/70 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded bg-zinc-200 dark:bg-[#0e0e0e] flex items-center justify-center">
+                    <Landmark className="w-5 h-5 text-zinc-700 dark:text-zinc-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-base font-medium text-black dark:text-white">Equity Savings Account</h2>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Account {ACCOUNT_NUMBER}</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="text-[10px] text-emerald-700 dark:text-emerald-300 border-emerald-500/30 bg-emerald-500/10">
+                  Active
+                </Badge>
+              </div>
+
+              <div className="p-4 space-y-4">
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:grid sm:grid-cols-3 sm:gap-3 sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
+                  <div className="min-w-[180px] sm:min-w-0 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Savings Balance</p>
+                    <p className="text-lg font-medium mt-1">{formatCurrency(savingsBalance)}</p>
+                  </div>
+                  <div className="min-w-[180px] sm:min-w-0 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Semi-Valid Credits</p>
+                    <p className="text-lg font-medium mt-1">{formatCurrency(semiValidCredits)}</p>
+                  </div>
+                  <div className="min-w-[180px] sm:min-w-0 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Pending Credits</p>
+                    <p className="text-lg font-medium mt-1">{formatCurrency(pendingCredits)}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#0e0e0e]">
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                        <Clock3 className="w-3.5 h-3.5" />
+                        Credit posting (30 days)
+                      </span>
+                      <span className="font-medium">{Math.round(postingProgress)}%</span>
+                    </div>
+                    <Progress value={postingProgress} className="h-2" />
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2">
+                      {daysUntilPosting > 0
+                        ? `${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'} until latest credit posts`
+                        : 'Latest credit has posted as semi-valid'}
+                    </p>
+                  </div>
+
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#0e0e0e]">
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                        <Home className="w-3.5 h-3.5" />
+                        ELPA eligibility (12 months)
+                      </span>
+                      <span className="font-medium">{Math.round(elpaProgress)}%</span>
+                    </div>
+                    <Progress value={elpaProgress} className="h-2" />
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2">
+                      {daysUntilElpa > 0
+                        ? `${daysUntilElpa} day${daysUntilElpa === 1 ? '' : 's'} until ELPA usage unlock`
+                        : 'Credits are ELPA-eligible now'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#0e0e0e]">
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                      Account Number
+                    </p>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="font-mono text-sm">{ACCOUNT_NUMBER}</span>
+                      <button
+                        type="button"
+                        className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors flex items-center gap-1"
+                        onClick={() => handleCopy('account', ACCOUNT_NUMBER)}
+                      >
+                        {copiedField === 'account' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedField === 'account' ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#0e0e0e]">
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                      Routing Number
+                    </p>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="font-mono text-sm">{ROUTING_NUMBER}</span>
+                      <button
+                        type="button"
+                        className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors flex items-center gap-1"
+                        onClick={() => handleCopy('routing', ROUTING_NUMBER)}
+                      >
+                        {copiedField === 'routing' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedField === 'routing' ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
+              <CardHeader className="pb-3 border-b border-zinc-200 dark:border-zinc-800">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-base font-medium">Savings Goals</CardTitle>
+                  <Badge variant="outline" className="text-[10px]">
+                    {completedGoals}/{goals.length} complete
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Total Progress</p>
+                    <p className="text-base font-medium mt-1">{Math.round(goalsProgressPct)}%</p>
+                    <Progress value={goalsProgressPct} className="h-1.5 mt-2" />
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">{formatCurrency(totalGoalRemaining)} remaining</p>
+                  </div>
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">On Track</p>
+                    <p className="text-base font-medium mt-1">{onTrackGoals}/{goals.length}</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">Goals meeting forecast</p>
+                  </div>
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                    <p className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Needed / Month</p>
+                    <p className="text-base font-medium mt-1">{formatCurrency(totalMonthlyNeeded)}</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">To stay on goal timeline</p>
+                  </div>
+                </div>
+
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                  <div className="flex items-center justify-between text-[11px] mb-2">
+                    <span className="text-zinc-500 dark:text-zinc-400">Goal allocation by size</span>
+                    <span className="font-medium">{formatCurrency(totalGoalTarget)}</span>
+                  </div>
+                  <div className="h-2 rounded overflow-hidden border border-zinc-200 dark:border-zinc-800 flex">
+                    {goalForecast.map((goal, index) => (
+                      <div
+                        key={goal.id}
+                        className={cn(
+                          index % 4 === 0 && 'bg-emerald-500',
+                          index % 4 === 1 && 'bg-amber-500',
+                          index % 4 === 2 && 'bg-orange-500',
+                          index % 4 === 3 && 'bg-teal-500'
+                        )}
+                        style={{ width: `${totalGoalTarget > 0 ? (goal.target / totalGoalTarget) * 100 : 0}%` }}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {goalForecast.map((goal, index) => (
+                      <div key={goal.id} className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className={cn(
+                              'w-2 h-2 rounded-full shrink-0',
+                              index % 4 === 0 && 'bg-emerald-500',
+                              index % 4 === 1 && 'bg-amber-500',
+                              index % 4 === 2 && 'bg-orange-500',
+                              index % 4 === 3 && 'bg-teal-500'
+                            )}
+                          />
+                          <span className="truncate">{goal.name}</span>
+                        </div>
+                        <span>{Math.round(goal.progress)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {goalForecast.map((goal) => (
+                  <motion.div
+                    key={goal.id}
+                    whileHover={{ scale: 1.008 }}
+                    className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">{goal.name}</p>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Target date: {goal.due}</p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-[10px]',
+                          goal.status === 'complete' &&
+                            'border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10',
+                          goal.status === 'on-track' &&
+                            'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-[#141414]',
+                          goal.status === 'at-risk' &&
+                            'border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10'
+                        )}
+                      >
+                        {goal.status === 'complete' ? 'Complete' : goal.status === 'on-track' ? 'On Track' : 'Attention'}
+                      </Badge>
+                    </div>
+
+                    <Progress value={goal.progress} className="h-2 mt-2.5" />
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Saved / Target</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(goal.saved)} / {formatCurrency(goal.target)}</p>
+                      </div>
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Remaining</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(goal.remaining)}</p>
+                      </div>
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Needed / Month</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(goal.monthlyNeeded)}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                        {goal.remaining <= 0
+                          ? 'Goal reached. Redirect monthly savings to your next target.'
+                          : `Projected completion: ${goal.projectedMonths > 0 ? `${goal.projectedMonths} month${goal.projectedMonths === 1 ? '' : 's'}` : 'pending plan'}`}
+                      </p>
+                      <div className="flex items-center gap-1">
+                        {[100, 250, 500].map((amount) => (
+                          <button
+                            key={amount}
+                            type="button"
+                            onClick={() => handleTopUpGoal(goal.id, amount)}
+                            className="text-[10px] px-2.5 py-1 rounded-full border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                          >
+                            +${amount}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+
+                <div className="rounded border border-dashed border-zinc-300 dark:border-zinc-700 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+                    Create Goal
+                  </p>
+                  <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 -mx-1 px-1 sm:mx-0 sm:px-0 sm:pb-0">
+                    {GOAL_TEMPLATES.map((template) => (
+                      <button
+                        key={template.name}
+                        type="button"
+                        onClick={() => handleApplyGoalTemplate(template)}
+                        className="shrink-0 text-[10px] px-2.5 py-1 rounded-full border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                      >
+                        {template.name} · {formatSliderCurrency(template.target)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2">
+                    <input
+                      value={newGoalName}
+                      onChange={(event) => setNewGoalName(event.target.value)}
+                      placeholder="Goal name"
+                      className="h-9 px-3 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] text-sm"
+                    />
+                    <input
+                      value={newGoalTarget}
+                      onChange={(event) => setNewGoalTarget(sanitizeNumericInput(event.target.value))}
+                      placeholder="Target ($)"
+                      className="h-9 px-3 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddGoal}
+                      className="h-9 px-4 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
+              <CardHeader className="pb-3 border-b border-zinc-200 dark:border-zinc-800">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-base font-medium">Home Savings Calculator</CardTitle>
+                  <Badge variant="outline" className="text-[10px]">1:1 Match Included</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-4">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+                    Planning Presets
+                  </p>
+                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:grid sm:grid-cols-3 sm:gap-2 sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
+                    {CALCULATOR_SCENARIOS.map((scenario) => (
+                      <button
+                        key={scenario.id}
+                        type="button"
+                        onClick={() => applyCalculatorScenario(scenario)}
+                        className={cn(
+                          'shrink-0 min-w-[150px] sm:min-w-0 rounded border p-2.5 text-left transition-colors',
+                          calculatorScenarioId === scenario.id
+                            ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                            : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-[#0e0e0e] hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        )}
+                      >
+                        <p className="text-xs font-medium">{scenario.label}</p>
+                        <p className={cn('text-[10px] mt-0.5', calculatorScenarioId === scenario.id ? 'text-white/80 dark:text-zinc-800' : 'text-zinc-500 dark:text-zinc-400')}>
+                          {scenario.detail}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div className="space-y-3">
+                    <CalculatorSlider
+                      label="Home Price"
+                      value={homePrice}
+                      min={150000}
+                      max={1200000}
+                      step={5000}
+                      onChange={updateHomePrice}
+                      formatValue={formatSliderCurrency}
+                      presets={[300000, 450000, 650000]}
+                    />
+                    <CalculatorSlider
+                      label="Deposit %"
+                      value={downPct}
+                      min={2}
+                      max={20}
+                      step={0.5}
+                      onChange={updateDownPct}
+                      formatValue={formatPercent}
+                      presets={[2, 5, 10]}
+                    />
+                    <CalculatorSlider
+                      label="Monthly Savings"
+                      value={monthlySave}
+                      min={100}
+                      max={5000}
+                      step={50}
+                      onChange={updateMonthlySave}
+                      formatValue={formatSliderCurrency}
+                      presets={[500, 1000, 1500]}
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                            Deposit Readiness
+                          </p>
+                          <p className="text-2xl font-light mt-1">
+                            {remainingDeposit <= 0 ? 'Ready now' : projectedDepositDate ?? '--'}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-[10px]">
+                          {monthsToDeposit == null ? 'Plan Needed' : `${monthsToDeposit} mo`}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2">
+                        {formatCurrency(currentTowardDeposit)} of {formatCurrency(requiredDeposit)} toward your deposit target.
+                      </p>
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between text-[11px] mb-1 text-zinc-500 dark:text-zinc-400">
+                          <span>Progress to target</span>
+                          <span>{Math.round(depositProgressPct)}%</span>
+                        </div>
+                        <Progress value={depositProgressPct} className="h-2" />
+                      </div>
+                    </div>
+
+                    <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                      <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+                        Monthly Contribution Mix
+                      </p>
+                      <div className="h-2 rounded overflow-hidden border border-zinc-200 dark:border-zinc-800 flex">
+                        <div className="bg-zinc-900 dark:bg-zinc-100 w-1/2" />
+                        <div className="bg-emerald-500 w-1/2" />
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-zinc-500 dark:text-zinc-400">Your monthly savings</span>
+                          <span className="font-medium">{formatCurrency(monthlySave)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-zinc-500 dark:text-zinc-400">1:1 equity credits</span>
+                          <span className="font-medium">{formatCurrency(monthlyMatchContribution)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-zinc-500 dark:text-zinc-400">Effective monthly power</span>
+                          <span className="font-medium">{formatCurrency(monthlyTotalContribution)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
+                    Readiness Timeline
+                  </p>
+                  <div className="space-y-2.5">
+                    {[
+                      {
+                        key: 'posting',
+                        title: '30-day credit posting',
+                        detail:
+                          daysUntilPosting > 0
+                            ? `${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'} to latest semi-valid credit`
+                            : 'Latest credit posted as semi-valid',
+                        complete: daysUntilPosting === 0,
+                      },
+                      {
+                        key: 'deposit',
+                        title: 'Deposit target readiness',
+                        detail:
+                          remainingDeposit <= 0
+                            ? 'Deposit target reached'
+                            : monthsToDeposit == null
+                              ? 'Set monthly savings to project date'
+                              : `${monthsToDeposit} month${monthsToDeposit === 1 ? '' : 's'} to readiness`,
+                        complete: remainingDeposit <= 0,
+                      },
+                      {
+                        key: 'elpa',
+                        title: 'ELPA usage unlock',
+                        detail:
+                          daysUntilElpa > 0
+                            ? `${daysUntilElpa} day${daysUntilElpa === 1 ? '' : 's'} until ELPA-usable credits`
+                            : 'ELPA credits available now',
+                        complete: daysUntilElpa === 0,
+                      },
+                    ].map((item) => (
+                      <div key={item.key} className="flex items-start gap-2.5">
+                        <div
+                          className={cn(
+                            'mt-0.5 w-2.5 h-2.5 rounded-full shrink-0',
+                            item.complete ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
+                          )}
+                        />
+                        <div>
+                          <p className="text-xs font-medium">{item.title}</p>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{item.detail}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#0e0e0e]">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Guidance</p>
+                  <p className="text-sm">{calculatorRecommendation}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
+              <CardHeader className="pb-3 border-b border-zinc-200 dark:border-zinc-800">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-base font-medium">History & Activity</CardTitle>
+                  <Badge variant="outline" className="text-[10px]">
+                    {filteredActivity.length} items
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Deposits</p>
+                    <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.deposits)}</p>
+                  </div>
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Posted Credits</p>
+                    <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.postedCredits)}</p>
+                  </div>
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Locked/Pending</p>
+                    <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.lockedCredits)}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { key: 'all', label: 'All' },
+                    { key: 'deposit', label: 'Deposits' },
+                    { key: 'credit', label: 'Credits' },
+                    { key: 'reward', label: 'Rewards' },
+                  ].map((filter) => (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      onClick={() => setActivityFilter(filter.key as 'all' | 'deposit' | 'credit' | 'reward')}
+                      className={cn(
+                        'h-8 px-3 rounded-full text-xs border transition-colors',
+                        activityFilter === filter.key
+                          ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100'
+                          : 'bg-transparent border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      )}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-2">
+                  {filteredActivity.map((event) => {
+                    const icon =
+                      event.type === 'deposit' ? ArrowUpRight : event.type === 'credit' ? Sparkles : Gift;
+                    const Icon = icon;
+                    return (
+                      <div
+                        key={event.id}
+                        className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e] flex items-start justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+                              <Icon className="w-3.5 h-3.5" />
+                            </div>
+                            <p className="text-sm font-medium">{event.title}</p>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'text-[10px]',
+                                event.status === 'posted' &&
+                                  'border-emerald-200 text-emerald-700 bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:bg-[#0e0e0e]',
+                                event.status === 'pending' &&
+                                  'border-amber-200 text-amber-700 bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:bg-[#0e0e0e]',
+                                event.status === 'locked' &&
+                                  'border-zinc-300 text-zinc-600 bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:bg-[#0e0e0e]'
+                              )}
+                            >
+                              {event.status}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2">{event.description}</p>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">{formatDateShort(event.date)}</p>
+                        </div>
+                        <p className="text-sm font-medium shrink-0">{event.amount >= 0 ? '+' : ''}{formatCurrency(event.amount)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="md:col-span-4 space-y-2.5">
+            <SavingsStreakCard
+              currentStreak={streakDays}
+              bestStreak={52}
+              accountMonth={accountMonth}
+              rewardPoints={rewardPoints}
+              weeks={heatmapWeeks}
+              milestones={milestones}
+              checkedInToday={checkedInToday}
+              onCheckIn={handleCheckIn}
+            />
+
+            <RewardsPerksCard achievements={achievements} perks={perks} />
+
+            <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-zinc-100 to-emerald-50/60 dark:from-[#141414] dark:to-[#0e0e0e]">
+              <CardContent className="py-2.5 space-y-2">
+                <p className="text-sm font-medium">Stop Renting. Start Owning. Take the CLEAR path.</p>
+                <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
+                  EquityShare is a 2026-first home financing solution. We buy the home you want, you move in, and a
+                  portion of every monthly payment builds your real-world equity.
+                </p>
+                <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
+                  EquityShare is facilitated via an Equity-Lease Participation Agreement (ELPA), an asset-backed
+                  residency contract. 2% down. No credit trap. 100% Assurance.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </main>
+
+      <MobileNav onMenuOpen={() => setMenuOpen(true)} onActionOpen={() => setActionModalOpen(true)} />
+    </div>
+  );
+}
