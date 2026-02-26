@@ -382,8 +382,8 @@ function SavingsStreakCard({
 
   return (
     <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-      <CardContent className="px-3 py-2 space-y-2.5">
-        <div className="flex items-center justify-between">
+      <CardContent className="px-3 py-2">
+        <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
             Savings Streak
           </span>
@@ -397,181 +397,183 @@ function SavingsStreakCard({
           </button>
         </div>
 
-        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-zinc-50 dark:bg-[#0e0e0e]">
-          <div className="flex items-center gap-3">
-            <div className="relative w-24 h-24 shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={streakRingData}
-                    dataKey="value"
-                    innerRadius={31}
-                    outerRadius={42}
-                    startAngle={90}
-                    endAngle={-270}
-                    stroke="none"
-                    paddingAngle={streakRingData[1].value > 0 ? 2 : 0}
-                    isAnimationActive
-                    animationDuration={700}
-                  >
-                    {streakRingData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <Flame className="w-3.5 h-3.5 text-orange-500 mb-0.5" />
-                <span className="text-base font-semibold leading-none">{currentStreak}</span>
-                <span className="text-[9px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mt-0.5">
-                  Days
-                </span>
-              </div>
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Consistency Level {saverLevel}</p>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                {nextMilestone
-                  ? `Next: ${nextMilestone.label} in ${daysToNextMilestone} days`
-                  : 'All streak milestones unlocked'}
-              </p>
-              <div className="mt-2.5 grid grid-cols-3 gap-1.5">
-                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-[#0e0e0e]">
-                  <p className="text-sm font-semibold">{bestStreak}</p>
-                  <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Best</p>
-                </div>
-                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-[#0e0e0e]">
-                  <p className="text-sm font-semibold">{unlockedMilestones}</p>
-                  <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Unlocked</p>
-                </div>
-                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-[#0e0e0e]">
-                  <p className="text-sm font-semibold">{rewardPoints}</p>
-                  <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Points</p>
+        <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+          <div className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="relative w-24 h-24 shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={streakRingData}
+                      dataKey="value"
+                      innerRadius={31}
+                      outerRadius={42}
+                      startAngle={90}
+                      endAngle={-270}
+                      stroke="none"
+                      paddingAngle={streakRingData[1].value > 0 ? 2 : 0}
+                      isAnimationActive
+                      animationDuration={700}
+                    >
+                      {streakRingData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <Flame className="w-3.5 h-3.5 text-orange-500 mb-0.5" />
+                  <span className="text-base font-semibold leading-none">{currentStreak}</span>
+                  <span className="text-[9px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mt-0.5">
+                    Days
+                  </span>
                 </div>
               </div>
-              <div className="mt-2">
-                <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mb-1">
-                  <span>{Math.round(streakProgress)}% to {streakTarget}-day tier</span>
-                  <span>{daysToLevelUp} days left</span>
-                </div>
-                <Progress value={streakProgress} className="h-1.5" />
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-zinc-50 dark:bg-[#0e0e0e]">
-          <div className="flex items-center justify-between mb-2.5">
-            <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
-              Milestone Track
-            </p>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">{unlockedMilestones}/{milestones.length}</p>
-          </div>
-
-          <div className="relative">
-            <div className="absolute left-4 right-4 top-[14px] h-px bg-zinc-200 dark:bg-zinc-700" />
-            <div className="grid grid-cols-5 gap-2">
-              {milestones.map((milestone) => (
-                <div key={milestone.month} className="text-center">
-                  <div
-                    className={cn(
-                      'w-7 h-7 mx-auto rounded-full border flex items-center justify-center relative z-10',
-                      milestone.achieved
-                        ? 'bg-emerald-600 border-emerald-600 text-white'
-                        : 'bg-white dark:bg-[#0e0e0e] border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400'
-                    )}
-                  >
-                    <milestone.icon className="w-3 h-3" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">Consistency Level {saverLevel}</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  {nextMilestone
+                    ? `Next: ${nextMilestone.label} in ${daysToNextMilestone} days`
+                    : 'All streak milestones unlocked'}
+                </p>
+                <div className="mt-2.5 grid grid-cols-3 gap-2">
+                  <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-2 text-center">
+                    <p className="text-sm font-semibold">{bestStreak}</p>
+                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Best</p>
                   </div>
-                  <p className={cn('mt-2 text-[10px] font-medium', milestone.achieved ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400')}>
-                    M{milestone.month}
-                  </p>
+                  <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-2 text-center">
+                    <p className="text-sm font-semibold">{unlockedMilestones}</p>
+                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Unlocked</p>
+                  </div>
+                  <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-2 text-center">
+                    <p className="text-sm font-semibold">{rewardPoints}</p>
+                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Points</p>
+                  </div>
                 </div>
-              ))}
+                <div className="mt-2">
+                  <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mb-1">
+                    <span>{Math.round(streakProgress)}% to {streakTarget}-day tier</span>
+                    <span>{daysToLevelUp} days left</span>
+                  </div>
+                  <Progress value={streakProgress} className="h-1.5" />
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-zinc-50 dark:bg-[#0e0e0e]">
-          <div className="flex items-center justify-between mb-1.5">
-            <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
-              Recent Consistency
-            </p>
-            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
-              {savedRecentDays}/14 active days
-            </p>
-          </div>
-          <div className="grid grid-cols-14 gap-1 mb-2.5">
-            {recentDays.map((day, index) => (
-              <div
-                key={`${day.date.toISOString()}-${index}`}
-                className={cn(
-                  'h-5 rounded-sm border border-zinc-200/80 dark:border-zinc-800',
-                  !day.saved && 'bg-zinc-100 dark:bg-[#141414]'
-                )}
-                style={day.saved ? { backgroundColor: `hsl(var(--equity) / ${0.22 + Math.min(day.amount / 180, 1) * 0.62})` } : undefined}
-                title={day.saved ? `${formatDateShort(day.date)} · $${day.amount}` : `${formatDateShort(day.date)} · no deposit`}
-              />
-            ))}
-          </div>
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Last 14 days</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Less</span>
-              <div className="flex gap-0.5">
-                {[0.2, 0.45, 0.7, 0.95].map((opacity) => (
-                  <div
-                    key={opacity}
-                    className="w-2.5 h-2.5 rounded-sm bg-emerald-500"
-                    style={{ opacity }}
-                  />
+          <div className="py-3">
+            <div className="flex items-center justify-between mb-2.5">
+              <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
+                Milestone Track
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">{unlockedMilestones}/{milestones.length}</p>
+            </div>
+
+            <div className="relative">
+              <div className="absolute left-4 right-4 top-[14px] h-px bg-zinc-200 dark:bg-zinc-700" />
+              <div className="grid grid-cols-5 gap-2">
+                {milestones.map((milestone) => (
+                  <div key={milestone.month} className="text-center">
+                    <div
+                      className={cn(
+                        'w-7 h-7 mx-auto rounded-full border flex items-center justify-center relative z-10',
+                        milestone.achieved
+                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                          : 'bg-zinc-100 dark:bg-[#0e0e0e] border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400'
+                      )}
+                    >
+                      <milestone.icon className="w-3 h-3" />
+                    </div>
+                    <p className={cn('mt-2 text-[10px] font-medium', milestone.achieved ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400')}>
+                      M{milestone.month}
+                    </p>
+                  </div>
                 ))}
               </div>
-              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">More</span>
             </div>
           </div>
-          <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
-            <div className="h-24">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={weeklyConsistencyData} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fill: '#71717a', fontSize: 10 }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis hide domain={[0, 'dataMax + 40']} />
-                  <Tooltip
-                    cursor={{ fill: 'transparent' }}
-                    contentStyle={{
-                      background: '#18181b',
-                      border: '1px solid #3f3f46',
-                      borderRadius: '8px',
-                      padding: '8px 10px',
-                    }}
-                    labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
-                    itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
-                    formatter={(value: number | string | undefined) => [formatCurrency(Number(value ?? 0)), 'Saved']}
-                  />
-                  <Bar dataKey="total" radius={[4, 4, 0, 0]}>
-                    {weeklyConsistencyData.map((week, index) => (
-                      <Cell
-                        key={week.label}
-                        fill="hsl(var(--equity))"
-                        fillOpacity={0.5 + (index / Math.max(weeklyConsistencyData.length - 1, 1)) * 0.4}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+
+          <div className="pt-3">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
+                Recent Consistency
+              </p>
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                {savedRecentDays}/14 active days
+              </p>
             </div>
-            <div className="grid grid-cols-4 gap-1.5 mt-2">
-              {weeklyTotals.map((weekTotal, index) => (
-                <p key={index} className="text-[10px] text-zinc-500 dark:text-zinc-400 text-center">
-                  W{index + 1}: {formatSliderCurrency(weekTotal)}
-                </p>
+            <div className="grid grid-cols-14 gap-1 mb-2.5">
+              {recentDays.map((day, index) => (
+                <div
+                  key={`${day.date.toISOString()}-${index}`}
+                  className={cn(
+                    'h-5 rounded-sm border border-zinc-200/80 dark:border-zinc-800',
+                    !day.saved && 'bg-zinc-100 dark:bg-[#141414]'
+                  )}
+                  style={day.saved ? { backgroundColor: `hsl(var(--equity) / ${0.22 + Math.min(day.amount / 180, 1) * 0.62})` } : undefined}
+                  title={day.saved ? `${formatDateShort(day.date)} · $${day.amount}` : `${formatDateShort(day.date)} · no deposit`}
+                />
               ))}
+            </div>
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Last 14 days</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Less</span>
+                <div className="flex gap-0.5">
+                  {[0.2, 0.45, 0.7, 0.95].map((opacity) => (
+                    <div
+                      key={opacity}
+                      className="w-2.5 h-2.5 rounded-sm bg-emerald-500"
+                      style={{ opacity }}
+                    />
+                  ))}
+                </div>
+                <span className="text-[10px] text-zinc-500 dark:text-zinc-400">More</span>
+              </div>
+            </div>
+            <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-2">
+              <div className="h-24">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={weeklyConsistencyData} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fill: '#71717a', fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis hide domain={[0, 'dataMax + 40']} />
+                    <Tooltip
+                      cursor={{ fill: 'transparent' }}
+                      contentStyle={{
+                        background: '#18181b',
+                        border: '1px solid #3f3f46',
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                      }}
+                      labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
+                      itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
+                      formatter={(value: number | string | undefined) => [formatCurrency(Number(value ?? 0)), 'Saved']}
+                    />
+                    <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                      {weeklyConsistencyData.map((week, index) => (
+                        <Cell
+                          key={week.label}
+                          fill="hsl(var(--equity))"
+                          fillOpacity={0.5 + (index / Math.max(weeklyConsistencyData.length - 1, 1)) * 0.4}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="grid grid-cols-4 gap-1.5 mt-2">
+                {weeklyTotals.map((weekTotal, index) => (
+                  <p key={index} className="text-[10px] text-zinc-500 dark:text-zinc-400 text-center">
+                    W{index + 1}: {formatSliderCurrency(weekTotal)}
+                  </p>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -590,100 +592,100 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
   const unlockedPerks = perks.filter((perk) => perk.unlocked).length;
 
   return (
-    <div className="space-y-2.5">
-      <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-        <CardContent className="px-3 py-2">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
-              Achievements
-            </span>
-            <Badge variant="outline" className="text-[10px] text-emerald-700 dark:text-emerald-300 border-emerald-500/30 bg-emerald-500/10">
-              <Trophy className="w-3 h-3 mr-1" /> {unlockedCount}/{achievements.length}
-            </Badge>
-          </div>
+    <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
+      <CardContent className="px-3 py-2">
+        <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+          <div className="pb-3">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+                Achievements
+              </span>
+              <Badge variant="outline" className="text-[10px] text-emerald-700 dark:text-emerald-300 border-emerald-500/30 bg-emerald-500/10">
+                <Trophy className="w-3 h-3 mr-1" /> {unlockedCount}/{achievements.length}
+              </Badge>
+            </div>
 
-          <div className="grid grid-cols-4 gap-2">
-            {achievements.map((achievement) => (
-              <button
-                key={achievement.id}
-                className={cn(
-                  'flex flex-col items-center gap-1 p-2.5 rounded border transition-all',
-                  achievement.unlocked
-                    ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-105')
-                    : 'border-zinc-200 dark:border-zinc-800 bg-zinc-100/60 dark:bg-[#0e0e0e] opacity-45'
-                )}
-              >
-                <div
-                  className={cn(
-                    'w-8 h-8 rounded-full flex items-center justify-center',
-                    achievement.unlocked ? 'bg-current/10' : 'bg-zinc-200 dark:bg-[#0e0e0e]'
-                  )}
-                >
-                  {achievement.unlocked ? (
-                    <achievement.icon className="w-4 h-4" />
-                  ) : (
-                    <Lock className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
-                  )}
-                </div>
-                <span className="text-[10px] font-medium text-center leading-tight">{achievement.name}</span>
-                {achievement.date && <span className="text-[8px] text-zinc-500 dark:text-zinc-400">{achievement.date}</span>}
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-        <CardContent className="px-3 py-2">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
-              Perks & Rewards
-            </span>
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</span>
-          </div>
-
-          <div className="space-y-2">
-            {perks.map((perk) => (
-              <div
-                key={perk.id}
-                className={cn(
-                  'flex items-center gap-3 p-2.5 rounded transition-all',
-                  perk.unlocked
-                    ? 'bg-emerald-500/5 border border-emerald-500/20 hover:bg-emerald-500/10'
-                    : 'bg-zinc-100/60 dark:bg-[#0e0e0e] opacity-65'
-                )}
-              >
-                <div
-                  className={cn(
-                    'w-9 h-9 rounded flex items-center justify-center shrink-0',
-                    perk.unlocked
-                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                      : 'bg-zinc-200 dark:bg-[#0e0e0e] text-zinc-500'
-                  )}
-                >
-                  {perk.unlocked ? <perk.icon className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{perk.name}</p>
-                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{perk.description}</p>
-                </div>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'text-[9px] shrink-0',
-                    perk.unlocked
-                      ? 'text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
-                      : 'text-zinc-500 dark:text-zinc-400'
-                  )}
-                >
-                  {perk.unlocked ? 'Active' : perk.requirement}
-                </Badge>
+            <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] p-2">
+              <div className="grid grid-cols-4 gap-1.5">
+                {achievements.map((achievement) => (
+                  <button
+                    key={achievement.id}
+                    className={cn(
+                      'flex flex-col items-center gap-1 p-2 rounded transition-all',
+                      achievement.unlocked
+                        ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-105')
+                        : 'bg-zinc-200/60 dark:bg-[#141414] opacity-50'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'w-8 h-8 rounded-full flex items-center justify-center',
+                        achievement.unlocked ? 'bg-current/10' : 'bg-zinc-200 dark:bg-[#0e0e0e]'
+                      )}
+                    >
+                      {achievement.unlocked ? (
+                        <achievement.icon className="w-4 h-4" />
+                      ) : (
+                        <Lock className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                      )}
+                    </div>
+                    <span className="text-[10px] font-medium text-center leading-tight">{achievement.name}</span>
+                    {achievement.date && <span className="text-[8px] text-zinc-500 dark:text-zinc-400">{achievement.date}</span>}
+                  </button>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+
+          <div className="pt-3">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+                Perks & Rewards
+              </span>
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</span>
+            </div>
+
+            <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] divide-y divide-zinc-200 dark:divide-zinc-800">
+              {perks.map((perk) => (
+                <div
+                  key={perk.id}
+                  className={cn(
+                    'flex items-center gap-3 p-2.5 transition-colors',
+                    perk.unlocked ? 'hover:bg-emerald-500/5' : 'opacity-65'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'w-9 h-9 rounded flex items-center justify-center shrink-0',
+                      perk.unlocked
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-zinc-200 dark:bg-[#141414] text-zinc-500'
+                    )}
+                  >
+                    {perk.unlocked ? <perk.icon className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{perk.name}</p>
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{perk.description}</p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'text-[9px] shrink-0',
+                      perk.unlocked
+                        ? 'text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                        : 'text-zinc-500 dark:text-zinc-400'
+                    )}
+                  >
+                    {perk.unlocked ? 'Active' : perk.requirement}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1236,7 +1238,7 @@ export default function SavingsHome() {
               </div>
             </div>
 
-            <div className="bg-zinc-50 dark:bg-[#141414] rounded border border-zinc-200 dark:border-zinc-800/50 p-1">
+            <div className="bg-zinc-50 dark:bg-[#141414] rounded border border-zinc-200 dark:border-zinc-800/50">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/70 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-10 h-10 rounded bg-zinc-200 dark:bg-[#0e0e0e] flex items-center justify-center">
@@ -1252,24 +1254,26 @@ export default function SavingsHome() {
                 </Badge>
               </div>
 
-              <div className="p-4 space-y-4">
-                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:grid sm:grid-cols-3 sm:gap-3 sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
-                  <div className="min-w-[180px] sm:min-w-0 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Savings Balance</p>
-                    <p className="text-lg font-medium mt-1">{formatCurrency(savingsBalance)}</p>
-                  </div>
-                  <div className="min-w-[180px] sm:min-w-0 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Semi-Valid Credits</p>
-                    <p className="text-lg font-medium mt-1">{formatCurrency(semiValidCredits)}</p>
-                  </div>
-                  <div className="min-w-[180px] sm:min-w-0 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] p-3">
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Pending Credits</p>
-                    <p className="text-lg font-medium mt-1">{formatCurrency(pendingCredits)}</p>
+              <div className="p-4 space-y-5">
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:block sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
+                  <div className="min-w-[540px] sm:min-w-0 rounded bg-zinc-100 dark:bg-[#0e0e0e] divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-3">
+                    <div className="p-3">
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Savings Balance</p>
+                      <p className="text-lg font-medium mt-1">{formatCurrency(savingsBalance)}</p>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Semi-Valid Credits</p>
+                      <p className="text-lg font-medium mt-1">{formatCurrency(semiValidCredits)}</p>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Pending Credits</p>
+                      <p className="text-lg font-medium mt-1">{formatCurrency(pendingCredits)}</p>
+                    </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#0e0e0e]">
+                  <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-3">
                     <div className="flex items-center justify-between text-xs mb-2">
                       <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
                         <Clock3 className="w-3.5 h-3.5" />
@@ -1285,7 +1289,7 @@ export default function SavingsHome() {
                     </p>
                   </div>
 
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#0e0e0e]">
+                  <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-3">
                     <div className="flex items-center justify-between text-xs mb-2">
                       <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
                         <Home className="w-3.5 h-3.5" />
@@ -1302,8 +1306,8 @@ export default function SavingsHome() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#0e0e0e]">
+                <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-1 sm:grid-cols-2">
+                  <div className="p-3">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
                       Account Number
                     </p>
@@ -1319,7 +1323,7 @@ export default function SavingsHome() {
                       </button>
                     </div>
                   </div>
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#0e0e0e]">
+                  <div className="p-3">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
                       Routing Number
                     </p>
@@ -1366,31 +1370,31 @@ export default function SavingsHome() {
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-1 sm:grid-cols-3">
+                  <div className="p-3">
                     <p className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Total Progress</p>
                     <p className="text-base font-medium mt-1">{Math.round(goalsProgressPct)}%</p>
                     <Progress value={goalsProgressPct} className="h-1.5 mt-2" />
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">{formatCurrency(totalGoalRemaining)} remaining</p>
                   </div>
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                  <div className="p-3">
                     <p className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">On Track</p>
                     <p className="text-base font-medium mt-1">{onTrackGoals}/{goals.length}</p>
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">Goals meeting forecast</p>
                   </div>
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                  <div className="p-3">
                     <p className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Needed / Month</p>
                     <p className="text-base font-medium mt-1">{formatCurrency(totalMonthlyNeeded)}</p>
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">To stay on goal timeline</p>
                   </div>
                 </div>
 
-                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] p-3">
                   <div className="flex items-center justify-between text-[11px] mb-2">
                     <span className="text-zinc-500 dark:text-zinc-400">Goal allocation by size</span>
                     <span className="font-medium">{formatCurrency(totalGoalTarget)}</span>
                   </div>
-                  <div className="h-2 rounded overflow-hidden border border-zinc-200 dark:border-zinc-800 flex">
+                  <div className="h-2 rounded overflow-hidden bg-zinc-200 dark:bg-zinc-800 flex">
                     {goalForecast.map((goal, index) => (
                       <div
                         key={goal.id}
@@ -1468,18 +1472,18 @@ export default function SavingsHome() {
 
                     <Progress value={goal.progress} className="h-2 mt-2.5" />
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
-                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
-                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Saved / Target</p>
-                        <p className="text-xs font-medium mt-1">{formatCurrency(goal.saved)} / {formatCurrency(goal.target)}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 text-[11px]">
+                      <div className="sm:pr-2 sm:border-r sm:border-zinc-200 sm:dark:border-zinc-800">
+                        <p className="text-zinc-500 dark:text-zinc-400">Saved / Target</p>
+                        <p className="text-sm font-medium mt-1">{formatCurrency(goal.saved)} / {formatCurrency(goal.target)}</p>
                       </div>
-                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
-                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Remaining</p>
-                        <p className="text-xs font-medium mt-1">{formatCurrency(goal.remaining)}</p>
+                      <div className="sm:px-2 sm:border-r sm:border-zinc-200 sm:dark:border-zinc-800">
+                        <p className="text-zinc-500 dark:text-zinc-400">Remaining</p>
+                        <p className="text-sm font-medium mt-1">{formatCurrency(goal.remaining)}</p>
                       </div>
-                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
-                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Needed / Month</p>
-                        <p className="text-xs font-medium mt-1">{formatCurrency(goal.monthlyNeeded)}</p>
+                      <div className="sm:pl-2">
+                        <p className="text-zinc-500 dark:text-zinc-400">Needed / Month</p>
+                        <p className="text-sm font-medium mt-1">{formatCurrency(goal.monthlyNeeded)}</p>
                       </div>
                     </div>
 
@@ -1554,7 +1558,7 @@ export default function SavingsHome() {
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
-                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                <div className="rounded p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Plan Builder</p>
                     <Badge variant="outline" className="text-[10px]">
@@ -1583,7 +1587,7 @@ export default function SavingsHome() {
                   </div>
                 </div>
 
-                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                <div className="rounded p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                       Goal Sync
@@ -1615,16 +1619,16 @@ export default function SavingsHome() {
                     ))}
                   </div>
                   {linkedGoalForecast && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
-                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                    <div className="rounded bg-zinc-100 dark:bg-[#141414] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-1 sm:grid-cols-3 mt-2">
+                      <div className="p-2">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Linked Goal Target</p>
                         <p className="text-xs font-medium mt-1">{formatCurrency(linkedGoalForecast.target)}</p>
                       </div>
-                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                      <div className="p-2">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Calculator Deposit Target</p>
                         <p className="text-xs font-medium mt-1">{formatCurrency(requiredDeposit)}</p>
                       </div>
-                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                      <div className="p-2">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Linked Goal ETA</p>
                         <p className="text-xs font-medium mt-1">
                           {linkedGoalForecast.remaining <= 0
@@ -1686,7 +1690,7 @@ export default function SavingsHome() {
                     />
                   </div>
 
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e] space-y-3">
+                  <div className="rounded p-3 bg-zinc-50 dark:bg-[#0e0e0e] space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
@@ -1701,20 +1705,20 @@ export default function SavingsHome() {
                       </Badge>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                    <div className="rounded bg-zinc-100 dark:bg-[#141414] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
+                      <div className="p-2">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Required</p>
                         <p className="text-xs font-medium mt-1">{formatCurrency(requiredDeposit)}</p>
                       </div>
-                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                      <div className="p-2">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Current</p>
                         <p className="text-xs font-medium mt-1">{formatCurrency(currentTowardDeposit)}</p>
                       </div>
-                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                      <div className="p-2 border-t border-zinc-200 dark:border-zinc-800 sm:border-t-0">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Remaining</p>
                         <p className="text-xs font-medium mt-1">{formatCurrency(remainingDeposit)}</p>
                       </div>
-                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                      <div className="p-2 border-t border-zinc-200 dark:border-zinc-800 sm:border-t-0">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Monthly Power</p>
                         <p className="text-xs font-medium mt-1">{formatCurrency(monthlyTotalContribution)}</p>
                       </div>
@@ -1731,7 +1735,7 @@ export default function SavingsHome() {
                   </div>
                 </div>
 
-                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                <div className="rounded p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
                   <div className="flex items-center gap-4 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 pb-2">
                     {[
                       { key: 'projection', label: 'Projection' },
@@ -1760,7 +1764,7 @@ export default function SavingsHome() {
                   <div className="mt-3">
                     {calculatorView === 'projection' && (
                       <div className="space-y-3">
-                        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#141414]">
+                        <div className="rounded p-3 bg-zinc-100 dark:bg-[#141414]">
                           <div className="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400 mb-2">
                             <span>Projected deposit power curve</span>
                             <span>{formatCurrency(monthlyTotalContribution)}/mo effective</span>
@@ -1845,14 +1849,14 @@ export default function SavingsHome() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-white dark:bg-[#141414]">
+                        <div className="rounded bg-zinc-100 dark:bg-[#141414] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-1 sm:grid-cols-2">
+                          <div className="p-2.5">
                             <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Projected in 6 months</p>
                             <p className="text-sm font-medium mt-1">
                               {formatCurrency(sixMonthProjection[5]?.projectedTotal ?? currentTowardDeposit)}
                             </p>
                           </div>
-                          <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-white dark:bg-[#141414]">
+                          <div className="p-2.5">
                             <p className="text-[10px] text-zinc-500 dark:text-zinc-400">6-month target gap</p>
                             <p className="text-sm font-medium mt-1">
                               {formatCurrency(
@@ -1870,7 +1874,7 @@ export default function SavingsHome() {
 
                     {calculatorView === 'allocation' && (
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#141414]">
+                        <div className="rounded p-3 bg-zinc-100 dark:bg-[#141414]">
                           <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
                             Deposit Composition
                           </p>
@@ -1894,7 +1898,7 @@ export default function SavingsHome() {
                                   </Pie>
                                 </PieChart>
                               </ResponsiveContainer>
-                              <div className="absolute inset-[18px] rounded-full bg-white dark:bg-[#141414] border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center">
+                              <div className="absolute inset-[18px] rounded-full bg-zinc-100 dark:bg-[#141414] flex flex-col items-center justify-center">
                                 <span className="text-sm font-semibold">{Math.round(depositProgressPct)}%</span>
                                 <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Funded</span>
                               </div>
@@ -1925,7 +1929,7 @@ export default function SavingsHome() {
                           </div>
                         </div>
 
-                        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-[#141414]">
+                        <div className="rounded p-3 bg-zinc-100 dark:bg-[#141414]">
                           <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
                             6-Month Progress Bars
                           </p>
@@ -2014,7 +2018,7 @@ export default function SavingsHome() {
                         ].map((item) => (
                           <div
                             key={item.key}
-                            className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-white dark:bg-[#141414]"
+                            className="rounded p-2.5 bg-zinc-100 dark:bg-[#141414]"
                           >
                             <div className="flex items-center justify-between text-xs mb-1">
                               <span>{item.title}</span>
@@ -2025,7 +2029,7 @@ export default function SavingsHome() {
                           </div>
                         ))}
 
-                        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-white dark:bg-[#141414]">
+                        <div className="rounded p-2.5 bg-zinc-100 dark:bg-[#141414]">
                           <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
                             Phase Duration Mix
                           </p>
@@ -2087,16 +2091,16 @@ export default function SavingsHome() {
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-1 sm:grid-cols-3">
+                  <div className="p-3">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Deposits</p>
                     <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.deposits)}</p>
                   </div>
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                  <div className="p-3">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Posted Credits</p>
                     <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.postedCredits)}</p>
                   </div>
-                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                  <div className="p-3">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Locked/Pending</p>
                     <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.lockedCredits)}</p>
                   </div>
@@ -2125,7 +2129,7 @@ export default function SavingsHome() {
                   ))}
                 </div>
 
-                <div className="space-y-2">
+                <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] divide-y divide-zinc-200 dark:divide-zinc-800">
                   {filteredActivity.map((event) => {
                     const icon =
                       event.type === 'deposit' ? ArrowUpRight : event.type === 'credit' ? Sparkles : Gift;
@@ -2133,11 +2137,11 @@ export default function SavingsHome() {
                     return (
                       <div
                         key={event.id}
-                        className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e] flex items-start justify-between gap-3"
+                        className="p-3 flex items-start justify-between gap-3"
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded bg-zinc-100 dark:bg-[#141414] flex items-center justify-center">
                               <Icon className="w-3.5 h-3.5" />
                             </div>
                             <p className="text-sm font-medium">{event.title}</p>
