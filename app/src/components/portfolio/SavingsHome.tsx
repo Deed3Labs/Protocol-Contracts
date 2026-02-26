@@ -43,6 +43,7 @@ interface SavingsGoal {
   target: number;
   saved: number;
   due: string;
+  origin?: 'manual' | 'calculator';
 }
 
 interface Achievement {
@@ -653,6 +654,9 @@ export default function SavingsHome() {
   const [calculatorScenarioId, setCalculatorScenarioId] =
     useState<CalculatorScenario['id'] | 'custom'>('balanced');
   const [calculatorView, setCalculatorView] = useState<CalculatorView>('projection');
+  const [calculatorLinkedGoalId, setCalculatorLinkedGoalId] = useState<string>(
+    INITIAL_GOALS[0]?.id ?? ''
+  );
   const [copiedField, setCopiedField] = useState<'account' | 'routing' | null>(null);
   const [activityFilter, setActivityFilter] = useState<'all' | 'deposit' | 'credit' | 'reward'>('all');
 
@@ -824,6 +828,12 @@ export default function SavingsHome() {
 
   const onTrackGoals = goalForecast.filter((goal) => goal.status !== 'at-risk').length;
   const totalMonthlyNeeded = goalForecast.reduce((sum, goal) => sum + goal.monthlyNeeded, 0);
+  const linkedGoalForecast = goalForecast.find((goal) => goal.id === calculatorLinkedGoalId) ?? null;
+  const linkedGoalProjectedMonths =
+    linkedGoalForecast && monthlyTotalContribution > 0
+      ? Math.ceil(linkedGoalForecast.remaining / monthlyTotalContribution)
+      : null;
+  const calculatorToLinkedGoalDelta = linkedGoalForecast ? requiredDeposit - linkedGoalForecast.target : 0;
 
   const milestones = useMemo<Milestone[]>(
     () =>
@@ -1029,6 +1039,16 @@ export default function SavingsHome() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    if (!calculatorLinkedGoalId && goals.length > 0) {
+      setCalculatorLinkedGoalId(goals[0].id);
+      return;
+    }
+    if (calculatorLinkedGoalId && !goals.some((goal) => goal.id === calculatorLinkedGoalId)) {
+      setCalculatorLinkedGoalId(goals[0]?.id ?? '');
+    }
+  }, [calculatorLinkedGoalId, goals]);
+
   const handleCheckIn = () => {
     if (checkedInToday) return;
     setCheckedInToday(true);
@@ -1058,6 +1078,29 @@ export default function SavingsHome() {
     setCalculatorScenarioId('custom');
   };
 
+  const handleLinkGoalToCalculator = (goalId: string) => {
+    setCalculatorLinkedGoalId(goalId);
+    setCalculatorView('projection');
+  };
+
+  const handleSyncCalculatorToLinkedGoal = () => {
+    if (!calculatorLinkedGoalId) return;
+    const nextTarget = Math.max(Math.round(requiredDeposit), 1);
+    setGoals((prev) =>
+      prev.map((goal) =>
+        goal.id === calculatorLinkedGoalId
+          ? {
+              ...goal,
+              target: nextTarget,
+              saved: Math.max(goal.saved, Math.min(currentTowardDeposit, nextTarget)),
+              due: projectedDepositDate ?? goal.due,
+              origin: 'calculator',
+            }
+          : goal
+      )
+    );
+  };
+
   const handleAddGoal = () => {
     const target = Number(newGoalTarget);
     if (!newGoalName.trim() || !target || target <= 0) return;
@@ -1070,6 +1113,7 @@ export default function SavingsHome() {
         target,
         saved: 0,
         due: 'TBD',
+        origin: 'manual',
       },
     ]);
     setNewGoalName('');
@@ -1260,10 +1304,27 @@ export default function SavingsHome() {
             <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
               <CardHeader className="pb-3 border-b border-zinc-200 dark:border-zinc-800">
                 <div className="flex items-center justify-between gap-3">
-                  <CardTitle className="text-base font-medium">Savings Goals</CardTitle>
-                  <Badge variant="outline" className="text-[10px]">
-                    {completedGoals}/{goals.length} complete
-                  </Badge>
+                  <div>
+                    <CardTitle className="text-base font-medium">Savings Goals</CardTitle>
+                    {linkedGoalForecast && (
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        Linked to calculator: {linkedGoalForecast.name}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline" className="text-[10px]">
+                      {completedGoals}/{goals.length} complete
+                    </Badge>
+                    {linkedGoalForecast && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300"
+                      >
+                        Linked
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
@@ -1337,20 +1398,34 @@ export default function SavingsHome() {
                         <p className="text-sm font-medium">{goal.name}</p>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">Target date: {goal.due}</p>
                       </div>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'text-[10px]',
-                          goal.status === 'complete' &&
-                            'border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10',
-                          goal.status === 'on-track' &&
-                            'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-[#141414]',
-                          goal.status === 'at-risk' &&
-                            'border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10'
-                        )}
-                      >
-                        {goal.status === 'complete' ? 'Complete' : goal.status === 'on-track' ? 'On Track' : 'Attention'}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleLinkGoalToCalculator(goal.id)}
+                          className={cn(
+                            'text-[10px] h-6 px-2.5 rounded-full border transition-colors',
+                            calculatorLinkedGoalId === goal.id
+                              ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                              : 'border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                          )}
+                        >
+                          {calculatorLinkedGoalId === goal.id ? 'Linked' : 'Link'}
+                        </button>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-[10px]',
+                            goal.status === 'complete' &&
+                              'border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10',
+                            goal.status === 'on-track' &&
+                              'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-[#141414]',
+                            goal.status === 'at-risk' &&
+                              'border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10'
+                          )}
+                        >
+                          {goal.status === 'complete' ? 'Complete' : goal.status === 'on-track' ? 'On Track' : 'Attention'}
+                        </Badge>
+                      </div>
                     </div>
 
                     <Progress value={goal.progress} className="h-2 mt-2.5" />
@@ -1468,6 +1543,70 @@ export default function SavingsHome() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Goal Sync
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleSyncCalculatorToLinkedGoal}
+                      disabled={!linkedGoalForecast}
+                      className="h-7 px-2.5 rounded-full text-[10px] border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Sync Calculator to Goal
+                    </button>
+                  </div>
+                  <div className="flex gap-1.5 overflow-x-auto pb-1">
+                    {goalForecast.map((goal) => (
+                      <button
+                        key={goal.id}
+                        type="button"
+                        onClick={() => handleLinkGoalToCalculator(goal.id)}
+                        className={cn(
+                          'shrink-0 text-[10px] h-7 px-2.5 rounded-full border transition-colors',
+                          calculatorLinkedGoalId === goal.id
+                            ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                            : 'border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        )}
+                      >
+                        {goal.name}
+                      </button>
+                    ))}
+                  </div>
+                  {linkedGoalForecast && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Linked Goal Target</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(linkedGoalForecast.target)}</p>
+                      </div>
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Calculator Deposit Target</p>
+                        <p className="text-xs font-medium mt-1">{formatCurrency(requiredDeposit)}</p>
+                      </div>
+                      <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Linked Goal ETA</p>
+                        <p className="text-xs font-medium mt-1">
+                          {linkedGoalForecast.remaining <= 0
+                            ? 'Complete'
+                            : linkedGoalProjectedMonths
+                              ? `${linkedGoalProjectedMonths} mo`
+                              : 'Set monthly pace'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {linkedGoalForecast && (
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2">
+                      {Math.abs(calculatorToLinkedGoalDelta) < 1
+                        ? 'Linked goal is aligned with calculator target.'
+                        : calculatorToLinkedGoalDelta > 0
+                          ? `Linked goal is ${formatCurrency(calculatorToLinkedGoalDelta)} below current calculator target.`
+                          : `Linked goal is ${formatCurrency(Math.abs(calculatorToLinkedGoalDelta))} above current calculator target.`}
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-3">
@@ -1619,6 +1758,30 @@ export default function SavingsHome() {
                               strokeWidth="1.5"
                               strokeDasharray="4 4"
                             />
+                            {linkedGoalForecast && Math.abs(linkedGoalForecast.target - requiredDeposit) >= 1 && (
+                              <line
+                                x1={projectionChart.padX}
+                                x2={projectionChart.width - projectionChart.padX}
+                                y1={
+                                  projectionChart.padY +
+                                  (1 -
+                                    Math.min(linkedGoalForecast.target, projectionChart.maxValue) /
+                                      projectionChart.maxValue) *
+                                    (projectionChart.height - projectionChart.padY * 2)
+                                }
+                                y2={
+                                  projectionChart.padY +
+                                  (1 -
+                                    Math.min(linkedGoalForecast.target, projectionChart.maxValue) /
+                                      projectionChart.maxValue) *
+                                    (projectionChart.height - projectionChart.padY * 2)
+                                }
+                                stroke="currentColor"
+                                className="text-amber-500"
+                                strokeWidth="1.5"
+                                strokeDasharray="2 3"
+                              />
+                            )}
                             {projectionChart.areaPath && (
                               <path
                                 d={projectionChart.areaPath}
@@ -1645,6 +1808,18 @@ export default function SavingsHome() {
                           <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
                             <span>Now</span>
                             <span>+{projectionHorizon} months</span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
+                            <span className="flex items-center gap-1">
+                              <span className="w-2.5 h-0.5 bg-zinc-500 dark:bg-zinc-400 rounded-full" />
+                              Calculator target
+                            </span>
+                            {linkedGoalForecast && Math.abs(linkedGoalForecast.target - requiredDeposit) >= 1 && (
+                              <span className="flex items-center gap-1">
+                                <span className="w-2.5 h-0.5 bg-amber-500 rounded-full" />
+                                Linked goal target
+                              </span>
+                            )}
                           </div>
                         </div>
 
