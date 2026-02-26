@@ -379,7 +379,7 @@ function SavingsStreakCard({
   }));
 
   return (
-    <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-6">
+    <section className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414] p-3">
       <div className="space-y-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
@@ -590,7 +590,7 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
   const unlockedPerks = perks.filter((perk) => perk.unlocked).length;
 
   return (
-    <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-6">
+    <section className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414] p-3">
       <div className="space-y-4">
         <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
           <div className="pb-3">
@@ -646,7 +646,7 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
                 <div
                   key={perk.id}
                   className={cn(
-                    'flex items-center gap-3 p-2.5 transition-colors',
+                    'flex items-center gap-3 py-2.5 transition-colors',
                     perk.unlocked ? 'hover:bg-emerald-500/5' : 'opacity-65'
                   )}
                 >
@@ -1251,7 +1251,7 @@ export default function SavingsHome() {
               </div>
 
               <div className="space-y-5">
-                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:block sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
+                <div className="flex gap-2 overflow-x-auto pb-1 sm:block sm:overflow-visible sm:pb-0">
                   <div className="min-w-[540px] sm:min-w-0 border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-3">
                     <div className="p-3">
                       <p className="text-xs text-zinc-500 dark:text-zinc-400">Savings Balance</p>
@@ -1428,8 +1428,8 @@ export default function SavingsHome() {
                 {goalForecast.map((goal) => (
                   <motion.div
                     key={goal.id}
-                    whileHover={{ y: -1 }}
-                    className="py-4 border-b border-zinc-200/70 dark:border-zinc-800/70 last:border-b-0"
+                    whileHover={{ y: -1.5 }}
+                    className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414] p-3 transition-colors hover:border-zinc-300 dark:hover:border-zinc-700"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -1509,7 +1509,7 @@ export default function SavingsHome() {
                   <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
                     Create Goal
                   </p>
-                  <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 -mx-1 px-1 sm:mx-0 sm:px-0 sm:pb-0">
+                  <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 sm:pb-0">
                     {GOAL_TEMPLATES.map((template) => (
                       <button
                         key={template.name}
@@ -1561,7 +1561,7 @@ export default function SavingsHome() {
                       {activeScenarioLabel}
                     </Badge>
                   </div>
-                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:grid sm:grid-cols-3 sm:gap-2 sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
+                  <div className="flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 sm:gap-2 sm:overflow-visible sm:pb-0">
                     {CALCULATOR_SCENARIOS.map((scenario) => (
                       <button
                         key={scenario.id}
