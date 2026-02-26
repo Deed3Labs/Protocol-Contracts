@@ -592,100 +592,100 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
   const unlockedPerks = perks.filter((perk) => perk.unlocked).length;
 
   return (
-    <div className="space-y-2.5">
-      <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-        <CardContent className="px-3 py-2">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
-              Achievements
-            </span>
-            <Badge variant="outline" className="text-[10px] text-emerald-700 dark:text-emerald-300 border-emerald-500/30 bg-emerald-500/10">
-              <Trophy className="w-3 h-3 mr-1" /> {unlockedCount}/{achievements.length}
-            </Badge>
-          </div>
+    <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
+      <CardContent className="px-3 py-2">
+        <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+          <div className="pb-3">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+                Achievements
+              </span>
+              <Badge variant="outline" className="text-[10px] text-emerald-700 dark:text-emerald-300 border-emerald-500/30 bg-emerald-500/10">
+                <Trophy className="w-3 h-3 mr-1" /> {unlockedCount}/{achievements.length}
+              </Badge>
+            </div>
 
-          <div className="grid grid-cols-4 gap-2">
-            {achievements.map((achievement) => (
-              <button
-                key={achievement.id}
-                className={cn(
-                  'flex flex-col items-center gap-1 p-2.5 rounded border transition-all',
-                  achievement.unlocked
-                    ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-105')
-                    : 'border-zinc-200 dark:border-zinc-800 bg-zinc-100/60 dark:bg-[#0e0e0e] opacity-45'
-                )}
-              >
-                <div
-                  className={cn(
-                    'w-8 h-8 rounded-full flex items-center justify-center',
-                    achievement.unlocked ? 'bg-current/10' : 'bg-zinc-200 dark:bg-[#0e0e0e]'
-                  )}
-                >
-                  {achievement.unlocked ? (
-                    <achievement.icon className="w-4 h-4" />
-                  ) : (
-                    <Lock className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
-                  )}
-                </div>
-                <span className="text-[10px] font-medium text-center leading-tight">{achievement.name}</span>
-                {achievement.date && <span className="text-[8px] text-zinc-500 dark:text-zinc-400">{achievement.date}</span>}
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-        <CardContent className="px-3 py-2">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
-              Perks & Rewards
-            </span>
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</span>
-          </div>
-
-          <div className="space-y-2">
-            {perks.map((perk) => (
-              <div
-                key={perk.id}
-                className={cn(
-                  'flex items-center gap-3 p-2.5 rounded transition-all',
-                  perk.unlocked
-                    ? 'bg-emerald-500/5 border border-emerald-500/20 hover:bg-emerald-500/10'
-                    : 'bg-zinc-100/60 dark:bg-[#0e0e0e] opacity-65'
-                )}
-              >
-                <div
-                  className={cn(
-                    'w-9 h-9 rounded flex items-center justify-center shrink-0',
-                    perk.unlocked
-                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                      : 'bg-zinc-200 dark:bg-[#0e0e0e] text-zinc-500'
-                  )}
-                >
-                  {perk.unlocked ? <perk.icon className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{perk.name}</p>
-                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{perk.description}</p>
-                </div>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'text-[9px] shrink-0',
-                    perk.unlocked
-                      ? 'text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
-                      : 'text-zinc-500 dark:text-zinc-400'
-                  )}
-                >
-                  {perk.unlocked ? 'Active' : perk.requirement}
-                </Badge>
+            <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] p-2">
+              <div className="grid grid-cols-4 gap-1.5">
+                {achievements.map((achievement) => (
+                  <button
+                    key={achievement.id}
+                    className={cn(
+                      'flex flex-col items-center gap-1 p-2 rounded transition-all',
+                      achievement.unlocked
+                        ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-105')
+                        : 'bg-zinc-200/60 dark:bg-[#141414] opacity-50'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'w-8 h-8 rounded-full flex items-center justify-center',
+                        achievement.unlocked ? 'bg-current/10' : 'bg-zinc-200 dark:bg-[#0e0e0e]'
+                      )}
+                    >
+                      {achievement.unlocked ? (
+                        <achievement.icon className="w-4 h-4" />
+                      ) : (
+                        <Lock className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                      )}
+                    </div>
+                    <span className="text-[10px] font-medium text-center leading-tight">{achievement.name}</span>
+                    {achievement.date && <span className="text-[8px] text-zinc-500 dark:text-zinc-400">{achievement.date}</span>}
+                  </button>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+
+          <div className="pt-3">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+                Perks & Rewards
+              </span>
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</span>
+            </div>
+
+            <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] divide-y divide-zinc-200 dark:divide-zinc-800">
+              {perks.map((perk) => (
+                <div
+                  key={perk.id}
+                  className={cn(
+                    'flex items-center gap-3 p-2.5 transition-colors',
+                    perk.unlocked ? 'hover:bg-emerald-500/5' : 'opacity-65'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'w-9 h-9 rounded flex items-center justify-center shrink-0',
+                      perk.unlocked
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-zinc-200 dark:bg-[#141414] text-zinc-500'
+                    )}
+                  >
+                    {perk.unlocked ? <perk.icon className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{perk.name}</p>
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{perk.description}</p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'text-[9px] shrink-0',
+                      perk.unlocked
+                        ? 'text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                        : 'text-zinc-500 dark:text-zinc-400'
+                    )}
+                  >
+                    {perk.unlocked ? 'Active' : perk.requirement}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
