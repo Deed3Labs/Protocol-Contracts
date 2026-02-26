@@ -23,6 +23,21 @@ import {
   Zap,
 } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import SideMenu from './SideMenu';
 import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
@@ -210,6 +225,12 @@ const formatSliderCurrency = (value: number) => {
   return formatCurrency(value);
 };
 
+const formatAxisCurrency = (value: number) => {
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${Math.round(value / 1_000)}k`;
+  return `$${Math.round(value)}`;
+};
+
 interface CalculatorSliderProps {
   label: string;
   value: number;
@@ -349,10 +370,15 @@ function SavingsStreakCard({
   const unlockedMilestones = milestones.filter((milestone) => milestone.achieved).length;
   const nextMilestone = milestones.find((milestone) => !milestone.achieved);
   const daysToNextMilestone = nextMilestone ? Math.max(nextMilestone.month * 30 - accountMonth * 30, 0) : 0;
-  const ringRadius = 34;
-  const ringCircumference = 2 * Math.PI * ringRadius;
-  const ringDashOffset = ringCircumference - (ringCircumference * streakProgress) / 100;
   const daysToLevelUp = Math.max(streakTarget - currentStreak, 0);
+  const streakRingData = [
+    { name: 'Active', value: Math.min(currentStreak, streakTarget), color: '#10b981' },
+    { name: 'Remaining', value: Math.max(streakTarget - Math.min(currentStreak, streakTarget), 0), color: '#3f3f46' },
+  ];
+  const weeklyConsistencyData = weeklyTotals.map((total, index) => ({
+    label: `W${index + 1}`,
+    total,
+  }));
 
   return (
     <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
@@ -374,31 +400,26 @@ function SavingsStreakCard({
         <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-zinc-50 dark:bg-[#0e0e0e]">
           <div className="flex items-center gap-3">
             <div className="relative w-24 h-24 shrink-0">
-              <svg className="w-full h-full -rotate-90">
-                <circle
-                  cx="48"
-                  cy="48"
-                  r={ringRadius}
-                  stroke="currentColor"
-                  strokeWidth="7"
-                  fill="transparent"
-                  className="text-zinc-200 dark:text-zinc-800"
-                />
-                <motion.circle
-                  initial={{ strokeDashoffset: ringCircumference }}
-                  animate={{ strokeDashoffset: ringDashOffset }}
-                  transition={{ duration: 0.9, ease: 'easeOut' }}
-                  cx="48"
-                  cy="48"
-                  r={ringRadius}
-                  stroke="currentColor"
-                  strokeWidth="7"
-                  fill="transparent"
-                  strokeDasharray={ringCircumference}
-                  strokeLinecap="round"
-                  className="text-emerald-500"
-                />
-              </svg>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={streakRingData}
+                    dataKey="value"
+                    innerRadius={31}
+                    outerRadius={42}
+                    startAngle={90}
+                    endAngle={-270}
+                    stroke="none"
+                    paddingAngle={streakRingData[1].value > 0 ? 2 : 0}
+                    isAnimationActive
+                    animationDuration={700}
+                  >
+                    {streakRingData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <Flame className="w-3.5 h-3.5 text-orange-500 mb-0.5" />
                 <span className="text-base font-semibold leading-none">{currentStreak}</span>
@@ -510,13 +531,48 @@ function SavingsStreakCard({
               <span className="text-[10px] text-zinc-500 dark:text-zinc-400">More</span>
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-2">
-            {weeklyTotals.map((weekTotal, index) => (
-              <div key={index} className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-[#0e0e0e]">
-                <p className="text-xs font-semibold">{formatCurrency(weekTotal)}</p>
-                <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Week {index + 1}</p>
-              </div>
-            ))}
+          <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-[#141414]">
+            <div className="h-24">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={weeklyConsistencyData} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: '#71717a', fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis hide domain={[0, 'dataMax + 40']} />
+                  <Tooltip
+                    cursor={{ fill: 'transparent' }}
+                    contentStyle={{
+                      background: '#18181b',
+                      border: '1px solid #3f3f46',
+                      borderRadius: '8px',
+                      padding: '8px 10px',
+                    }}
+                    labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
+                    itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
+                    formatter={(value: number | string | undefined) => [formatCurrency(Number(value ?? 0)), 'Saved']}
+                  />
+                  <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                    {weeklyConsistencyData.map((week, index) => (
+                      <Cell
+                        key={week.label}
+                        fill="hsl(var(--equity))"
+                        fillOpacity={0.5 + (index / Math.max(weeklyConsistencyData.length - 1, 1)) * 0.4}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5 mt-2">
+              {weeklyTotals.map((weekTotal, index) => (
+                <p key={index} className="text-[10px] text-zinc-500 dark:text-zinc-400 text-center">
+                  W{index + 1}: {formatSliderCurrency(weekTotal)}
+                </p>
+              ))}
+            </div>
           </div>
         </div>
       </CardContent>
@@ -715,48 +771,11 @@ export default function SavingsHome() {
     () =>
       Array.from({ length: projectionHorizon + 1 }, (_, month) => ({
         month,
+        monthLabel: month === 0 ? 'Now' : `M${month}`,
         total: currentTowardDeposit + monthlyTotalContribution * month,
       })),
     [currentTowardDeposit, monthlyTotalContribution, projectionHorizon]
   );
-
-  const projectionChart = useMemo(() => {
-    const width = 340;
-    const height = 170;
-    const padX = 18;
-    const padY = 16;
-    const usableWidth = width - padX * 2;
-    const usableHeight = height - padY * 2;
-    const maxValue = Math.max(
-      requiredDeposit,
-      projectionSeries[projectionSeries.length - 1]?.total ?? 0,
-      1
-    );
-    const pointCount = Math.max(projectionSeries.length - 1, 1);
-    const points = projectionSeries.map((point, index) => {
-      const x = padX + (index / pointCount) * usableWidth;
-      const y = padY + (1 - point.total / maxValue) * usableHeight;
-      return { x, y };
-    });
-    const polyline = points.map((point) => `${point.x},${point.y}`).join(' ');
-    const areaPath =
-      points.length > 0
-        ? `M${points[0].x},${height - padY} L${points.map((point) => `${point.x},${point.y}`).join(' L')} L${points[points.length - 1].x},${height - padY} Z`
-        : '';
-    const targetY = padY + (1 - requiredDeposit / maxValue) * usableHeight;
-
-    return {
-      width,
-      height,
-      padX,
-      padY,
-      maxValue,
-      polyline,
-      areaPath,
-      targetY,
-      lastPoint: points[points.length - 1] ?? null,
-    };
-  }, [projectionSeries, requiredDeposit]);
 
   const sixMonthProjection = useMemo(
     () =>
@@ -769,21 +788,40 @@ export default function SavingsHome() {
     [currentTowardDeposit, monthlyTotalContribution, requiredDeposit]
   );
 
-  const allocationTarget = Math.max(requiredDeposit, 1);
   const towardTarget = Math.min(currentTowardDeposit, requiredDeposit);
   const towardFromSavings = Math.min(savingsBalance, towardTarget);
   const towardFromCredits = Math.max(Math.min(semiValidCredits, towardTarget - towardFromSavings), 0);
   const remainingForTarget = Math.max(requiredDeposit - towardTarget, 0);
-  const savingsTargetPct = (towardFromSavings / allocationTarget) * 100;
-  const creditsTargetPct = (towardFromCredits / allocationTarget) * 100;
-  const allocationDonutStyle = {
-    background: `conic-gradient(#18181b 0 ${savingsTargetPct}%, #10b981 ${savingsTargetPct}% ${savingsTargetPct + creditsTargetPct}%, #d4d4d8 ${savingsTargetPct + creditsTargetPct}% 100%)`,
-  };
+  const allocationCompositionData = useMemo(
+    () => [
+      { name: 'Savings', value: towardFromSavings, color: 'hsl(var(--foreground))' },
+      { name: 'Credits', value: towardFromCredits, color: 'hsl(var(--equity))' },
+      { name: 'Remaining', value: remainingForTarget, color: '#a1a1aa' },
+    ],
+    [remainingForTarget, towardFromCredits, towardFromSavings]
+  );
+  const sixMonthProjectionData = useMemo(
+    () =>
+      sixMonthProjection.map((point) => ({
+        monthLabel: `M${point.month}`,
+        progressPct: Number(point.progressPct.toFixed(1)),
+        projectedTotal: point.projectedTotal,
+      })),
+    [sixMonthProjection]
+  );
 
   const postingPhaseDays = daysUntilPosting;
   const depositPhaseDays = monthsToDeposit ? monthsToDeposit * 30 : 0;
   const elpaPhaseDays = daysUntilElpa;
   const totalPhaseDays = Math.max(postingPhaseDays + depositPhaseDays + elpaPhaseDays, 1);
+  const phaseDurationChartData = [
+    {
+      name: 'Phase Mix',
+      posting: postingPhaseDays,
+      deposit: depositPhaseDays,
+      elpa: elpaPhaseDays,
+    },
+  ];
 
   const calculatorRecommendation = useMemo(() => {
     if (remainingDeposit <= 0) return 'You are deposit-ready now. Next step is selecting an ELPA home and lock date.';
@@ -1727,84 +1765,68 @@ export default function SavingsHome() {
                             <span>Projected deposit power curve</span>
                             <span>{formatCurrency(monthlyTotalContribution)}/mo effective</span>
                           </div>
-                          <svg
-                            viewBox={`0 0 ${projectionChart.width} ${projectionChart.height}`}
-                            className="w-full h-44"
-                          >
-                            {[0.25, 0.5, 0.75, 1].map((ratio) => {
-                              const y =
-                                projectionChart.padY +
-                                (1 - ratio) * (projectionChart.height - projectionChart.padY * 2);
-                              return (
-                                <line
-                                  key={ratio}
-                                  x1={projectionChart.padX}
-                                  x2={projectionChart.width - projectionChart.padX}
-                                  y1={y}
-                                  y2={y}
-                                  stroke="currentColor"
-                                  className="text-zinc-200 dark:text-zinc-800"
-                                  strokeWidth="1"
+                          <div className="h-44">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={projectionSeries} margin={{ top: 6, right: 8, left: 4, bottom: 0 }}>
+                                <defs>
+                                  <linearGradient id="savingsProjectionFill" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="hsl(var(--equity))" stopOpacity={0.28} />
+                                    <stop offset="95%" stopColor="hsl(var(--equity))" stopOpacity={0.02} />
+                                  </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" opacity={0.35} vertical={false} />
+                                <XAxis
+                                  dataKey="monthLabel"
+                                  tick={{ fill: '#71717a', fontSize: 10 }}
+                                  tickLine={false}
+                                  axisLine={false}
+                                  interval="preserveStartEnd"
                                 />
-                              );
-                            })}
-                            <line
-                              x1={projectionChart.padX}
-                              x2={projectionChart.width - projectionChart.padX}
-                              y1={projectionChart.targetY}
-                              y2={projectionChart.targetY}
-                              stroke="currentColor"
-                              className="text-zinc-400 dark:text-zinc-600"
-                              strokeWidth="1.5"
-                              strokeDasharray="4 4"
-                            />
-                            {linkedGoalForecast && Math.abs(linkedGoalForecast.target - requiredDeposit) >= 1 && (
-                              <line
-                                x1={projectionChart.padX}
-                                x2={projectionChart.width - projectionChart.padX}
-                                y1={
-                                  projectionChart.padY +
-                                  (1 -
-                                    Math.min(linkedGoalForecast.target, projectionChart.maxValue) /
-                                      projectionChart.maxValue) *
-                                    (projectionChart.height - projectionChart.padY * 2)
-                                }
-                                y2={
-                                  projectionChart.padY +
-                                  (1 -
-                                    Math.min(linkedGoalForecast.target, projectionChart.maxValue) /
-                                      projectionChart.maxValue) *
-                                    (projectionChart.height - projectionChart.padY * 2)
-                                }
-                                stroke="currentColor"
-                                className="text-amber-500"
-                                strokeWidth="1.5"
-                                strokeDasharray="2 3"
-                              />
-                            )}
-                            {projectionChart.areaPath && (
-                              <path
-                                d={projectionChart.areaPath}
-                                fill="hsl(var(--equity) / 0.16)"
-                              />
-                            )}
-                            <polyline
-                              points={projectionChart.polyline}
-                              fill="none"
-                              stroke="hsl(var(--equity))"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                            {projectionChart.lastPoint && (
-                              <circle
-                                cx={projectionChart.lastPoint.x}
-                                cy={projectionChart.lastPoint.y}
-                                r="3.5"
-                                fill="hsl(var(--equity))"
-                              />
-                            )}
-                          </svg>
+                                <YAxis
+                                  tick={{ fill: '#71717a', fontSize: 10 }}
+                                  tickLine={false}
+                                  axisLine={false}
+                                  width={46}
+                                  tickFormatter={(value) => formatAxisCurrency(Number(value))}
+                                />
+                                <Tooltip
+                                  cursor={{ stroke: '#71717a', strokeDasharray: '4 4' }}
+                                  contentStyle={{
+                                    background: '#18181b',
+                                    border: '1px solid #3f3f46',
+                                    borderRadius: '8px',
+                                    padding: '8px 10px',
+                                  }}
+                                  labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
+                                  itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
+                                  formatter={(value: number | string | undefined) => [formatCurrency(Number(value ?? 0)), 'Deposit power']}
+                                />
+                                <ReferenceLine
+                                  y={requiredDeposit}
+                                  stroke="#71717a"
+                                  strokeDasharray="5 5"
+                                  strokeWidth={1.5}
+                                />
+                                {linkedGoalForecast && Math.abs(linkedGoalForecast.target - requiredDeposit) >= 1 && (
+                                  <ReferenceLine
+                                    y={linkedGoalForecast.target}
+                                    stroke="#f59e0b"
+                                    strokeDasharray="3 4"
+                                    strokeWidth={1.5}
+                                  />
+                                )}
+                                <Area
+                                  type="monotone"
+                                  dataKey="total"
+                                  stroke="hsl(var(--equity))"
+                                  strokeWidth={2.25}
+                                  fill="url(#savingsProjectionFill)"
+                                  dot={false}
+                                  activeDot={{ r: 4, fill: 'hsl(var(--equity))', stroke: '#ffffff', strokeWidth: 1.25 }}
+                                />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          </div>
                           <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
                             <span>Now</span>
                             <span>+{projectionHorizon} months</span>
@@ -1853,8 +1875,26 @@ export default function SavingsHome() {
                             Deposit Composition
                           </p>
                           <div className="flex items-center gap-3">
-                            <div className="relative w-28 h-28 rounded-full shrink-0" style={allocationDonutStyle}>
-                              <div className="absolute inset-4 rounded-full bg-white dark:bg-[#141414] border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center">
+                            <div className="relative w-28 h-28 shrink-0">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie
+                                    data={allocationCompositionData}
+                                    dataKey="value"
+                                    innerRadius={33}
+                                    outerRadius={50}
+                                    stroke="none"
+                                    startAngle={90}
+                                    endAngle={-270}
+                                    paddingAngle={1.4}
+                                  >
+                                    {allocationCompositionData.map((entry) => (
+                                      <Cell key={entry.name} fill={entry.color} />
+                                    ))}
+                                  </Pie>
+                                </PieChart>
+                              </ResponsiveContainer>
+                              <div className="absolute inset-[18px] rounded-full bg-white dark:bg-[#141414] border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center">
                                 <span className="text-sm font-semibold">{Math.round(depositProgressPct)}%</span>
                                 <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Funded</span>
                               </div>
@@ -1889,18 +1929,44 @@ export default function SavingsHome() {
                           <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
                             6-Month Progress Bars
                           </p>
-                          <div className="flex items-end gap-1.5 h-28 mt-3">
-                            {sixMonthProjection.map((point) => (
-                              <div key={point.month} className="flex-1 flex flex-col items-center gap-1">
-                                <div className="w-full h-24 rounded-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-[#0e0e0e] overflow-hidden flex items-end">
-                                  <div
-                                    className="w-full bg-emerald-500"
-                                    style={{ height: `${point.progressPct}%` }}
-                                  />
-                                </div>
-                                <span className="text-[9px] text-zinc-500 dark:text-zinc-400">M{point.month}</span>
-                              </div>
-                            ))}
+                          <div className="h-32 mt-2">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={sixMonthProjectionData} margin={{ top: 8, right: 4, left: 2, bottom: 0 }} barCategoryGap={9}>
+                                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#3f3f46" opacity={0.2} />
+                                <XAxis
+                                  dataKey="monthLabel"
+                                  tick={{ fill: '#71717a', fontSize: 10 }}
+                                  axisLine={false}
+                                  tickLine={false}
+                                />
+                                <YAxis hide domain={[0, 100]} />
+                                <Tooltip
+                                  cursor={{ fill: 'transparent' }}
+                                  contentStyle={{
+                                    background: '#18181b',
+                                    border: '1px solid #3f3f46',
+                                    borderRadius: '8px',
+                                    padding: '8px 10px',
+                                  }}
+                                  labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
+                                  itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
+                                  labelFormatter={(label: string) => {
+                                    const point = sixMonthProjectionData.find((entry) => entry.monthLabel === label);
+                                    return point ? `${label} · ${formatCurrency(point.projectedTotal)}` : label;
+                                  }}
+                                  formatter={(value: number | string | undefined) => [`${Math.round(Number(value ?? 0))}%`, 'Target progress']}
+                                />
+                                <Bar dataKey="progressPct" radius={[4, 4, 0, 0]}>
+                                  {sixMonthProjectionData.map((point, index) => (
+                                    <Cell
+                                      key={point.monthLabel}
+                                      fill="hsl(var(--equity))"
+                                      fillOpacity={0.5 + (index / Math.max(sixMonthProjectionData.length - 1, 1)) * 0.4}
+                                    />
+                                  ))}
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
                           </div>
                           <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2">
                             Target {formatCurrency(requiredDeposit)} · current plan reaches
@@ -1963,19 +2029,31 @@ export default function SavingsHome() {
                           <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
                             Phase Duration Mix
                           </p>
-                          <div className="h-2 rounded overflow-hidden border border-zinc-200 dark:border-zinc-800 flex">
-                            <div
-                              className="bg-zinc-900 dark:bg-zinc-100"
-                              style={{ width: `${(postingPhaseDays / totalPhaseDays) * 100}%` }}
-                            />
-                            <div
-                              className="bg-emerald-500"
-                              style={{ width: `${(depositPhaseDays / totalPhaseDays) * 100}%` }}
-                            />
-                            <div
-                              className="bg-zinc-300 dark:bg-zinc-600"
-                              style={{ width: `${(elpaPhaseDays / totalPhaseDays) * 100}%` }}
-                            />
+                          <div className="h-10 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-[#0e0e0e] px-1">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={phaseDurationChartData} layout="vertical" margin={{ top: 7, right: 4, left: 4, bottom: 7 }}>
+                                <XAxis type="number" hide domain={[0, totalPhaseDays]} />
+                                <YAxis type="category" dataKey="name" hide />
+                                <Tooltip
+                                  cursor={{ fill: 'transparent' }}
+                                  contentStyle={{
+                                    background: '#18181b',
+                                    border: '1px solid #3f3f46',
+                                    borderRadius: '8px',
+                                    padding: '8px 10px',
+                                  }}
+                                  labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
+                                  itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
+                                  formatter={(value: number | string | undefined, name: string | undefined) => [
+                                    `${Math.round(Number(value ?? 0))} days`,
+                                    name ?? 'Phase',
+                                  ]}
+                                />
+                                <Bar dataKey="posting" stackId="phase" fill="hsl(var(--foreground))" radius={[4, 0, 0, 4]} />
+                                <Bar dataKey="deposit" stackId="phase" fill="hsl(var(--equity))" />
+                                <Bar dataKey="elpa" stackId="phase" fill="#a1a1aa" radius={[0, 4, 4, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
                           </div>
                           <div className="grid grid-cols-3 gap-2 mt-2 text-[10px] text-zinc-500 dark:text-zinc-400">
                             <div>
