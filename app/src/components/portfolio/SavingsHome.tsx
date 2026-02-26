@@ -46,7 +46,6 @@ import WithdrawModal from './WithdrawModal';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { LargePriceWheel } from '@/components/PriceWheel';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
@@ -170,11 +169,10 @@ const CALCULATOR_SCENARIOS: CalculatorScenario[] = [
 ];
 
 const rarityColors = {
-  common: 'text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 bg-zinc-100/70 dark:bg-[#141414]',
-  rare: 'text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-[#141414]',
-  epic: 'text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-[#141414]',
-  legendary:
-    'text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-[#141414]',
+  common: 'text-zinc-500 dark:text-zinc-400 border-zinc-300 dark:border-zinc-700',
+  rare: 'text-zinc-700 dark:text-zinc-300 border-zinc-400 dark:border-zinc-700',
+  epic: 'text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700',
+  legendary: 'text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700',
 };
 
 const rarityGlow = {
@@ -381,8 +379,8 @@ function SavingsStreakCard({
   }));
 
   return (
-    <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-      <CardContent className="px-3 py-2">
+    <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-6">
+      <div className="space-y-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
             Savings Streak
@@ -438,15 +436,15 @@ function SavingsStreakCard({
                     : 'All streak milestones unlocked'}
                 </p>
                 <div className="mt-2.5 grid grid-cols-3 gap-2">
-                  <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-2 text-center">
+                  <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-2 text-center">
                     <p className="text-sm font-semibold">{bestStreak}</p>
                     <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Best</p>
                   </div>
-                  <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-2 text-center">
+                  <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-2 text-center">
                     <p className="text-sm font-semibold">{unlockedMilestones}</p>
                     <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Unlocked</p>
                   </div>
-                  <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-2 text-center">
+                  <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-2 text-center">
                     <p className="text-sm font-semibold">{rewardPoints}</p>
                     <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Points</p>
                   </div>
@@ -532,7 +530,7 @@ function SavingsStreakCard({
                 <span className="text-[10px] text-zinc-500 dark:text-zinc-400">More</span>
               </div>
             </div>
-            <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-2">
+            <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-2">
               <div className="h-24">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={weeklyConsistencyData} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
@@ -577,8 +575,8 @@ function SavingsStreakCard({
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -592,8 +590,8 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
   const unlockedPerks = perks.filter((perk) => perk.unlocked).length;
 
   return (
-    <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-      <CardContent className="px-3 py-2">
+    <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-6">
+      <div className="space-y-4">
         <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
           <div className="pb-3">
             <div className="flex items-center justify-between mb-2.5">
@@ -605,35 +603,33 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
               </Badge>
             </div>
 
-            <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] p-2">
-              <div className="grid grid-cols-4 gap-1.5">
-                {achievements.map((achievement) => (
-                  <button
-                    key={achievement.id}
+            <div className="grid grid-cols-4 gap-1.5">
+              {achievements.map((achievement) => (
+                <button
+                  key={achievement.id}
+                  className={cn(
+                    'flex flex-col items-center gap-1 p-2 rounded transition-all',
+                    achievement.unlocked
+                      ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-105')
+                      : 'border border-zinc-200/80 dark:border-zinc-800 opacity-50'
+                  )}
+                >
+                  <div
                     className={cn(
-                      'flex flex-col items-center gap-1 p-2 rounded transition-all',
-                      achievement.unlocked
-                        ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-105')
-                        : 'bg-zinc-200/60 dark:bg-[#141414] opacity-50'
+                      'w-8 h-8 rounded-full flex items-center justify-center',
+                      achievement.unlocked ? 'bg-current/10' : 'bg-zinc-200 dark:bg-[#0e0e0e]'
                     )}
                   >
-                    <div
-                      className={cn(
-                        'w-8 h-8 rounded-full flex items-center justify-center',
-                        achievement.unlocked ? 'bg-current/10' : 'bg-zinc-200 dark:bg-[#0e0e0e]'
-                      )}
-                    >
-                      {achievement.unlocked ? (
-                        <achievement.icon className="w-4 h-4" />
-                      ) : (
-                        <Lock className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
-                      )}
-                    </div>
-                    <span className="text-[10px] font-medium text-center leading-tight">{achievement.name}</span>
-                    {achievement.date && <span className="text-[8px] text-zinc-500 dark:text-zinc-400">{achievement.date}</span>}
-                  </button>
-                ))}
-              </div>
+                    {achievement.unlocked ? (
+                      <achievement.icon className="w-4 h-4" />
+                    ) : (
+                      <Lock className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                    )}
+                  </div>
+                  <span className="text-[10px] font-medium text-center leading-tight">{achievement.name}</span>
+                  {achievement.date && <span className="text-[8px] text-zinc-500 dark:text-zinc-400">{achievement.date}</span>}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -645,7 +641,7 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
               <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</span>
             </div>
 
-            <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] divide-y divide-zinc-200 dark:divide-zinc-800">
+            <div className="divide-y divide-zinc-200 dark:divide-zinc-800 border-y border-zinc-200/70 dark:border-zinc-800/70">
               {perks.map((perk) => (
                 <div
                   key={perk.id}
@@ -684,8 +680,8 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -1202,7 +1198,7 @@ export default function SavingsHome() {
 
       <main className="pt-24 pb-28 container mx-auto md:pt-32">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
-          <div className="md:col-span-8 space-y-6">
+          <div className="md:col-span-8 space-y-10">
             <div>
               <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-400">
                 <span className="text-sm font-medium">ELPA Deposit Power</span>
@@ -1238,10 +1234,10 @@ export default function SavingsHome() {
               </div>
             </div>
 
-            <div className="bg-zinc-50 dark:bg-[#141414] rounded border border-zinc-200 dark:border-zinc-800/50">
-              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/70 flex items-center justify-between gap-3">
+            <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-6 space-y-5">
+              <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded bg-zinc-200 dark:bg-[#0e0e0e] flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-sm border border-zinc-200 dark:border-zinc-800 flex items-center justify-center">
                     <Landmark className="w-5 h-5 text-zinc-700 dark:text-zinc-300" />
                   </div>
                   <div className="min-w-0">
@@ -1254,9 +1250,9 @@ export default function SavingsHome() {
                 </Badge>
               </div>
 
-              <div className="p-4 space-y-5">
+              <div className="space-y-5">
                 <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:block sm:overflow-visible sm:px-0 sm:mx-0 sm:pb-0">
-                  <div className="min-w-[540px] sm:min-w-0 rounded bg-zinc-100 dark:bg-[#0e0e0e] divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-3">
+                  <div className="min-w-[540px] sm:min-w-0 border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-3">
                     <div className="p-3">
                       <p className="text-xs text-zinc-500 dark:text-zinc-400">Savings Balance</p>
                       <p className="text-lg font-medium mt-1">{formatCurrency(savingsBalance)}</p>
@@ -1273,7 +1269,7 @@ export default function SavingsHome() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-3">
+                  <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-3">
                     <div className="flex items-center justify-between text-xs mb-2">
                       <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
                         <Clock3 className="w-3.5 h-3.5" />
@@ -1289,7 +1285,7 @@ export default function SavingsHome() {
                     </p>
                   </div>
 
-                  <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] p-3">
+                  <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-3">
                     <div className="flex items-center justify-between text-xs mb-2">
                       <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
                         <Home className="w-3.5 h-3.5" />
@@ -1306,7 +1302,7 @@ export default function SavingsHome() {
                   </div>
                 </div>
 
-                <div className="rounded bg-zinc-100 dark:bg-[#0e0e0e] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-1 sm:grid-cols-2">
+                <div className="divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 border-y border-zinc-200/70 dark:border-zinc-800/70 grid grid-cols-1 sm:grid-cols-2">
                   <div className="p-3">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
                       Account Number
@@ -1341,13 +1337,13 @@ export default function SavingsHome() {
                   </div>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-              <CardHeader className="pb-3 border-b border-zinc-200 dark:border-zinc-800">
+            <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-8">
+              <div className="mb-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <CardTitle className="text-base font-medium">Savings Goals</CardTitle>
+                    <h2 className="text-lg font-light tracking-tight">Savings Goals</h2>
                     {linkedGoalForecast && (
                       <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
                         Linked to calculator: {linkedGoalForecast.name}
@@ -1368,9 +1364,9 @@ export default function SavingsHome() {
                     )}
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-4">
-                <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-1 sm:grid-cols-3">
+              </div>
+              <div className="space-y-4">
+                <div className="divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 border-y border-zinc-200/70 dark:border-zinc-800/70 grid grid-cols-1 sm:grid-cols-3">
                   <div className="p-3">
                     <p className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Total Progress</p>
                     <p className="text-base font-medium mt-1">{Math.round(goalsProgressPct)}%</p>
@@ -1389,7 +1385,7 @@ export default function SavingsHome() {
                   </div>
                 </div>
 
-                <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] p-3">
+                <div className="border-y border-zinc-200/70 dark:border-zinc-800/70 py-3">
                   <div className="flex items-center justify-between text-[11px] mb-2">
                     <span className="text-zinc-500 dark:text-zinc-400">Goal allocation by size</span>
                     <span className="font-medium">{formatCurrency(totalGoalTarget)}</span>
@@ -1432,8 +1428,8 @@ export default function SavingsHome() {
                 {goalForecast.map((goal) => (
                   <motion.div
                     key={goal.id}
-                    whileHover={{ scale: 1.008 }}
-                    className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]"
+                    whileHover={{ y: -1 }}
+                    className="py-4 border-b border-zinc-200/70 dark:border-zinc-800/70 last:border-b-0"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -1509,7 +1505,7 @@ export default function SavingsHome() {
                   </motion.div>
                 ))}
 
-                <div className="rounded border border-dashed border-zinc-300 dark:border-zinc-700 p-3">
+                <div className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-4">
                   <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
                     Create Goal
                   </p>
@@ -1547,18 +1543,18 @@ export default function SavingsHome() {
                     </button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </section>
 
-            <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-              <CardHeader className="pb-3 border-b border-zinc-200 dark:border-zinc-800">
+            <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-8">
+              <div className="mb-4">
                 <div className="flex items-center justify-between gap-3">
-                  <CardTitle className="text-base font-medium">Home Savings Calculator</CardTitle>
+                  <h2 className="text-lg font-light tracking-tight">Home Savings Calculator</h2>
                   <Badge variant="outline" className="text-[10px]">1:1 Match Included</Badge>
                 </div>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-4">
-                <div className="rounded p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2.5">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Plan Builder</p>
                     <Badge variant="outline" className="text-[10px]">
@@ -1587,7 +1583,7 @@ export default function SavingsHome() {
                   </div>
                 </div>
 
-                <div className="rounded p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                <div className="border-y border-zinc-200/70 dark:border-zinc-800/70 py-3">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                       Goal Sync
@@ -1690,7 +1686,7 @@ export default function SavingsHome() {
                     />
                   </div>
 
-                  <div className="rounded p-3 bg-zinc-50 dark:bg-[#0e0e0e] space-y-3">
+                  <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-3 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
@@ -1735,7 +1731,7 @@ export default function SavingsHome() {
                   </div>
                 </div>
 
-                <div className="rounded p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+                <div className="border-y border-zinc-200/70 dark:border-zinc-800/70 py-3">
                   <div className="flex items-center gap-4 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 pb-2">
                     {[
                       { key: 'projection', label: 'Projection' },
@@ -2078,20 +2074,20 @@ export default function SavingsHome() {
                     )}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </section>
 
-            <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-              <CardHeader className="pb-3 border-b border-zinc-200 dark:border-zinc-800">
+            <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-8">
+              <div className="mb-4">
                 <div className="flex items-center justify-between gap-3">
-                  <CardTitle className="text-base font-medium">History & Activity</CardTitle>
+                  <h2 className="text-lg font-light tracking-tight">History & Activity</h2>
                   <Badge variant="outline" className="text-[10px]">
                     {filteredActivity.length} items
                   </Badge>
                 </div>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-4">
-                <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-1 sm:grid-cols-3">
+              </div>
+              <div className="space-y-4">
+                <div className="divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 border-y border-zinc-200/70 dark:border-zinc-800/70 grid grid-cols-1 sm:grid-cols-3">
                   <div className="p-3">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Deposits</p>
                     <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.deposits)}</p>
@@ -2129,7 +2125,7 @@ export default function SavingsHome() {
                   ))}
                 </div>
 
-                <div className="rounded bg-zinc-50 dark:bg-[#0e0e0e] divide-y divide-zinc-200 dark:divide-zinc-800">
+                <div className="divide-y divide-zinc-200 dark:divide-zinc-800 border-y border-zinc-200/70 dark:border-zinc-800/70">
                   {filteredActivity.map((event) => {
                     const icon =
                       event.type === 'deposit' ? ArrowUpRight : event.type === 'credit' ? Sparkles : Gift;
@@ -2168,11 +2164,11 @@ export default function SavingsHome() {
                     );
                   })}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           </div>
 
-          <div className="md:col-span-4 space-y-2.5">
+          <div className="md:col-span-4 space-y-8">
             <SavingsStreakCard
               currentStreak={streakDays}
               bestStreak={52}
@@ -2186,8 +2182,8 @@ export default function SavingsHome() {
 
             <RewardsPerksCard achievements={achievements} perks={perks} />
 
-            <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-zinc-100 to-emerald-50/60 dark:from-[#141414] dark:to-[#0e0e0e]">
-              <CardContent className="py-2.5 space-y-2">
+            <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-6">
+              <div className="space-y-2 rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 bg-gradient-to-r from-zinc-100/70 to-emerald-50/50 dark:from-[#141414] dark:to-[#0e0e0e] p-4">
                 <p className="text-sm font-medium">Stop Renting. Start Owning. Take the CLEAR path.</p>
                 <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
                   EquityShare is a 2026-first home financing solution. We buy the home you want, you move in, and a
@@ -2197,8 +2193,8 @@ export default function SavingsHome() {
                   EquityShare is facilitated via an Equity-Lease Participation Agreement (ELPA), an asset-backed
                   residency contract. 2% down. No credit trap. 100% Assurance.
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           </div>
         </div>
       </main>
