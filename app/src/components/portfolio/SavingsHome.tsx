@@ -91,8 +91,6 @@ interface ActivityEvent {
 
 const ACCOUNT_NUMBER = 'ESA-4923-1209';
 const ROUTING_NUMBER = '110000019';
-const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-
 const INITIAL_GOALS: SavingsGoal[] = [
   { id: 'deposit-target', name: '2% Deposit Target', target: 12000, saved: 8450, due: 'Nov 2026' },
   { id: 'closing-costs', name: 'Closing Costs Buffer', target: 4500, saved: 2200, due: 'Jan 2027' },
@@ -108,7 +106,7 @@ const BASE_MILESTONES: Omit<Milestone, 'achieved'>[] = [
 
 const rarityColors = {
   common: 'text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 bg-zinc-100/70 dark:bg-zinc-800/40',
-  rare: 'text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20',
+  rare: 'text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800/40',
   epic: 'text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20',
   legendary:
     'text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20',
@@ -183,136 +181,130 @@ function SavingsStreakCard({
   onCheckIn,
 }: SavingsStreakCardProps) {
   const saverLevel = currentStreak >= 60 ? 'Lv.4' : currentStreak >= 30 ? 'Lv.3' : currentStreak >= 14 ? 'Lv.2' : 'Lv.1';
+  const streakTarget = 60;
+  const streakProgress = Math.min((currentStreak / streakTarget) * 100, 100);
+  const recentDays = weeks.flat().slice(-14);
+  const weeklyTotals = weeks.map((week) => week.reduce((sum, day) => sum + (day.saved ? day.amount : 0), 0));
+  const unlockedMilestones = milestones.filter((milestone) => milestone.achieved).length;
+  const nextMilestone = milestones.find((milestone) => !milestone.achieved);
+  const daysToNextMilestone = nextMilestone ? Math.max(nextMilestone.month * 30 - accountMonth * 30, 0) : 0;
 
   return (
     <Card className="border-zinc-200 dark:border-zinc-800 bg-card/50 backdrop-blur">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-4">
+      <CardContent className="p-4 space-y-4">
+        <div className="flex items-center justify-between">
           <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
             Savings Streak
           </span>
-          <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-orange-500/10">
-            <Flame className="w-3.5 h-3.5 text-orange-500" />
-            <span className="text-xs font-semibold text-orange-500">{currentStreak} days</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          <div className="p-2.5 rounded bg-zinc-100 dark:bg-zinc-900/50 text-center">
-            <p className="text-lg font-semibold">{currentStreak}</p>
-            <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Current</span>
-          </div>
-          <div className="p-2.5 rounded bg-zinc-100 dark:bg-zinc-900/50 text-center">
-            <p className="text-lg font-semibold">{bestStreak}</p>
-            <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Best</span>
-          </div>
-          <div className="p-2.5 rounded bg-zinc-100 dark:bg-zinc-900/50 text-center">
-            <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">{saverLevel}</p>
-            <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Saver Level</span>
-          </div>
-        </div>
-
-        <div className="mb-4">
-          <div className="flex gap-0.5">
-            <div className="flex flex-col gap-0.5 mr-1">
-              {DAY_LABELS.map((label, index) => (
-                <div key={`${label}-${index}`} className="w-4 h-4 flex items-center justify-center">
-                  <span className="text-[8px] text-zinc-500 dark:text-zinc-400">{label}</span>
-                </div>
-              ))}
-            </div>
-            {weeks.map((week, weekIndex) => (
-              <div key={weekIndex} className="flex-1 flex flex-col gap-0.5">
-                {week.map((day, dayIndex) => (
-                  <div
-                    key={dayIndex}
-                    className={cn('aspect-square rounded-sm transition-all', !day.isPast && 'bg-zinc-100 dark:bg-zinc-900/50')}
-                    style={{
-                      backgroundColor: day.saved
-                        ? `hsl(var(--equity) / ${0.2 + Math.min(day.amount / 180, 1) * 0.6})`
-                        : day.isPast
-                        ? 'hsl(var(--secondary))'
-                        : undefined,
-                    }}
-                    title={day.saved ? `${formatDateShort(day.date)} · $${day.amount}` : `${formatDateShort(day.date)} · no deposit`}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center justify-between mt-2">
-            <span className="text-[9px] text-zinc-500 dark:text-zinc-400">4 weeks ago</span>
-            <div className="flex items-center gap-1">
-              <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Less</span>
-              <div className="flex gap-px">
-                {[0.15, 0.3, 0.5, 0.7, 0.9].map((alpha) => (
-                  <div
-                    key={alpha}
-                    className="w-2.5 h-2.5 rounded-sm"
-                    style={{ backgroundColor: `hsl(var(--equity) / ${alpha})` }}
-                  />
-                ))}
-              </div>
-              <span className="text-[9px] text-zinc-500 dark:text-zinc-400">More</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="relative mb-4">
-          <div className="absolute left-3 top-0 bottom-0 w-px bg-zinc-200 dark:bg-zinc-800" />
-          <div className="space-y-2.5">
-            {milestones.map((milestone) => (
-              <div key={milestone.month} className="flex items-center gap-3 relative">
-                <div
-                  className={cn(
-                    'w-6 h-6 rounded-full flex items-center justify-center z-10 shrink-0',
-                    milestone.achieved
-                      ? 'bg-emerald-600 text-white'
-                      : accountMonth >= milestone.month - 1
-                      ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40'
-                      : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500'
-                  )}
-                >
-                  <milestone.icon className="w-3 h-3" />
-                </div>
-                <div className="flex-1 flex items-center justify-between">
-                  <div>
-                    <p className={cn('text-xs font-medium', !milestone.achieved && 'text-zinc-500 dark:text-zinc-400')}>
-                      {milestone.label}
-                    </p>
-                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Month {milestone.month}</span>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'text-[9px]',
-                      milestone.achieved
-                        ? 'text-emerald-600 dark:text-emerald-300 border-emerald-500/30 bg-emerald-500/10'
-                        : 'text-zinc-500 dark:text-zinc-400'
-                    )}
-                  >
-                    {milestone.reward}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/30">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">Reward points</p>
-            <p className="text-sm font-semibold">{rewardPoints} pts</p>
-          </div>
           <button
             type="button"
             onClick={onCheckIn}
             disabled={checkedInToday}
-            className="w-full mt-3 h-9 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-8 px-3 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {checkedInToday ? 'Checked in today' : 'Check in & save'}
+            {checkedInToday ? 'Checked in' : 'Check in'}
           </button>
+        </div>
+
+        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-4 bg-zinc-50 dark:bg-zinc-900/20">
+          <div className="flex items-center gap-4">
+            <div className="relative w-24 h-24 shrink-0">
+              <div
+                className="absolute inset-0 rounded-full"
+                style={{
+                  background: `conic-gradient(hsl(var(--equity)) ${streakProgress * 3.6}deg, hsl(var(--secondary)) 0deg)`,
+                }}
+              />
+              <div className="absolute inset-2 rounded-full bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center">
+                <Flame className="w-3.5 h-3.5 text-orange-500 mb-0.5" />
+                <span className="text-sm font-semibold">{currentStreak}</span>
+                <span className="text-[9px] text-zinc-500 dark:text-zinc-400">days</span>
+              </div>
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">Consistency Level {saverLevel}</p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                {nextMilestone
+                  ? `${daysToNextMilestone} days to ${nextMilestone.label}`
+                  : 'All streak milestones unlocked'}
+              </p>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-zinc-950/40">
+                  <p className="text-sm font-semibold">{bestStreak}</p>
+                  <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Best</p>
+                </div>
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-zinc-950/40">
+                  <p className="text-sm font-semibold">{accountMonth}</p>
+                  <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Month</p>
+                </div>
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-zinc-950/40">
+                  <p className="text-sm font-semibold">{rewardPoints}</p>
+                  <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Points</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
+              Milestone Track
+            </p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">{unlockedMilestones}/{milestones.length}</p>
+          </div>
+
+          <div className="relative">
+            <div className="absolute left-4 right-4 top-[14px] h-px bg-zinc-200 dark:bg-zinc-800" />
+            <div className="grid grid-cols-5 gap-2">
+              {milestones.map((milestone) => (
+                <div key={milestone.month} className="text-center">
+                  <div
+                    className={cn(
+                      'w-7 h-7 mx-auto rounded-full border flex items-center justify-center relative z-10',
+                      milestone.achieved
+                        ? 'bg-emerald-600 border-emerald-600 text-white'
+                        : 'bg-white dark:bg-zinc-950 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400'
+                    )}
+                  >
+                    <milestone.icon className="w-3 h-3" />
+                  </div>
+                  <p className={cn('mt-2 text-[10px] font-medium', milestone.achieved ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400')}>
+                    M{milestone.month}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
+          <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400 mb-2">
+            Recent Consistency
+          </p>
+          <div className="grid grid-cols-14 gap-1 mb-3">
+            {recentDays.map((day, index) => (
+              <div
+                key={`${day.date.toISOString()}-${index}`}
+                className="h-6 rounded-sm"
+                style={{
+                  backgroundColor: day.saved
+                    ? `hsl(var(--equity) / ${0.22 + Math.min(day.amount / 180, 1) * 0.62})`
+                    : 'hsl(var(--secondary))',
+                }}
+                title={day.saved ? `${formatDateShort(day.date)} · $${day.amount}` : `${formatDateShort(day.date)} · no deposit`}
+              />
+            ))}
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {weeklyTotals.map((weekTotal, index) => (
+              <div key={index} className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-center bg-white dark:bg-zinc-950/40">
+                <p className="text-xs font-semibold">{formatCurrency(weekTotal)}</p>
+                <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Week {index + 1}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -447,6 +439,7 @@ export default function SavingsHome() {
   const [downPctInput, setDownPctInput] = useState('2');
   const [monthlySaveInput, setMonthlySaveInput] = useState('900');
   const [copiedField, setCopiedField] = useState<'account' | 'routing' | null>(null);
+  const [balanceInsightTab, setBalanceInsightTab] = useState<'allocation' | 'posting' | 'eligibility'>('allocation');
   const [activityFilter, setActivityFilter] = useState<'all' | 'deposit' | 'credit' | 'reward'>('all');
 
   const today = useMemo(() => new Date(), []);
@@ -472,9 +465,14 @@ export default function SavingsHome() {
 
   const pendingMatchCredits = savingsBalance;
   const semiValidCredits = pendingMatchCredits * (postingProgress / 100);
+  const pendingCredits = Math.max(pendingMatchCredits - semiValidCredits, 0);
   const elpaUsableCredits = daysOpen >= 365 ? semiValidCredits : 0;
   const elpaDepositPower = savingsBalance + elpaUsableCredits;
   const projectedDepositPower = savingsBalance + semiValidCredits;
+  const totalCreditComposition = savingsBalance + semiValidCredits + pendingCredits;
+  const savingsSharePct = totalCreditComposition > 0 ? (savingsBalance / totalCreditComposition) * 100 : 0;
+  const semiValidSharePct = totalCreditComposition > 0 ? (semiValidCredits / totalCreditComposition) * 100 : 0;
+  const pendingSharePct = totalCreditComposition > 0 ? (pendingCredits / totalCreditComposition) * 100 : 0;
 
   const homePrice = Number(homePriceInput) || 0;
   const downPct = Number(downPctInput) || 0;
@@ -779,23 +777,138 @@ export default function SavingsHome() {
                 <span className="text-lg text-zinc-500 font-normal">USD</span>
               </h1>
 
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="text-[10px] bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300">
-                  1:1 Equity Match
-                </Badge>
-                <Badge variant="outline" className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                  Credits post semi-valid after 30 days
-                </Badge>
-                <Badge variant="outline" className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                  ELPA usable after 12 months
-                </Badge>
-              </div>
+              <div className="mt-4 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/20">
+                <div className="grid grid-cols-3 gap-1 p-1 border-b border-zinc-200 dark:border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setBalanceInsightTab('allocation')}
+                    className={cn(
+                      'h-8 rounded text-xs font-medium transition-colors',
+                      balanceInsightTab === 'allocation'
+                        ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700'
+                        : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/70'
+                    )}
+                  >
+                    Allocation
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBalanceInsightTab('posting')}
+                    className={cn(
+                      'h-8 rounded text-xs font-medium transition-colors',
+                      balanceInsightTab === 'posting'
+                        ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700'
+                        : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/70'
+                    )}
+                  >
+                    30-Day Posting
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBalanceInsightTab('eligibility')}
+                    className={cn(
+                      'h-8 rounded text-xs font-medium transition-colors',
+                      balanceInsightTab === 'eligibility'
+                        ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700'
+                        : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/70'
+                    )}
+                  >
+                    12-Month ELPA
+                  </button>
+                </div>
 
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2">
-                {daysUntilElpa > 0
-                  ? `Projected deposit power at full ELPA unlock: ${formatCurrency(projectedDepositPower)}`
-                  : 'All posted credits are ELPA-usable now.'}
-              </p>
+                <div className="p-3">
+                  {balanceInsightTab === 'allocation' && (
+                    <div className="space-y-3">
+                      <div className="h-2 rounded bg-zinc-200 dark:bg-zinc-800 overflow-hidden flex">
+                        <div className="h-full bg-emerald-500" style={{ width: `${savingsSharePct}%` }} />
+                        <div className="h-full bg-amber-500" style={{ width: `${semiValidSharePct}%` }} />
+                        <div className="h-full bg-zinc-500" style={{ width: `${pendingSharePct}%` }} />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-zinc-950/40">
+                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Savings</p>
+                          <p className="text-xs font-semibold mt-1">{formatCurrency(savingsBalance)}</p>
+                        </div>
+                        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-zinc-950/40">
+                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Semi-valid</p>
+                          <p className="text-xs font-semibold mt-1">{formatCurrency(semiValidCredits)}</p>
+                        </div>
+                        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 bg-white dark:bg-zinc-950/40">
+                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Pending</p>
+                          <p className="text-xs font-semibold mt-1">{formatCurrency(pendingCredits)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {balanceInsightTab === 'posting' && (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <div className="absolute left-3 right-3 top-3 h-px bg-zinc-200 dark:bg-zinc-800" />
+                        <div className="grid grid-cols-4 gap-2">
+                          {[0, 10, 20, 30].map((dayMark) => {
+                            const active = daysFromLastDeposit >= dayMark;
+                            return (
+                              <div key={dayMark} className="text-center">
+                                <div
+                                  className={cn(
+                                    'w-6 h-6 mx-auto rounded-full border relative z-10 flex items-center justify-center text-[9px] font-medium',
+                                    active
+                                      ? 'bg-emerald-600 border-emerald-600 text-white'
+                                      : 'bg-white dark:bg-zinc-950 border-zinc-300 dark:border-zinc-700 text-zinc-500'
+                                  )}
+                                >
+                                  {dayMark}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <Progress value={postingProgress} className="h-2" />
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {daysUntilPosting > 0
+                          ? `${daysUntilPosting} days until latest credits post as semi-valid.`
+                          : 'Latest credits have posted as semi-valid.'}
+                      </p>
+                    </div>
+                  )}
+
+                  {balanceInsightTab === 'eligibility' && (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <div className="absolute left-3 right-3 top-3 h-px bg-zinc-200 dark:bg-zinc-800" />
+                        <div className="grid grid-cols-4 gap-2">
+                          {[3, 6, 9, 12].map((monthMark) => {
+                            const active = accountMonth >= monthMark;
+                            return (
+                              <div key={monthMark} className="text-center">
+                                <div
+                                  className={cn(
+                                    'w-6 h-6 mx-auto rounded-full border relative z-10 flex items-center justify-center text-[9px] font-medium',
+                                    active
+                                      ? 'bg-emerald-600 border-emerald-600 text-white'
+                                      : 'bg-white dark:bg-zinc-950 border-zinc-300 dark:border-zinc-700 text-zinc-500'
+                                  )}
+                                >
+                                  {monthMark}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <Progress value={elpaProgress} className="h-2" />
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {daysUntilElpa > 0
+                          ? `${daysUntilElpa} days until ELPA usage unlock. Projected unlock power: ${formatCurrency(projectedDepositPower)}`
+                          : 'ELPA usage unlocked. Posted credits are now fully eligible.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <div className="mt-6 flex flex-wrap gap-3">
                 <button
@@ -1181,7 +1294,7 @@ export default function SavingsHome() {
 
             <RewardsPerksCard achievements={achievements} perks={perks} />
 
-            <Card className="border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-blue-50 to-emerald-50/60 dark:from-blue-950/20 dark:to-emerald-950/20">
+            <Card className="border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-zinc-100 to-emerald-50/60 dark:from-zinc-900/60 dark:to-emerald-950/20">
               <CardContent className="pt-6 space-y-3">
                 <p className="text-sm font-medium">Stop Renting. Start Owning. Take the CLEAR path.</p>
                 <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
