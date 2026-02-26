@@ -198,15 +198,15 @@ function SavingsStreakCard({
         </div>
 
         <div className="grid grid-cols-3 gap-2 mb-4">
-          <div className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900/50 text-center">
+          <div className="p-2.5 rounded bg-zinc-100 dark:bg-zinc-900/50 text-center">
             <p className="text-lg font-semibold">{currentStreak}</p>
             <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Current</span>
           </div>
-          <div className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900/50 text-center">
+          <div className="p-2.5 rounded bg-zinc-100 dark:bg-zinc-900/50 text-center">
             <p className="text-lg font-semibold">{bestStreak}</p>
             <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Best</span>
           </div>
-          <div className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900/50 text-center">
+          <div className="p-2.5 rounded bg-zinc-100 dark:bg-zinc-900/50 text-center">
             <p className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">{saverLevel}</p>
             <span className="text-[9px] text-zinc-500 dark:text-zinc-400">Saver Level</span>
           </div>
@@ -300,7 +300,7 @@ function SavingsStreakCard({
           </div>
         </div>
 
-        <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/30">
+        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/30">
           <div className="flex items-center justify-between">
             <p className="text-xs text-zinc-500 dark:text-zinc-400">Reward points</p>
             <p className="text-sm font-semibold">{rewardPoints} pts</p>
@@ -346,7 +346,7 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
               <button
                 key={achievement.id}
                 className={cn(
-                  'flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all',
+                  'flex flex-col items-center gap-1.5 p-3 rounded border transition-all',
                   achievement.unlocked
                     ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-105')
                     : 'border-zinc-200 dark:border-zinc-800 bg-zinc-100/60 dark:bg-zinc-900/30 opacity-45'
@@ -386,7 +386,7 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
               <div
                 key={perk.id}
                 className={cn(
-                  'flex items-center gap-3 p-3 rounded-xl transition-all',
+                  'flex items-center gap-3 p-3 rounded transition-all',
                   perk.unlocked
                     ? 'bg-emerald-500/5 border border-emerald-500/20 hover:bg-emerald-500/10'
                     : 'bg-zinc-100/60 dark:bg-zinc-900/30 opacity-65'
@@ -394,7 +394,7 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
               >
                 <div
                   className={cn(
-                    'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
+                    'w-9 h-9 rounded flex items-center justify-center shrink-0',
                     perk.unlocked
                       ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                       : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'
@@ -819,7 +819,7 @@ export default function SavingsHome() {
             <div className="bg-zinc-50 dark:bg-zinc-900/20 rounded border border-zinc-200 dark:border-zinc-800/50 p-1">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-800/70 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-lg bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center">
                     <Landmark className="w-5 h-5 text-zinc-700 dark:text-zinc-300" />
                   </div>
                   <div className="min-w-0">
@@ -834,22 +834,22 @@ export default function SavingsHome() {
 
               <div className="p-4 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950/30 p-3">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950/30 p-3">
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Savings Balance</p>
                     <p className="text-lg font-medium mt-1">{formatCurrency(savingsBalance)}</p>
                   </div>
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950/30 p-3">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950/30 p-3">
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Semi-Valid Credits</p>
                     <p className="text-lg font-medium mt-1">{formatCurrency(semiValidCredits)}</p>
                   </div>
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950/30 p-3">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950/30 p-3">
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Pending Credits</p>
                     <p className="text-lg font-medium mt-1">{formatCurrency(Math.max(pendingMatchCredits - semiValidCredits, 0))}</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-zinc-950/30">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-zinc-950/30">
                     <div className="flex items-center justify-between text-xs mb-2">
                       <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
                         <Clock3 className="w-3.5 h-3.5" />
@@ -865,7 +865,7 @@ export default function SavingsHome() {
                     </p>
                   </div>
 
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-zinc-950/30">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-zinc-950/30">
                     <div className="flex items-center justify-between text-xs mb-2">
                       <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
                         <Home className="w-3.5 h-3.5" />
@@ -883,7 +883,7 @@ export default function SavingsHome() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-zinc-950/30">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-zinc-950/30">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
                       Account Number
                     </p>
@@ -899,7 +899,7 @@ export default function SavingsHome() {
                       </button>
                     </div>
                   </div>
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-zinc-950/30">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-white dark:bg-zinc-950/30">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
                       Routing Number
                     </p>
@@ -929,7 +929,7 @@ export default function SavingsHome() {
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
-                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
+                <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
                   <div className="flex items-center justify-between text-xs mb-2">
                     <span className="text-zinc-500 dark:text-zinc-400">Total goal progress</span>
                     <span className="font-medium">{Math.round(goalsProgressPct)}%</span>
@@ -947,7 +947,7 @@ export default function SavingsHome() {
                     <motion.div
                       key={goal.id}
                       whileHover={{ scale: 1.01 }}
-                      className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20"
+                      className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div>
@@ -982,7 +982,7 @@ export default function SavingsHome() {
                   );
                 })}
 
-                <div className="rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 p-3">
+                <div className="rounded border border-dashed border-zinc-300 dark:border-zinc-700 p-3">
                   <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
                     Add Goal
                   </p>
@@ -1047,19 +1047,19 @@ export default function SavingsHome() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Required Deposit ({downPct}%)</p>
                     <p className="text-lg font-medium mt-1">{formatCurrency(requiredDeposit)}</p>
                   </div>
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Current toward Deposit</p>
                     <p className="text-lg font-medium mt-1">{formatCurrency(currentTowardDeposit)}</p>
                   </div>
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Remaining</p>
                     <p className="text-lg font-medium mt-1">{formatCurrency(remainingDeposit)}</p>
                   </div>
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Estimated Timeline</p>
                     <p className="text-lg font-medium mt-1">
                       {monthsToDeposit == null ? 'Set monthly amount' : `${monthsToDeposit} months`}
@@ -1087,15 +1087,15 @@ export default function SavingsHome() {
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Deposits</p>
                     <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.deposits)}</p>
                   </div>
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Posted Credits</p>
                     <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.postedCredits)}</p>
                   </div>
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
+                  <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Locked/Pending</p>
                     <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.lockedCredits)}</p>
                   </div>
@@ -1132,11 +1132,11 @@ export default function SavingsHome() {
                     return (
                       <div
                         key={event.id}
-                        className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20 flex items-start justify-between gap-3"
+                        className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-900/20 flex items-start justify-between gap-3"
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
                               <Icon className="w-3.5 h-3.5" />
                             </div>
                             <p className="text-sm font-medium">{event.title}</p>
