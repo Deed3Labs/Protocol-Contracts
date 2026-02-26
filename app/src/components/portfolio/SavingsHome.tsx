@@ -271,7 +271,7 @@ function SavingsStreakCard({
 
   return (
     <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-      <CardContent className="px-3 py-2 space-y-2.5">
+      <CardContent className="px-3 py-0 space-y-2.5">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
             Savings Streak
@@ -451,7 +451,7 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
   return (
     <div className="space-y-2.5">
       <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-        <CardContent className="px-3 py-2">
+        <CardContent className="px-3 py-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
               Achievements
@@ -1289,7 +1289,7 @@ export default function SavingsHome() {
             <RewardsPerksCard achievements={achievements} perks={perks} />
 
             <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-zinc-100 to-emerald-50/60 dark:from-[#141414] dark:to-[#0e0e0e]">
-              <CardContent className="py-2.5 space-y-2">
+              <CardContent className="py-0 space-y-2">
                 <p className="text-sm font-medium">Stop Renting. Start Owning. Take the CLEAR path.</p>
                 <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
                   EquityShare is a 2026-first home financing solution. We buy the home you want, you move in, and a
