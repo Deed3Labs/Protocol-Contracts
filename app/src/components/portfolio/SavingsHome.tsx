@@ -138,6 +138,81 @@ const startOfDay = (value: Date) => {
   return next;
 };
 
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
+
+const formatSliderCurrency = (value: number) => {
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${Math.round(value / 1_000)}k`;
+  return formatCurrency(value);
+};
+
+interface CalculatorSliderProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  formatValue: (value: number) => string;
+  presets: number[];
+}
+
+function CalculatorSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  formatValue,
+  presets,
+}: CalculatorSliderProps) {
+  const progress = ((value - min) / (max - min)) * 100;
+
+  return (
+    <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">{label}</p>
+        <span className="text-xs font-medium">{formatValue(value)}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full h-1.5 appearance-none rounded-full bg-zinc-200 dark:bg-zinc-800 accent-zinc-900 dark:accent-zinc-100 cursor-pointer"
+        style={{
+          background: `linear-gradient(to right, hsl(var(--foreground)) 0%, hsl(var(--foreground)) ${progress}%, hsl(var(--secondary)) ${progress}%, hsl(var(--secondary)) 100%)`,
+        }}
+      />
+      <div className="flex items-center justify-between mt-1.5 text-[10px] text-zinc-500 dark:text-zinc-400">
+        <span>{formatValue(min)}</span>
+        <span>{formatValue(max)}</span>
+      </div>
+      <div className="flex items-center gap-1 mt-2">
+        {presets.map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            onClick={() => onChange(preset)}
+            className={cn(
+              'text-[10px] px-2 py-0.5 rounded-full border transition-colors',
+              value === preset
+                ? 'border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                : 'border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+            )}
+          >
+            {formatValue(preset)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function generateHeatmap(today: Date, seed: number): HeatmapDay[][] {
   const todayStart = startOfDay(today);
   const weeks: HeatmapDay[][] = [];
@@ -185,13 +260,18 @@ function SavingsStreakCard({
   const streakProgress = Math.min((currentStreak / streakTarget) * 100, 100);
   const recentDays = weeks.flat().slice(-14);
   const weeklyTotals = weeks.map((week) => week.reduce((sum, day) => sum + (day.saved ? day.amount : 0), 0));
+  const savedRecentDays = recentDays.filter((day) => day.saved).length;
   const unlockedMilestones = milestones.filter((milestone) => milestone.achieved).length;
   const nextMilestone = milestones.find((milestone) => !milestone.achieved);
   const daysToNextMilestone = nextMilestone ? Math.max(nextMilestone.month * 30 - accountMonth * 30, 0) : 0;
+  const ringRadius = 34;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringDashOffset = ringCircumference - (ringCircumference * streakProgress) / 100;
+  const daysToLevelUp = Math.max(streakTarget - currentStreak, 0);
 
   return (
     <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-      <CardContent className="px-3 py-2.5 space-y-3">
+      <CardContent className="px-3 py-2 space-y-2.5">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
             Savings Streak
@@ -206,19 +286,40 @@ function SavingsStreakCard({
           </button>
         </div>
 
-        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-[#0e0e0e]">
+        <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-zinc-50 dark:bg-[#0e0e0e]">
           <div className="flex items-center gap-3">
-            <div className="relative w-20 h-20 shrink-0">
-              <div
-                className="absolute inset-0 rounded-full"
-                style={{
-                  background: `conic-gradient(hsl(var(--equity)) ${streakProgress * 3.6}deg, hsl(var(--secondary)) 0deg)`,
-                }}
-              />
-              <div className="absolute inset-1.5 rounded-full bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center">
-                <Flame className="w-3 h-3 text-orange-500 mb-0.5" />
-                <span className="text-sm font-semibold">{currentStreak}</span>
-                <span className="text-[9px] text-zinc-500 dark:text-zinc-400">days</span>
+            <div className="relative w-24 h-24 shrink-0">
+              <svg className="w-full h-full -rotate-90">
+                <circle
+                  cx="48"
+                  cy="48"
+                  r={ringRadius}
+                  stroke="currentColor"
+                  strokeWidth="7"
+                  fill="transparent"
+                  className="text-zinc-200 dark:text-zinc-800"
+                />
+                <motion.circle
+                  initial={{ strokeDashoffset: ringCircumference }}
+                  animate={{ strokeDashoffset: ringDashOffset }}
+                  transition={{ duration: 0.9, ease: 'easeOut' }}
+                  cx="48"
+                  cy="48"
+                  r={ringRadius}
+                  stroke="currentColor"
+                  strokeWidth="7"
+                  fill="transparent"
+                  strokeDasharray={ringCircumference}
+                  strokeLinecap="round"
+                  className="text-emerald-500"
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <Flame className="w-3.5 h-3.5 text-orange-500 mb-0.5" />
+                <span className="text-base font-semibold leading-none">{currentStreak}</span>
+                <span className="text-[9px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mt-0.5">
+                  Days
+                </span>
               </div>
             </div>
 
@@ -242,6 +343,13 @@ function SavingsStreakCard({
                   <p className="text-sm font-semibold">{rewardPoints}</p>
                   <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Points</p>
                 </div>
+              </div>
+              <div className="mt-2">
+                <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mb-1">
+                  <span>{Math.round(streakProgress)}% to {streakTarget}-day tier</span>
+                  <span>{daysToLevelUp} days left</span>
+                </div>
+                <Progress value={streakProgress} className="h-1.5" />
               </div>
             </div>
           </div>
@@ -280,9 +388,14 @@ function SavingsStreakCard({
         </div>
 
         <div className="rounded border border-zinc-200 dark:border-zinc-800 p-2.5 bg-zinc-50 dark:bg-[#0e0e0e]">
-          <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400 mb-1.5">
-            Recent Consistency
-          </p>
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
+              Recent Consistency
+            </p>
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+              {savedRecentDays}/14 active days
+            </p>
+          </div>
           <div className="grid grid-cols-14 gap-1 mb-2.5">
             {recentDays.map((day, index) => (
               <div
@@ -295,6 +408,22 @@ function SavingsStreakCard({
                 title={day.saved ? `${formatDateShort(day.date)} · $${day.amount}` : `${formatDateShort(day.date)} · no deposit`}
               />
             ))}
+          </div>
+          <div className="flex items-center justify-between mb-2.5">
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Last 14 days</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Less</span>
+              <div className="flex gap-0.5">
+                {[0.2, 0.45, 0.7, 0.95].map((opacity) => (
+                  <div
+                    key={opacity}
+                    className="w-2.5 h-2.5 rounded-sm bg-emerald-500"
+                    style={{ opacity }}
+                  />
+                ))}
+              </div>
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">More</span>
+            </div>
           </div>
           <div className="grid grid-cols-4 gap-2">
             {weeklyTotals.map((weekTotal, index) => (
@@ -320,10 +449,10 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
   const unlockedPerks = perks.filter((perk) => perk.unlocked).length;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-        <CardContent className="px-3 py-2.5">
-          <div className="flex items-center justify-between mb-4">
+        <CardContent className="px-3 py-2">
+          <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
               Achievements
             </span>
@@ -337,7 +466,7 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
               <button
                 key={achievement.id}
                 className={cn(
-                  'flex flex-col items-center gap-1.5 p-3 rounded border transition-all',
+                  'flex flex-col items-center gap-1 p-2.5 rounded border transition-all',
                   achievement.unlocked
                     ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-105')
                     : 'border-zinc-200 dark:border-zinc-800 bg-zinc-100/60 dark:bg-[#0e0e0e] opacity-45'
@@ -364,8 +493,8 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
       </Card>
 
       <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#141414]">
-        <CardContent className="px-3 py-2.5">
-          <div className="flex items-center justify-between mb-4">
+        <CardContent className="px-3 py-2">
+          <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
               Perks & Rewards
             </span>
@@ -377,7 +506,7 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
               <div
                 key={perk.id}
                 className={cn(
-                  'flex items-center gap-3 p-3 rounded transition-all',
+                  'flex items-center gap-3 p-2.5 rounded transition-all',
                   perk.unlocked
                     ? 'bg-emerald-500/5 border border-emerald-500/20 hover:bg-emerald-500/10'
                     : 'bg-zinc-100/60 dark:bg-[#0e0e0e] opacity-65'
@@ -434,9 +563,9 @@ export default function SavingsHome() {
   const [goals, setGoals] = useState<SavingsGoal[]>(INITIAL_GOALS);
   const [newGoalName, setNewGoalName] = useState('');
   const [newGoalTarget, setNewGoalTarget] = useState('');
-  const [homePriceInput, setHomePriceInput] = useState('420000');
-  const [downPctInput, setDownPctInput] = useState('2');
-  const [monthlySaveInput, setMonthlySaveInput] = useState('900');
+  const [homePrice, setHomePrice] = useState(420000);
+  const [downPct, setDownPct] = useState(2);
+  const [monthlySave, setMonthlySave] = useState(900);
   const [copiedField, setCopiedField] = useState<'account' | 'routing' | null>(null);
   const [activityFilter, setActivityFilter] = useState<'all' | 'deposit' | 'credit' | 'reward'>('all');
 
@@ -467,9 +596,6 @@ export default function SavingsHome() {
   const elpaUsableCredits = daysOpen >= 365 ? semiValidCredits : 0;
   const elpaDepositPower = savingsBalance + elpaUsableCredits;
 
-  const homePrice = Number(homePriceInput) || 0;
-  const downPct = Number(downPctInput) || 0;
-  const monthlySave = Number(monthlySaveInput) || 0;
   const requiredDeposit = homePrice * (downPct / 100);
   const effectiveMonthly = monthlySave * 2;
   const currentTowardDeposit = savingsBalance + semiValidCredits;
@@ -992,31 +1118,39 @@ export default function SavingsHome() {
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Home Price</p>
-                    <input
-                      value={homePriceInput}
-                      onChange={(event) => setHomePriceInput(sanitizeNumericInput(event.target.value))}
-                      className="h-9 w-full px-3 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] text-sm"
-                    />
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Deposit %</p>
-                    <input
-                      value={downPctInput}
-                      onChange={(event) => setDownPctInput(sanitizeNumericInput(event.target.value))}
-                      className="h-9 w-full px-3 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] text-sm"
-                    />
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Monthly Savings</p>
-                    <input
-                      value={monthlySaveInput}
-                      onChange={(event) => setMonthlySaveInput(sanitizeNumericInput(event.target.value))}
-                      className="h-9 w-full px-3 rounded border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0e0e0e] text-sm"
-                    />
-                  </div>
+                <div className="space-y-3">
+                  <CalculatorSlider
+                    label="Home Price"
+                    value={homePrice}
+                    min={150000}
+                    max={1200000}
+                    step={5000}
+                    onChange={(value) => setHomePrice(clampNumber(value, 150000, 1200000))}
+                    formatValue={formatSliderCurrency}
+                    presets={[300000, 450000, 650000]}
+                  />
+                  <CalculatorSlider
+                    label="Deposit %"
+                    value={downPct}
+                    min={2}
+                    max={20}
+                    step={0.5}
+                    onChange={(value) => setDownPct(clampNumber(value, 2, 20))}
+                    formatValue={(value) =>
+                      `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)}%`
+                    }
+                    presets={[2, 5, 10]}
+                  />
+                  <CalculatorSlider
+                    label="Monthly Savings"
+                    value={monthlySave}
+                    min={100}
+                    max={5000}
+                    step={50}
+                    onChange={(value) => setMonthlySave(clampNumber(value, 100, 5000))}
+                    formatValue={formatSliderCurrency}
+                    presets={[500, 1000, 1500]}
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1140,7 +1274,7 @@ export default function SavingsHome() {
             </Card>
           </div>
 
-          <div className="md:col-span-4 space-y-3">
+          <div className="md:col-span-4 space-y-2.5">
             <SavingsStreakCard
               currentStreak={streakDays}
               bestStreak={52}
@@ -1155,7 +1289,7 @@ export default function SavingsHome() {
             <RewardsPerksCard achievements={achievements} perks={perks} />
 
             <Card className="rounded border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-zinc-100 to-emerald-50/60 dark:from-[#141414] dark:to-[#0e0e0e]">
-              <CardContent className="py-3 space-y-2.5">
+              <CardContent className="py-2.5 space-y-2">
                 <p className="text-sm font-medium">Stop Renting. Start Owning. Take the CLEAR path.</p>
                 <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
                   EquityShare is a 2026-first home financing solution. We buy the home you want, you move in, and a
