@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowUpDown, ChevronRight, Loader2, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type VaultMode = 'deposit' | 'redeem';
@@ -42,7 +42,7 @@ export function SavingsVaultModal({
   isOnHomeChain,
   homeChainName,
   savingsBalance,
-  totalClrUsdBalance,
+  totalClrUsdBalance: _totalClrUsdBalance,
   remoteClrUsdBalance,
 }: SavingsVaultModalProps) {
   const displayAmount = amount || '0';
@@ -52,10 +52,11 @@ export function SavingsVaultModal({
   const resolvedHomeChainName = homeChainName || 'Home chain';
   const fromSymbol = mode === 'deposit' ? 'USDC' : 'CLRUSD';
   const toSymbol = mode === 'deposit' ? 'CLRUSD' : 'USDC';
-  const fromSubtext =
-    mode === 'deposit' ? resolvedHomeChainName : `${formatBalance(savingsBalance)} available`;
-  const toSubtext = mode === 'deposit' ? 'Mint 1:1' : `On ${resolvedHomeChainName}`;
-  const modeHint = mode === 'deposit' ? 'USDC to CLRUSD (1:1)' : 'CLRUSD to USDC (1:1)';
+  const modeHint = `${fromSymbol} -> ${toSymbol} (1:1)`;
+  const fromTitle = mode === 'deposit' ? 'Pay with' : 'Redeem';
+  const toTitle = 'Receive';
+  const fromSubtext = mode === 'deposit' ? resolvedHomeChainName : `${formatBalance(savingsBalance)} available`;
+  const toSubtext = mode === 'deposit' ? 'Mint 1:1' : `${resolvedHomeChainName} USDC`;
 
   const banner = error
     ? { tone: 'error' as const, text: error }
@@ -71,6 +72,9 @@ export function SavingsVaultModal({
           : status
             ? { tone: 'success' as const, text: status }
             : null;
+  const toggleDirection = useCallback(() => {
+    onModeChange(mode === 'deposit' ? 'redeem' : 'deposit');
+  }, [mode, onModeChange]);
 
   const handleNumberPress = useCallback(
     (value: string) => {
@@ -152,6 +156,7 @@ export function SavingsVaultModal({
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex flex-col h-full">
+                {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
                   <button
                     type="button"
@@ -162,10 +167,17 @@ export function SavingsVaultModal({
                   </button>
                   <div className="flex items-center gap-1 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-900 rounded-full text-sm text-zinc-600 dark:text-zinc-400">
                     ESA Vault
+                    <ChevronRight className="w-4 h-4" />
                   </div>
-                  <div className="w-9" />
+                  <button
+                    type="button"
+                    className="p-2 -mr-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full transition-colors"
+                  >
+                    <MoreHorizontal className="w-5 h-5 text-zinc-900 dark:text-white" />
+                  </button>
                 </div>
 
+                {/* Mode Tabs */}
                 <div className="px-4 pt-4">
                   <div className="inline-flex bg-zinc-100 dark:bg-zinc-900 rounded-full p-1">
                     {(['deposit', 'redeem'] as VaultMode[]).map((value) => (
@@ -186,60 +198,64 @@ export function SavingsVaultModal({
                   </div>
                 </div>
 
-                <div className="flex-1 min-h-0 flex flex-col">
-                  <div className="min-h-0 overflow-y-auto px-4 pt-3 space-y-3">
-                    <div className="text-center">
-                      <div className="flex items-baseline justify-center gap-1">
-                        <span className="text-5xl font-light tracking-tight text-black dark:text-white">
-                          {displayAmount}
-                        </span>
-                        <span className="text-3xl font-light text-zinc-500 dark:text-zinc-400">USD</span>
-                      </div>
-                      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{modeHint}</p>
+                <div className="flex-1 flex flex-col">
+                  {/* Amount Display */}
+                  <div className="flex-1 flex flex-col items-center justify-center px-4 py-6">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-6xl font-light tracking-tight text-black dark:text-white">
+                        {displayAmount}
+                      </span>
+                      <span className="text-4xl font-light text-zinc-500 dark:text-zinc-400">USD</span>
                     </div>
+                    <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{modeHint}</p>
+                  </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-zinc-900/50 p-3 min-w-0">
-                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                          From
-                        </p>
-                        <div className="mt-2 flex items-center gap-2 min-w-0">
-                          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-semibold text-white">
-                            {mode === 'deposit' ? 'U' : 'C'}
+                  {/* From / To Selectors */}
+                  <div className="px-4 mb-3">
+                    <div className="relative">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="w-full flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-white/10 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                              {mode === 'deposit' ? 'U' : 'C'}
+                            </div>
+                            <div className="text-left min-w-0">
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400">{fromTitle}</p>
+                              <p className="font-medium text-black dark:text-white truncate">{fromSymbol}</p>
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{fromSubtext}</p>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-black dark:text-white truncate">{fromSymbol}</p>
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
-                              {fromSubtext}
-                            </p>
+                          <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600 shrink-0 ml-2" />
+                        </div>
+
+                        <div className="w-full flex items-center justify-between p-3 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-200 dark:border-white/10 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                              {mode === 'deposit' ? 'C' : 'U'}
+                            </div>
+                            <div className="text-left min-w-0">
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400">{toTitle}</p>
+                              <p className="font-medium text-black dark:text-white truncate">{toSymbol}</p>
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{toSubtext}</p>
+                            </div>
                           </div>
+                          <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-zinc-600 shrink-0 ml-2" />
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-zinc-900/50 p-3 min-w-0">
-                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                          To
-                        </p>
-                        <div className="mt-2 flex items-center gap-2 min-w-0">
-                          <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-xs font-semibold text-white">
-                            {mode === 'deposit' ? 'C' : 'U'}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-black dark:text-white truncate">{toSymbol}</p>
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{toSubtext}</p>
-                          </div>
-                        </div>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={toggleDirection}
+                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded-full flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                      >
+                        <ArrowUpDown className="w-4 h-4 text-zinc-900 dark:text-white" />
+                      </button>
                     </div>
-
-                    <p className="text-[11px] text-center text-zinc-500 dark:text-zinc-500">
-                      Home CLRUSD {formatBalance(savingsBalance)} · Total {formatBalance(totalClrUsdBalance)}
-                    </p>
 
                     {banner && (
                       <div
                         className={cn(
-                          'flex items-start gap-2 rounded-xl border p-3 text-sm',
+                          'mt-2 flex items-start gap-2 rounded-xl border p-3 text-sm',
                           banner.tone === 'warning' &&
                             'border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300',
                           banner.tone === 'error' &&
@@ -254,12 +270,13 @@ export function SavingsVaultModal({
                     )}
                   </div>
 
-                  <div className="shrink-0 px-4 pt-2 pb-2">
+                  {/* Submit Button */}
+                  <div className="px-4 pb-2">
                     <button
                       type="button"
                       onClick={onSubmit}
                       disabled={submitDisabled}
-                      className="w-full h-12 rounded-full text-sm font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                      className="w-full h-14 rounded-full text-base font-semibold bg-black dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 disabled:opacity-50 inline-flex items-center justify-center gap-2"
                     >
                       {pending && <Loader2 className="h-4 w-4 animate-spin" />}
                       {pending
@@ -270,13 +287,14 @@ export function SavingsVaultModal({
                     </button>
                   </div>
 
-                  <div className="shrink-0 grid grid-cols-3 gap-1 p-4 pt-1 pb-safe">
+                  {/* Number Pad */}
+                  <div className="grid grid-cols-3 gap-1 p-4 pt-2">
                     {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'].map((key) => (
                       <button
                         key={key}
                         type="button"
                         onClick={() => (key === 'back' ? handleBackspace() : handleNumberPress(key))}
-                        className="h-12 rounded-lg text-[32px] leading-none font-medium hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center justify-center text-black dark:text-white"
+                        className="h-14 rounded-lg text-2xl font-medium hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center justify-center text-black dark:text-white"
                       >
                         {key === 'back' ? <ArrowLeft className="w-6 h-6" /> : key}
                       </button>
