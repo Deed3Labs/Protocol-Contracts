@@ -463,6 +463,7 @@ export async function getNFTsByAddress(
 function getChainIdFromNetworkName(networkName: string): number | null {
   const networkMap: Record<string, number> = {
     'eth-mainnet': 1,
+    'opt-mainnet': 10,
     'base-mainnet': 8453,
     'polygon-mainnet': 137,
     'arb-mainnet': 42161,

@@ -7,6 +7,7 @@
  * USDC is prioritized as the primary stablecoin
  */
 const STABLECOIN_SYMBOLS = [
+  'CLRUSD',
   'USDC', // Priority stablecoin
   'USDT',
   'DAI',

@@ -2,6 +2,7 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 import { HardhatUserConfig } from "hardhat/config";
+import fs from "fs";
 import "hardhat-deploy/dist/src/type-extensions";
 import "hardhat-deploy";
 import "solidity-coverage";
@@ -11,6 +12,7 @@ import "@nomicfoundation/hardhat-chai-matchers";
 import "@typechain/hardhat";
 import "hardhat-gas-reporter";
 import "@nomicfoundation/hardhat-ethers";
+import "hardhat-preprocessor";
 
 // If not set, it uses ours Alchemy's default API key.
 // You can get your own at https://dashboard.alchemyapi.io
@@ -22,6 +24,23 @@ const etherscanApiKey = process.env.ETHERSCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z
 const polygonscanApiKey = process.env.POLYGONSCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z68CJXQZSC6AW";
 const arbiscanApiKey = process.env.ARBISCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z68CJXQZSC6AW";
 const deployerAccount = process.env.DEPLOYER_ACCOUNT || "0x0000000000000000000000000000000000000000";
+
+function getRemappings(): [string, string][] {
+  const remappingsFile = "node_modules/@chainlink/contracts-ccip/remappings.txt";
+  if (!fs.existsSync(remappingsFile)) {
+    return [];
+  }
+
+  return fs
+    .readFileSync(remappingsFile, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => line.trim())
+    .filter((line) => !line.startsWith("#"))
+    .map((line) => line.split("=") as [string, string]);
+}
+
+const remappings = getRemappings();
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -61,6 +80,18 @@ const config: HardhatUserConfig = {
         },
       }
     },
+  },
+  preprocess: {
+    eachLine: () => ({
+      transform: (line: string) => {
+        for (const [from, to] of remappings) {
+          if (line.includes(from)) {
+            return line.replace(from, to);
+          }
+        }
+        return line;
+      },
+    }),
   },
   sourcify: {
     enabled: true,

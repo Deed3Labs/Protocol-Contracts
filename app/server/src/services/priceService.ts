@@ -6,6 +6,7 @@ import {
   getAlchemyNFTUrl 
 } from '../utils/rpc.js';
 import { computeUnitTracker } from '../utils/computeUnitTracker.js';
+import { getClrUsdAddressesByChain } from '../config/contracts.js';
 
 // Common stablecoin addresses for quick price checks
 const STABLECOIN_ADDRESSES = new Set([
@@ -13,11 +14,15 @@ const STABLECOIN_ADDRESSES = new Set([
   '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // USDC Base
   '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238', // USDC Sepolia
   '0x036cbd53842c5426634e7929541ec2318f3dcf7e', // USDC Base Sepolia
+  '0x0b2c639c533813f4aa9d7837caf62653d097ff85', // USDC Optimism
   '0xaf88d065e77c8cc2239327c5edb3a432268e5831', // USDC Arbitrum
   '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359', // USDC Polygon
   '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83', // USDC Gnosis
+  '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58', // USDT Optimism
   '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT Ethereum
+  '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1', // DAI Optimism/Arbitrum
   '0x6b175474e89094c44da98b954eedeac495271d0f', // DAI Ethereum
+  ...getClrUsdAddressesByChain().map((entry) => entry.tokenAddress.toLowerCase()),
 ].map(addr => addr.toLowerCase()));
 
 /**

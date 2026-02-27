@@ -1,6 +1,7 @@
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { getTokenPrice } from '../services/priceService.js';
 import { websocketService } from '../services/websocketService.js';
+import { getClrUsdAddressesByChain } from '../config/contracts.js';
 
 /**
  * Background job to update token prices
@@ -30,6 +31,12 @@ export async function startPriceUpdater() {
     { chainId: 1, tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' }, // USDC
     { chainId: 1, tokenAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7' }, // USDT
     { chainId: 1, tokenAddress: '0x6B175474E89094C44Da98b954EedeAC495271d0F' }, // DAI
+    // Optimism Mainnet
+    { chainId: 10, tokenAddress: '0x4200000000000000000000000000000000000006' }, // WETH
+    { chainId: 10, tokenAddress: '0x0b2C639c533813f4Aa9D7837CaF62653d097Ff85' }, // USDC
+    { chainId: 10, tokenAddress: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58' }, // USDT
+    { chainId: 10, tokenAddress: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1' }, // DAI
+    { chainId: 10, tokenAddress: '0x4200000000000000000000000000000000000042' }, // OP
     // Base Mainnet
     { chainId: 8453, tokenAddress: '0x4200000000000000000000000000000000000006' }, // WETH
     { chainId: 8453, tokenAddress: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' }, // USDC
@@ -53,6 +60,7 @@ export async function startPriceUpdater() {
     { chainId: 100, tokenAddress: '0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83' }, // USDC
     { chainId: 100, tokenAddress: '0x4ECaBa5870353805a9F068101A40E0f32ed605C6' }, // USDT
     { chainId: 100, tokenAddress: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8' }, // WXDAI
+    ...getClrUsdAddressesByChain(),
   ];
 
   // Price update function

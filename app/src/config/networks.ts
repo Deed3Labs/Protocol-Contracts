@@ -23,6 +23,15 @@ export interface NetworkConfig {
 // 4. Never expose the Project Secret (only use Project ID)
 // See docs/security-rpc-providers.md for details
 const INFURA_PROJECT_ID = import.meta.env.VITE_INFURA_PROJECT_ID || '';
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+function readAddressEnv(key: string, fallback: string = ZERO_ADDRESS): string {
+  const raw = (import.meta.env as Record<string, string | undefined>)[key];
+  if (raw && /^0x[a-fA-F0-9]{40}$/.test(raw)) {
+    return raw;
+  }
+  return fallback;
+}
 
 export const SUPPORTED_NETWORKS: NetworkConfig[] = [
   {
@@ -35,6 +44,23 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     alchemyUrl: import.meta.env.VITE_ALCHEMY_ETH_MAINNET,
     infuraUrl: import.meta.env.VITE_INFURA_ETH_MAINNET || (INFURA_PROJECT_ID ? `https://mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
     blockExplorer: 'https://etherscan.io',
+    contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
+    nativeCurrency: {
+      name: 'Ether',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+  },
+  {
+    id: 10,
+    name: 'Optimism',
+    chainId: 10,
+    rpcUrl: INFURA_PROJECT_ID
+      ? `https://optimism-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://mainnet.optimism.io',
+    alchemyUrl: import.meta.env.VITE_ALCHEMY_OPTIMISM_MAINNET,
+    infuraUrl: import.meta.env.VITE_INFURA_OPTIMISM_MAINNET || (INFURA_PROJECT_ID ? `https://optimism-mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
+    blockExplorer: 'https://optimistic.etherscan.io',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
     nativeCurrency: {
       name: 'Ether',
@@ -159,6 +185,9 @@ export const networks = {
       Subdivide: '0x3c947D71cb1698dFd4D7551b87E17306865C923F',
       Fractionalize: '0xeC464847C664Cc208478adbe377f7Db19e199823',
       FractionTokenFactory: '0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc',
+      CLRUSD: readAddressEnv('VITE_CLRUSD_84532'),
+      ESADepositVault: readAddressEnv('VITE_ESA_VAULT_84532'),
+      CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_84532'),
     },
   },
   // Sepolia
@@ -180,6 +209,9 @@ export const networks = {
       ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
       FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
       MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      CLRUSD: readAddressEnv('VITE_CLRUSD_11155111'),
+      ESADepositVault: readAddressEnv('VITE_ESA_VAULT_11155111'),
+      CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_11155111'),
     },
   },
   // Base Mainnet
@@ -199,6 +231,9 @@ export const networks = {
       ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
       FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
       MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      CLRUSD: readAddressEnv('VITE_CLRUSD_8453'),
+      ESADepositVault: readAddressEnv('VITE_ESA_VAULT_8453'),
+      CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_8453'),
     },
   },
   // Ethereum Mainnet
@@ -218,6 +253,33 @@ export const networks = {
       ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
       FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
       MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      CLRUSD: readAddressEnv('VITE_CLRUSD_1'),
+      ESADepositVault: readAddressEnv('VITE_ESA_VAULT_1'),
+      CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_1'),
+    },
+  },
+  // Optimism Mainnet
+  10: {
+    name: 'Optimism',
+    chainId: 10,
+    rpcUrl: INFURA_PROJECT_ID
+      ? `https://optimism-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://mainnet.optimism.io',
+    blockExplorer: 'https://optimistic.etherscan.io',
+    nativeCurrency: {
+      name: 'ETH',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      Validator: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      CLRUSD: readAddressEnv('VITE_CLRUSD_10'),
+      ESADepositVault: readAddressEnv('VITE_ESA_VAULT_10'),
+      CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_10'),
     },
   },
   // Arbitrum One
@@ -239,6 +301,9 @@ export const networks = {
       ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
       FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
       MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      CLRUSD: readAddressEnv('VITE_CLRUSD_42161'),
+      ESADepositVault: readAddressEnv('VITE_ESA_VAULT_42161'),
+      CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_42161'),
     },
   },
   // Polygon
@@ -260,6 +325,9 @@ export const networks = {
       ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
       FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
       MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      CLRUSD: readAddressEnv('VITE_CLRUSD_137'),
+      ESADepositVault: readAddressEnv('VITE_ESA_VAULT_137'),
+      CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_137'),
     },
   },
   // Gnosis
@@ -279,6 +347,9 @@ export const networks = {
       ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
       FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
       MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      CLRUSD: readAddressEnv('VITE_CLRUSD_100'),
+      ESADepositVault: readAddressEnv('VITE_ESA_VAULT_100'),
+      CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_100'),
     },
   },
 };
@@ -348,6 +419,7 @@ export const getAbiPathForNetwork = (chainId: number, contractName: string): str
     11155111: 'sepolia',
     8453: 'base',
     1: 'ethereum',
+    10: 'optimism',
     42161: 'arbitrum',
     137: 'polygon',
     100: 'gnosis',
