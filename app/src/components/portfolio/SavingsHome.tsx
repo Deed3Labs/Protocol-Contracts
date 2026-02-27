@@ -1022,8 +1022,8 @@ export default function SavingsHome() {
         title: '1:1 equity credit',
         description:
           daysUntilPosting > 0
-            ? `Posts as semi-valid in ${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'}.`
-            : 'Credit posted as semi-valid.',
+            ? `Posts as maturing credit in ${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'}.`
+            : 'Credit posted as maturing.',
         amount: 250,
         date: lastDepositDate,
         type: 'credit',
@@ -1264,7 +1264,7 @@ export default function SavingsHome() {
                       <p className="text-lg font-medium mt-1">{formatCurrency(savingsBalance)}</p>
                     </div>
                     <div className="p-3">
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Semi-Valid Credits</p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Maturing Credits</p>
                       <p className="text-lg font-medium mt-1">{formatCurrency(semiValidCredits)}</p>
                     </div>
                     <div className="p-3">
@@ -1287,7 +1287,7 @@ export default function SavingsHome() {
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2">
                       {daysUntilPosting > 0
                         ? `${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'} until latest credit posts`
-                        : 'Latest credit has posted as semi-valid'}
+                        : 'Latest credit is now maturing'}
                     </p>
                   </div>
 
@@ -1987,8 +1987,8 @@ export default function SavingsHome() {
                             progress: postingProgress,
                             detail:
                               daysUntilPosting > 0
-                                ? `${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'} until latest semi-valid post`
-                                : 'Latest credit posted as semi-valid.',
+                                ? `${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'} until latest credit starts maturing`
+                                : 'Latest credit is now maturing.',
                           },
                           {
                             key: 'deposit',
@@ -2086,18 +2086,20 @@ export default function SavingsHome() {
                 </div>
               </div>
               <div className="pt-4 space-y-4">
-                <div className="divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 border-y border-zinc-200/70 dark:border-zinc-800/70 grid grid-cols-1 sm:grid-cols-3">
-                  <div className="p-3">
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Deposits</p>
-                    <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.deposits)}</p>
-                  </div>
-                  <div className="p-3">
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Posted Credits</p>
-                    <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.postedCredits)}</p>
-                  </div>
-                  <div className="p-3">
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Locked/Pending</p>
-                    <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.lockedCredits)}</p>
+                <div className="flex gap-2 overflow-x-auto pb-1 sm:block sm:overflow-visible sm:pb-0">
+                  <div className="min-w-[540px] sm:min-w-0 divide-x divide-zinc-200 dark:divide-zinc-800 border-y border-zinc-200/70 dark:border-zinc-800/70 grid grid-cols-3">
+                    <div className="p-3">
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Deposits</p>
+                      <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.deposits)}</p>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Posted Credits</p>
+                      <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.postedCredits)}</p>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Locked/Pending</p>
+                      <p className="text-sm font-medium mt-1">{formatCurrency(activityTotals.lockedCredits)}</p>
+                    </div>
                   </div>
                 </div>
 
