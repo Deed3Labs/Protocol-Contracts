@@ -650,10 +650,10 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
                 <div
                   key={perk.id}
                   className={cn(
-                    'flex items-center gap-3 py-2.5 border-l-2 transition-colors',
+                    'flex items-center gap-3 py-2.5 transition-colors',
                     perk.unlocked
-                      ? 'border-emerald-400/70 bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08]'
-                      : 'border-zinc-300/70 dark:border-zinc-700 opacity-65'
+                      ? 'bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08]'
+                      : 'opacity-65'
                   )}
                 >
                   <div
