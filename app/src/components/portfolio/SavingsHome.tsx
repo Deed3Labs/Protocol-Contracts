@@ -1902,20 +1902,19 @@ export default function SavingsHome() {
 
                     {calculatorView === 'allocation' && (
                       <div className="space-y-3">
-                        <div className="rounded-sm border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/70 dark:bg-[#121212] p-3 sm:p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div>
-                              <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                                Allocation
-                              </p>
-                              <p className="text-sm font-medium mt-1">How your target is currently composed</p>
-                            </div>
-                            <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
-                              {Math.round(depositProgressPct)}% funded
-                            </Badge>
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                              Allocation
+                            </p>
+                            <p className="text-sm font-medium mt-1">How your target is currently composed</p>
                           </div>
+                          <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
+                            {Math.round(depositProgressPct)}% funded
+                          </Badge>
+                        </div>
 
-                          <div className="mt-3 grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-[0.95fr_1.05fr] gap-3">
                             <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-3">
                               <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
                                 Deposit Composition
@@ -2024,7 +2023,6 @@ export default function SavingsHome() {
                               </p>
                             </div>
                           </div>
-                        </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-3">
@@ -2045,64 +2043,62 @@ export default function SavingsHome() {
 
                     {calculatorView === 'timeline' && (
                       <div className="space-y-3">
-                        <div className="rounded-sm border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/70 dark:bg-[#121212] p-3 sm:p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div>
-                              <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                                Timeline
-                              </p>
-                              <p className="text-sm font-medium mt-1">Milestones from posting to ELPA readiness</p>
-                            </div>
-                            <Badge variant="outline" className="text-[10px]">
-                              {monthsToDeposit == null ? 'Set pace' : `${monthsToDeposit} mo to target`}
-                            </Badge>
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                              Timeline
+                            </p>
+                            <p className="text-sm font-medium mt-1">Milestones from posting to ELPA readiness</p>
                           </div>
-
-                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            {[
-                              {
-                                key: 'posting',
-                                title: '30-day credit posting',
-                                progress: postingProgress,
-                                detail:
-                                  daysUntilPosting > 0
-                                    ? `${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'} until latest credit starts maturing`
-                                    : 'Latest credit is now maturing.',
-                              },
-                              {
-                                key: 'deposit',
-                                title: 'Deposit target readiness',
-                                progress: depositProgressPct,
-                                detail:
-                                  remainingDeposit <= 0
-                                    ? 'Deposit target reached.'
-                                    : monthsToDeposit == null
-                                      ? 'Set monthly savings to project readiness.'
-                                      : `${monthsToDeposit} month${monthsToDeposit === 1 ? '' : 's'} projected to target.`,
-                              },
-                              {
-                                key: 'elpa',
-                                title: '12-month ELPA unlock',
-                                progress: elpaProgress,
-                                detail:
-                                  daysUntilElpa > 0
-                                    ? `${daysUntilElpa} day${daysUntilElpa === 1 ? '' : 's'} until credits are ELPA-usable`
-                                    : 'ELPA credits available now.',
-                              },
-                            ].map((item) => (
-                              <div key={item.key} className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-3">
-                                <div className="flex items-center justify-between text-xs mb-1">
-                                  <span>{item.title}</span>
-                                  <span className="text-zinc-500 dark:text-zinc-400">{Math.round(item.progress)}%</span>
-                                </div>
-                                <Progress value={item.progress} className="h-1.5" />
-                                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1.5">{item.detail}</p>
-                              </div>
-                            ))}
-                          </div>
+                          <Badge variant="outline" className="text-[10px]">
+                            {monthsToDeposit == null ? 'Set pace' : `${monthsToDeposit} mo to target`}
+                          </Badge>
                         </div>
 
-                        <div className="rounded-sm border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/70 dark:bg-[#121212] p-3 sm:p-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {[
+                            {
+                              key: 'posting',
+                              title: '30-day credit posting',
+                              progress: postingProgress,
+                              detail:
+                                daysUntilPosting > 0
+                                  ? `${daysUntilPosting} day${daysUntilPosting === 1 ? '' : 's'} until latest credit starts maturing`
+                                  : 'Latest credit is now maturing.',
+                            },
+                            {
+                              key: 'deposit',
+                              title: 'Deposit target readiness',
+                              progress: depositProgressPct,
+                              detail:
+                                remainingDeposit <= 0
+                                  ? 'Deposit target reached.'
+                                  : monthsToDeposit == null
+                                    ? 'Set monthly savings to project readiness.'
+                                    : `${monthsToDeposit} month${monthsToDeposit === 1 ? '' : 's'} projected to target.`,
+                            },
+                            {
+                              key: 'elpa',
+                              title: '12-month ELPA unlock',
+                              progress: elpaProgress,
+                              detail:
+                                daysUntilElpa > 0
+                                  ? `${daysUntilElpa} day${daysUntilElpa === 1 ? '' : 's'} until credits are ELPA-usable`
+                                  : 'ELPA credits available now.',
+                            },
+                          ].map((item) => (
+                            <div key={item.key} className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-3">
+                              <div className="flex items-center justify-between text-xs mb-1">
+                                <span>{item.title}</span>
+                                <span className="text-zinc-500 dark:text-zinc-400">{Math.round(item.progress)}%</span>
+                              </div>
+                              <Progress value={item.progress} className="h-1.5" />
+                              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1.5">{item.detail}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div>
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                               Phase Duration Mix
