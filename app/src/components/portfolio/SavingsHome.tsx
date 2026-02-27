@@ -169,18 +169,22 @@ const CALCULATOR_SCENARIOS: CalculatorScenario[] = [
 ];
 
 const rarityColors = {
-  common: 'text-zinc-500 dark:text-zinc-400 border-zinc-300 dark:border-zinc-700',
-  rare: 'text-zinc-700 dark:text-zinc-300 border-zinc-400 dark:border-zinc-700',
-  epic: 'text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700',
-  legendary: 'text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700',
+  common: 'text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 bg-zinc-100/80 dark:bg-zinc-900/40',
+  rare: 'text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/20',
+  epic: 'text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20',
+  legendary: 'text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20',
 };
 
 const rarityGlow = {
   common: '',
-  rare: '',
+  rare: 'shadow-[0_0_10px_rgba(14,165,233,0.12)]',
   epic: 'shadow-[0_0_12px_hsl(var(--equity)/0.10)]',
   legendary: 'shadow-[0_0_14px_rgba(245,158,11,0.18)]',
 };
+
+const WEEKLY_CONSISTENCY_COLORS = ['#22c55e', '#14b8a6', '#06b6d4', '#3b82f6'];
+const PROJECTION_PROGRESS_COLORS = ['#34d399', '#2dd4bf', '#22d3ee', '#60a5fa', '#818cf8', '#a78bfa'];
+const GOAL_DISTRIBUTION_CLASSES = ['bg-emerald-500', 'bg-sky-500', 'bg-violet-500', 'bg-amber-500'];
 
 const formatCurrency = (value: number) =>
   `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -287,9 +291,9 @@ function CalculatorSlider({
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full h-1.5 appearance-none rounded-full bg-zinc-200 dark:bg-zinc-800 accent-zinc-900 dark:accent-zinc-100 cursor-pointer"
+        className="w-full h-1.5 appearance-none rounded-full accent-emerald-500 dark:accent-emerald-400 cursor-pointer [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:h-1.5 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-transparent"
         style={{
-          background: `linear-gradient(to right, hsl(var(--foreground)) 0%, hsl(var(--foreground)) ${progress}%, hsl(var(--secondary)) ${progress}%, hsl(var(--secondary)) 100%)`,
+          background: `linear-gradient(to right, #10b981 0%, #10b981 ${progress}%, rgba(113,113,122,0.22) ${progress}%, rgba(113,113,122,0.22) 100%)`,
         }}
       />
       <div className="flex items-center justify-between mt-1.5 text-[10px] text-zinc-500 dark:text-zinc-400">
@@ -557,8 +561,8 @@ function SavingsStreakCard({
                       {weeklyConsistencyData.map((week, index) => (
                         <Cell
                           key={week.label}
-                          fill="hsl(var(--equity))"
-                          fillOpacity={0.5 + (index / Math.max(weeklyConsistencyData.length - 1, 1)) * 0.4}
+                          fill={WEEKLY_CONSISTENCY_COLORS[index % WEEKLY_CONSISTENCY_COLORS.length]}
+                          fillOpacity={0.9}
                         />
                       ))}
                     </Bar>
@@ -608,10 +612,10 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
                 <button
                   key={achievement.id}
                   className={cn(
-                    'flex flex-col items-center gap-1 p-2 rounded transition-all',
+                    'flex flex-col items-center gap-1 p-2 rounded border transition-all',
                     achievement.unlocked
                       ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-105')
-                      : 'border border-zinc-200/80 dark:border-zinc-800 opacity-50'
+                      : 'border-dotted border-zinc-300 dark:border-zinc-700 bg-zinc-100/40 dark:bg-[#121212] text-zinc-500 dark:text-zinc-400 opacity-50'
                   )}
                 >
                   <div
@@ -646,8 +650,10 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
                 <div
                   key={perk.id}
                   className={cn(
-                    'flex items-center gap-3 py-2.5 transition-colors',
-                    perk.unlocked ? 'hover:bg-emerald-500/5' : 'opacity-65'
+                    'flex items-center gap-3 py-2.5 px-1 rounded-sm border-l-2 transition-colors',
+                    perk.unlocked
+                      ? 'border-emerald-400/70 hover:bg-emerald-500/5'
+                      : 'border-zinc-300/70 dark:border-zinc-700 opacity-65'
                   )}
                 >
                   <div
@@ -792,9 +798,9 @@ export default function SavingsHome() {
   const remainingForTarget = Math.max(requiredDeposit - towardTarget, 0);
   const allocationCompositionData = useMemo(
     () => [
-      { name: 'Savings', value: towardFromSavings, color: 'hsl(var(--foreground))' },
-      { name: 'Credits', value: towardFromCredits, color: 'hsl(var(--equity))' },
-      { name: 'Remaining', value: remainingForTarget, color: '#a1a1aa' },
+      { name: 'Savings', value: towardFromSavings, color: '#0ea5e9' },
+      { name: 'Credits', value: towardFromCredits, color: '#10b981' },
+      { name: 'Remaining', value: remainingForTarget, color: '#f59e0b' },
     ],
     [remainingForTarget, towardFromCredits, towardFromSavings]
   );
@@ -1339,8 +1345,8 @@ export default function SavingsHome() {
               </div>
             </section>
 
-            <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-8">
-              <div className="mb-4">
+            <section className="border-t border-zinc-200/70 dark:border-zinc-800/70">
+              <div className="py-3 border-b border-zinc-200/70 dark:border-zinc-800/70">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-light tracking-tight">Savings Goals</h2>
@@ -1365,7 +1371,7 @@ export default function SavingsHome() {
                   </div>
                 </div>
               </div>
-              <div className="space-y-4">
+              <div className="pt-4 space-y-4">
                 <div className="divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 border-y border-zinc-200/70 dark:border-zinc-800/70 grid grid-cols-1 sm:grid-cols-3">
                   <div className="p-3">
                     <p className="text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Total Progress</p>
@@ -1394,12 +1400,7 @@ export default function SavingsHome() {
                     {goalForecast.map((goal, index) => (
                       <div
                         key={goal.id}
-                        className={cn(
-                          index % 4 === 0 && 'bg-emerald-500',
-                          index % 4 === 1 && 'bg-amber-500',
-                          index % 4 === 2 && 'bg-orange-500',
-                          index % 4 === 3 && 'bg-teal-500'
-                        )}
+                        className={GOAL_DISTRIBUTION_CLASSES[index % GOAL_DISTRIBUTION_CLASSES.length]}
                         style={{ width: `${totalGoalTarget > 0 ? (goal.target / totalGoalTarget) * 100 : 0}%` }}
                       />
                     ))}
@@ -1411,10 +1412,7 @@ export default function SavingsHome() {
                           <span
                             className={cn(
                               'w-2 h-2 rounded-full shrink-0',
-                              index % 4 === 0 && 'bg-emerald-500',
-                              index % 4 === 1 && 'bg-amber-500',
-                              index % 4 === 2 && 'bg-orange-500',
-                              index % 4 === 3 && 'bg-teal-500'
+                              GOAL_DISTRIBUTION_CLASSES[index % GOAL_DISTRIBUTION_CLASSES.length]
                             )}
                           />
                           <span className="truncate">{goal.name}</span>
@@ -1546,14 +1544,14 @@ export default function SavingsHome() {
               </div>
             </section>
 
-            <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-8">
-              <div className="mb-4">
+            <section className="border-t border-zinc-200/70 dark:border-zinc-800/70">
+              <div className="py-3 border-b border-zinc-200/70 dark:border-zinc-800/70">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-lg font-light tracking-tight">Home Savings Calculator</h2>
                   <Badge variant="outline" className="text-[10px]">1:1 Match Included</Badge>
                 </div>
               </div>
-              <div className="space-y-4">
+              <div className="pt-4 space-y-4">
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Plan Builder</p>
@@ -1770,8 +1768,9 @@ export default function SavingsHome() {
                               <AreaChart data={projectionSeries} margin={{ top: 6, right: 8, left: 4, bottom: 0 }}>
                                 <defs>
                                   <linearGradient id="savingsProjectionFill" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="hsl(var(--equity))" stopOpacity={0.28} />
-                                    <stop offset="95%" stopColor="hsl(var(--equity))" stopOpacity={0.02} />
+                                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.30} />
+                                    <stop offset="65%" stopColor="#14b8a6" stopOpacity={0.14} />
+                                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.02} />
                                   </linearGradient>
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" opacity={0.35} vertical={false} />
@@ -1803,7 +1802,7 @@ export default function SavingsHome() {
                                 />
                                 <ReferenceLine
                                   y={requiredDeposit}
-                                  stroke="#71717a"
+                                  stroke="#0ea5e9"
                                   strokeDasharray="5 5"
                                   strokeWidth={1.5}
                                 />
@@ -1818,11 +1817,11 @@ export default function SavingsHome() {
                                 <Area
                                   type="monotone"
                                   dataKey="total"
-                                  stroke="hsl(var(--equity))"
+                                  stroke="#14b8a6"
                                   strokeWidth={2.25}
                                   fill="url(#savingsProjectionFill)"
                                   dot={false}
-                                  activeDot={{ r: 4, fill: 'hsl(var(--equity))', stroke: '#ffffff', strokeWidth: 1.25 }}
+                                  activeDot={{ r: 4, fill: '#10b981', stroke: '#ffffff', strokeWidth: 1.25 }}
                                 />
                               </AreaChart>
                             </ResponsiveContainer>
@@ -1833,7 +1832,7 @@ export default function SavingsHome() {
                           </div>
                           <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
                             <span className="flex items-center gap-1">
-                              <span className="w-2.5 h-0.5 bg-zinc-500 dark:bg-zinc-400 rounded-full" />
+                              <span className="w-2.5 h-0.5 bg-sky-500 rounded-full" />
                               Calculator target
                             </span>
                             {linkedGoalForecast && Math.abs(linkedGoalForecast.target - requiredDeposit) >= 1 && (
@@ -1902,7 +1901,7 @@ export default function SavingsHome() {
                             <div className="flex-1 space-y-1.5">
                               <div className="flex items-center justify-between text-[11px]">
                                 <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
-                                  <span className="w-2.5 h-2.5 rounded-full bg-zinc-900 dark:bg-zinc-100" />
+                                  <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
                                   Savings
                                 </span>
                                 <span className="font-medium">{formatCurrency(towardFromSavings)}</span>
@@ -1916,7 +1915,7 @@ export default function SavingsHome() {
                               </div>
                               <div className="flex items-center justify-between text-[11px]">
                                 <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
-                                  <span className="w-2.5 h-2.5 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
                                   Remaining
                                 </span>
                                 <span className="font-medium">{formatCurrency(remainingForTarget)}</span>
@@ -1960,8 +1959,8 @@ export default function SavingsHome() {
                                   {sixMonthProjectionData.map((point, index) => (
                                     <Cell
                                       key={point.monthLabel}
-                                      fill="hsl(var(--equity))"
-                                      fillOpacity={0.5 + (index / Math.max(sixMonthProjectionData.length - 1, 1)) * 0.4}
+                                      fill={PROJECTION_PROGRESS_COLORS[index % PROJECTION_PROGRESS_COLORS.length]}
+                                      fillOpacity={0.95}
                                     />
                                   ))}
                                 </Bar>
@@ -2049,9 +2048,9 @@ export default function SavingsHome() {
                                     name ?? 'Phase',
                                   ]}
                                 />
-                                <Bar dataKey="posting" stackId="phase" fill="hsl(var(--foreground))" radius={[4, 0, 0, 4]} />
-                                <Bar dataKey="deposit" stackId="phase" fill="hsl(var(--equity))" />
-                                <Bar dataKey="elpa" stackId="phase" fill="#a1a1aa" radius={[0, 4, 4, 0]} />
+                                <Bar dataKey="posting" stackId="phase" fill="#0ea5e9" radius={[4, 0, 0, 4]} />
+                                <Bar dataKey="deposit" stackId="phase" fill="#10b981" />
+                                <Bar dataKey="elpa" stackId="phase" fill="#f59e0b" radius={[0, 4, 4, 0]} />
                               </BarChart>
                             </ResponsiveContainer>
                           </div>
@@ -2077,8 +2076,8 @@ export default function SavingsHome() {
               </div>
             </section>
 
-            <section className="border-t border-zinc-200/70 dark:border-zinc-800/70 pt-8">
-              <div className="mb-4">
+            <section className="border-t border-zinc-200/70 dark:border-zinc-800/70">
+              <div className="py-3 border-b border-zinc-200/70 dark:border-zinc-800/70">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-lg font-light tracking-tight">History & Activity</h2>
                   <Badge variant="outline" className="text-[10px]">
@@ -2086,7 +2085,7 @@ export default function SavingsHome() {
                   </Badge>
                 </div>
               </div>
-              <div className="space-y-4">
+              <div className="pt-4 space-y-4">
                 <div className="divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 border-y border-zinc-200/70 dark:border-zinc-800/70 grid grid-cols-1 sm:grid-cols-3">
                   <div className="p-3">
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Deposits</p>
