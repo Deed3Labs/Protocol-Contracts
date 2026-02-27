@@ -22,7 +22,8 @@ import {
   TrendingUp,
   Zap,
 } from 'lucide-react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
+import { ethers } from 'ethers';
 import {
   Area,
   AreaChart,
@@ -49,6 +50,8 @@ import { LargePriceWheel } from '@/components/PriceWheel';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { getNetworkInfo } from '@/config/networks';
+import { getCommonTokens } from '@/config/tokens';
 import type { LucideIcon } from 'lucide-react';
 
 interface SavingsGoal {
@@ -185,6 +188,18 @@ const rarityGlow = {
 const WEEKLY_CONSISTENCY_COLORS = ['#22c55e', '#14b8a6', '#06b6d4', '#3b82f6'];
 const PROJECTION_PROGRESS_COLORS = ['#34d399', '#2dd4bf', '#22d3ee', '#60a5fa', '#818cf8', '#a78bfa'];
 const GOAL_DISTRIBUTION_CLASSES = ['bg-emerald-500', 'bg-sky-500', 'bg-violet-500', 'bg-amber-500'];
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const CLRUSD_HOME_CHAIN_ID = Number(import.meta.env.VITE_CLRUSD_HOME_CHAIN_ID || 84532);
+
+const ERC20_ABI = [
+  'function approve(address spender, uint256 amount) external returns (bool)',
+  'function allowance(address owner, address spender) external view returns (uint256)',
+];
+
+const ESA_VAULT_ABI = [
+  'function deposit(address token, uint256 amount, address receiver) external returns (uint256)',
+  'function redeem(address token, uint256 clrusdAmount, address receiver) external returns (uint256)',
+];
 
 const formatCurrency = (value: number) =>
   `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -692,9 +707,16 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
 }
 
 export default function SavingsHome() {
-  const { isConnected } = useAppKitAccount();
-  const { cashBalance: portfolioCashBalance, previousTotalBalanceUSD } = usePortfolio();
-  const cashBalance = portfolioCashBalance?.totalCash ?? 0;
+  const { isConnected, address } = useAppKitAccount();
+  const { caipNetworkId } = useAppKitNetwork();
+  const { walletProvider } = useAppKitProvider('eip155');
+  const {
+    previousTotalBalanceUSD,
+    holdings,
+    refreshHoldings,
+    refreshBalances,
+  } = usePortfolio();
+  const connectedChainId = caipNetworkId ? Number(caipNetworkId.split(':')[1]) : undefined;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [depositModalOpen, setDepositModalOpen] = useState(false);
@@ -719,6 +741,11 @@ export default function SavingsHome() {
   );
   const [copiedField, setCopiedField] = useState<'account' | 'routing' | null>(null);
   const [activityFilter, setActivityFilter] = useState<'all' | 'deposit' | 'credit' | 'reward'>('all');
+  const [vaultAction, setVaultAction] = useState<'deposit' | 'redeem'>('deposit');
+  const [vaultAmount, setVaultAmount] = useState('');
+  const [vaultPending, setVaultPending] = useState(false);
+  const [vaultError, setVaultError] = useState<string | null>(null);
+  const [vaultStatus, setVaultStatus] = useState<string | null>(null);
 
   const today = useMemo(() => new Date(), []);
   const accountOpenedDate = useMemo(() => {
@@ -732,7 +759,34 @@ export default function SavingsHome() {
     return lastDeposit;
   }, []);
 
-  const savingsBalance = isConnected ? Math.max(cashBalance, 0) : 0;
+  const homeNetworkInfo = getNetworkInfo(CLRUSD_HOME_CHAIN_ID);
+  const homeContracts = homeNetworkInfo?.contracts as Record<string, string> | undefined;
+  const homeClrUsdAddress = homeContracts?.CLRUSD || ZERO_ADDRESS;
+  const homeVaultAddress = homeContracts?.ESADepositVault || ZERO_ADDRESS;
+  const homeUsdcAddress =
+    getCommonTokens(CLRUSD_HOME_CHAIN_ID).find((token) => token.symbol.toUpperCase() === 'USDC')
+      ?.address || ZERO_ADDRESS;
+  const isOnHomeChain = connectedChainId === CLRUSD_HOME_CHAIN_ID;
+
+  const clrusdByChain = useMemo(() => {
+    const entries = holdings.filter(
+      (holding) =>
+        holding.type === 'token' && (holding.asset_symbol || '').toUpperCase() === 'CLRUSD'
+    );
+    const totals = new Map<number, number>();
+    for (const entry of entries) {
+      const parsed = Number(entry.balance || '0');
+      const balance = Number.isFinite(parsed) ? parsed : 0;
+      const current = totals.get(entry.chainId) || 0;
+      totals.set(entry.chainId, current + Math.max(balance, 0));
+    }
+    return totals;
+  }, [holdings]);
+
+  const totalClrUsdBalance = Array.from(clrusdByChain.values()).reduce((sum, value) => sum + value, 0);
+  const homeChainClrUsdBalance = clrusdByChain.get(CLRUSD_HOME_CHAIN_ID) || 0;
+  const remoteClrUsdBalance = Math.max(totalClrUsdBalance - homeChainClrUsdBalance, 0);
+  const savingsBalance = isConnected ? Math.max(homeChainClrUsdBalance, 0) : 0;
   const daysOpen = daysBetween(accountOpenedDate, today);
   const accountMonth = Math.max(Math.floor(daysOpen / 30), 1);
   const daysFromLastDeposit = daysBetween(lastDepositDate, today);
@@ -1190,6 +1244,86 @@ export default function SavingsHome() {
     }
   };
 
+  const handleVaultSubmit = async () => {
+    setVaultError(null);
+    setVaultStatus(null);
+
+    if (!isConnected || !address) {
+      setVaultError('Connect your wallet to continue.');
+      return;
+    }
+    if (!walletProvider) {
+      setVaultError('Wallet provider unavailable. Reconnect and try again.');
+      return;
+    }
+    if (typeof (walletProvider as { request?: unknown }).request !== 'function') {
+      setVaultError('Connected wallet provider is not EIP-1193 compatible.');
+      return;
+    }
+    if (!isOnHomeChain) {
+      setVaultError(`Switch wallet network to ${homeNetworkInfo?.name || 'home chain'} to continue.`);
+      return;
+    }
+    if (
+      homeClrUsdAddress === ZERO_ADDRESS ||
+      homeVaultAddress === ZERO_ADDRESS ||
+      homeUsdcAddress === ZERO_ADDRESS
+    ) {
+      setVaultError('CLRUSD vault contracts are not configured for this environment.');
+      return;
+    }
+
+    const parsedAmount = Number(vaultAmount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setVaultError('Enter a valid amount.');
+      return;
+    }
+
+    const amount = ethers.parseUnits(vaultAmount, 6);
+    if (amount <= 0n) {
+      setVaultError('Amount is too small.');
+      return;
+    }
+
+    setVaultPending(true);
+    try {
+      const provider = new ethers.BrowserProvider(walletProvider as ethers.Eip1193Provider);
+      const signer = await provider.getSigner();
+      const signerAddress = await signer.getAddress();
+
+      const clrusdToken = new ethers.Contract(homeClrUsdAddress, ERC20_ABI, signer);
+      const usdcToken = new ethers.Contract(homeUsdcAddress, ERC20_ABI, signer);
+      const esaVault = new ethers.Contract(homeVaultAddress, ESA_VAULT_ABI, signer);
+
+      if (vaultAction === 'deposit') {
+        const allowance = (await usdcToken.allowance(signerAddress, homeVaultAddress)) as bigint;
+        if (allowance < amount) {
+          const approveTx = await usdcToken.approve(homeVaultAddress, amount);
+          await approveTx.wait();
+        }
+        const tx = await esaVault.deposit(homeUsdcAddress, amount, signerAddress);
+        await tx.wait();
+        setVaultStatus(`Deposited ${vaultAmount} USDC and minted CLRUSD.`);
+      } else {
+        const allowance = (await clrusdToken.allowance(signerAddress, homeVaultAddress)) as bigint;
+        if (allowance < amount) {
+          const approveTx = await clrusdToken.approve(homeVaultAddress, amount);
+          await approveTx.wait();
+        }
+        const tx = await esaVault.redeem(homeUsdcAddress, amount, signerAddress);
+        await tx.wait();
+        setVaultStatus(`Redeemed ${vaultAmount} CLRUSD into USDC.`);
+      }
+
+      setVaultAmount('');
+      await Promise.all([refreshHoldings(), refreshBalances()]);
+    } catch (error: any) {
+      setVaultError(error?.shortMessage || error?.message || 'Vault transaction failed.');
+    } finally {
+      setVaultPending(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-[#0e0e0e] text-black dark:text-white font-sans pb-20 md:pb-0 transition-colors duration-200">
       <SideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
@@ -1237,6 +1371,85 @@ export default function SavingsHome() {
                   <ArrowDownLeft className="w-4 h-4" />
                   Withdraw
                 </button>
+              </div>
+
+              <div className="mt-4 rounded-sm border border-zinc-200/80 dark:border-zinc-800/80 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      ESA Vault (Home Chain)
+                    </p>
+                    <p className="text-sm text-zinc-700 dark:text-zinc-300">
+                      {homeNetworkInfo?.name || 'Home chain'} · USDC ↔ CLRUSD (1:1)
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-[10px]">
+                    {isOnHomeChain ? 'Ready' : `Switch to ${homeNetworkInfo?.name || 'home chain'}`}
+                  </Badge>
+                </div>
+
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 flex flex-wrap gap-x-4 gap-y-1">
+                  <span>Home-chain CLRUSD: {savingsBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                  <span>Total CLRUSD: {totalClrUsdBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                  {remoteClrUsdBalance > 0 && (
+                    <span>
+                      Remote CLRUSD: {remoteClrUsdBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} (bridge home to redeem)
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setVaultAction('deposit')}
+                    className={cn(
+                      'px-3 py-1.5 rounded-full text-xs border transition-colors',
+                      vaultAction === 'deposit'
+                        ? 'bg-black text-white dark:bg-white dark:text-black border-transparent'
+                        : 'bg-zinc-100 dark:bg-[#141414] border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
+                    )}
+                  >
+                    Deposit USDC
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVaultAction('redeem')}
+                    className={cn(
+                      'px-3 py-1.5 rounded-full text-xs border transition-colors',
+                      vaultAction === 'redeem'
+                        ? 'bg-black text-white dark:bg-white dark:text-black border-transparent'
+                        : 'bg-zinc-100 dark:bg-[#141414] border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
+                    )}
+                  >
+                    Redeem CLRUSD
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={vaultAmount}
+                    onChange={(e) => setVaultAmount(sanitizeNumericInput(e.target.value))}
+                    className="min-w-[180px] flex-1 bg-white dark:bg-[#101010] border border-zinc-200 dark:border-zinc-700 rounded-sm px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVaultSubmit}
+                    disabled={vaultPending || !isConnected}
+                    className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-sm text-sm disabled:opacity-50"
+                  >
+                    {vaultPending
+                      ? 'Submitting...'
+                      : vaultAction === 'deposit'
+                        ? 'Deposit to ESA Vault'
+                        : 'Redeem from ESA Vault'}
+                  </button>
+                </div>
+
+                {vaultError && <p className="text-xs text-red-600 dark:text-red-400">{vaultError}</p>}
+                {vaultStatus && <p className="text-xs text-emerald-600 dark:text-emerald-400">{vaultStatus}</p>}
               </div>
             </div>
 

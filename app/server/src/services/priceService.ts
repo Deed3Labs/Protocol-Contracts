@@ -6,6 +6,7 @@ import {
   getAlchemyNFTUrl 
 } from '../utils/rpc.js';
 import { computeUnitTracker } from '../utils/computeUnitTracker.js';
+import { getClrUsdAddressesByChain } from '../config/contracts.js';
 
 // Common stablecoin addresses for quick price checks
 const STABLECOIN_ADDRESSES = new Set([
@@ -18,6 +19,7 @@ const STABLECOIN_ADDRESSES = new Set([
   '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83', // USDC Gnosis
   '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT Ethereum
   '0x6b175474e89094c44da98b954eedeac495271d0f', // DAI Ethereum
+  ...getClrUsdAddressesByChain().map((entry) => entry.tokenAddress.toLowerCase()),
 ].map(addr => addr.toLowerCase()));
 
 /**

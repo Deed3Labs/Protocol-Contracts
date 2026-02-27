@@ -1,0 +1,74 @@
+{
+  "address": "0x2BFba336A1B5E79E4717CA00677C65DDCa63cB06",
+  "abi": [
+    {
+      "type": "error",
+      "name": "Create2DeployerEmptyBytecode",
+      "inputs": []
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Deployed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "addr",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "salt",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "computeAddress",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "salt"
+        },
+        {
+          "type": "bytes32",
+          "name": "creationCodeHash"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "deploy",
+      "constant": false,
+      "stateMutability": "payable",
+      "payable": true,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "salt"
+        },
+        {
+          "type": "bytes",
+          "name": "creationCode"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "addr"
+        }
+      ]
+    }
+  ],
+  "blockNumber": 0
+}

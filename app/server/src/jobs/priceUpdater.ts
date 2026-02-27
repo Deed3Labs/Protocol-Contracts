@@ -1,6 +1,7 @@
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { getTokenPrice } from '../services/priceService.js';
 import { websocketService } from '../services/websocketService.js';
+import { getClrUsdAddressesByChain } from '../config/contracts.js';
 
 /**
  * Background job to update token prices
@@ -53,6 +54,7 @@ export async function startPriceUpdater() {
     { chainId: 100, tokenAddress: '0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83' }, // USDC
     { chainId: 100, tokenAddress: '0x4ECaBa5870353805a9F068101A40E0f32ed605C6' }, // USDT
     { chainId: 100, tokenAddress: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8' }, // WXDAI
+    ...getClrUsdAddressesByChain(),
   ];
 
   // Price update function

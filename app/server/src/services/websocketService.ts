@@ -5,6 +5,7 @@ import { getBalance } from './balanceService.js';
 import { getDeedNFTs } from './nftService.js';
 import { getTokenPrice } from './priceService.js';
 import { transfersService } from './transfersService.js';
+import { getClrUsdAddressesByChain } from '../config/contracts.js';
 
 interface ClientSubscription {
   address: string;
@@ -411,6 +412,7 @@ class WebSocketService {
       { chainId: 8453, tokenAddress: '0x4200000000000000000000000000000000000006' }, // WETH Base
       { chainId: 1, tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' }, // USDC
       { chainId: 8453, tokenAddress: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' }, // USDC Base
+      ...getClrUsdAddressesByChain(),
     ];
 
     const prices = [];

@@ -11,6 +11,17 @@ export interface TokenConfig {
   logoUrl?: string;
 }
 
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+function readClrUsdAddress(chainId: number): string {
+  const key = `VITE_CLRUSD_${chainId}`;
+  const raw = (import.meta.env as Record<string, string | undefined>)[key];
+  if (raw && /^0x[a-fA-F0-9]{40}$/.test(raw) && raw !== ZERO_ADDRESS) {
+    return raw;
+  }
+  return ZERO_ADDRESS;
+}
+
 /**
  * Common ERC20 tokens by chain ID
  * Used by token balance hooks across the application
@@ -18,6 +29,9 @@ export interface TokenConfig {
 export const COMMON_TOKENS: Record<number, TokenConfig[]> = {
   // Ethereum Mainnet
   1: [
+    ...(readClrUsdAddress(1) !== ZERO_ADDRESS
+      ? [{ address: readClrUsdAddress(1), symbol: 'CLRUSD', name: 'Clear USD', decimals: 6 } as TokenConfig]
+      : []),
     { 
       address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 
       symbol: 'USDC', 
@@ -45,6 +59,9 @@ export const COMMON_TOKENS: Record<number, TokenConfig[]> = {
   ],
   // Base Mainnet
   8453: [
+    ...(readClrUsdAddress(8453) !== ZERO_ADDRESS
+      ? [{ address: readClrUsdAddress(8453), symbol: 'CLRUSD', name: 'Clear USD', decimals: 6 } as TokenConfig]
+      : []),
     { 
       address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', 
       symbol: 'USDC', 
@@ -60,6 +77,9 @@ export const COMMON_TOKENS: Record<number, TokenConfig[]> = {
   ],
   // Sepolia Testnet
   11155111: [
+    ...(readClrUsdAddress(11155111) !== ZERO_ADDRESS
+      ? [{ address: readClrUsdAddress(11155111), symbol: 'CLRUSD', name: 'Clear USD', decimals: 6 } as TokenConfig]
+      : []),
     { 
       address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', 
       symbol: 'USDC', 
@@ -69,6 +89,9 @@ export const COMMON_TOKENS: Record<number, TokenConfig[]> = {
   ],
   // Base Sepolia Testnet
   84532: [
+    ...(readClrUsdAddress(84532) !== ZERO_ADDRESS
+      ? [{ address: readClrUsdAddress(84532), symbol: 'CLRUSD', name: 'Clear USD', decimals: 6 } as TokenConfig]
+      : []),
     { 
       address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', 
       symbol: 'USDC', 
@@ -84,6 +107,9 @@ export const COMMON_TOKENS: Record<number, TokenConfig[]> = {
   ],
   // Arbitrum One
   42161: [
+    ...(readClrUsdAddress(42161) !== ZERO_ADDRESS
+      ? [{ address: readClrUsdAddress(42161), symbol: 'CLRUSD', name: 'Clear USD', decimals: 6 } as TokenConfig]
+      : []),
     { 
       address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 
       symbol: 'USDC', 
@@ -111,6 +137,9 @@ export const COMMON_TOKENS: Record<number, TokenConfig[]> = {
   ],
   // Polygon
   137: [
+    ...(readClrUsdAddress(137) !== ZERO_ADDRESS
+      ? [{ address: readClrUsdAddress(137), symbol: 'CLRUSD', name: 'Clear USD', decimals: 6 } as TokenConfig]
+      : []),
     { 
       address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', 
       symbol: 'USDC', 
@@ -144,6 +173,9 @@ export const COMMON_TOKENS: Record<number, TokenConfig[]> = {
   ],
   // Gnosis
   100: [
+    ...(readClrUsdAddress(100) !== ZERO_ADDRESS
+      ? [{ address: readClrUsdAddress(100), symbol: 'CLRUSD', name: 'Clear USD', decimals: 6 } as TokenConfig]
+      : []),
     { 
       address: '0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83', 
       symbol: 'USDC', 
@@ -173,4 +205,3 @@ export const COMMON_TOKENS: Record<number, TokenConfig[]> = {
 export const getCommonTokens = (chainId: number): TokenConfig[] => {
   return COMMON_TOKENS[chainId] || [];
 };
-
