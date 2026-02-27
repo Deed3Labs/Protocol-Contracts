@@ -291,7 +291,7 @@ function CalculatorSlider({
         step={step}
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="w-full h-1.5 appearance-none rounded-full accent-emerald-500 dark:accent-emerald-400 cursor-pointer [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:h-1.5 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-transparent"
+        className="w-full h-1.5 appearance-none rounded-full bg-transparent cursor-pointer outline-none [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-7 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-500 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white dark:[&::-webkit-slider-thumb]:border-zinc-900 [&::-webkit-slider-thumb]:shadow-[0_1px_4px_rgba(0,0,0,0.22)] [&::-webkit-slider-thumb]:mt-[-5px] [&::-moz-range-track]:h-1.5 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-transparent [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-7 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-emerald-500 [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white dark:[&::-moz-range-thumb]:border-zinc-900 [&::-moz-range-thumb]:shadow-[0_1px_4px_rgba(0,0,0,0.22)]"
         style={{
           background: `linear-gradient(to right, #10b981 0%, #10b981 ${progress}%, rgba(113,113,122,0.22) ${progress}%, rgba(113,113,122,0.22) 100%)`,
         }}
@@ -1758,14 +1758,42 @@ export default function SavingsHome() {
                   <div className="mt-3">
                     {calculatorView === 'projection' && (
                       <div className="space-y-3">
-                        <div className="rounded p-3 bg-zinc-100 dark:bg-[#141414]">
-                          <div className="flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400 mb-2">
-                            <span>Projected deposit power curve</span>
-                            <span>{formatCurrency(monthlyTotalContribution)}/mo effective</span>
+                        <div className="rounded-sm border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/70 dark:bg-[#121212] p-3 sm:p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                                Projection
+                              </p>
+                              <p className="text-sm font-medium mt-1">Deposit power trajectory</p>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
+                                {formatCurrency(monthlyTotalContribution)}/mo
+                              </Badge>
+                              <Badge variant="outline" className="text-[10px]">
+                                {remainingDeposit <= 0 ? 'Ready' : projectedDepositDate ?? '--'}
+                              </Badge>
+                            </div>
                           </div>
-                          <div className="h-44">
+
+                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 border-y border-zinc-200/70 dark:border-zinc-800/70 divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800">
+                            <div className="p-2.5">
+                              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Current Power</p>
+                              <p className="text-sm font-medium mt-1">{formatCurrency(currentTowardDeposit)}</p>
+                            </div>
+                            <div className="p-2.5">
+                              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Target</p>
+                              <p className="text-sm font-medium mt-1">{formatCurrency(requiredDeposit)}</p>
+                            </div>
+                            <div className="p-2.5">
+                              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Remaining</p>
+                              <p className="text-sm font-medium mt-1">{formatCurrency(remainingDeposit)}</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 h-52 sm:h-56">
                             <ResponsiveContainer width="100%" height="100%">
-                              <AreaChart data={projectionSeries} margin={{ top: 6, right: 8, left: 4, bottom: 0 }}>
+                              <AreaChart data={projectionSeries} margin={{ top: 10, right: 8, left: 2, bottom: 4 }}>
                                 <defs>
                                   <linearGradient id="savingsProjectionFill" x1="0" y1="0" x2="0" y2="1">
                                     <stop offset="5%" stopColor="#22c55e" stopOpacity={0.30} />
@@ -1773,7 +1801,7 @@ export default function SavingsHome() {
                                     <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.02} />
                                   </linearGradient>
                                 </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" opacity={0.35} vertical={false} />
+                                <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" opacity={0.28} vertical={false} />
                                 <XAxis
                                   dataKey="monthLabel"
                                   tick={{ fill: '#71717a', fontSize: 10 }}
@@ -1818,7 +1846,7 @@ export default function SavingsHome() {
                                   type="monotone"
                                   dataKey="total"
                                   stroke="#14b8a6"
-                                  strokeWidth={2.25}
+                                  strokeWidth={2.4}
                                   fill="url(#savingsProjectionFill)"
                                   dot={false}
                                   activeDot={{ r: 4, fill: '#10b981', stroke: '#ffffff', strokeWidth: 1.25 }}
@@ -1826,17 +1854,22 @@ export default function SavingsHome() {
                               </AreaChart>
                             </ResponsiveContainer>
                           </div>
-                          <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
-                            <span>Now</span>
-                            <span>+{projectionHorizon} months</span>
+
+                          <div className="mt-2 flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400">
+                            <span>Starting point</span>
+                            <span>+{projectionHorizon} month horizon</span>
                           </div>
-                          <div className="flex items-center gap-3 mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
-                            <span className="flex items-center gap-1">
+                          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-zinc-500 dark:text-zinc-400">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-teal-500" />
+                              Deposit power
+                            </span>
+                            <span className="flex items-center gap-1.5">
                               <span className="w-2.5 h-0.5 bg-sky-500 rounded-full" />
                               Calculator target
                             </span>
                             {linkedGoalForecast && Math.abs(linkedGoalForecast.target - requiredDeposit) >= 1 && (
-                              <span className="flex items-center gap-1">
+                              <span className="flex items-center gap-1.5">
                                 <span className="w-2.5 h-0.5 bg-amber-500 rounded-full" />
                                 Linked goal target
                               </span>
@@ -1844,16 +1877,16 @@ export default function SavingsHome() {
                           </div>
                         </div>
 
-                        <div className="rounded bg-zinc-100 dark:bg-[#141414] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-1 sm:grid-cols-2">
-                          <div className="p-2.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-3">
                             <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Projected in 6 months</p>
-                            <p className="text-sm font-medium mt-1">
+                            <p className="text-base font-medium mt-1">
                               {formatCurrency(sixMonthProjection[5]?.projectedTotal ?? currentTowardDeposit)}
                             </p>
                           </div>
-                          <div className="p-2.5">
+                          <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-3">
                             <p className="text-[10px] text-zinc-500 dark:text-zinc-400">6-month target gap</p>
-                            <p className="text-sm font-medium mt-1">
+                            <p className="text-base font-medium mt-1">
                               {formatCurrency(
                                 Math.max(
                                   requiredDeposit -
