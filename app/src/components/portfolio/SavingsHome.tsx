@@ -1684,7 +1684,7 @@ export default function SavingsHome() {
                     />
                   </div>
 
-                  <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-3 space-y-3">
+                  <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 p-3 sm:p-4 h-full flex flex-col">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
@@ -1693,39 +1693,55 @@ export default function SavingsHome() {
                         <p className="text-2xl font-light mt-1">
                           {remainingDeposit <= 0 ? 'Ready now' : projectedDepositDate ?? '--'}
                         </p>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                          {remainingDeposit <= 0
+                            ? 'Deposit target is fully funded.'
+                            : 'Estimated from current monthly power and target settings.'}
+                        </p>
                       </div>
                       <Badge variant="outline" className="text-[10px]">
                         {monthsToDeposit == null ? 'Plan Needed' : `${monthsToDeposit} mo`}
                       </Badge>
                     </div>
 
-                    <div className="rounded bg-zinc-100 dark:bg-[#141414] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
-                      <div className="p-2">
+                    <div className="mt-4 rounded border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-100/80 dark:bg-[#141414] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
+                      <div className="p-2.5">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Required</p>
-                        <p className="text-xs font-medium mt-1">{formatCurrency(requiredDeposit)}</p>
+                        <p className="text-sm font-medium mt-1">{formatCurrency(requiredDeposit)}</p>
                       </div>
-                      <div className="p-2">
+                      <div className="p-2.5">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Current</p>
-                        <p className="text-xs font-medium mt-1">{formatCurrency(currentTowardDeposit)}</p>
+                        <p className="text-sm font-medium mt-1">{formatCurrency(currentTowardDeposit)}</p>
                       </div>
-                      <div className="p-2 border-t border-zinc-200 dark:border-zinc-800 sm:border-t-0">
+                      <div className="p-2.5 border-t border-zinc-200 dark:border-zinc-800 sm:border-t-0">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Remaining</p>
-                        <p className="text-xs font-medium mt-1">{formatCurrency(remainingDeposit)}</p>
+                        <p className="text-sm font-medium mt-1">{formatCurrency(remainingDeposit)}</p>
                       </div>
-                      <div className="p-2 border-t border-zinc-200 dark:border-zinc-800 sm:border-t-0">
+                      <div className="p-2.5 border-t border-zinc-200 dark:border-zinc-800 sm:border-t-0">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Monthly Power</p>
-                        <p className="text-xs font-medium mt-1">{formatCurrency(monthlyTotalContribution)}</p>
+                        <p className="text-sm font-medium mt-1">{formatCurrency(monthlyTotalContribution)}</p>
                       </div>
                     </div>
 
-                    <div>
+                    <div className="mt-4">
                       <div className="flex items-center justify-between text-[11px] mb-1 text-zinc-500 dark:text-zinc-400">
                         <span>Progress to target</span>
                         <span>{Math.round(depositProgressPct)}%</span>
                       </div>
                       <Progress value={depositProgressPct} className="h-2" />
                     </div>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">{calculatorRecommendation}</p>
+
+                    <div className="mt-auto pt-4">
+                      <div className="rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/80 dark:bg-[#121212] p-2.5">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                          Forecast Guidance
+                        </p>
+                        <p className="text-xs text-zinc-600 dark:text-zinc-300 mt-1">{calculatorRecommendation}</p>
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1.5">
+                          Assumes steady contributions of {formatCurrency(monthlyTotalContribution)}/month and no withdrawals.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
