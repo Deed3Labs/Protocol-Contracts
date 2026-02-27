@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, ArrowLeft, ArrowUpDown, ChevronRight, Loader2, MoreHorizontal } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowLeftRight, ChevronRight, Loader2, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type VaultMode = 'deposit' | 'redeem';
@@ -52,6 +52,7 @@ export function SavingsVaultModal({
   const resolvedHomeChainName = homeChainName || 'Home chain';
   const fromSymbol = mode === 'deposit' ? 'USDC' : 'CLRUSD';
   const toSymbol = mode === 'deposit' ? 'CLRUSD' : 'USDC';
+  const amountUnit = mode === 'redeem' ? 'CLRUSD' : 'USD';
   const modeHint = `${fromSymbol} -> ${toSymbol} (1:1)`;
   const fromTitle = mode === 'deposit' ? 'Pay with' : 'Redeem';
   const toTitle = 'Receive';
@@ -205,7 +206,9 @@ export function SavingsVaultModal({
                       <span className="text-6xl font-light tracking-tight text-black dark:text-white">
                         {displayAmount}
                       </span>
-                      <span className="text-4xl font-light text-zinc-500 dark:text-zinc-400">USD</span>
+                      <span className="text-4xl font-light text-zinc-500 dark:text-zinc-400">
+                        {amountUnit}
+                      </span>
                     </div>
                     <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{modeHint}</p>
                   </div>
@@ -248,7 +251,7 @@ export function SavingsVaultModal({
                         onClick={toggleDirection}
                         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white dark:bg-[#0e0e0e] border border-zinc-200 dark:border-zinc-800 rounded-full flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
                       >
-                        <ArrowUpDown className="w-4 h-4 text-zinc-900 dark:text-white" />
+                        <ArrowLeftRight className="w-4 h-4 text-zinc-900 dark:text-white" />
                       </button>
                     </div>
 
