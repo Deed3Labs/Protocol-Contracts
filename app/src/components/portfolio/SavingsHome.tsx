@@ -403,14 +403,6 @@ function SavingsStreakCard({
           <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
             Savings Streak
           </span>
-          <button
-            type="button"
-            onClick={onCheckIn}
-            disabled={checkedInToday}
-            className="h-8 px-3 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {checkedInToday ? 'Checked in' : 'Check in'}
-          </button>
         </div>
 
         <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
@@ -476,6 +468,14 @@ function SavingsStreakCard({
                 </div>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={onCheckIn}
+              disabled={checkedInToday}
+              className="mt-3 h-9 w-full rounded-sm bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm font-medium hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {checkedInToday ? 'Checked in' : 'Check in'}
+            </button>
           </div>
 
           <div className="py-3">
@@ -1315,8 +1315,12 @@ export default function SavingsHome() {
 
       setVaultAmount('');
       await Promise.all([refreshHoldings(), refreshBalances()]);
-    } catch (error: any) {
-      setVaultError(error?.shortMessage || error?.message || 'Vault transaction failed.');
+    } catch (error: unknown) {
+      const err =
+        typeof error === 'object' && error !== null
+          ? (error as { shortMessage?: string; message?: string })
+          : null;
+      setVaultError(err?.shortMessage || err?.message || 'Vault transaction failed.');
     } finally {
       setVaultPending(false);
     }
