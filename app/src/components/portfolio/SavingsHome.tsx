@@ -612,7 +612,7 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
                 <button
                   key={achievement.id}
                   className={cn(
-                    'flex flex-col items-center gap-1 p-2 rounded border transition-all',
+                    'flex w-full min-h-[96px] flex-col items-center justify-center gap-1 p-2 text-center rounded border transition-all',
                     achievement.unlocked
                       ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-105')
                       : 'border-dotted border-zinc-300 dark:border-zinc-700 bg-zinc-100/40 dark:bg-[#121212] text-zinc-500 dark:text-zinc-400 opacity-50'
