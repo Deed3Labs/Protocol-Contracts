@@ -25,7 +25,7 @@ class EventListenerService {
   private isRunning = false;
   private restartTimeouts: Map<number, number> = new Map();
 
-  private readonly SUPPORTED_CHAINS = [1, 8453, 100, 11155111, 84532, 42161, 137];
+  private readonly SUPPORTED_CHAINS = [1, 10, 8453, 100, 11155111, 84532, 42161, 137];
 
   async initialize() {
     if (this.isRunning) {

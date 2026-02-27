@@ -106,6 +106,9 @@ export function useShare() {
 function getExplorerUrl(chainId: number, hash: string): string {
   const explorers: Record<number, string> = {
     1: `https://etherscan.io/tx/${hash}`,
+    10: `https://optimistic.etherscan.io/tx/${hash}`,
+    42161: `https://arbiscan.io/tx/${hash}`,
+    137: `https://polygonscan.com/tx/${hash}`,
     8453: `https://basescan.org/tx/${hash}`,
     100: `https://gnosisscan.io/tx/${hash}`,
     11155111: `https://sepolia.etherscan.io/tx/${hash}`,

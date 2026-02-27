@@ -9,6 +9,7 @@ function getAlchemyUrl(chainId: number, apiKey: string): string | undefined {
   const alchemyUrls: Record<number, string> = {
     // Mainnets
     1: `https://eth-mainnet.g.alchemy.com/v2/${apiKey}`,
+    10: `https://opt-mainnet.g.alchemy.com/v2/${apiKey}`,
     8453: `https://base-mainnet.g.alchemy.com/v2/${apiKey}`,
     137: `https://polygon-mainnet.g.alchemy.com/v2/${apiKey}`,
     42161: `https://arb-mainnet.g.alchemy.com/v2/${apiKey}`,
@@ -37,6 +38,11 @@ export function getRpcUrl(chainId: number): string {
       custom: process.env.ETHEREUM_RPC_URL,
       alchemy: alchemyApiKey ? getAlchemyUrl(1, alchemyApiKey) : undefined,
       fallback: 'https://eth.llamarpc.com',
+    },
+    10: {
+      custom: process.env.OPTIMISM_RPC_URL,
+      alchemy: alchemyApiKey ? getAlchemyUrl(10, alchemyApiKey) : undefined,
+      fallback: 'https://mainnet.optimism.io',
     },
     8453: {
       custom: process.env.BASE_RPC_URL,
@@ -104,6 +110,7 @@ export function getAlchemyRestUrl(chainId: number): string | null {
   const restUrls: Record<number, string> = {
     // Mainnets
     1: `https://eth-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+    10: `https://opt-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
     8453: `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
     137: `https://polygon-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
     42161: `https://arb-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
@@ -134,6 +141,7 @@ export function getAlchemyNFTUrl(chainId: number): string | null {
   const nftApiUrls: Record<number, string> = {
     // Mainnets
     1: `https://eth-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`,
+    10: `https://opt-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`,
     8453: `https://base-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`,
     137: `https://polygon-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`,
     42161: `https://arb-mainnet.g.alchemy.com/nft/v3/${alchemyApiKey}`,
@@ -176,6 +184,7 @@ export function getAlchemyApiKey(): string | null {
 function getAlchemyWebSocketUrlInternal(chainId: number, apiKey: string): string | undefined {
   const wssUrls: Record<number, string> = {
     1: `wss://eth-mainnet.g.alchemy.com/v2/${apiKey}`,
+    10: `wss://opt-mainnet.g.alchemy.com/v2/${apiKey}`,
     8453: `wss://base-mainnet.g.alchemy.com/v2/${apiKey}`,
     137: `wss://polygon-mainnet.g.alchemy.com/v2/${apiKey}`,
     42161: `wss://arb-mainnet.g.alchemy.com/v2/${apiKey}`,
@@ -203,7 +212,7 @@ export function getAlchemyWebSocketUrl(chainId: number): string | null {
  * Other chains use HTTP getLogs polling to avoid eth_getFilterChanges.
  * @see https://www.alchemy.com/docs/reference/subscription-api-endpoints
  */
-export const ALCHEMY_WEBSOCKET_SUPPORTED_CHAINS: number[] = [1, 137, 42161, 8453];
+export const ALCHEMY_WEBSOCKET_SUPPORTED_CHAINS: number[] = [1, 10, 137, 42161, 8453];
 
 export function isAlchemyWebSocketSupported(chainId: number): boolean {
   return ALCHEMY_WEBSOCKET_SUPPORTED_CHAINS.includes(chainId);
@@ -217,6 +226,7 @@ export function getAlchemyNetworkName(chainId: number): string | null {
   const networkMap: Record<number, string> = {
     // Mainnets
     1: 'eth-mainnet',
+    10: 'opt-mainnet',
     8453: 'base-mainnet',
     137: 'polygon-mainnet',
     42161: 'arb-mainnet',

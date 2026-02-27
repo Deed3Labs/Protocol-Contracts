@@ -14,6 +14,7 @@ import { ethers } from 'ethers';
 function getAlchemyNetworkName(chainId: number): string {
   const networkMap: Record<number, string> = {
     1: 'eth-mainnet',
+    10: 'opt-mainnet',
     8453: 'base-mainnet',
     137: 'polygon-mainnet',
     42161: 'arb-mainnet',

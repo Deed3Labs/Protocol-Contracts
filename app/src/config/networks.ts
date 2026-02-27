@@ -52,6 +52,23 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     },
   },
   {
+    id: 10,
+    name: 'Optimism',
+    chainId: 10,
+    rpcUrl: INFURA_PROJECT_ID
+      ? `https://optimism-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://mainnet.optimism.io',
+    alchemyUrl: import.meta.env.VITE_ALCHEMY_OPTIMISM_MAINNET,
+    infuraUrl: import.meta.env.VITE_INFURA_OPTIMISM_MAINNET || (INFURA_PROJECT_ID ? `https://optimism-mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
+    blockExplorer: 'https://optimistic.etherscan.io',
+    contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
+    nativeCurrency: {
+      name: 'Ether',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+  },
+  {
     id: 8453,
     name: 'Base',
     chainId: 8453,
@@ -241,6 +258,30 @@ export const networks = {
       CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_1'),
     },
   },
+  // Optimism Mainnet
+  10: {
+    name: 'Optimism',
+    chainId: 10,
+    rpcUrl: INFURA_PROJECT_ID
+      ? `https://optimism-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
+      : 'https://mainnet.optimism.io',
+    blockExplorer: 'https://optimistic.etherscan.io',
+    nativeCurrency: {
+      name: 'ETH',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      Validator: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
+      CLRUSD: readAddressEnv('VITE_CLRUSD_10'),
+      ESADepositVault: readAddressEnv('VITE_ESA_VAULT_10'),
+      CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_10'),
+    },
+  },
   // Arbitrum One
   42161: {
     name: 'Arbitrum One',
@@ -378,6 +419,7 @@ export const getAbiPathForNetwork = (chainId: number, contractName: string): str
     11155111: 'sepolia',
     8453: 'base',
     1: 'ethereum',
+    10: 'optimism',
     42161: 'arbitrum',
     137: 'polygon',
     100: 'gnosis',

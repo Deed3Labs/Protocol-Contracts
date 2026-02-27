@@ -42,8 +42,7 @@ import {
 import SideMenu from './SideMenu';
 import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
-import DepositModal from './DepositModal';
-import WithdrawModal from './WithdrawModal';
+import SavingsVaultModal from './SavingsVaultModal';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { LargePriceWheel } from '@/components/PriceWheel';
@@ -719,8 +718,7 @@ export default function SavingsHome() {
   const connectedChainId = caipNetworkId ? Number(caipNetworkId.split(':')[1]) : undefined;
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [depositModalOpen, setDepositModalOpen] = useState(false);
-  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
+  const [vaultModalOpen, setVaultModalOpen] = useState(false);
   const [isScrolledPast, setIsScrolledPast] = useState(false);
   const { setActionModalOpen } = useGlobalModals();
 
@@ -1324,11 +1322,38 @@ export default function SavingsHome() {
     }
   };
 
+  const openVaultModal = (action: 'deposit' | 'redeem') => {
+    setVaultAction(action);
+    setVaultError(null);
+    setVaultStatus(null);
+    setVaultModalOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-[#0e0e0e] text-black dark:text-white font-sans pb-20 md:pb-0 transition-colors duration-200">
       <SideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
-      <DepositModal isOpen={depositModalOpen} onClose={() => setDepositModalOpen(false)} />
-      <WithdrawModal isOpen={withdrawModalOpen} onClose={() => setWithdrawModalOpen(false)} />
+      <SavingsVaultModal
+        open={vaultModalOpen}
+        onOpenChange={setVaultModalOpen}
+        mode={vaultAction}
+        onModeChange={(mode) => {
+          setVaultAction(mode);
+          setVaultError(null);
+          setVaultStatus(null);
+        }}
+        amount={vaultAmount}
+        onAmountChange={(value) => setVaultAmount(sanitizeNumericInput(value))}
+        onSubmit={handleVaultSubmit}
+        pending={vaultPending}
+        error={vaultError}
+        status={vaultStatus}
+        isConnected={isConnected}
+        isOnHomeChain={isOnHomeChain}
+        homeChainName={homeNetworkInfo?.name}
+        savingsBalance={savingsBalance}
+        totalClrUsdBalance={totalClrUsdBalance}
+        remoteClrUsdBalance={remoteClrUsdBalance}
+      />
 
       <HeaderNav
         isScrolledPast={isScrolledPast}
@@ -1357,99 +1382,20 @@ export default function SavingsHome() {
 
               <div className="mt-6 flex flex-wrap gap-3">
                 <button
-                  onClick={() => setDepositModalOpen(true)}
+                  onClick={() => openVaultModal('deposit')}
                   className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-2"
                 >
                   <ArrowUpRight className="w-4 h-4" />
                   Add Savings
                 </button>
                 <button
-                  onClick={() => setWithdrawModalOpen(true)}
+                  onClick={() => openVaultModal('redeem')}
                   className="bg-zinc-100 dark:bg-[#141414] text-black dark:text-white px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800 flex items-center gap-2 disabled:opacity-50"
                   disabled={!isConnected || savingsBalance === 0}
                 >
                   <ArrowDownLeft className="w-4 h-4" />
                   Withdraw
                 </button>
-              </div>
-
-              <div className="mt-4 rounded-sm border border-zinc-200/80 dark:border-zinc-800/80 p-4 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                      ESA Vault (Home Chain)
-                    </p>
-                    <p className="text-sm text-zinc-700 dark:text-zinc-300">
-                      {homeNetworkInfo?.name || 'Home chain'} · USDC ↔ CLRUSD (1:1)
-                    </p>
-                  </div>
-                  <Badge variant="outline" className="text-[10px]">
-                    {isOnHomeChain ? 'Ready' : `Switch to ${homeNetworkInfo?.name || 'home chain'}`}
-                  </Badge>
-                </div>
-
-                <div className="text-xs text-zinc-500 dark:text-zinc-400 flex flex-wrap gap-x-4 gap-y-1">
-                  <span>Home-chain CLRUSD: {savingsBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                  <span>Total CLRUSD: {totalClrUsdBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                  {remoteClrUsdBalance > 0 && (
-                    <span>
-                      Remote CLRUSD: {remoteClrUsdBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} (bridge home to redeem)
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setVaultAction('deposit')}
-                    className={cn(
-                      'px-3 py-1.5 rounded-full text-xs border transition-colors',
-                      vaultAction === 'deposit'
-                        ? 'bg-black text-white dark:bg-white dark:text-black border-transparent'
-                        : 'bg-zinc-100 dark:bg-[#141414] border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
-                    )}
-                  >
-                    Deposit USDC
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setVaultAction('redeem')}
-                    className={cn(
-                      'px-3 py-1.5 rounded-full text-xs border transition-colors',
-                      vaultAction === 'redeem'
-                        ? 'bg-black text-white dark:bg-white dark:text-black border-transparent'
-                        : 'bg-zinc-100 dark:bg-[#141414] border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
-                    )}
-                  >
-                    Redeem CLRUSD
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={vaultAmount}
-                    onChange={(e) => setVaultAmount(sanitizeNumericInput(e.target.value))}
-                    className="min-w-[180px] flex-1 bg-white dark:bg-[#101010] border border-zinc-200 dark:border-zinc-700 rounded-sm px-3 py-2 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleVaultSubmit}
-                    disabled={vaultPending || !isConnected}
-                    className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-sm text-sm disabled:opacity-50"
-                  >
-                    {vaultPending
-                      ? 'Submitting...'
-                      : vaultAction === 'deposit'
-                        ? 'Deposit to ESA Vault'
-                        : 'Redeem from ESA Vault'}
-                  </button>
-                </div>
-
-                {vaultError && <p className="text-xs text-red-600 dark:text-red-400">{vaultError}</p>}
-                {vaultStatus && <p className="text-xs text-emerald-600 dark:text-emerald-400">{vaultStatus}</p>}
               </div>
             </div>
 

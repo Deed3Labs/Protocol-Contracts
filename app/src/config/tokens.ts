@@ -57,6 +57,42 @@ export const COMMON_TOKENS: Record<number, TokenConfig[]> = {
       decimals: 18 
     },
   ],
+  // Optimism Mainnet
+  10: [
+    ...(readClrUsdAddress(10) !== ZERO_ADDRESS
+      ? [{ address: readClrUsdAddress(10), symbol: 'CLRUSD', name: 'Clear USD', decimals: 6 } as TokenConfig]
+      : []),
+    {
+      address: '0x0b2C639c533813f4Aa9D7837CaF62653d097Ff85',
+      symbol: 'USDC',
+      name: 'USD Coin',
+      decimals: 6
+    },
+    {
+      address: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',
+      symbol: 'USDT',
+      name: 'Tether USD',
+      decimals: 6
+    },
+    {
+      address: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
+      symbol: 'DAI',
+      name: 'Dai Stablecoin',
+      decimals: 18
+    },
+    {
+      address: '0x4200000000000000000000000000000000000006',
+      symbol: 'WETH',
+      name: 'Wrapped Ether',
+      decimals: 18
+    },
+    {
+      address: '0x4200000000000000000000000000000000000042',
+      symbol: 'OP',
+      name: 'Optimism',
+      decimals: 18
+    },
+  ],
   // Base Mainnet
   8453: [
     ...(readClrUsdAddress(8453) !== ZERO_ADDRESS
