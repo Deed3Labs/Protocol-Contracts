@@ -1704,20 +1704,20 @@ export default function SavingsHome() {
                       </Badge>
                     </div>
 
-                    <div className="mt-4 rounded border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-100/80 dark:bg-[#141414] divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
+                    <div className="mt-4 rounded border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-100/80 dark:bg-[#141414] grid grid-cols-2">
                       <div className="p-2.5">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Required</p>
                         <p className="text-sm font-medium mt-1">{formatCurrency(requiredDeposit)}</p>
                       </div>
-                      <div className="p-2.5">
+                      <div className="p-2.5 border-l border-zinc-200 dark:border-zinc-800">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Current</p>
                         <p className="text-sm font-medium mt-1">{formatCurrency(currentTowardDeposit)}</p>
                       </div>
-                      <div className="p-2.5 border-t border-zinc-200 dark:border-zinc-800 sm:border-t-0">
+                      <div className="p-2.5 border-t border-zinc-200 dark:border-zinc-800">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Remaining</p>
                         <p className="text-sm font-medium mt-1">{formatCurrency(remainingDeposit)}</p>
                       </div>
-                      <div className="p-2.5 border-t border-zinc-200 dark:border-zinc-800 sm:border-t-0">
+                      <div className="p-2.5 border-l border-t border-zinc-200 dark:border-zinc-800">
                         <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Monthly Power</p>
                         <p className="text-sm font-medium mt-1">{formatCurrency(monthlyTotalContribution)}</p>
                       </div>
