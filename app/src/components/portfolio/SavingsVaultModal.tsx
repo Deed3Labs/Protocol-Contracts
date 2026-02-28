@@ -39,7 +39,7 @@ export function SavingsVaultModal({
   error,
   status,
   isConnected,
-  isOnHomeChain,
+  isOnHomeChain: _isOnHomeChain,
   homeChainName,
   savingsBalance,
   totalClrUsdBalance: _totalClrUsdBalance,
