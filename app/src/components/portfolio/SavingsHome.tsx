@@ -196,9 +196,16 @@ const ERC20_ABI = [
   'function balanceOf(address account) external view returns (uint256)',
 ];
 
+const CLRUSD_ROLES_ABI = [
+  'function BURNER_ROLE() external view returns (bytes32)',
+  'function hasRole(bytes32 role, address account) external view returns (bool)',
+];
+
 const ESA_VAULT_ABI = [
   'function deposit(address token, uint256 amount, address receiver) external returns (uint256)',
   'function redeem(address token, uint256 clrusdAmount, address receiver) external returns (uint256)',
+  'function isAcceptedToken(address token) external view returns (bool)',
+  'function previewRedeem(address token, uint256 clrusdAmount) external view returns (uint256)',
 ];
 
 const formatCurrency = (value: number) =>
@@ -1370,6 +1377,7 @@ export default function SavingsHome() {
       const signerAddress = await signer.getAddress();
 
       const clrusdToken = new ethers.Contract(homeClrUsdAddress, ERC20_ABI, signer);
+      const clrusdRoles = new ethers.Contract(homeClrUsdAddress, CLRUSD_ROLES_ABI, signer);
       const usdcToken = new ethers.Contract(homeUsdcAddress, ERC20_ABI, signer);
       const esaVault = new ethers.Contract(homeVaultAddress, ESA_VAULT_ABI, signer);
 
@@ -1383,6 +1391,42 @@ export default function SavingsHome() {
         await tx.wait();
         setVaultStatus(`Deposited ${vaultAmount} USDC and minted CLRUSD.`);
       } else {
+        const userClrUsdBalance = (await clrusdToken.balanceOf(signerAddress)) as bigint;
+        if (userClrUsdBalance < amount) {
+          setVaultError(
+            `Insufficient CLRUSD on ${homeNetworkInfo?.name || 'home chain'} (available: ${ethers.formatUnits(
+              userClrUsdBalance,
+              6
+            )}).`
+          );
+          return;
+        }
+
+        const tokenAccepted = (await esaVault.isAcceptedToken(homeUsdcAddress)) as boolean;
+        if (!tokenAccepted) {
+          setVaultError('Vault redemption token is not allowlisted. Contact protocol admin.');
+          return;
+        }
+
+        const expectedUsdc = (await esaVault.previewRedeem(homeUsdcAddress, amount)) as bigint;
+        if (expectedUsdc <= 0n) {
+          setVaultError('Redeem amount is invalid for current vault conversion settings.');
+          return;
+        }
+
+        const vaultUsdcBalance = (await usdcToken.balanceOf(homeVaultAddress)) as bigint;
+        if (vaultUsdcBalance < expectedUsdc) {
+          setVaultError('Vault has insufficient USDC liquidity for this redemption.');
+          return;
+        }
+
+        const burnerRole = (await clrusdRoles.BURNER_ROLE()) as string;
+        const vaultCanBurn = (await clrusdRoles.hasRole(burnerRole, homeVaultAddress)) as boolean;
+        if (!vaultCanBurn) {
+          setVaultError('Vault is missing CLRUSD burner permissions. Admin must grant BURNER_ROLE.');
+          return;
+        }
+
         const allowance = (await clrusdToken.allowance(signerAddress, homeVaultAddress)) as bigint;
         if (allowance < amount) {
           const approveTx = await clrusdToken.approve(homeVaultAddress, amount);

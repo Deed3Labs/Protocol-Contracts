@@ -17,6 +17,14 @@ import "hardhat-preprocessor";
 // If not set, it uses ours Alchemy's default API key.
 // You can get your own at https://dashboard.alchemyapi.io
 const providerApiKey = process.env.ALCHEMY_API_KEY || "oKxs-03sij-U_N0iOlrSsZFr29-IqbuF";
+const baseSepoliaRpcUrl =
+  process.env.BASE_SEPOLIA_RPC_URL ||
+  process.env.VITE_ALCHEMY_BASE_SEPOLIA ||
+  "https://sepolia.base.org";
+const baseMainnetRpcUrl =
+  process.env.BASE_MAINNET_RPC_URL ||
+  process.env.VITE_ALCHEMY_BASE_MAINNET ||
+  "https://mainnet.base.org";
 // If not set, it uses the hardhat account 0 private key.
 const deployerPrivateKey = process.env.DEPLOYER_PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000000";
 // If not set, it uses ours Etherscan default API key.
@@ -146,7 +154,7 @@ const config: HardhatUserConfig = {
       accounts: [deployerPrivateKey],
     },
     "base-sepolia": {
-      url: "https://sepolia.base.org",
+      url: baseSepoliaRpcUrl,
       accounts: [deployerPrivateKey],
       gasPrice: "auto",
       chainId: 84532,
@@ -157,7 +165,7 @@ const config: HardhatUserConfig = {
       }
     },
     base: {
-      url: "https://mainnet.base.org",
+      url: baseMainnetRpcUrl,
       accounts: [deployerPrivateKey],
       gasPrice: "auto",
       chainId: 8453,
