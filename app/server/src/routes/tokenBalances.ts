@@ -6,6 +6,13 @@ import { getTokenBalance, getTokenBalancesBatch, getAllTokenBalances, getAllToke
 
 const router = Router();
 
+function parseRefreshFlag(value: unknown): boolean {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
 /**
  * GET /api/token-balances/all/:chainId/:userAddress
  * Get ALL ERC20 token balances for an address using Alchemy API
@@ -266,6 +273,7 @@ router.post('/portfolio', async (req: Request, res: Response) => {
       includeNativeTokens?: boolean;
       includeErc20Tokens?: boolean;
     };
+    const skipCache = parseRefreshFlag(req.query.refresh);
 
     if (!Array.isArray(requests) || requests.length === 0) {
       return res.status(400).json({
@@ -304,29 +312,29 @@ router.post('/portfolio', async (req: Request, res: Response) => {
 
     // Check cache for all address/chain combinations
     const uncached: Array<{ address: string; chainIds: number[] }> = [];
-    const cacheMap = new Map<string, any[]>();
 
     for (const { address, chainIds } of requests) {
       const addressLower = address.toLowerCase();
       const uncachedChainIds: number[] = [];
 
       for (const chainId of chainIds) {
-        const cacheKey = `portfolio_all_token_balances:${chainId}:${addressLower}`;
-        const cached = cacheService
-          ? await cacheService.get<{ data: any[]; timestamp: number }>(cacheKey)
-          : null;
+        if (!skipCache) {
+          const cacheKey = `portfolio_all_token_balances:${chainId}:${addressLower}`;
+          const cached = cacheService
+            ? await cacheService.get<{ data: any[]; timestamp: number }>(cacheKey)
+            : null;
 
-        if (cached) {
-          results.push({
-            address: addressLower,
-            chainId,
-            tokens: cached.data,
-            cached: true,
-          });
-          cacheMap.set(`${addressLower}:${chainId}`, cached.data);
-        } else {
-          uncachedChainIds.push(chainId);
+          if (cached) {
+            results.push({
+              address: addressLower,
+              chainId,
+              tokens: cached.data,
+              cached: true,
+            });
+            continue;
+          }
         }
+        uncachedChainIds.push(chainId);
       }
 
       if (uncachedChainIds.length > 0) {

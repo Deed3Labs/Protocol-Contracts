@@ -39,7 +39,7 @@ export function SavingsVaultModal({
   error,
   status,
   isConnected,
-  isOnHomeChain,
+  isOnHomeChain: _isOnHomeChain,
   homeChainName,
   savingsBalance,
   totalClrUsdBalance: _totalClrUsdBalance,
@@ -48,7 +48,7 @@ export function SavingsVaultModal({
   const displayAmount = amount || '0';
   const parsedAmount = Number(displayAmount);
   const isAmountValid = Number.isFinite(parsedAmount) && parsedAmount > 0;
-  const submitDisabled = pending || !isConnected || !isOnHomeChain || !isAmountValid;
+  const submitDisabled = pending || !isConnected || !isAmountValid;
   const resolvedHomeChainName = homeChainName || 'Home chain';
   const fromSymbol = mode === 'deposit' ? 'USDC' : 'CLRUSD';
   const toSymbol = mode === 'deposit' ? 'CLRUSD' : 'USDC';
@@ -63,9 +63,7 @@ export function SavingsVaultModal({
     ? { tone: 'error' as const, text: error }
     : !isConnected
       ? { tone: 'warning' as const, text: 'Connect wallet to continue.' }
-      : !isOnHomeChain
-        ? { tone: 'warning' as const, text: `Switch to ${resolvedHomeChainName} before submitting.` }
-        : mode === 'redeem' && remoteClrUsdBalance > 0
+      : mode === 'redeem' && remoteClrUsdBalance > 0
           ? {
               tone: 'warning' as const,
               text: `Bridge ${formatBalance(remoteClrUsdBalance)} CLRUSD home before redeeming.`,

@@ -2,7 +2,6 @@ import { useMemo, useCallback, useState } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { SUPPORTED_NETWORKS, getNetworkByChainId } from '@/config/networks';
 import { getCommonTokens } from '@/config/tokens';
-import { isStablecoin } from '@/utils/tokenUtils';
 import { getBalance, getBalancesBatch, getTokenBalancesBatch, getAllTokenBalances, getTokenPrice as getTokenPriceFromApi, getTokenPricesBatch, getTokensByAddressPortfolio } from '@/utils/apiClient';
 import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
 import { getNativeTokenAddress } from './usePricingData';
@@ -25,6 +24,8 @@ function getAlchemyNetworkName(chainId: number): string {
   };
   return networkMap[chainId] || `chain-${chainId}`;
 }
+
+const isClrUsdSymbol = (symbol: string): boolean => symbol.toUpperCase() === 'CLRUSD';
 
 /**
  * Native token balance for a specific chain
@@ -98,10 +99,10 @@ interface UseMultichainBalancesReturn {
   error: string | null;
   
   // Refresh functions
-  refresh: () => Promise<void>;
+  refresh: (forceRefresh?: boolean) => Promise<void>;
   refreshChain: (chainId: number) => Promise<void>;
   refreshBalances: () => Promise<void>;
-  refreshTokens: () => Promise<void>;
+  refreshTokens: (forceRefresh?: boolean) => Promise<void>;
 }
 
 /**
@@ -154,9 +155,9 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
    * Get token price from server API
    */
   const getTokenPrice = useCallback(async (symbol: string, address: string, chainId: number): Promise<number> => {
-    // Stablecoins are always $1 - check this FIRST before any API calls
+    // CLRUSD is protocol-pegged to $1 when external price feeds are unavailable.
     const normalizedSymbol = symbol?.toUpperCase() || '';
-    if (isStablecoin(normalizedSymbol)) {
+    if (isClrUsdSymbol(normalizedSymbol)) {
       return 1.0;
     }
     
@@ -361,8 +362,8 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
           const normalizedSymbol = symbol.toUpperCase();
           const tokenAddressLower = tokenData.address.toLowerCase();
           
-          // Handle stablecoins first (always $1)
-          if (isStablecoin(normalizedSymbol)) {
+          // Handle CLRUSD first (always $1 if no external price).
+          if (isClrUsdSymbol(normalizedSymbol)) {
             prices.set(tokenAddressLower, 1.0);
           } else if (result.price && result.price > 0 && isFinite(result.price)) {
             prices.set(tokenAddressLower, result.price);
@@ -386,8 +387,8 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
             tokenPrice = await getTokenPrice(normalizedSymbol, tokenData.address, chainId);
           }
           
-          // Force stablecoins to $1 if price is missing or 0
-          if (isStablecoin(normalizedSymbol)) {
+          // Force CLRUSD to $1 if price is missing or 0.
+          if (isClrUsdSymbol(normalizedSymbol)) {
             if (!tokenPrice || tokenPrice === 0 || !isFinite(tokenPrice)) {
               tokenPrice = 1.0;
             }
@@ -611,7 +612,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
    * Uses Portfolio API for multi-chain queries (more efficient)
    * Falls back to old method for single chain or if Portfolio API fails
    */
-  const refreshTokens = useCallback(async () => {
+  const refreshTokens = useCallback(async (forceRefresh = false) => {
     if (!isConnected || !address) {
       setTokens([]);
       setTokensLoading(false);
@@ -655,6 +656,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
                   withPrices: true,
                   includeNativeTokens: true,
                   includeErc20Tokens: true,
+                  skipCache: forceRefresh,
                 }
               ),
               60000 // 60 second timeout
@@ -685,6 +687,9 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
                       if (usdPrice && usdPrice.value) {
                         priceUSD = parseFloat(usdPrice.value);
                       }
+                    }
+                    if (priceUSD <= 0 && isClrUsdSymbol(symbol)) {
+                      priceUSD = 1;
                     }
                     const balanceUSD = parseFloat(balance) * priceUSD;
 
@@ -807,8 +812,8 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
    * Refresh all data (native + ERC20). Uses a single Portfolio API call when possible;
    * native balances are derived from that response, so we avoid redundant getBalancesBatch.
    */
-  const refresh = useCallback(async () => {
-    await refreshTokens();
+  const refresh = useCallback(async (forceRefresh = false) => {
+    await refreshTokens(forceRefresh);
   }, [refreshTokens]);
 
   // Calculate totals

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowDownLeft,
@@ -193,11 +193,19 @@ const CLRUSD_HOME_CHAIN_ID = Number(import.meta.env.VITE_CLRUSD_HOME_CHAIN_ID ||
 const ERC20_ABI = [
   'function approve(address spender, uint256 amount) external returns (bool)',
   'function allowance(address owner, address spender) external view returns (uint256)',
+  'function balanceOf(address account) external view returns (uint256)',
+];
+
+const CLRUSD_ROLES_ABI = [
+  'function BURNER_ROLE() external view returns (bytes32)',
+  'function hasRole(bytes32 role, address account) external view returns (bool)',
 ];
 
 const ESA_VAULT_ABI = [
   'function deposit(address token, uint256 amount, address receiver) external returns (uint256)',
   'function redeem(address token, uint256 clrusdAmount, address receiver) external returns (uint256)',
+  'function isAcceptedToken(address token) external view returns (bool)',
+  'function previewRedeem(address token, uint256 clrusdAmount) external view returns (uint256)',
 ];
 
 const formatCurrency = (value: number) =>
@@ -210,6 +218,7 @@ const formatPercent = (value: number) =>
   `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)}%`;
 
 const sanitizeNumericInput = (value: string) => value.replace(/[^0-9.]/g, '');
+const toChainHex = (chainId: number) => `0x${chainId.toString(16)}`;
 
 const daysBetween = (from: Date, to: Date) => {
   const diff = to.getTime() - from.getTime();
@@ -711,6 +720,7 @@ export default function SavingsHome() {
   const { walletProvider } = useAppKitProvider('eip155');
   const {
     previousTotalBalanceUSD,
+    balances,
     holdings,
     refreshHoldings,
     refreshBalances,
@@ -744,6 +754,7 @@ export default function SavingsHome() {
   const [vaultPending, setVaultPending] = useState(false);
   const [vaultError, setVaultError] = useState<string | null>(null);
   const [vaultStatus, setVaultStatus] = useState<string | null>(null);
+  const [liveHomeClrUsdBalance, setLiveHomeClrUsdBalance] = useState<number | null>(null);
 
   const today = useMemo(() => new Date(), []);
   const accountOpenedDate = useMemo(() => {
@@ -766,7 +777,29 @@ export default function SavingsHome() {
       ?.address || ZERO_ADDRESS;
   const isOnHomeChain = connectedChainId === CLRUSD_HOME_CHAIN_ID;
 
-  const clrusdByChain = useMemo(() => {
+  const refreshHomeClrUsdBalance = useCallback(async () => {
+    if (!isConnected || !address || homeClrUsdAddress === ZERO_ADDRESS || !homeNetworkInfo?.rpcUrl) {
+      setLiveHomeClrUsdBalance(0);
+      return;
+    }
+
+    try {
+      const provider = new ethers.JsonRpcProvider(homeNetworkInfo.rpcUrl);
+      const clrusdToken = new ethers.Contract(homeClrUsdAddress, ERC20_ABI, provider);
+      const rawBalance = (await clrusdToken.balanceOf(address)) as bigint;
+      const parsed = Number(ethers.formatUnits(rawBalance, 6));
+      setLiveHomeClrUsdBalance(Number.isFinite(parsed) ? Math.max(parsed, 0) : 0);
+    } catch (error) {
+      console.warn('[SavingsHome] Failed to read CLRUSD balance directly from home chain:', error);
+      setLiveHomeClrUsdBalance(null);
+    }
+  }, [isConnected, address, homeClrUsdAddress, homeNetworkInfo?.rpcUrl]);
+
+  useEffect(() => {
+    void refreshHomeClrUsdBalance();
+  }, [refreshHomeClrUsdBalance]);
+
+  const holdingsClrUsdByChain = useMemo(() => {
     const entries = holdings.filter(
       (holding) =>
         holding.type === 'token' && (holding.asset_symbol || '').toUpperCase() === 'CLRUSD'
@@ -781,9 +814,13 @@ export default function SavingsHome() {
     return totals;
   }, [holdings]);
 
-  const totalClrUsdBalance = Array.from(clrusdByChain.values()).reduce((sum, value) => sum + value, 0);
-  const homeChainClrUsdBalance = clrusdByChain.get(CLRUSD_HOME_CHAIN_ID) || 0;
-  const remoteClrUsdBalance = Math.max(totalClrUsdBalance - homeChainClrUsdBalance, 0);
+  const holdingsHomeChainClrUsdBalance = holdingsClrUsdByChain.get(CLRUSD_HOME_CHAIN_ID) || 0;
+  const homeChainClrUsdBalance = liveHomeClrUsdBalance ?? holdingsHomeChainClrUsdBalance;
+  const remoteClrUsdBalance = Array.from(holdingsClrUsdByChain.entries()).reduce(
+    (sum, [chainId, value]) => (chainId === CLRUSD_HOME_CHAIN_ID ? sum : sum + value),
+    0
+  );
+  const totalClrUsdBalance = homeChainClrUsdBalance + remoteClrUsdBalance;
   const savingsBalance = isConnected ? Math.max(homeChainClrUsdBalance, 0) : 0;
   const daysOpen = daysBetween(accountOpenedDate, today);
   const accountMonth = Math.max(Math.floor(daysOpen / 30), 1);
@@ -1258,10 +1295,55 @@ export default function SavingsHome() {
       setVaultError('Connected wallet provider is not EIP-1193 compatible.');
       return;
     }
-    if (!isOnHomeChain) {
-      setVaultError(`Switch wallet network to ${homeNetworkInfo?.name || 'home chain'} to continue.`);
+    const requestProvider = walletProvider as ethers.Eip1193Provider & {
+      request?: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+    };
+
+    try {
+      const initialProvider = new ethers.BrowserProvider(requestProvider);
+      const network = await initialProvider.getNetwork();
+      if (Number(network.chainId) !== CLRUSD_HOME_CHAIN_ID) {
+        try {
+          await requestProvider.request?.({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: toChainHex(CLRUSD_HOME_CHAIN_ID) }],
+          });
+        } catch (switchError: any) {
+          if (switchError?.code === 4902 && homeNetworkInfo) {
+            await requestProvider.request?.({
+              method: 'wallet_addEthereumChain',
+              params: [
+                {
+                  chainId: toChainHex(CLRUSD_HOME_CHAIN_ID),
+                  chainName: homeNetworkInfo.name,
+                  nativeCurrency: homeNetworkInfo.nativeCurrency,
+                  rpcUrls: [homeNetworkInfo.rpcUrl],
+                  blockExplorerUrls: homeNetworkInfo.blockExplorer ? [homeNetworkInfo.blockExplorer] : [],
+                },
+              ],
+            });
+            await requestProvider.request?.({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: toChainHex(CLRUSD_HOME_CHAIN_ID) }],
+            });
+          } else if (switchError?.code === 4001) {
+            setVaultError('Network switch was rejected in wallet.');
+            return;
+          } else {
+            setVaultError(
+              switchError?.shortMessage ||
+                switchError?.message ||
+                `Failed to switch wallet to ${homeNetworkInfo?.name || 'home chain'}.`
+            );
+            return;
+          }
+        }
+      }
+    } catch (networkError: any) {
+      setVaultError(networkError?.shortMessage || networkError?.message || 'Failed to read wallet network.');
       return;
     }
+
     if (
       homeClrUsdAddress === ZERO_ADDRESS ||
       homeVaultAddress === ZERO_ADDRESS ||
@@ -1285,11 +1367,17 @@ export default function SavingsHome() {
 
     setVaultPending(true);
     try {
-      const provider = new ethers.BrowserProvider(walletProvider as ethers.Eip1193Provider);
+      const provider = new ethers.BrowserProvider(requestProvider);
+      const activeNetwork = await provider.getNetwork();
+      if (Number(activeNetwork.chainId) !== CLRUSD_HOME_CHAIN_ID) {
+        throw new Error(`Switch wallet network to ${homeNetworkInfo?.name || 'home chain'} and try again.`);
+      }
+
       const signer = await provider.getSigner();
       const signerAddress = await signer.getAddress();
 
       const clrusdToken = new ethers.Contract(homeClrUsdAddress, ERC20_ABI, signer);
+      const clrusdRoles = new ethers.Contract(homeClrUsdAddress, CLRUSD_ROLES_ABI, signer);
       const usdcToken = new ethers.Contract(homeUsdcAddress, ERC20_ABI, signer);
       const esaVault = new ethers.Contract(homeVaultAddress, ESA_VAULT_ABI, signer);
 
@@ -1303,6 +1391,42 @@ export default function SavingsHome() {
         await tx.wait();
         setVaultStatus(`Deposited ${vaultAmount} USDC and minted CLRUSD.`);
       } else {
+        const userClrUsdBalance = (await clrusdToken.balanceOf(signerAddress)) as bigint;
+        if (userClrUsdBalance < amount) {
+          setVaultError(
+            `Insufficient CLRUSD on ${homeNetworkInfo?.name || 'home chain'} (available: ${ethers.formatUnits(
+              userClrUsdBalance,
+              6
+            )}).`
+          );
+          return;
+        }
+
+        const tokenAccepted = (await esaVault.isAcceptedToken(homeUsdcAddress)) as boolean;
+        if (!tokenAccepted) {
+          setVaultError('Vault redemption token is not allowlisted. Contact protocol admin.');
+          return;
+        }
+
+        const expectedUsdc = (await esaVault.previewRedeem(homeUsdcAddress, amount)) as bigint;
+        if (expectedUsdc <= 0n) {
+          setVaultError('Redeem amount is invalid for current vault conversion settings.');
+          return;
+        }
+
+        const vaultUsdcBalance = (await usdcToken.balanceOf(homeVaultAddress)) as bigint;
+        if (vaultUsdcBalance < expectedUsdc) {
+          setVaultError('Vault has insufficient USDC liquidity for this redemption.');
+          return;
+        }
+
+        const burnerRole = (await clrusdRoles.BURNER_ROLE()) as string;
+        const vaultCanBurn = (await clrusdRoles.hasRole(burnerRole, homeVaultAddress)) as boolean;
+        if (!vaultCanBurn) {
+          setVaultError('Vault is missing CLRUSD burner permissions. Admin must grant BURNER_ROLE.');
+          return;
+        }
+
         const allowance = (await clrusdToken.allowance(signerAddress, homeVaultAddress)) as bigint;
         if (allowance < amount) {
           const approveTx = await clrusdToken.approve(homeVaultAddress, amount);
@@ -1314,7 +1438,8 @@ export default function SavingsHome() {
       }
 
       setVaultAmount('');
-      await Promise.all([refreshHoldings(), refreshBalances()]);
+      await refreshHomeClrUsdBalance();
+      await Promise.all([refreshHoldings(true), refreshBalances()]);
     } catch (error: unknown) {
       const err =
         typeof error === 'object' && error !== null
@@ -1377,6 +1502,9 @@ export default function SavingsHome() {
                     Savings balance + ELPA-eligible equity credits.
                   </div>
                 </div>
+                {isConnected && balances.length > 1 && (
+                  <span className="text-xs text-zinc-400">Across {balances.length} networks</span>
+                )}
               </div>
 
               <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">

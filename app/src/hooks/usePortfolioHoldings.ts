@@ -31,8 +31,10 @@ export interface PortfolioHoldings {
   totalValueUSD: number;
   isLoading: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  refresh: (forceRefresh?: boolean) => Promise<void>;
 }
+
+const isClrUsdSymbol = (symbol: string): boolean => symbol.toUpperCase() === 'CLRUSD';
 
 /**
  * Optional configuration for general NFT contracts to fetch
@@ -286,6 +288,9 @@ export function usePortfolioHoldings(
             return parseFloat(balance) * parseFloat(usdPrice.value);
           }
         }
+        if (isClrUsdSymbol(tokenSymbol)) {
+          return parseFloat(balance);
+        }
         // Return 0 if no price - token will still be included but may be filtered by UI
         return 0;
       })();
@@ -334,10 +339,10 @@ export function usePortfolioHoldings(
   const isLoading = balancesLoading || tokensLoading || nftsLoading || generalNFTsLoading;
 
   // Unified refresh function
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (forceRefresh = false) => {
     // refreshAllBalances() refreshes both native and ERC20 tokens
     const refreshPromises = [
-      refreshAllBalances(),
+      refreshAllBalances(forceRefresh),
       refreshNFTs(),
     ];
     

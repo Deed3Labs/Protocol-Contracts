@@ -25,6 +25,7 @@
     "deploy:clrusd-pool": "npx hardhat run deploy/15_deploy_CLRUSDTokenPool.ts --network",
     "clrusd:ccip:configure": "npx hardhat run scripts/clrusd/configure_ccip.ts --network",
     "clrusd:validate": "npx hardhat run scripts/clrusd/validate_setup.ts --network",
+    "clrusd:repair-vault": "npx hardhat run scripts/clrusd/repair_vault.ts --network",
     "send:grant-settler:base": "npx hardhat run scripts/grant_claim_escrow_settler.ts --network base",
     "send:grant-settler:base-sepolia": "npx hardhat run scripts/grant_claim_escrow_settler.ts --network base-sepolia",
     "verify:deployments": "npx hardhat run deploy/verify_deployments.ts --network",
