@@ -210,6 +210,7 @@ const formatPercent = (value: number) =>
   `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)}%`;
 
 const sanitizeNumericInput = (value: string) => value.replace(/[^0-9.]/g, '');
+const toChainHex = (chainId: number) => `0x${chainId.toString(16)}`;
 
 const daysBetween = (from: Date, to: Date) => {
   const diff = to.getTime() - from.getTime();
@@ -1258,10 +1259,55 @@ export default function SavingsHome() {
       setVaultError('Connected wallet provider is not EIP-1193 compatible.');
       return;
     }
-    if (!isOnHomeChain) {
-      setVaultError(`Switch wallet network to ${homeNetworkInfo?.name || 'home chain'} to continue.`);
+    const requestProvider = walletProvider as ethers.Eip1193Provider & {
+      request?: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+    };
+
+    try {
+      const initialProvider = new ethers.BrowserProvider(requestProvider);
+      const network = await initialProvider.getNetwork();
+      if (Number(network.chainId) !== CLRUSD_HOME_CHAIN_ID) {
+        try {
+          await requestProvider.request?.({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: toChainHex(CLRUSD_HOME_CHAIN_ID) }],
+          });
+        } catch (switchError: any) {
+          if (switchError?.code === 4902 && homeNetworkInfo) {
+            await requestProvider.request?.({
+              method: 'wallet_addEthereumChain',
+              params: [
+                {
+                  chainId: toChainHex(CLRUSD_HOME_CHAIN_ID),
+                  chainName: homeNetworkInfo.name,
+                  nativeCurrency: homeNetworkInfo.nativeCurrency,
+                  rpcUrls: [homeNetworkInfo.rpcUrl],
+                  blockExplorerUrls: homeNetworkInfo.blockExplorer ? [homeNetworkInfo.blockExplorer] : [],
+                },
+              ],
+            });
+            await requestProvider.request?.({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: toChainHex(CLRUSD_HOME_CHAIN_ID) }],
+            });
+          } else if (switchError?.code === 4001) {
+            setVaultError('Network switch was rejected in wallet.');
+            return;
+          } else {
+            setVaultError(
+              switchError?.shortMessage ||
+                switchError?.message ||
+                `Failed to switch wallet to ${homeNetworkInfo?.name || 'home chain'}.`
+            );
+            return;
+          }
+        }
+      }
+    } catch (networkError: any) {
+      setVaultError(networkError?.shortMessage || networkError?.message || 'Failed to read wallet network.');
       return;
     }
+
     if (
       homeClrUsdAddress === ZERO_ADDRESS ||
       homeVaultAddress === ZERO_ADDRESS ||
@@ -1285,7 +1331,12 @@ export default function SavingsHome() {
 
     setVaultPending(true);
     try {
-      const provider = new ethers.BrowserProvider(walletProvider as ethers.Eip1193Provider);
+      const provider = new ethers.BrowserProvider(requestProvider);
+      const activeNetwork = await provider.getNetwork();
+      if (Number(activeNetwork.chainId) !== CLRUSD_HOME_CHAIN_ID) {
+        throw new Error(`Switch wallet network to ${homeNetworkInfo?.name || 'home chain'} and try again.`);
+      }
+
       const signer = await provider.getSigner();
       const signerAddress = await signer.getAddress();
 
