@@ -2,7 +2,7 @@ import { useMemo, useCallback } from 'react';
 import { useMultichainBalances } from './useMultichainBalances';
 import { useMultichainDeedNFTs } from './useMultichainDeedNFTs';
 import { useGeneralNFTs } from './useGeneralNFTs';
-import { calculateCashBalance, isStablecoin } from '@/utils/tokenUtils';
+import { calculateCashBalance } from '@/utils/tokenUtils';
 import { getAllNFTContracts } from '@/config/nfts';
 import { SUPPORTED_NETWORKS, getContractAddressForNetwork, getNetworkByChainId } from '@/config/networks';
 import { ethers } from 'ethers';
@@ -33,6 +33,8 @@ export interface PortfolioHoldings {
   error: string | null;
   refresh: (forceRefresh?: boolean) => Promise<void>;
 }
+
+const isClrUsdSymbol = (symbol: string): boolean => symbol.toUpperCase() === 'CLRUSD';
 
 /**
  * Optional configuration for general NFT contracts to fetch
@@ -286,7 +288,7 @@ export function usePortfolioHoldings(
             return parseFloat(balance) * parseFloat(usdPrice.value);
           }
         }
-        if (isStablecoin(tokenSymbol)) {
+        if (isClrUsdSymbol(tokenSymbol)) {
           return parseFloat(balance);
         }
         // Return 0 if no price - token will still be included but may be filtered by UI
