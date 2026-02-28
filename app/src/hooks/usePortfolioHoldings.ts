@@ -2,7 +2,7 @@ import { useMemo, useCallback } from 'react';
 import { useMultichainBalances } from './useMultichainBalances';
 import { useMultichainDeedNFTs } from './useMultichainDeedNFTs';
 import { useGeneralNFTs } from './useGeneralNFTs';
-import { calculateCashBalance } from '@/utils/tokenUtils';
+import { calculateCashBalance, isStablecoin } from '@/utils/tokenUtils';
 import { getAllNFTContracts } from '@/config/nfts';
 import { SUPPORTED_NETWORKS, getContractAddressForNetwork, getNetworkByChainId } from '@/config/networks';
 import { ethers } from 'ethers';
@@ -31,7 +31,7 @@ export interface PortfolioHoldings {
   totalValueUSD: number;
   isLoading: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  refresh: (forceRefresh?: boolean) => Promise<void>;
 }
 
 /**
@@ -286,6 +286,9 @@ export function usePortfolioHoldings(
             return parseFloat(balance) * parseFloat(usdPrice.value);
           }
         }
+        if (isStablecoin(tokenSymbol)) {
+          return parseFloat(balance);
+        }
         // Return 0 if no price - token will still be included but may be filtered by UI
         return 0;
       })();
@@ -334,10 +337,10 @@ export function usePortfolioHoldings(
   const isLoading = balancesLoading || tokensLoading || nftsLoading || generalNFTsLoading;
 
   // Unified refresh function
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (forceRefresh = false) => {
     // refreshAllBalances() refreshes both native and ERC20 tokens
     const refreshPromises = [
-      refreshAllBalances(),
+      refreshAllBalances(forceRefresh),
       refreshNFTs(),
     ];
     

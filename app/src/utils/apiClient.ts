@@ -428,6 +428,7 @@ export async function getTokensByAddressPortfolio(
     withPrices?: boolean;
     includeNativeTokens?: boolean;
     includeErc20Tokens?: boolean;
+    skipCache?: boolean;
   } = {}
 ): Promise<{
   results: Array<{
@@ -446,7 +447,7 @@ export async function getTokensByAddressPortfolio(
       cached: boolean;
       error?: string;
     }>;
-  }>('/api/token-balances/portfolio', {
+  }>(`/api/token-balances/portfolio${options.skipCache ? `?refresh=1&_t=${Date.now()}` : ''}`, {
     method: 'POST',
     body: JSON.stringify({
       requests,
@@ -455,6 +456,7 @@ export async function getTokensByAddressPortfolio(
       includeNativeTokens: options.includeNativeTokens ?? true,
       includeErc20Tokens: options.includeErc20Tokens ?? true,
     }),
+    ...(options.skipCache && { cache: 'no-store' as RequestCache }),
     timeout: 60000, // 60 second timeout
   });
 

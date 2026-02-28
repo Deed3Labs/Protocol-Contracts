@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowDownLeft,
@@ -193,6 +193,7 @@ const CLRUSD_HOME_CHAIN_ID = Number(import.meta.env.VITE_CLRUSD_HOME_CHAIN_ID ||
 const ERC20_ABI = [
   'function approve(address spender, uint256 amount) external returns (bool)',
   'function allowance(address owner, address spender) external view returns (uint256)',
+  'function balanceOf(address account) external view returns (uint256)',
 ];
 
 const ESA_VAULT_ABI = [
@@ -712,6 +713,7 @@ export default function SavingsHome() {
   const { walletProvider } = useAppKitProvider('eip155');
   const {
     previousTotalBalanceUSD,
+    balances,
     holdings,
     refreshHoldings,
     refreshBalances,
@@ -745,6 +747,7 @@ export default function SavingsHome() {
   const [vaultPending, setVaultPending] = useState(false);
   const [vaultError, setVaultError] = useState<string | null>(null);
   const [vaultStatus, setVaultStatus] = useState<string | null>(null);
+  const [liveHomeClrUsdBalance, setLiveHomeClrUsdBalance] = useState<number | null>(null);
 
   const today = useMemo(() => new Date(), []);
   const accountOpenedDate = useMemo(() => {
@@ -767,7 +770,29 @@ export default function SavingsHome() {
       ?.address || ZERO_ADDRESS;
   const isOnHomeChain = connectedChainId === CLRUSD_HOME_CHAIN_ID;
 
-  const clrusdByChain = useMemo(() => {
+  const refreshHomeClrUsdBalance = useCallback(async () => {
+    if (!isConnected || !address || homeClrUsdAddress === ZERO_ADDRESS || !homeNetworkInfo?.rpcUrl) {
+      setLiveHomeClrUsdBalance(0);
+      return;
+    }
+
+    try {
+      const provider = new ethers.JsonRpcProvider(homeNetworkInfo.rpcUrl);
+      const clrusdToken = new ethers.Contract(homeClrUsdAddress, ERC20_ABI, provider);
+      const rawBalance = (await clrusdToken.balanceOf(address)) as bigint;
+      const parsed = Number(ethers.formatUnits(rawBalance, 6));
+      setLiveHomeClrUsdBalance(Number.isFinite(parsed) ? Math.max(parsed, 0) : 0);
+    } catch (error) {
+      console.warn('[SavingsHome] Failed to read CLRUSD balance directly from home chain:', error);
+      setLiveHomeClrUsdBalance(null);
+    }
+  }, [isConnected, address, homeClrUsdAddress, homeNetworkInfo?.rpcUrl]);
+
+  useEffect(() => {
+    void refreshHomeClrUsdBalance();
+  }, [refreshHomeClrUsdBalance]);
+
+  const holdingsClrUsdByChain = useMemo(() => {
     const entries = holdings.filter(
       (holding) =>
         holding.type === 'token' && (holding.asset_symbol || '').toUpperCase() === 'CLRUSD'
@@ -782,9 +807,13 @@ export default function SavingsHome() {
     return totals;
   }, [holdings]);
 
-  const totalClrUsdBalance = Array.from(clrusdByChain.values()).reduce((sum, value) => sum + value, 0);
-  const homeChainClrUsdBalance = clrusdByChain.get(CLRUSD_HOME_CHAIN_ID) || 0;
-  const remoteClrUsdBalance = Math.max(totalClrUsdBalance - homeChainClrUsdBalance, 0);
+  const holdingsHomeChainClrUsdBalance = holdingsClrUsdByChain.get(CLRUSD_HOME_CHAIN_ID) || 0;
+  const homeChainClrUsdBalance = liveHomeClrUsdBalance ?? holdingsHomeChainClrUsdBalance;
+  const remoteClrUsdBalance = Array.from(holdingsClrUsdByChain.entries()).reduce(
+    (sum, [chainId, value]) => (chainId === CLRUSD_HOME_CHAIN_ID ? sum : sum + value),
+    0
+  );
+  const totalClrUsdBalance = homeChainClrUsdBalance + remoteClrUsdBalance;
   const savingsBalance = isConnected ? Math.max(homeChainClrUsdBalance, 0) : 0;
   const daysOpen = daysBetween(accountOpenedDate, today);
   const accountMonth = Math.max(Math.floor(daysOpen / 30), 1);
@@ -1365,7 +1394,8 @@ export default function SavingsHome() {
       }
 
       setVaultAmount('');
-      await Promise.all([refreshHoldings(), refreshBalances()]);
+      await refreshHomeClrUsdBalance();
+      await Promise.all([refreshHoldings(true), refreshBalances()]);
     } catch (error: unknown) {
       const err =
         typeof error === 'object' && error !== null
@@ -1428,6 +1458,9 @@ export default function SavingsHome() {
                     Savings balance + ELPA-eligible equity credits.
                   </div>
                 </div>
+                {isConnected && balances.length > 1 && (
+                  <span className="text-xs text-zinc-400">Across {balances.length} networks</span>
+                )}
               </div>
 
               <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">

@@ -69,7 +69,7 @@ interface PortfolioContextType {
   
   // Refresh functions
   refreshBalances: () => Promise<void>;
-  refreshHoldings: () => Promise<void>;
+  refreshHoldings: (forceRefresh?: boolean) => Promise<void>;
   refreshActivity: () => Promise<void>;
   refreshAll: () => Promise<void>;
 }
@@ -235,8 +235,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await refreshBalancesHook();
   }, [refreshBalancesHook]);
   
-  const refreshHoldings = useCallback(async () => {
-    await refreshHoldingsHook();
+  const refreshHoldings = useCallback(async (forceRefresh = false) => {
+    await refreshHoldingsHook(forceRefresh);
   }, [refreshHoldingsHook]);
   
   const refreshActivity = useCallback(async () => {

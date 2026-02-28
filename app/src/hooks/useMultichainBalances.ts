@@ -98,10 +98,10 @@ interface UseMultichainBalancesReturn {
   error: string | null;
   
   // Refresh functions
-  refresh: () => Promise<void>;
+  refresh: (forceRefresh?: boolean) => Promise<void>;
   refreshChain: (chainId: number) => Promise<void>;
   refreshBalances: () => Promise<void>;
-  refreshTokens: () => Promise<void>;
+  refreshTokens: (forceRefresh?: boolean) => Promise<void>;
 }
 
 /**
@@ -611,7 +611,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
    * Uses Portfolio API for multi-chain queries (more efficient)
    * Falls back to old method for single chain or if Portfolio API fails
    */
-  const refreshTokens = useCallback(async () => {
+  const refreshTokens = useCallback(async (forceRefresh = false) => {
     if (!isConnected || !address) {
       setTokens([]);
       setTokensLoading(false);
@@ -655,6 +655,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
                   withPrices: true,
                   includeNativeTokens: true,
                   includeErc20Tokens: true,
+                  skipCache: forceRefresh,
                 }
               ),
               60000 // 60 second timeout
@@ -685,6 +686,9 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
                       if (usdPrice && usdPrice.value) {
                         priceUSD = parseFloat(usdPrice.value);
                       }
+                    }
+                    if (priceUSD <= 0 && isStablecoin(symbol)) {
+                      priceUSD = 1;
                     }
                     const balanceUSD = parseFloat(balance) * priceUSD;
 
@@ -807,8 +811,8 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
    * Refresh all data (native + ERC20). Uses a single Portfolio API call when possible;
    * native balances are derived from that response, so we avoid redundant getBalancesBatch.
    */
-  const refresh = useCallback(async () => {
-    await refreshTokens();
+  const refresh = useCallback(async (forceRefresh = false) => {
+    await refreshTokens(forceRefresh);
   }, [refreshTokens]);
 
   // Calculate totals
