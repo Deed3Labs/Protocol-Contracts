@@ -2443,11 +2443,11 @@ export default function SavingsHome() {
               <div className="space-y-2 rounded-sm border border-zinc-200/70 dark:border-zinc-800/70 bg-gradient-to-r from-zinc-100/70 to-emerald-50/50 dark:from-[#141414] dark:to-[#0e0e0e] p-4">
                 <p className="text-sm font-medium">Stop Renting. Start Owning. Take the CLEAR path.</p>
                 <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-                  EquityShare is a 2026-first home financing solution. We buy the home you want, you move in, and a
+                  Clear Equity is a 2026-first home financing solution. We buy the home you want, you move in, and a
                   portion of every monthly payment builds your real-world equity.
                 </p>
                 <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-                  EquityShare is facilitated via an Equity-Lease Participation Agreement (ELPA), an asset-backed
+                  Clear Equity is facilitated via an Equity-Lease Participation Agreement (ELPA), an asset-backed
                   residency contract. 2% down. No credit trap. 100% Assurance.
                 </p>
               </div>
