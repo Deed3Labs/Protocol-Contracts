@@ -18,6 +18,10 @@ Simple idea:
 
 > We use collective member power to help people get into homes and build real equity over time.
 
+Platform identity:
+
+- CLEAR uses T-Deeds contracts to digitize real-estate ownership data and transfer state.
+
 ---
 
 ## The Main Products
@@ -75,10 +79,24 @@ CLEAR’s core promise is to make ownership a path, not a one-time gate.
 ### Still in buildout/roadmap form
 
 1. Full ELPA lifecycle as a dedicated on-chain module.
-2. Full trust and beneficial-interest transfer operations.
+2. Full trust-administration workflow beyond existing T-Deeds ownership/beneficiary transfer-state handling.
 3. Full production-grade assurance operations stack.
 
 This distinction is important. CLEAR already has real infrastructure, but not every final product promise is fully finished in code yet.
+
+---
+
+## Legal Setup (Plain English)
+
+CLEAR’s legal-operating framework is generally designed around:
+
+1. Individual trust wrappers for each acquired property.
+2. Each trust includes a trustee and trust protector.
+3. Member/organization identity verification (KYC/KYB).
+4. Traditional legal agreements alongside on-chain records.
+5. Formal dispute-resolution processes.
+
+This helps translate blockchain records into legal enforceability in the real world.
 
 ---
 
@@ -134,3 +152,13 @@ Today, it already has meaningful technical foundations (`ClearUSD`, ESA vault, r
 
 If CLEAR executes well, the model can become a practical path for renters to build ownership over time.
 
+---
+
+## Reference Links (Legal Context)
+
+1. [CLEAR Docs](https://docs.deedprotocol.org/)
+2. [Corporate Structure](https://docs.deedprotocol.org/legal-framework/corporate-structure)
+3. [Property Wrappers](https://docs.deedprotocol.org/legal-framework/property-wrappers)
+4. [Identity Verification](https://docs.deedprotocol.org/legal-framework/identity-verification)
+5. [Dispute Resolution](https://docs.deedprotocol.org/legal-framework/dispute-resolution)
+6. [Traditional Legal Agreements](https://docs.deedprotocol.org/legal-framework/traditional-legal-agreements)

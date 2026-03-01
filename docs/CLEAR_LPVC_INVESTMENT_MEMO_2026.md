@@ -15,6 +15,7 @@ CLEAR is a fintech/neobank/financial co-op model designed to convert renters int
 3. Equity-accrual residency product (`Clear Equity` / ELPA).
 4. Collateral protection operations (`Clear Assurance`).
 5. Credit and servicing primitives (`Clear Credit`).
+6. CLEAR T-Deeds contracts for RWA tokenization and legal engineering.
 
 Core narrative:
 
@@ -123,12 +124,12 @@ As member base and local vendor throughput grow together, acquisition and mainte
 3. Reserve + pricing stack (`AssurancePool`, `AssuranceOracle`, `TokenRegistry`).
 4. Credit primitives (`StableCredit`, `MutualCredit`, `CreditIssuer`, `CreditPool`).
 5. Settlement escrow (`ClaimEscrow`).
-6. RWA rails (`DeedNFT`, validators, subdivision/fractionalization).
+6. RWA rails (`T-Deeds`, validators, subdivision/fractionalization).
 
 ### What is not yet contract-codified in this repo
 
 1. Dedicated ELPA lifecycle contract module.
-2. Full trust administration and beneficial-interest transfer engine.
+2. Full trust administration engine beyond the existing T-Deeds beneficiary and transfer-state automation.
 3. End-to-end assurance operations stack as enforceable on-chain state transitions.
 
 ### Current quality signal (executed tests)
@@ -165,6 +166,39 @@ Primary diligence areas:
 Investment posture:
 
 Capital should be phased against legal-op readiness milestones, not narrative milestones.
+
+### Legal-operating context (current institutional frame)
+
+CLEAR’s institutional legal structure is supported by CLEAR documentation and your current operating model:
+
+1. Property wrapper model centered on individual property trusts.
+2. Each property trust has a trustee and trust protector.
+3. KYC/KYB expectations for individuals and organizations.
+4. Dispute-resolution workflow with defined escalation/mediation flow.
+5. Traditional legal agreements (purchase, lease, trust/admin and related docs).
+6. Use of third-party professional services (property management, legal counsel, advisory).
+
+This supports a hybrid legal strategy: on-chain state + off-chain enforceable contracts.
+
+### Entity model and organizational architecture
+
+The documentation context plus founder-provided org chart point to a three-part operating structure:
+
+1. `Deed3 Holdings Inc` (parent/compliance/capital governance layer).
+2. `Deed3Labs LLC` (protocol R&D and maintenance layer).
+3. `The Deed & Title Co` (records/property administration/dispute support layer).
+
+The org chart adds a broader fund-and-entity map (holding entities, management company, investment entities, trust/SPV pathways, and pass-through tax flows). This should be published as a dated legal entity chart with counsel sign-off for institutional diligence.
+
+### 1031/721-UPREIT narrative and REIT economics
+
+The source materials describe:
+
+1. A DeedExchange concept for 1031-like swaps and 721/UPREIT contribution paths.
+2. Tokenized OP-unit style ownership and closed-loop balancing asset mechanics.
+3. A private-REIT style fee model (fund fee, property management fee, incentive fee after hurdle) and GP alignment model.
+
+These are high-value strategic signals for fundraising narrative and should be presented as institutional expansion modules with explicit implementation scope and timing.
 
 ---
 
@@ -248,6 +282,22 @@ Recommended capital posture:
 
 ---
 
+## 13) Source Links Used for Legal/Organizational Context
+
+1. [CLEAR Docs](https://docs.deedprotocol.org/)
+2. [Corporate Structure](https://docs.deedprotocol.org/legal-framework/corporate-structure)
+3. [Property Wrappers](https://docs.deedprotocol.org/legal-framework/property-wrappers)
+4. [Nominee Trust Structure](https://docs.deedprotocol.org/legal-framework/property-wrappers/nominee-trust-structure)
+5. [Limited Liability Company Wrapper](https://docs.deedprotocol.org/legal-framework/property-wrappers/limited-liability-company)
+6. [Identity Verification](https://docs.deedprotocol.org/legal-framework/identity-verification)
+7. [Dispute Resolution](https://docs.deedprotocol.org/legal-framework/dispute-resolution)
+8. [Traditional Legal Agreements](https://docs.deedprotocol.org/legal-framework/traditional-legal-agreements)
+9. [Third-Party Services](https://docs.deedprotocol.org/legal-framework/third-party-services)
+10. [DeedExchange Post](https://github.com/Deed3Labs/Posts/blob/main/DeedExchange.md)
+11. [REIT Post](https://github.com/Deed3Labs/Posts/blob/main/REIT.md)
+
+---
+
 ## Appendix: Positioning Language (Use with Disclosure Discipline)
 
 Approved messaging:
@@ -261,4 +311,3 @@ Disclosure guardrails:
 1. Avoid guaranteed-return language.
 2. Distinguish roadmap from currently live contract functionality.
 3. Tie economics to documented formulas and operating assumptions.
-

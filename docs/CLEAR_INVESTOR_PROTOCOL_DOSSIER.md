@@ -39,6 +39,7 @@ CLEAR is positioned as a:
 1. Fintech app.
 2. Depositor-owned neobank / financial co-op.
 3. Real-asset operating system that combines acquisition, residency, equity accrual, and collateral protection.
+4. Unified CLEAR stack where T-Deeds contracts digitize and structure RWA real-estate rights.
 
 ### Product family (target brand architecture)
 
@@ -73,7 +74,7 @@ This is critical for investor communications: production readiness is not yet cl
 
 ### Implemented system layers (code)
 
-1. RWA tokenization and validation (`DeedNFT`, `Validator`, `ValidatorRegistry`, `FundManager`, `MetadataRenderer`).
+1. RWA tokenization and validation (`T-Deeds`, `Validator`, `ValidatorRegistry`, `FundManager`, `MetadataRenderer`).
 2. Asset structuring (`Subdivide`, `Fractionalize`, `FractionTokenFactory`).
 3. Reserve and pricing (`AssurancePool`, `AssuranceOracle`, `TokenRegistry`).
 4. Credit rails (`StableCredit`, `MutualCredit`, `CreditIssuer`, `CreditPool`, `AccessManager`).
@@ -86,7 +87,8 @@ This is critical for investor communications: production readiness is not yet cl
 - CLEAR/ELPA language appears in frontend product copy and UX logic (`app/src/components/portfolio/SavingsHome.tsx`).
 - `ClearUSD` and `ESADepositVault` are implemented on-chain and documented.
 - No dedicated on-chain `ELPA` contract is present in this repository as of March 1, 2026.
-- Trust/legal clauses (assumption clause, residual beneficiary clause) are not encoded as smart contract modules in this repo.
+- T-Deeds contracts encode beneficiary ownership state and update beneficiary on transfer.
+- Trust/legal clauses (assumption clause, residual beneficiary clause, trustee/protector actions) are still legal-process workflows, not fully automated contract modules in this repo.
 
 ---
 
@@ -165,10 +167,11 @@ Current state:
 
 - ELPA is present in frontend copy and member journey UX framing.
 - No dedicated Solidity ELPA lifecycle contract currently in repo.
+- T-Deeds and validator stack already track ownership/beneficiary traits and transfer-linked state updates.
 
 Implication:
 
-- The legal contract and title/beneficial-interest enforcement model should be presented as an operating/legal framework currently, not as a fully on-chain automated module yet.
+- The legal contract and trust-administration lifecycle should be presented as a hybrid model: key ownership state on-chain, legal administration workflows in signed agreements and operations.
 
 ### 5.4 Clear Assurance - Concept + Partial Technical Foundation
 
@@ -442,6 +445,32 @@ These are legal constructs and must be validated by counsel across:
 3. Securities and investment offering rules.
 4. Trust and bankruptcy remoteness treatment.
 
+### 11.5 Legal-framework context for current CLEAR operations
+
+Current CLEAR legal-operating packaging is supported by CLEAR documentation and founder-confirmed model choices:
+
+1. Property-wrapper strategy based on individual property trusts.
+2. Each property trust has a trustee and trust protector.
+3. Identity-verification expectations (KYC/KYB for users and organizations).
+4. Structured dispute-resolution process.
+5. Traditional legal agreements (purchase, lease, trust/admin and related docs).
+6. Third-party professional services for legal, property, and operational functions.
+
+### 11.6 Organizational and capital-markets architecture
+
+The operating architecture and provided entity chart indicate a broad platform scope including:
+
+1. Parent/holding governance structure.
+2. Dedicated protocol/R&D operating entity.
+3. Property/title administration layer.
+4. Trust/SPV pathways for property ownership and transfer.
+5. 1031/721-UPREIT and REIT-style structuring pathways for institutional expansion.
+
+Institutional use:
+
+- Treat this as the active architecture map for diligence.
+- Convert it to a dated current entity chart, legal memo set, and securities/compliance position before institutional scale.
+
 ---
 
 ## 12. Business Sustainability Thesis
@@ -577,7 +606,7 @@ Institutional recommendation:
 
 Core:
 
-- `contracts/core/DeedNFT.sol`
+- `contracts/core/DeedNFT.sol` (T-Deeds core contract)
 - `contracts/core/Validator.sol`
 - `contracts/core/ValidatorRegistry.sol`
 - `contracts/core/FundManager.sol`
@@ -615,7 +644,7 @@ Settlement and bonds:
 | CLRUSD token | Implemented | Role-gated mint/burn; CCIP-oriented token base |
 | ESA vault 1:1 | Implemented | Isolated v1 backing; tested with passing suite |
 | ELPA legal-economic narrative | Product/UX narrative | Frontend copy and logic references; no dedicated ELPA contract in repo |
-| Trust/beneficial-interest clauses | Proposed legal layer | Provided in narrative context; not encoded in contracts |
+| Trust/beneficial-interest workflow | Partially implemented | T-Deeds beneficiary and transfer-state logic is encoded; trust administration and assumption workflows are legal/ops layer |
 | Assurance reserve mechanics | Implemented base rails | Reserve + oracle stack exists; home repair ops are operational layer |
 | Clear Credit primitives | Implemented | Stable/mutual credit + issuer + pool + access controls |
 | Claim escrow settlement | Implemented with test drift | Partial test failures indicate hardening needed |
@@ -639,7 +668,31 @@ Use these with strict disclosure discipline:
 
 ---
 
-## 22. Final Assessment
+## 22. Appendix D - Source Context and Reconciliation Notes
+
+External sources reviewed for legal/organizational context:
+
+1. [CLEAR Docs](https://docs.deedprotocol.org/)
+2. [Corporate Structure](https://docs.deedprotocol.org/legal-framework/corporate-structure)
+3. [Property Wrappers](https://docs.deedprotocol.org/legal-framework/property-wrappers)
+4. [Nominee Trust Structure](https://docs.deedprotocol.org/legal-framework/property-wrappers/nominee-trust-structure)
+5. [Limited Liability Company Wrapper](https://docs.deedprotocol.org/legal-framework/property-wrappers/limited-liability-company)
+6. [Identity Verification](https://docs.deedprotocol.org/legal-framework/identity-verification)
+7. [Dispute Resolution](https://docs.deedprotocol.org/legal-framework/dispute-resolution)
+8. [Traditional Legal Agreements](https://docs.deedprotocol.org/legal-framework/traditional-legal-agreements)
+9. [Third-Party Services](https://docs.deedprotocol.org/legal-framework/third-party-services)
+10. [DeedExchange Post](https://github.com/Deed3Labs/Posts/blob/main/DeedExchange.md)
+11. [REIT Post](https://github.com/Deed3Labs/Posts/blob/main/REIT.md)
+
+Reconciliation rule used in this dossier:
+
+1. Current repository code/tests/deployments are treated as implementation truth.
+2. CLEAR narrative and legal package drive market-facing product positioning.
+3. CLEAR docs/posts are treated as one platform record and must align with current published CLEAR policy language.
+
+---
+
+## 23. Final Assessment
 
 CLEAR has a credible foundation to become a sustainable housing-fintech co-op business if execution closes the current legal-product and production-hardening gaps.
 
