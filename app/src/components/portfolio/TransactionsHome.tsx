@@ -1435,38 +1435,81 @@ export default function TransactionsHome() {
                     </div>
 
                     <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-                      <div className="xl:col-span-2 rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-3">
-                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Source mix</p>
-                        <div className="h-[220px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie data={sourceBreakdownData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={82} paddingAngle={3}>
-                                {sourceBreakdownData.map((entry, index) => (
-                                  <Cell key={entry.name} fill={SOURCE_COLORS[index % SOURCE_COLORS.length]} />
-                                ))}
-                              </Pie>
-                              <Tooltip content={<InsightTooltip />} />
-                            </PieChart>
-                          </ResponsiveContainer>
+                      <div className="xl:col-span-2 rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 bg-white/80 dark:bg-zinc-900/40 overflow-hidden">
+                        <div className="px-3 pt-3 pb-2 flex items-center justify-between gap-2">
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Source mix</p>
+                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                            {sourceBreakdownData.length} sources
+                          </p>
                         </div>
-                        <div className="pt-2 border-t border-zinc-200/70 dark:border-zinc-800/70 space-y-1">
-                          {sourceBreakdownData.slice(0, 3).map((item, index) => {
-                            const pct = sourceBreakdownTotal > 0 ? (item.value / sourceBreakdownTotal) * 100 : 0;
-                            return (
-                              <div key={item.name} className="flex items-center justify-between text-[11px]">
-                                <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300 truncate">
-                                  <span
-                                    className="w-1.5 h-1.5 rounded-full shrink-0"
-                                    style={{ backgroundColor: SOURCE_COLORS[index % SOURCE_COLORS.length] }}
-                                  />
-                                  {item.name}
-                                </span>
-                                <span className="text-zinc-500 dark:text-zinc-400">
-                                  {formatCurrencyCompact(item.value)} · {pct.toFixed(0)}%
-                                </span>
+
+                        <div className="px-3 pb-3">
+                          <div className="relative mx-auto h-[220px] w-[220px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={sourceBreakdownData.length > 0 ? sourceBreakdownData : [{ name: 'No data', value: 1 }]}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  innerRadius={58}
+                                  outerRadius={84}
+                                  startAngle={90}
+                                  endAngle={-270}
+                                  stroke="none"
+                                  paddingAngle={sourceBreakdownData.length > 1 ? 2 : 0}
+                                >
+                                  {(sourceBreakdownData.length > 0 ? sourceBreakdownData : [{ name: 'No data', value: 1 }]).map((entry, index) => (
+                                    <Cell
+                                      key={entry.name}
+                                      fill={sourceBreakdownData.length > 0 ? SOURCE_COLORS[index % SOURCE_COLORS.length] : '#d4d4d8'}
+                                    />
+                                  ))}
+                                </Pie>
+                                {sourceBreakdownData.length > 0 && <Tooltip content={<InsightTooltip />} />}
+                              </PieChart>
+                            </ResponsiveContainer>
+                            <div className="absolute inset-[36px] rounded-full border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/95 dark:bg-[#111318]/95 flex flex-col items-center justify-center">
+                              <Wallet className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 mb-1" />
+                              <p className="text-[15px] sm:text-[16px] font-light leading-none">
+                                {formatCurrencyCompact(sourceBreakdownTotal)}
+                              </p>
+                              <p className="text-[9px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mt-1">
+                                Source total
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-zinc-200/70 dark:border-zinc-800/70 px-3 py-2">
+                          {sourceBreakdownData.length === 0 && (
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">No source data in current filter set.</p>
+                          )}
+                          {sourceBreakdownData.length > 0 && (
+                            <div className="overflow-x-auto no-scrollbar">
+                              <div className="min-w-max flex items-center gap-2">
+                                {sourceBreakdownData.map((item, index) => {
+                                  const pct = sourceBreakdownTotal > 0 ? (item.value / sourceBreakdownTotal) * 100 : 0;
+                                  return (
+                                    <div
+                                      key={item.name}
+                                      className="shrink-0 inline-flex items-center gap-2 rounded-md border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/70 dark:bg-zinc-900/60 px-2 py-1.5 text-[10px]"
+                                    >
+                                      <span className="inline-flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
+                                        <span
+                                          className="w-1.5 h-1.5 rounded-full shrink-0"
+                                          style={{ backgroundColor: SOURCE_COLORS[index % SOURCE_COLORS.length] }}
+                                        />
+                                        {item.name}
+                                      </span>
+                                      <span className="text-zinc-500 dark:text-zinc-400">
+                                        {formatCurrencyCompact(item.value)} · {pct.toFixed(0)}%
+                                      </span>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            );
-                          })}
+                            </div>
+                          )}
                         </div>
                       </div>
 
