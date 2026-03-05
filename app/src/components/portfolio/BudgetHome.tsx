@@ -2,8 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
   Line,
+  LineChart,
+  Pie,
+  PieChart,
   ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
@@ -41,9 +47,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { BudgetTracker } from './BudgetTracker';
-import { SpendTracker } from './SpendTracker';
-import { UpcomingTransactions } from './UpcomingTransactions';
+import { motion } from 'framer-motion';
 import type { WalletTransaction } from '@/types/transactions';
 
 const MONTHS_PER_YEAR = 12;
@@ -72,6 +76,7 @@ type SortFilter = 'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow';
 type StatusFilter = 'All' | 'completed' | 'pending' | 'failed';
 type ForecastScenario = 'Conservative' | 'Base' | 'Aggressive';
 type ForecastHorizon = 10 | 20 | 30;
+type InsightTab = 'Cash Flow' | 'Spend Mix' | 'Forecast';
 
 interface ConsolidatedTransaction {
   id: string;
@@ -329,6 +334,25 @@ const ForecastTooltip = ({ active, payload }: any) => {
   );
 };
 
+const InsightTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload || payload.length === 0) return null;
+
+  return (
+    <div className="rounded-md border border-zinc-700 bg-zinc-900/95 px-3 py-2 backdrop-blur-sm">
+      {label != null && <p className="text-zinc-300 text-xs mb-1">{label}</p>}
+      {payload.map((entry: any) => (
+        <p key={entry.dataKey} className="text-xs" style={{ color: entry.color || '#e4e4e7' }}>
+          {entry.name || entry.dataKey}: {formatCurrency(Number(entry.value || 0))}
+        </p>
+      ))}
+    </div>
+  );
+};
+
+const INSIGHT_TAB_LIST: InsightTab[] = ['Cash Flow', 'Spend Mix', 'Forecast'];
+const SOURCE_COLORS = ['#3b82f6', '#06b6d4', '#a855f7', '#22c55e'];
+const CATEGORY_COLORS = ['#3b82f6', '#8b5cf6', '#14b8a6', '#f97316', '#ec4899', '#0ea5e9'];
+
 const getYOffsetLabel = (monthOffset: number) => {
   if (monthOffset === 0) return 'Today';
   if (monthOffset < 0) return '';
@@ -371,6 +395,7 @@ export default function BudgetHome() {
 
   const [forecastScenario, setForecastScenario] = useState<ForecastScenario>('Base');
   const [forecastHorizon, setForecastHorizon] = useState<ForecastHorizon>(20);
+  const [insightTab, setInsightTab] = useState<InsightTab>('Cash Flow');
 
   const { setActionModalOpen } = useGlobalModals();
 
@@ -787,6 +812,35 @@ export default function BudgetHome() {
     refreshSpend();
   };
 
+  const applyQuickFocus = (focus: 'all' | 'inflow' | 'outflow' | 'pending' | 'failed') => {
+    if (focus === 'all') {
+      setDirectionFilter('All');
+      setStatusFilter('All');
+      return;
+    }
+
+    if (focus === 'inflow') {
+      setDirectionFilter('inflow');
+      setStatusFilter('All');
+      return;
+    }
+
+    if (focus === 'outflow') {
+      setDirectionFilter('outflow');
+      setStatusFilter('All');
+      return;
+    }
+
+    if (focus === 'pending') {
+      setDirectionFilter('All');
+      setStatusFilter('pending');
+      return;
+    }
+
+    setDirectionFilter('All');
+    setStatusFilter('failed');
+  };
+
   const resetFilters = () => {
     setSourceFilter('All');
     setDirectionFilter('All');
@@ -812,6 +866,217 @@ export default function BudgetHome() {
     if (amountMax.trim() !== '') labels.push({ key: 'amountMax', label: `Max: $${amountMax}`, onClear: () => setAmountMax('') });
     return labels;
   }, [accountFilter, amountMax, amountMin, categoryFilter, dateFilter, directionFilter, sortFilter, sourceFilter, statusFilter]);
+
+  const monthlyFlowData = useMemo(() => {
+    const now = new Date();
+    const monthsBack = 8;
+    const points = Array.from({ length: monthsBack }, (_, index) => {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - (monthsBack - 1 - index), 1);
+      return {
+        key: `${monthDate.getFullYear()}-${monthDate.getMonth()}`,
+        label: monthDate.toLocaleDateString('en-US', { month: 'short' }),
+        inflow: 0,
+        outflow: 0,
+        net: 0,
+      };
+    });
+
+    const map = new Map(points.map((point) => [point.key, point]));
+    const nowMs = now.getTime();
+
+    consolidatedTransactions.forEach((transaction) => {
+      const txDate = transaction.date;
+      if (txDate.getTime() > nowMs) return;
+      const key = `${txDate.getFullYear()}-${txDate.getMonth()}`;
+      const point = map.get(key);
+      if (!point) return;
+      if (transaction.direction === 'inflow') point.inflow += transaction.amount;
+      if (transaction.direction === 'outflow') point.outflow += transaction.amount;
+    });
+
+    return points.map((point) => ({
+      ...point,
+      net: point.inflow - point.outflow,
+    }));
+  }, [consolidatedTransactions]);
+
+  const currentMonthFlow = useMemo(() => {
+    const current = monthlyFlowData[monthlyFlowData.length - 1];
+    return current ?? { inflow: 0, outflow: 0, net: 0 };
+  }, [monthlyFlowData]);
+
+  const sourceBreakdownData = useMemo(() => {
+    const buckets = new Map<ConsolidatedSource, number>();
+    filteredTransactions.forEach((transaction) => {
+      const current = buckets.get(transaction.source) || 0;
+      buckets.set(transaction.source, current + transaction.amount);
+    });
+
+    return Array.from(buckets.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredTransactions]);
+
+  const outflowCategoryData = useMemo(() => {
+    const buckets = new Map<ConsolidatedCategory, number>();
+    filteredTransactions.forEach((transaction) => {
+      if (transaction.direction !== 'outflow') return;
+      const current = buckets.get(transaction.category) || 0;
+      buckets.set(transaction.category, current + transaction.amount);
+    });
+
+    return Array.from(buckets.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+  }, [filteredTransactions]);
+
+  const weekdayOutflowData = useMemo(() => {
+    const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const values = labels.map((label) => ({ label, value: 0 }));
+    filteredTransactions.forEach((transaction) => {
+      if (transaction.direction !== 'outflow') return;
+      const day = transaction.date.getDay();
+      values[day].value += transaction.amount;
+    });
+    return values;
+  }, [filteredTransactions]);
+
+  const pendingTransactionCount = useMemo(
+    () => consolidatedTransactions.filter((transaction) => transaction.status === 'pending').length,
+    [consolidatedTransactions]
+  );
+
+  const filteredCompletedCount = useMemo(
+    () => filteredTransactions.filter((transaction) => transaction.status === 'completed').length,
+    [filteredTransactions]
+  );
+
+  const filteredPendingCount = useMemo(
+    () => filteredTransactions.filter((transaction) => transaction.status === 'pending').length,
+    [filteredTransactions]
+  );
+
+  const filteredFailedCount = useMemo(
+    () => filteredTransactions.filter((transaction) => transaction.status === 'failed').length,
+    [filteredTransactions]
+  );
+
+  const averageOutflowTicket = useMemo(() => {
+    const outflows = filteredTransactions.filter((transaction) => transaction.direction === 'outflow');
+    if (outflows.length === 0) return 0;
+    const total = outflows.reduce((sum, transaction) => sum + transaction.amount, 0);
+    return total / outflows.length;
+  }, [filteredTransactions]);
+
+  const largestOutflowTransaction = useMemo(() => {
+    const outflows = filteredTransactions.filter((transaction) => transaction.direction === 'outflow');
+    if (outflows.length === 0) return null;
+    return [...outflows].sort((a, b) => b.amount - a.amount)[0];
+  }, [filteredTransactions]);
+
+  const dailyFlowPulseData = useMemo(() => {
+    const now = new Date();
+    const days = 14;
+    const points = Array.from({ length: days }, (_, index) => {
+      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1 - index));
+      return {
+        key: `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`,
+        label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        inflow: 0,
+        outflow: 0,
+        net: 0,
+      };
+    });
+
+    const map = new Map(points.map((point) => [point.key, point]));
+
+    filteredTransactions.forEach((transaction) => {
+      const txDate = transaction.date;
+      const key = `${txDate.getFullYear()}-${txDate.getMonth()}-${txDate.getDate()}`;
+      const point = map.get(key);
+      if (!point) return;
+      if (transaction.direction === 'inflow') point.inflow += transaction.amount;
+      if (transaction.direction === 'outflow') point.outflow += transaction.amount;
+    });
+
+    return points.map((point) => ({
+      ...point,
+      net: point.inflow - point.outflow,
+    }));
+  }, [filteredTransactions]);
+
+  const upcomingPendingTransactions = useMemo(() => {
+    const now = Date.now();
+    return [...consolidatedTransactions]
+      .filter((transaction) => transaction.status === 'pending')
+      .sort((a, b) => {
+        const aDistance = Math.abs(a.date.getTime() - now);
+        const bDistance = Math.abs(b.date.getTime() - now);
+        return aDistance - bDistance;
+      })
+      .slice(0, 5);
+  }, [consolidatedTransactions]);
+
+  const sourceVolumeData = useMemo(() => {
+    const buckets = new Map<ConsolidatedSource, { count: number; amount: number }>();
+    filteredTransactions.forEach((transaction) => {
+      const current = buckets.get(transaction.source) ?? { count: 0, amount: 0 };
+      buckets.set(transaction.source, {
+        count: current.count + 1,
+        amount: current.amount + transaction.amount,
+      });
+    });
+
+    return Array.from(buckets.entries())
+      .map(([source, value]) => ({ source, ...value }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [filteredTransactions]);
+
+  const quickFocusCounts = useMemo(
+    () => ({
+      all: consolidatedTransactions.length,
+      inflow: consolidatedTransactions.filter((transaction) => transaction.direction === 'inflow').length,
+      outflow: consolidatedTransactions.filter((transaction) => transaction.direction === 'outflow').length,
+      pending: consolidatedTransactions.filter((transaction) => transaction.status === 'pending').length,
+      failed: consolidatedTransactions.filter((transaction) => transaction.status === 'failed').length,
+    }),
+    [consolidatedTransactions]
+  );
+
+  const recurringSchedule = useMemo(() => {
+    const today = new Date();
+    const currentDay = today.getDate();
+    const items = [
+      ...inflowStreams.map((stream) => ({
+        id: `in-${stream.stream_id}`,
+        name: stream.name,
+        day: stream.day,
+        amount: Math.abs(stream.amount || 0),
+        direction: 'inflow' as const,
+      })),
+      ...outflowStreams.map((stream) => ({
+        id: `out-${stream.stream_id}`,
+        name: stream.name,
+        day: stream.day,
+        amount: Math.abs(stream.amount || 0),
+        direction: 'outflow' as const,
+      })),
+    ];
+
+    return items
+      .sort((a, b) => {
+        const aOffset = a.day >= currentDay ? a.day - currentDay : 31 - currentDay + a.day;
+        const bOffset = b.day >= currentDay ? b.day - currentDay : 31 - currentDay + b.day;
+        return aOffset - bOffset;
+      })
+      .slice(0, 6);
+  }, [inflowStreams, outflowStreams]);
+
+  const netFlow14d = useMemo(
+    () => dailyFlowPulseData.reduce((sum, point) => sum + point.net, 0),
+    [dailyFlowPulseData]
+  );
 
   const annualizedGrowthRate = toAnnualizedRate(adjustedForecastInputs.monthlyGrowthRate);
 
@@ -862,214 +1127,329 @@ export default function BudgetHome() {
                 </div>
               </div>
 
-              <div className="border-y border-zinc-200/70 dark:border-zinc-800/70 divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-1 sm:grid-cols-2">
-                <div className="p-4">
-                  <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                    Total inflow (monthly)
-                  </p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-emerald-500" />
-                    <p className="text-3xl font-light">{formatCurrency(totalInflowFromBanks)}</p>
+              <div className="overflow-x-auto no-scrollbar">
+                <div className="min-w-[600px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
+                  <div className="p-4">
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Total inflow (monthly)
+                    </p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-emerald-500" />
+                      <p className="text-3xl font-light">{formatCurrency(totalInflowFromBanks)}</p>
+                    </div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                      From {bankAccounts.length} linked bank account{bankAccounts.length === 1 ? '' : 's'}
+                    </p>
                   </div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                    From {bankAccounts.length} linked bank account{bankAccounts.length === 1 ? '' : 's'}
-                  </p>
-                </div>
 
-                <div className="p-4">
-                  <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                    Total outflow (monthly)
-                  </p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <TrendingDown className="w-4 h-4 text-rose-500" />
-                    <p className="text-3xl font-light">{formatCurrency(totalOutflowFromBanks)}</p>
+                  <div className="p-4">
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Total outflow (monthly)
+                    </p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <TrendingDown className="w-4 h-4 text-rose-500" />
+                      <p className="text-3xl font-light">{formatCurrency(totalOutflowFromBanks)}</p>
+                    </div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                      Recurring + projected month-to-date spend from connected accounts
+                    </p>
                   </div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                    Recurring + projected month-to-date spend from connected accounts
-                  </p>
                 </div>
               </div>
             </section>
 
             <section className="border-t border-zinc-200/70 dark:border-zinc-800/70">
-              <div className="py-3 border-b border-zinc-200/70 dark:border-zinc-800/70 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-light tracking-tight">Account Value Forecast</h2>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                    Projected value based on holdings growth, inflows, and outflows
-                  </p>
+              <div className="py-3 border-b border-zinc-200/70 dark:border-zinc-800/70">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-light tracking-tight">Visual Insights</h2>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                      Interactive views inspired by modern budgeting tools with transaction-first context
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Select value={forecastScenario} onValueChange={(value: ForecastScenario) => setForecastScenario(value)}>
-                    <SelectTrigger size="xs" className="w-32 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Conservative">Conservative</SelectItem>
-                      <SelectItem value="Base">Base case</SelectItem>
-                      <SelectItem value="Aggressive">Aggressive</SelectItem>
-                    </SelectContent>
-                  </Select>
 
-                  <Select
-                    value={String(forecastHorizon)}
-                    onValueChange={(value: string) => setForecastHorizon(Number(value) as ForecastHorizon)}
-                  >
-                    <SelectTrigger size="xs" className="w-24 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10 years</SelectItem>
-                      <SelectItem value="20">20 years</SelectItem>
-                      <SelectItem value="30">30 years</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="mt-4 flex gap-6 overflow-x-auto no-scrollbar">
+                  {INSIGHT_TAB_LIST.map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setInsightTab(tab)}
+                      className={cn(
+                        'text-sm font-medium transition-colors relative pb-2 whitespace-nowrap',
+                        insightTab === tab
+                          ? 'text-black dark:text-white'
+                          : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
+                      )}
+                    >
+                      {tab}
+                      {insightTab === tab && (
+                        <motion.div
+                          layoutId="budget-insight-tab"
+                          className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-500"
+                        />
+                      )}
+                    </button>
+                  ))}
                 </div>
               </div>
 
               <div className="pt-4 space-y-4">
-                <div className="divide-y sm:divide-y-0 sm:divide-x divide-zinc-200 dark:divide-zinc-800 border-y border-zinc-200/70 dark:border-zinc-800/70 grid grid-cols-1 sm:grid-cols-3">
-                  <div className="p-3">
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Current net worth</p>
-                    <p className="text-xl font-light mt-1">{formatCurrency(totalAccountValue)}</p>
-                  </div>
-                  <div className="p-3">
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Future net worth</p>
-                    <p className="text-xl font-light mt-1">{formatCurrency(forecastEndValue)}</p>
-                  </div>
-                  <div className="p-3">
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Forecast change</p>
-                    <p className={cn('text-xl font-light mt-1', forecastDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                      {forecastDelta >= 0 ? '+' : '-'}{formatCurrency(Math.abs(forecastDelta))}
-                    </p>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">{forecastDeltaPercent.toFixed(1)}%</p>
-                  </div>
-                </div>
+                {insightTab === 'Cash Flow' && (
+                  <>
+                    <div className="overflow-x-auto">
+                      <div className="min-w-[620px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-4">
+                        <div className="p-3">
+                          <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">This month inflow</p>
+                          <p className="text-base font-medium mt-1 text-emerald-600 dark:text-emerald-400">{formatCurrency(currentMonthFlow.inflow)}</p>
+                        </div>
+                        <div className="p-3">
+                          <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">This month outflow</p>
+                          <p className="text-base font-medium mt-1 text-rose-600 dark:text-rose-400">{formatCurrency(currentMonthFlow.outflow)}</p>
+                        </div>
+                        <div className="p-3">
+                          <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Net flow</p>
+                          <p className={cn('text-base font-medium mt-1', currentMonthFlow.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                            {currentMonthFlow.net >= 0 ? '+' : '-'}{formatCurrency(Math.abs(currentMonthFlow.net))}
+                          </p>
+                        </div>
+                        <div className="p-3">
+                          <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Pending</p>
+                          <p className="text-base font-medium mt-1">{pendingTransactionCount}</p>
+                        </div>
+                      </div>
+                    </div>
 
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  Assumptions: {annualizedGrowthRate.toFixed(1)}% annual growth and {formatCurrency(adjustedForecastInputs.netFlow)} net monthly flow
-                </p>
+                    <div className="h-[290px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={monthlyFlowData} margin={{ top: 6, right: 8, left: 0, bottom: 4 }} barGap={8}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#a1a1aa" opacity={0.25} />
+                          <XAxis dataKey="label" tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <YAxis tickFormatter={formatCurrencyCompact} tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} width={72} />
+                          <Tooltip content={<InsightTooltip />} />
+                          <ReferenceLine y={0} stroke="#a1a1aa" />
+                          <Bar dataKey="inflow" name="Inflow" fill="#10b981" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="outflow" name="Outflow" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </>
+                )}
 
-                <div className="h-[320px] sm:h-[360px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={forecastData} margin={{ top: 6, right: 14, left: 0, bottom: 8 }}>
-                      <defs>
-                        <linearGradient id="forecastFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.55} />
-                          <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.08} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="4 4" stroke="#a1a1aa" opacity={0.35} />
-                      <XAxis
-                        dataKey="monthOffset"
-                        type="number"
-                        domain={[-HISTORY_MONTHS, forecastHorizon * MONTHS_PER_YEAR]}
-                        ticks={xAxisTicks}
-                        tickFormatter={getYOffsetLabel}
-                        tick={{ fill: '#71717a', fontSize: 11 }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        orientation="right"
-                        tickFormatter={formatCurrencyCompact}
-                        tick={{ fill: '#71717a', fontSize: 11 }}
-                        axisLine={false}
-                        tickLine={false}
-                        width={72}
-                      />
-                      <Tooltip content={<ForecastTooltip />} cursor={{ stroke: '#94a3b8', strokeDasharray: '3 3' }} />
-                      <ReferenceLine x={0} stroke="#94a3b8" strokeOpacity={0.7} />
-                      <ReferenceLine
-                        y={forecastTargetValue}
-                        stroke="#93c5fd"
-                        strokeOpacity={0.85}
-                        strokeDasharray="5 5"
-                        label={{
-                          value: `Target: ${formatCurrencyCompact(forecastTargetValue)}`,
-                          position: 'insideTopRight',
-                          fill: '#64748b',
-                          fontSize: 10,
-                        }}
-                      />
-                      <Area
-                        dataKey="historicalValue"
-                        type="monotone"
-                        stroke="#3b82f6"
-                        strokeWidth={2}
-                        fill="url(#forecastFill)"
-                        connectNulls
-                        dot={false}
-                      />
-                      <Line
-                        dataKey="projectedValue"
-                        type="monotone"
-                        stroke="#60a5fa"
-                        strokeWidth={2}
-                        strokeDasharray="6 4"
-                        connectNulls
-                        dot={false}
-                      />
-                      {milestoneOffsets.map((offset) => {
-                        const milestonePoint = forecastData.find((point) => point.monthOffset === offset);
-                        if (!milestonePoint) return null;
+                {insightTab === 'Spend Mix' && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="border border-zinc-200/70 dark:border-zinc-800/70 p-3">
+                      <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Source mix</p>
+                      <div className="h-[250px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={sourceBreakdownData} dataKey="value" nameKey="name" innerRadius={54} outerRadius={86} paddingAngle={3}>
+                              {sourceBreakdownData.map((entry, index) => (
+                                <Cell key={entry.name} fill={SOURCE_COLORS[index % SOURCE_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip content={<InsightTooltip />} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
 
-                        return (
-                          <ReferenceDot
-                            key={offset}
-                            x={offset}
-                            y={milestonePoint.value}
-                            r={5.5}
-                            fill="#dbeafe"
-                            stroke="#3b82f6"
-                            strokeWidth={1.5}
+                    <div className="space-y-4">
+                      <div className="border border-zinc-200/70 dark:border-zinc-800/70 p-3">
+                        <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Top outflow categories</p>
+                        <div className="space-y-2">
+                          {outflowCategoryData.length === 0 && (
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">No outflow categories in current filter set.</p>
+                          )}
+                          {outflowCategoryData.map((category, index) => {
+                            const total = outflowCategoryData.reduce((sum, item) => sum + item.value, 0);
+                            const pct = total > 0 ? (category.value / total) * 100 : 0;
+                            return (
+                              <div key={category.name}>
+                                <div className="flex items-center justify-between text-xs mb-1">
+                                  <span className="capitalize text-zinc-700 dark:text-zinc-300">{category.name}</span>
+                                  <span className="text-zinc-500 dark:text-zinc-400">{pct.toFixed(1)}%</span>
+                                </div>
+                                <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded overflow-hidden">
+                                  <div className="h-full rounded" style={{ width: `${pct}%`, backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="border border-zinc-200/70 dark:border-zinc-800/70 p-3">
+                        <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Outflow by weekday</p>
+                        <div className="h-[120px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={weekdayOutflowData} margin={{ top: 2, right: 4, left: 0, bottom: 0 }}>
+                              <XAxis dataKey="label" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
+                              <YAxis hide />
+                              <Tooltip content={<InsightTooltip />} />
+                              <Bar dataKey="value" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {insightTab === 'Forecast' && (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Select value={forecastScenario} onValueChange={(value: ForecastScenario) => setForecastScenario(value)}>
+                        <SelectTrigger size="xs" className="w-32 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Conservative">Conservative</SelectItem>
+                          <SelectItem value="Base">Base case</SelectItem>
+                          <SelectItem value="Aggressive">Aggressive</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <Select value={String(forecastHorizon)} onValueChange={(value: string) => setForecastHorizon(Number(value) as ForecastHorizon)}>
+                        <SelectTrigger size="xs" className="w-24 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10 years</SelectItem>
+                          <SelectItem value="20">20 years</SelectItem>
+                          <SelectItem value="30">30 years</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 ml-auto">
+                        Assumptions: {annualizedGrowthRate.toFixed(1)}% annual growth and {formatCurrency(adjustedForecastInputs.netFlow)} net monthly flow
+                      </p>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <div className="min-w-[620px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-3">
+                        <div className="p-3">
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Current net worth</p>
+                          <p className="text-xl font-light mt-1">{formatCurrency(totalAccountValue)}</p>
+                        </div>
+                        <div className="p-3">
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Future net worth</p>
+                          <p className="text-xl font-light mt-1">{formatCurrency(forecastEndValue)}</p>
+                        </div>
+                        <div className="p-3">
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Forecast change</p>
+                          <p className={cn('text-xl font-light mt-1', forecastDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                            {forecastDelta >= 0 ? '+' : '-'}{formatCurrency(Math.abs(forecastDelta))}
+                          </p>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">{forecastDeltaPercent.toFixed(1)}%</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="h-[300px] sm:h-[360px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={forecastData} margin={{ top: 6, right: 14, left: 0, bottom: 8 }}>
+                          <defs>
+                            <linearGradient id="forecastFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.55} />
+                              <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.08} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="4 4" stroke="#a1a1aa" opacity={0.35} />
+                          <XAxis
+                            dataKey="monthOffset"
+                            type="number"
+                            domain={[-HISTORY_MONTHS, forecastHorizon * MONTHS_PER_YEAR]}
+                            ticks={xAxisTicks}
+                            tickFormatter={getYOffsetLabel}
+                            tick={{ fill: '#71717a', fontSize: 11 }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <YAxis
+                            orientation="right"
+                            tickFormatter={formatCurrencyCompact}
+                            tick={{ fill: '#71717a', fontSize: 11 }}
+                            axisLine={false}
+                            tickLine={false}
+                            width={72}
+                          />
+                          <Tooltip content={<ForecastTooltip />} cursor={{ stroke: '#94a3b8', strokeDasharray: '3 3' }} />
+                          <ReferenceLine x={0} stroke="#94a3b8" strokeOpacity={0.7} />
+                          <ReferenceLine
+                            y={forecastTargetValue}
+                            stroke="#93c5fd"
+                            strokeOpacity={0.85}
+                            strokeDasharray="5 5"
                             label={{
-                              value: milestoneLabels.get(offset) ?? `Y${offset / MONTHS_PER_YEAR}`,
-                              position: 'top',
+                              value: `Target: ${formatCurrencyCompact(forecastTargetValue)}`,
+                              position: 'insideTopRight',
                               fill: '#64748b',
                               fontSize: 10,
                             }}
                           />
-                        );
-                      })}
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+                          <Area dataKey="historicalValue" type="monotone" stroke="#3b82f6" strokeWidth={2} fill="url(#forecastFill)" connectNulls dot={false} />
+                          <Line dataKey="projectedValue" type="monotone" stroke="#60a5fa" strokeWidth={2} strokeDasharray="6 4" connectNulls dot={false} />
+                          {milestoneOffsets.map((offset) => {
+                            const milestonePoint = forecastData.find((point) => point.monthOffset === offset);
+                            if (!milestonePoint) return null;
+                            return (
+                              <ReferenceDot
+                                key={offset}
+                                x={offset}
+                                y={milestonePoint.value}
+                                r={5.5}
+                                fill="#dbeafe"
+                                stroke="#3b82f6"
+                                strokeWidth={1.5}
+                                label={{
+                                  value: milestoneLabels.get(offset) ?? `Y${offset / MONTHS_PER_YEAR}`,
+                                  position: 'top',
+                                  fill: '#64748b',
+                                  fontSize: 10,
+                                }}
+                              />
+                            );
+                          })}
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
 
-                <div className="border-y border-zinc-200/70 dark:border-zinc-800/70">
-                  <div className="grid grid-cols-3 px-3 py-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                    <span>Metric</span>
-                    <span>Baseline</span>
-                    <span>Changed</span>
-                  </div>
-                  <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                    <div className="grid grid-cols-3 px-3 py-3 text-sm">
-                      <span>Net Worth</span>
-                      <span>{formatCurrencyCompact(baselineForecastEndValue)}</span>
-                      <span className={cn(forecastEndValue >= baselineForecastEndValue ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                        {formatCurrencyCompact(forecastEndValue)}
-                      </span>
+                    <div className="border-y border-zinc-200/70 dark:border-zinc-800/70">
+                      <div className="grid grid-cols-3 px-3 py-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                        <span>Metric</span>
+                        <span>Baseline</span>
+                        <span>Changed</span>
+                      </div>
+                      <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                        <div className="grid grid-cols-3 px-3 py-3 text-sm">
+                          <span>Net Worth</span>
+                          <span>{formatCurrencyCompact(baselineForecastEndValue)}</span>
+                          <span className={cn(forecastEndValue >= baselineForecastEndValue ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                            {formatCurrencyCompact(forecastEndValue)}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 px-3 py-3 text-sm">
+                          <span>% Success</span>
+                          <span>{baselineSuccessScore.toFixed(0)}%</span>
+                          <span className={cn(changedSuccessScore >= baselineSuccessScore ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                            {changedSuccessScore.toFixed(0)}%
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 px-3 py-3 text-sm">
+                          <span>Cash Flow</span>
+                          <span>
+                            {baselineYearlyCashFlow >= 0 ? '+' : '-'}
+                            {formatCurrencyCompact(Math.abs(baselineYearlyCashFlow))}/yr
+                          </span>
+                          <span className={cn(changedYearlyCashFlow >= baselineYearlyCashFlow ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                            {changedYearlyCashFlow >= 0 ? '+' : '-'}
+                            {formatCurrencyCompact(Math.abs(changedYearlyCashFlow))}/yr
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-3 px-3 py-3 text-sm">
-                      <span>% Success</span>
-                      <span>{baselineSuccessScore.toFixed(0)}%</span>
-                      <span className={cn(changedSuccessScore >= baselineSuccessScore ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                        {changedSuccessScore.toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-3 px-3 py-3 text-sm">
-                      <span>Cash Flow</span>
-                      <span>
-                        {baselineYearlyCashFlow >= 0 ? '+' : '-'}
-                        {formatCurrencyCompact(Math.abs(baselineYearlyCashFlow))}/yr
-                      </span>
-                      <span className={cn(changedYearlyCashFlow >= baselineYearlyCashFlow ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                        {changedYearlyCashFlow >= 0 ? '+' : '-'}
-                        {formatCurrencyCompact(Math.abs(changedYearlyCashFlow))}/yr
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                  </>
+                )}
               </div>
             </section>
 
@@ -1092,6 +1472,71 @@ export default function BudgetHome() {
               </div>
 
               <div className="pt-4 space-y-4">
+                <div className="overflow-x-auto no-scrollbar">
+                  <div className="min-w-[620px] flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => applyQuickFocus('all')}
+                      className={cn(
+                        'h-8 px-3 rounded-full text-xs border transition-colors',
+                        directionFilter === 'All' && statusFilter === 'All'
+                          ? 'bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
+                          : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      )}
+                    >
+                      All ({quickFocusCounts.all})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyQuickFocus('inflow')}
+                      className={cn(
+                        'h-8 px-3 rounded-full text-xs border transition-colors',
+                        directionFilter === 'inflow' && statusFilter === 'All'
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      )}
+                    >
+                      Inflow ({quickFocusCounts.inflow})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyQuickFocus('outflow')}
+                      className={cn(
+                        'h-8 px-3 rounded-full text-xs border transition-colors',
+                        directionFilter === 'outflow' && statusFilter === 'All'
+                          ? 'bg-rose-600 text-white border-rose-600'
+                          : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      )}
+                    >
+                      Outflow ({quickFocusCounts.outflow})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyQuickFocus('pending')}
+                      className={cn(
+                        'h-8 px-3 rounded-full text-xs border transition-colors',
+                        statusFilter === 'pending'
+                          ? 'bg-amber-500 text-white border-amber-500'
+                          : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      )}
+                    >
+                      Pending ({quickFocusCounts.pending})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyQuickFocus('failed')}
+                      className={cn(
+                        'h-8 px-3 rounded-full text-xs border transition-colors',
+                        statusFilter === 'failed'
+                          ? 'bg-rose-700 text-white border-rose-700'
+                          : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      )}
+                    >
+                      Failed ({quickFocusCounts.failed})
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -1138,22 +1583,45 @@ export default function BudgetHome() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="border border-zinc-200/70 dark:border-zinc-800/70 p-3">
-                    <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Filtered inflow</p>
-                    <p className="text-base font-medium text-emerald-600 dark:text-emerald-400 mt-1">
-                      {formatCurrency(filteredInflowTotal)}
-                    </p>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[620px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-3">
+                    <div className="p-3">
+                      <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Filtered inflow</p>
+                      <p className="text-base font-medium text-emerald-600 dark:text-emerald-400 mt-1">
+                        {formatCurrency(filteredInflowTotal)}
+                      </p>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Filtered outflow</p>
+                      <p className="text-base font-medium text-rose-600 dark:text-rose-400 mt-1">
+                        {formatCurrency(filteredOutflowTotal)}
+                      </p>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Result count</p>
+                      <p className="text-base font-medium mt-1">{filteredTransactions.length} transactions</p>
+                    </div>
                   </div>
-                  <div className="border border-zinc-200/70 dark:border-zinc-800/70 p-3">
-                    <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Filtered outflow</p>
-                    <p className="text-base font-medium text-rose-600 dark:text-rose-400 mt-1">
-                      {formatCurrency(filteredOutflowTotal)}
-                    </p>
-                  </div>
-                  <div className="border border-zinc-200/70 dark:border-zinc-800/70 p-3">
-                    <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Result count</p>
-                    <p className="text-base font-medium mt-1">{filteredTransactions.length} transactions</p>
+                </div>
+
+                <div className="overflow-x-auto no-scrollbar">
+                  <div className="min-w-[620px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-4">
+                    <div className="p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Completed</p>
+                      <p className="text-sm font-medium mt-1 text-emerald-600 dark:text-emerald-400">{filteredCompletedCount}</p>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Pending</p>
+                      <p className="text-sm font-medium mt-1 text-amber-600 dark:text-amber-400">{filteredPendingCount}</p>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Failed</p>
+                      <p className="text-sm font-medium mt-1 text-rose-600 dark:text-rose-400">{filteredFailedCount}</p>
+                    </div>
+                    <div className="p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Avg outflow ticket</p>
+                      <p className="text-sm font-medium mt-1">{formatCurrency(averageOutflowTicket)}</p>
+                    </div>
                   </div>
                 </div>
 
@@ -1273,140 +1741,196 @@ export default function BudgetHome() {
                     </DialogHeader>
                   </div>
 
-                  <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Source</p>
-                      <Select value={sourceFilter} onValueChange={(value: SourceFilter) => setSourceFilter(value)}>
-                        <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                          <SelectValue placeholder="Source" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="All">All sources</SelectItem>
-                          <SelectItem value="On-chain">On-chain</SelectItem>
-                          <SelectItem value="Bank recurring">Bank recurring</SelectItem>
-                          <SelectItem value="Bank spend">Bank spend</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  <div className="p-5 space-y-4">
+                    <div className="space-y-2">
+                      <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Quick presets</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDateFilter('30D');
+                            setSortFilter('Newest');
+                            setStatusFilter('All');
+                            setDirectionFilter('outflow');
+                          }}
+                          className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        >
+                          Recent outflows
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDateFilter('90D');
+                            setStatusFilter('pending');
+                            setDirectionFilter('All');
+                          }}
+                          className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        >
+                          Pending queue
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDateFilter('1Y');
+                            setDirectionFilter('inflow');
+                            setStatusFilter('completed');
+                            setSortFilter('AmountHigh');
+                          }}
+                          className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        >
+                          Largest inflows
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Direction</p>
-                      <Select value={directionFilter} onValueChange={(value: DirectionFilter) => setDirectionFilter(value)}>
-                        <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                          <SelectValue placeholder="Direction" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="All">All directions</SelectItem>
-                          <SelectItem value="inflow">Inflow</SelectItem>
-                          <SelectItem value="outflow">Outflow</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border border-zinc-200/70 dark:border-zinc-800/70 p-3">
+                      <div className="sm:col-span-2">
+                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Flow and status</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Source</p>
+                        <Select value={sourceFilter} onValueChange={(value: SourceFilter) => setSourceFilter(value)}>
+                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                            <SelectValue placeholder="Source" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="All">All sources</SelectItem>
+                            <SelectItem value="On-chain">On-chain</SelectItem>
+                            <SelectItem value="Bank recurring">Bank recurring</SelectItem>
+                            <SelectItem value="Bank spend">Bank spend</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Direction</p>
+                        <Select value={directionFilter} onValueChange={(value: DirectionFilter) => setDirectionFilter(value)}>
+                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                            <SelectValue placeholder="Direction" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="All">All directions</SelectItem>
+                            <SelectItem value="inflow">Inflow</SelectItem>
+                            <SelectItem value="outflow">Outflow</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Category</p>
+                        <Select value={categoryFilter} onValueChange={(value: ConsolidatedCategory | 'All') => setCategoryFilter(value)}>
+                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                            <SelectValue placeholder="Category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="All">All categories</SelectItem>
+                            <SelectItem value="deposit">Deposit</SelectItem>
+                            <SelectItem value="withdrawal">Withdrawal</SelectItem>
+                            <SelectItem value="buy">Buy</SelectItem>
+                            <SelectItem value="sell">Sell</SelectItem>
+                            <SelectItem value="mint">Mint</SelectItem>
+                            <SelectItem value="trade">Trade</SelectItem>
+                            <SelectItem value="transfer">Transfer</SelectItem>
+                            <SelectItem value="subscription">Subscription</SelectItem>
+                            <SelectItem value="spend">Spend</SelectItem>
+                            <SelectItem value="income">Income</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Status</p>
+                        <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
+                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                            <SelectValue placeholder="Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="All">All statuses</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="failed">Failed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Category</p>
-                      <Select value={categoryFilter} onValueChange={(value: ConsolidatedCategory | 'All') => setCategoryFilter(value)}>
-                        <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                          <SelectValue placeholder="Category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="All">All categories</SelectItem>
-                          <SelectItem value="deposit">Deposit</SelectItem>
-                          <SelectItem value="withdrawal">Withdrawal</SelectItem>
-                          <SelectItem value="buy">Buy</SelectItem>
-                          <SelectItem value="sell">Sell</SelectItem>
-                          <SelectItem value="mint">Mint</SelectItem>
-                          <SelectItem value="trade">Trade</SelectItem>
-                          <SelectItem value="transfer">Transfer</SelectItem>
-                          <SelectItem value="subscription">Subscription</SelectItem>
-                          <SelectItem value="spend">Spend</SelectItem>
-                          <SelectItem value="income">Income</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border border-zinc-200/70 dark:border-zinc-800/70 p-3">
+                      <div className="sm:col-span-2">
+                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Time, ranking and account</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Date range</p>
+                        <Select value={dateFilter} onValueChange={(value: DateFilter) => setDateFilter(value)}>
+                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                            <SelectValue placeholder="Date" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="30D">Last 30 days</SelectItem>
+                            <SelectItem value="90D">Last 90 days</SelectItem>
+                            <SelectItem value="1Y">Last 1 year</SelectItem>
+                            <SelectItem value="All">All dates</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Sort</p>
+                        <Select value={sortFilter} onValueChange={(value: SortFilter) => setSortFilter(value)}>
+                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                            <SelectValue placeholder="Sort" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Newest">Newest</SelectItem>
+                            <SelectItem value="Oldest">Oldest</SelectItem>
+                            <SelectItem value="AmountHigh">Amount high</SelectItem>
+                            <SelectItem value="AmountLow">Amount low</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1 sm:col-span-2">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Account</p>
+                        <Select value={accountFilter} onValueChange={setAccountFilter}>
+                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                            <SelectValue placeholder="Account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {accountOptions.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Status</p>
-                      <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
-                        <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                          <SelectValue placeholder="Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="All">All statuses</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="failed">Failed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border border-zinc-200/70 dark:border-zinc-800/70 p-3">
+                      <div className="sm:col-span-2">
+                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Amount range</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Min amount</p>
+                        <Input
+                          value={amountMin}
+                          onChange={(event) => setAmountMin(event.target.value.replace(/[^0-9.]/g, ''))}
+                          placeholder="0.00"
+                          className="h-9 text-xs"
+                          inputMode="decimal"
+                        />
+                      </div>
 
-                    <div className="space-y-1">
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Date range</p>
-                      <Select value={dateFilter} onValueChange={(value: DateFilter) => setDateFilter(value)}>
-                        <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                          <SelectValue placeholder="Date" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="30D">Last 30 days</SelectItem>
-                          <SelectItem value="90D">Last 90 days</SelectItem>
-                          <SelectItem value="1Y">Last 1 year</SelectItem>
-                          <SelectItem value="All">All dates</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Sort</p>
-                      <Select value={sortFilter} onValueChange={(value: SortFilter) => setSortFilter(value)}>
-                        <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                          <SelectValue placeholder="Sort" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Newest">Newest</SelectItem>
-                          <SelectItem value="Oldest">Oldest</SelectItem>
-                          <SelectItem value="AmountHigh">Amount high</SelectItem>
-                          <SelectItem value="AmountLow">Amount low</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Account</p>
-                      <Select value={accountFilter} onValueChange={setAccountFilter}>
-                        <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                          <SelectValue placeholder="Account" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {accountOptions.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Min amount</p>
-                      <Input
-                        value={amountMin}
-                        onChange={(event) => setAmountMin(event.target.value.replace(/[^0-9.]/g, ''))}
-                        placeholder="0.00"
-                        className="h-9 text-xs"
-                        inputMode="decimal"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">Max amount</p>
-                      <Input
-                        value={amountMax}
-                        onChange={(event) => setAmountMax(event.target.value.replace(/[^0-9.]/g, ''))}
-                        placeholder="Any"
-                        className="h-9 text-xs"
-                        inputMode="decimal"
-                      />
+                      <div className="space-y-1">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Max amount</p>
+                        <Input
+                          value={amountMax}
+                          onChange={(event) => setAmountMax(event.target.value.replace(/[^0-9.]/g, ''))}
+                          placeholder="Any"
+                          className="h-9 text-xs"
+                          inputMode="decimal"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1432,53 +1956,186 @@ export default function BudgetHome() {
             </section>
           </div>
 
-          <div className="md:col-span-4 space-y-6">
-            <section className="border border-zinc-200/70 dark:border-zinc-800/70 rounded p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Landmark className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-                <h3 className="text-sm font-medium">Connected Accounts Snapshot</h3>
-              </div>
+          <div className="md:col-span-4">
+            <div className="md:sticky md:top-28 space-y-6">
+              <section className="border-y border-zinc-200/70 dark:border-zinc-800/70 py-4 space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-medium">Transaction Pulse</h3>
+                  <Badge variant="outline" className="text-[10px]">
+                    Last 14 days
+                  </Badge>
+                </div>
 
-              <div className="space-y-2">
-                {bankAccounts.length === 0 && (
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    No connected accounts yet. Link a bank account to power budgeting insights.
-                  </p>
-                )}
-
-                {bankAccounts.slice(0, 6).map((account) => {
-                  const balance =
-                    typeof account.available === 'number' && !Number.isNaN(account.available)
-                      ? account.available
-                      : account.current ?? 0;
-
-                  return (
-                    <div
-                      key={account.account_id}
-                      className="rounded border border-zinc-200/70 dark:border-zinc-800/70 px-2.5 py-2 flex items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm text-black dark:text-white truncate">{account.name || 'Account'}</p>
-                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
-                          {account.subtype || account.type || 'Bank account'}
-                        </p>
-                      </div>
-                      <p className="text-xs font-medium text-black dark:text-white">
-                        {formatCurrency(balance)}
+                <div className="overflow-x-auto no-scrollbar">
+                  <div className="min-w-[480px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-4">
+                    <div className="p-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Net flow</p>
+                      <p className={cn('text-sm font-medium mt-1', netFlow14d >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                        {netFlow14d >= 0 ? '+' : '-'}{formatCurrency(Math.abs(netFlow14d))}
                       </p>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="p-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Avg outflow</p>
+                      <p className="text-sm font-medium mt-1">{formatCurrency(averageOutflowTicket)}</p>
+                    </div>
+                    <div className="p-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Largest debit</p>
+                      <p className="text-sm font-medium mt-1">{formatCurrency(largestOutflowTransaction?.amount ?? 0)}</p>
+                    </div>
+                    <div className="p-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Pending</p>
+                      <p className="text-sm font-medium mt-1">{pendingTransactionCount}</p>
+                    </div>
+                  </div>
+                </div>
 
-              <div className="border-t border-zinc-200/70 dark:border-zinc-800/70 mt-3 pt-3 text-xs text-zinc-500 dark:text-zinc-400">
-                Cash on hand: {formatCurrency(cashBalance.totalCash || 0)}
-              </div>
-            </section>
+                <div className="h-28">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={dailyFlowPulseData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#a1a1aa" opacity={0.2} />
+                      <XAxis dataKey="label" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={30} />
+                      <YAxis hide />
+                      <Tooltip content={<InsightTooltip />} />
+                      <Line type="monotone" dataKey="inflow" stroke="#10b981" strokeWidth={1.8} dot={false} />
+                      <Line type="monotone" dataKey="outflow" stroke="#f43f5e" strokeWidth={1.8} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
 
-            <SpendTracker walletAddress={address ?? undefined} />
-            <UpcomingTransactions walletAddress={address ?? undefined} />
-            <BudgetTracker />
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Volume by source</p>
+                  {sourceVolumeData.length === 0 && (
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">No transaction volume for current filter set.</p>
+                  )}
+                  {sourceVolumeData.slice(0, 3).map((source) => (
+                    <div key={source.source} className="flex items-center justify-between text-xs">
+                      <span className="text-zinc-700 dark:text-zinc-300">{source.source}</span>
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        {source.count} tx • {formatCurrencyCompact(source.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="border-y border-zinc-200/70 dark:border-zinc-800/70 py-4 space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-medium">Queue + Recurring</h3>
+                  <Badge variant="outline" className="text-[10px]">
+                    Upcoming
+                  </Badge>
+                </div>
+
+                <div className="overflow-x-auto no-scrollbar">
+                  <div className="min-w-[340px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
+                    <div className="p-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring inbound</p>
+                      <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(recurringInflowMonthly)}</p>
+                    </div>
+                    <div className="p-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring outbound</p>
+                      <p className="text-sm font-medium text-rose-600 dark:text-rose-400 mt-1">{formatCurrency(recurringOutflowMonthly)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Pending transactions</p>
+                  {upcomingPendingTransactions.length === 0 && (
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">No pending transactions right now.</p>
+                  )}
+                  {upcomingPendingTransactions.map((transaction) => (
+                    <div key={transaction.id} className="flex items-center justify-between gap-2 py-1 border-b border-zinc-200/60 dark:border-zinc-800/60 last:border-b-0">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate">{transaction.title}</p>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+                          {transaction.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} • {transaction.account}
+                        </p>
+                      </div>
+                      <p className={cn('text-xs font-medium', transaction.direction === 'inflow' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                        {transaction.direction === 'inflow' ? '+' : '-'}{formatCurrency(transaction.amount)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring schedule</p>
+                  {recurringSchedule.length === 0 && (
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">No recurring streams detected yet.</p>
+                  )}
+                  {recurringSchedule.slice(0, 4).map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-2 py-1 border-b border-zinc-200/60 dark:border-zinc-800/60 last:border-b-0">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate">{item.name}</p>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Day {item.day}</p>
+                      </div>
+                      <p className={cn('text-xs font-medium', item.direction === 'inflow' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                        {item.direction === 'inflow' ? '+' : '-'}{formatCurrency(item.amount)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="border-y border-zinc-200/70 dark:border-zinc-800/70 py-4 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Landmark className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                  <h3 className="text-sm font-medium">Accounts + Category Focus</h3>
+                </div>
+
+                <div className="space-y-2">
+                  {bankAccounts.length === 0 && (
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      No connected accounts yet. Link a bank account to power budgeting insights.
+                    </p>
+                  )}
+                  {bankAccounts.slice(0, 4).map((account) => {
+                    const balance =
+                      typeof account.available === 'number' && !Number.isNaN(account.available)
+                        ? account.available
+                        : account.current ?? 0;
+                    return (
+                      <div key={account.account_id} className="flex items-center justify-between gap-3 py-1 border-b border-zinc-200/60 dark:border-zinc-800/60 last:border-b-0">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium truncate">{account.name || 'Account'}</p>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+                            {account.subtype || account.type || 'Bank account'}
+                          </p>
+                        </div>
+                        <p className="text-xs font-medium">{formatCurrency(balance)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="border-y border-zinc-200/70 dark:border-zinc-800/70 py-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  Cash on hand: {formatCurrency(cashBalance.totalCash || 0)}
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Top outflow categories</p>
+                  {outflowCategoryData.length === 0 && (
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">No category spend yet for selected filters.</p>
+                  )}
+                  {outflowCategoryData.slice(0, 4).map((category, index) => {
+                    const total = outflowCategoryData.reduce((sum, item) => sum + item.value, 0);
+                    const pct = total > 0 ? (category.value / total) * 100 : 0;
+                    return (
+                      <div key={category.name}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="capitalize text-zinc-700 dark:text-zinc-300">{category.name}</span>
+                          <span className="text-zinc-500 dark:text-zinc-400">{pct.toFixed(1)}%</span>
+                        </div>
+                        <div className="h-2 rounded bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+                          <div className="h-full rounded" style={{ width: `${pct}%`, backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
           </div>
         </div>
       </main>
