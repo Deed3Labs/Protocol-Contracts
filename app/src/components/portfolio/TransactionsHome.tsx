@@ -1434,7 +1434,7 @@ export default function TransactionsHome() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+                    <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 xl:items-start">
                       <div className="xl:col-span-2 rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 bg-white/80 dark:bg-zinc-900/40 overflow-hidden">
                         <div className="px-3 pt-3 pb-2 flex items-center justify-between gap-2">
                           <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Source mix</p>
@@ -1444,7 +1444,7 @@ export default function TransactionsHome() {
                         </div>
 
                         <div className="px-3 pb-3">
-                          <div className="relative mx-auto h-[220px] w-[220px]">
+                          <div className="relative mx-auto h-[208px] w-[208px]">
                             <ResponsiveContainer width="100%" height="100%">
                               <PieChart>
                                 <Pie
@@ -1465,7 +1465,14 @@ export default function TransactionsHome() {
                                     />
                                   ))}
                                 </Pie>
-                                {sourceBreakdownData.length > 0 && <Tooltip content={<InsightTooltip />} />}
+                                {sourceBreakdownData.length > 0 && (
+                                  <Tooltip
+                                    content={<InsightTooltip />}
+                                    cursor={false}
+                                    position={{ x: 12, y: 8 }}
+                                    wrapperStyle={{ zIndex: 30, pointerEvents: 'none' }}
+                                  />
+                                )}
                               </PieChart>
                             </ResponsiveContainer>
                             <div className="absolute inset-[36px] rounded-full border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/95 dark:bg-[#111318]/95 flex flex-col items-center justify-center">
@@ -1485,29 +1492,27 @@ export default function TransactionsHome() {
                             <p className="text-xs text-zinc-500 dark:text-zinc-400">No source data in current filter set.</p>
                           )}
                           {sourceBreakdownData.length > 0 && (
-                            <div className="overflow-x-auto no-scrollbar">
-                              <div className="min-w-max flex items-center gap-2">
-                                {sourceBreakdownData.map((item, index) => {
-                                  const pct = sourceBreakdownTotal > 0 ? (item.value / sourceBreakdownTotal) * 100 : 0;
-                                  return (
-                                    <div
-                                      key={item.name}
-                                      className="shrink-0 inline-flex items-center gap-2 rounded-md border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/70 dark:bg-zinc-900/60 px-2 py-1.5 text-[10px]"
-                                    >
-                                      <span className="inline-flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                                        <span
-                                          className="w-1.5 h-1.5 rounded-full shrink-0"
-                                          style={{ backgroundColor: SOURCE_COLORS[index % SOURCE_COLORS.length] }}
-                                        />
-                                        {item.name}
-                                      </span>
-                                      <span className="text-zinc-500 dark:text-zinc-400">
-                                        {formatCurrencyCompact(item.value)} · {pct.toFixed(0)}%
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                            <div className="flex flex-wrap gap-1.5 sm:grid sm:grid-cols-2 sm:gap-2">
+                              {sourceBreakdownData.map((item, index) => {
+                                const pct = sourceBreakdownTotal > 0 ? (item.value / sourceBreakdownTotal) * 100 : 0;
+                                return (
+                                  <div
+                                    key={item.name}
+                                    className="inline-flex sm:flex sm:w-full items-center gap-2 rounded-md border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/70 dark:bg-zinc-900/60 px-2 py-1.5 text-[10px]"
+                                  >
+                                    <span className="inline-flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 min-w-0">
+                                      <span
+                                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                                        style={{ backgroundColor: SOURCE_COLORS[index % SOURCE_COLORS.length] }}
+                                      />
+                                      <span className="truncate">{item.name}</span>
+                                    </span>
+                                    <span className="text-zinc-500 dark:text-zinc-400 ml-auto whitespace-nowrap">
+                                      {formatCurrencyCompact(item.value)} · {pct.toFixed(0)}%
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                         </div>
