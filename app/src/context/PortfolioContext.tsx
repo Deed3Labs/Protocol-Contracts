@@ -148,7 +148,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     transactions: walletTransactions,
     isLoading: activityLoading,
     refresh: refreshActivityHook,
-  } = useMultichainActivity(10);
+  } = useMultichainActivity(30, 10);
   
   // Store previous values for smooth transitions
   const previousTotalBalanceUSDRef = useRef<number>(0);

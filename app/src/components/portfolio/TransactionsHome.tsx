@@ -43,6 +43,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import type { WalletTransaction } from '@/types/transactions';
@@ -68,7 +69,7 @@ type ConsolidatedStatus = 'completed' | 'pending' | 'failed';
 
 type SourceFilter = 'All' | ConsolidatedSource;
 type DirectionFilter = 'All' | 'inflow' | 'outflow';
-type DateFilter = '30D' | '90D' | '1Y' | 'All';
+type DateFilter = '30D' | '90D' | '1Y' | '2Y' | '5Y' | 'All';
 type SortFilter = 'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow';
 type StatusFilter = 'All' | 'completed' | 'pending' | 'failed';
 type ForecastScenario = 'Conservative' | 'Base' | 'Aggressive';
@@ -357,6 +358,54 @@ const getYOffsetLabel = (monthOffset: number) => {
   return '';
 };
 
+const getDateFilterLabel = (value: DateFilter) => {
+  if (value === '30D') return 'Last 30 days';
+  if (value === '90D') return 'Last 90 days';
+  if (value === '1Y') return 'Last 1 year';
+  if (value === '2Y') return 'Last 2 years';
+  if (value === '5Y') return 'Last 5 years';
+  return 'All time';
+};
+
+interface FilterSwitchRowProps {
+  checked: boolean;
+  label: string;
+  description: string;
+  onToggle: () => void;
+}
+
+const FilterSwitchRow = ({ checked, label, description, onToggle }: FilterSwitchRowProps) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    aria-pressed={checked}
+    className={cn(
+      'w-full rounded-lg border px-3 py-2.5 transition-colors text-left inline-flex items-center justify-between gap-3',
+      checked
+        ? 'border-blue-300 bg-blue-50/70 dark:border-blue-700 dark:bg-blue-950/30'
+        : 'border-zinc-200/70 dark:border-zinc-800/70 hover:bg-zinc-50 dark:hover:bg-zinc-900/60'
+    )}
+  >
+    <span className="min-w-0">
+      <span className="block text-xs font-medium text-zinc-900 dark:text-zinc-100">{label}</span>
+      <span className="block text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{description}</span>
+    </span>
+    <span
+      className={cn(
+        'relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors',
+        checked ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-700'
+      )}
+    >
+      <span
+        className={cn(
+          'absolute top-[2px] left-[2px] h-4 w-4 rounded-full bg-white transition-transform',
+          checked && 'translate-x-4'
+        )}
+      />
+    </span>
+  </button>
+);
+
 export default function TransactionsHome() {
   const { address, isConnected } = useAppKitAccount();
   const {
@@ -369,8 +418,13 @@ export default function TransactionsHome() {
     isLoading: portfolioLoading,
   } = usePortfolio();
 
-  const { inflowStreams, outflowStreams, refresh: refreshRecurring } = useRecurringTransactions(address ?? undefined);
-  const { spendingByDay, totalSpent, refresh: refreshSpend } = useSpendTransactions(address ?? undefined);
+  const hasLinkedBankConnection = Boolean(cashBalance.bankLinked || bankAccounts.length > 0);
+  const { inflowStreams, outflowStreams, refresh: refreshRecurring } = useRecurringTransactions(address ?? undefined, {
+    enabled: hasLinkedBankConnection,
+  });
+  const { spendingByDay, totalSpent, refresh: refreshSpend } = useSpendTransactions(address ?? undefined, {
+    enabled: hasLinkedBankConnection,
+  });
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [isScrolledPast, setIsScrolledPast] = useState(false);
@@ -386,6 +440,7 @@ export default function TransactionsHome() {
   const [amountMin, setAmountMin] = useState('');
   const [amountMax, setAmountMax] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [timeFilterOpen, setTimeFilterOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(20);
 
   const [forecastScenario, setForecastScenario] = useState<ForecastScenario>('Base');
@@ -735,7 +790,11 @@ export default function TransactionsHome() {
           ? 30 * 24 * 60 * 60 * 1000
           : dateFilter === '90D'
             ? 90 * 24 * 60 * 60 * 1000
-            : 365 * 24 * 60 * 60 * 1000;
+            : dateFilter === '1Y'
+              ? 365 * 24 * 60 * 60 * 1000
+              : dateFilter === '2Y'
+                ? 730 * 24 * 60 * 60 * 1000
+                : 1825 * 24 * 60 * 60 * 1000;
       list = list.filter((tx) => now - tx.date.getTime() <= ageMs);
     }
 
@@ -806,10 +865,12 @@ export default function TransactionsHome() {
     return (filteredOutflowTotal / totalFlow) * 100;
   }, [filteredInflowTotal, filteredOutflowTotal]);
 
-  const handleRefreshData = () => {
-    void refreshAll();
-    refreshRecurring();
-    refreshSpend();
+  const handleRefreshData = async () => {
+    const refreshTasks: Array<Promise<unknown>> = [refreshAll()];
+    if (hasLinkedBankConnection) {
+      refreshTasks.push(refreshRecurring(), refreshSpend());
+    }
+    await Promise.all(refreshTasks);
   };
 
   const applyQuickFocus = (focus: 'all' | 'inflow' | 'outflow' | 'pending' | 'failed') => {
@@ -859,7 +920,7 @@ export default function TransactionsHome() {
     if (directionFilter !== 'All') labels.push({ key: 'direction', label: `Direction: ${directionFilter}`, onClear: () => setDirectionFilter('All') });
     if (categoryFilter !== 'All') labels.push({ key: 'category', label: `Category: ${categoryFilter}`, onClear: () => setCategoryFilter('All') });
     if (statusFilter !== 'All') labels.push({ key: 'status', label: `Status: ${statusFilter}`, onClear: () => setStatusFilter('All') });
-    if (dateFilter !== '90D') labels.push({ key: 'date', label: `Date: ${dateFilter}`, onClear: () => setDateFilter('90D') });
+    if (dateFilter !== '90D') labels.push({ key: 'date', label: `Date: ${getDateFilterLabel(dateFilter)}`, onClear: () => setDateFilter('90D') });
     if (sortFilter !== 'Newest') labels.push({ key: 'sort', label: `Sort: ${sortFilter}`, onClear: () => setSortFilter('Newest') });
     if (accountFilter !== 'All') labels.push({ key: 'account', label: `Account: ${accountFilter}`, onClear: () => setAccountFilter('All') });
     if (amountMin.trim() !== '') labels.push({ key: 'amountMin', label: `Min: $${amountMin}`, onClear: () => setAmountMin('') });
@@ -1733,19 +1794,35 @@ export default function TransactionsHome() {
                       className="pl-9"
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setFiltersOpen(true)}
-                    className="h-9 px-3 rounded-md border border-zinc-300 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors inline-flex items-center justify-center gap-1.5"
-                  >
-                    <SlidersHorizontal className="w-4 h-4" />
-                    Filters
-                    {activeFilterLabels.length > 0 && (
-                      <span className="inline-flex items-center justify-center min-w-5 h-5 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[10px] px-1">
-                        {activeFilterLabels.length}
-                      </span>
-                    )}
-                  </button>
+                  <div className="flex items-center gap-2 sm:shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setTimeFilterOpen(true)}
+                      className={cn(
+                        'h-9 px-3 rounded-md border text-sm transition-colors inline-flex items-center justify-center gap-1.5',
+                        dateFilter === '90D'
+                          ? 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                          : 'border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 bg-blue-50/70 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-900/40'
+                      )}
+                    >
+                      <Calendar className="w-4 h-4" />
+                      {getDateFilterLabel(dateFilter)}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFiltersOpen(true)}
+                      className="h-9 px-3 rounded-md border border-zinc-300 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors inline-flex items-center justify-center gap-1.5"
+                    >
+                      <SlidersHorizontal className="w-4 h-4" />
+                      Filters
+                      {activeFilterLabels.length > 0 && (
+                        <span className="inline-flex items-center justify-center min-w-5 h-5 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[10px] px-1">
+                          {activeFilterLabels.length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {activeFilterLabels.length > 0 && (
@@ -1946,208 +2023,362 @@ export default function TransactionsHome() {
                 )}
               </div>
 
-              <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
-                <DialogContent className="max-w-2xl p-0 overflow-hidden">
+              <Dialog open={timeFilterOpen} onOpenChange={setTimeFilterOpen}>
+                <DialogContent className="max-w-md p-0 overflow-hidden">
                   <div className="p-5 border-b border-zinc-200 dark:border-zinc-800">
                     <DialogHeader>
-                      <DialogTitle className="text-lg font-medium">Advanced Filters</DialogTitle>
+                      <DialogTitle className="text-lg font-medium">Time Filter</DialogTitle>
                       <DialogDescription>
-                        Refine transactions by source, category, status, amount range, date window, and account.
+                        Quick controls for date window and timeline order.
                       </DialogDescription>
                     </DialogHeader>
                   </div>
 
-                  <div className="p-5 space-y-4">
+                  <div className="p-5 space-y-3">
+                    <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 px-3 py-2.5 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Current window</p>
+                        <p className="text-xs font-medium text-zinc-800 dark:text-zinc-100 truncate mt-0.5">{getDateFilterLabel(dateFilter)}</p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] shrink-0">
+                        {sortFilter === 'Oldest' ? 'Oldest first' : 'Newest first'}
+                      </Badge>
+                    </div>
+
                     <div className="space-y-2">
-                      <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Quick presets</p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDateFilter('30D');
-                            setSortFilter('Newest');
-                            setStatusFilter('All');
-                            setDirectionFilter('outflow');
-                          }}
-                          className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                        >
-                          Recent outflows
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDateFilter('90D');
-                            setStatusFilter('pending');
-                            setDirectionFilter('All');
-                          }}
-                          className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                        >
-                          Pending queue
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDateFilter('1Y');
-                            setDirectionFilter('inflow');
-                            setStatusFilter('completed');
-                            setSortFilter('AmountHigh');
-                          }}
-                          className="h-8 px-3 rounded-full border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                        >
-                          Largest inflows
-                        </button>
+                      <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Date range</p>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { value: '30D' as DateFilter, label: '30D' },
+                          { value: '90D' as DateFilter, label: '90D' },
+                          { value: '1Y' as DateFilter, label: '1Y' },
+                          { value: '2Y' as DateFilter, label: '2Y' },
+                          { value: '5Y' as DateFilter, label: '5Y' },
+                          { value: 'All' as DateFilter, label: 'All' },
+                        ].map((range) => (
+                          <button
+                            key={range.value}
+                            type="button"
+                            onClick={() => setDateFilter(range.value)}
+                            className={cn(
+                              'h-8 px-2 rounded-md border text-[11px] transition-colors',
+                              dateFilter === range.value
+                                ? 'bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
+                                : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                            )}
+                          >
+                            {range.label}
+                          </button>
+                        ))}
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border border-zinc-200/70 dark:border-zinc-800/70 p-3">
-                      <div className="sm:col-span-2">
-                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Flow and status</p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Source</p>
-                        <Select value={sourceFilter} onValueChange={(value: SourceFilter) => setSourceFilter(value)}>
-                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                            <SelectValue placeholder="Source" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="All">All sources</SelectItem>
-                            <SelectItem value="On-chain">On-chain</SelectItem>
-                            <SelectItem value="Bank recurring">Bank recurring</SelectItem>
-                            <SelectItem value="Bank spend">Bank spend</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Direction</p>
-                        <Select value={directionFilter} onValueChange={(value: DirectionFilter) => setDirectionFilter(value)}>
-                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                            <SelectValue placeholder="Direction" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="All">All directions</SelectItem>
-                            <SelectItem value="inflow">Inflow</SelectItem>
-                            <SelectItem value="outflow">Outflow</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Category</p>
-                        <Select value={categoryFilter} onValueChange={(value: ConsolidatedCategory | 'All') => setCategoryFilter(value)}>
-                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                            <SelectValue placeholder="Category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="All">All categories</SelectItem>
-                            <SelectItem value="deposit">Deposit</SelectItem>
-                            <SelectItem value="withdrawal">Withdrawal</SelectItem>
-                            <SelectItem value="buy">Buy</SelectItem>
-                            <SelectItem value="sell">Sell</SelectItem>
-                            <SelectItem value="mint">Mint</SelectItem>
-                            <SelectItem value="trade">Trade</SelectItem>
-                            <SelectItem value="transfer">Transfer</SelectItem>
-                            <SelectItem value="subscription">Subscription</SelectItem>
-                            <SelectItem value="spend">Spend</SelectItem>
-                            <SelectItem value="income">Income</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Status</p>
-                        <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
-                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                            <SelectValue placeholder="Status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="All">All statuses</SelectItem>
-                            <SelectItem value="completed">Completed</SelectItem>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="failed">Failed</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border border-zinc-200/70 dark:border-zinc-800/70 p-3">
-                      <div className="sm:col-span-2">
-                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Time, ranking and account</p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Date range</p>
-                        <Select value={dateFilter} onValueChange={(value: DateFilter) => setDateFilter(value)}>
-                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                            <SelectValue placeholder="Date" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="30D">Last 30 days</SelectItem>
-                            <SelectItem value="90D">Last 90 days</SelectItem>
-                            <SelectItem value="1Y">Last 1 year</SelectItem>
-                            <SelectItem value="All">All dates</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Sort</p>
-                        <Select value={sortFilter} onValueChange={(value: SortFilter) => setSortFilter(value)}>
-                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                            <SelectValue placeholder="Sort" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Newest">Newest</SelectItem>
-                            <SelectItem value="Oldest">Oldest</SelectItem>
-                            <SelectItem value="AmountHigh">Amount high</SelectItem>
-                            <SelectItem value="AmountLow">Amount low</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1 sm:col-span-2">
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Account</p>
-                        <Select value={accountFilter} onValueChange={setAccountFilter}>
-                          <SelectTrigger size="sm" className="h-9 text-xs w-full">
-                            <SelectValue placeholder="Account" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {accountOptions.map((option) => (
-                              <SelectItem key={option} value={option}>
-                                {option}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border border-zinc-200/70 dark:border-zinc-800/70 p-3">
-                      <div className="sm:col-span-2">
-                        <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Amount range</p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Min amount</p>
-                        <Input
-                          value={amountMin}
-                          onChange={(event) => setAmountMin(event.target.value.replace(/[^0-9.]/g, ''))}
-                          placeholder="0.00"
-                          className="h-9 text-xs"
-                          inputMode="decimal"
+                    <div className="space-y-2">
+                      <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Smart toggles</p>
+                      <div className="grid grid-cols-1 gap-2">
+                        <FilterSwitchRow
+                          checked={dateFilter === 'All'}
+                          label="Include full history"
+                          description="Show older transactions beyond preset windows."
+                          onToggle={() => setDateFilter(dateFilter === 'All' ? '90D' : 'All')}
                         />
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Max amount</p>
-                        <Input
-                          value={amountMax}
-                          onChange={(event) => setAmountMax(event.target.value.replace(/[^0-9.]/g, ''))}
-                          placeholder="Any"
-                          className="h-9 text-xs"
-                          inputMode="decimal"
+                        <FilterSwitchRow
+                          checked={sortFilter === 'Oldest'}
+                          label="Oldest first"
+                          description="Flip timeline order from earliest to latest."
+                          onToggle={() => setSortFilter(sortFilter === 'Oldest' ? 'Newest' : 'Oldest')}
                         />
                       </div>
                     </div>
+                  </div>
+
+                  <div className="px-5 py-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDateFilter('90D');
+                        setSortFilter('Newest');
+                      }}
+                      className="h-9 px-3 rounded-md border border-zinc-300 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    >
+                      Reset time
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTimeFilterOpen(false)}
+                      className="h-9 px-3 rounded-md bg-black dark:bg-white text-white dark:text-black text-sm hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors inline-flex items-center gap-1.5"
+                    >
+                      <Check className="w-4 h-4" />
+                      Apply
+                    </button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+                <DialogContent className="max-w-3xl p-0 overflow-hidden">
+                  <div className="p-5 border-b border-zinc-200 dark:border-zinc-800">
+                    <DialogHeader>
+                      <DialogTitle className="text-lg font-medium">Advanced Filters</DialogTitle>
+                      <DialogDescription>
+                        Filter controls redesigned for quick mobile toggling.
+                      </DialogDescription>
+                    </DialogHeader>
+                  </div>
+
+                  <div className="p-4 sm:p-5">
+                    <Tabs defaultValue="quick" className="w-full">
+                      <TabsList className="grid grid-cols-4 w-full">
+                        <TabsTrigger value="quick" className="h-9 px-2 text-[11px] sm:text-xs">Quick</TabsTrigger>
+                        <TabsTrigger value="flow" className="h-9 px-2 text-[11px] sm:text-xs">Flow</TabsTrigger>
+                        <TabsTrigger value="time" className="h-9 px-2 text-[11px] sm:text-xs">Time</TabsTrigger>
+                        <TabsTrigger value="amount" className="h-9 px-2 text-[11px] sm:text-xs">Amount</TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="quick" className="space-y-3 mt-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDateFilter('30D');
+                              setSortFilter('Newest');
+                              setStatusFilter('All');
+                              setDirectionFilter('outflow');
+                            }}
+                            className="h-9 px-3 rounded-md border border-zinc-300 dark:border-zinc-700 text-[11px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
+                          >
+                            Recent outflows
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDateFilter('90D');
+                              setStatusFilter('pending');
+                              setDirectionFilter('All');
+                            }}
+                            className="h-9 px-3 rounded-md border border-zinc-300 dark:border-zinc-700 text-[11px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
+                          >
+                            Pending queue
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDateFilter('1Y');
+                              setDirectionFilter('inflow');
+                              setStatusFilter('completed');
+                              setSortFilter('AmountHigh');
+                            }}
+                            className="h-9 px-3 rounded-md border border-zinc-300 dark:border-zinc-700 text-[11px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
+                          >
+                            Largest inflows
+                          </button>
+                          <button
+                            type="button"
+                            onClick={resetFilters}
+                            className="h-9 px-3 rounded-md border border-zinc-300 dark:border-zinc-700 text-[11px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
+                          >
+                            Reset all
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <FilterSwitchRow
+                            checked={directionFilter === 'inflow'}
+                            label="Inflow only"
+                            description="Show incoming transactions only."
+                            onToggle={() => setDirectionFilter(directionFilter === 'inflow' ? 'All' : 'inflow')}
+                          />
+                          <FilterSwitchRow
+                            checked={directionFilter === 'outflow'}
+                            label="Outflow only"
+                            description="Show outgoing transactions only."
+                            onToggle={() => setDirectionFilter(directionFilter === 'outflow' ? 'All' : 'outflow')}
+                          />
+                          <FilterSwitchRow
+                            checked={statusFilter === 'pending'}
+                            label="Pending only"
+                            description="Focus on queued and upcoming transactions."
+                            onToggle={() => setStatusFilter(statusFilter === 'pending' ? 'All' : 'pending')}
+                          />
+                          <FilterSwitchRow
+                            checked={statusFilter === 'failed'}
+                            label="Failed only"
+                            description="Review failed attempts and retries."
+                            onToggle={() => setStatusFilter(statusFilter === 'failed' ? 'All' : 'failed')}
+                          />
+                        </div>
+                      </TabsContent>
+
+                      <TabsContent value="flow" className="space-y-3 mt-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">Source</p>
+                            <Select value={sourceFilter} onValueChange={(value: SourceFilter) => setSourceFilter(value)}>
+                              <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                                <SelectValue placeholder="Source" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="All">All sources</SelectItem>
+                                <SelectItem value="On-chain">On-chain</SelectItem>
+                                <SelectItem value="Bank recurring">Bank recurring</SelectItem>
+                                <SelectItem value="Bank spend">Bank spend</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">Category</p>
+                            <Select value={categoryFilter} onValueChange={(value: ConsolidatedCategory | 'All') => setCategoryFilter(value)}>
+                              <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                                <SelectValue placeholder="Category" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="All">All categories</SelectItem>
+                                <SelectItem value="deposit">Deposit</SelectItem>
+                                <SelectItem value="withdrawal">Withdrawal</SelectItem>
+                                <SelectItem value="buy">Buy</SelectItem>
+                                <SelectItem value="sell">Sell</SelectItem>
+                                <SelectItem value="mint">Mint</SelectItem>
+                                <SelectItem value="trade">Trade</SelectItem>
+                                <SelectItem value="transfer">Transfer</SelectItem>
+                                <SelectItem value="subscription">Subscription</SelectItem>
+                                <SelectItem value="spend">Spend</SelectItem>
+                                <SelectItem value="income">Income</SelectItem>
+                                <SelectItem value="other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">Direction</p>
+                            <Select value={directionFilter} onValueChange={(value: DirectionFilter) => setDirectionFilter(value)}>
+                              <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                                <SelectValue placeholder="Direction" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="All">All directions</SelectItem>
+                                <SelectItem value="inflow">Inflow</SelectItem>
+                                <SelectItem value="outflow">Outflow</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">Status</p>
+                            <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
+                              <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                                <SelectValue placeholder="Status" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="All">All statuses</SelectItem>
+                                <SelectItem value="completed">Completed</SelectItem>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="failed">Failed</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </TabsContent>
+
+                      <TabsContent value="time" className="space-y-3 mt-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">Date range</p>
+                            <Select value={dateFilter} onValueChange={(value: DateFilter) => setDateFilter(value)}>
+                              <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                                <SelectValue placeholder="Date" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="30D">Last 30 days</SelectItem>
+                                <SelectItem value="90D">Last 90 days</SelectItem>
+                                <SelectItem value="1Y">Last 1 year</SelectItem>
+                                <SelectItem value="2Y">Last 2 years</SelectItem>
+                                <SelectItem value="5Y">Last 5 years</SelectItem>
+                                <SelectItem value="All">All dates</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">Sort order</p>
+                            <Select value={sortFilter} onValueChange={(value: SortFilter) => setSortFilter(value)}>
+                              <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                                <SelectValue placeholder="Sort" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Newest">Newest</SelectItem>
+                                <SelectItem value="Oldest">Oldest</SelectItem>
+                                <SelectItem value="AmountHigh">Amount high</SelectItem>
+                                <SelectItem value="AmountLow">Amount low</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1 sm:col-span-2">
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">Account</p>
+                            <Select value={accountFilter} onValueChange={setAccountFilter}>
+                              <SelectTrigger size="sm" className="h-9 text-xs w-full">
+                                <SelectValue placeholder="Account" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {accountOptions.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </TabsContent>
+
+                      <TabsContent value="amount" className="space-y-3 mt-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">Min amount</p>
+                            <Input
+                              value={amountMin}
+                              onChange={(event) => setAmountMin(event.target.value.replace(/[^0-9.]/g, ''))}
+                              placeholder="0.00"
+                              className="h-9 text-xs"
+                              inputMode="decimal"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">Max amount</p>
+                            <Input
+                              value={amountMax}
+                              onChange={(event) => setAmountMax(event.target.value.replace(/[^0-9.]/g, ''))}
+                              placeholder="Any"
+                              className="h-9 text-xs"
+                              inputMode="decimal"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSortFilter('AmountHigh')}
+                            className={cn(
+                              'h-9 px-3 rounded-md border text-[11px] transition-colors text-left',
+                              sortFilter === 'AmountHigh'
+                                ? 'bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
+                                : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                            )}
+                          >
+                            Highest first
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSortFilter('AmountLow')}
+                            className={cn(
+                              'h-9 px-3 rounded-md border text-[11px] transition-colors text-left',
+                              sortFilter === 'AmountLow'
+                                ? 'bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
+                                : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                            )}
+                          >
+                            Lowest first
+                          </button>
+                        </div>
+                      </TabsContent>
+                    </Tabs>
                   </div>
 
                   <div className="px-5 py-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">

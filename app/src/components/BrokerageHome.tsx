@@ -593,9 +593,10 @@ export default function BrokerageHome() {
     refreshBankBalance,
   } = usePortfolio();
   const bankLinked = portfolioCashBalance.bankLinked ?? false;
+  const plaidWalletAddress = bankLinked ? (address ?? undefined) : undefined;
 
   // Plaid recurring streams – shared with UpcomingTransactions (React Query dedupes by key); no extra API call
-  const { inflowStreams, outflowStreams } = useRecurringTransactions(address ?? undefined);
+  const { inflowStreams, outflowStreams } = useRecurringTransactions(plaidWalletAddress);
 
   const hasLiabilityAccounts = useMemo(
     () => bankAccounts.some((a) => {
@@ -1146,9 +1147,9 @@ export default function BrokerageHome() {
               <div className="flex flex-col gap-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Row 1 - Col 1: Spend Tracker */}
-                  <SpendTracker walletAddress={address ?? undefined} />
+                  <SpendTracker walletAddress={plaidWalletAddress} />
                   {/* Row 1 - Col 2: Upcoming Transactions (Plaid recurring inflows/outflows) */}
-                  <UpcomingTransactions walletAddress={address ?? undefined} />
+                  <UpcomingTransactions walletAddress={plaidWalletAddress} />
                 </div>
                 {/* Row 2: Budget Tracker */}
                 <BudgetTracker />
