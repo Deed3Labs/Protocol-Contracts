@@ -1649,9 +1649,9 @@ export default function BudgetHome() {
                   </div>
                 </div>
 
-                <div className="divide-y divide-zinc-200 dark:divide-zinc-800 border-y border-zinc-200/70 dark:border-zinc-800/70">
+                <div className="space-y-3">
                   {displayedTransactions.length === 0 && (
-                    <div className="p-6 text-sm text-zinc-500 dark:text-zinc-400 text-center">
+                    <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-6 text-sm text-zinc-500 dark:text-zinc-400 text-center">
                       No transactions match your current filters. Try clearing filters or reducing search terms.
                     </div>
                   )}
@@ -1670,74 +1670,103 @@ export default function BudgetHome() {
                     return (
                       <div
                         key={transaction.id}
-                        className="p-3 sm:p-4 flex items-start justify-between gap-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                        className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 overflow-hidden hover:bg-zinc-50/60 dark:hover:bg-zinc-900/60 transition-colors"
                       >
-                        <div className="flex items-start gap-3 min-w-0">
-                          <div
-                            className={cn(
-                              'w-9 h-9 rounded-full shrink-0 flex items-center justify-center',
-                              isInflow
-                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                                : 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
-                            )}
-                          >
-                            <Icon className="w-4 h-4" />
-                          </div>
-
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-black dark:text-white truncate">{transaction.title}</p>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
-                              {transaction.subtitle}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                              <Badge variant="outline" className="text-[10px]">
-                                {transaction.source}
-                              </Badge>
-                              <Badge variant="outline" className="text-[10px] capitalize">
-                                {transaction.category}
-                              </Badge>
-                              <Badge
-                                variant="outline"
+                        <div className="p-3 sm:p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div
                                 className={cn(
-                                  'text-[10px] capitalize',
-                                  transaction.status === 'completed' &&
-                                    'border-emerald-500/40 text-emerald-700 dark:text-emerald-300',
-                                  transaction.status === 'pending' &&
-                                    'border-amber-500/40 text-amber-700 dark:text-amber-300',
-                                  transaction.status === 'failed' &&
-                                    'border-rose-500/40 text-rose-700 dark:text-rose-300'
+                                  'w-9 h-9 rounded-full shrink-0 flex items-center justify-center',
+                                  isInflow
+                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                    : 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
                                 )}
                               >
-                                {statusLabel}
-                              </Badge>
-                              {transaction.isMock && (
-                                <Badge variant="outline" className="text-[10px] border-sky-400/50 text-sky-700 dark:text-sky-300">
-                                  Sample
-                                </Badge>
-                              )}
+                                <Icon className="w-4 h-4" />
+                              </div>
+
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-black dark:text-white truncate">{transaction.title}</p>
+                                <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
+                                  {transaction.subtitle}
+                                </p>
+                              </div>
                             </div>
+
+                            <div className="text-right shrink-0">
+                              <p
+                                className={cn(
+                                  'font-light text-[12px] leading-none',
+                                  isInflow ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                                )}
+                              >
+                                {isInflow ? '+' : '-'}{formatCurrency(transaction.amount)}
+                              </p>
+                              <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1 uppercase tracking-wide">
+                                {isInflow ? 'Inflow' : 'Outflow'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                            <Badge variant="outline" className="text-[10px]">
+                              {transaction.source}
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] capitalize">
+                              {transaction.category}
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'text-[10px] capitalize',
+                                transaction.status === 'completed' &&
+                                  'border-emerald-500/40 text-emerald-700 dark:text-emerald-300',
+                                transaction.status === 'pending' &&
+                                  'border-amber-500/40 text-amber-700 dark:text-amber-300',
+                                transaction.status === 'failed' &&
+                                  'border-rose-500/40 text-rose-700 dark:text-rose-300'
+                              )}
+                            >
+                              {statusLabel}
+                            </Badge>
+                            {transaction.isMock && (
+                              <Badge variant="outline" className="text-[10px] border-sky-400/50 text-sky-700 dark:text-sky-300">
+                                Sample
+                              </Badge>
+                            )}
                           </div>
                         </div>
 
-                        <div className="text-right shrink-0">
-                          <p
-                            className={cn(
-                              'text-sm font-medium',
-                              isInflow ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-                            )}
-                          >
-                            {isInflow ? '+' : '-'}{formatCurrency(transaction.amount)}
-                          </p>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                            {transaction.date.toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                            })}
-                          </p>
-                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate max-w-[160px]">
-                            {transaction.account}
-                          </p>
+                        <div className="border-t border-zinc-200/70 dark:border-zinc-800/70 px-3 sm:px-4 py-2.5">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <div className="min-w-0">
+                              <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Account</p>
+                              <p className="text-[11px] text-zinc-700 dark:text-zinc-300 truncate mt-0.5">{transaction.account}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Date</p>
+                              <p className="text-[11px] text-zinc-700 dark:text-zinc-300 mt-0.5">
+                                {transaction.date.toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </p>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Settlement</p>
+                              <p className="text-[11px] text-zinc-700 dark:text-zinc-300 truncate mt-0.5">
+                                {transaction.network || 'Connected accounts'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Reference</p>
+                              <p className="text-[11px] text-zinc-700 dark:text-zinc-300 mt-0.5">
+                                {transaction.id.slice(0, 10)}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     );
