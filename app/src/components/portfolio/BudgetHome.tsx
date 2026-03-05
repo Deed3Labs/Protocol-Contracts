@@ -18,8 +18,6 @@ import {
   YAxis,
 } from 'recharts';
 import {
-  ArrowDownLeft,
-  ArrowUpRight,
   Calendar,
   Check,
   Landmark,
@@ -36,8 +34,6 @@ import { useAppKitAccount } from '@reown/appkit/react';
 import SideMenu from './SideMenu';
 import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
-import DepositModal from './DepositModal';
-import WithdrawModal from './WithdrawModal';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useRecurringTransactions } from '@/hooks/useRecurringTransactions';
@@ -377,8 +373,6 @@ export default function BudgetHome() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [isScrolledPast, setIsScrolledPast] = useState(false);
-  const [depositModalOpen, setDepositModalOpen] = useState(false);
-  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('All');
@@ -1084,10 +1078,6 @@ export default function BudgetHome() {
     <div className="min-h-screen bg-white dark:bg-[#0e0e0e] text-black dark:text-white font-sans pb-20 md:pb-0 transition-colors duration-200">
       <SideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
 
-      <DepositModal isOpen={depositModalOpen} onClose={() => setDepositModalOpen(false)} />
-
-      <WithdrawModal isOpen={withdrawModalOpen} onClose={() => setWithdrawModalOpen(false)} />
-
       <HeaderNav
         isScrolledPast={isScrolledPast}
         onMenuOpen={() => setMenuOpen(true)}
@@ -1097,48 +1087,28 @@ export default function BudgetHome() {
       <main className="pt-24 pb-28 container mx-auto md:pt-32">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
           <div className="md:col-span-8 space-y-8">
-            <section className="space-y-5">
+            <section className="space-y-4 pt-4">
               <div>
-                <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-400">
-                  <span className="text-sm font-medium">Budget Forecast Value</span>
-                  <span className="text-xs text-zinc-400 dark:text-zinc-500">Across all holdings and connected accounts</span>
-                </div>
-
-                <h1 className="text-[42px] font-light text-black dark:text-white tracking-tight flex items-baseline gap-2">
-                  {formatCurrency(totalAccountValue)}
-                  <span className="text-lg text-zinc-500 font-normal">USD</span>
+                <h1 className="text-[27px] sm:text-[34px] font-light tracking-tight leading-[1.08] text-black dark:text-white">
+                  Consolidated cash flow
                 </h1>
-
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <button
-                    onClick={() => setDepositModalOpen(true)}
-                    className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-2"
-                  >
-                    <ArrowDownLeft className="w-4 h-4" />
-                    Add funds
-                  </button>
-                  <button
-                    onClick={() => setWithdrawModalOpen(true)}
-                    className="bg-zinc-100 dark:bg-zinc-900 text-black dark:text-white px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors border border-zinc-200 dark:border-zinc-800 flex items-center gap-2"
-                  >
-                    <ArrowUpRight className="w-4 h-4" />
-                    Move out
-                  </button>
-                </div>
+                <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+                  Monthly inflow and outflow across connected accounts and recurring streams.
+                </p>
               </div>
 
               <div className="overflow-x-auto no-scrollbar">
-                <div className="min-w-[600px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
+                <div className="min-w-[760px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-3">
                   <div className="p-4">
                     <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                       Total inflow (monthly)
                     </p>
                     <div className="mt-1 flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-emerald-500" />
-                      <p className="text-3xl font-light">{formatCurrency(totalInflowFromBanks)}</p>
+                      <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <p className="text-[24px] sm:text-[30px] font-light leading-none whitespace-nowrap">{formatCurrency(totalInflowFromBanks)}</p>
                     </div>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                      From {bankAccounts.length} linked bank account{bankAccounts.length === 1 ? '' : 's'}
+                      {bankAccounts.length} linked bank account{bankAccounts.length === 1 ? '' : 's'}
                     </p>
                   </div>
 
@@ -1147,11 +1117,23 @@ export default function BudgetHome() {
                       Total outflow (monthly)
                     </p>
                     <div className="mt-1 flex items-center gap-2">
-                      <TrendingDown className="w-4 h-4 text-rose-500" />
-                      <p className="text-3xl font-light">{formatCurrency(totalOutflowFromBanks)}</p>
+                      <TrendingDown className="w-4 h-4 text-rose-500 shrink-0" />
+                      <p className="text-[24px] sm:text-[30px] font-light leading-none whitespace-nowrap">{formatCurrency(totalOutflowFromBanks)}</p>
                     </div>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                      Recurring + projected month-to-date spend from connected accounts
+                      Recurring + projected month-to-date spend
+                    </p>
+                  </div>
+
+                  <div className="p-4">
+                    <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Net monthly flow
+                    </p>
+                    <p className={cn('mt-2 text-[24px] sm:text-[30px] font-light leading-none whitespace-nowrap', monthlyNetFlow >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                      {monthlyNetFlow >= 0 ? '+' : '-'}{formatCurrency(Math.abs(monthlyNetFlow))}
+                    </p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                      Based on connected account inflows and outflows
                     </p>
                   </div>
                 </div>
@@ -1221,10 +1203,10 @@ export default function BudgetHome() {
 
                     <div className="h-[290px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={monthlyFlowData} margin={{ top: 6, right: 8, left: 0, bottom: 4 }} barGap={8}>
+                        <BarChart data={monthlyFlowData} margin={{ top: 6, right: 8, left: -22, bottom: 4 }} barGap={8}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#a1a1aa" opacity={0.25} />
                           <XAxis dataKey="label" tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} />
-                          <YAxis tickFormatter={formatCurrencyCompact} tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} width={72} />
+                          <YAxis tickFormatter={formatCurrencyCompact} tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} width={58} tickMargin={2} />
                           <Tooltip content={<InsightTooltip />} />
                           <ReferenceLine y={0} stroke="#a1a1aa" />
                           <Bar dataKey="inflow" name="Inflow" fill="#10b981" radius={[4, 4, 0, 0]} />
@@ -1957,8 +1939,8 @@ export default function BudgetHome() {
           </div>
 
           <div className="md:col-span-4">
-            <div className="md:sticky md:top-28 space-y-6">
-              <section className="border-y border-zinc-200/70 dark:border-zinc-800/70 py-4 space-y-4">
+            <div className="md:sticky md:top-28 space-y-4">
+              <section className="rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-[#111111]/80 p-4 space-y-4">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-medium">Transaction Pulse</h3>
                   <Badge variant="outline" className="text-[10px]">
@@ -1967,7 +1949,7 @@ export default function BudgetHome() {
                 </div>
 
                 <div className="overflow-x-auto no-scrollbar">
-                  <div className="min-w-[480px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-4">
+                  <div className="min-w-[480px] rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-4">
                     <div className="p-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Net flow</p>
                       <p className={cn('text-sm font-medium mt-1', netFlow14d >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
@@ -2003,22 +1985,25 @@ export default function BudgetHome() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Volume by source</p>
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Volume by source</p>
                   {sourceVolumeData.length === 0 && (
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">No transaction volume for current filter set.</p>
                   )}
-                  {sourceVolumeData.slice(0, 3).map((source) => (
-                    <div key={source.source} className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-700 dark:text-zinc-300">{source.source}</span>
-                      <span className="text-zinc-500 dark:text-zinc-400">
-                        {source.count} tx • {formatCurrencyCompact(source.amount)}
-                      </span>
+                  {sourceVolumeData.length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {sourceVolumeData.slice(0, 3).map((source) => (
+                        <div key={source.source} className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2">
+                          <p className="text-[11px] text-zinc-700 dark:text-zinc-200 truncate">{source.source}</p>
+                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">{source.count} tx</p>
+                          <p className="text-xs font-medium mt-0.5">{formatCurrencyCompact(source.amount)}</p>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               </section>
 
-              <section className="border-y border-zinc-200/70 dark:border-zinc-800/70 py-4 space-y-4">
+              <section className="rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-[#111111]/80 p-4 space-y-4">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-medium">Queue + Recurring</h3>
                   <Badge variant="outline" className="text-[10px]">
@@ -2027,7 +2012,7 @@ export default function BudgetHome() {
                 </div>
 
                 <div className="overflow-x-auto no-scrollbar">
-                  <div className="min-w-[340px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
+                  <div className="min-w-[340px] rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
                     <div className="p-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring inbound</p>
                       <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(recurringInflowMonthly)}</p>
@@ -2078,7 +2063,7 @@ export default function BudgetHome() {
                 </div>
               </section>
 
-              <section className="border-y border-zinc-200/70 dark:border-zinc-800/70 py-4 space-y-4">
+              <section className="rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-[#111111]/80 p-4 space-y-4">
                 <div className="flex items-center gap-2">
                   <Landmark className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
                   <h3 className="text-sm font-medium">Accounts + Category Focus</h3>
@@ -2109,7 +2094,7 @@ export default function BudgetHome() {
                   })}
                 </div>
 
-                <div className="border-y border-zinc-200/70 dark:border-zinc-800/70 py-2 text-xs text-zinc-500 dark:text-zinc-400">
+                <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 px-2.5 py-2 text-xs text-zinc-500 dark:text-zinc-400">
                   Cash on hand: {formatCurrency(cashBalance.totalCash || 0)}
                 </div>
 
