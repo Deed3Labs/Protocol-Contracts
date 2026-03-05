@@ -1109,11 +1109,10 @@ export default function BudgetHome() {
                 </span>
               </div>
 
-              <div className="relative overflow-hidden rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70">
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-r from-emerald-500/10 via-transparent to-rose-500/10" />
+              <div className="relative overflow-hidden rounded border border-zinc-200/70 dark:border-zinc-800/70">
 
                 <div className="grid grid-cols-2 divide-x divide-zinc-200 dark:divide-zinc-800">
-                  <div className="p-3 sm:p-5 min-w-0">
+                  <div className="p-3 sm:p-5 min-w-0 bg-gradient-to-r from-emerald-500/14 via-emerald-500/6 to-transparent dark:from-emerald-500/16 dark:via-emerald-500/7 dark:to-transparent">
                     <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                       Inflow (monthly)
                     </p>
@@ -1128,7 +1127,7 @@ export default function BudgetHome() {
                     </p>
                   </div>
 
-                  <div className="p-3 sm:p-5 min-w-0">
+                  <div className="p-3 sm:p-5 min-w-0 bg-gradient-to-l from-rose-500/14 via-rose-500/6 to-transparent dark:from-rose-500/16 dark:via-rose-500/7 dark:to-transparent">
                     <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                       Outflow (monthly)
                     </p>
