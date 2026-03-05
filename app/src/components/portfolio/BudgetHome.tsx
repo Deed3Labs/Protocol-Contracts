@@ -1097,44 +1097,87 @@ export default function BudgetHome() {
                     Monthly inflow and outflow across linked accounts.
                   </div>
                 </div>
+                <span
+                  className={cn(
+                    'ml-auto text-[10px] px-2 py-0.5 rounded-full border',
+                    monthlyNetFlow >= 0
+                      ? 'text-emerald-700 border-emerald-300 dark:text-emerald-300 dark:border-emerald-800'
+                      : 'text-rose-700 border-rose-300 dark:text-rose-300 dark:border-rose-800'
+                  )}
+                >
+                  {monthlyNetFlow >= 0 ? 'Surplus' : 'Deficit'}
+                </span>
               </div>
 
-              <div className="border-b border-zinc-200/70 dark:border-zinc-800/70">
+              <div className="relative overflow-hidden rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-r from-emerald-500/10 via-transparent to-rose-500/10" />
+
                 <div className="grid grid-cols-2 divide-x divide-zinc-200 dark:divide-zinc-800">
-                <div className="p-3 sm:p-5 min-w-0">
-                  <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                    Inflow (monthly)
-                  </p>
-                  <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                    <TrendingUp className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                    <p className="min-w-0 truncate text-[23px] sm:text-[34px] font-light leading-none text-emerald-600 dark:text-emerald-400">
-                      {formatCurrency(totalInflowFromBanks)}
+                  <div className="p-3 sm:p-5 min-w-0">
+                    <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Inflow (monthly)
+                    </p>
+                    <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <p className="min-w-0 truncate text-[23px] sm:text-[34px] font-light leading-none text-emerald-600 dark:text-emerald-400">
+                        {formatCurrency(totalInflowFromBanks)}
+                      </p>
+                    </div>
+                    <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
+                      Bank inflow across {bankAccounts.length} accounts
                     </p>
                   </div>
-                  <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-                    Linked accounts ({bankAccounts.length})
-                  </p>
-                </div>
 
-                <div className="p-3 sm:p-5 min-w-0">
-                  <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                    Outflow (monthly)
-                  </p>
-                  <div className="mt-1 flex items-center gap-1.5 min-w-0">
-                    <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                    <p className="min-w-0 truncate text-[23px] sm:text-[34px] font-light leading-none text-rose-600 dark:text-rose-400">
-                      {formatCurrency(totalOutflowFromBanks)}
+                  <div className="p-3 sm:p-5 min-w-0">
+                    <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Outflow (monthly)
+                    </p>
+                    <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                      <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                      <p className="min-w-0 truncate text-[23px] sm:text-[34px] font-light leading-none text-rose-600 dark:text-rose-400">
+                        {formatCurrency(totalOutflowFromBanks)}
+                      </p>
+                    </div>
+                    <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
+                      Recurring + projected spend
                     </p>
                   </div>
-                  <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-                    Recurring + projected spend
-                  </p>
                 </div>
-              </div>
 
-                <div className="px-3 sm:px-5 py-2.5 flex items-center justify-between text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 border-t border-zinc-200/70 dark:border-zinc-800/70">
-                  <span>Monthly snapshot</span>
-                  <span className="truncate text-right">Connected account + recurring data</span>
+                <div className="px-3 sm:px-5 py-2.5 border-t border-zinc-200/70 dark:border-zinc-800/70">
+                  <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400">
+                    <span>Flow coverage</span>
+                    <span className="font-medium">
+                      {totalOutflowFromBanks > 0
+                        ? `${Math.round((totalInflowFromBanks / totalOutflowFromBanks) * 100)}%`
+                        : '0%'}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all',
+                        monthlyNetFlow >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
+                      )}
+                      style={{
+                        width: `${Math.max(
+                          8,
+                          Math.min(
+                            totalOutflowFromBanks > 0
+                              ? (totalInflowFromBanks / totalOutflowFromBanks) * 100
+                              : 0,
+                            100
+                          )
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400">
+                    <span>Net monthly</span>
+                    <span className={cn('font-medium', monthlyNetFlow >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                      {monthlyNetFlow >= 0 ? '+' : '-'}{formatCurrency(Math.abs(monthlyNetFlow))}
+                    </span>
+                  </div>
                 </div>
               </div>
             </section>
