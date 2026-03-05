@@ -20,6 +20,7 @@ import {
 import {
   Calendar,
   Check,
+  Info,
   Landmark,
   RefreshCw,
   Repeat,
@@ -1088,55 +1089,46 @@ export default function BudgetHome() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
           <div className="md:col-span-8 space-y-8">
             <section className="space-y-4 pt-4">
-              <div>
-                <h1 className="text-[27px] sm:text-[34px] font-light tracking-tight leading-[1.08] text-black dark:text-white">
-                  Consolidated cash flow
-                </h1>
-                <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-                  Monthly inflow and outflow across connected accounts and recurring streams.
-                </p>
-              </div>
-
-              <div className="overflow-x-auto no-scrollbar">
-                <div className="min-w-[760px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-3">
-                  <div className="p-4">
-                    <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                      Total inflow (monthly)
-                    </p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <p className="text-[24px] sm:text-[30px] font-light leading-none whitespace-nowrap">{formatCurrency(totalInflowFromBanks)}</p>
-                    </div>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                      {bankAccounts.length} linked bank account{bankAccounts.length === 1 ? '' : 's'}
-                    </p>
-                  </div>
-
-                  <div className="p-4">
-                    <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                      Total outflow (monthly)
-                    </p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <TrendingDown className="w-4 h-4 text-rose-500 shrink-0" />
-                      <p className="text-[24px] sm:text-[30px] font-light leading-none whitespace-nowrap">{formatCurrency(totalOutflowFromBanks)}</p>
-                    </div>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                      Recurring + projected month-to-date spend
-                    </p>
-                  </div>
-
-                  <div className="p-4">
-                    <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                      Net monthly flow
-                    </p>
-                    <p className={cn('mt-2 text-[24px] sm:text-[30px] font-light leading-none whitespace-nowrap', monthlyNetFlow >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                      {monthlyNetFlow >= 0 ? '+' : '-'}{formatCurrency(Math.abs(monthlyNetFlow))}
-                    </p>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                      Based on connected account inflows and outflows
-                    </p>
+              <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
+                <span className="text-sm font-medium">Consolidated cash flow</span>
+                <div className="group relative">
+                  <Info className="w-4 h-4 cursor-help" />
+                  <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+                    Monthly inflow and outflow across linked accounts.
                   </div>
                 </div>
+              </div>
+
+              <div className="border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
+                  <div className="p-3 sm:p-4 min-w-0">
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Total inflow (monthly)
+                    </p>
+                    <div className="mt-1 flex items-center gap-1.5 sm:gap-2 min-w-0">
+                      <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <p className="min-w-0 truncate text-[21px] sm:text-[29px] font-light leading-none text-emerald-600 dark:text-emerald-400">
+                        {formatCurrency(totalInflowFromBanks)}
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
+                      Linked accounts ({bankAccounts.length})
+                    </p>
+                  </div>
+
+                  <div className="p-3 sm:p-4 min-w-0">
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      Total outflow (monthly)
+                    </p>
+                    <div className="mt-1 flex items-center gap-1.5 sm:gap-2 min-w-0">
+                      <TrendingDown className="w-4 h-4 text-rose-500 shrink-0" />
+                      <p className="min-w-0 truncate text-[21px] sm:text-[29px] font-light leading-none text-rose-600 dark:text-rose-400">
+                        {formatCurrency(totalOutflowFromBanks)}
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
+                      Recurring + projected spend
+                    </p>
+                  </div>
               </div>
             </section>
 
@@ -1994,8 +1986,13 @@ export default function BudgetHome() {
                       {sourceVolumeData.slice(0, 3).map((source) => (
                         <div key={source.source} className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2">
                           <p className="text-[11px] text-zinc-700 dark:text-zinc-200 truncate">{source.source}</p>
-                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">{source.count} tx</p>
-                          <p className="text-xs font-medium mt-0.5">{formatCurrencyCompact(source.amount)}</p>
+                          <p className="text-[11px] mt-1 text-zinc-500 dark:text-zinc-400">
+                            <span className="font-medium text-zinc-800 dark:text-zinc-100">
+                              {formatCurrencyCompact(source.amount)}
+                            </span>
+                            <span className="px-1">·</span>
+                            {source.count} tx
+                          </p>
                         </div>
                       ))}
                     </div>
