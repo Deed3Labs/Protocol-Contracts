@@ -14,21 +14,24 @@ export interface UseRecurringTransactionsResult {
   notReady: boolean;
   isLoading: boolean;
   error: string | null;
-  refresh: () => void;
+  refresh: () => Promise<void>;
 }
 
 /**
  * Fetches Plaid recurring transaction streams (inflow = deposits, outflow = subscriptions)
  * for the given wallet. Uses React Query with staleTime to avoid excessive API calls:
  * - Only runs when walletAddress is set
- * - Data considered fresh for 5 minutes; no refetch on remount or window focus
+ * - Supports `enabled` gate so callers can skip Plaid calls when no bank is linked
+ * - Data considered fresh for 1 hour; no refetch on remount or window focus
  * - refresh() bypasses server cache for user-triggered refresh
  */
 export function useRecurringTransactions(
-  walletAddress: string | undefined
+  walletAddress: string | undefined,
+  options?: { enabled?: boolean }
 ): UseRecurringTransactionsResult {
   const queryClient = useQueryClient();
   const queryKey = ['plaid-recurring', walletAddress ?? ''] as const;
+  const enabled = !!walletAddress && (options?.enabled ?? true);
 
   const {
     data,
@@ -40,30 +43,31 @@ export function useRecurringTransactions(
       const result = await getPlaidRecurringTransactions(walletAddress!);
       return result ?? { inflowStreams: [], outflowStreams: [], linked: false, notReady: false };
     },
-    enabled: !!walletAddress,
+    enabled,
     staleTime: STALE_MS,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
 
-  const refresh = useCallback(() => {
-    if (!walletAddress) return;
+  const refresh = useCallback(async () => {
+    if (!walletAddress || !enabled) return;
     const key = ['plaid-recurring', walletAddress] as const;
-    queryClient.fetchQuery({
+    await queryClient.fetchQuery({
       queryKey: key,
-      queryFn: () =>
-        getPlaidRecurringTransactions(walletAddress, { refresh: true }) ??
-        { inflowStreams: [], outflowStreams: [], linked: false, notReady: false },
-      staleTime: STALE_MS,
+      queryFn: async () => {
+        const result = await getPlaidRecurringTransactions(walletAddress, { refresh: true });
+        return result ?? { inflowStreams: [], outflowStreams: [], linked: false, notReady: false };
+      },
+      staleTime: 0,
     });
-  }, [walletAddress, queryClient]);
+  }, [enabled, walletAddress, queryClient]);
 
   return {
     inflowStreams: data?.inflowStreams ?? [],
     outflowStreams: data?.outflowStreams ?? [],
     linked: data?.linked ?? false,
     notReady: data?.notReady ?? false,
-    isLoading: walletAddress ? (isLoading && !data) : false,
+    isLoading: enabled ? (isLoading && !data) : false,
     error: error ? (error instanceof Error ? error.message : 'Failed to load recurring transactions') : null,
     refresh,
   };

@@ -14,21 +14,24 @@ export interface UseSpendTransactionsResult {
   notReady: boolean;
   isLoading: boolean;
   error: string | null;
-  refresh: () => void;
+  refresh: () => Promise<void>;
 }
 
 /**
  * Fetches Plaid spend-by-day for the current month (outflows from /transactions/get).
  * Uses React Query with staleTime to avoid excessive API calls:
  * - Only runs when walletAddress is set
+ * - Supports `enabled` gate so callers can skip Plaid calls when no bank is linked
  * - Data considered fresh for 15 minutes
  * - refresh() bypasses server cache for user-triggered refresh
  */
 export function useSpendTransactions(
-  walletAddress: string | undefined
+  walletAddress: string | undefined,
+  options?: { enabled?: boolean }
 ): UseSpendTransactionsResult {
   const queryClient = useQueryClient();
   const queryKey = ['plaid-spend', walletAddress ?? ''] as const;
+  const enabled = !!walletAddress && (options?.enabled ?? true);
 
   const {
     data,
@@ -40,30 +43,31 @@ export function useSpendTransactions(
       const result = await getPlaidSpend(walletAddress!);
       return result ?? { spendingByDay: {}, totalSpent: 0, linked: false, notReady: false };
     },
-    enabled: !!walletAddress,
+    enabled,
     staleTime: STALE_MS,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
 
-  const refresh = useCallback(() => {
-    if (!walletAddress) return;
+  const refresh = useCallback(async () => {
+    if (!walletAddress || !enabled) return;
     const key = ['plaid-spend', walletAddress] as const;
-    queryClient.fetchQuery({
+    await queryClient.fetchQuery({
       queryKey: key,
-      queryFn: () =>
-        getPlaidSpend(walletAddress, { refresh: true }) ??
-        { spendingByDay: {}, totalSpent: 0, linked: false, notReady: false },
-      staleTime: STALE_MS,
+      queryFn: async () => {
+        const result = await getPlaidSpend(walletAddress, { refresh: true });
+        return result ?? { spendingByDay: {}, totalSpent: 0, linked: false, notReady: false };
+      },
+      staleTime: 0,
     });
-  }, [walletAddress, queryClient]);
+  }, [enabled, walletAddress, queryClient]);
 
   return {
     spendingByDay: data?.spendingByDay ?? {},
     totalSpent: data?.totalSpent ?? 0,
     linked: data?.linked ?? false,
     notReady: data?.notReady ?? false,
-    isLoading: walletAddress ? (isLoading && !data) : false,
+    isLoading: enabled ? (isLoading && !data) : false,
     error: error ? (error instanceof Error ? error.message : 'Failed to load spend data') : null,
     refresh,
   };

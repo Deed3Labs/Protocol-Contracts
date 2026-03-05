@@ -26,7 +26,8 @@ interface UseMultichainActivityReturn {
  * Uses server API with Redis caching when available, falls back to direct RPC calls.
  * Transactions are sorted by timestamp (newest first) and limited to the specified count.
  * 
- * @param limit - Maximum number of transactions to return (default: 20)
+ * @param limit - Maximum number of transactions to keep after cross-chain merge (default: 20)
+ * @param perChainLimit - Maximum transactions to request per chain (defaults to `limit`)
  * 
  * @example
  * ```tsx
@@ -45,11 +46,15 @@ interface UseMultichainActivityReturn {
  * - `refresh`: Function to refresh all chains
  * - `refreshChain`: Function to refresh a specific chain
  */
-export function useMultichainActivity(limit: number = 20): UseMultichainActivityReturn {
+export function useMultichainActivity(
+  limit: number = 20,
+  perChainLimit: number = limit
+): UseMultichainActivityReturn {
   const { address, isConnected } = useAppKitAccount();
   const [transactions, setTransactions] = useState<MultichainTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestLimit = Math.max(1, Math.min(Math.floor(perChainLimit), 50));
 
   // Note: Provider is now managed by rpcOptimizer for better efficiency
 
@@ -64,7 +69,7 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
       // Use server API (with Redis caching)
       // Increased timeout for transaction fetching (15 seconds) - can be slow for many transactions
       const serverTransactions = await withTimeout(
-        getTransactions(chainId, address, limit),
+        getTransactions(chainId, address, requestLimit),
         15000
       ) as Awaited<ReturnType<typeof getTransactions>> | null;
       
@@ -92,7 +97,7 @@ export function useMultichainActivity(limit: number = 20): UseMultichainActivity
       // In development, return empty array
       return [];
     }
-  }, [address, limit]);
+  }, [address, requestLimit]);
 
   // Refresh a specific chain
   const refreshChain = useCallback(async (chainId: number) => {

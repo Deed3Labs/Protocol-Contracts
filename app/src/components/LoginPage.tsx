@@ -2,28 +2,39 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Wallet, ArrowUpRight, Shield, Zap, Globe } from 'lucide-react';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import ClearPathLogo from '../assets/ClearPath-Logo.png';
 
 export default function LoginPage() {
   const { isConnected, openModal } = useAppKitAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [hasNavigated, setHasNavigated] = useState(false);
 
   useEffect(() => {
     // If user is already connected, redirect to home (splash will be handled by App.tsx)
     if (isConnected && !hasNavigated) {
       setHasNavigated(true);
+      const fromState = location.state as
+        | {
+            from?: { pathname?: string; search?: string; hash?: string };
+          }
+        | undefined;
+      const targetPath = fromState?.from?.pathname || '/';
+      const targetSearch = fromState?.from?.search || '';
+      const targetHash = fromState?.from?.hash || '';
+      const nextRoute = `${targetPath}${targetSearch}${targetHash}`;
+
       // Dispatch event to trigger splash screen in App.tsx
       window.dispatchEvent(new Event('wallet-connected'));
       // Small delay before navigation to ensure splash triggers
       setTimeout(() => {
-        navigate('/', { replace: true });
+        navigate(nextRoute, { replace: true });
       }, 100);
     } else if (!isConnected) {
       setHasNavigated(false);
     }
-  }, [isConnected, navigate, hasNavigated]);
+  }, [isConnected, location.state, navigate, hasNavigated]);
 
   const handleConnect = () => {
     openModal('Connect');

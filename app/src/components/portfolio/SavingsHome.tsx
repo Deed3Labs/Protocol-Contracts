@@ -2100,7 +2100,7 @@ export default function SavingsHome() {
 
                           <div className="mt-3 h-52 sm:h-56">
                             <ResponsiveContainer width="100%" height="100%">
-                              <AreaChart data={projectionSeries} margin={{ top: 10, right: 8, left: 2, bottom: 4 }}>
+                              <AreaChart data={projectionSeries} margin={{ top: 10, right: 8, left: -16, bottom: 4 }}>
                                 <defs>
                                   <linearGradient id="savingsProjectionFill" x1="0" y1="0" x2="0" y2="1">
                                     <stop offset="5%" stopColor="#22c55e" stopOpacity={0.30} />
@@ -2120,7 +2120,8 @@ export default function SavingsHome() {
                                   tick={{ fill: '#71717a', fontSize: 10 }}
                                   tickLine={false}
                                   axisLine={false}
-                                  width={46}
+                                  width={38}
+                                  tickMargin={0}
                                   tickFormatter={(value) => formatAxisCurrency(Number(value))}
                                 />
                                 <Tooltip
