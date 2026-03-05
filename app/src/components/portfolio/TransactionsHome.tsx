@@ -357,7 +357,7 @@ const getYOffsetLabel = (monthOffset: number) => {
   return '';
 };
 
-export default function BudgetHome() {
+export default function TransactionsHome() {
   const { address, isConnected } = useAppKitAccount();
   const {
     transactions: walletTransactions,
@@ -800,6 +800,11 @@ export default function BudgetHome() {
     () => filteredTransactions.filter((tx) => tx.direction === 'outflow').reduce((sum, tx) => sum + tx.amount, 0),
     [filteredTransactions]
   );
+  const outflowPressurePercent = useMemo(() => {
+    const totalFlow = filteredInflowTotal + filteredOutflowTotal;
+    if (totalFlow <= 0) return 0;
+    return (filteredOutflowTotal / totalFlow) * 100;
+  }, [filteredInflowTotal, filteredOutflowTotal]);
 
   const handleRefreshData = () => {
     void refreshAll();
@@ -911,6 +916,10 @@ export default function BudgetHome() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
+  const sourceBreakdownTotal = useMemo(
+    () => sourceBreakdownData.reduce((sum, item) => sum + item.value, 0),
+    [sourceBreakdownData]
+  );
 
   const outflowCategoryData = useMemo(() => {
     const buckets = new Map<ConsolidatedCategory, number>();
@@ -925,6 +934,10 @@ export default function BudgetHome() {
       .sort((a, b) => b.value - a.value)
       .slice(0, 6);
   }, [filteredTransactions]);
+  const outflowCategoryTotal = useMemo(
+    () => outflowCategoryData.reduce((sum, item) => sum + item.value, 0),
+    [outflowCategoryData]
+  );
 
   const weekdayOutflowData = useMemo(() => {
     const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1028,6 +1041,64 @@ export default function BudgetHome() {
       .sort((a, b) => b.amount - a.amount);
   }, [filteredTransactions]);
 
+  const accountFlowFocus = useMemo(() => {
+    const buckets = new Map<string, { inflow: number; outflow: number; count: number }>();
+    filteredTransactions.forEach((transaction) => {
+      const current = buckets.get(transaction.account) ?? { inflow: 0, outflow: 0, count: 0 };
+      if (transaction.direction === 'inflow') current.inflow += transaction.amount;
+      if (transaction.direction === 'outflow') current.outflow += transaction.amount;
+      current.count += 1;
+      buckets.set(transaction.account, current);
+    });
+    return buckets;
+  }, [filteredTransactions]);
+
+  const totalLinkedAccountBalance = useMemo(
+    () =>
+      bankAccounts.reduce((sum, account) => {
+        const balance =
+          typeof account.available === 'number' && !Number.isNaN(account.available)
+            ? account.available
+            : account.current ?? 0;
+        return sum + balance;
+      }, 0),
+    [bankAccounts]
+  );
+
+  const linkedAccountFocusData = useMemo(
+    () =>
+      bankAccounts.slice(0, 4).map((account) => {
+        const balance =
+          typeof account.available === 'number' && !Number.isNaN(account.available)
+            ? account.available
+            : account.current ?? 0;
+        const name = account.name || 'Account';
+        const flow = accountFlowFocus.get(name) ?? { inflow: 0, outflow: 0, count: 0 };
+
+        return {
+          id: account.account_id,
+          name,
+          subtype: account.subtype || account.type || 'Bank account',
+          balance,
+          inflow: flow.inflow,
+          outflow: flow.outflow,
+          count: flow.count,
+          net: flow.inflow - flow.outflow,
+        };
+      }),
+    [accountFlowFocus, bankAccounts]
+  );
+
+  const categoryFocusData = useMemo(
+    () =>
+      outflowCategoryData.slice(0, 4).map((category, index) => ({
+        ...category,
+        pct: outflowCategoryTotal > 0 ? (category.value / outflowCategoryTotal) * 100 : 0,
+        color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+      })),
+    [outflowCategoryData, outflowCategoryTotal]
+  );
+
   const quickFocusCounts = useMemo(
     () => ({
       all: consolidatedTransactions.length,
@@ -1076,6 +1147,10 @@ export default function BudgetHome() {
   );
 
   const annualizedGrowthRate = toAnnualizedRate(adjustedForecastInputs.monthlyGrowthRate);
+  const forecastCagr = useMemo(() => {
+    if (totalAccountValue <= 0 || forecastEndValue <= 0 || forecastHorizon <= 0) return 0;
+    return (Math.pow(forecastEndValue / totalAccountValue, 1 / forecastHorizon) - 1) * 100;
+  }, [forecastEndValue, forecastHorizon, totalAccountValue]);
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0e0e0e] text-black dark:text-white font-sans pb-20 md:pb-0 transition-colors duration-200">
@@ -1120,7 +1195,7 @@ export default function BudgetHome() {
                     </p>
                     <div className="mt-1 flex items-center gap-1.5 min-w-0">
                       <TrendingUp className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                      <p className="min-w-0 truncate text-[26px] sm:text-[36px] font-light leading-none text-emerald-600 dark:text-emerald-400">
+                      <p className="min-w-0 truncate text-[18px] sm:text-[24px] font-light leading-none text-emerald-600 dark:text-emerald-400">
                         {formatCurrency(totalInflowFromBanks)}
                       </p>
                     </div>
@@ -1135,7 +1210,7 @@ export default function BudgetHome() {
                     </p>
                     <div className="mt-1 flex items-center gap-1.5 min-w-0">
                       <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                      <p className="min-w-0 truncate text-[26px] sm:text-[36px] font-light leading-none text-rose-600 dark:text-rose-400">
+                      <p className="min-w-0 truncate text-[18px] sm:text-[24px] font-light leading-none text-rose-600 dark:text-rose-400">
                         {formatCurrency(totalOutflowFromBanks)}
                       </p>
                     </div>
@@ -1261,59 +1336,137 @@ export default function BudgetHome() {
                 )}
 
                 {insightTab === 'Spend Mix' && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <div className="border border-zinc-200/70 dark:border-zinc-800/70 p-3">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Source mix</p>
-                      <div className="h-[250px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={sourceBreakdownData} dataKey="value" nameKey="name" innerRadius={54} outerRadius={86} paddingAngle={3}>
-                              {sourceBreakdownData.map((entry, index) => (
-                                <Cell key={entry.name} fill={SOURCE_COLORS[index % SOURCE_COLORS.length]} />
-                              ))}
-                            </Pie>
-                            <Tooltip content={<InsightTooltip />} />
-                          </PieChart>
-                        </ResponsiveContainer>
+                  <div className="space-y-4">
+                    <div className="overflow-x-auto no-scrollbar">
+                      <div className="min-w-[620px] rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-4">
+                        <div className="p-3">
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Filtered inflow</p>
+                          <p className="text-[13px] sm:text-[15px] font-light mt-1 leading-none text-emerald-600 dark:text-emerald-400">
+                            {formatCurrency(filteredInflowTotal)}
+                          </p>
+                        </div>
+                        <div className="p-3">
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Filtered outflow</p>
+                          <p className="text-[13px] sm:text-[15px] font-light mt-1 leading-none text-rose-600 dark:text-rose-400">
+                            {formatCurrency(filteredOutflowTotal)}
+                          </p>
+                        </div>
+                        <div className="p-3">
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Outflow pressure</p>
+                          <p className="text-[13px] sm:text-[15px] font-light mt-1 leading-none">
+                            {outflowPressurePercent.toFixed(1)}%
+                          </p>
+                        </div>
+                        <div className="p-3">
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Top source</p>
+                          <p className="text-[13px] sm:text-[15px] font-light mt-1 leading-none truncate">
+                            {sourceVolumeData[0]?.source || 'N/A'}
+                          </p>
+                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
+                            {sourceVolumeData[0]
+                              ? `${formatCurrencyCompact(sourceVolumeData[0].amount)} · ${sourceVolumeData[0].count} tx`
+                              : 'No source data'}
+                          </p>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="space-y-4">
-                      <div className="border border-zinc-200/70 dark:border-zinc-800/70 p-3">
-                        <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Top outflow categories</p>
-                        <div className="space-y-2">
-                          {outflowCategoryData.length === 0 && (
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400">No outflow categories in current filter set.</p>
-                          )}
-                          {outflowCategoryData.map((category, index) => {
-                            const total = outflowCategoryData.reduce((sum, item) => sum + item.value, 0);
-                            const pct = total > 0 ? (category.value / total) * 100 : 0;
+                    <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+                      <div className="xl:col-span-2 rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-3">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Source mix</p>
+                        <div className="h-[220px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie data={sourceBreakdownData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={82} paddingAngle={3}>
+                                {sourceBreakdownData.map((entry, index) => (
+                                  <Cell key={entry.name} fill={SOURCE_COLORS[index % SOURCE_COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip content={<InsightTooltip />} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="pt-2 border-t border-zinc-200/70 dark:border-zinc-800/70 space-y-1">
+                          {sourceBreakdownData.slice(0, 3).map((item, index) => {
+                            const pct = sourceBreakdownTotal > 0 ? (item.value / sourceBreakdownTotal) * 100 : 0;
                             return (
-                              <div key={category.name}>
-                                <div className="flex items-center justify-between text-xs mb-1">
-                                  <span className="capitalize text-zinc-700 dark:text-zinc-300">{category.name}</span>
-                                  <span className="text-zinc-500 dark:text-zinc-400">{pct.toFixed(1)}%</span>
-                                </div>
-                                <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded overflow-hidden">
-                                  <div className="h-full rounded" style={{ width: `${pct}%`, backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} />
-                                </div>
+                              <div key={item.name} className="flex items-center justify-between text-[11px]">
+                                <span className="inline-flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300 truncate">
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: SOURCE_COLORS[index % SOURCE_COLORS.length] }}
+                                  />
+                                  {item.name}
+                                </span>
+                                <span className="text-zinc-500 dark:text-zinc-400">
+                                  {formatCurrencyCompact(item.value)} · {pct.toFixed(0)}%
+                                </span>
                               </div>
                             );
                           })}
                         </div>
                       </div>
 
-                      <div className="border border-zinc-200/70 dark:border-zinc-800/70 p-3">
-                        <p className="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Outflow by weekday</p>
-                        <div className="h-[120px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={weekdayOutflowData} margin={{ top: 2, right: 4, left: 0, bottom: 0 }}>
-                              <XAxis dataKey="label" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
-                              <YAxis hide />
-                              <Tooltip content={<InsightTooltip />} />
-                              <Bar dataKey="value" fill="#3b82f6" radius={[3, 3, 0, 0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
+                      <div className="xl:col-span-3 space-y-3">
+                        <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-3">
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Top outflow categories</p>
+                          <div className="space-y-2">
+                            {outflowCategoryData.length === 0 && (
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400">No outflow categories in current filter set.</p>
+                            )}
+                            {outflowCategoryData.slice(0, 5).map((category, index) => {
+                              const pct = outflowCategoryTotal > 0 ? (category.value / outflowCategoryTotal) * 100 : 0;
+                              return (
+                                <div key={category.name}>
+                                  <div className="flex items-center justify-between text-[11px] mb-1">
+                                    <span className="capitalize text-zinc-700 dark:text-zinc-300">{category.name}</span>
+                                    <span className="text-zinc-500 dark:text-zinc-400">
+                                      {formatCurrencyCompact(category.value)} · {pct.toFixed(1)}%
+                                    </span>
+                                  </div>
+                                  <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded overflow-hidden">
+                                    <div
+                                      className="h-full rounded"
+                                      style={{ width: `${pct}%`, backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-3">
+                            <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Outflow by weekday</p>
+                            <div className="h-[120px]">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={weekdayOutflowData} margin={{ top: 2, right: 4, left: 0, bottom: 0 }}>
+                                  <XAxis dataKey="label" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
+                                  <YAxis hide />
+                                  <Tooltip content={<InsightTooltip />} />
+                                  <Bar dataKey="value" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-3">
+                            <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Source velocity</p>
+                            <div className="space-y-2">
+                              {sourceVolumeData.length === 0 && (
+                                <p className="text-xs text-zinc-500 dark:text-zinc-400">No source velocity data.</p>
+                              )}
+                              {sourceVolumeData.slice(0, 4).map((source) => (
+                                <div key={source.source} className="flex items-center justify-between text-[11px]">
+                                  <span className="text-zinc-700 dark:text-zinc-200 truncate pr-2">{source.source}</span>
+                                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0">
+                                    {formatCurrencyCompact(source.amount)} · {source.count} tx
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1439,38 +1592,46 @@ export default function BudgetHome() {
                       </ResponsiveContainer>
                     </div>
 
-                    <div className="border-y border-zinc-200/70 dark:border-zinc-800/70">
-                      <div className="grid grid-cols-3 px-3 py-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-                        <span>Metric</span>
-                        <span>Baseline</span>
-                        <span>Changed</span>
+                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                      <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Baseline net worth</p>
+                        <p className="text-[12px] sm:text-[14px] font-light mt-1 leading-none">{formatCurrencyCompact(baselineForecastEndValue)}</p>
                       </div>
-                      <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                        <div className="grid grid-cols-3 px-3 py-3 text-sm">
-                          <span>Net Worth</span>
-                          <span>{formatCurrencyCompact(baselineForecastEndValue)}</span>
-                          <span className={cn(forecastEndValue >= baselineForecastEndValue ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                            {formatCurrencyCompact(forecastEndValue)}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 px-3 py-3 text-sm">
-                          <span>% Success</span>
-                          <span>{baselineSuccessScore.toFixed(0)}%</span>
-                          <span className={cn(changedSuccessScore >= baselineSuccessScore ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                            {changedSuccessScore.toFixed(0)}%
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 px-3 py-3 text-sm">
-                          <span>Cash Flow</span>
-                          <span>
-                            {baselineYearlyCashFlow >= 0 ? '+' : '-'}
-                            {formatCurrencyCompact(Math.abs(baselineYearlyCashFlow))}/yr
-                          </span>
-                          <span className={cn(changedYearlyCashFlow >= baselineYearlyCashFlow ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                            {changedYearlyCashFlow >= 0 ? '+' : '-'}
-                            {formatCurrencyCompact(Math.abs(changedYearlyCashFlow))}/yr
-                          </span>
-                        </div>
+                      <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Scenario net worth</p>
+                        <p className="text-[12px] sm:text-[14px] font-light mt-1 leading-none">{formatCurrencyCompact(forecastEndValue)}</p>
+                      </div>
+                      <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Forecast change</p>
+                        <p className={cn('text-[12px] sm:text-[14px] font-light mt-1 leading-none', forecastDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                          {forecastDelta >= 0 ? '+' : '-'}{formatCurrencyCompact(Math.abs(forecastDelta))}
+                        </p>
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">{forecastDeltaPercent.toFixed(1)}%</p>
+                      </div>
+                      <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">% success</p>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">Base {baselineSuccessScore.toFixed(0)}%</p>
+                        <p className={cn('text-[12px] sm:text-[14px] font-light leading-none mt-1', changedSuccessScore >= baselineSuccessScore ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                          Scenario {changedSuccessScore.toFixed(0)}%
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Cash flow /yr</p>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                          Base {baselineYearlyCashFlow >= 0 ? '+' : '-'}
+                          {formatCurrencyCompact(Math.abs(baselineYearlyCashFlow))}
+                        </p>
+                        <p className={cn('text-[12px] sm:text-[14px] font-light leading-none mt-1', changedYearlyCashFlow >= baselineYearlyCashFlow ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                          Scenario {changedYearlyCashFlow >= 0 ? '+' : '-'}
+                          {formatCurrencyCompact(Math.abs(changedYearlyCashFlow))}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Projected CAGR</p>
+                        <p className={cn('text-[12px] sm:text-[14px] font-light mt-1 leading-none', forecastCagr >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                          {forecastCagr >= 0 ? '+' : '-'}{Math.abs(forecastCagr).toFixed(1)}%
+                        </p>
+                        <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">{forecastHorizon}Y horizon</p>
                       </div>
                     </div>
                   </>
@@ -2168,60 +2329,96 @@ export default function BudgetHome() {
               </section>
 
               <section className="rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70 bg-white/90 dark:bg-[#111111]/80 p-4 space-y-4">
-                <div className="flex items-center gap-2">
-                  <Landmark className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-                  <h3 className="text-sm font-medium">Accounts + Category Focus</h3>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Landmark className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                    <h3 className="text-sm font-medium">Accounts + Category Focus</h3>
+                  </div>
+                  <Badge variant="outline" className="text-[10px]">
+                    {bankAccounts.length} linked
+                  </Badge>
+                </div>
+
+                <div className="overflow-x-auto no-scrollbar">
+                  <div className="min-w-[360px] rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-3">
+                    <div className="p-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Accounts</p>
+                      <p className="text-[12px] sm:text-[14px] font-light mt-1 leading-none">{bankAccounts.length}</p>
+                    </div>
+                    <div className="p-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Bank balance</p>
+                      <p className="text-[12px] sm:text-[14px] font-light mt-1 leading-none">{formatCurrency(totalLinkedAccountBalance)}</p>
+                    </div>
+                    <div className="p-2.5">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Top category</p>
+                      <p className="text-[12px] sm:text-[14px] font-light mt-1 leading-none truncate capitalize">
+                        {categoryFocusData[0]?.name || 'N/A'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
-                  {bankAccounts.length === 0 && (
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Account balances</p>
+                  {linkedAccountFocusData.length === 0 && (
+                    <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5 text-xs text-zinc-500 dark:text-zinc-400">
                       No connected accounts yet. Link a bank account to power budgeting insights.
-                    </p>
+                    </div>
                   )}
-                  {bankAccounts.slice(0, 4).map((account) => {
-                    const balance =
-                      typeof account.available === 'number' && !Number.isNaN(account.available)
-                        ? account.available
-                        : account.current ?? 0;
-                    return (
-                      <div key={account.account_id} className="flex items-center justify-between gap-3 py-1 border-b border-zinc-200/60 dark:border-zinc-800/60 last:border-b-0">
+                  {linkedAccountFocusData.map((account) => (
+                    <div key={account.id} className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 overflow-hidden">
+                      <div className="p-2.5 flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-xs font-medium truncate">{account.name || 'Account'}</p>
-                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
-                            {account.subtype || account.type || 'Bank account'}
+                          <p className="text-xs font-medium truncate">{account.name}</p>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">{account.subtype}</p>
+                        </div>
+                        <p className="text-[11px] sm:text-[12px] font-light leading-none mt-0.5">{formatCurrency(account.balance)}</p>
+                      </div>
+                      <div className="grid grid-cols-3 divide-x divide-zinc-200 dark:divide-zinc-800 border-t border-zinc-200/70 dark:border-zinc-800/70">
+                        <div className="px-2.5 py-1.5">
+                          <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Inflow</p>
+                          <p className="text-[11px] font-light leading-none mt-1 text-emerald-600 dark:text-emerald-400">{formatCurrencyCompact(account.inflow)}</p>
+                        </div>
+                        <div className="px-2.5 py-1.5">
+                          <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Outflow</p>
+                          <p className="text-[11px] font-light leading-none mt-1 text-rose-600 dark:text-rose-400">{formatCurrencyCompact(account.outflow)}</p>
+                        </div>
+                        <div className="px-2.5 py-1.5">
+                          <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Net</p>
+                          <p className={cn('text-[11px] font-light leading-none mt-1', account.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                            {account.net >= 0 ? '+' : '-'}{formatCurrencyCompact(Math.abs(account.net))}
                           </p>
                         </div>
-                        <p className="text-[12px] sm:text-[13px] font-light leading-none">{formatCurrency(balance)}</p>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
 
-                <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 px-2.5 py-2 text-xs text-zinc-500 dark:text-zinc-400">
-                  Cash on hand: {formatCurrency(cashBalance.totalCash || 0)}
+                <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 px-2.5 py-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                  Cash on hand: <span className="font-light text-zinc-900 dark:text-zinc-100">{formatCurrency(cashBalance.totalCash || 0)}</span>
                 </div>
 
-                <div className="space-y-3">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Top outflow categories</p>
-                  {outflowCategoryData.length === 0 && (
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">No category spend yet for selected filters.</p>
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Category pressure</p>
+                  {categoryFocusData.length === 0 && (
+                    <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5 text-xs text-zinc-500 dark:text-zinc-400">
+                      No category spend yet for selected filters.
+                    </div>
                   )}
-                  {outflowCategoryData.slice(0, 4).map((category, index) => {
-                    const total = outflowCategoryData.reduce((sum, item) => sum + item.value, 0);
-                    const pct = total > 0 ? (category.value / total) * 100 : 0;
-                    return (
-                      <div key={category.name}>
-                        <div className="flex items-center justify-between text-xs mb-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {categoryFocusData.map((category) => (
+                      <div key={category.name} className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5">
+                        <div className="flex items-center justify-between text-[11px]">
                           <span className="capitalize text-zinc-700 dark:text-zinc-300">{category.name}</span>
-                          <span className="text-zinc-500 dark:text-zinc-400">{pct.toFixed(1)}%</span>
+                          <span className="text-zinc-500 dark:text-zinc-400">{category.pct.toFixed(1)}%</span>
                         </div>
-                        <div className="h-2 rounded bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
-                          <div className="h-full rounded" style={{ width: `${pct}%`, backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} />
+                        <p className="text-[11px] font-light leading-none mt-1">{formatCurrencyCompact(category.value)}</p>
+                        <div className="mt-2 h-1.5 rounded bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+                          <div className="h-full rounded" style={{ width: `${category.pct}%`, backgroundColor: category.color }} />
                         </div>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
               </section>
             </div>
