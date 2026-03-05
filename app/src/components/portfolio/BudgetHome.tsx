@@ -1182,22 +1182,22 @@ export default function BudgetHome() {
                     <div className="overflow-x-auto">
                       <div className="min-w-[620px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-4">
                         <div className="p-3">
-                          <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">This month inflow</p>
-                          <p className="text-base font-medium mt-1 text-emerald-600 dark:text-emerald-400">{formatCurrency(currentMonthFlow.inflow)}</p>
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">This month inflow</p>
+                          <p className="text-[19px] sm:text-[24px] font-light mt-1 leading-none text-emerald-600 dark:text-emerald-400">{formatCurrency(currentMonthFlow.inflow)}</p>
                         </div>
                         <div className="p-3">
-                          <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">This month outflow</p>
-                          <p className="text-base font-medium mt-1 text-rose-600 dark:text-rose-400">{formatCurrency(currentMonthFlow.outflow)}</p>
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">This month outflow</p>
+                          <p className="text-[19px] sm:text-[24px] font-light mt-1 leading-none text-rose-600 dark:text-rose-400">{formatCurrency(currentMonthFlow.outflow)}</p>
                         </div>
                         <div className="p-3">
-                          <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Net flow</p>
-                          <p className={cn('text-base font-medium mt-1', currentMonthFlow.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Net flow</p>
+                          <p className={cn('text-[19px] sm:text-[24px] font-light mt-1 leading-none', currentMonthFlow.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
                             {currentMonthFlow.net >= 0 ? '+' : '-'}{formatCurrency(Math.abs(currentMonthFlow.net))}
                           </p>
                         </div>
                         <div className="p-3">
-                          <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Pending</p>
-                          <p className="text-base font-medium mt-1">{pendingTransactionCount}</p>
+                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Pending</p>
+                          <p className="text-[19px] sm:text-[24px] font-light mt-1 leading-none">{pendingTransactionCount}</p>
                         </div>
                       </div>
                     </div>
@@ -1311,16 +1311,16 @@ export default function BudgetHome() {
                     <div className="overflow-x-auto">
                       <div className="min-w-[620px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-3">
                         <div className="p-3">
-                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Current net worth</p>
-                          <p className="text-xl font-light mt-1">{formatCurrency(totalAccountValue)}</p>
+                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Current net worth</p>
+                          <p className="text-[19px] sm:text-[24px] font-light mt-1 leading-none">{formatCurrency(totalAccountValue)}</p>
                         </div>
                         <div className="p-3">
-                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Future net worth</p>
-                          <p className="text-xl font-light mt-1">{formatCurrency(forecastEndValue)}</p>
+                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Future net worth</p>
+                          <p className="text-[19px] sm:text-[24px] font-light mt-1 leading-none">{formatCurrency(forecastEndValue)}</p>
                         </div>
                         <div className="p-3">
-                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Forecast change</p>
-                          <p className={cn('text-xl font-light mt-1', forecastDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Forecast change</p>
+                          <p className={cn('text-[19px] sm:text-[24px] font-light mt-1 leading-none', forecastDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
                             {forecastDelta >= 0 ? '+' : '-'}{formatCurrency(Math.abs(forecastDelta))}
                           </p>
                           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">{forecastDeltaPercent.toFixed(1)}%</p>
@@ -1569,20 +1569,21 @@ export default function BudgetHome() {
                 <div className="overflow-x-auto">
                   <div className="min-w-[620px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-3">
                     <div className="p-3">
-                      <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Filtered inflow</p>
-                      <p className="text-base font-medium text-emerald-600 dark:text-emerald-400 mt-1">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Filtered inflow</p>
+                      <p className="text-[19px] sm:text-[24px] font-light leading-none text-emerald-600 dark:text-emerald-400 mt-1">
                         {formatCurrency(filteredInflowTotal)}
                       </p>
                     </div>
                     <div className="p-3">
-                      <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Filtered outflow</p>
-                      <p className="text-base font-medium text-rose-600 dark:text-rose-400 mt-1">
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Filtered outflow</p>
+                      <p className="text-[19px] sm:text-[24px] font-light leading-none text-rose-600 dark:text-rose-400 mt-1">
                         {formatCurrency(filteredOutflowTotal)}
                       </p>
                     </div>
                     <div className="p-3">
-                      <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Result count</p>
-                      <p className="text-base font-medium mt-1">{filteredTransactions.length} transactions</p>
+                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Result count</p>
+                      <p className="text-[19px] sm:text-[24px] font-light leading-none mt-1">{filteredTransactions.length}</p>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">transactions</p>
                     </div>
                   </div>
                 </div>
@@ -1591,19 +1592,19 @@ export default function BudgetHome() {
                   <div className="min-w-[620px] border-y border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-4">
                     <div className="p-3">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Completed</p>
-                      <p className="text-sm font-medium mt-1 text-emerald-600 dark:text-emerald-400">{filteredCompletedCount}</p>
+                      <p className="text-[18px] sm:text-[22px] font-light mt-1 leading-none text-emerald-600 dark:text-emerald-400">{filteredCompletedCount}</p>
                     </div>
                     <div className="p-3">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Pending</p>
-                      <p className="text-sm font-medium mt-1 text-amber-600 dark:text-amber-400">{filteredPendingCount}</p>
+                      <p className="text-[18px] sm:text-[22px] font-light mt-1 leading-none text-amber-600 dark:text-amber-400">{filteredPendingCount}</p>
                     </div>
                     <div className="p-3">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Failed</p>
-                      <p className="text-sm font-medium mt-1 text-rose-600 dark:text-rose-400">{filteredFailedCount}</p>
+                      <p className="text-[18px] sm:text-[22px] font-light mt-1 leading-none text-rose-600 dark:text-rose-400">{filteredFailedCount}</p>
                     </div>
                     <div className="p-3">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Avg outflow ticket</p>
-                      <p className="text-sm font-medium mt-1">{formatCurrency(averageOutflowTicket)}</p>
+                      <p className="text-[18px] sm:text-[22px] font-light mt-1 leading-none">{formatCurrency(averageOutflowTicket)}</p>
                     </div>
                   </div>
                 </div>
@@ -1953,21 +1954,21 @@ export default function BudgetHome() {
                   <div className="min-w-[480px] rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-4">
                     <div className="p-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Net flow</p>
-                      <p className={cn('text-sm font-medium mt-1', netFlow14d >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                      <p className={cn('text-[18px] sm:text-[22px] font-light mt-1 leading-none', netFlow14d >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
                         {netFlow14d >= 0 ? '+' : '-'}{formatCurrency(Math.abs(netFlow14d))}
                       </p>
                     </div>
                     <div className="p-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Avg outflow</p>
-                      <p className="text-sm font-medium mt-1">{formatCurrency(averageOutflowTicket)}</p>
+                      <p className="text-[18px] sm:text-[22px] font-light mt-1 leading-none">{formatCurrency(averageOutflowTicket)}</p>
                     </div>
                     <div className="p-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Largest debit</p>
-                      <p className="text-sm font-medium mt-1">{formatCurrency(largestOutflowTransaction?.amount ?? 0)}</p>
+                      <p className="text-[18px] sm:text-[22px] font-light mt-1 leading-none">{formatCurrency(largestOutflowTransaction?.amount ?? 0)}</p>
                     </div>
                     <div className="p-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Pending</p>
-                      <p className="text-sm font-medium mt-1">{pendingTransactionCount}</p>
+                      <p className="text-[18px] sm:text-[22px] font-light mt-1 leading-none">{pendingTransactionCount}</p>
                     </div>
                   </div>
                 </div>
@@ -1996,7 +1997,7 @@ export default function BudgetHome() {
                         <div key={source.source} className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2">
                           <p className="text-[11px] text-zinc-700 dark:text-zinc-200 truncate">{source.source}</p>
                           <p className="text-[11px] mt-1 text-zinc-500 dark:text-zinc-400">
-                            <span className="font-medium text-zinc-800 dark:text-zinc-100">
+                            <span className="font-light text-[14px] leading-none text-zinc-800 dark:text-zinc-100">
                               {formatCurrencyCompact(source.amount)}
                             </span>
                             <span className="px-1">·</span>
@@ -2021,11 +2022,11 @@ export default function BudgetHome() {
                   <div className="min-w-[340px] rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
                     <div className="p-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring inbound</p>
-                      <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(recurringInflowMonthly)}</p>
+                      <p className="text-[18px] sm:text-[22px] font-light leading-none text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(recurringInflowMonthly)}</p>
                     </div>
                     <div className="p-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring outbound</p>
-                      <p className="text-sm font-medium text-rose-600 dark:text-rose-400 mt-1">{formatCurrency(recurringOutflowMonthly)}</p>
+                      <p className="text-[18px] sm:text-[22px] font-light leading-none text-rose-600 dark:text-rose-400 mt-1">{formatCurrency(recurringOutflowMonthly)}</p>
                     </div>
                   </div>
                 </div>
@@ -2094,7 +2095,7 @@ export default function BudgetHome() {
                             {account.subtype || account.type || 'Bank account'}
                           </p>
                         </div>
-                        <p className="text-xs font-medium">{formatCurrency(balance)}</p>
+                        <p className="text-[14px] sm:text-[16px] font-light leading-none">{formatCurrency(balance)}</p>
                       </div>
                     );
                   })}
