@@ -1068,6 +1068,8 @@ export default function BudgetHome() {
       .slice(0, 6);
   }, [inflowStreams, outflowStreams]);
 
+  const recurringNetMonthly = recurringInflowMonthly - recurringOutflowMonthly;
+
   const netFlow14d = useMemo(
     () => dailyFlowPulseData.reduce((sum, point) => sum + point.net, 0),
     [dailyFlowPulseData]
@@ -1118,7 +1120,7 @@ export default function BudgetHome() {
                     </p>
                     <div className="mt-1 flex items-center gap-1.5 min-w-0">
                       <TrendingUp className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                      <p className="min-w-0 truncate text-[30px] sm:text-[42px] font-light leading-none text-emerald-600 dark:text-emerald-400">
+                      <p className="min-w-0 truncate text-[26px] sm:text-[36px] font-light leading-none text-emerald-600 dark:text-emerald-400">
                         {formatCurrency(totalInflowFromBanks)}
                       </p>
                     </div>
@@ -1133,7 +1135,7 @@ export default function BudgetHome() {
                     </p>
                     <div className="mt-1 flex items-center gap-1.5 min-w-0">
                       <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                      <p className="min-w-0 truncate text-[30px] sm:text-[42px] font-light leading-none text-rose-600 dark:text-rose-400">
+                      <p className="min-w-0 truncate text-[26px] sm:text-[36px] font-light leading-none text-rose-600 dark:text-rose-400">
                         {formatCurrency(totalOutflowFromBanks)}
                       </p>
                     </div>
@@ -2088,14 +2090,22 @@ export default function BudgetHome() {
                 </div>
 
                 <div className="overflow-x-auto no-scrollbar">
-                  <div className="min-w-[340px] rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
-                    <div className="p-2.5">
-                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring inbound</p>
-                      <p className="text-[12px] sm:text-[14px] font-light leading-none text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(recurringInflowMonthly)}</p>
+                  <div className="min-w-[340px] rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 overflow-hidden">
+                    <div className="divide-x divide-zinc-200 dark:divide-zinc-800 grid grid-cols-2">
+                      <div className="p-2.5">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring inbound</p>
+                        <p className="text-[12px] sm:text-[14px] font-light leading-none text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(recurringInflowMonthly)}</p>
+                      </div>
+                      <div className="p-2.5">
+                        <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring outbound</p>
+                        <p className="text-[12px] sm:text-[14px] font-light leading-none text-rose-600 dark:text-rose-400 mt-1">{formatCurrency(recurringOutflowMonthly)}</p>
+                      </div>
                     </div>
-                    <div className="p-2.5">
-                      <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring outbound</p>
-                      <p className="text-[12px] sm:text-[14px] font-light leading-none text-rose-600 dark:text-rose-400 mt-1">{formatCurrency(recurringOutflowMonthly)}</p>
+                    <div className="px-2.5 py-2 border-t border-zinc-200/70 dark:border-zinc-800/70 flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400">
+                      <span>Net recurring</span>
+                      <span className={cn('font-medium', recurringNetMonthly >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                        {recurringNetMonthly >= 0 ? '+' : '-'}{formatCurrency(Math.abs(recurringNetMonthly))}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -2103,19 +2113,29 @@ export default function BudgetHome() {
                 <div className="space-y-2">
                   <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Pending transactions</p>
                   {upcomingPendingTransactions.length === 0 && (
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">No pending transactions right now.</p>
+                    <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5 text-xs text-zinc-500 dark:text-zinc-400">
+                      No pending transactions right now.
+                    </div>
                   )}
                   {upcomingPendingTransactions.map((transaction) => (
-                    <div key={transaction.id} className="flex items-center justify-between gap-2 py-1 border-b border-zinc-200/60 dark:border-zinc-800/60 last:border-b-0">
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium truncate">{transaction.title}</p>
-                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
-                          {transaction.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} • {transaction.account}
+                    <div key={transaction.id} className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 overflow-hidden">
+                      <div className="p-2.5 flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium truncate">{transaction.title}</p>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
+                            {transaction.subtitle}
+                          </p>
+                        </div>
+                        <p className={cn('font-light text-[12px] leading-none', transaction.direction === 'inflow' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                          {transaction.direction === 'inflow' ? '+' : '-'}{formatCurrency(transaction.amount)}
                         </p>
                       </div>
-                      <p className={cn('text-xs font-medium', transaction.direction === 'inflow' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                        {transaction.direction === 'inflow' ? '+' : '-'}{formatCurrency(transaction.amount)}
-                      </p>
+                      <div className="border-t border-zinc-200/70 dark:border-zinc-800/70 px-2.5 py-1.5 flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 gap-2">
+                        <span>
+                          {transaction.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                        <span className="truncate text-right">{transaction.account}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2123,17 +2143,25 @@ export default function BudgetHome() {
                 <div className="space-y-2">
                   <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring schedule</p>
                   {recurringSchedule.length === 0 && (
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">No recurring streams detected yet.</p>
+                    <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5 text-xs text-zinc-500 dark:text-zinc-400">
+                      No recurring streams detected yet.
+                    </div>
                   )}
                   {recurringSchedule.slice(0, 4).map((item) => (
-                    <div key={item.id} className="flex items-center justify-between gap-2 py-1 border-b border-zinc-200/60 dark:border-zinc-800/60 last:border-b-0">
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium truncate">{item.name}</p>
-                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Day {item.day}</p>
+                    <div key={item.id} className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 overflow-hidden">
+                      <div className="p-2.5 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium truncate">{item.name}</p>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Day {item.day}</p>
+                        </div>
+                        <p className={cn('font-light text-[12px] leading-none', item.direction === 'inflow' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+                          {item.direction === 'inflow' ? '+' : '-'}{formatCurrency(item.amount)}
+                        </p>
                       </div>
-                      <p className={cn('text-xs font-medium', item.direction === 'inflow' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
-                        {item.direction === 'inflow' ? '+' : '-'}{formatCurrency(item.amount)}
-                      </p>
+                      <div className="border-t border-zinc-200/70 dark:border-zinc-800/70 px-2.5 py-1.5 flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400">
+                        <span>{item.direction === 'inflow' ? 'Inbound stream' : 'Outbound stream'}</span>
+                        <span>Runs monthly</span>
+                      </div>
                     </div>
                   ))}
                 </div>
