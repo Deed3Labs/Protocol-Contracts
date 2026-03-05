@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, Search, Plus, ArrowLeftRight } from 'lucide-react';
+import { Menu, Search, Plus } from 'lucide-react';
 import ClearPathLogo from '../../assets/ClearPath-Logo.png';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -102,9 +102,8 @@ export default function HeaderNav({
              </button>
              <button 
                onClick={() => navigate('/budget')}
-               className={`${isActive('/budget') ? 'text-black dark:text-white' : 'hover:text-black dark:hover:text-white'} transition-colors inline-flex items-center gap-1.5`}
+               className={`${isActive('/budget') ? 'text-black dark:text-white' : 'hover:text-black dark:hover:text-white'} transition-colors`}
              >
-               <ArrowLeftRight className="w-3.5 h-3.5" />
                Transactions
              </button>
              <button

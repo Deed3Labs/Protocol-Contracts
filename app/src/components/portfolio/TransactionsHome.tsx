@@ -1195,7 +1195,7 @@ export default function TransactionsHome() {
                     </p>
                     <div className="mt-1 flex items-center gap-1.5 min-w-0">
                       <TrendingUp className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                      <p className="min-w-0 truncate text-[18px] sm:text-[24px] font-light leading-none text-emerald-600 dark:text-emerald-400">
+                      <p className="min-w-0 truncate text-[20px] sm:text-[24px] font-light leading-none text-emerald-600 dark:text-emerald-400">
                         {formatCurrency(totalInflowFromBanks)}
                       </p>
                     </div>
@@ -1210,7 +1210,7 @@ export default function TransactionsHome() {
                     </p>
                     <div className="mt-1 flex items-center gap-1.5 min-w-0">
                       <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                      <p className="min-w-0 truncate text-[18px] sm:text-[24px] font-light leading-none text-rose-600 dark:text-rose-400">
+                      <p className="min-w-0 truncate text-[20px] sm:text-[24px] font-light leading-none text-rose-600 dark:text-rose-400">
                         {formatCurrency(totalOutflowFromBanks)}
                       </p>
                     </div>
