@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Building2, Wallet, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft, AlertCircle } from 'lucide-react';
+import { X, Building2, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft, AlertCircle, ArrowLeftRight } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken, getBridgeOnboardingUrl } from '@/utils/apiClient';
 import { usePortfolio } from '@/context/PortfolioContext';
@@ -624,9 +624,9 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
     },
     {
       id: 'crypto',
-      title: 'Deposit Crypto',
-      description: 'Transfer from an external wallet or exchange',
-      icon: Wallet,
+      title: 'Transfer between Accounts',
+      description: 'Move funds between your linked bank, brokerage, and wallet accounts',
+      icon: ArrowLeftRight,
       delay: 0.2,
     },
     {
@@ -663,8 +663,8 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
             {selectedOption !== 'card' && selectedOption !== 'bank' && selectedOption !== 'wire' && (
               <div className="flex items-center justify-between p-6 pb-2">
                 <div>
-                  <h2 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight">Deposit</h2>
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Select a method to fund your account</p>
+                  <h2 className="text-2xl font-light text-zinc-900 dark:text-white tracking-tight">Move Funds</h2>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Choose how you want to move money between your accounts</p>
                 </div>
                 <button 
                   onClick={onClose}
@@ -1113,7 +1113,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
             {selectedOption !== 'card' && selectedOption !== 'bank' && selectedOption !== 'wire' && (
               <div className="p-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-900/30 text-center">
                 <p className="text-[11px] text-zinc-400 dark:text-zinc-500 max-w-xs mx-auto leading-relaxed">
-                  By making a deposit, you agree to our Terms of Service. 
+                  By moving funds, you agree to our Terms of Service. 
                   Transfers typically settle within 1-3 business days.
                 </p>
               </div>

@@ -364,7 +364,7 @@ function PortfolioCashBalanceBlock({
           className="bg-black dark:bg-white text-white dark:text-black px-6 py-2.5 rounded-full text-sm font-normal hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors flex items-center gap-2"
         >
           <ArrowUpRight className="w-4 h-4" />
-          Add Funds
+          Move Funds
         </button>
         <button
           onClick={onWithdraw}
