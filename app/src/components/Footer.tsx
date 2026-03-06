@@ -105,7 +105,7 @@ const Footer = () => {
             
             {/* Mail */}
             <a
-              href="mailto:support@deed3.io"
+              href="mailto:support@useclear.org"
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 text-muted-foreground hover:text-foreground transition-colors"

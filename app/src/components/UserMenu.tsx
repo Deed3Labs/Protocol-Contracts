@@ -428,7 +428,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
                      size="sm"
                      onClick={() => {
                        setIsOpen(false);
-                       window.open('mailto:support@deed3.io', '_blank');
+                       window.open('mailto:support@useclear.org', '_blank');
                      }}
                      className="h-6 w-6 p-0"
                    >
