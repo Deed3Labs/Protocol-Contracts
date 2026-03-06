@@ -206,6 +206,62 @@ const getPlaidCategory = (tx: PlaidRecentTransaction): ConsolidatedCategory => {
   return 'spend';
 };
 
+const PLAID_CATEGORY_LABEL_OVERRIDES: Record<string, string> = {
+  BANK_FEES_INTEREST_CHARGE: 'Interest charge',
+  BANK_FEES_ATM_FEES: 'ATM fee',
+  BANK_FEES_OTHER_BANK_FEES: 'Bank fee',
+  BANK_FEES_OVERDRAFT: 'Overdraft fee',
+  LOAN_PAYMENTS_CREDIT_CARD_PAYMENT: 'Card payment',
+  TRANSFER_IN_ACCOUNT_TRANSFER: 'Transfer in',
+  TRANSFER_OUT_ACCOUNT_TRANSFER: 'Transfer out',
+};
+
+const isShoutyPlaidCategory = (value: string) => /^[A-Z0-9_]+$/.test(value);
+
+const humanizePlaidCategoryValue = (value: string) => {
+  const words = value
+    .split('_')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (words.length === 0) return value;
+
+  return words
+    .map((word) => {
+      if (word === 'ATM' || word === 'ACH' || word === 'POS') return word;
+      return word.charAt(0) + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+};
+
+const getPlaidCategoryLabel = (tx: PlaidRecentTransaction) => {
+  const detailed = tx.category_detailed?.trim();
+  const primary = tx.category_primary?.trim();
+
+  if (detailed) {
+    if (!isShoutyPlaidCategory(detailed)) return detailed;
+
+    const override = PLAID_CATEGORY_LABEL_OVERRIDES[detailed];
+    if (override) return override;
+
+    const normalizedPrimary = primary && isShoutyPlaidCategory(primary) ? primary : null;
+    const strippedDetailed =
+      normalizedPrimary && detailed.startsWith(`${normalizedPrimary}_`)
+        ? detailed.slice(normalizedPrimary.length + 1)
+        : detailed;
+
+    return humanizePlaidCategoryValue(strippedDetailed || detailed);
+  }
+
+  if (primary) {
+    if (!isShoutyPlaidCategory(primary)) return primary;
+    const override = PLAID_CATEGORY_LABEL_OVERRIDES[primary];
+    if (override) return override;
+    return humanizePlaidCategoryValue(primary);
+  }
+
+  return 'Plaid transaction';
+};
+
 const getWalletFlowMeta = (type: WalletTransaction['type']) => {
   switch (type) {
     case 'deposit':
@@ -734,7 +790,7 @@ export default function TransactionsHome() {
       const date = getDateFromPlaidTransaction(tx);
       const category = getPlaidCategory(tx);
       const title = tx.merchant_name || tx.name || 'Bank transaction';
-      const subtitle = [tx.category_detailed || tx.category_primary || 'Plaid transaction', tx.payment_channel]
+      const subtitle = [getPlaidCategoryLabel(tx), tx.payment_channel]
         .filter(Boolean)
         .join(' · ');
       const account = tx.account_name || 'Connected bank account';
