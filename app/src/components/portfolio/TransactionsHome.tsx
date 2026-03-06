@@ -19,6 +19,8 @@ import {
 } from 'recharts';
 import {
   Calendar,
+  ChevronLeft,
+  ChevronRight,
   Check,
   Info,
   Landmark,
@@ -37,6 +39,7 @@ import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { usePlaidRecentTransactions } from '@/hooks/usePlaidRecentTransactions';
 import { useRecurringTransactions } from '@/hooks/useRecurringTransactions';
 import { useSpendTransactions } from '@/hooks/useSpendTransactions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -47,6 +50,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import type { WalletTransaction } from '@/types/transactions';
+import type { PlaidRecentTransaction } from '@/utils/apiClient';
 
 const MONTHS_PER_YEAR = 12;
 const HISTORY_MONTHS = 8;
@@ -90,7 +94,6 @@ interface ConsolidatedTransaction {
   date: Date;
   network?: string;
   searchIndex: string;
-  isMock?: boolean;
 }
 
 interface ForecastPoint {
@@ -111,22 +114,95 @@ const formatCurrencyCompact = (value: number) => {
   return formatCurrency(value);
 };
 
-const getSafeDateFromMonthOffset = (baseDate: Date, monthOffset: number, day: number) => {
-  const targetMonth = new Date(baseDate.getFullYear(), baseDate.getMonth() + monthOffset, 1);
-  const maxDay = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0).getDate();
-  const safeDay = Math.min(Math.max(day, 1), maxDay);
-  return new Date(targetMonth.getFullYear(), targetMonth.getMonth(), safeDay);
+const USD_DENOMINATED_SYMBOLS = new Set([
+  'USD',
+  'USDC',
+  'USDT',
+  'DAI',
+  'USDS',
+  'FDUSD',
+  'TUSD',
+  'PYUSD',
+  'GUSD',
+  'BUSD',
+  'LUSD',
+  'CLRUSD',
+]);
+
+const normalizeTimestampMs = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value <= 0) return null;
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+    }
+
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+
+  return null;
 };
 
 const getDateFromTransaction = (tx: WalletTransaction) => {
-  if (tx.timestamp != null) {
-    const fromTimestamp = new Date(tx.timestamp);
-    if (!Number.isNaN(fromTimestamp.getTime())) return fromTimestamp;
+  const fromTimestamp = normalizeTimestampMs(tx.timestamp);
+  if (fromTimestamp != null) return new Date(fromTimestamp);
+
+  const fromDate = normalizeTimestampMs(tx.date);
+  if (fromDate != null) return new Date(fromDate);
+
+  // Keep invalid/unknown dates out of recent range filters.
+  return new Date(0);
+};
+
+const getDateFromPlaidTransaction = (tx: PlaidRecentTransaction) => {
+  const fromDate = normalizeTimestampMs(tx.date);
+  if (fromDate != null) return new Date(fromDate);
+
+  const fromAuthorizedDate = normalizeTimestampMs(tx.authorized_date);
+  if (fromAuthorizedDate != null) return new Date(fromAuthorizedDate);
+
+  return new Date(0);
+};
+
+const getWalletAmountUsd = (tx: WalletTransaction) => {
+  const txAny = tx as WalletTransaction & { amountUsd?: number | null };
+  const amountUsd = Number(txAny.amountUsd);
+  if (Number.isFinite(amountUsd) && amountUsd > 0) {
+    return Math.abs(amountUsd);
   }
 
-  const parsedDate = Date.parse(tx.date);
-  if (!Number.isNaN(parsedDate)) return new Date(parsedDate);
-  return new Date();
+  const amountRaw = Math.abs(Number(tx.amount) || 0);
+  const symbol = (tx.assetSymbol || tx.currency || '').toUpperCase();
+  if (USD_DENOMINATED_SYMBOLS.has(symbol) || String(tx.currency || '').toUpperCase() === 'USD') {
+    return amountRaw;
+  }
+
+  return amountRaw;
+};
+
+const getPlaidCategory = (tx: PlaidRecentTransaction): ConsolidatedCategory => {
+  const categoryText = `${tx.category_primary || ''} ${tx.category_detailed || ''}`.toLowerCase();
+  if (tx.direction === 'inflow') {
+    if (categoryText.includes('transfer')) return 'transfer';
+    if (categoryText.includes('deposit')) return 'deposit';
+    return 'income';
+  }
+
+  if (categoryText.includes('transfer')) return 'transfer';
+  if (
+    categoryText.includes('subscription') ||
+    categoryText.includes('rent') ||
+    categoryText.includes('insurance') ||
+    categoryText.includes('utilities')
+  ) {
+    return 'subscription';
+  }
+  return 'spend';
 };
 
 const getWalletFlowMeta = (type: WalletTransaction['type']) => {
@@ -171,146 +247,6 @@ const getSuccessScore = (futureValue: number, targetValue: number) => {
   return Math.max(5, Math.min(95, ratio * 75));
 };
 
-const buildMockTransactions = (now: Date): ConsolidatedTransaction[] => {
-  const daysAgo = (days: number) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-  const daysAhead = (days: number) => new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-
-  const mocks: Omit<ConsolidatedTransaction, 'searchIndex'>[] = [
-    {
-      id: 'mock-payroll-1',
-      source: 'Bank recurring',
-      direction: 'inflow',
-      category: 'income',
-      amount: 3250,
-      signedAmount: 3250,
-      title: 'Payroll deposit',
-      subtitle: 'Biweekly payroll from Atlas Labs',
-      status: 'completed',
-      account: 'Primary checking',
-      date: daysAgo(2),
-      isMock: true,
-    },
-    {
-      id: 'mock-rent-1',
-      source: 'Bank recurring',
-      direction: 'outflow',
-      category: 'subscription',
-      amount: 1750,
-      signedAmount: -1750,
-      title: 'Monthly rent',
-      subtitle: 'Recurring ACH payment',
-      status: 'completed',
-      account: 'Primary checking',
-      date: daysAgo(5),
-      isMock: true,
-    },
-    {
-      id: 'mock-grocery-1',
-      source: 'Bank spend',
-      direction: 'outflow',
-      category: 'spend',
-      amount: 132.48,
-      signedAmount: -132.48,
-      title: 'Fresh Market',
-      subtitle: 'Debit card spend',
-      status: 'completed',
-      account: 'Everyday debit',
-      date: daysAgo(1),
-      isMock: true,
-    },
-    {
-      id: 'mock-dca-1',
-      source: 'On-chain',
-      direction: 'outflow',
-      category: 'buy',
-      amount: 350,
-      signedAmount: -350,
-      title: 'Buy ETH',
-      subtitle: 'Scheduled DCA purchase',
-      status: 'completed',
-      account: 'Base Mainnet',
-      date: daysAgo(7),
-      network: 'Base',
-      isMock: true,
-    },
-    {
-      id: 'mock-dividend-1',
-      source: 'On-chain',
-      direction: 'inflow',
-      category: 'deposit',
-      amount: 285,
-      signedAmount: 285,
-      title: 'Dividend distribution',
-      subtitle: 'Tokenized REIT payout',
-      status: 'completed',
-      account: 'Polygon',
-      date: daysAgo(11),
-      network: 'Polygon',
-      isMock: true,
-    },
-    {
-      id: 'mock-insurance-1',
-      source: 'Bank recurring',
-      direction: 'outflow',
-      category: 'subscription',
-      amount: 162.25,
-      signedAmount: -162.25,
-      title: 'Home insurance',
-      subtitle: 'Upcoming recurring transfer',
-      status: 'pending',
-      account: 'Primary checking',
-      date: daysAhead(3),
-      isMock: true,
-    },
-    {
-      id: 'mock-transfer-failed-1',
-      source: 'On-chain',
-      direction: 'outflow',
-      category: 'transfer',
-      amount: 500,
-      signedAmount: -500,
-      title: 'External transfer',
-      subtitle: 'Bridge transfer',
-      status: 'failed',
-      account: 'Ethereum',
-      date: daysAgo(4),
-      network: 'Ethereum',
-      isMock: true,
-    },
-    {
-      id: 'mock-side-hustle-1',
-      source: 'Bank spend',
-      direction: 'inflow',
-      category: 'income',
-      amount: 420,
-      signedAmount: 420,
-      title: 'Freelance payout',
-      subtitle: 'Card settlement',
-      status: 'completed',
-      account: 'Business debit',
-      date: daysAgo(9),
-      isMock: true,
-    },
-  ];
-
-  return mocks.map((mock) => ({
-    ...mock,
-    searchIndex: [
-      mock.title,
-      mock.subtitle,
-      mock.account,
-      mock.source,
-      mock.category,
-      mock.status,
-      'sample',
-      'mock',
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase(),
-  }));
-};
-
 const ForecastTooltip = ({ active, payload }: any) => {
   if (!active || !payload || payload.length === 0) return null;
   const point = payload[0]?.payload as ForecastPoint | undefined;
@@ -350,6 +286,32 @@ const InsightTooltip = ({ active, payload, label }: any) => {
 const INSIGHT_TAB_LIST: InsightTab[] = ['Cash Flow', 'Spend Mix', 'Forecast'];
 const SOURCE_COLORS = ['#3b82f6', '#06b6d4', '#a855f7', '#22c55e'];
 const CATEGORY_COLORS = ['#3b82f6', '#8b5cf6', '#14b8a6', '#f97316', '#ec4899', '#0ea5e9'];
+const DATE_FILTER_OPTIONS: DateFilter[] = ['30D', '90D', '1Y', '2Y', '5Y', 'All'];
+const SOURCE_FILTER_OPTIONS: SourceFilter[] = ['All', 'On-chain', 'Bank recurring', 'Bank spend'];
+const DIRECTION_FILTER_OPTIONS: DirectionFilter[] = ['All', 'inflow', 'outflow'];
+const STATUS_FILTER_OPTIONS: StatusFilter[] = ['All', 'completed', 'pending', 'failed'];
+const CATEGORY_FILTER_OPTIONS: Array<ConsolidatedCategory | 'All'> = [
+  'All',
+  'spend',
+  'subscription',
+  'transfer',
+  'income',
+  'deposit',
+  'withdrawal',
+  'buy',
+  'sell',
+  'trade',
+  'mint',
+  'other',
+];
+const SORT_FILTER_OPTIONS: SortFilter[] = ['Newest', 'Oldest', 'AmountHigh', 'AmountLow'];
+
+const SORT_FILTER_LABELS: Record<SortFilter, string> = {
+  Newest: 'Newest',
+  Oldest: 'Oldest',
+  AmountHigh: 'Highest amount',
+  AmountLow: 'Lowest amount',
+};
 
 const getYOffsetLabel = (monthOffset: number) => {
   if (monthOffset === 0) return 'Today';
@@ -376,35 +338,93 @@ const getDateFilterCompactLabel = (value: DateFilter) => {
   return 'All';
 };
 
-interface FilterToggleChipProps {
-  checked: boolean;
+const getDirectionFilterLabel = (value: DirectionFilter) => {
+  if (value === 'All') return 'All';
+  return value === 'inflow' ? 'Inflow' : 'Outflow';
+};
+
+const getStatusFilterLabel = (value: StatusFilter) => {
+  if (value === 'All') return 'All';
+  if (value === 'completed') return 'Completed';
+  if (value === 'pending') return 'Pending';
+  return 'Failed';
+};
+
+const getCategoryFilterLabel = (value: ConsolidatedCategory | 'All') => {
+  if (value === 'All') return 'All categories';
+  if (value === 'buy') return 'Buy';
+  if (value === 'sell') return 'Sell';
+  if (value === 'mint') return 'Mint';
+  if (value === 'trade') return 'Trade';
+  if (value === 'spend') return 'Spend';
+  if (value === 'income') return 'Income';
+  if (value === 'deposit') return 'Deposit';
+  if (value === 'withdrawal') return 'Withdrawal';
+  if (value === 'subscription') return 'Subscription';
+  if (value === 'transfer') return 'Transfer';
+  return 'Other';
+};
+
+const cycleFilterOption = <T extends string>(options: readonly T[], current: T, direction: 1 | -1): T => {
+  if (options.length === 0) return current;
+  const currentIndex = options.indexOf(current);
+  const safeIndex = currentIndex === -1 ? 0 : currentIndex;
+  const nextIndex = (safeIndex + direction + options.length) % options.length;
+  return options[nextIndex];
+};
+
+interface FilterCycleControlProps {
   label: string;
-  onToggle: () => void;
+  value: string;
+  onPrev: () => void;
+  onNext: () => void;
 }
 
-const FilterToggleChip = ({ checked, label, onToggle }: FilterToggleChipProps) => (
+const FilterCycleControl = ({ label, value, onPrev, onNext }: FilterCycleControlProps) => (
+  <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/70 dark:bg-zinc-900/45 p-2">
+    <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{label}</p>
+    <div className="mt-1.5 grid grid-cols-[30px_minmax(0,1fr)_30px] gap-1.5 items-center">
+      <button
+        type="button"
+        onClick={onPrev}
+        className="h-8 rounded-md border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors inline-flex items-center justify-center"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+      <div className="h-8 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-950/40 px-2 text-[11px] text-zinc-700 dark:text-zinc-200 inline-flex items-center justify-center truncate">
+        {value}
+      </div>
+      <button
+        type="button"
+        onClick={onNext}
+        className="h-8 rounded-md border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors inline-flex items-center justify-center"
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  </div>
+);
+
+interface FilterPillProps {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  activeClassName?: string;
+}
+
+const FilterPill = ({ active, label, onClick, activeClassName }: FilterPillProps) => (
   <button
     type="button"
-    onClick={onToggle}
-    aria-pressed={checked}
+    onClick={onClick}
+    aria-pressed={active}
     className={cn(
-      'h-9 rounded-md border px-2.5 text-[11px] sm:text-xs transition-colors inline-flex items-center justify-between gap-2 text-left',
-      checked
-        ? 'border-blue-300 bg-blue-50/70 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+      'h-8 rounded-md border px-2 text-[11px] transition-colors inline-flex items-center justify-center whitespace-nowrap',
+      active
+        ? activeClassName || 'border-blue-300 bg-blue-50/70 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
         : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
     )}
   >
     <span className="truncate">{label}</span>
-    <span
-      className={cn(
-        'inline-flex h-4 w-4 items-center justify-center rounded-full border text-[10px]',
-        checked
-          ? 'border-blue-500 bg-blue-500 text-white'
-          : 'border-zinc-300 dark:border-zinc-600 text-transparent'
-      )}
-    >
-      ✓
-    </span>
   </button>
 );
 
@@ -424,9 +444,16 @@ export default function TransactionsHome() {
   const { inflowStreams, outflowStreams, refresh: refreshRecurring } = useRecurringTransactions(address ?? undefined, {
     enabled: hasLinkedBankConnection,
   });
-  const { spendingByDay, totalSpent, refresh: refreshSpend } = useSpendTransactions(address ?? undefined, {
+  const { totalSpent, refresh: refreshSpend } = useSpendTransactions(address ?? undefined, {
     enabled: hasLinkedBankConnection,
   });
+  const { transactions: plaidRecentTransactions, refresh: refreshPlaidRecentTransactions } = usePlaidRecentTransactions(
+    address ?? undefined,
+    {
+      enabled: hasLinkedBankConnection,
+      limit: 1500,
+    }
+  );
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [isScrolledPast, setIsScrolledPast] = useState(false);
@@ -621,16 +648,24 @@ export default function TransactionsHome() {
   }, [forecastHorizon]);
 
   const consolidatedTransactions = useMemo<ConsolidatedTransaction[]>(() => {
-    const now = new Date();
-
-    const walletEntries = walletTransactions.map((tx) => {
+    const walletEntries: ConsolidatedTransaction[] = walletTransactions.map((tx) => {
       const flowMeta = getWalletFlowMeta(tx.type);
-      const amountAbs = Math.abs(Number(tx.amount) || 0);
+      const rawAmount = Math.abs(Number(tx.amount) || 0);
+      const amountAbs = getWalletAmountUsd(tx);
       const signedAmount = flowMeta.direction === 'inflow' ? amountAbs : -amountAbs;
       const date = getDateFromTransaction(tx);
-      const network = (tx as WalletTransaction & { chainName?: string }).chainName;
+      const network = tx.chainName;
       const title = `${flowMeta.titlePrefix} ${tx.assetSymbol || tx.currency}`;
-      const subtitle = tx.assetName || tx.currency || 'On-chain transaction';
+      const subtitle = [
+        tx.assetName || tx.currency || 'On-chain transaction',
+        amountAbs !== rawAmount && rawAmount > 0
+          ? `${rawAmount.toLocaleString('en-US', {
+              maximumFractionDigits: 6,
+            })} ${tx.assetSymbol || tx.currency}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
       const account = network || 'Wallet activity';
 
       const searchIndex = [
@@ -664,98 +699,112 @@ export default function TransactionsHome() {
       };
     });
 
-    const recurringMonthOffsets = [-2, -1, 0, 1, 2];
+    const plaidEntries: ConsolidatedTransaction[] = [];
+    for (const tx of plaidRecentTransactions) {
+      const amount = Math.abs(Number(tx.amount) || 0);
+      if (!(amount > 0)) continue;
 
-    const recurringEntries = [
-      ...inflowStreams.flatMap((stream) =>
-        recurringMonthOffsets.map((monthOffset) => {
-          const date = getSafeDateFromMonthOffset(now, monthOffset, stream.day);
-          const amount = Math.abs(stream.amount || 0);
-          const status: ConsolidatedStatus = date.getTime() > now.getTime() ? 'pending' : 'completed';
-          const title = stream.name;
-          const subtitle = 'Recurring bank inflow';
-          const account = 'Connected bank accounts';
-          const searchIndex = `${title} ${subtitle} ${account} income recurring`.toLowerCase();
+      const direction = tx.direction;
+      const date = getDateFromPlaidTransaction(tx);
+      const category = getPlaidCategory(tx);
+      const title = tx.merchant_name || tx.name || 'Bank transaction';
+      const subtitle = [tx.category_detailed || tx.category_primary || 'Plaid transaction', tx.payment_channel]
+        .filter(Boolean)
+        .join(' · ');
+      const account = tx.account_name || 'Connected bank account';
+      const status: ConsolidatedStatus = tx.pending ? 'pending' : 'completed';
+      const searchIndex = [
+        title,
+        subtitle,
+        account,
+        tx.merchant_name,
+        tx.category_primary,
+        tx.category_detailed,
+        tx.iso_currency_code,
+        tx.unofficial_currency_code,
+        'bank',
+        'plaid',
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
 
-          return {
-            id: `recurring-in-${stream.stream_id}-${monthOffset}`,
-            source: 'Bank recurring' as const,
-            direction: 'inflow' as const,
-            category: 'income' as const,
-            amount,
-            signedAmount: amount,
-            title,
-            subtitle,
-            status,
-            account,
-            date,
-            searchIndex,
-          };
-        })
-      ),
-      ...outflowStreams.flatMap((stream) =>
-        recurringMonthOffsets.map((monthOffset) => {
-          const date = getSafeDateFromMonthOffset(now, monthOffset, stream.day);
-          const amount = Math.abs(stream.amount || 0);
-          const status: ConsolidatedStatus = date.getTime() > now.getTime() ? 'pending' : 'completed';
-          const title = stream.name;
-          const subtitle = 'Recurring bank outflow';
-          const account = 'Connected bank accounts';
-          const searchIndex = `${title} ${subtitle} ${account} subscription recurring`.toLowerCase();
-
-          return {
-            id: `recurring-out-${stream.stream_id}-${monthOffset}`,
-            source: 'Bank recurring' as const,
-            direction: 'outflow' as const,
-            category: 'subscription' as const,
-            amount,
-            signedAmount: -amount,
-            title,
-            subtitle,
-            status,
-            account,
-            date,
-            searchIndex,
-          };
-        })
-      ),
-    ];
-
-    const spendEntries = Object.entries(spendingByDay)
-      .map(([day, amount]) => ({ day: Number(day), amount: Number(amount) }))
-      .filter((entry) => Number.isFinite(entry.amount) && entry.amount > 0)
-      .map((entry) => {
-        const monthDate = new Date(now.getFullYear(), now.getMonth(), entry.day);
-        const title = 'Bank spend';
-        const subtitle = 'Aggregated card and ACH outflows';
-        const account = 'Connected bank accounts';
-        const searchIndex = `${title} ${subtitle} ${account} spend outflow`.toLowerCase();
-
-        return {
-          id: `spend-${entry.day}`,
-          source: 'Bank spend' as const,
-          direction: 'outflow' as const,
-          category: 'spend' as const,
-          amount: entry.amount,
-          signedAmount: -entry.amount,
-          title,
-          subtitle,
-          status: 'completed' as const,
-          account,
-          date: monthDate,
-          searchIndex,
-        };
+      plaidEntries.push({
+        id: `plaid-${tx.item_id}-${tx.transaction_id}`,
+        source: 'Bank spend',
+        direction,
+        category,
+        amount,
+        signedAmount: direction === 'inflow' ? amount : -amount,
+        title,
+        subtitle,
+        status,
+        account,
+        date,
+        searchIndex,
       });
+    }
 
-    const mockEntries = buildMockTransactions(now);
-
-    return [...walletEntries, ...recurringEntries, ...spendEntries, ...mockEntries];
-  }, [inflowStreams, outflowStreams, spendingByDay, walletTransactions]);
+    return [...walletEntries, ...plaidEntries];
+  }, [plaidRecentTransactions, walletTransactions]);
 
   const accountOptions = useMemo(() => {
     const uniqueAccounts = new Set(consolidatedTransactions.map((tx) => tx.account));
     return ['All', ...Array.from(uniqueAccounts).sort((a, b) => a.localeCompare(b))];
   }, [consolidatedTransactions]);
+
+  const amountRangeUpperBound = useMemo(() => {
+    const largestAmount = consolidatedTransactions.reduce(
+      (max, transaction) => Math.max(max, transaction.amount),
+      0
+    );
+    if (largestAmount <= 0) return 1000;
+    return Math.max(1000, Math.ceil(largestAmount / 250) * 250);
+  }, [consolidatedTransactions]);
+
+  const amountMinSliderValue = useMemo(() => {
+    const parsed = Number(amountMin);
+    if (amountMin.trim() === '' || !Number.isFinite(parsed)) return 0;
+    return Math.min(Math.max(parsed, 0), amountRangeUpperBound);
+  }, [amountMin, amountRangeUpperBound]);
+
+  const amountMaxSliderValue = useMemo(() => {
+    const parsed = Number(amountMax);
+    const fallback = amountRangeUpperBound;
+    const normalized = amountMax.trim() === '' || !Number.isFinite(parsed) ? fallback : parsed;
+    return Math.min(Math.max(normalized, amountMinSliderValue), amountRangeUpperBound);
+  }, [amountMax, amountMinSliderValue, amountRangeUpperBound]);
+
+  const dateFilterIndex = useMemo(
+    () => Math.max(DATE_FILTER_OPTIONS.indexOf(dateFilter), 0),
+    [dateFilter]
+  );
+
+  const applyAmountPreset = (preset: 'any' | 'under1k' | '1kTo5k' | '5kPlus') => {
+    if (preset === 'any') {
+      setAmountMin('');
+      setAmountMax('');
+      return;
+    }
+
+    if (preset === 'under1k') {
+      setAmountMin('');
+      setAmountMax(String(Math.min(1000, amountRangeUpperBound)));
+      return;
+    }
+
+    if (preset === '1kTo5k') {
+      const min = Math.min(1000, amountRangeUpperBound);
+      const max = Math.min(Math.max(5000, min), amountRangeUpperBound);
+      setAmountMin(String(min));
+      setAmountMax(max >= amountRangeUpperBound ? '' : String(max));
+      return;
+    }
+
+    const min = Math.min(5000, amountRangeUpperBound);
+    setAmountMin(String(min));
+    setAmountMax('');
+  };
 
   const filteredTransactions = useMemo(() => {
     let list = [...consolidatedTransactions];
@@ -870,7 +919,7 @@ export default function TransactionsHome() {
   const handleRefreshData = async () => {
     const refreshTasks: Array<Promise<unknown>> = [refreshAll()];
     if (hasLinkedBankConnection) {
-      refreshTasks.push(refreshRecurring(), refreshSpend());
+      refreshTasks.push(refreshRecurring(), refreshSpend(), refreshPlaidRecentTransactions());
     }
     await Promise.all(refreshTasks);
   };
@@ -2025,11 +2074,6 @@ export default function TransactionsHome() {
                             >
                               {statusLabel}
                             </Badge>
-                            {transaction.isMock && (
-                              <Badge variant="outline" className="text-[10px] border-sky-400/50 text-sky-700 dark:text-sky-300">
-                                Sample
-                              </Badge>
-                            )}
                           </div>
                         </div>
 
@@ -2085,313 +2129,418 @@ export default function TransactionsHome() {
                   if (!open) setAdvancedFilterTab('quick');
                 }}
               >
-                <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-1rem)] sm:max-w-2xl p-0 gap-0 overflow-hidden rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70 bg-white/95 dark:bg-[#0b0f14]/95">
-                  <div className="px-4 sm:px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-blue-500/12 via-emerald-500/8 to-transparent dark:from-blue-500/18 dark:via-emerald-500/10 dark:to-transparent">
+                <DialogContent className="w-[calc(100vw-0.75rem)] max-w-[calc(100vw-0.75rem)] sm:max-w-2xl h-[min(590px,calc(100dvh-0.75rem))] p-0 gap-0 overflow-hidden rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70 bg-white/95 dark:bg-[#0b0f14]/95">
+                  <div className="px-3 sm:px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-blue-500/14 via-emerald-500/10 to-transparent dark:from-blue-500/22 dark:via-emerald-500/14 dark:to-transparent">
                     <DialogHeader className="space-y-1">
                       <DialogTitle className="text-base sm:text-lg font-medium tracking-tight">Transaction Filters</DialogTitle>
-                      <DialogDescription className="text-[11px] sm:text-sm">
-                        Fast sections, compact controls, and no clipped mobile layout.
+                      <DialogDescription className="text-[11px] sm:text-xs">
+                        Compact control board with chip toggles, sliders, and quick cycling.
                       </DialogDescription>
                     </DialogHeader>
-                    <div className="mt-2 flex items-center gap-2 text-[10px]">
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
                       <Badge variant="outline" className="text-[10px] border-blue-300/60 dark:border-blue-700/60">
                         {getDateFilterLabel(dateFilter)}
                       </Badge>
                       <Badge variant="outline" className="text-[10px] border-emerald-300/60 dark:border-emerald-700/60">
                         {filteredTransactions.length} results
                       </Badge>
+                      <Badge variant="outline" className="text-[10px] border-zinc-300/70 dark:border-zinc-700/70">
+                        {activeFilterLabels.length} active
+                      </Badge>
                     </div>
                   </div>
 
-                  <div className="px-4 sm:px-5 py-3 max-h-[68dvh] overflow-y-auto">
-                    <Tabs
-                      value={advancedFilterTab}
-                      onValueChange={(value) => setAdvancedFilterTab(value as 'quick' | 'flow' | 'time' | 'amount')}
-                      className="w-full"
-                    >
+                  <Tabs
+                    value={advancedFilterTab}
+                    onValueChange={(value) => setAdvancedFilterTab(value as 'quick' | 'flow' | 'time' | 'amount')}
+                    className="flex-1 min-h-0 grid grid-rows-[auto_1fr_auto]"
+                  >
+                    <div className="px-3 sm:px-4 pt-3">
                       <TabsList className="grid grid-cols-4 w-full h-9 p-0.5 rounded-lg bg-zinc-100/90 dark:bg-zinc-900/70 border border-zinc-200/70 dark:border-zinc-800/70">
                         <TabsTrigger value="quick" className="h-8 px-1 text-[10px] sm:text-xs">Quick</TabsTrigger>
                         <TabsTrigger value="flow" className="h-8 px-1 text-[10px] sm:text-xs">Flow</TabsTrigger>
                         <TabsTrigger value="time" className="h-8 px-1 text-[10px] sm:text-xs">Time</TabsTrigger>
                         <TabsTrigger value="amount" className="h-8 px-1 text-[10px] sm:text-xs">Amount</TabsTrigger>
                       </TabsList>
+                    </div>
 
-                      <TabsContent value="quick" className="mt-3 space-y-3">
-                        <div className="rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-blue-500/[0.04] dark:bg-blue-500/[0.08] p-3">
-                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Quick presets</p>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDateFilter('30D');
-                                setSortFilter('Newest');
-                                setStatusFilter('All');
-                                setDirectionFilter('outflow');
-                              }}
-                              className="h-8 px-2 rounded-md border border-zinc-300 dark:border-zinc-700 text-[11px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
-                            >
-                              Recent outflows
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDateFilter('90D');
-                                setStatusFilter('pending');
-                                setDirectionFilter('All');
-                              }}
-                              className="h-8 px-2 rounded-md border border-zinc-300 dark:border-zinc-700 text-[11px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
-                            >
-                              Pending queue
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDateFilter('1Y');
-                                setDirectionFilter('inflow');
-                                setStatusFilter('completed');
-                                setSortFilter('AmountHigh');
-                              }}
-                              className="h-8 px-2 rounded-md border border-zinc-300 dark:border-zinc-700 text-[11px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
-                            >
-                              Largest inflows
-                            </button>
-                            <button
-                              type="button"
-                              onClick={resetFilters}
-                              className="h-8 px-2 rounded-md border border-zinc-300 dark:border-zinc-700 text-[11px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left"
-                            >
-                              Reset all
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] p-3">
-                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Quick toggles</p>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <FilterToggleChip
-                              checked={directionFilter === 'inflow'}
-                              label="Inflow only"
-                              onToggle={() => setDirectionFilter(directionFilter === 'inflow' ? 'All' : 'inflow')}
-                            />
-                            <FilterToggleChip
-                              checked={directionFilter === 'outflow'}
-                              label="Outflow only"
-                              onToggle={() => setDirectionFilter(directionFilter === 'outflow' ? 'All' : 'outflow')}
-                            />
-                            <FilterToggleChip
-                              checked={statusFilter === 'pending'}
-                              label="Pending only"
-                              onToggle={() => setStatusFilter(statusFilter === 'pending' ? 'All' : 'pending')}
-                            />
-                            <FilterToggleChip
-                              checked={statusFilter === 'failed'}
-                              label="Failed only"
-                              onToggle={() => setStatusFilter(statusFilter === 'failed' ? 'All' : 'failed')}
-                            />
-                          </div>
-                        </div>
-                      </TabsContent>
-
-                      <TabsContent value="flow" className="mt-3">
-                        <div className="rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/80 dark:bg-zinc-900/60 p-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          <div className="space-y-1">
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Source</p>
-                            <Select value={sourceFilter} onValueChange={(value: SourceFilter) => setSourceFilter(value)}>
-                              <SelectTrigger size="sm" className="h-8 text-[11px] w-full">
-                                <SelectValue placeholder="Source" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="All">All sources</SelectItem>
-                                <SelectItem value="On-chain">On-chain</SelectItem>
-                                <SelectItem value="Bank recurring">Bank recurring</SelectItem>
-                                <SelectItem value="Bank spend">Bank spend</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Category</p>
-                            <Select value={categoryFilter} onValueChange={(value: ConsolidatedCategory | 'All') => setCategoryFilter(value)}>
-                              <SelectTrigger size="sm" className="h-8 text-[11px] w-full">
-                                <SelectValue placeholder="Category" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="All">All categories</SelectItem>
-                                <SelectItem value="deposit">Deposit</SelectItem>
-                                <SelectItem value="withdrawal">Withdrawal</SelectItem>
-                                <SelectItem value="buy">Buy</SelectItem>
-                                <SelectItem value="sell">Sell</SelectItem>
-                                <SelectItem value="mint">Mint</SelectItem>
-                                <SelectItem value="trade">Trade</SelectItem>
-                                <SelectItem value="transfer">Transfer</SelectItem>
-                                <SelectItem value="subscription">Subscription</SelectItem>
-                                <SelectItem value="spend">Spend</SelectItem>
-                                <SelectItem value="income">Income</SelectItem>
-                                <SelectItem value="other">Other</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Direction</p>
-                            <Select value={directionFilter} onValueChange={(value: DirectionFilter) => setDirectionFilter(value)}>
-                              <SelectTrigger size="sm" className="h-8 text-[11px] w-full">
-                                <SelectValue placeholder="Direction" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="All">All directions</SelectItem>
-                                <SelectItem value="inflow">Inflow</SelectItem>
-                                <SelectItem value="outflow">Outflow</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Status</p>
-                            <Select value={statusFilter} onValueChange={(value: StatusFilter) => setStatusFilter(value)}>
-                              <SelectTrigger size="sm" className="h-8 text-[11px] w-full">
-                                <SelectValue placeholder="Status" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="All">All statuses</SelectItem>
-                                <SelectItem value="completed">Completed</SelectItem>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="failed">Failed</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </TabsContent>
-
-                      <TabsContent value="time" className="mt-3 space-y-3">
-                        <div className="rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-indigo-500/[0.04] dark:bg-indigo-500/[0.08] p-3">
-                          <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">Date range</p>
-                          <div className="grid grid-cols-3 gap-1.5">
-                            {[
-                              { value: '30D' as DateFilter, label: '30D' },
-                              { value: '90D' as DateFilter, label: '90D' },
-                              { value: '1Y' as DateFilter, label: '1Y' },
-                              { value: '2Y' as DateFilter, label: '2Y' },
-                              { value: '5Y' as DateFilter, label: '5Y' },
-                              { value: 'All' as DateFilter, label: 'All' },
-                            ].map((range) => (
+                    <div className="px-3 sm:px-4 pt-2 pb-3 min-h-0">
+                      <TabsContent value="quick" className="mt-0 h-full">
+                        <div className="h-full rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/75 dark:bg-zinc-900/45 p-2.5 space-y-2">
+                          <div>
+                            <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Quick presets</p>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <FilterPill
+                                active={dateFilter === '30D' && directionFilter === 'outflow' && statusFilter === 'All'}
+                                label="Recent outflows"
+                                onClick={() => {
+                                  setDateFilter('30D');
+                                  setDirectionFilter('outflow');
+                                  setStatusFilter('All');
+                                  setSortFilter('Newest');
+                                }}
+                                activeClassName="border-rose-300 bg-rose-50/80 text-rose-700 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-300"
+                              />
+                              <FilterPill
+                                active={dateFilter === '90D' && statusFilter === 'pending'}
+                                label="Pending queue"
+                                onClick={() => {
+                                  setDateFilter('90D');
+                                  setStatusFilter('pending');
+                                  setDirectionFilter('All');
+                                }}
+                                activeClassName="border-amber-300 bg-amber-50/80 text-amber-700 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-300"
+                              />
+                              <FilterPill
+                                active={dateFilter === '1Y' && directionFilter === 'inflow' && sortFilter === 'AmountHigh'}
+                                label="Largest inflows"
+                                onClick={() => {
+                                  setDateFilter('1Y');
+                                  setDirectionFilter('inflow');
+                                  setStatusFilter('completed');
+                                  setSortFilter('AmountHigh');
+                                }}
+                                activeClassName="border-emerald-300 bg-emerald-50/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300"
+                              />
                               <button
-                                key={range.value}
                                 type="button"
-                                onClick={() => setDateFilter(range.value)}
-                                className={cn(
-                                  'h-8 rounded-md border text-[11px] transition-colors',
-                                  dateFilter === range.value
-                                    ? 'bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100'
-                                    : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                                )}
+                                onClick={resetFilters}
+                                className="h-8 rounded-md border border-zinc-300 dark:border-zinc-700 text-[11px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                               >
-                                {range.label}
+                                Reset all
                               </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Direction</p>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {DIRECTION_FILTER_OPTIONS.map((option) => (
+                                <FilterPill
+                                  key={option}
+                                  active={directionFilter === option}
+                                  label={getDirectionFilterLabel(option)}
+                                  onClick={() => setDirectionFilter(option)}
+                                  activeClassName={
+                                    option === 'inflow'
+                                      ? 'border-emerald-300 bg-emerald-50/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300'
+                                      : option === 'outflow'
+                                        ? 'border-rose-300 bg-rose-50/80 text-rose-700 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-300'
+                                        : 'border-blue-300 bg-blue-50/80 text-blue-700 dark:border-blue-700 dark:bg-blue-950/35 dark:text-blue-300'
+                                  }
+                                />
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Status</p>
+                            <div className="grid grid-cols-4 gap-1.5">
+                              {STATUS_FILTER_OPTIONS.map((option) => (
+                                <FilterPill
+                                  key={option}
+                                  active={statusFilter === option}
+                                  label={getStatusFilterLabel(option)}
+                                  onClick={() => setStatusFilter(option)}
+                                  activeClassName={
+                                    option === 'completed'
+                                      ? 'border-emerald-300 bg-emerald-50/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300'
+                                      : option === 'pending'
+                                        ? 'border-amber-300 bg-amber-50/80 text-amber-700 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-300'
+                                        : option === 'failed'
+                                          ? 'border-rose-300 bg-rose-50/80 text-rose-700 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-300'
+                                          : 'border-blue-300 bg-blue-50/80 text-blue-700 dark:border-blue-700 dark:bg-blue-950/35 dark:text-blue-300'
+                                  }
+                                />
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Source</p>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {SOURCE_FILTER_OPTIONS.map((option) => (
+                                <FilterPill
+                                  key={option}
+                                  active={sourceFilter === option}
+                                  label={option}
+                                  onClick={() => setSourceFilter(option)}
+                                  activeClassName="border-indigo-300 bg-indigo-50/80 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/35 dark:text-indigo-300"
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </TabsContent>
+
+                      <TabsContent value="flow" className="mt-0 h-full">
+                        <div className="h-full rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/75 dark:bg-zinc-900/45 p-2.5 space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                            <FilterCycleControl
+                              label="Source"
+                              value={sourceFilter}
+                              onPrev={() => setSourceFilter(cycleFilterOption(SOURCE_FILTER_OPTIONS, sourceFilter, -1))}
+                              onNext={() => setSourceFilter(cycleFilterOption(SOURCE_FILTER_OPTIONS, sourceFilter, 1))}
+                            />
+                            <FilterCycleControl
+                              label="Category"
+                              value={getCategoryFilterLabel(categoryFilter)}
+                              onPrev={() => setCategoryFilter(cycleFilterOption(CATEGORY_FILTER_OPTIONS, categoryFilter, -1))}
+                              onNext={() => setCategoryFilter(cycleFilterOption(CATEGORY_FILTER_OPTIONS, categoryFilter, 1))}
+                            />
+                            <FilterCycleControl
+                              label="Account"
+                              value={accountFilter}
+                              onPrev={() => setAccountFilter(cycleFilterOption(accountOptions, accountFilter, -1))}
+                              onNext={() => setAccountFilter(cycleFilterOption(accountOptions, accountFilter, 1))}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {DIRECTION_FILTER_OPTIONS.map((option) => (
+                              <FilterPill
+                                key={`flow-direction-${option}`}
+                                active={directionFilter === option}
+                                label={getDirectionFilterLabel(option)}
+                                onClick={() => setDirectionFilter(option)}
+                              />
                             ))}
                           </div>
-                        </div>
 
-                        <div className="rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/80 dark:bg-zinc-900/60 p-3 grid grid-cols-2 gap-1.5">
-                          <FilterToggleChip
-                            checked={dateFilter === 'All'}
-                            label="Full history"
-                            onToggle={() => setDateFilter(dateFilter === 'All' ? '90D' : 'All')}
-                          />
-                          <FilterToggleChip
-                            checked={sortFilter === 'Oldest'}
-                            label="Oldest first"
-                            onToggle={() => setSortFilter(sortFilter === 'Oldest' ? 'Newest' : 'Oldest')}
-                          />
-                        </div>
-
-                        <div className="rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/80 dark:bg-zinc-900/60 p-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          <div className="space-y-1">
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Sort order</p>
-                            <Select value={sortFilter} onValueChange={(value: SortFilter) => setSortFilter(value)}>
-                              <SelectTrigger size="sm" className="h-8 text-[11px] w-full">
-                                <SelectValue placeholder="Sort" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Newest">Newest</SelectItem>
-                                <SelectItem value="Oldest">Oldest</SelectItem>
-                                <SelectItem value="AmountHigh">Amount high</SelectItem>
-                                <SelectItem value="AmountLow">Amount low</SelectItem>
-                              </SelectContent>
-                            </Select>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            {STATUS_FILTER_OPTIONS.map((option) => (
+                              <FilterPill
+                                key={`flow-status-${option}`}
+                                active={statusFilter === option}
+                                label={getStatusFilterLabel(option)}
+                                onClick={() => setStatusFilter(option)}
+                              />
+                            ))}
                           </div>
-                          <div className="space-y-1">
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Account</p>
-                            <Select value={accountFilter} onValueChange={setAccountFilter}>
-                              <SelectTrigger size="sm" className="h-8 text-[11px] w-full">
-                                <SelectValue placeholder="Account" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {accountOptions.map((option) => (
-                                  <SelectItem key={option} value={option}>
-                                    {option}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+
+                          <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 bg-white/80 dark:bg-zinc-950/30 p-2">
+                            <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Category chips</p>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {CATEGORY_FILTER_OPTIONS.slice(0, 9).map((option) => (
+                                <FilterPill
+                                  key={option}
+                                  active={categoryFilter === option}
+                                  label={getCategoryFilterLabel(option)}
+                                  onClick={() => setCategoryFilter(option)}
+                                  activeClassName="border-violet-300 bg-violet-50/80 text-violet-700 dark:border-violet-700 dark:bg-violet-950/35 dark:text-violet-300"
+                                />
+                              ))}
+                            </div>
                           </div>
                         </div>
                       </TabsContent>
 
-                      <TabsContent value="amount" className="mt-3 space-y-3">
-                        <div className="rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-amber-500/[0.04] dark:bg-amber-500/[0.08] p-3 grid grid-cols-2 gap-2.5">
-                          <div className="space-y-1">
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Min amount</p>
-                            <Input
-                              value={amountMin}
-                              onChange={(event) => setAmountMin(event.target.value.replace(/[^0-9.]/g, ''))}
-                              placeholder="0.00"
-                              className="h-8 text-[11px]"
-                              inputMode="decimal"
+                      <TabsContent value="time" className="mt-0 h-full">
+                        <div className="h-full rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/75 dark:bg-zinc-900/45 p-2.5 space-y-2">
+                          <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 bg-white/80 dark:bg-zinc-950/30 p-2">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Date horizon</p>
+                              <p className="text-[10px] text-zinc-600 dark:text-zinc-300">{getDateFilterCompactLabel(dateFilter)}</p>
+                            </div>
+                            <input
+                              type="range"
+                              min={0}
+                              max={DATE_FILTER_OPTIONS.length - 1}
+                              step={1}
+                              value={dateFilterIndex}
+                              onChange={(event) => {
+                                const nextValue = DATE_FILTER_OPTIONS[Number(event.target.value)] || '90D';
+                                setDateFilter(nextValue);
+                              }}
+                              className="w-full accent-blue-600"
                             />
+                            <div className="grid grid-cols-6 gap-1 mt-1">
+                              {DATE_FILTER_OPTIONS.map((option) => (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  onClick={() => setDateFilter(option)}
+                                  className={cn(
+                                    'h-7 rounded-md border text-[10px] transition-colors',
+                                    dateFilter === option
+                                      ? 'border-blue-300 bg-blue-50/80 text-blue-700 dark:border-blue-700 dark:bg-blue-950/35 dark:text-blue-300'
+                                      : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                                  )}
+                                >
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                          <div className="space-y-1">
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Max amount</p>
-                            <Input
-                              value={amountMax}
-                              onChange={(event) => setAmountMax(event.target.value.replace(/[^0-9.]/g, ''))}
-                              placeholder="Any"
-                              className="h-8 text-[11px]"
-                              inputMode="decimal"
-                            />
-                          </div>
-                        </div>
 
-                        <div className="rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/80 dark:bg-zinc-900/60 p-3 grid grid-cols-2 gap-1.5">
-                          <FilterToggleChip
-                            checked={sortFilter === 'AmountHigh'}
-                            label="Highest first"
-                            onToggle={() => setSortFilter(sortFilter === 'AmountHigh' ? 'Newest' : 'AmountHigh')}
-                          />
-                          <FilterToggleChip
-                            checked={sortFilter === 'AmountLow'}
-                            label="Lowest first"
-                            onToggle={() => setSortFilter(sortFilter === 'AmountLow' ? 'Newest' : 'AmountLow')}
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setDateFilter(dateFilter === 'All' ? '90D' : 'All')}
+                              className={cn(
+                                'h-8 rounded-md border px-2 text-[11px] transition-colors inline-flex items-center justify-between',
+                                dateFilter === 'All'
+                                  ? 'border-emerald-300 bg-emerald-50/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300'
+                                  : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
+                              )}
+                            >
+                              <span>Full history</span>
+                              <span className={cn('relative inline-flex h-4 w-8 rounded-full transition-colors', dateFilter === 'All' ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700')}>
+                                <span className={cn('absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform', dateFilter === 'All' ? 'translate-x-4' : 'translate-x-0.5')} />
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSortFilter(sortFilter === 'Oldest' ? 'Newest' : 'Oldest')}
+                              className={cn(
+                                'h-8 rounded-md border px-2 text-[11px] transition-colors inline-flex items-center justify-between',
+                                sortFilter === 'Oldest'
+                                  ? 'border-indigo-300 bg-indigo-50/80 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/35 dark:text-indigo-300'
+                                  : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
+                              )}
+                            >
+                              <span>Oldest first</span>
+                              <span className={cn('relative inline-flex h-4 w-8 rounded-full transition-colors', sortFilter === 'Oldest' ? 'bg-indigo-500' : 'bg-zinc-300 dark:bg-zinc-700')}>
+                                <span className={cn('absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform', sortFilter === 'Oldest' ? 'translate-x-4' : 'translate-x-0.5')} />
+                              </span>
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {SORT_FILTER_OPTIONS.map((option) => (
+                              <FilterPill
+                                key={option}
+                                active={sortFilter === option}
+                                label={SORT_FILTER_LABELS[option]}
+                                onClick={() => setSortFilter(option)}
+                                activeClassName="border-sky-300 bg-sky-50/80 text-sky-700 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-300"
+                              />
+                            ))}
+                          </div>
+
+                          <FilterCycleControl
+                            label="Account focus"
+                            value={accountFilter}
+                            onPrev={() => setAccountFilter(cycleFilterOption(accountOptions, accountFilter, -1))}
+                            onNext={() => setAccountFilter(cycleFilterOption(accountOptions, accountFilter, 1))}
                           />
                         </div>
                       </TabsContent>
-                    </Tabs>
-                  </div>
 
-                  <div className="px-4 sm:px-5 py-3 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/40 flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={resetFilters}
-                      className="h-8 px-3 rounded-md border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                    >
-                      Reset
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFiltersOpen(false)}
-                      className="h-8 px-3 rounded-md bg-black dark:bg-white text-white dark:text-black text-xs hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors inline-flex items-center gap-1.5"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      Apply filters
-                    </button>
-                  </div>
+                      <TabsContent value="amount" className="mt-0 h-full">
+                        <div className="h-full rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/75 dark:bg-zinc-900/45 p-2.5 space-y-2">
+                          <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 bg-white/80 dark:bg-zinc-950/30 p-2">
+                            <div className="flex items-center justify-between gap-2 text-[10px]">
+                              <span className="text-zinc-500 dark:text-zinc-400">Range</span>
+                              <span className="text-zinc-700 dark:text-zinc-200">
+                                {formatCurrency(amountMinSliderValue)} - {formatCurrency(amountMaxSliderValue)}
+                              </span>
+                            </div>
+                            <div className="relative h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800 mt-2 mb-1">
+                              <span
+                                className="absolute h-1.5 rounded-full bg-blue-500"
+                                style={{
+                                  left: `${(amountMinSliderValue / amountRangeUpperBound) * 100}%`,
+                                  width: `${Math.max(((amountMaxSliderValue - amountMinSliderValue) / amountRangeUpperBound) * 100, 2)}%`,
+                                }}
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                              <div>
+                                <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Min amount</p>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={amountRangeUpperBound}
+                                  value={amountMinSliderValue}
+                                  onChange={(event) => {
+                                    const nextValue = Number(event.target.value);
+                                    const clamped = Math.min(nextValue, amountMaxSliderValue);
+                                    setAmountMin(clamped <= 0 ? '' : String(Math.round(clamped)));
+                                  }}
+                                  className="w-full accent-emerald-600"
+                                />
+                              </div>
+                              <div>
+                                <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Max amount</p>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={amountRangeUpperBound}
+                                  value={amountMaxSliderValue}
+                                  onChange={(event) => {
+                                    const nextValue = Number(event.target.value);
+                                    const clamped = Math.max(nextValue, amountMinSliderValue);
+                                    setAmountMax(clamped >= amountRangeUpperBound ? '' : String(Math.round(clamped)));
+                                  }}
+                                  className="w-full accent-blue-600"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <FilterPill
+                              active={amountMin.trim() === '' && amountMax.trim() === ''}
+                              label="Any amount"
+                              onClick={() => applyAmountPreset('any')}
+                            />
+                            <FilterPill
+                              active={amountMin.trim() === '' && Number(amountMax) === Math.min(1000, amountRangeUpperBound)}
+                              label="Under $1k"
+                              onClick={() => applyAmountPreset('under1k')}
+                              activeClassName="border-emerald-300 bg-emerald-50/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300"
+                            />
+                            <FilterPill
+                              active={Number(amountMin) === Math.min(1000, amountRangeUpperBound) && Number(amountMax || amountRangeUpperBound) >= Math.min(Math.max(5000, Math.min(1000, amountRangeUpperBound)), amountRangeUpperBound)}
+                              label="$1k to $5k"
+                              onClick={() => applyAmountPreset('1kTo5k')}
+                              activeClassName="border-indigo-300 bg-indigo-50/80 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/35 dark:text-indigo-300"
+                            />
+                            <FilterPill
+                              active={Number(amountMin) === Math.min(5000, amountRangeUpperBound) && amountMax.trim() === ''}
+                              label="$5k+"
+                              onClick={() => applyAmountPreset('5kPlus')}
+                              activeClassName="border-amber-300 bg-amber-50/80 text-amber-700 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-300"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <FilterPill
+                              active={sortFilter === 'AmountHigh'}
+                              label="Highest first"
+                              onClick={() => setSortFilter('AmountHigh')}
+                              activeClassName="border-blue-300 bg-blue-50/80 text-blue-700 dark:border-blue-700 dark:bg-blue-950/35 dark:text-blue-300"
+                            />
+                            <FilterPill
+                              active={sortFilter === 'AmountLow'}
+                              label="Lowest first"
+                              onClick={() => setSortFilter('AmountLow')}
+                              activeClassName="border-blue-300 bg-blue-50/80 text-blue-700 dark:border-blue-700 dark:bg-blue-950/35 dark:text-blue-300"
+                            />
+                          </div>
+                        </div>
+                      </TabsContent>
+                    </div>
+
+                    <div className="px-3 sm:px-4 py-2.5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/40 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={resetFilters}
+                        className="h-8 px-3 rounded-md border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                      >
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFiltersOpen(false)}
+                        className="h-8 px-3 rounded-md bg-black dark:bg-white text-white dark:text-black text-xs hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors inline-flex items-center gap-1.5"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Apply filters
+                      </button>
+                    </div>
+                  </Tabs>
                 </DialogContent>
               </Dialog>
             </section>

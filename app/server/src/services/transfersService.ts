@@ -2,6 +2,7 @@ import { getAlchemyRestUrl, getAlchemyApiKey } from '../utils/rpc.js';
 import { websocketService } from './websocketService.js';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { computeUnitTracker } from '../utils/computeUnitTracker.js';
+import { getAlchemyPricesBatch } from './priceService.js';
 
 /**
  * Transfer types supported by Alchemy Transfers API
@@ -83,6 +84,51 @@ function getRecentBlockNumber(chainId: number, daysAgo: number = 30): string {
   const recentBlockNumber = Math.max(0, estimatedCurrent - blocksAgo);
   
   return `0x${recentBlockNumber.toString(16)}`;
+}
+
+// Wrapped/native token addresses used for native transfer USD pricing.
+const NATIVE_PRICE_TOKEN_BY_CHAIN: Record<number, string> = {
+  1: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH (Ethereum)
+  10: '0x4200000000000000000000000000000000000006', // WETH (Optimism)
+  8453: '0x4200000000000000000000000000000000000006', // WETH (Base)
+  11155111: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14', // WETH (Sepolia)
+  84532: '0x4200000000000000000000000000000000000006', // WETH (Base Sepolia)
+  42161: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // WETH (Arbitrum)
+  137: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // WPOL (Polygon)
+  100: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8', // WXDAI (Gnosis)
+};
+
+const USD_PEGGED_SYMBOLS = new Set([
+  'USD',
+  'USDC',
+  'USDT',
+  'DAI',
+  'USDS',
+  'FDUSD',
+  'TUSD',
+  'PYUSD',
+  'GUSD',
+  'BUSD',
+  'LUSD',
+  'CLRUSD',
+]);
+
+function resolveTimestampMs(timestampLike: unknown): number | null {
+  if (typeof timestampLike === 'number' && Number.isFinite(timestampLike)) {
+    if (timestampLike <= 0) return null;
+    return timestampLike < 1_000_000_000_000 ? timestampLike * 1000 : timestampLike;
+  }
+
+  if (typeof timestampLike === 'string' && timestampLike.trim().length > 0) {
+    const numeric = Number(timestampLike);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+    }
+    const parsed = Date.parse(timestampLike);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+
+  return null;
 }
 
 /**
@@ -778,9 +824,12 @@ class TransfersService {
     limit: number = 20
   ): Promise<Array<{
     id: string;
+    chainId: number;
     type: string;
     assetSymbol: string;
+    assetAddress?: string | null;
     amount: number;
+    amountUsd?: number | null;
     currency: string;
     date: string;
     status: string;
@@ -817,77 +866,187 @@ class TransfersService {
         return [];
       }
 
-      // Convert Alchemy transfers to TransactionData format
-      const transactions = transfers
-        .map(transfer => {
-          try {
-            // Determine transaction type (must match WalletTransaction type)
-            // Valid types: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'mint' | 'trade' | 'transfer' | 'contract'
-            let type: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'mint' | 'trade' | 'transfer' | 'contract' = 'transfer';
-            const fromLower = transfer.from ? transfer.from.toLowerCase() : '';
-            const toLower = transfer.to ? transfer.to.toLowerCase() : '';
-            const isFromAddress = fromLower === address.toLowerCase();
-            const isToAddress = toLower === address.toLowerCase();
-            const value = transfer.value || 0;
+      const normalizedAddress = address.toLowerCase();
+      const blockTimestampCache = new Map<string, number | null>();
+      const alchemyRestUrl = getAlchemyRestUrl(chainId);
+      const isLikelyAddress = (value: string | null | undefined): value is string =>
+        typeof value === 'string' && /^0x[a-fA-F0-9]{40}$/.test(value);
 
-            if (isFromAddress && value > 0) {
-              type = 'withdraw';
-            } else if (isToAddress && value > 0) {
-              type = 'deposit';
-            } else if (transfer.category === 'ERC721' || transfer.category === 'ERC1155') {
-              // NFT transfers - use 'mint' for incoming, 'transfer' for outgoing
-              type = isToAddress ? 'mint' : 'transfer';
-            } else if (transfer.category === 'ERC20') {
-              // Token transfers - use 'trade' for swaps, 'transfer' for simple transfers
-              type = 'transfer';
-            } else if (transfer.category === 'INTERNAL') {
-              type = 'contract';
-            } else if (transfer.category === 'EXTERNAL') {
-              // External ETH transfers
+      const resolveBlockTimestampMs = async (blockNum: string | undefined): Promise<number | null> => {
+        if (!blockNum || !alchemyRestUrl) return null;
+        if (blockTimestampCache.has(blockNum)) {
+          return blockTimestampCache.get(blockNum) ?? null;
+        }
+
+        try {
+          computeUnitTracker.logApiCall(
+            'eth_getBlockByNumber',
+            'transfers_getTransactions',
+            { chainId, estimatedUnits: 3 }
+          );
+
+          const response = await fetch(alchemyRestUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              id: 1,
+              jsonrpc: '2.0',
+              method: 'eth_getBlockByNumber',
+              params: [blockNum, false],
+            }),
+          });
+
+          if (!response.ok) {
+            blockTimestampCache.set(blockNum, null);
+            return null;
+          }
+
+          const data = await response.json() as {
+            result?: {
+              timestamp?: string;
+            } | null;
+          };
+
+          const tsHex = data.result?.timestamp;
+          if (!tsHex) {
+            blockTimestampCache.set(blockNum, null);
+            return null;
+          }
+
+          const seconds = Number.parseInt(tsHex, 16);
+          if (!Number.isFinite(seconds) || seconds <= 0) {
+            blockTimestampCache.set(blockNum, null);
+            return null;
+          }
+
+          const timestampMs = seconds * 1000;
+          blockTimestampCache.set(blockNum, timestampMs);
+          return timestampMs;
+        } catch {
+          blockTimestampCache.set(blockNum, null);
+          return null;
+        }
+      };
+
+      const getPricingAddress = (transfer: TransferData): string | null => {
+        if (transfer.category === 'ERC20' && isLikelyAddress(transfer.rawContract?.address)) {
+          return transfer.rawContract!.address!;
+        }
+        if (transfer.category === 'EXTERNAL' || transfer.category === 'INTERNAL') {
+          return NATIVE_PRICE_TOKEN_BY_CHAIN[chainId] ?? null;
+        }
+        return null;
+      };
+
+      const uniquePriceRequests = new Map<string, { chainId: number; tokenAddress: string }>();
+      for (const transfer of transfers) {
+        const pricingAddress = getPricingAddress(transfer);
+        if (!pricingAddress) continue;
+        const normalizedTokenAddress = pricingAddress.toLowerCase();
+        uniquePriceRequests.set(`${chainId}:${normalizedTokenAddress}`, {
+          chainId,
+          tokenAddress: normalizedTokenAddress,
+        });
+      }
+
+      const priceMap = await getAlchemyPricesBatch([...uniquePriceRequests.values()]);
+
+      // Convert Alchemy transfers to TransactionData format
+      const transactions = (
+        await Promise.all(
+          transfers.map(async (transfer) => {
+            try {
+              // Determine transaction type (must match WalletTransaction type)
+              // Valid types: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'mint' | 'trade' | 'transfer' | 'contract'
+              let type: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'mint' | 'trade' | 'transfer' | 'contract' = 'transfer';
+              const fromLower = transfer.from ? transfer.from.toLowerCase() : '';
+              const toLower = transfer.to ? transfer.to.toLowerCase() : '';
+              const isFromAddress = fromLower === normalizedAddress;
+              const isToAddress = toLower === normalizedAddress;
+              const value = Number(transfer.value || 0);
+              const absValue = Math.abs(value);
+
               if (isFromAddress && value > 0) {
                 type = 'withdraw';
               } else if (isToAddress && value > 0) {
                 type = 'deposit';
-              } else {
+              } else if (transfer.category === 'ERC721' || transfer.category === 'ERC1155') {
+                // NFT transfers - use 'mint' for incoming, 'transfer' for outgoing
+                type = isToAddress ? 'mint' : 'transfer';
+              } else if (transfer.category === 'ERC20') {
+                // Token transfers - use 'trade' for swaps, 'transfer' for simple transfers
                 type = 'transfer';
+              } else if (transfer.category === 'INTERNAL') {
+                type = 'contract';
+              } else if (transfer.category === 'EXTERNAL') {
+                // External native-token transfers
+                if (isFromAddress && value > 0) {
+                  type = 'withdraw';
+                } else if (isToAddress && value > 0) {
+                  type = 'deposit';
+                } else {
+                  type = 'transfer';
+                }
               }
+
+              // Get asset symbol/currency
+              let assetSymbol = transfer.asset || 'ETH';
+              let currency = transfer.asset || 'ETH';
+              if (transfer.rawContract?.symbol) {
+                assetSymbol = transfer.rawContract.symbol;
+                currency = transfer.rawContract.symbol;
+              } else if (transfer.category === 'ERC20' || transfer.category === 'ERC721' || transfer.category === 'ERC1155') {
+                assetSymbol = transfer.asset || 'TOKEN';
+                currency = transfer.asset || 'TOKEN';
+              }
+
+              const pricingAddress = getPricingAddress(transfer);
+              const normalizedPricingAddress = pricingAddress?.toLowerCase() ?? null;
+              const directAssetAddress = isLikelyAddress(transfer.rawContract?.address)
+                ? transfer.rawContract!.address!
+                : null;
+
+              const unitPrice =
+                (normalizedPricingAddress
+                  ? priceMap.get(`${chainId}:${normalizedPricingAddress}`)
+                  : null) ??
+                (USD_PEGGED_SYMBOLS.has((assetSymbol || '').toUpperCase()) ? 1 : null);
+              const amountUsd =
+                unitPrice != null && Number.isFinite(unitPrice)
+                  ? absValue * unitPrice
+                  : null;
+
+              const metadataTimestamp = resolveTimestampMs(transfer.metadata?.blockTimestamp);
+              const timestamp =
+                metadataTimestamp ??
+                (await resolveBlockTimestampMs(transfer.blockNum)) ??
+                0;
+
+              return {
+                id: `${chainId}-${transfer.hash}-${transfer.uniqueId || transfer.blockNum}`,
+                chainId,
+                type,
+                assetSymbol,
+                assetAddress: directAssetAddress || normalizedPricingAddress,
+                amount: Number.isFinite(absValue) ? absValue : 0,
+                amountUsd: amountUsd != null && Number.isFinite(amountUsd) ? amountUsd : null,
+                currency,
+                date: timestamp > 0 ? new Date(timestamp).toISOString() : '',
+                status: 'completed', // Alchemy only returns confirmed transfers
+                hash: transfer.hash,
+                from: transfer.from,
+                to: transfer.to,
+                timestamp,
+              };
+            } catch (error) {
+              console.error(`[TransfersService] Error converting transfer:`, error);
+              return null;
             }
-
-            // Get asset symbol
-            let assetSymbol = 'ETH';
-            let currency = 'ETH';
-            if (transfer.rawContract?.symbol) {
-              assetSymbol = transfer.rawContract.symbol;
-              currency = transfer.rawContract.symbol;
-            } else if (transfer.category === 'ERC20' || transfer.category === 'ERC721' || transfer.category === 'ERC1155') {
-              assetSymbol = transfer.asset || 'TOKEN';
-              currency = transfer.asset || 'TOKEN';
-            }
-
-            // Get timestamp
-            const timestamp = transfer.metadata?.blockTimestamp 
-              ? new Date(transfer.metadata.blockTimestamp).getTime()
-              : Date.now();
-
-            return {
-              id: `${chainId}-${transfer.hash}`,
-              type,
-              assetSymbol,
-              amount: value,
-              currency,
-              date: new Date(timestamp).toISOString(),
-              status: 'completed', // Alchemy only returns confirmed transfers
-              hash: transfer.hash,
-              from: transfer.from,
-              to: transfer.to,
-              timestamp,
-            };
-          } catch (error) {
-            console.error(`[TransfersService] Error converting transfer:`, error);
-            return null;
-          }
-        })
-        .filter((tx): tx is NonNullable<typeof tx> => tx !== null);
+          })
+        )
+      ).filter((tx): tx is NonNullable<typeof tx> => tx !== null);
 
       // Sort by timestamp (newest first) and limit
       transactions.sort((a, b) => b.timestamp - a.timestamp);
