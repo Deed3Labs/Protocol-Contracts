@@ -259,6 +259,7 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
         cacheService.del(CacheKeys.plaidRecurringTransactions(key)),
         cacheService.del(CacheKeys.plaidSpend(key)),
         cacheService.del(CacheKeys.plaidRecentTransactions(key)),
+        cacheService.del(CacheKeys.plaidHistoricalTransactions(key)),
         cacheService.del(CacheKeys.plaidInvestmentsHoldings(key)),
         cacheService.del(CacheKeys.plaidLiabilities(key)),
         cacheService.del(CacheKeys.plaidInvestmentAccounts(key)),
@@ -823,6 +824,7 @@ router.get('/balances', async (req: Request, res: Response) => {
             cacheService.del(CacheKeys.plaidRecurringTransactions(key)),
             cacheService.del(CacheKeys.plaidSpend(key)),
             cacheService.del(CacheKeys.plaidRecentTransactions(key)),
+            cacheService.del(CacheKeys.plaidHistoricalTransactions(key)),
             cacheService.del(CacheKeys.plaidInvestmentsHoldings(key)),
             cacheService.del(CacheKeys.plaidLiabilities(key)),
             cacheService.del(CacheKeys.plaidInvestmentAccounts(key)),
@@ -1524,7 +1526,7 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
 /** Spend-by-day payload: day of month (1–31) -> total outflows (positive amount) */
 type SpendByDayPayload = Record<number, number>;
 
-/** Normalized recent Plaid transaction payload (last 2 years, newest first). */
+/** Normalized Plaid transaction payload used by recent/historical routes (newest first). */
 type PlaidRecentTransactionPayload = {
   transaction_id: string;
   account_id: string | null;
@@ -1546,9 +1548,233 @@ type PlaidRecentTransactionPayload = {
   payment_channel: string | null;
 };
 
+type PlaidTransactionsWindowResult = {
+  transactions: PlaidRecentTransactionPayload[];
+  notReady: boolean;
+  cached: boolean;
+};
+
+async function fetchPlaidTransactionsWindow(params: {
+  client: PlaidApi;
+  key: string;
+  items: Array<{ item_id: string; access_token: string }>;
+  cacheKey: string;
+  skipCache: boolean;
+  ttlSeconds: number;
+  startDate: string;
+  endDate: string;
+  limit: number;
+}): Promise<PlaidTransactionsWindowResult> {
+  const {
+    client,
+    key,
+    items,
+    cacheKey,
+    skipCache,
+    ttlSeconds,
+    startDate,
+    endDate,
+    limit,
+  } = params;
+
+  const cacheService = await getCacheService();
+  if (cacheService && !skipCache) {
+    const cached = await cacheService.get<{
+      transactions: PlaidRecentTransactionPayload[];
+      notReady?: boolean;
+    }>(cacheKey);
+    if (cached) {
+      return {
+        transactions: cached.transactions.slice(0, limit),
+        notReady: Boolean(cached.notReady),
+        cached: true,
+      };
+    }
+  }
+
+  const allTransactions: PlaidRecentTransactionPayload[] = [];
+  const seenTransactionIds = new Set<string>();
+  const staleItemIds = new Set<string>();
+  let hadNotReadyItem = false;
+
+  for (const item of items) {
+    try {
+      const accountMeta = new Map<string, { name: string; mask: string | null }>();
+      try {
+        const accountsRequest: AccountsGetRequest = { access_token: item.access_token };
+        const accountsResponse = await client.accountsGet(accountsRequest);
+        for (const account of accountsResponse.data.accounts ?? []) {
+          accountMeta.set(account.account_id, {
+            name: account.name || account.official_name || 'Connected account',
+            mask: account.mask ?? null,
+          });
+        }
+      } catch {
+        // Non-fatal: account metadata is optional for rendering.
+      }
+
+      let offset = 0;
+      const count = 500;
+      let totalTransactions = 0;
+      const seenPendingTxIds = new Set<string>();
+      const replacedPendingTxIds = new Set<string>();
+
+      do {
+        const request: TransactionsGetRequest = {
+          access_token: item.access_token,
+          start_date: startDate,
+          end_date: endDate,
+          options: { count, offset },
+        };
+        const response = await client.transactionsGet(request);
+        const transactions = response.data.transactions ?? [];
+        const pendingTransactions =
+          (response.data as { pending_transactions?: PendingTransactionLike[] })
+            .pending_transactions ?? [];
+        totalTransactions = response.data.total_transactions ?? 0;
+
+        for (const tx of transactions) {
+          const txPendingRef = (tx as { pending_transaction_id?: string | null }).pending_transaction_id;
+          if (txPendingRef) {
+            replacedPendingTxIds.add(txPendingRef);
+          }
+
+          const txId = tx.transaction_id || `${tx.account_id}-${tx.date ?? tx.authorized_date ?? ''}-${tx.amount}-${tx.name ?? 'tx'}`;
+          const dedupeKey = `${item.item_id}:${txId}`;
+          if (seenTransactionIds.has(dedupeKey)) continue;
+
+          const signedAmount = Number(tx.amount);
+          if (!Number.isFinite(signedAmount) || signedAmount === 0) continue;
+
+          const dateStr = tx.date ?? tx.authorized_date ?? null;
+          if (!isDateWithinRange(dateStr, startDate, endDate)) continue;
+
+          const account = accountMeta.get(tx.account_id);
+          const direction = signedAmount > 0 ? 'outflow' : 'inflow';
+          const pfc = (tx as {
+            personal_finance_category?: {
+              primary?: string | null;
+              detailed?: string | null;
+            } | null;
+          }).personal_finance_category;
+
+          seenTransactionIds.add(dedupeKey);
+          allTransactions.push({
+            transaction_id: txId,
+            account_id: tx.account_id ?? null,
+            account_name: account?.name ?? 'Connected account',
+            account_mask: account?.mask ?? null,
+            item_id: item.item_id,
+            name: tx.name || tx.merchant_name || 'Bank transaction',
+            merchant_name: tx.merchant_name ?? null,
+            amount: Math.abs(signedAmount),
+            signed_amount: direction === 'outflow' ? Math.abs(signedAmount) : -Math.abs(signedAmount),
+            direction,
+            iso_currency_code: tx.iso_currency_code ?? null,
+            unofficial_currency_code: (tx as { unofficial_currency_code?: string | null }).unofficial_currency_code ?? null,
+            date: dateStr ?? endDate,
+            authorized_date: tx.authorized_date ?? null,
+            pending: Boolean((tx as { pending?: boolean }).pending),
+            category_primary: pfc?.primary ?? null,
+            category_detailed: pfc?.detailed ?? null,
+            payment_channel: (tx as { payment_channel?: string | null }).payment_channel ?? null,
+          });
+        }
+
+        for (const pendingTx of pendingTransactions) {
+          const pendingId = pendingTx.transaction_id;
+          if (pendingId) {
+            if (seenPendingTxIds.has(pendingId)) continue;
+            seenPendingTxIds.add(pendingId);
+            if (replacedPendingTxIds.has(pendingId)) continue;
+          }
+
+          const signedAmount = Number(pendingTx.amount);
+          if (!Number.isFinite(signedAmount) || signedAmount === 0) continue;
+
+          const dateStr = pendingTx.date ?? pendingTx.authorized_date ?? null;
+          if (!isDateWithinRange(dateStr, startDate, endDate)) continue;
+
+          const generatedId =
+            pendingTx.transaction_id ||
+            `${pendingTx.account_id ?? 'unknown'}-${dateStr ?? ''}-${signedAmount}-${pendingTx.name ?? pendingTx.merchant_name ?? 'pending'}`;
+          const dedupeKey = `${item.item_id}:pending:${generatedId}`;
+          if (seenTransactionIds.has(dedupeKey)) continue;
+
+          const account = pendingTx.account_id ? accountMeta.get(pendingTx.account_id) : null;
+          const direction = signedAmount > 0 ? 'outflow' : 'inflow';
+          seenTransactionIds.add(dedupeKey);
+          allTransactions.push({
+            transaction_id: generatedId,
+            account_id: pendingTx.account_id ?? null,
+            account_name: account?.name ?? 'Connected account',
+            account_mask: account?.mask ?? null,
+            item_id: item.item_id,
+            name: pendingTx.name || pendingTx.merchant_name || pendingTx.original_description || 'Pending transaction',
+            merchant_name: pendingTx.merchant_name ?? null,
+            amount: Math.abs(signedAmount),
+            signed_amount: direction === 'outflow' ? Math.abs(signedAmount) : -Math.abs(signedAmount),
+            direction,
+            iso_currency_code: pendingTx.iso_currency_code ?? null,
+            unofficial_currency_code: null,
+            date: dateStr ?? endDate,
+            authorized_date: pendingTx.authorized_date ?? null,
+            pending: true,
+            category_primary: null,
+            category_detailed: null,
+            payment_channel: null,
+          });
+        }
+
+        offset += transactions.length;
+      } while (offset < totalTransactions && offset < 10000);
+    } catch (itemErr: unknown) {
+      const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
+      const errorCode = err.response?.data?.error_code;
+      if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
+        staleItemIds.add(item.item_id);
+        continue;
+      }
+      if (errorCode === 'PRODUCT_NOT_READY') {
+        hadNotReadyItem = true;
+        continue;
+      }
+      if (errorCode === 'PRODUCTS_NOT_SUPPORTED') continue;
+      throw itemErr;
+    }
+  }
+
+  if (staleItemIds.size > 0) {
+    await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+  }
+
+  allTransactions.sort((a, b) => {
+    const timeA = Date.parse(a.date || a.authorized_date || '');
+    const timeB = Date.parse(b.date || b.authorized_date || '');
+    if (Number.isFinite(timeA) && Number.isFinite(timeB) && timeA !== timeB) {
+      return timeB - timeA;
+    }
+    if (a.pending !== b.pending) return a.pending ? 1 : -1;
+    return b.amount - a.amount;
+  });
+
+  const payload = { transactions: allTransactions, notReady: hadNotReadyItem };
+  const hasAnyTransactions = allTransactions.length > 0;
+  const shouldSkipCache = hadNotReadyItem && !hasAnyTransactions;
+  if (cacheService && !shouldSkipCache) {
+    await cacheService.set(cacheKey, payload, ttlSeconds);
+  }
+
+  return {
+    transactions: allTransactions.slice(0, limit),
+    notReady: hadNotReadyItem,
+    cached: false,
+  };
+}
+
 /**
  * GET /api/plaid/transactions/recent?walletAddress=0x...&limit=500
- * Fetch normalized Plaid transactions for the last 2 years across all linked items.
+ * Fetch recent Plaid transactions (rolling 90 days) across linked items.
  * Returns newest first. Use ?refresh=1 to bypass cache.
  */
 router.get('/transactions/recent', async (req: Request, res: Response) => {
@@ -1574,7 +1800,7 @@ router.get('/transactions/recent', async (req: Request, res: Response) => {
     const requestedLimit = Number.parseInt(String(req.query.limit ?? ''), 10);
     const limit =
       Number.isFinite(requestedLimit) && requestedLimit > 0
-        ? Math.min(requestedLimit, 2000)
+        ? Math.min(requestedLimit, 1000)
         : 500;
 
     const key = walletAddress.toLowerCase();
@@ -1588,215 +1814,106 @@ router.get('/transactions/recent', async (req: Request, res: Response) => {
     }
 
     const skipCache = parseRefreshFlag(req.query.refresh);
-    const cacheService = await getCacheService();
     const cacheKey = CacheKeys.plaidRecentTransactions(key);
-    const ttl = parseInt(process.env.CACHE_TTL_PLAID_RECENT_TRANSACTIONS ?? '1800', 10); // 30 minutes
-
-    if (cacheService && !skipCache) {
-      const cached = await cacheService.get<{
-        transactions: PlaidRecentTransactionPayload[];
-        notReady?: boolean;
-      }>(cacheKey);
-      if (cached) {
-        return res.json({
-          transactions: cached.transactions.slice(0, limit),
-          linked: true,
-          notReady: cached.notReady,
-          cached: true,
-        });
-      }
-    }
+    const ttl = parseInt(process.env.CACHE_TTL_PLAID_RECENT_TRANSACTIONS ?? '900', 10); // 15 minutes
 
     const now = new Date();
     const start = new Date(now);
-    start.setFullYear(start.getFullYear() - 2);
-    const startDate = formatLocalDate(start);
-    const endDate = formatLocalDate(now);
-
-    const allTransactions: PlaidRecentTransactionPayload[] = [];
-    const seenTransactionIds = new Set<string>();
-    const staleItemIds = new Set<string>();
-    let hadNotReadyItem = false;
-
-    for (const item of items) {
-      try {
-        const accountMeta = new Map<string, { name: string; mask: string | null }>();
-        try {
-          const accountsRequest: AccountsGetRequest = { access_token: item.access_token };
-          const accountsResponse = await client.accountsGet(accountsRequest);
-          for (const account of accountsResponse.data.accounts ?? []) {
-            accountMeta.set(account.account_id, {
-              name: account.name || account.official_name || 'Connected account',
-              mask: account.mask ?? null,
-            });
-          }
-        } catch {
-          // Non-fatal: account metadata is optional for rendering.
-        }
-
-        let offset = 0;
-        const count = 500;
-        let totalTransactions = 0;
-        const seenPendingTxIds = new Set<string>();
-        const replacedPendingTxIds = new Set<string>();
-
-        do {
-          const request: TransactionsGetRequest = {
-            access_token: item.access_token,
-            start_date: startDate,
-            end_date: endDate,
-            options: { count, offset },
-          };
-          const response = await client.transactionsGet(request);
-          const transactions = response.data.transactions ?? [];
-          const pendingTransactions =
-            (response.data as { pending_transactions?: PendingTransactionLike[] })
-              .pending_transactions ?? [];
-          totalTransactions = response.data.total_transactions ?? 0;
-
-          for (const tx of transactions) {
-            const txPendingRef = (tx as { pending_transaction_id?: string | null }).pending_transaction_id;
-            if (txPendingRef) {
-              replacedPendingTxIds.add(txPendingRef);
-            }
-
-            const txId = tx.transaction_id || `${tx.account_id}-${tx.date ?? tx.authorized_date ?? ''}-${tx.amount}-${tx.name ?? 'tx'}`;
-            const dedupeKey = `${item.item_id}:${txId}`;
-            if (seenTransactionIds.has(dedupeKey)) continue;
-
-            const signedAmount = Number(tx.amount);
-            if (!Number.isFinite(signedAmount) || signedAmount === 0) continue;
-
-            const dateStr = tx.date ?? tx.authorized_date ?? null;
-            if (!isDateWithinRange(dateStr, startDate, endDate)) continue;
-
-            const account = accountMeta.get(tx.account_id);
-            const direction = signedAmount > 0 ? 'outflow' : 'inflow';
-            const pfc = (tx as {
-              personal_finance_category?: {
-                primary?: string | null;
-                detailed?: string | null;
-              } | null;
-            }).personal_finance_category;
-
-            seenTransactionIds.add(dedupeKey);
-            allTransactions.push({
-              transaction_id: txId,
-              account_id: tx.account_id ?? null,
-              account_name: account?.name ?? 'Connected account',
-              account_mask: account?.mask ?? null,
-              item_id: item.item_id,
-              name: tx.name || tx.merchant_name || 'Bank transaction',
-              merchant_name: tx.merchant_name ?? null,
-              amount: Math.abs(signedAmount),
-              signed_amount: direction === 'outflow' ? Math.abs(signedAmount) : -Math.abs(signedAmount),
-              direction,
-              iso_currency_code: tx.iso_currency_code ?? null,
-              unofficial_currency_code: (tx as { unofficial_currency_code?: string | null }).unofficial_currency_code ?? null,
-              date: dateStr ?? endDate,
-              authorized_date: tx.authorized_date ?? null,
-              pending: Boolean((tx as { pending?: boolean }).pending),
-              category_primary: pfc?.primary ?? null,
-              category_detailed: pfc?.detailed ?? null,
-              payment_channel: (tx as { payment_channel?: string | null }).payment_channel ?? null,
-            });
-          }
-
-          for (const pendingTx of pendingTransactions) {
-            const pendingId = pendingTx.transaction_id;
-            if (pendingId) {
-              if (seenPendingTxIds.has(pendingId)) continue;
-              seenPendingTxIds.add(pendingId);
-              if (replacedPendingTxIds.has(pendingId)) continue;
-            }
-
-            const signedAmount = Number(pendingTx.amount);
-            if (!Number.isFinite(signedAmount) || signedAmount === 0) continue;
-
-            const dateStr = pendingTx.date ?? pendingTx.authorized_date ?? null;
-            if (!isDateWithinRange(dateStr, startDate, endDate)) continue;
-
-            const generatedId =
-              pendingTx.transaction_id ||
-              `${pendingTx.account_id ?? 'unknown'}-${dateStr ?? ''}-${signedAmount}-${pendingTx.name ?? pendingTx.merchant_name ?? 'pending'}`;
-            const dedupeKey = `${item.item_id}:pending:${generatedId}`;
-            if (seenTransactionIds.has(dedupeKey)) continue;
-
-            const account = pendingTx.account_id ? accountMeta.get(pendingTx.account_id) : null;
-            const direction = signedAmount > 0 ? 'outflow' : 'inflow';
-            seenTransactionIds.add(dedupeKey);
-            allTransactions.push({
-              transaction_id: generatedId,
-              account_id: pendingTx.account_id ?? null,
-              account_name: account?.name ?? 'Connected account',
-              account_mask: account?.mask ?? null,
-              item_id: item.item_id,
-              name: pendingTx.name || pendingTx.merchant_name || pendingTx.original_description || 'Pending transaction',
-              merchant_name: pendingTx.merchant_name ?? null,
-              amount: Math.abs(signedAmount),
-              signed_amount: direction === 'outflow' ? Math.abs(signedAmount) : -Math.abs(signedAmount),
-              direction,
-              iso_currency_code: pendingTx.iso_currency_code ?? null,
-              unofficial_currency_code: null,
-              date: dateStr ?? endDate,
-              authorized_date: pendingTx.authorized_date ?? null,
-              pending: true,
-              category_primary: null,
-              category_detailed: null,
-              payment_channel: null,
-            });
-          }
-
-          offset += transactions.length;
-        } while (offset < totalTransactions && offset < 10000);
-      } catch (itemErr: unknown) {
-        const err = itemErr as { response?: { data?: { error_code?: string } }; message?: string };
-        const errorCode = err.response?.data?.error_code;
-        if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
-          staleItemIds.add(item.item_id);
-          continue;
-        }
-        if (errorCode === 'PRODUCT_NOT_READY') {
-          hadNotReadyItem = true;
-          continue;
-        }
-        if (errorCode === 'PRODUCTS_NOT_SUPPORTED') continue;
-        throw itemErr;
-      }
-    }
-
-    if (staleItemIds.size > 0) {
-      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
-    }
-
-    allTransactions.sort((a, b) => {
-      const timeA = Date.parse(a.date || a.authorized_date || '');
-      const timeB = Date.parse(b.date || b.authorized_date || '');
-      if (Number.isFinite(timeA) && Number.isFinite(timeB) && timeA !== timeB) {
-        return timeB - timeA;
-      }
-      if (a.pending !== b.pending) return a.pending ? 1 : -1;
-      return b.amount - a.amount;
+    start.setDate(start.getDate() - 90);
+    const result = await fetchPlaidTransactionsWindow({
+      client,
+      key,
+      items,
+      cacheKey,
+      skipCache,
+      ttlSeconds: ttl,
+      startDate: formatLocalDate(start),
+      endDate: formatLocalDate(now),
+      limit,
     });
 
-    const payload = { transactions: allTransactions, notReady: hadNotReadyItem };
-    const hasAnyTransactions = allTransactions.length > 0;
-    const shouldSkipCache = hadNotReadyItem && !hasAnyTransactions;
-    if (cacheService && !shouldSkipCache) {
-      await cacheService.set(cacheKey, payload, ttl);
-    }
-
     return res.json({
-      transactions: allTransactions.slice(0, limit),
+      ...result,
       linked: true,
-      notReady: hadNotReadyItem,
-      cached: false,
     });
   } catch (error: unknown) {
     const err = error as { response?: { data?: unknown }; message?: string };
     console.error('Plaid transactions/recent error:', err.response?.data ?? err.message);
     res.status(500).json({
       error: 'Failed to get recent transactions',
+      message: err.message ?? 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /api/plaid/transactions/historical?walletAddress=0x...&limit=1500
+ * Fetch historical Plaid transactions for the last 2 years across linked items.
+ * Returns newest first. Use ?refresh=1 to bypass cache.
+ */
+router.get('/transactions/historical', async (req: Request, res: Response) => {
+  try {
+    const client = getPlaidClient();
+    if (!client) {
+      return res.status(503).json({
+        error: 'Plaid not configured',
+        message: 'PLAID_CLIENT_ID and PLAID_SECRET must be set',
+      });
+    }
+
+    const walletAddress = req.query.walletAddress as string | undefined;
+    if (!walletAddress) {
+      return res.status(400).json({
+        error: 'Missing walletAddress',
+        message: 'Query parameter walletAddress is required',
+      });
+    }
+    if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+    if (!(await ensurePlaidTokenStore(res))) return;
+
+    const requestedLimit = Number.parseInt(String(req.query.limit ?? ''), 10);
+    const limit =
+      Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, 4000)
+        : 1500;
+
+    const key = walletAddress.toLowerCase();
+    const items = await plaidTokenStore.getItems(key);
+    if (items.length === 0) {
+      return res.json({
+        transactions: [] as PlaidRecentTransactionPayload[],
+        linked: false,
+        cached: false,
+      });
+    }
+
+    const skipCache = parseRefreshFlag(req.query.refresh);
+    const cacheKey = CacheKeys.plaidHistoricalTransactions(key);
+    const ttl = parseInt(process.env.CACHE_TTL_PLAID_HISTORICAL_TRANSACTIONS ?? '1800', 10); // 30 minutes
+    const now = new Date();
+    const start = new Date(now);
+    start.setFullYear(start.getFullYear() - 2);
+    const result = await fetchPlaidTransactionsWindow({
+      client,
+      key,
+      items,
+      cacheKey,
+      skipCache,
+      ttlSeconds: ttl,
+      startDate: formatLocalDate(start),
+      endDate: formatLocalDate(now),
+      limit,
+    });
+
+    return res.json({
+      ...result,
+      linked: true,
+    });
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: unknown }; message?: string };
+    console.error('Plaid transactions/historical error:', err.response?.data ?? err.message);
+    res.status(500).json({
+      error: 'Failed to get historical transactions',
       message: err.message ?? 'Unknown error',
     });
   }
@@ -1995,6 +2112,7 @@ router.post('/disconnect', async (req: Request, res: Response) => {
       await cacheService.del(CacheKeys.plaidRecurringTransactions(key));
       await cacheService.del(CacheKeys.plaidSpend(key));
       await cacheService.del(CacheKeys.plaidRecentTransactions(key));
+      await cacheService.del(CacheKeys.plaidHistoricalTransactions(key));
       await cacheService.del(CacheKeys.plaidInvestmentsHoldings(key));
       await cacheService.del(CacheKeys.plaidLiabilities(key));
       await cacheService.del(CacheKeys.plaidInvestmentAccounts(key));

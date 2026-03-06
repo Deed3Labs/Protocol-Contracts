@@ -1,14 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import {
-  getPlaidRecentTransactions,
-  type PlaidRecentTransactionsResponse,
+  getPlaidHistoricalTransactions,
+  type PlaidHistoricalTransactionsResponse,
 } from '@/utils/apiClient';
 
-const STALE_MS = 15 * 60 * 1000; // 15 minutes – transaction list can update frequently
+const STALE_MS = 30 * 60 * 1000; // 30 minutes – historical window changes less frequently
 
-export interface UsePlaidRecentTransactionsResult {
-  transactions: PlaidRecentTransactionsResponse['transactions'];
+export interface UsePlaidHistoricalTransactionsResult {
+  transactions: PlaidHistoricalTransactionsResponse['transactions'];
   linked: boolean;
   notReady: boolean;
   isLoading: boolean;
@@ -17,18 +17,18 @@ export interface UsePlaidRecentTransactionsResult {
 }
 
 /**
- * Fetches recent Plaid transactions (rolling 90 days, newest first) for the given wallet.
- * Supports `enabled` gate and refresh() to force bypassing cache.
+ * Fetches historical Plaid transactions (last 2 years, newest first) for the given wallet.
+ * Intended for longer-range filters (1Y/2Y/All) where lazy-loading historical data is acceptable.
  */
-export function usePlaidRecentTransactions(
+export function usePlaidHistoricalTransactions(
   walletAddress: string | undefined,
   options?: { enabled?: boolean; limit?: number }
-): UsePlaidRecentTransactionsResult {
+): UsePlaidHistoricalTransactionsResult {
   const queryClient = useQueryClient();
   const limit = options?.limit && Number.isFinite(options.limit) && options.limit > 0
     ? Math.floor(options.limit)
-    : 500;
-  const queryKey = ['plaid-recent-transactions', walletAddress ?? '', limit] as const;
+    : 1500;
+  const queryKey = ['plaid-historical-transactions', walletAddress ?? '', limit] as const;
   const enabled = !!walletAddress && (options?.enabled ?? true);
 
   const {
@@ -37,8 +37,8 @@ export function usePlaidRecentTransactions(
     error,
   } = useQuery({
     queryKey,
-    queryFn: async (): Promise<PlaidRecentTransactionsResponse> => {
-      const result = await getPlaidRecentTransactions(walletAddress!, { limit });
+    queryFn: async (): Promise<PlaidHistoricalTransactionsResponse> => {
+      const result = await getPlaidHistoricalTransactions(walletAddress!, { limit });
       return result ?? { transactions: [], linked: false, notReady: false };
     },
     enabled,
@@ -48,24 +48,24 @@ export function usePlaidRecentTransactions(
   });
 
   const refresh = useCallback(async () => {
-    if (!walletAddress || !enabled) return;
-    const key = ['plaid-recent-transactions', walletAddress, limit] as const;
+    if (!walletAddress) return;
+    const key = ['plaid-historical-transactions', walletAddress, limit] as const;
     await queryClient.fetchQuery({
       queryKey: key,
       queryFn: async () => {
-        const result = await getPlaidRecentTransactions(walletAddress, { refresh: true, limit });
+        const result = await getPlaidHistoricalTransactions(walletAddress, { refresh: true, limit });
         return result ?? { transactions: [], linked: false, notReady: false };
       },
       staleTime: 0,
     });
-  }, [enabled, limit, queryClient, walletAddress]);
+  }, [limit, queryClient, walletAddress]);
 
   return {
     transactions: data?.transactions ?? [],
     linked: data?.linked ?? false,
     notReady: data?.notReady ?? false,
     isLoading: enabled ? (isLoading && !data) : false,
-    error: error ? (error instanceof Error ? error.message : 'Failed to load recent transactions') : null,
+    error: error ? (error instanceof Error ? error.message : 'Failed to load historical transactions') : null,
     refresh,
   };
 }

@@ -360,9 +360,13 @@ export const CacheKeys = {
   plaidSpend: (walletAddress: string) =>
     `plaid_spend:${walletAddress.toLowerCase()}`,
 
-  // Plaid recent transactions (2-year history, newest first)
+  // Plaid recent transactions (rolling 90 days, newest first)
   plaidRecentTransactions: (walletAddress: string) =>
     `plaid_recent_tx:${walletAddress.toLowerCase()}`,
+
+  // Plaid historical transactions (multi-year history, newest first)
+  plaidHistoricalTransactions: (walletAddress: string) =>
+    `plaid_historical_tx:${walletAddress.toLowerCase()}`,
 
   // Plaid investment holdings (per wallet) - reduces Plaid API usage
   plaidInvestmentsHoldings: (walletAddress: string) =>

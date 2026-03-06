@@ -39,6 +39,7 @@ import HeaderNav from './HeaderNav';
 import MobileNav from './MobileNav';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { usePlaidHistoricalTransactions } from '@/hooks/usePlaidHistoricalTransactions';
 import { usePlaidRecentTransactions } from '@/hooks/usePlaidRecentTransactions';
 import { useRecurringTransactions } from '@/hooks/useRecurringTransactions';
 import { useSpendTransactions } from '@/hooks/useSpendTransactions';
@@ -440,21 +441,6 @@ export default function TransactionsHome() {
     isLoading: portfolioLoading,
   } = usePortfolio();
 
-  const hasLinkedBankConnection = Boolean(cashBalance.bankLinked || bankAccounts.length > 0);
-  const { inflowStreams, outflowStreams, refresh: refreshRecurring } = useRecurringTransactions(address ?? undefined, {
-    enabled: hasLinkedBankConnection,
-  });
-  const { totalSpent, refresh: refreshSpend } = useSpendTransactions(address ?? undefined, {
-    enabled: hasLinkedBankConnection,
-  });
-  const { transactions: plaidRecentTransactions, refresh: refreshPlaidRecentTransactions } = usePlaidRecentTransactions(
-    address ?? undefined,
-    {
-      enabled: hasLinkedBankConnection,
-      limit: 1500,
-    }
-  );
-
   const [menuOpen, setMenuOpen] = useState(false);
   const [isScrolledPast, setIsScrolledPast] = useState(false);
 
@@ -475,6 +461,46 @@ export default function TransactionsHome() {
   const [forecastScenario, setForecastScenario] = useState<ForecastScenario>('Base');
   const [forecastHorizon, setForecastHorizon] = useState<ForecastHorizon>(20);
   const [insightTab, setInsightTab] = useState<InsightTab>('Cash Flow');
+
+  const needsHistoricalBankData = dateFilter === '1Y' || dateFilter === '2Y' || dateFilter === '5Y' || dateFilter === 'All';
+
+  const hasLinkedBankConnection = Boolean(cashBalance.bankLinked || bankAccounts.length > 0);
+  const { inflowStreams, outflowStreams, refresh: refreshRecurring } = useRecurringTransactions(address ?? undefined, {
+    enabled: hasLinkedBankConnection,
+  });
+  const { totalSpent, refresh: refreshSpend } = useSpendTransactions(address ?? undefined, {
+    enabled: hasLinkedBankConnection,
+  });
+  const { transactions: plaidRecentTransactions, refresh: refreshPlaidRecentTransactions } = usePlaidRecentTransactions(
+    address ?? undefined,
+    {
+      enabled: hasLinkedBankConnection,
+      limit: 500,
+    }
+  );
+  const {
+    transactions: plaidHistoricalTransactions,
+    refresh: refreshPlaidHistoricalTransactions,
+  } = usePlaidHistoricalTransactions(address ?? undefined, {
+    enabled: hasLinkedBankConnection && needsHistoricalBankData,
+    limit: 2500,
+  });
+
+  const bankTransactions = useMemo(() => {
+    if (plaidHistoricalTransactions.length === 0) return plaidRecentTransactions;
+    const merged = new Map<string, PlaidRecentTransaction>();
+    for (const tx of [...plaidRecentTransactions, ...plaidHistoricalTransactions]) {
+      merged.set(`${tx.item_id}:${tx.transaction_id}`, tx);
+    }
+    return Array.from(merged.values()).sort((a, b) => {
+      const timeA = Date.parse(a.date || a.authorized_date || '');
+      const timeB = Date.parse(b.date || b.authorized_date || '');
+      if (!Number.isNaN(timeA) && !Number.isNaN(timeB) && timeA !== timeB) {
+        return timeB - timeA;
+      }
+      return b.amount - a.amount;
+    });
+  }, [plaidHistoricalTransactions, plaidRecentTransactions]);
 
   const { setActionModalOpen } = useGlobalModals();
 
@@ -700,7 +726,7 @@ export default function TransactionsHome() {
     });
 
     const plaidEntries: ConsolidatedTransaction[] = [];
-    for (const tx of plaidRecentTransactions) {
+    for (const tx of bankTransactions) {
       const amount = Math.abs(Number(tx.amount) || 0);
       if (!(amount > 0)) continue;
 
@@ -746,7 +772,7 @@ export default function TransactionsHome() {
     }
 
     return [...walletEntries, ...plaidEntries];
-  }, [plaidRecentTransactions, walletTransactions]);
+  }, [bankTransactions, walletTransactions]);
 
   const accountOptions = useMemo(() => {
     const uniqueAccounts = new Set(consolidatedTransactions.map((tx) => tx.account));
@@ -920,6 +946,9 @@ export default function TransactionsHome() {
     const refreshTasks: Array<Promise<unknown>> = [refreshAll()];
     if (hasLinkedBankConnection) {
       refreshTasks.push(refreshRecurring(), refreshSpend(), refreshPlaidRecentTransactions());
+      if (needsHistoricalBankData) {
+        refreshTasks.push(refreshPlaidHistoricalTransactions());
+      }
     }
     await Promise.all(refreshTasks);
   };

@@ -930,7 +930,7 @@ export interface PlaidRecentTransactionsResponse {
 }
 
 /**
- * Plaid: get recent bank transactions (last 2 years) across all linked items.
+ * Plaid: get recent bank transactions (rolling 90 days) across all linked items.
  * Returns newest first. Pass refresh: true to bypass cache.
  */
 export async function getPlaidRecentTransactions(
@@ -949,6 +949,41 @@ export async function getPlaidRecentTransactions(
 
   const response = await apiRequest<PlaidRecentTransactionsResponse>(
     `/api/plaid/transactions/recent?${search.toString()}`,
+    { ...(options?.refresh && { cache: 'no-store' as RequestCache }) }
+  );
+  if (response.error) return null;
+  if (response.data) return response.data;
+  return { transactions: [], linked: false };
+}
+
+export interface PlaidHistoricalTransactionsResponse {
+  transactions: PlaidRecentTransaction[];
+  linked: boolean;
+  /** True when Plaid reports product data is still warming up (PRODUCT_NOT_READY). */
+  notReady?: boolean;
+  cached?: boolean;
+}
+
+/**
+ * Plaid: get historical bank transactions (last 2 years) across linked items.
+ * Returns newest first. Pass refresh: true to bypass cache.
+ */
+export async function getPlaidHistoricalTransactions(
+  walletAddress: string,
+  options?: { refresh?: boolean; limit?: number }
+): Promise<PlaidHistoricalTransactionsResponse | null> {
+  const search = new URLSearchParams();
+  search.set('walletAddress', walletAddress);
+  if (options?.limit && Number.isFinite(options.limit) && options.limit > 0) {
+    search.set('limit', String(Math.floor(options.limit)));
+  }
+  if (options?.refresh) {
+    search.set('refresh', '1');
+    search.set('_t', String(Date.now()));
+  }
+
+  const response = await apiRequest<PlaidHistoricalTransactionsResponse>(
+    `/api/plaid/transactions/historical?${search.toString()}`,
     { ...(options?.refresh && { cache: 'no-store' as RequestCache }) }
   );
   if (response.error) return null;
