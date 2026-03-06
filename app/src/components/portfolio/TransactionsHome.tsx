@@ -42,7 +42,6 @@ import { usePortfolio } from '@/context/PortfolioContext';
 import { usePlaidHistoricalTransactions } from '@/hooks/usePlaidHistoricalTransactions';
 import { usePlaidRecentTransactions } from '@/hooks/usePlaidRecentTransactions';
 import { useRecurringTransactions } from '@/hooks/useRecurringTransactions';
-import { useSpendTransactions } from '@/hooks/useSpendTransactions';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -130,6 +129,13 @@ const USD_DENOMINATED_SYMBOLS = new Set([
   'CLRUSD',
 ]);
 
+const PLAID_TRANSFER_NAME_HINTS = ['zelle', 'cash app', 'cashapp', 'venmo'];
+
+const hasTransferNameHint = (tx: PlaidRecentTransaction) => {
+  const descriptor = `${tx.name || ''} ${tx.merchant_name || ''}`.toLowerCase();
+  return PLAID_TRANSFER_NAME_HINTS.some((hint) => descriptor.includes(hint));
+};
+
 const normalizeTimestampMs = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     if (value <= 0) return null;
@@ -188,13 +194,14 @@ const getWalletAmountUsd = (tx: WalletTransaction) => {
 
 const getPlaidCategory = (tx: PlaidRecentTransaction): ConsolidatedCategory => {
   const categoryText = `${tx.category_primary || ''} ${tx.category_detailed || ''}`.toLowerCase();
+  const hasTransferHint = categoryText.includes('transfer') || hasTransferNameHint(tx);
   if (tx.direction === 'inflow') {
-    if (categoryText.includes('transfer')) return 'transfer';
+    if (hasTransferHint) return 'transfer';
     if (categoryText.includes('deposit')) return 'deposit';
     return 'income';
   }
 
-  if (categoryText.includes('transfer')) return 'transfer';
+  if (hasTransferHint) return 'transfer';
   if (
     categoryText.includes('subscription') ||
     categoryText.includes('rent') ||
@@ -524,9 +531,6 @@ export default function TransactionsHome() {
   const { inflowStreams, outflowStreams, refresh: refreshRecurring } = useRecurringTransactions(address ?? undefined, {
     enabled: hasLinkedBankConnection,
   });
-  const { totalSpent, refresh: refreshSpend } = useSpendTransactions(address ?? undefined, {
-    enabled: hasLinkedBankConnection,
-  });
   const { transactions: plaidRecentTransactions, refresh: refreshPlaidRecentTransactions } = usePlaidRecentTransactions(
     address ?? undefined,
     {
@@ -586,17 +590,61 @@ export default function TransactionsHome() {
     [outflowStreams]
   );
 
-  const projectedMonthlySpend = useMemo(() => {
+  const projectedMonthlyOperatingFlow = useMemo(() => {
     const now = new Date();
+    const monthStartMs = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const nowMs = now.getTime();
     const daysElapsed = Math.max(now.getDate(), 1);
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    if (totalSpent <= 0) return 0;
-    return (totalSpent / daysElapsed) * daysInMonth;
-  }, [totalSpent]);
 
-  const totalInflowFromBanks = recurringInflowMonthly;
-  const totalOutflowFromBanks = recurringOutflowMonthly + projectedMonthlySpend;
-  const monthlyNetFlow = totalInflowFromBanks - totalOutflowFromBanks;
+    let inflowMtd = 0;
+    let outflowMtd = 0;
+
+    for (const tx of walletTransactions) {
+      const flowMeta = getWalletFlowMeta(tx.type);
+      if (flowMeta.category === 'transfer') continue;
+
+      const date = getDateFromTransaction(tx).getTime();
+      if (date < monthStartMs || date > nowMs) continue;
+
+      const amount = getWalletAmountUsd(tx);
+      if (!(amount > 0)) continue;
+
+      if (flowMeta.direction === 'inflow') {
+        inflowMtd += amount;
+      } else {
+        outflowMtd += amount;
+      }
+    }
+
+    for (const tx of bankTransactions) {
+      if (getPlaidCategory(tx) === 'transfer') continue;
+
+      const date = getDateFromPlaidTransaction(tx).getTime();
+      if (date < monthStartMs || date > nowMs) continue;
+
+      const amount = Math.abs(Number(tx.amount) || 0);
+      if (!(amount > 0)) continue;
+
+      if (tx.direction === 'inflow') {
+        inflowMtd += amount;
+      } else {
+        outflowMtd += amount;
+      }
+    }
+
+    const projectionMultiplier = daysInMonth / daysElapsed;
+    return {
+      inflowMtd,
+      outflowMtd,
+      inflowMonthly: inflowMtd * projectionMultiplier,
+      outflowMonthly: outflowMtd * projectionMultiplier,
+    };
+  }, [bankTransactions, walletTransactions]);
+
+  const projectedMonthlyInflow = projectedMonthlyOperatingFlow.inflowMonthly;
+  const projectedMonthlyOutflow = projectedMonthlyOperatingFlow.outflowMonthly;
+  const monthlyNetFlow = projectedMonthlyInflow - projectedMonthlyOutflow;
 
   const baseMonthlyGrowthRate = useMemo(() => {
     const positiveHoldings = holdings.filter((holding) => holding.balanceUSD > 0);
@@ -1001,7 +1049,7 @@ export default function TransactionsHome() {
   const handleRefreshData = async () => {
     const refreshTasks: Array<Promise<unknown>> = [refreshAll()];
     if (hasLinkedBankConnection) {
-      refreshTasks.push(refreshRecurring(), refreshSpend(), refreshPlaidRecentTransactions());
+      refreshTasks.push(refreshRecurring(), refreshPlaidRecentTransactions());
       if (needsHistoricalBankData) {
         refreshTasks.push(refreshPlaidHistoricalTransactions());
       }
@@ -1084,6 +1132,7 @@ export default function TransactionsHome() {
     consolidatedTransactions.forEach((transaction) => {
       const txDate = transaction.date;
       if (txDate.getTime() > nowMs) return;
+      if (transaction.category === 'transfer') return;
       const key = `${txDate.getFullYear()}-${txDate.getMonth()}`;
       const point = map.get(key);
       if (!point) return;
@@ -1197,6 +1246,7 @@ export default function TransactionsHome() {
     const map = new Map(points.map((point) => [point.key, point]));
 
     filteredTransactions.forEach((transaction) => {
+      if (transaction.category === 'transfer') return;
       const txDate = transaction.date;
       const key = `${txDate.getFullYear()}-${txDate.getMonth()}-${txDate.getDate()}`;
       const point = map.get(key);
@@ -1241,6 +1291,7 @@ export default function TransactionsHome() {
   const accountFlowFocus = useMemo(() => {
     const buckets = new Map<string, { inflow: number; outflow: number; count: number }>();
     filteredTransactions.forEach((transaction) => {
+      if (transaction.category === 'transfer') return;
       const current = buckets.get(transaction.account) ?? { inflow: 0, outflow: 0, count: 0 };
       if (transaction.direction === 'inflow') current.inflow += transaction.amount;
       if (transaction.direction === 'outflow') current.outflow += transaction.amount;
@@ -1365,12 +1416,12 @@ export default function TransactionsHome() {
             <section className="space-y-3 pt-3">
               <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
                 <span className="text-sm font-medium">Consolidated cash flow</span>
-                <div className="group relative">
-                  <Info className="w-4 h-4 cursor-help" />
-                  <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
-                    Monthly inflow and outflow across linked accounts.
+                  <div className="group relative">
+                    <Info className="w-4 h-4 cursor-help" />
+                    <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+                      Projected month-end from month-to-date activity (transfers excluded).
+                    </div>
                   </div>
-                </div>
                 <span
                   className={cn(
                     'ml-auto text-[10px] px-2 py-0.5 rounded-full border',
@@ -1393,11 +1444,11 @@ export default function TransactionsHome() {
                     <div className="mt-1 flex items-center gap-1.5 min-w-0">
                       <TrendingUp className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                       <p className="min-w-0 truncate text-[20px] sm:text-[24px] font-light leading-none text-emerald-600 dark:text-emerald-400">
-                        {formatCurrency(totalInflowFromBanks)}
+                        {formatCurrency(projectedMonthlyInflow)}
                       </p>
                     </div>
                     <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-                      Bank inflow across {bankAccounts.length} accounts
+                      Projected month-end (on-chain + bank, excluding transfers)
                     </p>
                   </div>
 
@@ -1408,11 +1459,11 @@ export default function TransactionsHome() {
                     <div className="mt-1 flex items-center gap-1.5 min-w-0">
                       <TrendingDown className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                       <p className="min-w-0 truncate text-[20px] sm:text-[24px] font-light leading-none text-rose-600 dark:text-rose-400">
-                        {formatCurrency(totalOutflowFromBanks)}
+                        {formatCurrency(projectedMonthlyOutflow)}
                       </p>
                     </div>
                     <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-                      Recurring + projected spend
+                      Projected month-end (on-chain + bank, excluding transfers)
                     </p>
                   </div>
                 </div>
@@ -1421,8 +1472,8 @@ export default function TransactionsHome() {
                   <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400">
                     <span>Flow coverage</span>
                     <span className="font-medium">
-                      {totalOutflowFromBanks > 0
-                        ? `${Math.round((totalInflowFromBanks / totalOutflowFromBanks) * 100)}%`
+                      {projectedMonthlyOutflow > 0
+                        ? `${Math.round((projectedMonthlyInflow / projectedMonthlyOutflow) * 100)}%`
                         : '0%'}
                     </span>
                   </div>
@@ -1436,8 +1487,8 @@ export default function TransactionsHome() {
                         width: `${Math.max(
                           8,
                           Math.min(
-                            totalOutflowFromBanks > 0
-                              ? (totalInflowFromBanks / totalOutflowFromBanks) * 100
+                            projectedMonthlyOutflow > 0
+                              ? (projectedMonthlyInflow / projectedMonthlyOutflow) * 100
                               : 0,
                             100
                           )
