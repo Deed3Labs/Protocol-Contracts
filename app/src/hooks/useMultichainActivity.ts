@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
-import { formatDistanceToNow } from 'date-fns';
 import { SUPPORTED_NETWORKS, getNetworkByChainId, getNetworkInfo } from '@/config/networks';
 import type { WalletTransaction } from '@/types/transactions';
 import { getTransactions } from '@/utils/apiClient';
@@ -18,6 +17,25 @@ interface UseMultichainActivityReturn {
   refresh: () => Promise<void>;
   refreshChain: (chainId: number) => Promise<void>;
 }
+
+const normalizeTimestampMs = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value <= 0) return null;
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+    }
+
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+
+  return null;
+};
 
 /**
  * Hook to fetch wallet transaction history across all supported networks
@@ -82,12 +100,23 @@ export function useMultichainActivity(
       }
 
       // Map server response to MultichainTransaction format
-      return serverTransactions.transactions.map((tx: any) => ({
-        ...tx,
-        date: formatDistanceToNow(new Date(tx.timestamp), { addSuffix: true }),
-        chainId,
-        chainName: networkConfig?.name || networkInfo?.name || `Chain ${chainId}`,
-      }));
+      return serverTransactions.transactions.map((tx: any) => {
+        const normalizedTimestamp = normalizeTimestampMs(tx?.timestamp);
+        const normalizedDate =
+          normalizedTimestamp != null
+            ? new Date(normalizedTimestamp).toISOString()
+            : typeof tx?.date === 'string'
+              ? tx.date
+              : '';
+
+        return {
+          ...tx,
+          timestamp: normalizedTimestamp ?? undefined,
+          date: normalizedDate,
+          chainId,
+          chainName: networkConfig?.name || networkInfo?.name || `Chain ${chainId}`,
+        };
+      });
     } catch (err) {
       // Server is required in production
       if (import.meta.env.PROD) {

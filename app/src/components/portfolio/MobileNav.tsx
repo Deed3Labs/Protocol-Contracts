@@ -31,13 +31,13 @@ export default function MobileNav({ onActionOpen }: MobileNavProps) {
         </button>
         
         <button 
-          onClick={() => navigate('/budget')}
+          onClick={() => navigate('/transactions')}
           className="flex flex-col items-center gap-1 group w-[70px] pb-1"
         >
           <div className="p-1 rounded-xl group-active:scale-95 transition-transform duration-200">
-            <ArrowLeftRight className={`h-6 w-6 transition-colors duration-300 ${isActive('/budget') ? 'text-black dark:text-white' : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300'}`} strokeWidth={2} />
+            <ArrowLeftRight className={`h-6 w-6 transition-colors duration-300 ${isActive('/transactions') ? 'text-black dark:text-white' : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300'}`} strokeWidth={2} />
           </div>
-          <span className={`text-[9px] font-medium tracking-wide transition-colors duration-300 ${isActive('/budget') ? 'text-black dark:text-white' : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300'}`}>
+          <span className={`text-[9px] font-medium tracking-wide transition-colors duration-300 ${isActive('/transactions') ? 'text-black dark:text-white' : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300'}`}>
             Transactions
           </span>
         </button>

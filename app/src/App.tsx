@@ -148,7 +148,8 @@ function App() {
                     <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} />}>
                       <Route path="/" element={<BrokerageHome />} />
                       <Route path="/markets" element={<MarketsHome />} />
-                      <Route path="/budget" element={<TransactionsHome />} />
+                      <Route path="/transactions" element={<TransactionsHome />} />
+                      <Route path="/budget" element={<Navigate to="/transactions" replace />} />
                       <Route path="/savings" element={<SavingsHome />} />
                       <Route path="/earn" element={<Navigate to="/savings" replace />} />
                       <Route path="/equity" element={<UnifiedWealthHome />} />
