@@ -438,23 +438,23 @@ interface FilterCycleControlProps {
 }
 
 const FilterCycleControl = ({ label, value, onPrev, onNext }: FilterCycleControlProps) => (
-  <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/70 dark:bg-zinc-900/45 p-2">
+  <div className="space-y-1">
     <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{label}</p>
-    <div className="mt-1.5 grid grid-cols-[30px_minmax(0,1fr)_30px] gap-1.5 items-center">
+    <div className="grid grid-cols-[30px_minmax(0,1fr)_30px] items-center rounded-md border border-zinc-200 dark:border-zinc-800">
       <button
         type="button"
         onClick={onPrev}
-        className="h-8 rounded-md border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors inline-flex items-center justify-center"
+        className="h-8 border-r border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors inline-flex items-center justify-center"
       >
         <ChevronLeft className="w-4 h-4" />
       </button>
-      <div className="h-8 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-950/40 px-2 text-[11px] text-zinc-700 dark:text-zinc-200 inline-flex items-center justify-center truncate">
+      <div className="h-8 px-2 text-[11px] text-zinc-700 dark:text-zinc-200 inline-flex items-center justify-center truncate">
         {value}
       </div>
       <button
         type="button"
         onClick={onNext}
-        className="h-8 rounded-md border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors inline-flex items-center justify-center"
+        className="h-8 border-l border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors inline-flex items-center justify-center"
       >
         <ChevronRight className="w-4 h-4" />
       </button>
@@ -475,9 +475,9 @@ const FilterPill = ({ active, label, onClick, activeClassName }: FilterPillProps
     onClick={onClick}
     aria-pressed={active}
     className={cn(
-      'h-8 rounded-md border px-2 text-[11px] transition-colors inline-flex items-center justify-center whitespace-nowrap',
+      'h-8 rounded-md border px-2 text-[11px] transition-colors inline-flex items-center justify-center whitespace-nowrap min-w-0',
       active
-        ? activeClassName || 'border-blue-300 bg-blue-50/70 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300'
+        ? activeClassName || 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
         : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
     )}
   >
@@ -2214,24 +2214,18 @@ export default function TransactionsHome() {
                   if (!open) setAdvancedFilterTab('quick');
                 }}
               >
-                <DialogContent className="w-[calc(100vw-0.75rem)] max-w-[calc(100vw-0.75rem)] sm:max-w-2xl h-[min(590px,calc(100dvh-0.75rem))] p-0 gap-0 overflow-hidden rounded-2xl border border-zinc-200/70 dark:border-zinc-800/70 bg-white/95 dark:bg-[#0b0f14]/95">
-                  <div className="px-3 sm:px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-gradient-to-r from-blue-500/14 via-emerald-500/10 to-transparent dark:from-blue-500/22 dark:via-emerald-500/14 dark:to-transparent">
+                <DialogContent className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-2xl h-[min(560px,calc(100dvh-1rem))] p-0 gap-0 overflow-hidden rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#0e0e0e]">
+                  <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
                     <DialogHeader className="space-y-1">
-                      <DialogTitle className="text-base sm:text-lg font-medium tracking-tight">Transaction Filters</DialogTitle>
-                      <DialogDescription className="text-[11px] sm:text-xs">
-                        Compact control board with chip toggles, sliders, and quick cycling.
+                      <DialogTitle className="text-base font-medium tracking-tight">Transaction Filters</DialogTitle>
+                      <DialogDescription className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                        Fast controls with chips, toggles, and sliders.
                       </DialogDescription>
                     </DialogHeader>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
-                      <Badge variant="outline" className="text-[10px] border-blue-300/60 dark:border-blue-700/60">
-                        {getDateFilterLabel(dateFilter)}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] border-emerald-300/60 dark:border-emerald-700/60">
-                        {filteredTransactions.length} results
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] border-zinc-300/70 dark:border-zinc-700/70">
-                        {activeFilterLabels.length} active
-                      </Badge>
+                      <Badge variant="outline" className="text-[10px]">{getDateFilterLabel(dateFilter)}</Badge>
+                      <Badge variant="outline" className="text-[10px]">{filteredTransactions.length} results</Badge>
+                      <Badge variant="outline" className="text-[10px]">{activeFilterLabels.length} active</Badge>
                     </div>
                   </div>
 
@@ -2240,20 +2234,20 @@ export default function TransactionsHome() {
                     onValueChange={(value) => setAdvancedFilterTab(value as 'quick' | 'flow' | 'time' | 'amount')}
                     className="flex-1 min-h-0 grid grid-rows-[auto_1fr_auto]"
                   >
-                    <div className="px-3 sm:px-4 pt-3">
-                      <TabsList className="grid grid-cols-4 w-full h-9 p-0.5 rounded-lg bg-zinc-100/90 dark:bg-zinc-900/70 border border-zinc-200/70 dark:border-zinc-800/70">
-                        <TabsTrigger value="quick" className="h-8 px-1 text-[10px] sm:text-xs">Quick</TabsTrigger>
-                        <TabsTrigger value="flow" className="h-8 px-1 text-[10px] sm:text-xs">Flow</TabsTrigger>
-                        <TabsTrigger value="time" className="h-8 px-1 text-[10px] sm:text-xs">Time</TabsTrigger>
-                        <TabsTrigger value="amount" className="h-8 px-1 text-[10px] sm:text-xs">Amount</TabsTrigger>
+                    <div className="px-4 pt-2.5">
+                      <TabsList className="w-full max-w-full min-w-0 grid grid-cols-4 h-9 p-0.5 rounded-md bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                        <TabsTrigger value="quick" className="h-8 min-w-0 px-1 text-[11px] sm:text-xs truncate">Quick</TabsTrigger>
+                        <TabsTrigger value="flow" className="h-8 min-w-0 px-1 text-[11px] sm:text-xs truncate">Flow</TabsTrigger>
+                        <TabsTrigger value="time" className="h-8 min-w-0 px-1 text-[11px] sm:text-xs truncate">Time</TabsTrigger>
+                        <TabsTrigger value="amount" className="h-8 min-w-0 px-1 text-[11px] sm:text-xs truncate">Amount</TabsTrigger>
                       </TabsList>
                     </div>
 
-                    <div className="px-3 sm:px-4 pt-2 pb-3 min-h-0">
+                    <div className="px-4 pt-2 pb-2 min-h-0">
                       <TabsContent value="quick" className="mt-0 h-full">
-                        <div className="h-full rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/75 dark:bg-zinc-900/45 p-2.5 space-y-2">
-                          <div>
-                            <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Quick presets</p>
+                        <div className="h-full flex flex-col">
+                          <div className="py-1.5">
+                            <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Presets</p>
                             <div className="grid grid-cols-2 gap-1.5">
                               <FilterPill
                                 active={dateFilter === '30D' && directionFilter === 'outflow' && statusFilter === 'All'}
@@ -2264,7 +2258,6 @@ export default function TransactionsHome() {
                                   setStatusFilter('All');
                                   setSortFilter('Newest');
                                 }}
-                                activeClassName="border-rose-300 bg-rose-50/80 text-rose-700 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-300"
                               />
                               <FilterPill
                                 active={dateFilter === '90D' && statusFilter === 'pending'}
@@ -2274,7 +2267,6 @@ export default function TransactionsHome() {
                                   setStatusFilter('pending');
                                   setDirectionFilter('All');
                                 }}
-                                activeClassName="border-amber-300 bg-amber-50/80 text-amber-700 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-300"
                               />
                               <FilterPill
                                 active={dateFilter === '1Y' && directionFilter === 'inflow' && sortFilter === 'AmountHigh'}
@@ -2285,7 +2277,6 @@ export default function TransactionsHome() {
                                   setStatusFilter('completed');
                                   setSortFilter('AmountHigh');
                                 }}
-                                activeClassName="border-emerald-300 bg-emerald-50/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300"
                               />
                               <button
                                 type="button"
@@ -2297,7 +2288,7 @@ export default function TransactionsHome() {
                             </div>
                           </div>
 
-                          <div>
+                          <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
                             <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Direction</p>
                             <div className="grid grid-cols-3 gap-1.5">
                               {DIRECTION_FILTER_OPTIONS.map((option) => (
@@ -2306,19 +2297,12 @@ export default function TransactionsHome() {
                                   active={directionFilter === option}
                                   label={getDirectionFilterLabel(option)}
                                   onClick={() => setDirectionFilter(option)}
-                                  activeClassName={
-                                    option === 'inflow'
-                                      ? 'border-emerald-300 bg-emerald-50/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300'
-                                      : option === 'outflow'
-                                        ? 'border-rose-300 bg-rose-50/80 text-rose-700 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-300'
-                                        : 'border-blue-300 bg-blue-50/80 text-blue-700 dark:border-blue-700 dark:bg-blue-950/35 dark:text-blue-300'
-                                  }
                                 />
                               ))}
                             </div>
                           </div>
 
-                          <div>
+                          <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
                             <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Status</p>
                             <div className="grid grid-cols-4 gap-1.5">
                               {STATUS_FILTER_OPTIONS.map((option) => (
@@ -2327,21 +2311,12 @@ export default function TransactionsHome() {
                                   active={statusFilter === option}
                                   label={getStatusFilterLabel(option)}
                                   onClick={() => setStatusFilter(option)}
-                                  activeClassName={
-                                    option === 'completed'
-                                      ? 'border-emerald-300 bg-emerald-50/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300'
-                                      : option === 'pending'
-                                        ? 'border-amber-300 bg-amber-50/80 text-amber-700 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-300'
-                                        : option === 'failed'
-                                          ? 'border-rose-300 bg-rose-50/80 text-rose-700 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-300'
-                                          : 'border-blue-300 bg-blue-50/80 text-blue-700 dark:border-blue-700 dark:bg-blue-950/35 dark:text-blue-300'
-                                  }
                                 />
                               ))}
                             </div>
                           </div>
 
-                          <div>
+                          <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
                             <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Source</p>
                             <div className="grid grid-cols-2 gap-1.5">
                               {SOURCE_FILTER_OPTIONS.map((option) => (
@@ -2350,7 +2325,6 @@ export default function TransactionsHome() {
                                   active={sourceFilter === option}
                                   label={option}
                                   onClick={() => setSourceFilter(option)}
-                                  activeClassName="border-indigo-300 bg-indigo-50/80 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/35 dark:text-indigo-300"
                                 />
                               ))}
                             </div>
@@ -2359,19 +2333,13 @@ export default function TransactionsHome() {
                       </TabsContent>
 
                       <TabsContent value="flow" className="mt-0 h-full">
-                        <div className="h-full rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/75 dark:bg-zinc-900/45 p-2.5 space-y-2">
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                        <div className="h-full flex flex-col">
+                          <div className="py-1.5 grid grid-cols-2 gap-2">
                             <FilterCycleControl
                               label="Source"
                               value={sourceFilter}
                               onPrev={() => setSourceFilter(cycleFilterOption(SOURCE_FILTER_OPTIONS, sourceFilter, -1))}
                               onNext={() => setSourceFilter(cycleFilterOption(SOURCE_FILTER_OPTIONS, sourceFilter, 1))}
-                            />
-                            <FilterCycleControl
-                              label="Category"
-                              value={getCategoryFilterLabel(categoryFilter)}
-                              onPrev={() => setCategoryFilter(cycleFilterOption(CATEGORY_FILTER_OPTIONS, categoryFilter, -1))}
-                              onNext={() => setCategoryFilter(cycleFilterOption(CATEGORY_FILTER_OPTIONS, categoryFilter, 1))}
                             />
                             <FilterCycleControl
                               label="Account"
@@ -2381,38 +2349,37 @@ export default function TransactionsHome() {
                             />
                           </div>
 
-                          <div className="grid grid-cols-3 gap-1.5">
-                            {DIRECTION_FILTER_OPTIONS.map((option) => (
-                              <FilterPill
-                                key={`flow-direction-${option}`}
-                                active={directionFilter === option}
-                                label={getDirectionFilterLabel(option)}
-                                onClick={() => setDirectionFilter(option)}
-                              />
-                            ))}
-                          </div>
-
-                          <div className="grid grid-cols-4 gap-1.5">
-                            {STATUS_FILTER_OPTIONS.map((option) => (
-                              <FilterPill
-                                key={`flow-status-${option}`}
-                                active={statusFilter === option}
-                                label={getStatusFilterLabel(option)}
-                                onClick={() => setStatusFilter(option)}
-                              />
-                            ))}
-                          </div>
-
-                          <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 bg-white/80 dark:bg-zinc-950/30 p-2">
-                            <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Category chips</p>
-                            <div className="grid grid-cols-3 gap-1.5">
-                              {CATEGORY_FILTER_OPTIONS.slice(0, 9).map((option) => (
+                          <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
+                            <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Category</p>
+                            <div className="grid grid-cols-4 gap-1.5">
+                              {CATEGORY_FILTER_OPTIONS.slice(0, 8).map((option) => (
                                 <FilterPill
                                   key={option}
                                   active={categoryFilter === option}
                                   label={getCategoryFilterLabel(option)}
                                   onClick={() => setCategoryFilter(option)}
-                                  activeClassName="border-violet-300 bg-violet-50/80 text-violet-700 dark:border-violet-700 dark:bg-violet-950/35 dark:text-violet-300"
+                                />
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
+                            <FilterCycleControl
+                              label="Category cycle"
+                              value={getCategoryFilterLabel(categoryFilter)}
+                              onPrev={() => setCategoryFilter(cycleFilterOption(CATEGORY_FILTER_OPTIONS, categoryFilter, -1))}
+                              onNext={() => setCategoryFilter(cycleFilterOption(CATEGORY_FILTER_OPTIONS, categoryFilter, 1))}
+                            />
+                          </div>
+
+                          <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {DIRECTION_FILTER_OPTIONS.map((option) => (
+                                <FilterPill
+                                  key={`flow-direction-${option}`}
+                                  active={directionFilter === option}
+                                  label={getDirectionFilterLabel(option)}
+                                  onClick={() => setDirectionFilter(option)}
                                 />
                               ))}
                             </div>
@@ -2421,8 +2388,8 @@ export default function TransactionsHome() {
                       </TabsContent>
 
                       <TabsContent value="time" className="mt-0 h-full">
-                        <div className="h-full rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/75 dark:bg-zinc-900/45 p-2.5 space-y-2">
-                          <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 bg-white/80 dark:bg-zinc-950/30 p-2">
+                        <div className="h-full flex flex-col">
+                          <div className="py-1.5">
                             <div className="flex items-center justify-between gap-2 mb-1">
                               <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Date horizon</p>
                               <p className="text-[10px] text-zinc-600 dark:text-zinc-300">{getDateFilterCompactLabel(dateFilter)}</p>
@@ -2437,7 +2404,7 @@ export default function TransactionsHome() {
                                 const nextValue = DATE_FILTER_OPTIONS[Number(event.target.value)] || '90D';
                                 setDateFilter(nextValue);
                               }}
-                              className="w-full accent-blue-600"
+                              className="w-full accent-zinc-900 dark:accent-zinc-100"
                             />
                             <div className="grid grid-cols-6 gap-1 mt-1">
                               {DATE_FILTER_OPTIONS.map((option) => (
@@ -2446,10 +2413,10 @@ export default function TransactionsHome() {
                                   type="button"
                                   onClick={() => setDateFilter(option)}
                                   className={cn(
-                                    'h-7 rounded-md border text-[10px] transition-colors',
+                                    'h-7 rounded-md border text-[10px] transition-colors min-w-0 truncate',
                                     dateFilter === option
-                                      ? 'border-blue-300 bg-blue-50/80 text-blue-700 dark:border-blue-700 dark:bg-blue-950/35 dark:text-blue-300'
-                                      : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                                      ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                                      : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
                                   )}
                                 >
                                   {option}
@@ -2458,63 +2425,68 @@ export default function TransactionsHome() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setDateFilter(dateFilter === 'All' ? '90D' : 'All')}
-                              className={cn(
-                                'h-8 rounded-md border px-2 text-[11px] transition-colors inline-flex items-center justify-between',
-                                dateFilter === 'All'
-                                  ? 'border-emerald-300 bg-emerald-50/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300'
-                                  : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
-                              )}
-                            >
-                              <span>Full history</span>
-                              <span className={cn('relative inline-flex h-4 w-8 rounded-full transition-colors', dateFilter === 'All' ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700')}>
-                                <span className={cn('absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform', dateFilter === 'All' ? 'translate-x-4' : 'translate-x-0.5')} />
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setSortFilter(sortFilter === 'Oldest' ? 'Newest' : 'Oldest')}
-                              className={cn(
-                                'h-8 rounded-md border px-2 text-[11px] transition-colors inline-flex items-center justify-between',
-                                sortFilter === 'Oldest'
-                                  ? 'border-indigo-300 bg-indigo-50/80 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/35 dark:text-indigo-300'
-                                  : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
-                              )}
-                            >
-                              <span>Oldest first</span>
-                              <span className={cn('relative inline-flex h-4 w-8 rounded-full transition-colors', sortFilter === 'Oldest' ? 'bg-indigo-500' : 'bg-zinc-300 dark:bg-zinc-700')}>
-                                <span className={cn('absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform', sortFilter === 'Oldest' ? 'translate-x-4' : 'translate-x-0.5')} />
-                              </span>
-                            </button>
+                          <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setDateFilter(dateFilter === 'All' ? '90D' : 'All')}
+                                className={cn(
+                                  'h-8 rounded-md border px-2 text-[11px] transition-colors inline-flex items-center justify-between',
+                                  dateFilter === 'All'
+                                    ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                                    : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
+                                )}
+                              >
+                                <span>Full history</span>
+                                <span className={cn('relative inline-flex h-4 w-8 rounded-full transition-colors', dateFilter === 'All' ? 'bg-zinc-100/40' : 'bg-zinc-300 dark:bg-zinc-700')}>
+                                  <span className={cn('absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform', dateFilter === 'All' ? 'translate-x-4' : 'translate-x-0.5')} />
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSortFilter(sortFilter === 'Oldest' ? 'Newest' : 'Oldest')}
+                                className={cn(
+                                  'h-8 rounded-md border px-2 text-[11px] transition-colors inline-flex items-center justify-between',
+                                  sortFilter === 'Oldest'
+                                    ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                                    : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
+                                )}
+                              >
+                                <span>Oldest first</span>
+                                <span className={cn('relative inline-flex h-4 w-8 rounded-full transition-colors', sortFilter === 'Oldest' ? 'bg-zinc-100/40' : 'bg-zinc-300 dark:bg-zinc-700')}>
+                                  <span className={cn('absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform', sortFilter === 'Oldest' ? 'translate-x-4' : 'translate-x-0.5')} />
+                                </span>
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {SORT_FILTER_OPTIONS.map((option) => (
-                              <FilterPill
-                                key={option}
-                                active={sortFilter === option}
-                                label={SORT_FILTER_LABELS[option]}
-                                onClick={() => setSortFilter(option)}
-                                activeClassName="border-sky-300 bg-sky-50/80 text-sky-700 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-300"
-                              />
-                            ))}
+                          <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {SORT_FILTER_OPTIONS.map((option) => (
+                                <FilterPill
+                                  key={option}
+                                  active={sortFilter === option}
+                                  label={SORT_FILTER_LABELS[option]}
+                                  onClick={() => setSortFilter(option)}
+                                />
+                              ))}
+                            </div>
                           </div>
 
-                          <FilterCycleControl
-                            label="Account focus"
-                            value={accountFilter}
-                            onPrev={() => setAccountFilter(cycleFilterOption(accountOptions, accountFilter, -1))}
-                            onNext={() => setAccountFilter(cycleFilterOption(accountOptions, accountFilter, 1))}
-                          />
+                          <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
+                            <FilterCycleControl
+                              label="Account focus"
+                              value={accountFilter}
+                              onPrev={() => setAccountFilter(cycleFilterOption(accountOptions, accountFilter, -1))}
+                              onNext={() => setAccountFilter(cycleFilterOption(accountOptions, accountFilter, 1))}
+                            />
+                          </div>
                         </div>
                       </TabsContent>
 
                       <TabsContent value="amount" className="mt-0 h-full">
-                        <div className="h-full rounded-xl border border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/75 dark:bg-zinc-900/45 p-2.5 space-y-2">
-                          <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 bg-white/80 dark:bg-zinc-950/30 p-2">
+                        <div className="h-full flex flex-col">
+                          <div className="py-1.5">
                             <div className="flex items-center justify-between gap-2 text-[10px]">
                               <span className="text-zinc-500 dark:text-zinc-400">Range</span>
                               <span className="text-zinc-700 dark:text-zinc-200">
@@ -2523,7 +2495,7 @@ export default function TransactionsHome() {
                             </div>
                             <div className="relative h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800 mt-2 mb-1">
                               <span
-                                className="absolute h-1.5 rounded-full bg-blue-500"
+                                className="absolute h-1.5 rounded-full bg-zinc-900 dark:bg-zinc-100"
                                 style={{
                                   left: `${(amountMinSliderValue / amountRangeUpperBound) * 100}%`,
                                   width: `${Math.max(((amountMaxSliderValue - amountMinSliderValue) / amountRangeUpperBound) * 100, 2)}%`,
@@ -2543,7 +2515,7 @@ export default function TransactionsHome() {
                                     const clamped = Math.min(nextValue, amountMaxSliderValue);
                                     setAmountMin(clamped <= 0 ? '' : String(Math.round(clamped)));
                                   }}
-                                  className="w-full accent-emerald-600"
+                                  className="w-full accent-zinc-900 dark:accent-zinc-100"
                                 />
                               </div>
                               <div>
@@ -2558,57 +2530,56 @@ export default function TransactionsHome() {
                                     const clamped = Math.max(nextValue, amountMinSliderValue);
                                     setAmountMax(clamped >= amountRangeUpperBound ? '' : String(Math.round(clamped)));
                                   }}
-                                  className="w-full accent-blue-600"
+                                  className="w-full accent-zinc-900 dark:accent-zinc-100"
                                 />
                               </div>
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <FilterPill
-                              active={amountMin.trim() === '' && amountMax.trim() === ''}
-                              label="Any amount"
-                              onClick={() => applyAmountPreset('any')}
-                            />
-                            <FilterPill
-                              active={amountMin.trim() === '' && Number(amountMax) === Math.min(1000, amountRangeUpperBound)}
-                              label="Under $1k"
-                              onClick={() => applyAmountPreset('under1k')}
-                              activeClassName="border-emerald-300 bg-emerald-50/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300"
-                            />
-                            <FilterPill
-                              active={Number(amountMin) === Math.min(1000, amountRangeUpperBound) && Number(amountMax || amountRangeUpperBound) >= Math.min(Math.max(5000, Math.min(1000, amountRangeUpperBound)), amountRangeUpperBound)}
-                              label="$1k to $5k"
-                              onClick={() => applyAmountPreset('1kTo5k')}
-                              activeClassName="border-indigo-300 bg-indigo-50/80 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/35 dark:text-indigo-300"
-                            />
-                            <FilterPill
-                              active={Number(amountMin) === Math.min(5000, amountRangeUpperBound) && amountMax.trim() === ''}
-                              label="$5k+"
-                              onClick={() => applyAmountPreset('5kPlus')}
-                              activeClassName="border-amber-300 bg-amber-50/80 text-amber-700 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-300"
-                            />
+                          <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <FilterPill
+                                active={amountMin.trim() === '' && amountMax.trim() === ''}
+                                label="Any amount"
+                                onClick={() => applyAmountPreset('any')}
+                              />
+                              <FilterPill
+                                active={amountMin.trim() === '' && Number(amountMax) === Math.min(1000, amountRangeUpperBound)}
+                                label="Under $1k"
+                                onClick={() => applyAmountPreset('under1k')}
+                              />
+                              <FilterPill
+                                active={Number(amountMin) === Math.min(1000, amountRangeUpperBound) && Number(amountMax || amountRangeUpperBound) >= Math.min(Math.max(5000, Math.min(1000, amountRangeUpperBound)), amountRangeUpperBound)}
+                                label="$1k to $5k"
+                                onClick={() => applyAmountPreset('1kTo5k')}
+                              />
+                              <FilterPill
+                                active={Number(amountMin) === Math.min(5000, amountRangeUpperBound) && amountMax.trim() === ''}
+                                label="$5k+"
+                                onClick={() => applyAmountPreset('5kPlus')}
+                              />
+                            </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <FilterPill
-                              active={sortFilter === 'AmountHigh'}
-                              label="Highest first"
-                              onClick={() => setSortFilter('AmountHigh')}
-                              activeClassName="border-blue-300 bg-blue-50/80 text-blue-700 dark:border-blue-700 dark:bg-blue-950/35 dark:text-blue-300"
-                            />
-                            <FilterPill
-                              active={sortFilter === 'AmountLow'}
-                              label="Lowest first"
-                              onClick={() => setSortFilter('AmountLow')}
-                              activeClassName="border-blue-300 bg-blue-50/80 text-blue-700 dark:border-blue-700 dark:bg-blue-950/35 dark:text-blue-300"
-                            />
+                          <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <FilterPill
+                                active={sortFilter === 'AmountHigh'}
+                                label="Highest first"
+                                onClick={() => setSortFilter('AmountHigh')}
+                              />
+                              <FilterPill
+                                active={sortFilter === 'AmountLow'}
+                                label="Lowest first"
+                                onClick={() => setSortFilter('AmountLow')}
+                              />
+                            </div>
                           </div>
                         </div>
                       </TabsContent>
                     </div>
 
-                    <div className="px-3 sm:px-4 py-2.5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/40 flex items-center justify-between gap-2">
+                    <div className="px-4 py-2.5 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-2">
                       <button
                         type="button"
                         onClick={resetFilters}
