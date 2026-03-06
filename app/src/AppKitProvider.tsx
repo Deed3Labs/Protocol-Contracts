@@ -39,25 +39,25 @@ const getCurrentUrl = () => {
     }
     
     // For production domains, use HTTPS
-    if (hostname === 'demo.deed3.io') {
-      return import.meta.env.VITE_DEMO_URL || 'https://demo.deed3.io';
-    } else if (hostname === 'app.deed3.io') {
-      return import.meta.env.VITE_APP_URL || 'https://app.deed3.io';
+    if (hostname === 'demo.useclear.org') {
+      return import.meta.env.VITE_DEMO_URL || 'https://demo.useclear.org';
+    } else if (hostname === 'app.useclear.org') {
+      return import.meta.env.VITE_APP_URL || 'https://app.useclear.org';
     } else {
       // Fallback to production for any other environment
-      return import.meta.env.VITE_APP_URL || 'https://app.deed3.io';
+      return import.meta.env.VITE_APP_URL || 'https://app.useclear.org';
     }
   }
   
   // For SSR or when window is not available, we need to detect the environment differently
   // Check if we're in a production build
   if (typeof process !== 'undefined' && process.env.NODE_ENV === 'production') {
-    // In production, default to app.deed3.io
-    return 'https://app.deed3.io';
+    // In production, default to app.useclear.org
+    return 'https://app.useclear.org';
   }
   
-  // For development builds, default to localhost
-  return 'https://app.deed3.io';
+  // For development builds, default to the production app URL
+  return 'https://app.useclear.org';
 };
 
 const currentUrl = getCurrentUrl();
