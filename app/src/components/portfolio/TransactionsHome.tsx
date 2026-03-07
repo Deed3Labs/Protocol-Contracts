@@ -1239,7 +1239,7 @@ export default function TransactionsHome() {
 
   const sourceBreakdownData = useMemo(() => {
     const buckets = new Map<ConsolidatedSource, number>();
-    filteredTransactions.forEach((transaction) => {
+    filteredFlowTransactions.forEach((transaction) => {
       const current = buckets.get(transaction.source) || 0;
       buckets.set(transaction.source, current + transaction.amount);
     });
@@ -1247,7 +1247,7 @@ export default function TransactionsHome() {
     return Array.from(buckets.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [filteredTransactions]);
+  }, [filteredFlowTransactions]);
   const sourceBreakdownTotal = useMemo(
     () => sourceBreakdownData.reduce((sum, item) => sum + item.value, 0),
     [sourceBreakdownData]
