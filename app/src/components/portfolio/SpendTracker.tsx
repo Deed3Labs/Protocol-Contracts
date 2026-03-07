@@ -1,7 +1,22 @@
+import { useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { TrendingDown, Calendar, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSpendTransactions } from "@/hooks/useSpendTransactions";
+import { usePlaidRecentTransactions } from "@/hooks/usePlaidRecentTransactions";
+import type { PlaidRecentTransaction } from "@/utils/apiClient";
+
+const TRANSFER_NAME_HINTS = ["transfer", "zelle", "venmo", "cash app", "cashapp", "xfer", "ach"];
+const INTERNAL_TRANSFER_MATCH_WINDOW_MS = 72 * 60 * 60 * 1000; // 3 days
+const toAmountCents = (amount: number) => Math.round(Math.abs(amount) * 100);
+
+type SpendFlowEntry = {
+  id: string;
+  direction: "inflow" | "outflow";
+  amount: number;
+  dateMs: number;
+  isTransfer: boolean;
+  accountKey: string;
+};
 
 const formatAmount = (amount: number): string => {
   if (amount >= 1000) {
@@ -15,6 +30,65 @@ const getIntensity = (amount: number, maxAmount: number): number => {
   return Math.min(amount / maxAmount, 1);
 };
 
+const isTransferLikePlaidTx = (tx: PlaidRecentTransaction): boolean => {
+  const categoryText = `${tx.category_primary || ""} ${tx.category_detailed || ""}`.toLowerCase();
+  if (categoryText.includes("transfer")) return true;
+  const descriptor = `${tx.name || ""} ${tx.merchant_name || ""}`.toLowerCase();
+  return TRANSFER_NAME_HINTS.some((hint) => descriptor.includes(hint));
+};
+
+const getPlaidTxDateMs = (tx: PlaidRecentTransaction): number | null => {
+  const primary = Date.parse(tx.date || "");
+  if (!Number.isNaN(primary)) return primary;
+  const fallback = Date.parse(tx.authorized_date || "");
+  if (!Number.isNaN(fallback)) return fallback;
+  return null;
+};
+
+const detectInternalTransferIds = (entries: SpendFlowEntry[]): Set<string> => {
+  const internalIds = new Set<string>();
+  const unmatchedInflows = new Map<number, SpendFlowEntry[]>();
+  const unmatchedOutflows = new Map<number, SpendFlowEntry[]>();
+
+  const transferEntries = entries
+    .filter((entry) => entry.isTransfer && entry.amount > 0 && Number.isFinite(entry.dateMs))
+    .sort((a, b) => a.dateMs - b.dateMs);
+
+  for (const entry of transferEntries) {
+    const amountKey = toAmountCents(entry.amount);
+    const oppositeMap = entry.direction === "inflow" ? unmatchedOutflows : unmatchedInflows;
+    const ownMap = entry.direction === "inflow" ? unmatchedInflows : unmatchedOutflows;
+    const candidates = oppositeMap.get(amountKey) ?? [];
+
+    let matchIndex = -1;
+    for (let i = 0; i < candidates.length; i += 1) {
+      const candidate = candidates[i];
+      if (candidate.accountKey === entry.accountKey) continue;
+      if (Math.abs(candidate.dateMs - entry.dateMs) > INTERNAL_TRANSFER_MATCH_WINDOW_MS) continue;
+      matchIndex = i;
+      break;
+    }
+
+    if (matchIndex >= 0) {
+      const [matched] = candidates.splice(matchIndex, 1);
+      internalIds.add(entry.id);
+      internalIds.add(matched.id);
+      if (candidates.length === 0) {
+        oppositeMap.delete(amountKey);
+      } else {
+        oppositeMap.set(amountKey, candidates);
+      }
+      continue;
+    }
+
+    const ownCandidates = ownMap.get(amountKey) ?? [];
+    ownCandidates.push(entry);
+    ownMap.set(amountKey, ownCandidates);
+  }
+
+  return internalIds;
+};
+
 export interface SpendTrackerProps {
   className?: string;
   /** Wallet address for Plaid spend data; when set, fetches real data. Omit to show empty. */
@@ -22,14 +96,55 @@ export interface SpendTrackerProps {
 }
 
 export function SpendTracker({ className, walletAddress }: SpendTrackerProps) {
-  const { spendingByDay, totalSpent: totalSpentFromApi, linked, notReady, isLoading, refresh } = useSpendTransactions(walletAddress);
+  const { transactions, linked, notReady, isLoading, refresh } = usePlaidRecentTransactions(walletAddress, {
+    enabled: !!walletAddress,
+    limit: 1000,
+  });
 
   const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth();
   const currentDay = today.getDate();
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const monthName = today.toLocaleDateString("en-US", { month: "long" });
 
-  const totalSpent = totalSpentFromApi;
+  const { spendingByDay, totalSpent } = useMemo(() => {
+    const startOfMonthMs = new Date(currentYear, currentMonth, 1).getTime();
+    const endOfTodayMs = new Date(currentYear, currentMonth, currentDay, 23, 59, 59, 999).getTime();
+    const entries: SpendFlowEntry[] = [];
+
+    for (const tx of transactions) {
+      const dateMs = getPlaidTxDateMs(tx);
+      if (dateMs == null || dateMs < startOfMonthMs || dateMs > endOfTodayMs) continue;
+
+      const amount = Math.abs(Number(tx.amount) || 0);
+      if (!(amount > 0)) continue;
+
+      entries.push({
+        id: `plaid-${tx.item_id}-${tx.transaction_id}`,
+        direction: tx.direction,
+        amount,
+        dateMs,
+        isTransfer: isTransferLikePlaidTx(tx),
+        accountKey: `bank:${tx.item_id}:${tx.account_id || tx.account_name || "unknown"}`,
+      });
+    }
+
+    const internalTransferIds = detectInternalTransferIds(entries);
+    const byDay: Record<number, number> = {};
+    let total = 0;
+
+    for (const entry of entries) {
+      if (entry.direction !== "outflow") continue;
+      if (internalTransferIds.has(entry.id)) continue;
+      const day = new Date(entry.dateMs).getDate();
+      byDay[day] = (byDay[day] ?? 0) + entry.amount;
+      total += entry.amount;
+    }
+
+    return { spendingByDay: byDay, totalSpent: total };
+  }, [currentDay, currentMonth, currentYear, transactions]);
+
   const dayValues = Object.keys(spendingByDay).map((d) => spendingByDay[Number(d)]).filter((v) => v > 0);
   const maxDaySpend = dayValues.length > 0 ? Math.max(...dayValues, 1) : 1;
 
