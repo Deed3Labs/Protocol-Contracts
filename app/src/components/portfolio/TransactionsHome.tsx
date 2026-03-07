@@ -72,7 +72,7 @@ type ConsolidatedCategory =
 type ConsolidatedStatus = 'completed' | 'pending' | 'failed';
 
 type SourceFilter = 'All' | ConsolidatedSource;
-type DirectionFilter = 'All' | 'inflow' | 'outflow';
+type DirectionFilter = 'All' | 'inflow' | 'outflow' | 'transfer';
 type DateFilter = '30D' | '90D' | '1Y' | '2Y' | '5Y' | 'All';
 type SortFilter = 'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow';
 type StatusFilter = 'All' | 'completed' | 'pending' | 'failed';
@@ -408,7 +408,7 @@ const SOURCE_COLORS = ['#3b82f6', '#06b6d4', '#a855f7', '#22c55e'];
 const CATEGORY_COLORS = ['#3b82f6', '#8b5cf6', '#14b8a6', '#f97316', '#ec4899', '#0ea5e9'];
 const DATE_FILTER_OPTIONS: DateFilter[] = ['30D', '90D', '1Y', '2Y', '5Y', 'All'];
 const SOURCE_FILTER_OPTIONS: SourceFilter[] = ['All', 'On-chain', 'Bank recurring', 'Bank spend'];
-const DIRECTION_FILTER_OPTIONS: DirectionFilter[] = ['All', 'inflow', 'outflow'];
+const DIRECTION_FILTER_OPTIONS: DirectionFilter[] = ['All', 'inflow', 'outflow', 'transfer'];
 const STATUS_FILTER_OPTIONS: StatusFilter[] = ['All', 'completed', 'pending', 'failed'];
 const CATEGORY_FILTER_OPTIONS: Array<ConsolidatedCategory | 'All'> = [
   'All',
@@ -460,6 +460,7 @@ const getDateFilterCompactLabel = (value: DateFilter) => {
 
 const getDirectionFilterLabel = (value: DirectionFilter) => {
   if (value === 'All') return 'All';
+  if (value === 'transfer') return 'Transfer';
   return value === 'inflow' ? 'Inflow' : 'Outflow';
 };
 
@@ -1030,7 +1031,11 @@ export default function TransactionsHome() {
     }
 
     if (directionFilter !== 'All') {
-      list = list.filter((tx) => tx.direction === directionFilter);
+      if (directionFilter === 'transfer') {
+        list = list.filter((tx) => tx.category === 'transfer');
+      } else {
+        list = list.filter((tx) => tx.direction === directionFilter && tx.category !== 'transfer');
+      }
     }
 
     if (categoryFilter !== 'All') {
@@ -1143,7 +1148,7 @@ export default function TransactionsHome() {
     await Promise.all(refreshTasks);
   };
 
-  const applyQuickFocus = (focus: 'all' | 'inflow' | 'outflow' | 'pending' | 'failed') => {
+  const applyQuickFocus = (focus: 'all' | 'inflow' | 'outflow' | 'transfer' | 'pending' | 'failed') => {
     if (focus === 'all') {
       setDirectionFilter('All');
       setStatusFilter('All');
@@ -1158,6 +1163,12 @@ export default function TransactionsHome() {
 
     if (focus === 'outflow') {
       setDirectionFilter('outflow');
+      setStatusFilter('All');
+      return;
+    }
+
+    if (focus === 'transfer') {
+      setDirectionFilter('transfer');
       setStatusFilter('All');
       return;
     }
@@ -1187,7 +1198,7 @@ export default function TransactionsHome() {
   const activeFilterLabels = useMemo(() => {
     const labels: Array<{ key: string; label: string; onClear: () => void }> = [];
     if (sourceFilter !== 'All') labels.push({ key: 'source', label: `Source: ${sourceFilter}`, onClear: () => setSourceFilter('All') });
-    if (directionFilter !== 'All') labels.push({ key: 'direction', label: `Direction: ${directionFilter}`, onClear: () => setDirectionFilter('All') });
+    if (directionFilter !== 'All') labels.push({ key: 'direction', label: `Direction: ${getDirectionFilterLabel(directionFilter)}`, onClear: () => setDirectionFilter('All') });
     if (categoryFilter !== 'All') labels.push({ key: 'category', label: `Category: ${categoryFilter}`, onClear: () => setCategoryFilter('All') });
     if (statusFilter !== 'All') labels.push({ key: 'status', label: `Status: ${statusFilter}`, onClear: () => setStatusFilter('All') });
     if (dateFilter !== '90D') labels.push({ key: 'date', label: `Date: ${getDateFilterLabel(dateFilter)}`, onClear: () => setDateFilter('90D') });
@@ -1434,8 +1445,9 @@ export default function TransactionsHome() {
   const quickFocusCounts = useMemo(
     () => ({
       all: consolidatedTransactions.length,
-      inflow: consolidatedTransactions.filter((transaction) => transaction.direction === 'inflow').length,
-      outflow: consolidatedTransactions.filter((transaction) => transaction.direction === 'outflow').length,
+      inflow: consolidatedTransactions.filter((transaction) => transaction.direction === 'inflow' && transaction.category !== 'transfer').length,
+      outflow: consolidatedTransactions.filter((transaction) => transaction.direction === 'outflow' && transaction.category !== 'transfer').length,
+      transfer: consolidatedTransactions.filter((transaction) => transaction.category === 'transfer').length,
       pending: consolidatedTransactions.filter((transaction) => transaction.status === 'pending').length,
       failed: consolidatedTransactions.filter((transaction) => transaction.status === 'failed').length,
     }),
@@ -2078,6 +2090,18 @@ export default function TransactionsHome() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => applyQuickFocus('transfer')}
+                      className={cn(
+                        'h-8 px-3 rounded-full text-xs border transition-colors',
+                        directionFilter === 'transfer' && statusFilter === 'All'
+                          ? 'bg-sky-600 text-white border-sky-600'
+                          : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      )}
+                    >
+                      Transfer ({quickFocusCounts.transfer})
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => applyQuickFocus('pending')}
                       className={cn(
                         'h-8 px-3 rounded-full text-xs border transition-colors',
@@ -2222,6 +2246,7 @@ export default function TransactionsHome() {
 
                   {displayedTransactions.map((transaction) => {
                     const isInflow = transaction.direction === 'inflow';
+                    const isTransfer = transaction.category === 'transfer';
                     const Icon =
                       transaction.source === 'On-chain'
                         ? Wallet
@@ -2242,7 +2267,9 @@ export default function TransactionsHome() {
                               <div
                                 className={cn(
                                   'w-9 h-9 rounded-full shrink-0 flex items-center justify-center',
-                                  isInflow
+                                  isTransfer
+                                    ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+                                    : isInflow
                                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
                                     : 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
                                 )}
@@ -2262,13 +2289,17 @@ export default function TransactionsHome() {
                               <p
                                 className={cn(
                                   'font-light text-[12px] leading-none',
-                                  isInflow ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                                  isTransfer
+                                    ? 'text-sky-600 dark:text-sky-400'
+                                    : isInflow
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : 'text-rose-600 dark:text-rose-400'
                                 )}
                               >
-                                {isInflow ? '+' : '-'}{formatCurrency(transaction.amount)}
+                                {isTransfer ? '' : isInflow ? '+' : '-'}{formatCurrency(transaction.amount)}
                               </p>
                               <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1 uppercase tracking-wide">
-                                {isInflow ? 'Inflow' : 'Outflow'}
+                                {isTransfer ? 'Transfer' : isInflow ? 'Inflow' : 'Outflow'}
                               </p>
                             </div>
                           </div>
@@ -2277,7 +2308,13 @@ export default function TransactionsHome() {
                             <Badge variant="outline" className="text-[10px]">
                               {transaction.source}
                             </Badge>
-                            <Badge variant="outline" className="text-[10px] capitalize">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'text-[10px] capitalize',
+                                transaction.category === 'transfer' && 'border-sky-500/40 text-sky-700 dark:text-sky-300'
+                              )}
+                            >
                               {transaction.category}
                             </Badge>
                             <Badge
@@ -2425,7 +2462,7 @@ export default function TransactionsHome() {
 
                           <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
                             <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Direction</p>
-                            <div className="grid grid-cols-3 gap-1.5">
+                            <div className="grid grid-cols-4 gap-1.5">
                               {DIRECTION_FILTER_OPTIONS.map((option) => (
                                 <FilterPill
                                   key={option}
@@ -2508,7 +2545,7 @@ export default function TransactionsHome() {
                           </div>
 
                           <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
-                            <div className="grid grid-cols-3 gap-1.5">
+                            <div className="grid grid-cols-4 gap-1.5">
                               {DIRECTION_FILTER_OPTIONS.map((option) => (
                                 <FilterPill
                                   key={`flow-direction-${option}`}
