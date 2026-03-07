@@ -91,6 +91,7 @@ interface ConsolidatedTransaction {
   subtitle: string;
   status: ConsolidatedStatus;
   account: string;
+  accountKey?: string;
   date: Date;
   network?: string;
   searchIndex: string;
@@ -101,6 +102,15 @@ interface ForecastPoint {
   value: number;
   historicalValue: number | null;
   projectedValue: number | null;
+}
+
+interface TransferMatchEntry {
+  id: string;
+  direction: ConsolidatedDirection;
+  amount: number;
+  dateMs: number;
+  isTransfer: boolean;
+  accountKey: string;
 }
 
 const formatCurrency = (value: number) =>
@@ -130,6 +140,52 @@ const USD_DENOMINATED_SYMBOLS = new Set([
 ]);
 
 const PLAID_TRANSFER_NAME_HINTS = ['zelle', 'cash app', 'cashapp', 'venmo'];
+const INTERNAL_TRANSFER_MATCH_WINDOW_MS = 72 * 60 * 60 * 1000; // 3 days
+const toAmountCents = (amount: number) => Math.round(Math.abs(amount) * 100);
+
+const detectInternalTransferIds = (entries: TransferMatchEntry[]) => {
+  const internalIds = new Set<string>();
+  const unmatchedInflows = new Map<number, TransferMatchEntry[]>();
+  const unmatchedOutflows = new Map<number, TransferMatchEntry[]>();
+
+  const transferEntries = entries
+    .filter((entry) => entry.isTransfer && entry.amount > 0 && Number.isFinite(entry.dateMs))
+    .sort((a, b) => a.dateMs - b.dateMs);
+
+  for (const entry of transferEntries) {
+    const amountKey = toAmountCents(entry.amount);
+    const oppositeMap = entry.direction === 'inflow' ? unmatchedOutflows : unmatchedInflows;
+    const ownMap = entry.direction === 'inflow' ? unmatchedInflows : unmatchedOutflows;
+    const candidates = oppositeMap.get(amountKey) ?? [];
+
+    let matchIndex = -1;
+    for (let i = 0; i < candidates.length; i += 1) {
+      const candidate = candidates[i];
+      if (candidate.accountKey === entry.accountKey) continue;
+      if (Math.abs(candidate.dateMs - entry.dateMs) > INTERNAL_TRANSFER_MATCH_WINDOW_MS) continue;
+      matchIndex = i;
+      break;
+    }
+
+    if (matchIndex >= 0) {
+      const [matched] = candidates.splice(matchIndex, 1);
+      internalIds.add(entry.id);
+      internalIds.add(matched.id);
+      if (candidates.length === 0) {
+        oppositeMap.delete(amountKey);
+      } else {
+        oppositeMap.set(amountKey, candidates);
+      }
+      continue;
+    }
+
+    const ownCandidates = ownMap.get(amountKey) ?? [];
+    ownCandidates.push(entry);
+    ownMap.set(amountKey, ownCandidates);
+  }
+
+  return internalIds;
+};
 
 const hasTransferNameHint = (tx: PlaidRecentTransaction) => {
   const descriptor = `${tx.name || ''} ${tx.merchant_name || ''}`.toLowerCase();
@@ -597,39 +653,50 @@ export default function TransactionsHome() {
     const daysElapsed = Math.max(now.getDate(), 1);
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
-    let inflowMtd = 0;
-    let outflowMtd = 0;
+    const entries: TransferMatchEntry[] = [];
 
     for (const tx of walletTransactions) {
       const flowMeta = getWalletFlowMeta(tx.type);
-      if (flowMeta.category === 'transfer') continue;
-
-      const date = getDateFromTransaction(tx).getTime();
-      if (date < monthStartMs || date > nowMs) continue;
-
       const amount = getWalletAmountUsd(tx);
-      if (!(amount > 0)) continue;
+      const dateMs = getDateFromTransaction(tx).getTime();
+      if (!(amount > 0) || !Number.isFinite(dateMs)) continue;
 
-      if (flowMeta.direction === 'inflow') {
-        inflowMtd += amount;
-      } else {
-        outflowMtd += amount;
-      }
+      entries.push({
+        id: `wallet-${tx.id}`,
+        direction: flowMeta.direction,
+        amount,
+        dateMs,
+        isTransfer: flowMeta.category === 'transfer',
+        accountKey: `wallet:${tx.chainName || 'wallet'}`,
+      });
     }
 
     for (const tx of bankTransactions) {
-      if (getPlaidCategory(tx) === 'transfer') continue;
-
-      const date = getDateFromPlaidTransaction(tx).getTime();
-      if (date < monthStartMs || date > nowMs) continue;
-
       const amount = Math.abs(Number(tx.amount) || 0);
-      if (!(amount > 0)) continue;
+      const dateMs = getDateFromPlaidTransaction(tx).getTime();
+      if (!(amount > 0) || !Number.isFinite(dateMs)) continue;
 
-      if (tx.direction === 'inflow') {
-        inflowMtd += amount;
+      entries.push({
+        id: `plaid-${tx.item_id}-${tx.transaction_id}`,
+        direction: tx.direction,
+        amount,
+        dateMs,
+        isTransfer: getPlaidCategory(tx) === 'transfer',
+        accountKey: `bank:${tx.item_id}:${tx.account_id || tx.account_name || 'unknown'}`,
+      });
+    }
+
+    const internalTransferIds = detectInternalTransferIds(entries);
+    let inflowMtd = 0;
+    let outflowMtd = 0;
+
+    for (const entry of entries) {
+      if (entry.dateMs < monthStartMs || entry.dateMs > nowMs) continue;
+      if (internalTransferIds.has(entry.id)) continue;
+      if (entry.direction === 'inflow') {
+        inflowMtd += entry.amount;
       } else {
-        outflowMtd += amount;
+        outflowMtd += entry.amount;
       }
     }
 
@@ -823,6 +890,7 @@ export default function TransactionsHome() {
         subtitle,
         status: tx.status,
         account,
+        accountKey: `wallet:${network || 'activity'}`,
         date,
         network,
         searchIndex,
@@ -870,6 +938,7 @@ export default function TransactionsHome() {
         subtitle,
         status,
         account,
+        accountKey: `bank:${tx.item_id}:${tx.account_id || tx.account_name || 'unknown'}`,
         date,
         searchIndex,
       });
@@ -877,6 +946,18 @@ export default function TransactionsHome() {
 
     return [...walletEntries, ...plaidEntries];
   }, [bankTransactions, walletTransactions]);
+
+  const internalTransferIds = useMemo(() => {
+    const entries: TransferMatchEntry[] = consolidatedTransactions.map((transaction) => ({
+      id: transaction.id,
+      direction: transaction.direction,
+      amount: transaction.amount,
+      dateMs: transaction.date.getTime(),
+      isTransfer: transaction.category === 'transfer',
+      accountKey: transaction.accountKey || transaction.account,
+    }));
+    return detectInternalTransferIds(entries);
+  }, [consolidatedTransactions]);
 
   const accountOptions = useMemo(() => {
     const uniqueAccounts = new Set(consolidatedTransactions.map((tx) => tx.account));
@@ -1011,6 +1092,11 @@ export default function TransactionsHome() {
     statusFilter,
   ]);
 
+  const filteredFlowTransactions = useMemo(
+    () => filteredTransactions.filter((transaction) => !internalTransferIds.has(transaction.id)),
+    [filteredTransactions, internalTransferIds]
+  );
+
   const displayedTransactions = useMemo(
     () => filteredTransactions.slice(0, visibleCount),
     [filteredTransactions, visibleCount]
@@ -1032,13 +1118,13 @@ export default function TransactionsHome() {
   ]);
 
   const filteredInflowTotal = useMemo(
-    () => filteredTransactions.filter((tx) => tx.direction === 'inflow').reduce((sum, tx) => sum + tx.amount, 0),
-    [filteredTransactions]
+    () => filteredFlowTransactions.filter((tx) => tx.direction === 'inflow').reduce((sum, tx) => sum + tx.amount, 0),
+    [filteredFlowTransactions]
   );
 
   const filteredOutflowTotal = useMemo(
-    () => filteredTransactions.filter((tx) => tx.direction === 'outflow').reduce((sum, tx) => sum + tx.amount, 0),
-    [filteredTransactions]
+    () => filteredFlowTransactions.filter((tx) => tx.direction === 'outflow').reduce((sum, tx) => sum + tx.amount, 0),
+    [filteredFlowTransactions]
   );
   const outflowPressurePercent = useMemo(() => {
     const totalFlow = filteredInflowTotal + filteredOutflowTotal;
@@ -1132,7 +1218,7 @@ export default function TransactionsHome() {
     consolidatedTransactions.forEach((transaction) => {
       const txDate = transaction.date;
       if (txDate.getTime() > nowMs) return;
-      if (transaction.category === 'transfer') return;
+      if (internalTransferIds.has(transaction.id)) return;
       const key = `${txDate.getFullYear()}-${txDate.getMonth()}`;
       const point = map.get(key);
       if (!point) return;
@@ -1144,7 +1230,7 @@ export default function TransactionsHome() {
       ...point,
       net: point.inflow - point.outflow,
     }));
-  }, [consolidatedTransactions]);
+  }, [consolidatedTransactions, internalTransferIds]);
 
   const currentMonthFlow = useMemo(() => {
     const current = monthlyFlowData[monthlyFlowData.length - 1];
@@ -1169,7 +1255,7 @@ export default function TransactionsHome() {
 
   const outflowCategoryData = useMemo(() => {
     const buckets = new Map<ConsolidatedCategory, number>();
-    filteredTransactions.forEach((transaction) => {
+    filteredFlowTransactions.forEach((transaction) => {
       if (transaction.direction !== 'outflow') return;
       const current = buckets.get(transaction.category) || 0;
       buckets.set(transaction.category, current + transaction.amount);
@@ -1179,7 +1265,7 @@ export default function TransactionsHome() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 6);
-  }, [filteredTransactions]);
+  }, [filteredFlowTransactions]);
   const outflowCategoryTotal = useMemo(
     () => outflowCategoryData.reduce((sum, item) => sum + item.value, 0),
     [outflowCategoryData]
@@ -1188,13 +1274,13 @@ export default function TransactionsHome() {
   const weekdayOutflowData = useMemo(() => {
     const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const values = labels.map((label) => ({ label, value: 0 }));
-    filteredTransactions.forEach((transaction) => {
+    filteredFlowTransactions.forEach((transaction) => {
       if (transaction.direction !== 'outflow') return;
       const day = transaction.date.getDay();
       values[day].value += transaction.amount;
     });
     return values;
-  }, [filteredTransactions]);
+  }, [filteredFlowTransactions]);
 
   const pendingTransactionCount = useMemo(
     () => consolidatedTransactions.filter((transaction) => transaction.status === 'pending').length,
@@ -1217,17 +1303,17 @@ export default function TransactionsHome() {
   );
 
   const averageOutflowTicket = useMemo(() => {
-    const outflows = filteredTransactions.filter((transaction) => transaction.direction === 'outflow');
+    const outflows = filteredFlowTransactions.filter((transaction) => transaction.direction === 'outflow');
     if (outflows.length === 0) return 0;
     const total = outflows.reduce((sum, transaction) => sum + transaction.amount, 0);
     return total / outflows.length;
-  }, [filteredTransactions]);
+  }, [filteredFlowTransactions]);
 
   const largestOutflowTransaction = useMemo(() => {
-    const outflows = filteredTransactions.filter((transaction) => transaction.direction === 'outflow');
+    const outflows = filteredFlowTransactions.filter((transaction) => transaction.direction === 'outflow');
     if (outflows.length === 0) return null;
     return [...outflows].sort((a, b) => b.amount - a.amount)[0];
-  }, [filteredTransactions]);
+  }, [filteredFlowTransactions]);
 
   const dailyFlowPulseData = useMemo(() => {
     const now = new Date();
@@ -1245,8 +1331,7 @@ export default function TransactionsHome() {
 
     const map = new Map(points.map((point) => [point.key, point]));
 
-    filteredTransactions.forEach((transaction) => {
-      if (transaction.category === 'transfer') return;
+    filteredFlowTransactions.forEach((transaction) => {
       const txDate = transaction.date;
       const key = `${txDate.getFullYear()}-${txDate.getMonth()}-${txDate.getDate()}`;
       const point = map.get(key);
@@ -1259,7 +1344,7 @@ export default function TransactionsHome() {
       ...point,
       net: point.inflow - point.outflow,
     }));
-  }, [filteredTransactions]);
+  }, [filteredFlowTransactions]);
 
   const upcomingPendingTransactions = useMemo(() => {
     const now = Date.now();
@@ -1275,7 +1360,7 @@ export default function TransactionsHome() {
 
   const sourceVolumeData = useMemo(() => {
     const buckets = new Map<ConsolidatedSource, { count: number; amount: number }>();
-    filteredTransactions.forEach((transaction) => {
+    filteredFlowTransactions.forEach((transaction) => {
       const current = buckets.get(transaction.source) ?? { count: 0, amount: 0 };
       buckets.set(transaction.source, {
         count: current.count + 1,
@@ -1286,12 +1371,11 @@ export default function TransactionsHome() {
     return Array.from(buckets.entries())
       .map(([source, value]) => ({ source, ...value }))
       .sort((a, b) => b.amount - a.amount);
-  }, [filteredTransactions]);
+  }, [filteredFlowTransactions]);
 
   const accountFlowFocus = useMemo(() => {
     const buckets = new Map<string, { inflow: number; outflow: number; count: number }>();
-    filteredTransactions.forEach((transaction) => {
-      if (transaction.category === 'transfer') return;
+    filteredFlowTransactions.forEach((transaction) => {
       const current = buckets.get(transaction.account) ?? { inflow: 0, outflow: 0, count: 0 };
       if (transaction.direction === 'inflow') current.inflow += transaction.amount;
       if (transaction.direction === 'outflow') current.outflow += transaction.amount;
@@ -1299,7 +1383,7 @@ export default function TransactionsHome() {
       buckets.set(transaction.account, current);
     });
     return buckets;
-  }, [filteredTransactions]);
+  }, [filteredFlowTransactions]);
 
   const totalLinkedAccountBalance = useMemo(
     () =>
@@ -1419,7 +1503,7 @@ export default function TransactionsHome() {
                   <div className="group relative">
                     <Info className="w-4 h-4 cursor-help" />
                     <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
-                      Projected month-end from month-to-date activity (transfers excluded).
+                      Projected month-end from month-to-date activity (internal transfer round-trips excluded).
                     </div>
                   </div>
                 <span
@@ -1448,7 +1532,7 @@ export default function TransactionsHome() {
                       </p>
                     </div>
                     <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-                      Projected month-end (on-chain + bank, excluding transfers)
+                      Projected month-end (on-chain + bank, internal transfer round-trips excluded)
                     </p>
                   </div>
 
@@ -1463,7 +1547,7 @@ export default function TransactionsHome() {
                       </p>
                     </div>
                     <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-                      Projected month-end (on-chain + bank, excluding transfers)
+                      Projected month-end (on-chain + bank, internal transfer round-trips excluded)
                     </p>
                   </div>
                 </div>
