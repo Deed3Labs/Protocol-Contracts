@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Plus, CreditCard, TrendingUp, Calendar, Bell, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,10 +20,86 @@ interface RecurringDeposit {
   day: number;
 }
 
+type RecurringFlowEntry = {
+  id: string;
+  direction: "inflow" | "outflow";
+  amount: number;
+  day: number;
+  name: string;
+};
+
 const SUBSCRIPTION_COLORS = [
   "bg-red-500", "bg-blue-400", "bg-purple-500", "bg-green-600", "bg-orange-500",
   "bg-gray-400", "bg-red-600", "bg-blue-600", "bg-purple-700",
 ];
+const TRANSFER_NAME_HINTS = ["transfer", "zelle", "venmo", "cash app", "cashapp", "xfer", "ach"];
+const INTERNAL_TRANSFER_DAY_WINDOW = 3;
+const toAmountCents = (amount: number) => Math.round(Math.abs(amount) * 100);
+
+const normalizeName = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const isTransferLikeName = (value: string) => {
+  const normalized = normalizeName(value);
+  return TRANSFER_NAME_HINTS.some((hint) => normalized.includes(hint));
+};
+
+const areNamesLikelySameTransfer = (a: string, b: string): boolean => {
+  const aNorm = normalizeName(a);
+  const bNorm = normalizeName(b);
+  if (!aNorm || !bNorm) return false;
+  return aNorm === bNorm;
+};
+
+const detectInternalRecurringTransferIds = (entries: RecurringFlowEntry[]): Set<string> => {
+  const internalIds = new Set<string>();
+  const unmatchedInflows = new Map<number, RecurringFlowEntry[]>();
+  const unmatchedOutflows = new Map<number, RecurringFlowEntry[]>();
+
+  const transferEntries = entries
+    .filter((entry) => entry.amount > 0)
+    .sort((a, b) => a.day - b.day);
+
+  for (const entry of transferEntries) {
+    const amountKey = toAmountCents(entry.amount);
+    const oppositeMap = entry.direction === "inflow" ? unmatchedOutflows : unmatchedInflows;
+    const ownMap = entry.direction === "inflow" ? unmatchedInflows : unmatchedOutflows;
+    const candidates = oppositeMap.get(amountKey) ?? [];
+
+    let matchIndex = -1;
+    for (let i = 0; i < candidates.length; i += 1) {
+      const candidate = candidates[i];
+      if (Math.abs(candidate.day - entry.day) > INTERNAL_TRANSFER_DAY_WINDOW) continue;
+
+      const entryTransferLike = isTransferLikeName(entry.name);
+      const candidateTransferLike = isTransferLikeName(candidate.name);
+      const likelyTransfer =
+        (entryTransferLike && candidateTransferLike) ||
+        ((entryTransferLike || candidateTransferLike) &&
+          areNamesLikelySameTransfer(entry.name, candidate.name));
+      if (!likelyTransfer) continue;
+
+      matchIndex = i;
+      break;
+    }
+
+    if (matchIndex >= 0) {
+      const [matched] = candidates.splice(matchIndex, 1);
+      internalIds.add(entry.id);
+      internalIds.add(matched.id);
+      if (candidates.length === 0) {
+        oppositeMap.delete(amountKey);
+      } else {
+        oppositeMap.set(amountKey, candidates);
+      }
+      continue;
+    }
+
+    const ownCandidates = ownMap.get(amountKey) ?? [];
+    ownCandidates.push(entry);
+    ownMap.set(amountKey, ownCandidates);
+  }
+
+  return internalIds;
+};
 
 const formatAmount = (amount: number): string => {
   if (amount >= 1000) {
@@ -40,7 +117,7 @@ export interface UpcomingTransactionsProps {
 export function UpcomingTransactions({ className, walletAddress }: UpcomingTransactionsProps) {
   const { inflowStreams, outflowStreams, linked, notReady, isLoading, refresh } = useRecurringTransactions(walletAddress);
 
-  const subscriptions: Subscription[] = outflowStreams.map((s, i) => ({
+  const rawSubscriptions: Subscription[] = outflowStreams.map((s, i) => ({
     id: s.stream_id,
     name: s.name,
     icon: <CreditCard className="w-2.5 h-2.5" />,
@@ -49,12 +126,41 @@ export function UpcomingTransactions({ className, walletAddress }: UpcomingTrans
     day: s.day,
   }));
 
-  const deposits: RecurringDeposit[] = inflowStreams.map((s) => ({
+  const rawDeposits: RecurringDeposit[] = inflowStreams.map((s) => ({
     id: s.stream_id,
     name: s.name,
     amount: s.amount,
     day: s.day,
   }));
+
+  const internalRecurringIds = useMemo(() => {
+    const entries: RecurringFlowEntry[] = [
+      ...rawDeposits.map((d) => ({
+        id: d.id,
+        direction: "inflow" as const,
+        amount: Math.abs(d.amount || 0),
+        day: d.day,
+        name: d.name,
+      })),
+      ...rawSubscriptions.map((s) => ({
+        id: s.id,
+        direction: "outflow" as const,
+        amount: Math.abs(s.amount || 0),
+        day: s.day,
+        name: s.name,
+      })),
+    ];
+    return detectInternalRecurringTransferIds(entries);
+  }, [rawDeposits, rawSubscriptions]);
+
+  const subscriptions = useMemo(
+    () => rawSubscriptions.filter((s) => !internalRecurringIds.has(s.id)),
+    [internalRecurringIds, rawSubscriptions]
+  );
+  const deposits = useMemo(
+    () => rawDeposits.filter((d) => !internalRecurringIds.has(d.id)),
+    [internalRecurringIds, rawDeposits]
+  );
 
   const getDaySubscriptions = (day: number): Subscription[] =>
     subscriptions.filter((sub) => sub.day === day);

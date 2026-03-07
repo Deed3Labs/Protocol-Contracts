@@ -160,8 +160,6 @@ async function staleWhileRevalidate(request, cacheName) {
       cache.put(request, response.clone());
     }
     return response;
-  }).catch(() => {
-    // Ignore fetch errors, we'll use cache
   });
   
   // Return cached version immediately if available
@@ -173,7 +171,11 @@ async function staleWhileRevalidate(request, cacheName) {
   
   // If no cache, wait for network
   try {
-    return await fetchPromise;
+    const response = await fetchPromise;
+    if (response) {
+      return response;
+    }
+    throw new Error('No response');
   } catch (error) {
     // Return offline response if fetch fails
     return new Response(
