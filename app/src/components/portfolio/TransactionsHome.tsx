@@ -577,6 +577,8 @@ export default function TransactionsHome() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [advancedFilterTab, setAdvancedFilterTab] = useState<'quick' | 'flow' | 'time' | 'amount'>('quick');
   const [visibleCount, setVisibleCount] = useState(20);
+  const [showAllRecurringSchedule, setShowAllRecurringSchedule] = useState(false);
+  const [showAllAccountBalances, setShowAllAccountBalances] = useState(false);
 
   const [forecastScenario, setForecastScenario] = useState<ForecastScenario>('Base');
   const [forecastHorizon, setForecastHorizon] = useState<ForecastHorizon>(20);
@@ -1415,7 +1417,7 @@ export default function TransactionsHome() {
 
   const linkedAccountFocusData = useMemo(
     () =>
-      bankAccounts.slice(0, 4).map((account) => {
+      bankAccounts.map((account) => {
         const balance =
           typeof account.available === 'number' && !Number.isNaN(account.available)
             ? account.available
@@ -1484,9 +1486,18 @@ export default function TransactionsHome() {
         const aOffset = a.day >= currentDay ? a.day - currentDay : 31 - currentDay + a.day;
         const bOffset = b.day >= currentDay ? b.day - currentDay : 31 - currentDay + b.day;
         return aOffset - bOffset;
-      })
-      .slice(0, 6);
+      });
   }, [inflowStreams, outflowStreams]);
+
+  const visibleRecurringSchedule = useMemo(
+    () => (showAllRecurringSchedule ? recurringSchedule : recurringSchedule.slice(0, 4)),
+    [recurringSchedule, showAllRecurringSchedule]
+  );
+
+  const visibleAccountBalances = useMemo(
+    () => (showAllAccountBalances ? linkedAccountFocusData : linkedAccountFocusData.slice(0, 4)),
+    [linkedAccountFocusData, showAllAccountBalances]
+  );
 
   const recurringNetMonthly = recurringInflowMonthly - recurringOutflowMonthly;
 
@@ -2909,13 +2920,29 @@ export default function TransactionsHome() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring schedule</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring schedule</p>
+                    {recurringSchedule.length > 4 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllRecurringSchedule((value) => !value)}
+                        className={cn(
+                          'h-8 px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-colors inline-flex items-center justify-center',
+                          showAllRecurringSchedule
+                            ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                            : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        )}
+                      >
+                        {showAllRecurringSchedule ? 'Show less' : `Show all (${recurringSchedule.length})`}
+                      </button>
+                    )}
+                  </div>
                   {recurringSchedule.length === 0 && (
                     <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5 text-xs text-zinc-500 dark:text-zinc-400">
                       No recurring streams detected yet.
                     </div>
                   )}
-                  {recurringSchedule.slice(0, 4).map((item) => (
+                  {visibleRecurringSchedule.map((item) => (
                     <div key={item.id} className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 overflow-hidden">
                       <div className="p-2.5 flex items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -2966,13 +2993,29 @@ export default function TransactionsHome() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Account balances</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Account balances</p>
+                    {linkedAccountFocusData.length > 4 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllAccountBalances((value) => !value)}
+                        className={cn(
+                          'h-8 px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-colors inline-flex items-center justify-center',
+                          showAllAccountBalances
+                            ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                            : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        )}
+                      >
+                        {showAllAccountBalances ? 'Show less' : `Show all (${linkedAccountFocusData.length})`}
+                      </button>
+                    )}
+                  </div>
                   {linkedAccountFocusData.length === 0 && (
                     <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5 text-xs text-zinc-500 dark:text-zinc-400">
                       No connected accounts yet. Link a bank account to power budgeting insights.
                     </div>
                   )}
-                  {linkedAccountFocusData.map((account) => (
+                  {visibleAccountBalances.map((account) => (
                     <div key={account.id} className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 overflow-hidden">
                       <div className="p-2.5 flex items-start justify-between gap-2">
                         <div className="min-w-0">
