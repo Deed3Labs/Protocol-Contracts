@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Bell,
-  ChevronRight,
   Copy,
   Crown,
   Edit3,
@@ -36,7 +35,6 @@ import MobileNav from './MobileNav';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -263,27 +261,29 @@ function SectionPanel({
 }) {
   return (
     <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          {eyebrow ? (
-            <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">{eyebrow}</p>
-          ) : null}
-          <h2 className="mt-1 text-lg font-light tracking-tight text-black dark:text-white">{title}</h2>
-          <p className="mt-1 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">{description}</p>
+      <div className="border-b border-zinc-200/70 pb-3 dark:border-zinc-800/70">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            {eyebrow ? (
+              <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">{eyebrow}</p>
+            ) : null}
+            <h2 className="mt-1 text-lg font-light tracking-tight text-black dark:text-white">{title}</h2>
+            <p className="mt-1 max-w-2xl text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{description}</p>
+          </div>
+          {action}
         </div>
-        {action}
       </div>
-      <div className="mt-5">{children}</div>
+      <div className="pt-4">{children}</div>
     </section>
   );
 }
 
 function HeroMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <div className="px-4 py-3">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">{label}</p>
-      <p className="mt-2 text-lg font-light text-black dark:text-white">{value}</p>
-      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{detail}</p>
+    <div className="rounded-sm border border-zinc-200/70 p-3 dark:border-zinc-800/70">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">{label}</p>
+      <p className="mt-2 text-base font-medium text-black dark:text-white">{value}</p>
+      <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{detail}</p>
     </div>
   );
 }
@@ -295,21 +295,21 @@ function MissionRail({ item, onOpen }: { item: MissionRailItem; onOpen: (tab: Ac
     <button
       type="button"
       onClick={() => onOpen(item.tab)}
-      className="group w-full border-r border-zinc-200/70 px-4 py-4 text-left last:border-r-0 dark:border-zinc-800/70"
+      className="group w-full rounded-sm border border-zinc-200/70 p-3 text-left transition-colors hover:bg-zinc-50 dark:border-zinc-800/70 dark:hover:bg-[#121212]"
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-700 dark:border-zinc-800 dark:bg-[#121212] dark:text-zinc-200">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-zinc-200 bg-white text-zinc-700 dark:border-zinc-800 dark:bg-[#121212] dark:text-zinc-200">
             <Icon className="h-4 w-4" />
           </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">{item.label}</p>
-            <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">{item.detail}</p>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">{item.label}</p>
+            <p className="mt-1 text-[12px] leading-5 text-zinc-700 dark:text-zinc-300">{item.detail}</p>
           </div>
         </div>
-        <Badge variant="outline" className="shrink-0 border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
+        <span className="shrink-0 text-[11px] font-medium text-zinc-700 dark:text-zinc-300">
           {item.progress}%
-        </Badge>
+        </span>
       </div>
       <div className="mt-3 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
         <div
@@ -321,7 +321,7 @@ function MissionRail({ item, onOpen }: { item: MissionRailItem; onOpen: (tab: Ac
   );
 }
 
-function AchievementChip({
+function AchievementTile({
   achievement,
   onOpen,
 }: {
@@ -335,17 +335,223 @@ function AchievementChip({
       type="button"
       onClick={() => onOpen(achievement.tab)}
       className={cn(
-        'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-left text-xs transition-colors',
-        achievement.unlocked
-          ? toneClasses[achievement.tone]
-          : 'border-zinc-300 bg-white text-zinc-500 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-400'
+        'flex min-h-[88px] w-full flex-col justify-between rounded-sm border border-zinc-200/70 bg-white p-3 text-left text-zinc-500 transition-colors hover:bg-zinc-50 dark:border-zinc-800/70 dark:bg-[#141414] dark:text-zinc-400 dark:hover:bg-[#121212]'
       )}
       title={achievement.detail}
     >
-      <Icon className="h-3.5 w-3.5" />
-      <span className="font-medium">{achievement.name}</span>
-      <span className="text-[10px] opacity-80">{achievement.unlocked ? 'Unlocked' : achievement.detail}</span>
+      <div className="flex items-center justify-between gap-3">
+        <div
+          className={cn(
+            'flex h-8 w-8 items-center justify-center rounded-full border',
+            achievement.unlocked ? toneClasses[achievement.tone] : toneClasses.zinc
+          )}
+        >
+          <Icon className="h-4 w-4" />
+        </div>
+        <span
+          className={cn(
+            'text-[10px] uppercase tracking-[0.18em]',
+            achievement.unlocked ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400'
+          )}
+        >
+          {achievement.unlocked ? 'Unlocked' : 'Locked'}
+        </span>
+      </div>
+      <div className="mt-4">
+        <p className="text-xs font-medium text-black dark:text-white">{achievement.name}</p>
+        <p className="mt-1 text-[10px] leading-4 opacity-80">{achievement.detail}</p>
+      </div>
     </button>
+  );
+}
+
+function AccountPulseCard({
+  levelLabel,
+  levelNumber,
+  levelProgress,
+  accountXp,
+  nextLevelLabel,
+  accountStreak,
+  checkedInToday,
+  onCheckIn,
+  rewardPoints,
+  profileCompletion,
+  securityScore,
+  accountSurfaceCount,
+  nextSteps,
+}: {
+  levelLabel: string;
+  levelNumber: number;
+  levelProgress: number;
+  accountXp: number;
+  nextLevelLabel: string;
+  accountStreak: number;
+  checkedInToday: boolean;
+  onCheckIn: () => void;
+  rewardPoints: number;
+  profileCompletion: number;
+  securityScore: number;
+  accountSurfaceCount: number;
+  nextSteps: string[];
+}) {
+  return (
+    <section className="rounded-sm border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-[#141414]">
+      <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+        <div className="pb-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+                Account Pulse
+              </p>
+              <div className="mt-3 flex items-end gap-2">
+                <span className="text-[28px] font-light text-black dark:text-white">{accountStreak}</span>
+                <span className="pb-1 text-xs text-zinc-500 dark:text-zinc-400">day streak</span>
+              </div>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                {levelLabel} Lv.{levelNumber}
+              </p>
+            </div>
+            <Button
+              variant={checkedInToday ? 'outline' : 'default'}
+              size="sm"
+              className="rounded-full"
+              onClick={onCheckIn}
+            >
+              <Flame className="h-4 w-4" />
+              {checkedInToday ? 'Checked in' : 'Check in'}
+            </Button>
+          </div>
+
+          <div className="mt-4 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500"
+              style={{ width: `${levelProgress}%` }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400">
+            <span>{accountXp} XP</span>
+            <span>{levelProgress >= 100 ? 'Max tier' : `Next: ${nextLevelLabel}`}</span>
+          </div>
+        </div>
+
+        <div className="py-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
+              <p className="text-sm font-semibold">{rewardPoints}</p>
+              <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Points</p>
+            </div>
+            <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
+              <p className="text-sm font-semibold">{profileCompletion}%</p>
+              <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Profile</p>
+            </div>
+            <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
+              <p className="text-sm font-semibold">{securityScore}%</p>
+              <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Security</p>
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] text-zinc-500 dark:text-zinc-400">
+            {accountSurfaceCount} connected surface{accountSurfaceCount === 1 ? '' : 's'} across this account.
+          </p>
+        </div>
+
+        <div className="pt-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+              Focus Queue
+            </p>
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+              {Math.min(nextSteps.length, 3)} items
+            </span>
+          </div>
+          <div className="mt-3 space-y-2">
+            {(nextSteps.length > 0 ? nextSteps.slice(0, 3) : ['Everything important on this account page is covered.']).map(
+              (step, index) => (
+                <div key={step} className="flex items-start gap-2">
+                  <div className="mt-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full border border-zinc-300 text-[10px] text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+                    {index + 1}
+                  </div>
+                  <p className="text-xs leading-5 text-zinc-600 dark:text-zinc-300">{step}</p>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AccountRewardsCard({
+  achievements,
+  perks,
+  onOpen,
+}: {
+  achievements: AccountAchievement[];
+  perks: AccountPerk[];
+  onOpen: (tab: AccountTab) => void;
+}) {
+  const unlockedCount = achievements.filter((achievement) => achievement.unlocked).length;
+  const unlockedPerks = perks.filter((perk) => perk.unlocked).length;
+
+  return (
+    <section className="rounded-sm border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-[#141414]">
+      <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+        <div className="pb-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+              Achievements
+            </span>
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+              {unlockedCount}/{achievements.length}
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {achievements.map((achievement) => (
+              <AchievementTile key={achievement.id} achievement={achievement} onOpen={onOpen} />
+            ))}
+          </div>
+        </div>
+
+        <div className="pt-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+              Perks & Rewards
+            </span>
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</span>
+          </div>
+          <div className="mt-3 divide-y divide-zinc-200 border-y border-zinc-200/70 dark:divide-zinc-800 dark:border-zinc-800/70">
+            {perks.map((perk) => (
+              <div key={perk.id} className="flex items-start gap-3 py-3">
+                <div
+                  className={cn(
+                    'mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border',
+                    perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc
+                  )}
+                >
+                  <perk.icon className="h-3.5 w-3.5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-black dark:text-white">{perk.name}</p>
+                    <span
+                      className={cn(
+                        'text-[10px] uppercase tracking-[0.16em]',
+                        perk.unlocked ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400'
+                      )}
+                    >
+                      {perk.unlocked ? 'Active' : perk.requirement}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">
+                    {perk.description}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -661,8 +867,6 @@ export default function AccountHome() {
   );
 
   const unlockedAchievementCount = accountAchievements.filter((achievement) => achievement.unlocked).length;
-  const unlockedPerks = accountPerks.filter((perk) => perk.unlocked);
-
   const nextSteps = [
     !profileForm.legalName.trim() ? 'Add a legal name for compliance-ready account updates.' : null,
     !profileForm.phone.trim() ? 'Add a recovery phone for higher-trust account review.' : null,
@@ -837,182 +1041,134 @@ export default function AccountHome() {
       <main className="container mx-auto pt-24 pb-28 md:pt-32">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-12 md:gap-12">
           <div className="space-y-8 md:col-span-8">
-            <motion.section
-              {...sectionMotion}
-              transition={sectionTransition}
-              className="overflow-hidden rounded-sm border border-zinc-200/70 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.96),_rgba(240,249,255,0.75)_45%,_rgba(236,253,245,0.62)_100%)] px-6 py-6 dark:border-zinc-800/70 dark:bg-[radial-gradient(circle_at_top_left,_rgba(20,20,20,0.98),_rgba(11,24,27,0.94)_48%,_rgba(16,16,16,0.98)_100%)] md:px-8 md:py-7"
-            >
-              <div className="flex flex-col gap-8 xl:flex-row xl:items-start xl:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className="border-sky-500/30 bg-sky-500/10 text-[10px] uppercase tracking-[0.22em] text-sky-700 dark:text-sky-300"
-                    >
-                      Identity Hub
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className="border-zinc-300 bg-white/80 text-[10px] uppercase tracking-[0.18em] text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300"
-                    >
-                      {currentLevel.label} Lv.{Math.min(levelIndex + 1, LEVELS.length)}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className="border-emerald-500/30 bg-emerald-500/10 text-[10px] uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300"
-                    >
-                      {unlockedAchievementCount}/{accountAchievements.length} achievements
-                    </Badge>
-                  </div>
+            <motion.div {...sectionMotion} transition={sectionTransition} className="pt-4">
+              <div className="flex flex-wrap items-center gap-2 text-zinc-500 dark:text-zinc-400">
+                <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Account Center</span>
+                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                <span className="text-xs">{currentLevel.label} Lv.{Math.min(levelIndex + 1, LEVELS.length)}</span>
+                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                <span className="text-xs">{rewardPoints} pts</span>
+                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                <span className="text-xs">{securityTone} posture</span>
+              </div>
 
-                  <div className="mt-6 flex items-start gap-4">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white/90 text-lg font-medium text-zinc-900 shadow-sm dark:border-zinc-800 dark:bg-[#141414] dark:text-zinc-100">
-                      {(profileForm.displayName || profileMenuUser?.name || 'U').slice(0, 1).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">
-                        Profile / Account Center
-                      </p>
-                      <h1 className="mt-2 text-[36px] font-light tracking-tight text-black dark:text-white md:text-[42px]">
-                        {profileForm.displayName || profileMenuUser?.name || 'Account profile'}
-                      </h1>
-                      <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-                        Shape the identity layer of the product without burying it in settings. This hub is about who
-                        the account is, which surfaces it controls, and what trust or perks it has unlocked.
-                      </p>
-                      <div className="mt-4 flex flex-wrap gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-                        <span className="rounded-full border border-zinc-300/80 px-3 py-1 dark:border-zinc-700">{profileForm.email || 'Add an email address'}</span>
-                        <span className="rounded-full border border-zinc-300/80 px-3 py-1 dark:border-zinc-700">{address ? shortAddress(address) : 'Wallet not connected'}</span>
-                        <span className="rounded-full border border-zinc-300/80 px-3 py-1 dark:border-zinc-700">{activeNetworks || 1} active network{activeNetworks === 1 ? '' : 's'}</span>
-                        <span className="rounded-full border border-zinc-300/80 px-3 py-1 dark:border-zinc-700">UI-only preview</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              <h1 className="mt-2 text-[30px] font-light tracking-tight text-black dark:text-white md:text-[36px]">
+                {profileForm.displayName || profileMenuUser?.name || 'Account profile'}
+              </h1>
 
-                <div className="w-full xl:max-w-[300px] xl:border-l xl:border-zinc-200/70 xl:pl-6 xl:dark:border-zinc-800/70">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">
-                        Daily Account Pulse
-                      </p>
-                      <div className="mt-3 flex items-end gap-2">
-                        <span className="text-4xl font-light text-black dark:text-white">{accountStreak}</span>
-                        <span className="pb-1 text-sm text-zinc-500 dark:text-zinc-400">day streak</span>
-                      </div>
-                      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
-                        {checkedInToday ? 'Pulse locked for today.' : 'Run a quick trust check-in to keep your streak alive.'}
-                      </p>
-                    </div>
-                    <Button
-                      variant={checkedInToday ? 'outline' : 'default'}
-                      size="sm"
-                      className="rounded-full"
-                      onClick={handleAccountPulse}
-                    >
-                      <Flame className="h-4 w-4" />
-                      {checkedInToday ? 'Checked in' : 'Check in'}
-                    </Button>
-                  </div>
+              <p className="mt-2 max-w-2xl text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">
+                Manage the identity layer of the product without burying it in settings. This page ties together
+                profile, trusted surfaces, privacy controls, and account progression in one cleaner flow.
+              </p>
 
-                  <div className="mt-5 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500"
-                      style={{ width: `${levelProgress}%` }}
-                    />
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
-                    <span>{accountXp} XP</span>
-                    <span>{currentLevel.label === nextLevel.label ? 'Max tier' : `Next: ${nextLevel.label}`}</span>
-                  </div>
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                <span>{profileForm.email || 'Add an email address'}</span>
+                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                <span>{address ? shortAddress(address) : 'Wallet not connected'}</span>
+                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                <span>{activeNetworks || 1} active network{activeNetworks === 1 ? '' : 's'}</span>
+                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                <span>UI-only preview</span>
+              </div>
 
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                      <Gift className="mr-1 h-3 w-3" /> {rewardPoints} points
-                    </Badge>
-                    <Badge variant="outline" className="border-zinc-300 bg-white/80 text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
-                      {securityTone} posture
-                    </Badge>
-                    <Badge variant="outline" className="border-zinc-300 bg-white/80 text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
-                      {unlockedPerks.length} perks active
-                    </Badge>
-                  </div>
-                </div>
+              <div className="mt-5 flex flex-wrap gap-2.5">
+                <Button
+                  size="sm"
+                  className="rounded-full bg-black px-4 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                  onClick={() => handleTabOpen('profile')}
+                >
+                  <Edit3 className="h-4 w-4" />
+                  Edit profile
+                </Button>
+                <Button size="sm" variant="outline" className="rounded-full px-4" onClick={() => handleTabOpen('connections')}>
+                  <Plus className="h-4 w-4" />
+                  Add connection
+                </Button>
+                <Button size="sm" variant="outline" className="rounded-full px-4" onClick={() => handleTabOpen('security')}>
+                  <Shield className="h-4 w-4" />
+                  Review security
+                </Button>
               </div>
 
               {bannerMessage ? (
-                <div className="mt-6 rounded-sm border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300">
+                <div className="mt-5 border-y border-emerald-500/30 bg-emerald-500/10 px-0 py-3 text-[12px] leading-5 text-emerald-800 dark:text-emerald-300">
                   {bannerMessage}
                 </div>
               ) : null}
+            </motion.div>
 
-              <div className="mt-7 grid overflow-hidden border-y border-zinc-200/70 md:grid-cols-4 md:divide-x dark:border-zinc-800/70 dark:md:divide-zinc-800/70">
-                <HeroMetric label="Protected balance" value={formatCurrencyCompact(totalBalanceUSD)} detail="Combined onchain and linked cash surfaces" />
-                <HeroMetric label="Connected surfaces" value={String(accountSurfaceCount)} detail="Wallets, socials, and institutions attached" />
-                <HeroMetric label="Profile completion" value={`${profileCompletion}%`} detail="Identity, connection, and trust readiness" />
-                <HeroMetric label="Cash visibility" value={formatCurrencyCompact(cashBalance.totalCash)} detail="Displayed for UI context only" />
-              </div>
-
-              <div className="mt-6 border-t border-zinc-200/70 pt-5 dark:border-zinc-800/70">
+            <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
+              <div className="border-b border-zinc-200/70 pb-3 dark:border-zinc-800/70">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Mission Track</p>
-                    <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Use progress rails instead of burying important state in settings cards.</p>
+                    <h2 className="text-lg font-light tracking-tight text-black dark:text-white">Account Snapshot</h2>
+                    <p className="mt-1 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">
+                      Core identity and connection signals, shown with the same restrained treatment as the portfolio pages.
+                    </p>
                   </div>
-                  <Badge variant="outline" className="border-zinc-300 bg-white/80 text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
                     {unlockedAchievementCount}/{accountAchievements.length} unlocked
-                  </Badge>
-                </div>
-                <div className="mt-4 overflow-hidden rounded-sm border border-zinc-200/70 dark:border-zinc-800/70">
-                  <div className="grid divide-y divide-zinc-200/70 md:grid-cols-2 md:divide-y-0 md:divide-x xl:grid-cols-4 dark:divide-zinc-800/70">
-                    {missionTrack.map((item) => (
-                      <MissionRail key={item.id} item={item} onOpen={handleTabOpen} />
-                    ))}
-                  </div>
+                  </span>
                 </div>
               </div>
 
-              <div className="mt-6 border-t border-zinc-200/70 pt-5 dark:border-zinc-800/70">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="lg:max-w-[52%]">
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Achievements</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {accountAchievements.map((achievement) => (
-                        <AchievementChip key={achievement.id} achievement={achievement} onOpen={handleTabOpen} />
-                      ))}
-                    </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <HeroMetric label="Protected balance" value={formatCurrencyCompact(totalBalanceUSD)} detail="Combined onchain and linked cash surfaces" />
+                <HeroMetric label="Connected surfaces" value={String(accountSurfaceCount)} detail="Wallets, socials, and institutions attached" />
+                <HeroMetric label="Profile completion" value={`${profileCompletion}%`} detail="Identity, trust, and support readiness" />
+                <HeroMetric label="Cash visibility" value={formatCurrencyCompact(cashBalance.totalCash)} detail="Displayed for UI context only" />
+              </div>
+            </section>
+
+            <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
+              <div className="border-b border-zinc-200/70 pb-3 dark:border-zinc-800/70">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-light tracking-tight text-black dark:text-white">Progress Track</h2>
+                    <p className="mt-1 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">
+                      Four account tracks, kept visible without wrapping the whole experience in a single container.
+                    </p>
                   </div>
-                  <div className="lg:max-w-[42%]">
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Active Perks</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {accountPerks.map((perk) => (
-                        <Badge
-                          key={perk.id}
-                          variant="outline"
-                          className={cn(
-                            'px-3 py-2 text-left text-xs font-normal',
-                            perk.unlocked ? toneClasses[perk.tone] : 'border-zinc-300 bg-white text-zinc-500 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-400'
-                          )}
-                          title={perk.description}
-                        >
-                          <perk.icon className="mr-1 h-3.5 w-3.5" />
-                          {perk.name}
-                          <span className="ml-2 text-[10px] opacity-80">{perk.unlocked ? 'Active' : perk.requirement}</span>
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
+                    {missionTrack.length} tracks
+                  </span>
                 </div>
               </div>
-            </motion.section>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {missionTrack.map((item) => (
+                  <MissionRail key={item.id} item={item} onOpen={handleTabOpen} />
+                ))}
+              </div>
+            </section>
 
             <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.04 }}>
               <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
-                <TabsList className="grid w-full grid-cols-2 gap-1 rounded-full border border-zinc-200/80 bg-zinc-100/90 p-1 dark:border-zinc-800 dark:bg-[#111111] sm:grid-cols-4">
-                  <TabsTrigger value="profile" className="rounded-full py-2.5 text-sm">Profile</TabsTrigger>
-                  <TabsTrigger value="connections" className="rounded-full py-2.5 text-sm">Connections</TabsTrigger>
-                  <TabsTrigger value="security" className="rounded-full py-2.5 text-sm">Security</TabsTrigger>
-                  <TabsTrigger value="support" className="rounded-full py-2.5 text-sm">Support</TabsTrigger>
+                <TabsList className="h-auto w-full flex-wrap justify-start gap-5 rounded-none border-b border-zinc-200/70 bg-transparent p-0 dark:border-zinc-800/70">
+                  <TabsTrigger
+                    value="profile"
+                    className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[11px] uppercase tracking-[0.18em] text-zinc-500 shadow-none data-[state=active]:border-zinc-900 data-[state=active]:bg-transparent data-[state=active]:text-zinc-900 dark:text-zinc-400 dark:data-[state=active]:border-zinc-100 dark:data-[state=active]:text-zinc-100"
+                  >
+                    Profile
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="connections"
+                    className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[11px] uppercase tracking-[0.18em] text-zinc-500 shadow-none data-[state=active]:border-zinc-900 data-[state=active]:bg-transparent data-[state=active]:text-zinc-900 dark:text-zinc-400 dark:data-[state=active]:border-zinc-100 dark:data-[state=active]:text-zinc-100"
+                  >
+                    Connections
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="security"
+                    className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[11px] uppercase tracking-[0.18em] text-zinc-500 shadow-none data-[state=active]:border-zinc-900 data-[state=active]:bg-transparent data-[state=active]:text-zinc-900 dark:text-zinc-400 dark:data-[state=active]:border-zinc-100 dark:data-[state=active]:text-zinc-100"
+                  >
+                    Security
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="support"
+                    className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[11px] uppercase tracking-[0.18em] text-zinc-500 shadow-none data-[state=active]:border-zinc-900 data-[state=active]:bg-transparent data-[state=active]:text-zinc-900 dark:text-zinc-400 dark:data-[state=active]:border-zinc-100 dark:data-[state=active]:text-zinc-100"
+                  >
+                    Support
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="profile" className="space-y-8 pt-5">
@@ -1060,16 +1216,10 @@ export default function AccountHome() {
                         <Textarea id="bio" className="min-h-[112px]" value={profileForm.bio} onChange={(event) => handleProfileFieldChange('bio', event.target.value)} placeholder="Tell other users what this account is for." />
                       </div>
                     </div>
-                    <div className="mt-6 flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-                      <Badge variant="outline" className="border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
-                        {profileFieldsComplete}/6 core fields complete
-                      </Badge>
-                      <Badge variant="outline" className="border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
-                        Last saved: {profileSavedAt}
-                      </Badge>
-                      <Badge variant="outline" className="border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
-                        Local preview only
-                      </Badge>
+                    <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                      <HeroMetric label="Core fields" value={`${profileFieldsComplete}/6`} detail="Identity details filled in" />
+                      <HeroMetric label="Last saved" value={profileSavedAt} detail="Local UI preview only" />
+                      <HeroMetric label="Account mode" value="Preview" detail="No backend or persistence wired yet" />
                     </div>
                   </SectionPanel>
 
@@ -1078,7 +1228,7 @@ export default function AccountHome() {
                     title="Account defaults"
                     description="Use dividers and compact summary rows instead of more settings cards."
                   >
-                    <div className="grid overflow-hidden border-y border-zinc-200/70 md:grid-cols-3 md:divide-x dark:border-zinc-800/70 dark:md:divide-zinc-800/70">
+                    <div className="grid gap-3 md:grid-cols-3">
                       <HeroMetric label="Primary region" value={profileForm.residency || 'Unset'} detail="Controls disclosures and cash movement defaults" />
                       <HeroMetric label="Notification timezone" value={profileForm.timezone || 'Unset'} detail="Used for statements, support windows, and alerts" />
                       <HeroMetric label="Settlement currency" value={profileForm.currency || 'Unset'} detail="Normalizes account-level exports and summaries" />
@@ -1097,22 +1247,25 @@ export default function AccountHome() {
                       {wallets.map((wallet, index) => (
                         <div key={wallet.id} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-start md:justify-between', index !== wallets.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                           <div className="flex min-w-0 gap-3">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
                               <Wallet className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
                             </div>
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="text-sm font-medium text-black dark:text-white">{wallet.label}</p>
-                                <Badge variant="outline" className={wallet.verified ? toneClasses.emerald : toneClasses.amber}>{wallet.verified ? 'Verified' : 'Pending'}</Badge>
-                                <Badge variant="outline" className={toneClasses.zinc}>{wallet.kind}</Badge>
+                                <span className={cn('text-[10px] uppercase tracking-[0.18em]', wallet.verified ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300')}>
+                                  {wallet.verified ? 'Verified' : 'Pending'}
+                                </span>
                               </div>
                               <p className="mt-2 font-mono text-sm text-zinc-600 dark:text-zinc-300">{wallet.address}</p>
-                              <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                              <div className="mt-2 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+                                <span>{wallet.kind}</span>
+                                <span>•</span>
                                 <span>{wallet.network}</span>
                                 <span>•</span>
                                 <span>{wallet.lastActive}</span>
                               </div>
-                              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{wallet.note}</p>
+                              <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{wallet.note}</p>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2 md:justify-end">
@@ -1136,23 +1289,24 @@ export default function AccountHome() {
                     {socialAccounts.length === 0 ? (
                       <div className="border-y border-dashed border-zinc-300/80 px-0 py-8 text-center dark:border-zinc-700">
                         <p className="text-sm font-medium text-black dark:text-white">No social accounts linked yet</p>
-                        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">Add X, Farcaster, Discord, GitHub, or another identity layer when you are ready.</p>
+                        <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">Add X, Farcaster, Discord, GitHub, or another identity layer when you are ready.</p>
                       </div>
                     ) : (
                       <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                         {socialAccounts.map((account, index) => (
                           <div key={account.id} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== socialAccounts.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                             <div className="flex items-start gap-3">
-                              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white text-sm font-medium text-zinc-700 dark:border-zinc-800 dark:bg-[#121212] dark:text-zinc-200">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-zinc-200 bg-white text-sm font-medium text-zinc-700 dark:border-zinc-800 dark:bg-[#121212] dark:text-zinc-200">
                                 {account.platform.slice(0, 2).toUpperCase()}
                               </div>
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="text-sm font-medium text-black dark:text-white">{account.platform}</p>
-                                  <Badge variant="outline" className={toneClasses.sky}>{account.status}</Badge>
-                                  <Badge variant="outline" className={toneClasses.zinc}>{account.visibility}</Badge>
+                                  <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+                                    {account.status} • {account.visibility}
+                                  </span>
                                 </div>
-                                <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">{account.handle}</p>
+                                <p className="mt-2 text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">{account.handle}</p>
                               </div>
                             </div>
                             <div className="flex flex-wrap gap-2 md:justify-end">
@@ -1172,31 +1326,33 @@ export default function AccountHome() {
                     action={<div className="flex gap-2"><Button variant="outline" size="sm" onClick={handleRefreshBanks} disabled={refreshingBanks}>{refreshingBanks ? 'Refreshing...' : 'Refresh'}</Button><Button size="sm" onClick={() => setBannerMessage('Funding link and institution onboarding will be wired in the next pass.')}><ArrowUpRight className="h-4 w-4" />Link funds</Button></div>}
                   >
                     {bankAccountsLoading ? (
-                      <div className="border-y border-zinc-200/70 px-0 py-8 text-sm text-zinc-500 dark:border-zinc-800/70 dark:text-zinc-400">Loading linked institutions...</div>
+                      <div className="border-y border-zinc-200/70 px-0 py-8 text-[12px] leading-5 text-zinc-500 dark:border-zinc-800/70 dark:text-zinc-400">Loading linked institutions...</div>
                     ) : bankAccounts.length === 0 ? (
                       <div className="border-y border-dashed border-zinc-300/80 px-0 py-8 text-center dark:border-zinc-700">
                         <p className="text-sm font-medium text-black dark:text-white">No banks connected</p>
-                        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">Link a checking, savings, or brokerage account to complete the funding layer later.</p>
+                        <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">Link a checking, savings, or brokerage account to complete the funding layer later.</p>
                       </div>
                     ) : (
                       <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                         {bankAccounts.map((account, index) => (
                           <div key={account.account_id} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== bankAccounts.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                             <div className="flex items-start gap-3">
-                              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
                                 <Landmark className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
                               </div>
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="text-sm font-medium text-black dark:text-white">{account.name}</p>
-                                  <Badge variant="outline" className={toneClasses.zinc}>{account.subtype || account.type || 'linked'}</Badge>
+                                  <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+                                    {account.subtype || account.type || 'linked'}
+                                  </span>
                                 </div>
-                                <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{account.mask ? `•••• ${account.mask}` : 'Mask unavailable'}</p>
+                                <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{account.mask ? `•••• ${account.mask}` : 'Mask unavailable'}</p>
                               </div>
                             </div>
                             <div className="text-left md:text-right">
                               <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Available</p>
-                              <p className="mt-2 text-lg font-light text-black dark:text-white">{formatCurrency(account.available)}</p>
+                              <p className="mt-2 text-base font-medium text-black dark:text-white">{formatCurrency(account.available)}</p>
                               {account.current != null ? <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Current {formatCurrency(account.current)}</p> : null}
                             </div>
                           </div>
@@ -1218,15 +1374,17 @@ export default function AccountHome() {
                         return (
                           <div key={control.id} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== securityControls.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                             <div className="flex items-start gap-3">
-                              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
                                 <Icon className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
                               </div>
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="text-sm font-medium text-black dark:text-white">{control.label}</p>
-                                  <Badge variant="outline" className={control.enabled ? toneClasses.emerald : toneClasses.zinc}>{control.enabled ? 'Enabled' : 'Off'}</Badge>
+                                  <span className={cn('text-[11px] uppercase tracking-[0.16em]', control.enabled ? 'text-emerald-700 dark:text-emerald-300' : 'text-zinc-500 dark:text-zinc-400')}>
+                                    {control.enabled ? 'Enabled' : 'Off'}
+                                  </span>
                                 </div>
-                                <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{control.description}</p>
+                                <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{control.description}</p>
                               </div>
                             </div>
                             <Button variant={control.enabled ? 'default' : 'outline'} size="sm" onClick={() => toggleSecurityControl(control.id)}>
@@ -1243,17 +1401,27 @@ export default function AccountHome() {
                     title="Recovery surfaces"
                     description="Map the primary trust anchors with dividers and labels so the account is readable at a glance."
                   >
-                    <div className="grid overflow-hidden border-y border-zinc-200/70 md:grid-cols-3 md:divide-x dark:border-zinc-800/70 dark:md:divide-zinc-800/70">
+                    <div className="grid gap-3 md:grid-cols-3">
                       <HeroMetric label="Primary signer" value={address ? shortAddress(address) : 'Not connected'} detail="Wallet signatures remain the highest-trust recovery path" />
                       <HeroMetric label="Recovery contacts" value={profileForm.phone || 'Add a recovery phone'} detail="Phone and email speed up security review" />
                       <HeroMetric label="Exposure map" value={`${wallets.length} wallets / ${bankAccounts.length} rails`} detail="Review trusted surfaces regularly to reduce stale links" />
                     </div>
-                    <div className="mt-5 flex flex-wrap gap-2">
+                    <div className="mt-5 space-y-2">
                       {accountPerks.map((perk) => (
-                        <Badge key={perk.id} variant="outline" className={perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc} title={perk.description}>
-                          <perk.icon className="mr-1 h-3.5 w-3.5" />
-                          {perk.name}
-                        </Badge>
+                        <div key={perk.id} className="flex items-center justify-between gap-3 text-[12px]">
+                          <div className="flex items-center gap-2">
+                            <div className={cn('flex h-7 w-7 items-center justify-center rounded-full border', perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc)}>
+                              <perk.icon className="h-3.5 w-3.5" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-black dark:text-white">{perk.name}</p>
+                              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{perk.description}</p>
+                            </div>
+                          </div>
+                          <span className="shrink-0 text-[11px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+                            {perk.unlocked ? 'Active' : perk.requirement}
+                          </span>
+                        </div>
                       ))}
                     </div>
                   </SectionPanel>
@@ -1263,7 +1431,7 @@ export default function AccountHome() {
                   <SectionPanel
                     eyebrow="Documents"
                     title="Statements and exports"
-                    description="Keep documents in clean rows with action pills instead of more tiles."
+                    description="Keep documents in clean rows with compact actions instead of more tiles."
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {[
@@ -1273,14 +1441,14 @@ export default function AccountHome() {
                       ].map((item, index, array) => (
                         <div key={item.title} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== array.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                           <div className="flex items-start gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
-                              <FileText className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
+                              <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
+                                <FileText className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-black dark:text-white">{item.title}</p>
+                                <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{item.detail}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm font-medium text-black dark:text-white">{item.title}</p>
-                              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{item.detail}</p>
-                            </div>
-                          </div>
                           <Button variant="outline" size="sm" onClick={() => setBannerMessage(`${item.cta} queued in the local preview.`)}>{item.cta}</Button>
                         </div>
                       ))}
@@ -1302,12 +1470,12 @@ export default function AccountHome() {
                         return (
                           <div key={item.title} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== array.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                             <div className="flex items-start gap-3">
-                              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
                                 <Icon className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
                               </div>
                               <div>
                                 <p className="text-sm font-medium text-black dark:text-white">{item.title}</p>
-                                <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{item.detail}</p>
+                                <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{item.detail}</p>
                               </div>
                             </div>
                             <Button variant="outline" size="sm" onClick={() => setBannerMessage(`${item.title} opened in the local preview.`)}>{item.cta}</Button>
@@ -1321,110 +1489,38 @@ export default function AccountHome() {
             </motion.div>
           </div>
 
-          <div className="md:col-span-4">
-            <motion.aside
-              {...sectionMotion}
-              transition={{ ...sectionTransition, delay: 0.08 }}
-              className="sticky top-28 overflow-hidden rounded-sm border border-zinc-200/70 bg-white dark:border-zinc-800/70 dark:bg-[#111111]"
-            >
-              <div className="px-5 py-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Account health</p>
-                    <h2 className="mt-1 text-base font-medium text-black dark:text-white">Progress snapshot</h2>
-                  </div>
-                  <Badge variant="outline" className={profileCompletion >= 80 ? toneClasses.emerald : toneClasses.amber}>
-                    {profileCompletion}% complete
-                  </Badge>
-                </div>
-                <div className="mt-4 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
-                  <div className="h-full rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500" style={{ width: `${profileCompletion}%` }} />
-                </div>
-                <div className="mt-5 space-y-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-zinc-500 dark:text-zinc-400">Security score</span>
-                    <span className="font-medium text-black dark:text-white">{securityScore}%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-zinc-500 dark:text-zinc-400">Reward points</span>
-                    <span className="font-medium text-black dark:text-white">{rewardPoints}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-zinc-500 dark:text-zinc-400">Active perks</span>
-                    <span className="font-medium text-black dark:text-white">{unlockedPerks.length}</span>
-                  </div>
-                </div>
-              </div>
+          <div className="space-y-8 md:col-span-4">
+            <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.08 }}>
+              <AccountPulseCard
+                levelLabel={currentLevel.label}
+                levelNumber={Math.min(levelIndex + 1, LEVELS.length)}
+                levelProgress={levelProgress}
+                accountXp={accountXp}
+                nextLevelLabel={currentLevel.label === nextLevel.label ? 'Max tier' : nextLevel.label}
+                accountStreak={accountStreak}
+                checkedInToday={checkedInToday}
+                onCheckIn={handleAccountPulse}
+                rewardPoints={rewardPoints}
+                profileCompletion={profileCompletion}
+                securityScore={securityScore}
+                accountSurfaceCount={accountSurfaceCount}
+                nextSteps={nextSteps}
+              />
+            </motion.div>
 
-              <div className="border-t border-zinc-200/70 px-5 py-5 dark:border-zinc-800/70">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Next up</p>
-                <div className="mt-4 space-y-3">
-                  {nextSteps.length === 0 ? (
-                    <div className="rounded-sm border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-800 dark:text-emerald-300">
-                      All major profile, connection, and security checkpoints are covered.
-                    </div>
-                  ) : (
-                    nextSteps.map((step) => (
-                      <button
-                        key={step}
-                        type="button"
-                        onClick={() => {
-                          if (step.toLowerCase().includes('social') || step.toLowerCase().includes('bank')) {
-                            handleTabOpen('connections');
-                            return;
-                          }
-                          if (step.toLowerCase().includes('security')) {
-                            handleTabOpen('security');
-                            return;
-                          }
-                          handleTabOpen('profile');
-                        }}
-                        className="flex w-full items-start gap-3 text-left"
-                      >
-                        <div className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-zinc-300 text-[11px] text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-                          {nextSteps.indexOf(step) + 1}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm text-zinc-700 dark:text-zinc-300">{step}</p>
-                        </div>
-                        <ChevronRight className="mt-0.5 h-4 w-4 text-zinc-400" />
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
+            <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.12 }}>
+              <AccountRewardsCard achievements={accountAchievements} perks={accountPerks} onOpen={handleTabOpen} />
+            </motion.div>
 
-              <div className="border-t border-zinc-200/70 px-5 py-5 dark:border-zinc-800/70">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Achievement locker</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {accountAchievements.map((achievement) => (
-                    <AchievementChip key={achievement.id} achievement={achievement} onOpen={handleTabOpen} />
-                  ))}
-                </div>
+            <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
+              <div className="space-y-2 rounded-sm border border-zinc-200/70 bg-gradient-to-r from-zinc-100/70 to-sky-50/60 p-4 dark:border-zinc-800/70 dark:from-[#141414] dark:to-[#10181a]">
+                <p className="text-sm font-medium text-black dark:text-white">Portable identity. Cleaner account control.</p>
+                <p className="text-[11px] leading-5 text-zinc-600 dark:text-zinc-300">
+                  This screen stays intentionally UI-first for now. The goal is to make profile, wallet, social, and
+                  trust management feel native to the product before the real data layer is wired in.
+                </p>
               </div>
-
-              <div className="border-t border-zinc-200/70 px-5 py-5 dark:border-zinc-800/70">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Perks in play</p>
-                <div className="mt-4 space-y-3">
-                  {accountPerks.map((perk) => (
-                    <div key={perk.id} className="flex items-start gap-3">
-                      <div className={cn('mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border', perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc)}>
-                        <perk.icon className="h-3.5 w-3.5" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium text-black dark:text-white">{perk.name}</p>
-                          <Badge variant="outline" className={perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc}>
-                            {perk.unlocked ? 'Active' : perk.requirement}
-                          </Badge>
-                        </div>
-                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{perk.description}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </motion.aside>
+            </section>
           </div>
         </div>
       </main>
