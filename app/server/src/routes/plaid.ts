@@ -364,6 +364,224 @@ function isDateWithinRange(dateStr: string | null | undefined, startDate: string
   return dateStr >= startDate && dateStr <= endDate;
 }
 
+const RECURRING_FALLBACK_LOOKBACK_DAYS = 210;
+const RECURRING_FALLBACK_MAX_TRANSACTIONS = 2000;
+const MIN_RECURRING_FALLBACK_OCCURRENCES = 3;
+const RECURRING_TRANSFER_NAME_HINTS = [
+  'transfer',
+  'xfer',
+  'zelle',
+  'venmo',
+  'cash app',
+  'cashapp',
+  'to savings',
+  'from savings',
+  'to checking',
+  'from checking',
+  'internal transfer',
+];
+
+type RecurringFallbackTransactionLike = {
+  transaction_id?: string;
+  account_id?: string;
+  date?: string | null;
+  authorized_date?: string | null;
+  amount?: number | string | null;
+  merchant_name?: string | null;
+  name?: string | null;
+  original_description?: string | null;
+  iso_currency_code?: string | null;
+  pending?: boolean;
+  personal_finance_category?: {
+    primary?: string | null;
+    detailed?: string | null;
+  } | null;
+};
+
+function normalizeRecurringDescriptor(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\d+/g, ' ')
+    .replace(/[^a-z]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hashStableString(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return String(hash);
+}
+
+function parseLocalDateOnly(dateStr: string | null | undefined): Date | null {
+  if (!dateStr || typeof dateStr !== 'string' || dateStr.length < 10) return null;
+  const [year, month, day] = dateStr.slice(0, 10).split('-').map(Number);
+  if (![year, month, day].every((part) => Number.isFinite(part))) return null;
+  const parsed = new Date(year, month - 1, day);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function pickRecurringCadenceDays(intervalDays: number[]): number | null {
+  if (intervalDays.length < 2) return null;
+  const cadenceCandidates: Array<{ days: number; tolerance: number }> = [
+    { days: 7, tolerance: 2 },   // weekly
+    { days: 14, tolerance: 3 },  // bi-weekly
+    { days: 15, tolerance: 3 },  // semi-monthly
+    { days: 30, tolerance: 5 },  // monthly
+  ];
+
+  let best: { days: number; matches: number } | null = null;
+  for (const candidate of cadenceCandidates) {
+    const matches = intervalDays.filter((value) => Math.abs(value - candidate.days) <= candidate.tolerance).length;
+    const ratio = matches / intervalDays.length;
+    if (matches < 2 || ratio < 0.6) continue;
+    if (!best || matches > best.matches) {
+      best = { days: candidate.days, matches };
+    }
+  }
+
+  return best?.days ?? null;
+}
+
+function isLikelyTransferInflow(tx: RecurringFallbackTransactionLike, normalizedDescriptor: string): boolean {
+  const categoryText =
+    `${tx.personal_finance_category?.primary ?? ''} ${tx.personal_finance_category?.detailed ?? ''}`.toLowerCase();
+  if (categoryText.includes('transfer')) return true;
+  return RECURRING_TRANSFER_NAME_HINTS.some((hint) => normalizedDescriptor.includes(hint));
+}
+
+async function fetchTransactionsForRange(params: {
+  client: PlaidApi;
+  accessToken: string;
+  startDate: string;
+  endDate: string;
+  maxTransactions?: number;
+}): Promise<RecurringFallbackTransactionLike[]> {
+  const { client, accessToken, startDate, endDate, maxTransactions = RECURRING_FALLBACK_MAX_TRANSACTIONS } = params;
+  const transactions: RecurringFallbackTransactionLike[] = [];
+  let offset = 0;
+  const count = 500;
+  let totalTransactions = 0;
+
+  do {
+    const request: TransactionsGetRequest = {
+      access_token: accessToken,
+      start_date: startDate,
+      end_date: endDate,
+      options: { count, offset },
+    };
+    const response = await client.transactionsGet(request);
+    const batch = (response.data.transactions ?? []) as RecurringFallbackTransactionLike[];
+    transactions.push(...batch);
+    totalTransactions = response.data.total_transactions ?? 0;
+    offset += batch.length;
+    if (batch.length === 0) break;
+  } while (offset < totalTransactions && offset < maxTransactions);
+
+  return transactions;
+}
+
+function detectFallbackRecurringInflows(params: {
+  transactions: RecurringFallbackTransactionLike[];
+  itemId: string;
+  now: Date;
+  currentYear: number;
+  currentMonth: number;
+}): RecurringStreamPayload[] {
+  const { transactions, itemId, now, currentYear, currentMonth } = params;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  type GroupEntry = {
+    date: Date;
+    amount: number;
+    iso: string | null;
+    name: string;
+  };
+
+  const groups = new Map<string, GroupEntry[]>();
+
+  for (const tx of transactions) {
+    if (tx.pending) continue;
+
+    const signedAmount = Number(tx.amount);
+    if (!Number.isFinite(signedAmount) || signedAmount >= 0) continue; // Plaid: inflow is negative
+
+    const dateStr = tx.date ?? tx.authorized_date ?? null;
+    const txDate = parseLocalDateOnly(dateStr);
+    if (!txDate || txDate > today) continue;
+
+    const name = tx.merchant_name || tx.name || tx.original_description || 'Deposit';
+    const normalizedDescriptor = normalizeRecurringDescriptor(name);
+    if (!normalizedDescriptor) continue;
+    if (isLikelyTransferInflow(tx, normalizedDescriptor)) continue;
+
+    const key = `${tx.account_id ?? 'unknown'}:${normalizedDescriptor}`;
+    const current = groups.get(key) ?? [];
+    current.push({
+      date: txDate,
+      amount: Math.abs(signedAmount),
+      iso: tx.iso_currency_code ?? null,
+      name,
+    });
+    groups.set(key, current);
+  }
+
+  const fallbackStreams: RecurringStreamPayload[] = [];
+
+  for (const [groupKey, entries] of groups.entries()) {
+    if (entries.length < MIN_RECURRING_FALLBACK_OCCURRENCES) continue;
+
+    const uniqueByDay = new Map<string, GroupEntry>();
+    for (const entry of entries) {
+      const dayKey = formatLocalDate(entry.date);
+      const existing = uniqueByDay.get(dayKey);
+      if (!existing || entry.amount > existing.amount) {
+        uniqueByDay.set(dayKey, entry);
+      }
+    }
+
+    const ordered = Array.from(uniqueByDay.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
+    if (ordered.length < MIN_RECURRING_FALLBACK_OCCURRENCES) continue;
+
+    const intervals: number[] = [];
+    for (let i = 1; i < ordered.length; i += 1) {
+      const prev = ordered[i - 1].date.getTime();
+      const next = ordered[i].date.getTime();
+      intervals.push(Math.round((next - prev) / (24 * 60 * 60 * 1000)));
+    }
+
+    const cadenceDays = pickRecurringCadenceDays(intervals);
+    if (!cadenceDays) continue;
+
+    const lastDate = new Date(ordered[ordered.length - 1].date);
+    const nextDate = new Date(lastDate);
+    nextDate.setDate(nextDate.getDate() + cadenceDays);
+    while (nextDate < today) {
+      nextDate.setDate(nextDate.getDate() + cadenceDays);
+    }
+
+    if (nextDate.getFullYear() !== currentYear || nextDate.getMonth() !== currentMonth) continue;
+
+    const recent = ordered.slice(-Math.min(3, ordered.length));
+    const avgAmount = recent.reduce((sum, entry) => sum + entry.amount, 0) / recent.length;
+    if (!Number.isFinite(avgAmount) || avgAmount <= 0) continue;
+
+    const latest = ordered[ordered.length - 1];
+    fallbackStreams.push({
+      stream_id: `fallback-inflow-${itemId}-${hashStableString(groupKey)}`,
+      name: latest.name,
+      amount: avgAmount,
+      day: nextDate.getDate(),
+      iso_currency_code: latest.iso,
+    });
+  }
+
+  return fallbackStreams.sort((a, b) => a.day - b.day);
+}
+
 function preferredAprPercentage(aprs: Array<{ apr_type: string; apr_percentage: number }> | null | undefined): number | null {
   if (!aprs || aprs.length === 0) return null;
   const purchase = aprs.find((apr) => apr.apr_type === 'purchase_apr');
@@ -1380,6 +1598,7 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
     const staleItemIds = new Set<string>();
     let hadNotReadyItem = false;
     let usedPendingFallback = false;
+    let usedHistoricalInflowFallback = false;
 
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -1390,7 +1609,8 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
 
     for (const item of items) {
       try {
-        let itemHasUpcoming = false;
+        let itemHasUpcomingInflow = false;
+        let itemHasUpcomingOutflow = false;
         const request: TransactionsRecurringGetRequest = { access_token: item.access_token };
         const response = await client.transactionsRecurringGet(request);
         const inflow = response.data.inflow_streams ?? [];
@@ -1412,7 +1632,7 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
             day: d,
             iso_currency_code: iso,
           });
-          itemHasUpcoming = true;
+          itemHasUpcomingInflow = true;
         }
 
         for (const s of outflow) {
@@ -1431,16 +1651,16 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
             day: d,
             iso_currency_code: iso,
           });
-          itemHasUpcoming = true;
+          itemHasUpcomingOutflow = true;
         }
 
         // Fallback: if recurring streams are empty/not detected yet, use pending transactions for upcoming days.
-        if (!itemHasUpcoming) {
+        if (!itemHasUpcomingInflow && !itemHasUpcomingOutflow) {
           const pendingRequest: TransactionsGetRequest = {
             access_token: item.access_token,
             start_date: startDate,
             end_date: endDate,
-            options: { count: 1, offset: 0 },
+            options: { count: 500, offset: 0 },
           };
           const pendingResponse = await client.transactionsGet(pendingRequest);
           const pendingTransactions =
@@ -1476,13 +1696,43 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
               if (seenOutflow.has(streamId)) continue;
               seenOutflow.add(streamId);
               outflowStreams.push(payload);
+              itemHasUpcomingOutflow = true;
             } else {
               if (seenInflow.has(streamId)) continue;
               seenInflow.add(streamId);
               inflowStreams.push(payload);
+              itemHasUpcomingInflow = true;
             }
-            itemHasUpcoming = true;
             usedPendingFallback = true;
+          }
+        }
+
+        // Fallback for variable recurring payroll/deposit amounts:
+        // infer cadence from historical inflow transactions when Plaid recurring inflow streams are absent.
+        if (!itemHasUpcomingInflow) {
+          const lookbackStart = formatLocalDate(
+            new Date(currentYear, currentMonth, currentDay - RECURRING_FALLBACK_LOOKBACK_DAYS)
+          );
+          const historicalTransactions = await fetchTransactionsForRange({
+            client,
+            accessToken: item.access_token,
+            startDate: lookbackStart,
+            endDate,
+          });
+          const fallbackInflows = detectFallbackRecurringInflows({
+            transactions: historicalTransactions,
+            itemId: item.item_id,
+            now,
+            currentYear,
+            currentMonth,
+          });
+
+          for (const stream of fallbackInflows) {
+            if (seenInflow.has(stream.stream_id)) continue;
+            seenInflow.add(stream.stream_id);
+            inflowStreams.push(stream);
+            itemHasUpcomingInflow = true;
+            usedHistoricalInflowFallback = true;
           }
         }
       } catch (itemErr: unknown) {
@@ -1509,7 +1759,11 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
     const hasAnyStream = inflowStreams.length > 0 || outflowStreams.length > 0;
     const shouldSkipCache = hadNotReadyItem && !hasAnyStream;
     if (cacheService && !shouldSkipCache) {
-      const effectiveTtl = usedPendingFallback ? Math.min(ttl, 900) : ttl;
+      const effectiveTtl = usedPendingFallback
+        ? Math.min(ttl, 900)
+        : usedHistoricalInflowFallback
+          ? Math.min(ttl, 21600)
+          : ttl;
       await cacheService.set(cacheKey, payload, effectiveTtl);
     }
     return res.json({ ...payload, linked: true, cached: false });
