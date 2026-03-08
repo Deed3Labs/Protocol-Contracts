@@ -380,6 +380,36 @@ const RECURRING_TRANSFER_NAME_HINTS = [
   'from checking',
   'internal transfer',
 ];
+const RECURRING_PAYROLL_NAME_HINTS = [
+  'payroll',
+  'salary',
+  'paycheck',
+  'direct deposit',
+  'dir dep',
+  'dd',
+  'ach credit',
+];
+const PAYROLL_EMPLOYER_STOP_WORDS = new Set([
+  'payroll',
+  'salary',
+  'paycheck',
+  'direct',
+  'deposit',
+  'dep',
+  'ach',
+  'credit',
+  'payment',
+  'pmt',
+  'wages',
+  'earning',
+  'earnings',
+  'corp',
+  'inc',
+  'llc',
+  'co',
+  'company',
+  'the',
+]);
 
 type RecurringFallbackTransactionLike = {
   transaction_id?: string;
@@ -405,6 +435,28 @@ function normalizeRecurringDescriptor(value: string): string {
     .replace(/[^a-z]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function tokenizeRecurringDescriptor(value: string): string[] {
+  const normalized = normalizeRecurringDescriptor(value);
+  if (!normalized) return [];
+  return normalized.split(' ').filter(Boolean);
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function normalizePayrollEmployerName(value: string): string {
+  const tokens = tokenizeRecurringDescriptor(value).filter(
+    (token) => token.length > 1 && !PAYROLL_EMPLOYER_STOP_WORDS.has(token)
+  );
+  if (tokens.length === 0) return '';
+  return Array.from(new Set(tokens)).sort().join(' ');
 }
 
 function hashStableString(input: string): string {
@@ -453,6 +505,20 @@ function isLikelyTransferInflow(tx: RecurringFallbackTransactionLike, normalized
   return RECURRING_TRANSFER_NAME_HINTS.some((hint) => normalizedDescriptor.includes(hint));
 }
 
+function isSalaryLikeInflow(tx: RecurringFallbackTransactionLike, normalizedDescriptor: string): boolean {
+  const categoryText =
+    `${tx.personal_finance_category?.primary ?? ''} ${tx.personal_finance_category?.detailed ?? ''}`.toLowerCase();
+  if (
+    categoryText.includes('income') ||
+    categoryText.includes('salary') ||
+    categoryText.includes('wage') ||
+    categoryText.includes('payroll')
+  ) {
+    return true;
+  }
+  return RECURRING_PAYROLL_NAME_HINTS.some((hint) => normalizedDescriptor.includes(hint));
+}
+
 async function fetchTransactionsForRange(params: {
   client: PlaidApi;
   accessToken: string;
@@ -499,6 +565,8 @@ function detectFallbackRecurringInflows(params: {
     amount: number;
     iso: string | null;
     name: string;
+    isSalaryLike: boolean;
+    employerName: string;
   };
 
   const groups = new Map<string, GroupEntry[]>();
@@ -517,14 +585,18 @@ function detectFallbackRecurringInflows(params: {
     const normalizedDescriptor = normalizeRecurringDescriptor(name);
     if (!normalizedDescriptor) continue;
     if (isLikelyTransferInflow(tx, normalizedDescriptor)) continue;
-
-    const key = `${tx.account_id ?? 'unknown'}:${normalizedDescriptor}`;
+    const salaryLike = isSalaryLikeInflow(tx, normalizedDescriptor);
+    const employerName = salaryLike ? normalizePayrollEmployerName(name) : '';
+    const salaryGroupKey = employerName || normalizedDescriptor;
+    const key = `${tx.account_id ?? 'unknown'}:${salaryLike ? `salary:${salaryGroupKey}` : `income:${normalizedDescriptor}`}`;
     const current = groups.get(key) ?? [];
     current.push({
       date: txDate,
       amount: Math.abs(signedAmount),
       iso: tx.iso_currency_code ?? null,
       name,
+      isSalaryLike: salaryLike,
+      employerName,
     });
     groups.set(key, current);
   }
@@ -570,9 +642,15 @@ function detectFallbackRecurringInflows(params: {
     if (!Number.isFinite(avgAmount) || avgAmount <= 0) continue;
 
     const latest = ordered[ordered.length - 1];
+    const displayName =
+      latest.isSalaryLike && latest.employerName
+        ? `Salary · ${toTitleCase(latest.employerName)}`
+        : latest.isSalaryLike
+          ? 'Salary'
+          : latest.name;
     fallbackStreams.push({
       stream_id: `fallback-inflow-${itemId}-${hashStableString(groupKey)}`,
-      name: latest.name,
+      name: displayName,
       amount: avgAmount,
       day: nextDate.getDate(),
       iso_currency_code: latest.iso,
