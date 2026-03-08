@@ -16,10 +16,12 @@ import {
 } from 'recharts';
 import {
   AlertTriangle,
+  Archive,
   ArrowUpRight,
   Bell,
   Copy,
   Crown,
+  Download,
   Edit3,
   FileText,
   Flame,
@@ -1691,6 +1693,7 @@ export default function AccountHome() {
                               className={control.enabled ? ACCOUNT_TAB_BUTTON_SUCCESS_CLASS : ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
                               onClick={() => toggleSecurityControl(control.id)}
                             >
+                              <Icon className="h-4 w-4" />
                               {control.enabled ? 'Turn off' : 'Turn on'}
                             </Button>
                           </div>
@@ -1739,9 +1742,9 @@ export default function AccountHome() {
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {[
-                        { title: 'Monthly statements', detail: 'Download a summary of balances, linked accounts, and transfers.', cta: 'Prepare PDF', message: 'Monthly statements are being prepared.' },
-                        { title: 'Tax package', detail: 'Export your year-to-date activity for tax review.', cta: 'Generate export', message: 'Tax package is being prepared.' },
-                        { title: 'Account archive', detail: 'Download a full record of your account details and connected profiles.', cta: 'Export JSON', message: 'Account archive is being prepared.' },
+                        { title: 'Monthly statements', detail: 'Download a summary of balances, linked accounts, and transfers.', cta: 'Prepare PDF', message: 'Monthly statements are being prepared.', ctaIcon: FileText },
+                        { title: 'Tax package', detail: 'Export your year-to-date activity for tax review.', cta: 'Generate export', message: 'Tax package is being prepared.', ctaIcon: Download },
+                        { title: 'Account archive', detail: 'Download a full record of your account details and connected profiles.', cta: 'Export JSON', message: 'Account archive is being prepared.', ctaIcon: Archive },
                       ].map((item, index, array) => (
                         <div key={item.title} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== array.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                           <div className="flex items-start gap-3">
@@ -1753,7 +1756,7 @@ export default function AccountHome() {
                                 <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{item.detail}</p>
                               </div>
                             </div>
-                          <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setBannerMessage(item.message)}>{item.cta}</Button>
+                          <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setBannerMessage(item.message)}><item.ctaIcon className="h-4 w-4" />{item.cta}</Button>
                         </div>
                       ))}
                     </div>
@@ -1766,9 +1769,9 @@ export default function AccountHome() {
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {[
-                        { icon: Shield, title: 'Account review', detail: 'Report suspicious activity or request a manual review of your linked accounts.', cta: 'Open review request', message: 'Account review request started.' },
-                        { icon: Sparkles, title: 'Priority support', detail: 'Contact support with your profile and connection details included.', cta: 'Contact support', message: 'Support request started.' },
-                        { icon: AlertTriangle, title: 'Privacy request', detail: 'Request a copy of your data or submit a deletion request for account information.', cta: 'Start privacy request', message: 'Privacy request started.' },
+                        { icon: Shield, title: 'Account review', detail: 'Report suspicious activity or request a manual review of your linked accounts.', cta: 'Open review request', message: 'Account review request started.', ctaIcon: Shield },
+                        { icon: Sparkles, title: 'Priority support', detail: 'Contact support with your profile and connection details included.', cta: 'Contact support', message: 'Support request started.', ctaIcon: Sparkles },
+                        { icon: AlertTriangle, title: 'Privacy request', detail: 'Request a copy of your data or submit a deletion request for account information.', cta: 'Start privacy request', message: 'Privacy request started.', ctaIcon: AlertTriangle },
                       ].map((item, index, array) => {
                         const Icon = item.icon;
                         return (
@@ -1782,7 +1785,7 @@ export default function AccountHome() {
                                 <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{item.detail}</p>
                               </div>
                             </div>
-                            <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setBannerMessage(item.message)}>{item.cta}</Button>
+                            <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setBannerMessage(item.message)}><item.ctaIcon className="h-4 w-4" />{item.cta}</Button>
                           </div>
                         );
                       })}
