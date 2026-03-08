@@ -299,6 +299,12 @@ const rarityGlow = {
   legendary: 'shadow-[0_0_14px_rgba(245,158,11,0.18)]',
 };
 
+const ACCOUNT_TAB_BUTTON_PRIMARY_CLASS =
+  'rounded-full border-black/10 bg-black text-white font-normal shadow-none hover:bg-zinc-800 dark:border-white/10 dark:bg-white dark:text-black dark:hover:bg-zinc-200';
+
+const ACCOUNT_TAB_BUTTON_SECONDARY_CLASS =
+  'rounded-full border-zinc-200 bg-zinc-100 text-black font-normal shadow-none hover:bg-zinc-200 dark:border-zinc-800 dark:bg-[#141414] dark:text-white dark:hover:bg-zinc-800';
+
 const ACCOUNT_ACTIVITY_COLORS = ['#22c55e', '#14b8a6', '#06b6d4', '#3b82f6'];
 
 const startOfDay = (date: Date) => {
@@ -1449,7 +1455,7 @@ export default function AccountHome() {
                     eyebrow="Identity"
                     title="Personal information"
                     description="Update your name, contact details, location, and profile bio."
-                    action={<Button variant="outline" size="sm" onClick={handleProfileSave}>Save profile</Button>}
+                    action={<Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={handleProfileSave}>Save profile</Button>}
                   >
                     <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
                       <div className="space-y-2">
@@ -1515,7 +1521,7 @@ export default function AccountHome() {
                     eyebrow="Wallets"
                     title="Associated wallets"
                     description="Manage the wallets connected to your account and review their status."
-                    action={<Button variant="outline" size="sm" onClick={() => openWalletDialog()}><Plus className="h-4 w-4" />Add wallet</Button>}
+                    action={<Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletDialog()}><Plus className="h-4 w-4" />Add wallet</Button>}
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {wallets.map((wallet, index) => (
@@ -1543,10 +1549,10 @@ export default function AccountHome() {
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2 md:justify-end">
-                            <Button variant="outline" size="sm" onClick={() => handleCopyAddress(wallet.address)}><Copy className="h-4 w-4" />Copy</Button>
-                            <Button variant="outline" size="sm" onClick={() => openWalletDialog(wallet)}><Edit3 className="h-4 w-4" />Edit</Button>
+                            <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => handleCopyAddress(wallet.address)}><Copy className="h-4 w-4" />Copy</Button>
+                            <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => openWalletDialog(wallet)}><Edit3 className="h-4 w-4" />Edit</Button>
                             {wallet.id !== 'wallet-primary' ? (
-                              <Button variant="outline" size="sm" onClick={() => removeWallet(wallet.id)}><Trash2 className="h-4 w-4" />Remove</Button>
+                              <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => removeWallet(wallet.id)}><Trash2 className="h-4 w-4" />Remove</Button>
                             ) : null}
                           </div>
                         </div>
@@ -1558,7 +1564,7 @@ export default function AccountHome() {
                     eyebrow="Social"
                     title="Linked social accounts"
                     description="Manage the social accounts linked to your profile."
-                    action={<Button variant="outline" size="sm" onClick={() => openSocialDialog()}><Plus className="h-4 w-4" />Link social</Button>}
+                    action={<Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openSocialDialog()}><Plus className="h-4 w-4" />Link social</Button>}
                   >
                     {socialAccounts.length === 0 ? (
                       <div className="border-y border-dashed border-zinc-300/80 px-0 py-8 text-center dark:border-zinc-700">
@@ -1584,8 +1590,8 @@ export default function AccountHome() {
                               </div>
                             </div>
                             <div className="flex flex-wrap gap-2 md:justify-end">
-                              <Button variant="outline" size="sm" onClick={() => openSocialDialog(account)}><Edit3 className="h-4 w-4" />Edit</Button>
-                              <Button variant="outline" size="sm" onClick={() => removeSocial(account.id)}><Trash2 className="h-4 w-4" />Remove</Button>
+                              <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => openSocialDialog(account)}><Edit3 className="h-4 w-4" />Edit</Button>
+                              <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => removeSocial(account.id)}><Trash2 className="h-4 w-4" />Remove</Button>
                             </div>
                           </div>
                         ))}
@@ -1597,7 +1603,7 @@ export default function AccountHome() {
                     eyebrow="Funding"
                     title="Linked banks and cash accounts"
                     description="Review linked bank accounts and manage the cash accounts connected to your profile."
-                    action={<div className="flex gap-2"><Button variant="outline" size="sm" onClick={handleRefreshBanks} disabled={refreshingBanks}>{refreshingBanks ? 'Refreshing...' : 'Refresh'}</Button><Button size="sm" onClick={() => setBannerMessage('Funding setup started.')}><ArrowUpRight className="h-4 w-4" />Link funds</Button></div>}
+                    action={<div className="flex gap-2"><Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={handleRefreshBanks} disabled={refreshingBanks}>{refreshingBanks ? 'Refreshing...' : 'Refresh'}</Button><Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => setBannerMessage('Funding setup started.')}><ArrowUpRight className="h-4 w-4" />Link funds</Button></div>}
                   >
                     {bankAccountsLoading ? (
                       <div className="border-y border-zinc-200/70 px-0 py-8 text-[12px] leading-5 text-zinc-500 dark:border-zinc-800/70 dark:text-zinc-400">Loading linked institutions...</div>
@@ -1662,7 +1668,12 @@ export default function AccountHome() {
                                 <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{control.description}</p>
                               </div>
                             </div>
-                            <Button variant={control.enabled ? 'default' : 'outline'} size="sm" onClick={() => toggleSecurityControl(control.id)}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={control.enabled ? ACCOUNT_TAB_BUTTON_PRIMARY_CLASS : ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
+                              onClick={() => toggleSecurityControl(control.id)}
+                            >
                               {control.enabled ? 'Turn off' : 'Turn on'}
                             </Button>
                           </div>
@@ -1725,7 +1736,7 @@ export default function AccountHome() {
                                 <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{item.detail}</p>
                               </div>
                             </div>
-                          <Button variant="outline" size="sm" onClick={() => setBannerMessage(item.message)}>{item.cta}</Button>
+                          <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setBannerMessage(item.message)}>{item.cta}</Button>
                         </div>
                       ))}
                     </div>
@@ -1754,7 +1765,7 @@ export default function AccountHome() {
                                 <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{item.detail}</p>
                               </div>
                             </div>
-                            <Button variant="outline" size="sm" onClick={() => setBannerMessage(item.message)}>{item.cta}</Button>
+                            <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setBannerMessage(item.message)}>{item.cta}</Button>
                           </div>
                         );
                       })}
