@@ -72,7 +72,7 @@ type ConsolidatedCategory =
 type ConsolidatedStatus = 'completed' | 'pending' | 'failed';
 
 type SourceFilter = 'All' | ConsolidatedSource;
-type DirectionFilter = 'All' | 'inflow' | 'outflow';
+type DirectionFilter = 'All' | 'inflow' | 'outflow' | 'transfer';
 type DateFilter = '30D' | '90D' | '1Y' | '2Y' | '5Y' | 'All';
 type SortFilter = 'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow';
 type StatusFilter = 'All' | 'completed' | 'pending' | 'failed';
@@ -408,7 +408,7 @@ const SOURCE_COLORS = ['#3b82f6', '#06b6d4', '#a855f7', '#22c55e'];
 const CATEGORY_COLORS = ['#3b82f6', '#8b5cf6', '#14b8a6', '#f97316', '#ec4899', '#0ea5e9'];
 const DATE_FILTER_OPTIONS: DateFilter[] = ['30D', '90D', '1Y', '2Y', '5Y', 'All'];
 const SOURCE_FILTER_OPTIONS: SourceFilter[] = ['All', 'On-chain', 'Bank recurring', 'Bank spend'];
-const DIRECTION_FILTER_OPTIONS: DirectionFilter[] = ['All', 'inflow', 'outflow'];
+const DIRECTION_FILTER_OPTIONS: DirectionFilter[] = ['All', 'inflow', 'outflow', 'transfer'];
 const STATUS_FILTER_OPTIONS: StatusFilter[] = ['All', 'completed', 'pending', 'failed'];
 const CATEGORY_FILTER_OPTIONS: Array<ConsolidatedCategory | 'All'> = [
   'All',
@@ -460,6 +460,7 @@ const getDateFilterCompactLabel = (value: DateFilter) => {
 
 const getDirectionFilterLabel = (value: DirectionFilter) => {
   if (value === 'All') return 'All';
+  if (value === 'transfer') return 'Transfer';
   return value === 'inflow' ? 'Inflow' : 'Outflow';
 };
 
@@ -576,6 +577,8 @@ export default function TransactionsHome() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [advancedFilterTab, setAdvancedFilterTab] = useState<'quick' | 'flow' | 'time' | 'amount'>('quick');
   const [visibleCount, setVisibleCount] = useState(20);
+  const [showAllRecurringSchedule, setShowAllRecurringSchedule] = useState(false);
+  const [showAllAccountBalances, setShowAllAccountBalances] = useState(false);
 
   const [forecastScenario, setForecastScenario] = useState<ForecastScenario>('Base');
   const [forecastHorizon, setForecastHorizon] = useState<ForecastHorizon>(20);
@@ -1030,7 +1033,11 @@ export default function TransactionsHome() {
     }
 
     if (directionFilter !== 'All') {
-      list = list.filter((tx) => tx.direction === directionFilter);
+      if (directionFilter === 'transfer') {
+        list = list.filter((tx) => tx.category === 'transfer');
+      } else {
+        list = list.filter((tx) => tx.direction === directionFilter && tx.category !== 'transfer');
+      }
     }
 
     if (categoryFilter !== 'All') {
@@ -1096,6 +1103,10 @@ export default function TransactionsHome() {
     () => filteredTransactions.filter((transaction) => !internalTransferIds.has(transaction.id)),
     [filteredTransactions, internalTransferIds]
   );
+  const filteredOperationalTransactions = useMemo(
+    () => filteredFlowTransactions.filter((transaction) => transaction.category !== 'transfer'),
+    [filteredFlowTransactions]
+  );
 
   const displayedTransactions = useMemo(
     () => filteredTransactions.slice(0, visibleCount),
@@ -1118,13 +1129,13 @@ export default function TransactionsHome() {
   ]);
 
   const filteredInflowTotal = useMemo(
-    () => filteredFlowTransactions.filter((tx) => tx.direction === 'inflow').reduce((sum, tx) => sum + tx.amount, 0),
-    [filteredFlowTransactions]
+    () => filteredOperationalTransactions.filter((tx) => tx.direction === 'inflow').reduce((sum, tx) => sum + tx.amount, 0),
+    [filteredOperationalTransactions]
   );
 
   const filteredOutflowTotal = useMemo(
-    () => filteredFlowTransactions.filter((tx) => tx.direction === 'outflow').reduce((sum, tx) => sum + tx.amount, 0),
-    [filteredFlowTransactions]
+    () => filteredOperationalTransactions.filter((tx) => tx.direction === 'outflow').reduce((sum, tx) => sum + tx.amount, 0),
+    [filteredOperationalTransactions]
   );
   const outflowPressurePercent = useMemo(() => {
     const totalFlow = filteredInflowTotal + filteredOutflowTotal;
@@ -1143,7 +1154,7 @@ export default function TransactionsHome() {
     await Promise.all(refreshTasks);
   };
 
-  const applyQuickFocus = (focus: 'all' | 'inflow' | 'outflow' | 'pending' | 'failed') => {
+  const applyQuickFocus = (focus: 'all' | 'inflow' | 'outflow' | 'transfer' | 'pending' | 'failed') => {
     if (focus === 'all') {
       setDirectionFilter('All');
       setStatusFilter('All');
@@ -1158,6 +1169,12 @@ export default function TransactionsHome() {
 
     if (focus === 'outflow') {
       setDirectionFilter('outflow');
+      setStatusFilter('All');
+      return;
+    }
+
+    if (focus === 'transfer') {
+      setDirectionFilter('transfer');
       setStatusFilter('All');
       return;
     }
@@ -1187,7 +1204,7 @@ export default function TransactionsHome() {
   const activeFilterLabels = useMemo(() => {
     const labels: Array<{ key: string; label: string; onClear: () => void }> = [];
     if (sourceFilter !== 'All') labels.push({ key: 'source', label: `Source: ${sourceFilter}`, onClear: () => setSourceFilter('All') });
-    if (directionFilter !== 'All') labels.push({ key: 'direction', label: `Direction: ${directionFilter}`, onClear: () => setDirectionFilter('All') });
+    if (directionFilter !== 'All') labels.push({ key: 'direction', label: `Direction: ${getDirectionFilterLabel(directionFilter)}`, onClear: () => setDirectionFilter('All') });
     if (categoryFilter !== 'All') labels.push({ key: 'category', label: `Category: ${categoryFilter}`, onClear: () => setCategoryFilter('All') });
     if (statusFilter !== 'All') labels.push({ key: 'status', label: `Status: ${statusFilter}`, onClear: () => setStatusFilter('All') });
     if (dateFilter !== '90D') labels.push({ key: 'date', label: `Date: ${getDateFilterLabel(dateFilter)}`, onClear: () => setDateFilter('90D') });
@@ -1219,6 +1236,7 @@ export default function TransactionsHome() {
       const txDate = transaction.date;
       if (txDate.getTime() > nowMs) return;
       if (internalTransferIds.has(transaction.id)) return;
+      if (transaction.category === 'transfer') return;
       const key = `${txDate.getFullYear()}-${txDate.getMonth()}`;
       const point = map.get(key);
       if (!point) return;
@@ -1239,7 +1257,7 @@ export default function TransactionsHome() {
 
   const sourceBreakdownData = useMemo(() => {
     const buckets = new Map<ConsolidatedSource, number>();
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       const current = buckets.get(transaction.source) || 0;
       buckets.set(transaction.source, current + transaction.amount);
     });
@@ -1247,7 +1265,7 @@ export default function TransactionsHome() {
     return Array.from(buckets.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
   const sourceBreakdownTotal = useMemo(
     () => sourceBreakdownData.reduce((sum, item) => sum + item.value, 0),
     [sourceBreakdownData]
@@ -1255,7 +1273,7 @@ export default function TransactionsHome() {
 
   const outflowCategoryData = useMemo(() => {
     const buckets = new Map<ConsolidatedCategory, number>();
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       if (transaction.direction !== 'outflow') return;
       const current = buckets.get(transaction.category) || 0;
       buckets.set(transaction.category, current + transaction.amount);
@@ -1265,7 +1283,7 @@ export default function TransactionsHome() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 6);
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
   const outflowCategoryTotal = useMemo(
     () => outflowCategoryData.reduce((sum, item) => sum + item.value, 0),
     [outflowCategoryData]
@@ -1274,13 +1292,13 @@ export default function TransactionsHome() {
   const weekdayOutflowData = useMemo(() => {
     const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const values = labels.map((label) => ({ label, value: 0 }));
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       if (transaction.direction !== 'outflow') return;
       const day = transaction.date.getDay();
       values[day].value += transaction.amount;
     });
     return values;
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const pendingTransactionCount = useMemo(
     () => consolidatedTransactions.filter((transaction) => transaction.status === 'pending').length,
@@ -1303,17 +1321,17 @@ export default function TransactionsHome() {
   );
 
   const averageOutflowTicket = useMemo(() => {
-    const outflows = filteredFlowTransactions.filter((transaction) => transaction.direction === 'outflow');
+    const outflows = filteredOperationalTransactions.filter((transaction) => transaction.direction === 'outflow');
     if (outflows.length === 0) return 0;
     const total = outflows.reduce((sum, transaction) => sum + transaction.amount, 0);
     return total / outflows.length;
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const largestOutflowTransaction = useMemo(() => {
-    const outflows = filteredFlowTransactions.filter((transaction) => transaction.direction === 'outflow');
+    const outflows = filteredOperationalTransactions.filter((transaction) => transaction.direction === 'outflow');
     if (outflows.length === 0) return null;
     return [...outflows].sort((a, b) => b.amount - a.amount)[0];
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const dailyFlowPulseData = useMemo(() => {
     const now = new Date();
@@ -1331,7 +1349,7 @@ export default function TransactionsHome() {
 
     const map = new Map(points.map((point) => [point.key, point]));
 
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       const txDate = transaction.date;
       const key = `${txDate.getFullYear()}-${txDate.getMonth()}-${txDate.getDate()}`;
       const point = map.get(key);
@@ -1344,7 +1362,7 @@ export default function TransactionsHome() {
       ...point,
       net: point.inflow - point.outflow,
     }));
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const upcomingPendingTransactions = useMemo(() => {
     const now = Date.now();
@@ -1360,7 +1378,7 @@ export default function TransactionsHome() {
 
   const sourceVolumeData = useMemo(() => {
     const buckets = new Map<ConsolidatedSource, { count: number; amount: number }>();
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       const current = buckets.get(transaction.source) ?? { count: 0, amount: 0 };
       buckets.set(transaction.source, {
         count: current.count + 1,
@@ -1371,11 +1389,11 @@ export default function TransactionsHome() {
     return Array.from(buckets.entries())
       .map(([source, value]) => ({ source, ...value }))
       .sort((a, b) => b.amount - a.amount);
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const accountFlowFocus = useMemo(() => {
     const buckets = new Map<string, { inflow: number; outflow: number; count: number }>();
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       const current = buckets.get(transaction.account) ?? { inflow: 0, outflow: 0, count: 0 };
       if (transaction.direction === 'inflow') current.inflow += transaction.amount;
       if (transaction.direction === 'outflow') current.outflow += transaction.amount;
@@ -1383,7 +1401,7 @@ export default function TransactionsHome() {
       buckets.set(transaction.account, current);
     });
     return buckets;
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const totalLinkedAccountBalance = useMemo(
     () =>
@@ -1399,7 +1417,7 @@ export default function TransactionsHome() {
 
   const linkedAccountFocusData = useMemo(
     () =>
-      bankAccounts.slice(0, 4).map((account) => {
+      bankAccounts.map((account) => {
         const balance =
           typeof account.available === 'number' && !Number.isNaN(account.available)
             ? account.available
@@ -1434,8 +1452,9 @@ export default function TransactionsHome() {
   const quickFocusCounts = useMemo(
     () => ({
       all: consolidatedTransactions.length,
-      inflow: consolidatedTransactions.filter((transaction) => transaction.direction === 'inflow').length,
-      outflow: consolidatedTransactions.filter((transaction) => transaction.direction === 'outflow').length,
+      inflow: consolidatedTransactions.filter((transaction) => transaction.direction === 'inflow' && transaction.category !== 'transfer').length,
+      outflow: consolidatedTransactions.filter((transaction) => transaction.direction === 'outflow' && transaction.category !== 'transfer').length,
+      transfer: consolidatedTransactions.filter((transaction) => transaction.category === 'transfer').length,
       pending: consolidatedTransactions.filter((transaction) => transaction.status === 'pending').length,
       failed: consolidatedTransactions.filter((transaction) => transaction.status === 'failed').length,
     }),
@@ -1467,9 +1486,18 @@ export default function TransactionsHome() {
         const aOffset = a.day >= currentDay ? a.day - currentDay : 31 - currentDay + a.day;
         const bOffset = b.day >= currentDay ? b.day - currentDay : 31 - currentDay + b.day;
         return aOffset - bOffset;
-      })
-      .slice(0, 6);
+      });
   }, [inflowStreams, outflowStreams]);
+
+  const visibleRecurringSchedule = useMemo(
+    () => (showAllRecurringSchedule ? recurringSchedule : recurringSchedule.slice(0, 4)),
+    [recurringSchedule, showAllRecurringSchedule]
+  );
+
+  const visibleAccountBalances = useMemo(
+    () => (showAllAccountBalances ? linkedAccountFocusData : linkedAccountFocusData.slice(0, 4)),
+    [linkedAccountFocusData, showAllAccountBalances]
+  );
 
   const recurringNetMonthly = recurringInflowMonthly - recurringOutflowMonthly;
 
@@ -2078,6 +2106,18 @@ export default function TransactionsHome() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => applyQuickFocus('transfer')}
+                      className={cn(
+                        'h-8 px-3 rounded-full text-xs border transition-colors',
+                        directionFilter === 'transfer' && statusFilter === 'All'
+                          ? 'bg-sky-600 text-white border-sky-600'
+                          : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      )}
+                    >
+                      Transfer ({quickFocusCounts.transfer})
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => applyQuickFocus('pending')}
                       className={cn(
                         'h-8 px-3 rounded-full text-xs border transition-colors',
@@ -2222,6 +2262,7 @@ export default function TransactionsHome() {
 
                   {displayedTransactions.map((transaction) => {
                     const isInflow = transaction.direction === 'inflow';
+                    const isTransfer = transaction.category === 'transfer';
                     const Icon =
                       transaction.source === 'On-chain'
                         ? Wallet
@@ -2242,7 +2283,9 @@ export default function TransactionsHome() {
                               <div
                                 className={cn(
                                   'w-9 h-9 rounded-full shrink-0 flex items-center justify-center',
-                                  isInflow
+                                  isTransfer
+                                    ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+                                    : isInflow
                                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
                                     : 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
                                 )}
@@ -2262,13 +2305,17 @@ export default function TransactionsHome() {
                               <p
                                 className={cn(
                                   'font-light text-[12px] leading-none',
-                                  isInflow ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                                  isTransfer
+                                    ? 'text-sky-600 dark:text-sky-400'
+                                    : isInflow
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : 'text-rose-600 dark:text-rose-400'
                                 )}
                               >
-                                {isInflow ? '+' : '-'}{formatCurrency(transaction.amount)}
+                                {isTransfer ? '' : isInflow ? '+' : '-'}{formatCurrency(transaction.amount)}
                               </p>
                               <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1 uppercase tracking-wide">
-                                {isInflow ? 'Inflow' : 'Outflow'}
+                                {isTransfer ? 'Transfer' : isInflow ? 'Inflow' : 'Outflow'}
                               </p>
                             </div>
                           </div>
@@ -2277,7 +2324,13 @@ export default function TransactionsHome() {
                             <Badge variant="outline" className="text-[10px]">
                               {transaction.source}
                             </Badge>
-                            <Badge variant="outline" className="text-[10px] capitalize">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'text-[10px] capitalize',
+                                transaction.category === 'transfer' && 'border-sky-500/40 text-sky-700 dark:text-sky-300'
+                              )}
+                            >
                               {transaction.category}
                             </Badge>
                             <Badge
@@ -2425,7 +2478,7 @@ export default function TransactionsHome() {
 
                           <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
                             <p className="text-[9px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">Direction</p>
-                            <div className="grid grid-cols-3 gap-1.5">
+                            <div className="grid grid-cols-4 gap-1.5">
                               {DIRECTION_FILTER_OPTIONS.map((option) => (
                                 <FilterPill
                                   key={option}
@@ -2508,7 +2561,7 @@ export default function TransactionsHome() {
                           </div>
 
                           <div className="py-1.5 border-t border-zinc-200/80 dark:border-zinc-800/80">
-                            <div className="grid grid-cols-3 gap-1.5">
+                            <div className="grid grid-cols-4 gap-1.5">
                               {DIRECTION_FILTER_OPTIONS.map((option) => (
                                 <FilterPill
                                   key={`flow-direction-${option}`}
@@ -2867,13 +2920,29 @@ export default function TransactionsHome() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring schedule</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Recurring schedule</p>
+                    {recurringSchedule.length > 4 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllRecurringSchedule((value) => !value)}
+                        className={cn(
+                          'h-8 min-w-[110px] px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-colors inline-flex items-center justify-center',
+                          showAllRecurringSchedule
+                            ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                            : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        )}
+                      >
+                        {showAllRecurringSchedule ? 'Show less' : `Show all (${recurringSchedule.length})`}
+                      </button>
+                    )}
+                  </div>
                   {recurringSchedule.length === 0 && (
                     <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5 text-xs text-zinc-500 dark:text-zinc-400">
                       No recurring streams detected yet.
                     </div>
                   )}
-                  {recurringSchedule.slice(0, 4).map((item) => (
+                  {visibleRecurringSchedule.map((item) => (
                     <div key={item.id} className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 overflow-hidden">
                       <div className="p-2.5 flex items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -2924,13 +2993,29 @@ export default function TransactionsHome() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Account balances</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Account balances</p>
+                    {linkedAccountFocusData.length > 4 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllAccountBalances((value) => !value)}
+                        className={cn(
+                          'h-8 min-w-[110px] px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-colors inline-flex items-center justify-center',
+                          showAllAccountBalances
+                            ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                            : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        )}
+                      >
+                        {showAllAccountBalances ? 'Show less' : `Show all (${linkedAccountFocusData.length})`}
+                      </button>
+                    )}
+                  </div>
                   {linkedAccountFocusData.length === 0 && (
                     <div className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 p-2.5 text-xs text-zinc-500 dark:text-zinc-400">
                       No connected accounts yet. Link a bank account to power budgeting insights.
                     </div>
                   )}
-                  {linkedAccountFocusData.map((account) => (
+                  {visibleAccountBalances.map((account) => (
                     <div key={account.id} className="rounded-lg border border-zinc-200/70 dark:border-zinc-800/70 overflow-hidden">
                       <div className="p-2.5 flex items-start justify-between gap-2">
                         <div className="min-w-0">
