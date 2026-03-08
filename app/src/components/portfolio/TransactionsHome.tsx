@@ -2927,7 +2927,7 @@ export default function TransactionsHome() {
                         type="button"
                         onClick={() => setShowAllRecurringSchedule((value) => !value)}
                         className={cn(
-                          'h-8 px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-colors inline-flex items-center justify-center',
+                          'h-8 min-w-[110px] px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-colors inline-flex items-center justify-center',
                           showAllRecurringSchedule
                             ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
                             : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
@@ -3000,7 +3000,7 @@ export default function TransactionsHome() {
                         type="button"
                         onClick={() => setShowAllAccountBalances((value) => !value)}
                         className={cn(
-                          'h-8 px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-colors inline-flex items-center justify-center',
+                          'h-8 min-w-[110px] px-2.5 rounded-md border text-[11px] whitespace-nowrap transition-colors inline-flex items-center justify-center',
                           showAllAccountBalances
                             ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
                             : 'border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
