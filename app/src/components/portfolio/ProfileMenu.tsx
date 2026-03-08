@@ -285,17 +285,35 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
 
           {/* Menu Items */}
           <div className="p-2 space-y-0.5">
-            <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors group">
+            <button
+              onClick={() => {
+                navigate('/account?tab=profile');
+                onClose();
+              }}
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors group"
+            >
               <User className="w-4 h-4 text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-zinc-100" />
               <span className="flex-1 text-left">Profile</span>
             </button>
-            <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors group">
+            <button
+              onClick={() => {
+                navigate('/account?tab=security');
+                onClose();
+              }}
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors group"
+            >
               <Settings className="w-4 h-4 text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-zinc-100" />
               <span className="flex-1 text-left">Settings</span>
             </button>
-            <button className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors group">
+            <button
+              onClick={() => {
+                navigate('/account?tab=connections');
+                onClose();
+              }}
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors group"
+            >
               <CreditCard className="w-4 h-4 text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-zinc-100" />
-              <span className="flex-1 text-left">Billing</span>
+              <span className="flex-1 text-left">Connections</span>
             </button>
           </div>
 
