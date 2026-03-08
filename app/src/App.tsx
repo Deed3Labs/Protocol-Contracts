@@ -10,6 +10,7 @@ import SavingsHome from "@/components/portfolio/SavingsHome";
 import UnifiedWealthHome from "@/components/portfolio/UnifiedWealthHome";
 import MarketsHome from "@/components/portfolio/MarketsHome";
 import TransactionsHome from "@/components/portfolio/TransactionsHome";
+import AccountHome from "@/components/portfolio/AccountHome";
 import LoginPage from "@/components/LoginPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import MintForm from "@/components/MintForm";
@@ -154,6 +155,7 @@ function App() {
                       <Route path="/earn" element={<Navigate to="/savings" replace />} />
                       <Route path="/equity" element={<UnifiedWealthHome />} />
                       <Route path="/borrow" element={<BorrowHome />} />
+                      <Route path="/account" element={<AccountHome />} />
                     </Route>
                     
                     {/* Redirect unknown routes to login */}

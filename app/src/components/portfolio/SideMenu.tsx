@@ -54,22 +54,22 @@ const SideMenu = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void })
     {
       title: 'Account',
       items: [
-        { icon: User, label: 'Personal Information' },
-        { icon: Settings, label: 'Settings' },
-        { icon: Lock, label: 'Security & Privacy' },
-        { icon: FileText, label: 'Documents' },
+        { icon: User, label: 'Personal Information', path: '/account?tab=profile' },
+        { icon: Settings, label: 'Settings', path: '/account?tab=profile' },
+        { icon: Lock, label: 'Security & Privacy', path: '/account?tab=security' },
+        { icon: FileText, label: 'Documents', path: '/account?tab=support' },
       ]
     },
     {
       title: 'Transfers',
       items: [
-        { icon: CreditCard, label: 'Bank Accounts' },
+        { icon: CreditCard, label: 'Bank Accounts', path: '/account?tab=connections' },
       ]
     },
     {
       title: 'Support',
       items: [
-        { icon: HelpCircle, label: 'Help Center' },
+        { icon: HelpCircle, label: 'Help Center', path: '/account?tab=support' },
       ]
     }
   ];
@@ -110,6 +110,10 @@ const SideMenu = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void })
                   {section.items.map((item) => (
                     <button 
                       key={item.label}
+                      onClick={() => {
+                        navigate(item.path);
+                        onClose();
+                      }}
                       className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors group"
                     >
                        <div className="flex items-center gap-3">
