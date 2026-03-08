@@ -1101,6 +1101,10 @@ export default function TransactionsHome() {
     () => filteredTransactions.filter((transaction) => !internalTransferIds.has(transaction.id)),
     [filteredTransactions, internalTransferIds]
   );
+  const filteredOperationalTransactions = useMemo(
+    () => filteredFlowTransactions.filter((transaction) => transaction.category !== 'transfer'),
+    [filteredFlowTransactions]
+  );
 
   const displayedTransactions = useMemo(
     () => filteredTransactions.slice(0, visibleCount),
@@ -1123,13 +1127,13 @@ export default function TransactionsHome() {
   ]);
 
   const filteredInflowTotal = useMemo(
-    () => filteredFlowTransactions.filter((tx) => tx.direction === 'inflow').reduce((sum, tx) => sum + tx.amount, 0),
-    [filteredFlowTransactions]
+    () => filteredOperationalTransactions.filter((tx) => tx.direction === 'inflow').reduce((sum, tx) => sum + tx.amount, 0),
+    [filteredOperationalTransactions]
   );
 
   const filteredOutflowTotal = useMemo(
-    () => filteredFlowTransactions.filter((tx) => tx.direction === 'outflow').reduce((sum, tx) => sum + tx.amount, 0),
-    [filteredFlowTransactions]
+    () => filteredOperationalTransactions.filter((tx) => tx.direction === 'outflow').reduce((sum, tx) => sum + tx.amount, 0),
+    [filteredOperationalTransactions]
   );
   const outflowPressurePercent = useMemo(() => {
     const totalFlow = filteredInflowTotal + filteredOutflowTotal;
@@ -1230,6 +1234,7 @@ export default function TransactionsHome() {
       const txDate = transaction.date;
       if (txDate.getTime() > nowMs) return;
       if (internalTransferIds.has(transaction.id)) return;
+      if (transaction.category === 'transfer') return;
       const key = `${txDate.getFullYear()}-${txDate.getMonth()}`;
       const point = map.get(key);
       if (!point) return;
@@ -1250,7 +1255,7 @@ export default function TransactionsHome() {
 
   const sourceBreakdownData = useMemo(() => {
     const buckets = new Map<ConsolidatedSource, number>();
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       const current = buckets.get(transaction.source) || 0;
       buckets.set(transaction.source, current + transaction.amount);
     });
@@ -1258,7 +1263,7 @@ export default function TransactionsHome() {
     return Array.from(buckets.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
   const sourceBreakdownTotal = useMemo(
     () => sourceBreakdownData.reduce((sum, item) => sum + item.value, 0),
     [sourceBreakdownData]
@@ -1266,7 +1271,7 @@ export default function TransactionsHome() {
 
   const outflowCategoryData = useMemo(() => {
     const buckets = new Map<ConsolidatedCategory, number>();
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       if (transaction.direction !== 'outflow') return;
       const current = buckets.get(transaction.category) || 0;
       buckets.set(transaction.category, current + transaction.amount);
@@ -1276,7 +1281,7 @@ export default function TransactionsHome() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 6);
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
   const outflowCategoryTotal = useMemo(
     () => outflowCategoryData.reduce((sum, item) => sum + item.value, 0),
     [outflowCategoryData]
@@ -1285,13 +1290,13 @@ export default function TransactionsHome() {
   const weekdayOutflowData = useMemo(() => {
     const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const values = labels.map((label) => ({ label, value: 0 }));
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       if (transaction.direction !== 'outflow') return;
       const day = transaction.date.getDay();
       values[day].value += transaction.amount;
     });
     return values;
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const pendingTransactionCount = useMemo(
     () => consolidatedTransactions.filter((transaction) => transaction.status === 'pending').length,
@@ -1314,17 +1319,17 @@ export default function TransactionsHome() {
   );
 
   const averageOutflowTicket = useMemo(() => {
-    const outflows = filteredFlowTransactions.filter((transaction) => transaction.direction === 'outflow');
+    const outflows = filteredOperationalTransactions.filter((transaction) => transaction.direction === 'outflow');
     if (outflows.length === 0) return 0;
     const total = outflows.reduce((sum, transaction) => sum + transaction.amount, 0);
     return total / outflows.length;
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const largestOutflowTransaction = useMemo(() => {
-    const outflows = filteredFlowTransactions.filter((transaction) => transaction.direction === 'outflow');
+    const outflows = filteredOperationalTransactions.filter((transaction) => transaction.direction === 'outflow');
     if (outflows.length === 0) return null;
     return [...outflows].sort((a, b) => b.amount - a.amount)[0];
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const dailyFlowPulseData = useMemo(() => {
     const now = new Date();
@@ -1342,7 +1347,7 @@ export default function TransactionsHome() {
 
     const map = new Map(points.map((point) => [point.key, point]));
 
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       const txDate = transaction.date;
       const key = `${txDate.getFullYear()}-${txDate.getMonth()}-${txDate.getDate()}`;
       const point = map.get(key);
@@ -1355,7 +1360,7 @@ export default function TransactionsHome() {
       ...point,
       net: point.inflow - point.outflow,
     }));
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const upcomingPendingTransactions = useMemo(() => {
     const now = Date.now();
@@ -1371,7 +1376,7 @@ export default function TransactionsHome() {
 
   const sourceVolumeData = useMemo(() => {
     const buckets = new Map<ConsolidatedSource, { count: number; amount: number }>();
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       const current = buckets.get(transaction.source) ?? { count: 0, amount: 0 };
       buckets.set(transaction.source, {
         count: current.count + 1,
@@ -1382,11 +1387,11 @@ export default function TransactionsHome() {
     return Array.from(buckets.entries())
       .map(([source, value]) => ({ source, ...value }))
       .sort((a, b) => b.amount - a.amount);
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const accountFlowFocus = useMemo(() => {
     const buckets = new Map<string, { inflow: number; outflow: number; count: number }>();
-    filteredFlowTransactions.forEach((transaction) => {
+    filteredOperationalTransactions.forEach((transaction) => {
       const current = buckets.get(transaction.account) ?? { inflow: 0, outflow: 0, count: 0 };
       if (transaction.direction === 'inflow') current.inflow += transaction.amount;
       if (transaction.direction === 'outflow') current.outflow += transaction.amount;
@@ -1394,7 +1399,7 @@ export default function TransactionsHome() {
       buckets.set(transaction.account, current);
     });
     return buckets;
-  }, [filteredFlowTransactions]);
+  }, [filteredOperationalTransactions]);
 
   const totalLinkedAccountBalance = useMemo(
     () =>
