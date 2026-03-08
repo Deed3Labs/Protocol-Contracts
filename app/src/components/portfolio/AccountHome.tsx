@@ -1,8 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useSearchParams } from 'react-router-dom';
+import {
+  Bar,
+  BarChart,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -14,9 +25,11 @@ import {
   Flame,
   Gift,
   Globe,
+  Info,
   KeyRound,
   Landmark,
   Link2,
+  Lock,
   Plus,
   ScanFace,
   Shield,
@@ -35,11 +48,13 @@ import MobileNav from './MobileNav';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
@@ -117,6 +132,8 @@ interface AccountAchievement {
   icon: LucideIcon;
   unlocked: boolean;
   tone: Tone;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  statusLabel?: string;
   tab: AccountTab;
 }
 
@@ -128,9 +145,31 @@ interface AccountPerk {
   unlocked: boolean;
   requirement: string;
   tone: Tone;
+  tab: AccountTab;
+}
+
+interface AccountPulseMilestone {
+  id: string;
+  label: string;
+  shortLabel: string;
+  icon: LucideIcon;
+  achieved: boolean;
+}
+
+interface AccountPulseDay {
+  date: Date;
+  active: boolean;
+  points: number;
+  isPast: boolean;
 }
 
 const ACCOUNT_TABS: AccountTab[] = ['profile', 'connections', 'security', 'support'];
+const ACCOUNT_TAB_LABELS: Record<AccountTab, string> = {
+  profile: 'Profile',
+  connections: 'Connections',
+  security: 'Security',
+  support: 'Support',
+};
 const NETWORK_LABELS: Record<number, string> = {
   1: 'Ethereum',
   10: 'Optimism',
@@ -246,6 +285,58 @@ const toneClasses: Record<Tone, string> = {
   zinc: 'border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300',
 };
 
+const rarityColors = {
+  common: 'text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 bg-zinc-100/80 dark:bg-zinc-900/40',
+  rare: 'text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/20',
+  epic: 'text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20',
+  legendary: 'text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20',
+};
+
+const rarityGlow = {
+  common: '',
+  rare: 'shadow-[0_0_10px_rgba(14,165,233,0.12)]',
+  epic: 'shadow-[0_0_12px_hsl(var(--equity)/0.10)]',
+  legendary: 'shadow-[0_0_14px_rgba(245,158,11,0.18)]',
+};
+
+const ACCOUNT_ACTIVITY_COLORS = ['#22c55e', '#14b8a6', '#06b6d4', '#3b82f6'];
+
+const startOfDay = (date: Date) => {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const formatDateShort = (date: Date) =>
+  date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+const formatPoints = (value: number) => `${value.toLocaleString('en-US')} pts`;
+
+function generateAccountPulseHeatmap(today: Date, seed: number, checkedInToday: boolean): AccountPulseDay[][] {
+  const todayStart = startOfDay(today);
+  const weeks: AccountPulseDay[][] = [];
+
+  for (let w = 3; w >= 0; w -= 1) {
+    const week: AccountPulseDay[] = [];
+
+    for (let d = 0; d < 7; d += 1) {
+      const date = new Date(todayStart);
+      date.setDate(date.getDate() - (w * 7 + (6 - d)));
+      const isPast = date <= todayStart;
+      const score = ((w + 1) * 71 + (d + 1) * 29 + seed * 17) % 100;
+      const isToday = date.getTime() === todayStart.getTime();
+      const active = isPast && (isToday ? checkedInToday : score > 32);
+      const points = active ? 10 + ((score * 7) % 24) : 0;
+
+      week.push({ date, active, points, isPast });
+    }
+
+    weeks.push(week);
+  }
+
+  return weeks;
+}
+
 function SectionPanel({
   title,
   eyebrow,
@@ -321,56 +412,13 @@ function MissionRail({ item, onOpen }: { item: MissionRailItem; onOpen: (tab: Ac
   );
 }
 
-function AchievementTile({
-  achievement,
-  onOpen,
-}: {
-  achievement: AccountAchievement;
-  onOpen: (tab: AccountTab) => void;
-}) {
-  const Icon = achievement.icon;
-
-  return (
-    <button
-      type="button"
-      onClick={() => onOpen(achievement.tab)}
-      className={cn(
-        'flex min-h-[88px] w-full flex-col justify-between rounded-sm border border-zinc-200/70 bg-white p-3 text-left text-zinc-500 transition-colors hover:bg-zinc-50 dark:border-zinc-800/70 dark:bg-[#141414] dark:text-zinc-400 dark:hover:bg-[#121212]'
-      )}
-      title={achievement.detail}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-full border',
-            achievement.unlocked ? toneClasses[achievement.tone] : toneClasses.zinc
-          )}
-        >
-          <Icon className="h-4 w-4" />
-        </div>
-        <span
-          className={cn(
-            'text-[10px] uppercase tracking-[0.18em]',
-            achievement.unlocked ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400'
-          )}
-        >
-          {achievement.unlocked ? 'Unlocked' : 'Locked'}
-        </span>
-      </div>
-      <div className="mt-4">
-        <p className="text-xs font-medium text-black dark:text-white">{achievement.name}</p>
-        <p className="mt-1 text-[10px] leading-4 opacity-80">{achievement.detail}</p>
-      </div>
-    </button>
-  );
-}
-
 function AccountPulseCard({
   levelLabel,
   levelNumber,
   levelProgress,
   accountXp,
   nextLevelLabel,
+  pointsToNextLevel,
   accountStreak,
   checkedInToday,
   onCheckIn,
@@ -378,13 +426,15 @@ function AccountPulseCard({
   profileCompletion,
   securityScore,
   accountSurfaceCount,
-  nextSteps,
+  milestones,
+  weeks,
 }: {
   levelLabel: string;
   levelNumber: number;
   levelProgress: number;
   accountXp: number;
   nextLevelLabel: string;
+  pointsToNextLevel: number;
   accountStreak: number;
   checkedInToday: boolean;
   onCheckIn: () => void;
@@ -392,88 +442,222 @@ function AccountPulseCard({
   profileCompletion: number;
   securityScore: number;
   accountSurfaceCount: number;
-  nextSteps: string[];
+  milestones: AccountPulseMilestone[];
+  weeks: AccountPulseDay[][];
 }) {
+  const streakTarget = 60;
+  const recentDays = weeks.flat().slice(-14);
+  const weeklyTotals = weeks.map((week) => week.reduce((sum, day) => sum + (day.active ? day.points : 0), 0));
+  const activeRecentDays = recentDays.filter((day) => day.active).length;
+  const unlockedMilestones = milestones.filter((milestone) => milestone.achieved).length;
+  const nextMilestone = milestones.find((milestone) => !milestone.achieved);
+  const streakRingData = [
+    { name: 'Active', value: Math.min(accountStreak, streakTarget), color: '#10b981' },
+    { name: 'Remaining', value: Math.max(streakTarget - Math.min(accountStreak, streakTarget), 0), color: '#3f3f46' },
+  ];
+  const weeklyConsistencyData = weeklyTotals.map((total, index) => ({
+    label: `W${index + 1}`,
+    total,
+  }));
+
   return (
     <section className="rounded-sm border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-[#141414]">
-      <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-        <div className="pb-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
-                Account Pulse
-              </p>
-              <div className="mt-3 flex items-end gap-2">
-                <span className="text-[28px] font-light text-black dark:text-white">{accountStreak}</span>
-                <span className="pb-1 text-xs text-zinc-500 dark:text-zinc-400">day streak</span>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
+            Account Pulse
+          </span>
+        </div>
+
+        <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+          <div className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="relative h-24 w-24 shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={streakRingData}
+                      dataKey="value"
+                      innerRadius={31}
+                      outerRadius={42}
+                      startAngle={90}
+                      endAngle={-270}
+                      stroke="none"
+                      paddingAngle={streakRingData[1].value > 0 ? 2 : 0}
+                      isAnimationActive
+                      animationDuration={700}
+                    >
+                      {streakRingData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <Flame className="mb-0.5 h-3.5 w-3.5 text-orange-500" />
+                  <span className="text-base font-semibold leading-none">{accountStreak}</span>
+                  <span className="mt-0.5 text-[9px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                    Days
+                  </span>
+                </div>
               </div>
-              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                {levelLabel} Lv.{levelNumber}
-              </p>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">Account Level {levelLabel} Lv.{levelNumber}</p>
+                <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                  {nextMilestone ? `Next: ${nextMilestone.label}` : 'All account milestones unlocked'}
+                </p>
+                <div className="mt-2.5 grid grid-cols-3 gap-2">
+                  <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
+                    <p className="text-sm font-semibold">{profileCompletion}%</p>
+                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Profile</p>
+                  </div>
+                  <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
+                    <p className="text-sm font-semibold">{securityScore}%</p>
+                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Security</p>
+                  </div>
+                  <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
+                    <p className="text-sm font-semibold">{rewardPoints}</p>
+                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Points</p>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <div className="mb-1 flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400">
+                    <span>{Math.round(levelProgress)}% to {nextLevelLabel}</span>
+                    <span>{levelProgress >= 100 ? 'Max tier' : `${pointsToNextLevel} XP left`}</span>
+                  </div>
+                  <Progress value={levelProgress} className="h-1.5" />
+                </div>
+              </div>
             </div>
-            <Button
-              variant={checkedInToday ? 'outline' : 'default'}
-              size="sm"
-              className="rounded-full"
+            <button
+              type="button"
               onClick={onCheckIn}
+              disabled={checkedInToday}
+              className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-zinc-900 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
             >
               <Flame className="h-4 w-4" />
               {checkedInToday ? 'Checked in' : 'Check in'}
-            </Button>
-          </div>
-
-          <div className="mt-4 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500"
-              style={{ width: `${levelProgress}%` }}
-            />
-          </div>
-          <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400">
-            <span>{accountXp} XP</span>
-            <span>{levelProgress >= 100 ? 'Max tier' : `Next: ${nextLevelLabel}`}</span>
-          </div>
-        </div>
-
-        <div className="py-3">
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
-              <p className="text-sm font-semibold">{rewardPoints}</p>
-              <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Points</p>
-            </div>
-            <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
-              <p className="text-sm font-semibold">{profileCompletion}%</p>
-              <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Profile</p>
-            </div>
-            <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
-              <p className="text-sm font-semibold">{securityScore}%</p>
-              <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Security</p>
-            </div>
-          </div>
-          <p className="mt-3 text-[11px] text-zinc-500 dark:text-zinc-400">
-            {accountSurfaceCount} connected surface{accountSurfaceCount === 1 ? '' : 's'} across this account.
-          </p>
-        </div>
-
-        <div className="pt-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
-              Focus Queue
+            </button>
+            <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+              {accountSurfaceCount} connected surface{accountSurfaceCount === 1 ? '' : 's'} across this account. {accountXp} XP total.
             </p>
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
-              {Math.min(nextSteps.length, 3)} items
-            </span>
           </div>
-          <div className="mt-3 space-y-2">
-            {(nextSteps.length > 0 ? nextSteps.slice(0, 3) : ['Everything important on this account page is covered.']).map(
-              (step, index) => (
-                <div key={step} className="flex items-start gap-2">
-                  <div className="mt-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full border border-zinc-300 text-[10px] text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-                    {index + 1}
+
+          <div className="py-3">
+            <div className="mb-2.5 flex items-center justify-between">
+              <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
+                Milestone Track
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">{unlockedMilestones}/{milestones.length}</p>
+            </div>
+
+            <div className="relative">
+              <div className="absolute left-4 right-4 top-[14px] h-px bg-zinc-200 dark:bg-zinc-700" />
+              <div className="grid grid-cols-5 gap-2">
+                {milestones.map((milestone) => (
+                  <div key={milestone.id} className="text-center">
+                    <div
+                      className={cn(
+                        'relative z-10 mx-auto flex h-7 w-7 items-center justify-center rounded-full border',
+                        milestone.achieved
+                          ? 'border-emerald-600 bg-emerald-600 text-white'
+                          : 'border-zinc-300 bg-zinc-100 text-zinc-500 dark:border-zinc-700 dark:bg-[#0e0e0e] dark:text-zinc-400'
+                      )}
+                      title={milestone.label}
+                    >
+                      <milestone.icon className="h-3 w-3" />
+                    </div>
+                    <p className={cn('mt-2 text-[10px] font-medium', milestone.achieved ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400')}>
+                      {milestone.shortLabel}
+                    </p>
                   </div>
-                  <p className="text-xs leading-5 text-zinc-600 dark:text-zinc-300">{step}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
+                Recent Activity
+              </p>
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                {activeRecentDays}/14 active days
+              </p>
+            </div>
+            <div className="mb-2.5 grid grid-cols-14 gap-1">
+              {recentDays.map((day, index) => (
+                <div
+                  key={`${day.date.toISOString()}-${index}`}
+                  className={cn(
+                    'h-5 rounded-sm border border-zinc-200/80 dark:border-zinc-800',
+                    !day.active && 'bg-zinc-100 dark:bg-[#141414]'
+                  )}
+                  style={day.active ? { backgroundColor: `hsl(var(--equity) / ${0.22 + Math.min(day.points / 34, 1) * 0.62})` } : undefined}
+                  title={day.active ? `${formatDateShort(day.date)} · ${formatPoints(day.points)}` : `${formatDateShort(day.date)} · inactive`}
+                />
+              ))}
+            </div>
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Last 14 days</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Less</span>
+                <div className="flex gap-0.5">
+                  {[0.2, 0.45, 0.7, 0.95].map((opacity) => (
+                    <div
+                      key={opacity}
+                      className="h-2.5 w-2.5 rounded-sm bg-emerald-500"
+                      style={{ opacity }}
+                    />
+                  ))}
                 </div>
-              )
-            )}
+                <span className="text-[10px] text-zinc-500 dark:text-zinc-400">More</span>
+              </div>
+            </div>
+            <div className="rounded-sm border border-zinc-200/70 p-2 dark:border-zinc-800/70">
+              <div className="h-24">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={weeklyConsistencyData} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fill: '#71717a', fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis hide domain={[0, 'dataMax + 20']} />
+                    <Tooltip
+                      cursor={{ fill: 'transparent' }}
+                      contentStyle={{
+                        background: '#18181b',
+                        border: '1px solid #3f3f46',
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                      }}
+                      labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
+                      itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
+                      formatter={(value: number | string | undefined) => [formatPoints(Number(value ?? 0)), 'Activity']}
+                    />
+                    <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                      {weeklyConsistencyData.map((week, index) => (
+                        <Cell
+                          key={week.label}
+                          fill={ACCOUNT_ACTIVITY_COLORS[index % ACCOUNT_ACTIVITY_COLORS.length]}
+                          fillOpacity={0.9}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 grid grid-cols-4 gap-1.5">
+                {weeklyTotals.map((weekTotal, index) => (
+                  <p key={index} className="text-center text-[10px] text-zinc-500 dark:text-zinc-400">
+                    W{index + 1}: {formatPoints(weekTotal)}
+                  </p>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -495,59 +679,100 @@ function AccountRewardsCard({
 
   return (
     <section className="rounded-sm border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-[#141414]">
-      <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-        <div className="pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
-              Achievements
-            </span>
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
-              {unlockedCount}/{achievements.length}
-            </span>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {achievements.map((achievement) => (
-              <AchievementTile key={achievement.id} achievement={achievement} onOpen={onOpen} />
-            ))}
-          </div>
-        </div>
+      <div className="space-y-4">
+        <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+          <div className="pb-3">
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+                Achievements
+              </span>
+              <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300">
+                <Trophy className="mr-1 h-3 w-3" /> {unlockedCount}/{achievements.length}
+              </Badge>
+            </div>
 
-        <div className="pt-3">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
-              Perks & Rewards
-            </span>
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</span>
-          </div>
-          <div className="mt-3 divide-y divide-zinc-200 border-y border-zinc-200/70 dark:divide-zinc-800 dark:border-zinc-800/70">
-            {perks.map((perk) => (
-              <div key={perk.id} className="flex items-start gap-3 py-3">
-                <div
+            <div className="grid grid-cols-4 gap-1.5">
+              {achievements.map((achievement) => (
+                <button
+                  key={achievement.id}
+                  type="button"
+                  onClick={() => onOpen(achievement.tab)}
                   className={cn(
-                    'mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border',
-                    perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc
+                    'flex min-h-[96px] w-full flex-col items-center justify-center gap-1 rounded border p-2 text-center transition-all',
+                    achievement.unlocked
+                      ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-[1.02]')
+                      : 'border-dotted border-zinc-300 bg-zinc-100/40 text-zinc-500 opacity-50 dark:border-zinc-700 dark:bg-[#121212] dark:text-zinc-400'
+                  )}
+                  title={achievement.detail}
+                >
+                  <div
+                    className={cn(
+                      'flex h-8 w-8 items-center justify-center rounded-full',
+                      achievement.unlocked ? 'bg-current/10' : 'bg-zinc-200 dark:bg-[#0e0e0e]'
+                    )}
+                  >
+                    {achievement.unlocked ? (
+                      <achievement.icon className="h-4 w-4" />
+                    ) : (
+                      <Lock className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
+                    )}
+                  </div>
+                  <span className="text-[10px] font-medium leading-tight">{achievement.name}</span>
+                  {achievement.statusLabel ? (
+                    <span className="text-[8px] text-zinc-500 dark:text-zinc-400">
+                      {achievement.statusLabel}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-3">
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+                Perks & Rewards
+              </span>
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</span>
+            </div>
+
+            <div className="divide-y divide-zinc-200 border-y border-zinc-200/70 dark:divide-zinc-800 dark:border-zinc-800/70">
+              {perks.map((perk) => (
+                <div
+                  key={perk.id}
+                  className={cn(
+                    'flex items-center gap-3 py-2.5 transition-colors',
+                    perk.unlocked ? 'bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08]' : 'opacity-65'
                   )}
                 >
-                  <perk.icon className="h-3.5 w-3.5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-black dark:text-white">{perk.name}</p>
-                    <span
-                      className={cn(
-                        'text-[10px] uppercase tracking-[0.16em]',
-                        perk.unlocked ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400'
-                      )}
-                    >
-                      {perk.unlocked ? 'Active' : perk.requirement}
-                    </span>
+                  <div
+                    className={cn(
+                      'flex h-9 w-9 shrink-0 items-center justify-center rounded',
+                      perk.unlocked
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-zinc-200 text-zinc-500 dark:bg-[#141414]'
+                    )}
+                  >
+                    {perk.unlocked ? <perk.icon className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                   </div>
-                  <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">
-                    {perk.description}
-                  </p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{perk.name}</p>
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{perk.description}</p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'h-5 shrink-0 px-1.5 py-0 text-[9px]',
+                      perk.unlocked
+                        ? 'border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+                        : 'text-zinc-500 dark:text-zinc-400'
+                    )}
+                  >
+                    {perk.unlocked ? 'Active' : perk.requirement}
+                  </Badge>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -565,6 +790,7 @@ export default function AccountHome() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isScrolledPast, setIsScrolledPast] = useState(false);
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
+  const tabsAnchorRef = useRef<HTMLDivElement | null>(null);
   const [profileSavedAt, setProfileSavedAt] = useState<string>('Not saved yet');
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
   const [editingWalletId, setEditingWalletId] = useState<string | null>(null);
@@ -731,6 +957,7 @@ export default function AccountHome() {
   const levelProgress = currentLevel.label === nextLevel.label
     ? 100
     : clampPercent(((accountXp - levelFloor) / (levelCeiling - levelFloor + 1)) * 100);
+  const pointsToNextLevel = currentLevel.label === nextLevel.label ? 0 : Math.max(nextLevel.min - accountXp, 0);
 
   const missionTrack = useMemo<MissionRailItem[]>(
     () => [
@@ -782,6 +1009,8 @@ export default function AccountHome() {
         icon: Star,
         unlocked: profileProgress === 100,
         tone: 'sky',
+        rarity: 'rare',
+        statusLabel: profileProgress === 100 ? 'COMPLETE' : undefined,
         tab: 'profile',
       },
       {
@@ -791,6 +1020,8 @@ export default function AccountHome() {
         icon: Wallet,
         unlocked: wallets.length >= 2,
         tone: 'emerald',
+        rarity: 'epic',
+        statusLabel: wallets.length >= 2 ? 'TRUSTED' : undefined,
         tab: 'connections',
       },
       {
@@ -800,6 +1031,8 @@ export default function AccountHome() {
         icon: Sparkles,
         unlocked: socialAccounts.length >= 1,
         tone: 'amber',
+        rarity: 'legendary',
+        statusLabel: socialAccounts.length >= 1 ? 'LIVE' : undefined,
         tab: 'connections',
       },
       {
@@ -809,6 +1042,8 @@ export default function AccountHome() {
         icon: ShieldCheck,
         unlocked: securityEnabledCount >= 4,
         tone: 'emerald',
+        rarity: 'epic',
+        statusLabel: securityEnabledCount >= 4 ? 'SECURED' : undefined,
         tab: 'security',
       },
       {
@@ -818,6 +1053,8 @@ export default function AccountHome() {
         icon: Landmark,
         unlocked: bankAccounts.length >= 1,
         tone: 'sky',
+        rarity: 'rare',
+        statusLabel: bankAccounts.length >= 1 ? 'READY' : undefined,
         tab: 'connections',
       },
       {
@@ -827,6 +1064,8 @@ export default function AccountHome() {
         icon: Trophy,
         unlocked: profileSavedAt !== 'Not saved yet',
         tone: 'zinc',
+        rarity: 'common',
+        statusLabel: profileSavedAt !== 'Not saved yet' ? 'SAVED' : undefined,
         tab: 'support',
       },
     ],
@@ -841,8 +1080,9 @@ export default function AccountHome() {
         description: 'Faster review context for profile and recovery issues.',
         icon: Crown,
         unlocked: securityEnabledCount >= 4,
-        requirement: 'Enable 4 protections',
+        requirement: '4 protections',
         tone: 'emerald',
+        tab: 'security',
       },
       {
         id: 'verified-ribbon',
@@ -850,8 +1090,9 @@ export default function AccountHome() {
         description: 'Stronger trust signal once profile and socials are complete.',
         icon: Sparkles,
         unlocked: profileCompletion >= 80 && socialAccounts.length > 0,
-        requirement: 'Finish profile + 1 social',
+        requirement: 'Finish profile',
         tone: 'sky',
+        tab: 'profile',
       },
       {
         id: 'recovery-fastpass',
@@ -859,23 +1100,39 @@ export default function AccountHome() {
         description: 'Cleaner handoff for identity checks and account escalations.',
         icon: Gift,
         unlocked: Boolean(profileForm.email && profileForm.phone && wallets.length > 0),
-        requirement: 'Add phone + email',
+        requirement: 'Add recovery info',
         tone: 'amber',
+        tab: 'security',
       },
     ],
     [profileCompletion, profileForm.email, profileForm.phone, securityEnabledCount, socialAccounts.length, wallets.length]
   );
 
+  const accountPulseMilestones = useMemo<AccountPulseMilestone[]>(
+    () => [
+      { id: 'profile', label: 'Profile Prime', shortLabel: 'PR', icon: Star, achieved: profileProgress === 100 },
+      { id: 'wallets', label: 'Wallet Graph', shortLabel: 'WL', icon: Wallet, achieved: wallets.length >= 2 },
+      { id: 'social', label: 'Signal Proof', shortLabel: 'SO', icon: Sparkles, achieved: socialAccounts.length >= 1 },
+      { id: 'security', label: 'Trust Lock', shortLabel: 'SC', icon: ShieldCheck, achieved: securityEnabledCount >= 4 },
+      { id: 'archive', label: 'Archive Ready', shortLabel: 'AR', icon: Trophy, achieved: profileSavedAt !== 'Not saved yet' },
+    ],
+    [profileProgress, profileSavedAt, securityEnabledCount, socialAccounts.length, wallets.length]
+  );
+
+  const accountPulseWeeks = useMemo(
+    () => generateAccountPulseHeatmap(new Date(), rewardPoints + profileCompletion + securityScore + accountStreak, checkedInToday),
+    [accountStreak, checkedInToday, profileCompletion, rewardPoints, securityScore]
+  );
+
   const unlockedAchievementCount = accountAchievements.filter((achievement) => achievement.unlocked).length;
-  const nextSteps = [
-    !profileForm.legalName.trim() ? 'Add a legal name for compliance-ready account updates.' : null,
-    !profileForm.phone.trim() ? 'Add a recovery phone for higher-trust account review.' : null,
-    socialAccounts.length === 0 ? 'Link a social account to unlock stronger profile trust.' : null,
-    bankAccounts.length === 0 ? 'Connect a funding source to complete your account rail.' : null,
-    securityEnabledCount < 4 ? 'Turn on one more protection control to reach a strong security posture.' : null,
-  ].filter(Boolean) as string[];
 
   const handleTabOpen = (tab: AccountTab) => setSearchParams({ tab });
+  const handleHeroAction = (tab: AccountTab) => {
+    setSearchParams({ tab });
+    window.requestAnimationFrame(() => {
+      tabsAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
 
   const handleProfileFieldChange = (field: keyof ProfileFormState, value: string) => {
     setProfileForm((current) => ({ ...current, [field]: value }));
@@ -1042,14 +1299,22 @@ export default function AccountHome() {
         <div className="grid grid-cols-1 gap-8 md:grid-cols-12 md:gap-12">
           <div className="space-y-8 md:col-span-8">
             <motion.div {...sectionMotion} transition={sectionTransition} className="pt-4">
-              <div className="flex flex-wrap items-center gap-2 text-zinc-500 dark:text-zinc-400">
-                <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Account Center</span>
-                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-                <span className="text-xs">{currentLevel.label} Lv.{Math.min(levelIndex + 1, LEVELS.length)}</span>
-                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-                <span className="text-xs">{rewardPoints} pts</span>
-                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-                <span className="text-xs">{securityTone} posture</span>
+              <div className="mb-1 mt-4 flex flex-wrap items-center gap-2 text-zinc-500 dark:text-zinc-400">
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Account Center</span>
+                <div className="group relative">
+                  <Info className="h-4 w-4 cursor-help" />
+                  <div className="absolute left-0 top-6 z-10 hidden max-w-[240px] rounded bg-zinc-900 px-2 py-1 text-xs text-white group-hover:block">
+                    Identity, trust, recovery, wallets, socials, and account health in one place.
+                  </div>
+                </div>
+                <span className="h-1 w-1 rounded-full bg-sky-400 dark:bg-sky-500" />
+                <span className="text-xs text-sky-600 dark:text-sky-300">{currentLevel.label} Lv.{Math.min(levelIndex + 1, LEVELS.length)}</span>
+                <span className="h-1 w-1 rounded-full bg-amber-400 dark:bg-amber-500" />
+                <span className="text-xs text-amber-600 dark:text-amber-300">{rewardPoints} pts</span>
+                <span className="h-1 w-1 rounded-full bg-emerald-400 dark:bg-emerald-500" />
+                <span className={cn('text-xs', securityScore >= 80 ? 'text-emerald-600 dark:text-emerald-300' : 'text-zinc-500 dark:text-zinc-400')}>
+                  {securityTone} posture
+                </span>
               </div>
 
               <h1 className="mt-2 text-[30px] font-light tracking-tight text-black dark:text-white md:text-[36px]">
@@ -1072,22 +1337,28 @@ export default function AccountHome() {
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2.5">
-                <Button
-                  size="sm"
-                  className="rounded-full bg-black px-4 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                  onClick={() => handleTabOpen('profile')}
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-full bg-black px-4 py-2 text-sm font-normal text-white transition-colors hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                  onClick={() => handleHeroAction('profile')}
                 >
                   <Edit3 className="h-4 w-4" />
                   Edit profile
-                </Button>
-                <Button size="sm" variant="outline" className="rounded-full px-4" onClick={() => handleTabOpen('connections')}>
-                  <Plus className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-normal text-black transition-colors hover:bg-zinc-200 dark:border-zinc-800 dark:bg-[#141414] dark:text-white dark:hover:bg-zinc-800"
+                  onClick={() => handleHeroAction('connections')}
+                >
                   Add connection
-                </Button>
-                <Button size="sm" variant="outline" className="rounded-full px-4" onClick={() => handleTabOpen('security')}>
-                  <Shield className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-normal text-black transition-colors hover:bg-zinc-200 dark:border-zinc-800 dark:bg-[#141414] dark:text-white dark:hover:bg-zinc-800"
+                  onClick={() => handleHeroAction('security')}
+                >
                   Review security
-                </Button>
+                </button>
               </div>
 
               {bannerMessage ? (
@@ -1142,34 +1413,36 @@ export default function AccountHome() {
               </div>
             </section>
 
-            <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.04 }}>
-              <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
-                <TabsList className="h-auto w-full flex-wrap justify-start gap-5 rounded-none border-b border-zinc-200/70 bg-transparent p-0 dark:border-zinc-800/70">
-                  <TabsTrigger
-                    value="profile"
-                    className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[11px] uppercase tracking-[0.18em] text-zinc-500 shadow-none data-[state=active]:border-zinc-900 data-[state=active]:bg-transparent data-[state=active]:text-zinc-900 dark:text-zinc-400 dark:data-[state=active]:border-zinc-100 dark:data-[state=active]:text-zinc-100"
-                  >
-                    Profile
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="connections"
-                    className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[11px] uppercase tracking-[0.18em] text-zinc-500 shadow-none data-[state=active]:border-zinc-900 data-[state=active]:bg-transparent data-[state=active]:text-zinc-900 dark:text-zinc-400 dark:data-[state=active]:border-zinc-100 dark:data-[state=active]:text-zinc-100"
-                  >
-                    Connections
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="security"
-                    className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[11px] uppercase tracking-[0.18em] text-zinc-500 shadow-none data-[state=active]:border-zinc-900 data-[state=active]:bg-transparent data-[state=active]:text-zinc-900 dark:text-zinc-400 dark:data-[state=active]:border-zinc-100 dark:data-[state=active]:text-zinc-100"
-                  >
-                    Security
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="support"
-                    className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[11px] uppercase tracking-[0.18em] text-zinc-500 shadow-none data-[state=active]:border-zinc-900 data-[state=active]:bg-transparent data-[state=active]:text-zinc-900 dark:text-zinc-400 dark:data-[state=active]:border-zinc-100 dark:data-[state=active]:text-zinc-100"
-                  >
-                    Support
-                  </TabsTrigger>
-                </TabsList>
+            <motion.div
+              {...sectionMotion}
+              transition={{ ...sectionTransition, delay: 0.04 }}
+              ref={tabsAnchorRef}
+              className="scroll-mt-28 md:scroll-mt-32"
+            >
+              <Tabs value={activeTab}>
+                <div className="mb-1 flex gap-6 overflow-x-auto border-b border-zinc-200 pb-0 no-scrollbar dark:border-zinc-800">
+                  {ACCOUNT_TABS.map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => handleTabOpen(tab)}
+                      className={cn(
+                        'relative whitespace-nowrap pb-2 text-sm font-medium transition-colors',
+                        activeTab === tab
+                          ? 'text-black dark:text-white'
+                          : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
+                      )}
+                    >
+                      {ACCOUNT_TAB_LABELS[tab]}
+                      {activeTab === tab ? (
+                        <motion.div
+                          layoutId="accountActiveTab"
+                          className="absolute bottom-0 left-0 right-0 h-[2px] bg-black dark:bg-white"
+                        />
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
 
                 <TabsContent value="profile" className="space-y-8 pt-5">
                   <SectionPanel
@@ -1496,6 +1769,7 @@ export default function AccountHome() {
                 levelNumber={Math.min(levelIndex + 1, LEVELS.length)}
                 levelProgress={levelProgress}
                 accountXp={accountXp}
+                pointsToNextLevel={pointsToNextLevel}
                 nextLevelLabel={currentLevel.label === nextLevel.label ? 'Max tier' : nextLevel.label}
                 accountStreak={accountStreak}
                 checkedInToday={checkedInToday}
@@ -1504,7 +1778,8 @@ export default function AccountHome() {
                 profileCompletion={profileCompletion}
                 securityScore={securityScore}
                 accountSurfaceCount={accountSurfaceCount}
-                nextSteps={nextSteps}
+                milestones={accountPulseMilestones}
+                weeks={accountPulseWeeks}
               />
             </motion.div>
 
