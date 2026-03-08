@@ -16,12 +16,11 @@ import {
 } from 'recharts';
 import {
   AlertTriangle,
-  Archive,
+  ArrowDownLeft,
   ArrowUpRight,
   Bell,
   Copy,
   Crown,
-  Download,
   Edit3,
   FileText,
   Flame,
@@ -306,10 +305,10 @@ const ACCOUNT_TAB_BUTTON_PRIMARY_CLASS =
   'rounded-full border-black/10 bg-black text-white font-normal shadow-none hover:bg-black/90 dark:border-white/10 dark:bg-white dark:text-black dark:hover:bg-white/90';
 
 const ACCOUNT_TAB_BUTTON_SECONDARY_CLASS =
-  'rounded-full border-zinc-200 bg-zinc-100 text-black font-normal shadow-none hover:bg-zinc-100/80 dark:border-zinc-800 dark:bg-[#141414] dark:text-white dark:hover:bg-[#141414]/80';
+  'h-[34px] rounded-full border-zinc-200 bg-zinc-100 text-black font-normal shadow-none hover:bg-zinc-100/80 dark:border-zinc-800 dark:bg-[#141414] dark:text-white dark:hover:bg-[#141414]/80';
 
 const ACCOUNT_TAB_BUTTON_SUCCESS_CLASS =
-  'rounded-full border-zinc-200 bg-emerald-500/10 text-emerald-700 font-normal shadow-none hover:bg-emerald-500/15 dark:border-zinc-800 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/15';
+  'h-[34px] rounded-full border-zinc-200 bg-emerald-500/10 text-emerald-700 font-normal shadow-none hover:bg-emerald-500/15 dark:border-zinc-800 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/15';
 
 const ACCOUNT_ACTIVITY_COLORS = ['#22c55e', '#14b8a6', '#06b6d4', '#3b82f6'];
 
@@ -1693,7 +1692,7 @@ export default function AccountHome() {
                               className={control.enabled ? ACCOUNT_TAB_BUTTON_SUCCESS_CLASS : ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
                               onClick={() => toggleSecurityControl(control.id)}
                             >
-                              <Icon className="h-4 w-4" />
+                              {control.enabled ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
                               {control.enabled ? 'Turn off' : 'Turn on'}
                             </Button>
                           </div>
@@ -1712,19 +1711,19 @@ export default function AccountHome() {
                       <HeroMetric label="Recovery contacts" value={profileForm.phone || 'Add a recovery phone'} detail="Add phone and email to speed up account recovery" />
                       <HeroMetric label="Linked accounts" value={`${wallets.length} wallets / ${bankAccounts.length} banks`} detail="Review connected wallets and banks from one place" />
                     </div>
-                    <div className="mt-5 space-y-2">
+                    <div className="mt-6 divide-y divide-zinc-200/70 dark:divide-zinc-800/70">
                       {accountPerks.map((perk) => (
-                        <div key={perk.id} className="flex items-center justify-between gap-3 text-[12px]">
-                          <div className="flex items-center gap-2">
+                        <div key={perk.id} className="flex items-start justify-between gap-4 py-3.5 text-[12px] first:pt-0 last:pb-0">
+                          <div className="flex min-w-0 items-start gap-3">
                             <div className={cn('flex h-7 w-7 items-center justify-center rounded-full border', perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc)}>
                               <perk.icon className="h-3.5 w-3.5" />
                             </div>
-                            <div>
+                            <div className="min-w-0">
                               <p className="font-medium text-black dark:text-white">{perk.name}</p>
-                              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{perk.description}</p>
+                              <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{perk.description}</p>
                             </div>
                           </div>
-                          <span className="shrink-0 text-[11px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+                          <span className="shrink-0 pt-0.5 text-[11px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
                             {perk.unlocked ? 'Active' : perk.requirement}
                           </span>
                         </div>
@@ -1742,9 +1741,9 @@ export default function AccountHome() {
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {[
-                        { title: 'Monthly statements', detail: 'Download a summary of balances, linked accounts, and transfers.', cta: 'Prepare PDF', message: 'Monthly statements are being prepared.', ctaIcon: FileText },
-                        { title: 'Tax package', detail: 'Export your year-to-date activity for tax review.', cta: 'Generate export', message: 'Tax package is being prepared.', ctaIcon: Download },
-                        { title: 'Account archive', detail: 'Download a full record of your account details and connected profiles.', cta: 'Export JSON', message: 'Account archive is being prepared.', ctaIcon: Archive },
+                        { title: 'Monthly statements', detail: 'Download a summary of balances, linked accounts, and transfers.', cta: 'Prepare PDF', message: 'Monthly statements are being prepared.' },
+                        { title: 'Tax package', detail: 'Export your year-to-date activity for tax review.', cta: 'Generate export', message: 'Tax package is being prepared.' },
+                        { title: 'Account archive', detail: 'Download a full record of your account details and connected profiles.', cta: 'Export JSON', message: 'Account archive is being prepared.' },
                       ].map((item, index, array) => (
                         <div key={item.title} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== array.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                           <div className="flex items-start gap-3">
@@ -1756,7 +1755,7 @@ export default function AccountHome() {
                                 <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{item.detail}</p>
                               </div>
                             </div>
-                          <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setBannerMessage(item.message)}><item.ctaIcon className="h-4 w-4" />{item.cta}</Button>
+                          <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setBannerMessage(item.message)}><ArrowUpRight className="h-4 w-4" />{item.cta}</Button>
                         </div>
                       ))}
                     </div>
@@ -1769,9 +1768,9 @@ export default function AccountHome() {
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {[
-                        { icon: Shield, title: 'Account review', detail: 'Report suspicious activity or request a manual review of your linked accounts.', cta: 'Open review request', message: 'Account review request started.', ctaIcon: Shield },
-                        { icon: Sparkles, title: 'Priority support', detail: 'Contact support with your profile and connection details included.', cta: 'Contact support', message: 'Support request started.', ctaIcon: Sparkles },
-                        { icon: AlertTriangle, title: 'Privacy request', detail: 'Request a copy of your data or submit a deletion request for account information.', cta: 'Start privacy request', message: 'Privacy request started.', ctaIcon: AlertTriangle },
+                        { icon: Shield, title: 'Account review', detail: 'Report suspicious activity or request a manual review of your linked accounts.', cta: 'Open review request', message: 'Account review request started.' },
+                        { icon: Sparkles, title: 'Priority support', detail: 'Contact support with your profile and connection details included.', cta: 'Contact support', message: 'Support request started.' },
+                        { icon: AlertTriangle, title: 'Privacy request', detail: 'Request a copy of your data or submit a deletion request for account information.', cta: 'Start privacy request', message: 'Privacy request started.' },
                       ].map((item, index, array) => {
                         const Icon = item.icon;
                         return (
@@ -1785,7 +1784,7 @@ export default function AccountHome() {
                                 <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{item.detail}</p>
                               </div>
                             </div>
-                            <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setBannerMessage(item.message)}><item.ctaIcon className="h-4 w-4" />{item.cta}</Button>
+                            <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setBannerMessage(item.message)}><ArrowUpRight className="h-4 w-4" />{item.cta}</Button>
                           </div>
                         );
                       })}
