@@ -1416,7 +1416,7 @@ export default function AccountHome() {
               {...sectionMotion}
               transition={{ ...sectionTransition, delay: 0.04 }}
               ref={tabsAnchorRef}
-              className="border-t border-zinc-200/70 pt-3 scroll-mt-28 dark:border-zinc-800/70 md:scroll-mt-32"
+              className="border-t border-zinc-200/70 scroll-mt-28 dark:border-zinc-800/70 md:scroll-mt-32"
             >
               <Tabs value={activeTab}>
                 <div className="flex gap-6 overflow-x-auto border-b border-zinc-200 pb-0 no-scrollbar dark:border-zinc-800">
