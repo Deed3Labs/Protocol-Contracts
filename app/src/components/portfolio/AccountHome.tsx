@@ -1416,17 +1416,17 @@ export default function AccountHome() {
               {...sectionMotion}
               transition={{ ...sectionTransition, delay: 0.04 }}
               ref={tabsAnchorRef}
-              className="border-t border-zinc-200/70 scroll-mt-28 dark:border-zinc-800/70 md:scroll-mt-32"
+              className="scroll-mt-28 md:scroll-mt-32"
             >
               <Tabs value={activeTab}>
-                <div className="flex gap-6 overflow-x-auto border-b border-zinc-200 pb-0 no-scrollbar dark:border-zinc-800">
+                <div className="flex items-center gap-6 overflow-x-auto border-y border-zinc-200/70 py-2 no-scrollbar dark:border-zinc-800/70">
                   {ACCOUNT_TABS.map((tab) => (
                     <button
                       key={tab}
                       type="button"
                       onClick={() => handleTabOpen(tab)}
                       className={cn(
-                        'relative whitespace-nowrap py-2 text-sm font-medium transition-colors',
+                        'relative whitespace-nowrap py-1.5 text-sm font-medium transition-colors',
                         activeTab === tab
                           ? 'text-black dark:text-white'
                           : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
