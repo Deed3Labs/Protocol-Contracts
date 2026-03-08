@@ -1302,21 +1302,19 @@ export default function AccountHome() {
           <div className="space-y-8 md:col-span-8">
             <motion.div {...sectionMotion} transition={sectionTransition} className="pt-4">
               <div className="mb-1 mt-4 flex flex-wrap items-center gap-2 text-zinc-500 dark:text-zinc-400">
-                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Account Center</span>
+                <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Account Center</span>
                 <div className="group relative">
                   <Info className="h-4 w-4 cursor-help" />
                   <div className="absolute left-0 top-6 z-10 hidden max-w-[240px] rounded bg-zinc-900 px-2 py-1 text-xs text-white group-hover:block">
                     Identity, trust, recovery, wallets, socials, and account health in one place.
                   </div>
                 </div>
-                <span className="h-1 w-1 rounded-full bg-sky-400 dark:bg-sky-500" />
-                <span className="text-xs text-sky-600 dark:text-sky-300">{currentLevel.label} Lv.{Math.min(levelIndex + 1, LEVELS.length)}</span>
-                <span className="h-1 w-1 rounded-full bg-amber-400 dark:bg-amber-500" />
-                <span className="text-xs text-amber-600 dark:text-amber-300">{rewardPoints} pts</span>
-                <span className="h-1 w-1 rounded-full bg-emerald-400 dark:bg-emerald-500" />
-                <span className={cn('text-xs', securityScore >= 80 ? 'text-emerald-600 dark:text-emerald-300' : 'text-zinc-500 dark:text-zinc-400')}>
-                  {securityTone} posture
-                </span>
+                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                <span className="text-xs">{currentLevel.label} Lv.{Math.min(levelIndex + 1, LEVELS.length)}</span>
+                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                <span className="text-xs">{rewardPoints} pts</span>
+                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                <span className="text-xs">{securityTone} posture</span>
               </div>
 
               <h1 className="mt-2 text-[30px] font-light tracking-tight text-black dark:text-white md:text-[36px]">
@@ -1419,7 +1417,7 @@ export default function AccountHome() {
               {...sectionMotion}
               transition={{ ...sectionTransition, delay: 0.04 }}
               ref={tabsAnchorRef}
-              className="scroll-mt-28 md:scroll-mt-32"
+              className="border-t border-zinc-200/70 pt-6 scroll-mt-28 dark:border-zinc-800/70 md:scroll-mt-32"
             >
               <Tabs value={activeTab}>
                 <div className="flex gap-6 overflow-x-auto border-b border-zinc-200 pb-0 no-scrollbar dark:border-zinc-800">
