@@ -342,16 +342,18 @@ function SectionPanel({
   eyebrow,
   description,
   action,
+  withTopBorder = true,
   children,
 }: {
   title: string;
   eyebrow?: string;
   description: string;
   action?: ReactNode;
+  withTopBorder?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
+    <section className={cn(withTopBorder ? 'border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70' : 'pt-0')}>
       <div className="border-b border-zinc-200/70 pb-3 dark:border-zinc-800/70">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
@@ -1383,7 +1385,7 @@ export default function AccountHome() {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <HeroMetric label="Protected balance" value={formatCurrencyCompact(totalBalanceUSD)} detail="Combined onchain and linked cash surfaces" />
                 <HeroMetric label="Connected surfaces" value={String(accountSurfaceCount)} detail="Wallets, socials, and institutions attached" />
                 <HeroMetric label="Profile completion" value={`${profileCompletion}%`} detail="Identity, trust, and support readiness" />
@@ -1406,7 +1408,7 @@ export default function AccountHome() {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="mt-4 grid grid-cols-2 gap-3">
                 {missionTrack.map((item) => (
                   <MissionRail key={item.id} item={item} onOpen={handleTabOpen} />
                 ))}
@@ -1420,7 +1422,7 @@ export default function AccountHome() {
               className="scroll-mt-28 md:scroll-mt-32"
             >
               <Tabs value={activeTab}>
-                <div className="mb-1 flex gap-6 overflow-x-auto border-b border-zinc-200 pb-0 no-scrollbar dark:border-zinc-800">
+                <div className="flex gap-6 overflow-x-auto border-b border-zinc-200 pb-0 no-scrollbar dark:border-zinc-800">
                   {ACCOUNT_TABS.map((tab) => (
                     <button
                       key={tab}
@@ -1444,8 +1446,9 @@ export default function AccountHome() {
                   ))}
                 </div>
 
-                <TabsContent value="profile" className="space-y-8 pt-5">
+                <TabsContent value="profile" className="space-y-8 pt-3">
                   <SectionPanel
+                    withTopBorder={false}
                     eyebrow="Identity"
                     title="Personal information"
                     description="Keep editing obvious and direct. The account layer should feel closer to a profile editor than a settings maze."
@@ -1489,7 +1492,7 @@ export default function AccountHome() {
                         <Textarea id="bio" className="min-h-[112px]" value={profileForm.bio} onChange={(event) => handleProfileFieldChange('bio', event.target.value)} placeholder="Tell other users what this account is for." />
                       </div>
                     </div>
-                    <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                    <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
                       <HeroMetric label="Core fields" value={`${profileFieldsComplete}/6`} detail="Identity details filled in" />
                       <HeroMetric label="Last saved" value={profileSavedAt} detail="Local UI preview only" />
                       <HeroMetric label="Account mode" value="Preview" detail="No backend or persistence wired yet" />
@@ -1501,7 +1504,7 @@ export default function AccountHome() {
                     title="Account defaults"
                     description="Use dividers and compact summary rows instead of more settings cards."
                   >
-                    <div className="grid gap-3 md:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       <HeroMetric label="Primary region" value={profileForm.residency || 'Unset'} detail="Controls disclosures and cash movement defaults" />
                       <HeroMetric label="Notification timezone" value={profileForm.timezone || 'Unset'} detail="Used for statements, support windows, and alerts" />
                       <HeroMetric label="Settlement currency" value={profileForm.currency || 'Unset'} detail="Normalizes account-level exports and summaries" />
@@ -1509,8 +1512,9 @@ export default function AccountHome() {
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="connections" className="space-y-8 pt-5">
+                <TabsContent value="connections" className="space-y-8 pt-3">
                   <SectionPanel
+                    withTopBorder={false}
                     eyebrow="Wallet graph"
                     title="Associated wallets"
                     description="Keep trusted wallet surfaces in a clean list with labels, trust state, and minimal actions."
@@ -1635,8 +1639,9 @@ export default function AccountHome() {
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="security" className="space-y-8 pt-5">
+                <TabsContent value="security" className="space-y-8 pt-3">
                   <SectionPanel
+                    withTopBorder={false}
                     eyebrow="Trust controls"
                     title="Security and privacy"
                     description="Treat protections like a clean checklist with visible state, not a pile of preference cards."
@@ -1674,7 +1679,7 @@ export default function AccountHome() {
                     title="Recovery surfaces"
                     description="Map the primary trust anchors with dividers and labels so the account is readable at a glance."
                   >
-                    <div className="grid gap-3 md:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       <HeroMetric label="Primary signer" value={address ? shortAddress(address) : 'Not connected'} detail="Wallet signatures remain the highest-trust recovery path" />
                       <HeroMetric label="Recovery contacts" value={profileForm.phone || 'Add a recovery phone'} detail="Phone and email speed up security review" />
                       <HeroMetric label="Exposure map" value={`${wallets.length} wallets / ${bankAccounts.length} rails`} detail="Review trusted surfaces regularly to reduce stale links" />
@@ -1700,8 +1705,9 @@ export default function AccountHome() {
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="support" className="space-y-8 pt-5">
+                <TabsContent value="support" className="space-y-8 pt-3">
                   <SectionPanel
+                    withTopBorder={false}
                     eyebrow="Documents"
                     title="Statements and exports"
                     description="Keep documents in clean rows with compact actions instead of more tiles."
