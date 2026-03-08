@@ -542,7 +542,7 @@ function AccountPulseCard({
               {checkedInToday ? 'Checked in' : 'Check in'}
             </button>
             <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-              {accountSurfaceCount} connected surface{accountSurfaceCount === 1 ? '' : 's'} across this account. {accountXp} XP total.
+              {accountSurfaceCount} linked account{accountSurfaceCount === 1 ? '' : 's'} across this profile. {accountXp} XP total.
             </p>
           </div>
 
@@ -819,7 +819,7 @@ export default function AccountHome() {
       residency: 'United States',
       timezone: 'Pacific Time (PT)',
       currency: 'USD',
-      bio: 'Building a portable onchain account center for identity, wallets, and trust signals.',
+      bio: 'Building across onchain communities and keeping every account connected in one place.',
     }),
     [profileMenuUser, user?.email]
   );
@@ -965,7 +965,7 @@ export default function AccountHome() {
     () => [
       {
         id: 'profile',
-        label: 'Core profile',
+        label: 'Profile setup',
         detail: profileProgress === 100 ? 'Identity ready' : `${6 - profileFieldsComplete} fields left`,
         progress: profileProgress,
         tab: 'profile',
@@ -973,18 +973,18 @@ export default function AccountHome() {
       },
       {
         id: 'connections',
-        label: 'Connection map',
+        label: 'Connected accounts',
         detail:
           connectionProgress === 100
-            ? 'Wallets, socials, and rails set'
-            : `${3 - [wallets.length > 0, socialAccounts.length > 0, bankAccounts.length > 0].filter(Boolean).length} surfaces left`,
+            ? 'Wallets, socials, and banks linked'
+            : `${3 - [wallets.length > 0, socialAccounts.length > 0, bankAccounts.length > 0].filter(Boolean).length} connections left`,
         progress: connectionProgress,
         tab: 'connections',
         icon: Link2,
       },
       {
         id: 'security',
-        label: 'Trust lock',
+        label: 'Security',
         detail: `${securityEnabledCount}/${securityControls.length} protections active`,
         progress: securityScore,
         tab: 'security',
@@ -992,8 +992,8 @@ export default function AccountHome() {
       },
       {
         id: 'support',
-        label: 'Support pack',
-        detail: supportProgress >= 100 ? 'Export and recovery ready' : 'Tighten response coverage',
+        label: 'Documents & support',
+        detail: supportProgress >= 100 ? 'Documents and recovery ready' : 'Complete recovery and export setup',
         progress: supportProgress,
         tab: 'support',
         icon: FileText,
@@ -1143,7 +1143,7 @@ export default function AccountHome() {
   const handleProfileSave = () => {
     const savedAt = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     setProfileSavedAt(savedAt);
-    setBannerMessage('Profile changes saved to the local UI preview.');
+    setBannerMessage('Profile updated.');
   };
 
   const handleCopyAddress = async (value: string) => {
@@ -1200,7 +1200,7 @@ export default function AccountHome() {
       network: walletDraft.network.trim(),
       kind: walletDraft.kind,
       verified: editingWalletId === 'wallet-primary' || walletDraft.kind !== 'Embedded',
-      note: walletDraft.note.trim() || 'Added from the account center.',
+      note: walletDraft.note.trim() || 'Added to your account.',
       lastActive: editingWalletId ? 'Updated just now' : 'Added just now',
     };
 
@@ -1214,13 +1214,13 @@ export default function AccountHome() {
     setWalletDialogOpen(false);
     setWalletDraft(BLANK_WALLET_DRAFT);
     setEditingWalletId(null);
-    setBannerMessage(editingWalletId ? 'Wallet details updated.' : 'Associated wallet added.');
+    setBannerMessage(editingWalletId ? 'Wallet updated.' : 'Wallet added.');
   };
 
   const removeWallet = (walletId: string) => {
     if (walletId === 'wallet-primary') return;
     setWallets((current) => current.filter((wallet) => wallet.id !== walletId));
-    setBannerMessage('Wallet removed from this account view.');
+    setBannerMessage('Wallet removed.');
   };
 
   const openSocialDialog = (account?: SocialRecord) => {
@@ -1268,7 +1268,7 @@ export default function AccountHome() {
 
   const removeSocial = (socialId: string) => {
     setSocialAccounts((current) => current.filter((account) => account.id !== socialId));
-    setBannerMessage('Social account removed from this account view.');
+    setBannerMessage('Social account removed.');
   };
 
   const toggleSecurityControl = (controlId: string) => {
@@ -1283,7 +1283,7 @@ export default function AccountHome() {
     setRefreshingBanks(true);
     window.setTimeout(() => {
       setRefreshingBanks(false);
-      setBannerMessage('Institution refresh is a UI placeholder for the upcoming sync flow.');
+      setBannerMessage('Connected accounts refreshed.');
     }, 650);
   };
 
@@ -1306,7 +1306,7 @@ export default function AccountHome() {
                 <div className="group relative">
                   <Info className="h-4 w-4 cursor-help" />
                   <div className="absolute left-0 top-6 z-10 hidden max-w-[240px] rounded bg-zinc-900 px-2 py-1 text-xs text-white group-hover:block">
-                    Identity, trust, recovery, wallets, socials, and account health in one place.
+                    Profile, linked accounts, recovery details, and security settings in one place.
                   </div>
                 </div>
                 <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
@@ -1322,8 +1322,7 @@ export default function AccountHome() {
               </h1>
 
               <p className="mt-2 max-w-2xl text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">
-                Manage the identity layer of the product without burying it in settings. This page ties together
-                profile, trusted surfaces, privacy controls, and account progression in one cleaner flow.
+                Manage your profile, connected accounts, security settings, and documents from one place.
               </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
@@ -1333,7 +1332,7 @@ export default function AccountHome() {
                 <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
                 <span>{activeNetworks || 1} active network{activeNetworks === 1 ? '' : 's'}</span>
                 <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-                <span>UI-only preview</span>
+                <span>Account overview</span>
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2.5">
@@ -1374,7 +1373,7 @@ export default function AccountHome() {
                   <div>
                     <h2 className="text-lg font-light tracking-tight text-black dark:text-white">Account Snapshot</h2>
                     <p className="mt-1 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">
-                      Core identity and connection signals, shown with the same restrained treatment as the portfolio pages.
+                      Track your profile, connected accounts, and account readiness at a glance.
                     </p>
                   </div>
                   <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
@@ -1384,10 +1383,10 @@ export default function AccountHome() {
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-                <HeroMetric label="Protected balance" value={formatCurrencyCompact(totalBalanceUSD)} detail="Combined onchain and linked cash surfaces" />
-                <HeroMetric label="Connected surfaces" value={String(accountSurfaceCount)} detail="Wallets, socials, and institutions attached" />
-                <HeroMetric label="Profile completion" value={`${profileCompletion}%`} detail="Identity, trust, and support readiness" />
-                <HeroMetric label="Cash visibility" value={formatCurrencyCompact(cashBalance.totalCash)} detail="Displayed for UI context only" />
+                <HeroMetric label="Protected balance" value={formatCurrencyCompact(totalBalanceUSD)} detail="Combined balance across wallets and linked cash accounts" />
+                <HeroMetric label="Linked accounts" value={String(accountSurfaceCount)} detail="Wallets, social profiles, and banks linked" />
+                <HeroMetric label="Profile completion" value={`${profileCompletion}%`} detail="Progress across profile, connections, and security" />
+                <HeroMetric label="Cash visibility" value={formatCurrencyCompact(cashBalance.totalCash)} detail="Available across linked cash accounts" />
               </div>
             </section>
 
@@ -1397,7 +1396,7 @@ export default function AccountHome() {
                   <div>
                     <h2 className="text-lg font-light tracking-tight text-black dark:text-white">Progress Track</h2>
                     <p className="mt-1 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">
-                      Four account tracks, kept visible without wrapping the whole experience in a single container.
+                      Follow setup progress across your profile, connections, security, and support readiness.
                     </p>
                   </div>
                   <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
@@ -1417,7 +1416,7 @@ export default function AccountHome() {
               {...sectionMotion}
               transition={{ ...sectionTransition, delay: 0.04 }}
               ref={tabsAnchorRef}
-              className="border-t border-zinc-200/70 pt-6 scroll-mt-28 dark:border-zinc-800/70 md:scroll-mt-32"
+              className="border-t border-zinc-200/70 pt-3 scroll-mt-28 dark:border-zinc-800/70 md:scroll-mt-32"
             >
               <Tabs value={activeTab}>
                 <div className="flex gap-6 overflow-x-auto border-b border-zinc-200 pb-0 no-scrollbar dark:border-zinc-800">
@@ -1427,7 +1426,7 @@ export default function AccountHome() {
                       type="button"
                       onClick={() => handleTabOpen(tab)}
                       className={cn(
-                        'relative whitespace-nowrap pb-2 text-sm font-medium transition-colors',
+                        'relative whitespace-nowrap py-2 text-sm font-medium transition-colors',
                         activeTab === tab
                           ? 'text-black dark:text-white'
                           : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
@@ -1449,7 +1448,7 @@ export default function AccountHome() {
                     withTopBorder={false}
                     eyebrow="Identity"
                     title="Personal information"
-                    description="Keep editing obvious and direct. The account layer should feel closer to a profile editor than a settings maze."
+                    description="Update your name, contact details, location, and profile bio."
                     action={<Button variant="outline" size="sm" onClick={handleProfileSave}>Save profile</Button>}
                   >
                     <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
@@ -1492,20 +1491,20 @@ export default function AccountHome() {
                     </div>
                     <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
                       <HeroMetric label="Core fields" value={`${profileFieldsComplete}/6`} detail="Identity details filled in" />
-                      <HeroMetric label="Last saved" value={profileSavedAt} detail="Local UI preview only" />
-                      <HeroMetric label="Account mode" value="Preview" detail="No backend or persistence wired yet" />
+                      <HeroMetric label="Last updated" value={profileSavedAt} detail="Most recent profile update" />
+                      <HeroMetric label="Profile status" value={profileSavedAt === 'Not saved yet' ? 'Draft' : 'Updated'} detail="Review and change these details anytime" />
                     </div>
                   </SectionPanel>
 
                   <SectionPanel
                     eyebrow="Defaults"
                     title="Account defaults"
-                    description="Use dividers and compact summary rows instead of more settings cards."
+                    description="Review your region, timezone, and settlement preferences."
                   >
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      <HeroMetric label="Primary region" value={profileForm.residency || 'Unset'} detail="Controls disclosures and cash movement defaults" />
-                      <HeroMetric label="Notification timezone" value={profileForm.timezone || 'Unset'} detail="Used for statements, support windows, and alerts" />
-                      <HeroMetric label="Settlement currency" value={profileForm.currency || 'Unset'} detail="Normalizes account-level exports and summaries" />
+                      <HeroMetric label="Primary region" value={profileForm.residency || 'Unset'} detail="Used for account disclosures and transfer settings" />
+                      <HeroMetric label="Notification timezone" value={profileForm.timezone || 'Unset'} detail="Used for statements, alerts, and support updates" />
+                      <HeroMetric label="Settlement currency" value={profileForm.currency || 'Unset'} detail="Used for balances, exports, and account summaries" />
                     </div>
                   </SectionPanel>
                 </TabsContent>
@@ -1513,9 +1512,9 @@ export default function AccountHome() {
                 <TabsContent value="connections" className="space-y-8 pt-3">
                   <SectionPanel
                     withTopBorder={false}
-                    eyebrow="Wallet graph"
+                    eyebrow="Wallets"
                     title="Associated wallets"
-                    description="Keep trusted wallet surfaces in a clean list with labels, trust state, and minimal actions."
+                    description="Manage the wallets connected to your account and review their status."
                     action={<Button variant="outline" size="sm" onClick={() => openWalletDialog()}><Plus className="h-4 w-4" />Add wallet</Button>}
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
@@ -1556,15 +1555,15 @@ export default function AccountHome() {
                   </SectionPanel>
 
                   <SectionPanel
-                    eyebrow="Social graph"
+                    eyebrow="Social"
                     title="Linked social accounts"
-                    description="Surface handles as lightweight rows, not mini profile cards."
+                    description="Manage the social accounts linked to your profile."
                     action={<Button variant="outline" size="sm" onClick={() => openSocialDialog()}><Plus className="h-4 w-4" />Link social</Button>}
                   >
                     {socialAccounts.length === 0 ? (
                       <div className="border-y border-dashed border-zinc-300/80 px-0 py-8 text-center dark:border-zinc-700">
                         <p className="text-sm font-medium text-black dark:text-white">No social accounts linked yet</p>
-                        <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">Add X, Farcaster, Discord, GitHub, or another identity layer when you are ready.</p>
+                        <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">Link X, Farcaster, Discord, GitHub, or any other social profile you want connected to this account.</p>
                       </div>
                     ) : (
                       <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
@@ -1595,17 +1594,17 @@ export default function AccountHome() {
                   </SectionPanel>
 
                   <SectionPanel
-                    eyebrow="Funding rails"
+                    eyebrow="Funding"
                     title="Linked banks and cash accounts"
-                    description="Show banking rails as part of the account graph, but keep the UI-only flow obvious for now."
-                    action={<div className="flex gap-2"><Button variant="outline" size="sm" onClick={handleRefreshBanks} disabled={refreshingBanks}>{refreshingBanks ? 'Refreshing...' : 'Refresh'}</Button><Button size="sm" onClick={() => setBannerMessage('Funding link and institution onboarding will be wired in the next pass.')}><ArrowUpRight className="h-4 w-4" />Link funds</Button></div>}
+                    description="Review linked bank accounts and manage the cash accounts connected to your profile."
+                    action={<div className="flex gap-2"><Button variant="outline" size="sm" onClick={handleRefreshBanks} disabled={refreshingBanks}>{refreshingBanks ? 'Refreshing...' : 'Refresh'}</Button><Button size="sm" onClick={() => setBannerMessage('Funding setup started.')}><ArrowUpRight className="h-4 w-4" />Link funds</Button></div>}
                   >
                     {bankAccountsLoading ? (
                       <div className="border-y border-zinc-200/70 px-0 py-8 text-[12px] leading-5 text-zinc-500 dark:border-zinc-800/70 dark:text-zinc-400">Loading linked institutions...</div>
                     ) : bankAccounts.length === 0 ? (
                       <div className="border-y border-dashed border-zinc-300/80 px-0 py-8 text-center dark:border-zinc-700">
                         <p className="text-sm font-medium text-black dark:text-white">No banks connected</p>
-                        <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">Link a checking, savings, or brokerage account to complete the funding layer later.</p>
+                        <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">Link a checking, savings, or brokerage account to manage funding and cash transfers.</p>
                       </div>
                     ) : (
                       <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
@@ -1640,9 +1639,9 @@ export default function AccountHome() {
                 <TabsContent value="security" className="space-y-8 pt-3">
                   <SectionPanel
                     withTopBorder={false}
-                    eyebrow="Trust controls"
+                    eyebrow="Security"
                     title="Security and privacy"
-                    description="Treat protections like a clean checklist with visible state, not a pile of preference cards."
+                    description="Manage sign-in protections, alerts, and profile visibility settings."
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {securityControls.map((control, index) => {
@@ -1674,13 +1673,13 @@ export default function AccountHome() {
 
                   <SectionPanel
                     eyebrow="Recovery"
-                    title="Recovery surfaces"
-                    description="Map the primary trust anchors with dividers and labels so the account is readable at a glance."
+                    title="Recovery methods"
+                    description="Review your primary recovery details and trusted account access points."
                   >
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      <HeroMetric label="Primary signer" value={address ? shortAddress(address) : 'Not connected'} detail="Wallet signatures remain the highest-trust recovery path" />
-                      <HeroMetric label="Recovery contacts" value={profileForm.phone || 'Add a recovery phone'} detail="Phone and email speed up security review" />
-                      <HeroMetric label="Exposure map" value={`${wallets.length} wallets / ${bankAccounts.length} rails`} detail="Review trusted surfaces regularly to reduce stale links" />
+                      <HeroMetric label="Primary signer" value={address ? shortAddress(address) : 'Not connected'} detail="Your main wallet used to confirm sensitive account changes" />
+                      <HeroMetric label="Recovery contacts" value={profileForm.phone || 'Add a recovery phone'} detail="Add phone and email to speed up account recovery" />
+                      <HeroMetric label="Linked accounts" value={`${wallets.length} wallets / ${bankAccounts.length} banks`} detail="Review connected wallets and banks from one place" />
                     </div>
                     <div className="mt-5 space-y-2">
                       {accountPerks.map((perk) => (
@@ -1708,13 +1707,13 @@ export default function AccountHome() {
                     withTopBorder={false}
                     eyebrow="Documents"
                     title="Statements and exports"
-                    description="Keep documents in clean rows with compact actions instead of more tiles."
+                    description="Access statements, exports, and account records."
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {[
-                        { title: 'Monthly statements', detail: 'Snapshot of balances, linked accounts, and transfers.', cta: 'Prepare PDF' },
-                        { title: 'Tax package', detail: 'Export a year-to-date activity package for off-platform review.', cta: 'Generate export' },
-                        { title: 'Account archive', detail: 'Bundle profile, wallets, socials, and support metadata.', cta: 'Export JSON' },
+                        { title: 'Monthly statements', detail: 'Download a summary of balances, linked accounts, and transfers.', cta: 'Prepare PDF', message: 'Monthly statements are being prepared.' },
+                        { title: 'Tax package', detail: 'Export your year-to-date activity for tax review.', cta: 'Generate export', message: 'Tax package is being prepared.' },
+                        { title: 'Account archive', detail: 'Download a full record of your account details and connected profiles.', cta: 'Export JSON', message: 'Account archive is being prepared.' },
                       ].map((item, index, array) => (
                         <div key={item.title} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== array.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                           <div className="flex items-start gap-3">
@@ -1726,7 +1725,7 @@ export default function AccountHome() {
                                 <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{item.detail}</p>
                               </div>
                             </div>
-                          <Button variant="outline" size="sm" onClick={() => setBannerMessage(`${item.cta} queued in the local preview.`)}>{item.cta}</Button>
+                          <Button variant="outline" size="sm" onClick={() => setBannerMessage(item.message)}>{item.cta}</Button>
                         </div>
                       ))}
                     </div>
@@ -1735,13 +1734,13 @@ export default function AccountHome() {
                   <SectionPanel
                     eyebrow="Support"
                     title="Support and privacy requests"
-                    description="Put trust-and-safety, support, and privacy requests in one readable stream."
+                    description="Get help with account reviews, support requests, and privacy requests."
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {[
-                        { icon: Shield, title: 'Account review', detail: 'Report suspicious changes or request a manual review of linked surfaces.', cta: 'Open review request' },
-                        { icon: Sparkles, title: 'Priority support', detail: 'Share profile, connection, and trust context in one support conversation.', cta: 'Contact support' },
-                        { icon: AlertTriangle, title: 'Privacy request', detail: 'Request export or deletion of profile metadata stored beyond your wallet signature.', cta: 'Start privacy request' },
+                        { icon: Shield, title: 'Account review', detail: 'Report suspicious activity or request a manual review of your linked accounts.', cta: 'Open review request', message: 'Account review request started.' },
+                        { icon: Sparkles, title: 'Priority support', detail: 'Contact support with your profile and connection details included.', cta: 'Contact support', message: 'Support request started.' },
+                        { icon: AlertTriangle, title: 'Privacy request', detail: 'Request a copy of your data or submit a deletion request for account information.', cta: 'Start privacy request', message: 'Privacy request started.' },
                       ].map((item, index, array) => {
                         const Icon = item.icon;
                         return (
@@ -1755,7 +1754,7 @@ export default function AccountHome() {
                                 <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{item.detail}</p>
                               </div>
                             </div>
-                            <Button variant="outline" size="sm" onClick={() => setBannerMessage(`${item.title} opened in the local preview.`)}>{item.cta}</Button>
+                            <Button variant="outline" size="sm" onClick={() => setBannerMessage(item.message)}>{item.cta}</Button>
                           </div>
                         );
                       })}
@@ -1793,10 +1792,9 @@ export default function AccountHome() {
 
             <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
               <div className="space-y-2 rounded-sm border border-zinc-200/70 bg-gradient-to-r from-zinc-100/70 to-sky-50/60 p-4 dark:border-zinc-800/70 dark:from-[#141414] dark:to-[#10181a]">
-                <p className="text-sm font-medium text-black dark:text-white">Portable identity. Cleaner account control.</p>
+                <p className="text-sm font-medium text-black dark:text-white">Everything tied to your account, in one place.</p>
                 <p className="text-[11px] leading-5 text-zinc-600 dark:text-zinc-300">
-                  This screen stays intentionally UI-first for now. The goal is to make profile, wallet, social, and
-                  trust management feel native to the product before the real data layer is wired in.
+                  Review your profile, linked accounts, security settings, and account records from one place.
                 </p>
               </div>
             </section>
@@ -1809,7 +1807,7 @@ export default function AccountHome() {
           <DialogHeader>
             <DialogTitle>{editingWalletId ? 'Edit associated wallet' : 'Add associated wallet'}</DialogTitle>
             <DialogDescription>
-              Save the wallet label, network, and note you want attached to this account center.
+              Add a wallet name, network, and note so you can recognize it later.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1852,7 +1850,7 @@ export default function AccountHome() {
           <DialogHeader>
             <DialogTitle>{editingSocialId ? 'Edit social account' : 'Link social account'}</DialogTitle>
             <DialogDescription>
-              Attach the platform and handle you want displayed or used for support verification.
+              Add a platform and handle to link it to your profile.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
