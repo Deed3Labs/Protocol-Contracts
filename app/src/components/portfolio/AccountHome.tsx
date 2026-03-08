@@ -7,23 +7,25 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Bell,
-  CheckCircle2,
   ChevronRight,
   Copy,
+  Crown,
   Edit3,
   FileText,
+  Flame,
+  Gift,
   Globe,
   KeyRound,
   Landmark,
   Link2,
-  Lock,
   Plus,
   ScanFace,
   Shield,
   ShieldCheck,
-  Smartphone,
   Sparkles,
+  Star,
   Trash2,
+  Trophy,
   UserRound,
   Wallet,
 } from 'lucide-react';
@@ -46,6 +48,7 @@ import { cn } from '@/lib/utils';
 type AccountTab = 'profile' | 'connections' | 'security' | 'support';
 type WalletKind = 'Primary' | 'Hardware' | 'Smart' | 'Embedded';
 type SocialVisibility = 'Public' | 'Private';
+type Tone = 'emerald' | 'sky' | 'amber' | 'zinc';
 
 interface ProfileFormState {
   legalName: string;
@@ -98,6 +101,35 @@ interface SecurityControl {
   description: string;
   icon: LucideIcon;
   enabled: boolean;
+}
+
+interface MissionRailItem {
+  id: string;
+  label: string;
+  detail: string;
+  progress: number;
+  tab: AccountTab;
+  icon: LucideIcon;
+}
+
+interface AccountAchievement {
+  id: string;
+  name: string;
+  detail: string;
+  icon: LucideIcon;
+  unlocked: boolean;
+  tone: Tone;
+  tab: AccountTab;
+}
+
+interface AccountPerk {
+  id: string;
+  name: string;
+  description: string;
+  icon: LucideIcon;
+  unlocked: boolean;
+  requirement: string;
+  tone: Tone;
 }
 
 const ACCOUNT_TABS: AccountTab[] = ['profile', 'connections', 'security', 'support'];
@@ -164,6 +196,20 @@ const BLANK_SOCIAL_DRAFT: SocialDraft = {
   visibility: 'Public',
 };
 
+const LEVELS = [
+  { label: 'Scout', min: 0, max: 499 },
+  { label: 'Navigator', min: 500, max: 849 },
+  { label: 'Curator', min: 850, max: 1199 },
+  { label: 'Steward', min: 1200, max: 1599 },
+  { label: 'Prime', min: 1600, max: 9999 },
+] as const;
+
+const sectionMotion = {
+  initial: { opacity: 0, y: 16 },
+  animate: { opacity: 1, y: 0 },
+};
+const sectionTransition = { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const };
+
 const formatCurrencyCompact = (value: number) => {
   const amount = Number.isFinite(value) ? value : 0;
   const abs = Math.abs(amount);
@@ -193,38 +239,14 @@ const toTitleCase = (value: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 
-const sectionMotion = {
-  initial: { opacity: 0, y: 18 },
-  animate: { opacity: 1, y: 0 },
-};
-const sectionTransition = { duration: 0.28, ease: [0.16, 1, 0.3, 1] as const };
+const clampPercent = (value: number) => Math.max(0, Math.min(Math.round(value), 100));
 
-function InfoCard({
-  title,
-  subtitle,
-  icon: Icon,
-  value,
-}: {
-  title: string;
-  subtitle: string;
-  icon: LucideIcon;
-  value: string;
-}) {
-  return (
-    <div className="rounded-sm border border-zinc-200/70 bg-white/80 p-4 dark:border-zinc-800/70 dark:bg-[#121212]/80">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">{title}</p>
-          <p className="mt-2 text-xl font-light text-black dark:text-white">{value}</p>
-          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{subtitle}</p>
-        </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-sm border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-[#171717]">
-          <Icon className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
-        </div>
-      </div>
-    </div>
-  );
-}
+const toneClasses: Record<Tone, string> = {
+  emerald: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  sky: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  amber: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  zinc: 'border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300',
+};
 
 function SectionPanel({
   title,
@@ -240,32 +262,97 @@ function SectionPanel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-sm border border-zinc-200/70 bg-white dark:border-zinc-800/70 dark:bg-[#111111]">
-      <div className="flex flex-col gap-4 border-b border-zinc-200/70 px-5 py-4 dark:border-zinc-800/70 md:flex-row md:items-start md:justify-between">
+    <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           {eyebrow ? (
             <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">{eyebrow}</p>
           ) : null}
-          <h2 className="mt-1 text-base font-medium text-black dark:text-white">{title}</h2>
+          <h2 className="mt-1 text-lg font-light tracking-tight text-black dark:text-white">{title}</h2>
           <p className="mt-1 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">{description}</p>
         </div>
         {action}
       </div>
-      <div className="p-5">{children}</div>
+      <div className="mt-5">{children}</div>
     </section>
+  );
+}
+
+function HeroMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="px-4 py-3">
+      <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">{label}</p>
+      <p className="mt-2 text-lg font-light text-black dark:text-white">{value}</p>
+      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{detail}</p>
+    </div>
+  );
+}
+
+function MissionRail({ item, onOpen }: { item: MissionRailItem; onOpen: (tab: AccountTab) => void }) {
+  const Icon = item.icon;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(item.tab)}
+      className="group w-full border-r border-zinc-200/70 px-4 py-4 text-left last:border-r-0 dark:border-zinc-800/70"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-700 dark:border-zinc-800 dark:bg-[#121212] dark:text-zinc-200">
+            <Icon className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">{item.label}</p>
+            <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">{item.detail}</p>
+          </div>
+        </div>
+        <Badge variant="outline" className="shrink-0 border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
+          {item.progress}%
+        </Badge>
+      </div>
+      <div className="mt-3 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 transition-all duration-300 group-hover:opacity-100"
+          style={{ width: `${item.progress}%` }}
+        />
+      </div>
+    </button>
+  );
+}
+
+function AchievementChip({
+  achievement,
+  onOpen,
+}: {
+  achievement: AccountAchievement;
+  onOpen: (tab: AccountTab) => void;
+}) {
+  const Icon = achievement.icon;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(achievement.tab)}
+      className={cn(
+        'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-left text-xs transition-colors',
+        achievement.unlocked
+          ? toneClasses[achievement.tone]
+          : 'border-zinc-300 bg-white text-zinc-500 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-400'
+      )}
+      title={achievement.detail}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      <span className="font-medium">{achievement.name}</span>
+      <span className="text-[10px] opacity-80">{achievement.unlocked ? 'Unlocked' : achievement.detail}</span>
+    </button>
   );
 }
 
 export default function AccountHome() {
   const { address } = useAppKitAccount();
   const { user, chainId } = useAppKitAuth();
-  const {
-    totalBalanceUSD,
-    cashBalance,
-    holdings,
-    bankAccounts,
-    bankAccountsLoading,
-  } = usePortfolio();
+  const { totalBalanceUSD, cashBalance, holdings, bankAccounts, bankAccountsLoading } = usePortfolio();
   const { profileMenuUser, setActionModalOpen } = useGlobalModals();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -280,6 +367,9 @@ export default function AccountHome() {
   const [editingSocialId, setEditingSocialId] = useState<string | null>(null);
   const [socialDraft, setSocialDraft] = useState<SocialDraft>(BLANK_SOCIAL_DRAFT);
   const [refreshingBanks, setRefreshingBanks] = useState(false);
+  const [accountStreak, setAccountStreak] = useState(14);
+  const [checkedInToday, setCheckedInToday] = useState(false);
+  const [rewardPoints, setRewardPoints] = useState(320);
 
   const initialProfileForm = useMemo<ProfileFormState>(
     () => ({
@@ -295,7 +385,7 @@ export default function AccountHome() {
       residency: 'United States',
       timezone: 'Pacific Time (PT)',
       currency: 'USD',
-      bio: 'Building a portable onchain account center for identity, wallets, and cash management.',
+      bio: 'Building a portable onchain account center for identity, wallets, and trust signals.',
     }),
     [profileMenuUser, user?.email]
   );
@@ -377,16 +467,36 @@ export default function AccountHome() {
     });
   }, [user?.social]);
 
+  const profileFieldsComplete = useMemo(
+    () =>
+      [
+        profileForm.legalName.trim(),
+        profileForm.displayName.trim(),
+        profileForm.email.trim(),
+        profileForm.phone.trim(),
+        profileForm.location.trim(),
+        profileForm.bio.trim(),
+      ].filter(Boolean).length,
+    [profileForm]
+  );
+
+  const profileProgress = clampPercent((profileFieldsComplete / 6) * 100);
+  const connectionProgress = clampPercent(
+    ([wallets.length > 0, socialAccounts.length > 0, bankAccounts.length > 0].filter(Boolean).length / 3) * 100
+  );
   const securityEnabledCount = securityControls.filter((control) => control.enabled).length;
-  const securityScore = Math.round((securityEnabledCount / securityControls.length) * 100);
+  const securityScore = clampPercent((securityEnabledCount / securityControls.length) * 100);
+  const supportProgress = clampPercent(
+    (Number(profileSavedAt !== 'Not saved yet') + Number(Boolean(profileForm.email)) + Number(Boolean(profileForm.phone)) + Number(securityEnabledCount >= 4)) * 25
+  );
   const securityTone = securityScore >= 80 ? 'Strong' : securityScore >= 60 ? 'Balanced' : 'Needs work';
   const activeNetworks = useMemo(
     () => new Set(holdings.map((holding) => holding.chainName).filter(Boolean)).size,
     [holdings]
   );
 
-  const profileCompletion = useMemo(() => {
-    const completed = [
+  const profileCompletion = clampPercent(
+    ([
       Boolean(profileForm.legalName.trim()),
       Boolean(profileForm.displayName.trim()),
       Boolean(profileForm.email.trim()),
@@ -397,19 +507,171 @@ export default function AccountHome() {
       socialAccounts.length > 0,
       bankAccounts.length > 0,
       securityEnabledCount >= 4,
-    ].filter(Boolean).length;
-
-    return Math.round((completed / 10) * 100);
-  }, [profileForm, wallets.length, socialAccounts.length, bankAccounts.length, securityEnabledCount]);
+    ].filter(Boolean).length / 10) * 100
+  );
 
   const accountSurfaceCount = wallets.length + socialAccounts.length + bankAccounts.length;
+  const accountXp =
+    profileCompletion * 9 +
+    securityEnabledCount * 50 +
+    Math.min(accountStreak * 12, 240) +
+    socialAccounts.length * 40 +
+    bankAccounts.length * 50;
+  const levelIndex = LEVELS.findIndex((level) => accountXp >= level.min && accountXp <= level.max);
+  const currentLevel = LEVELS[levelIndex >= 0 ? levelIndex : 0];
+  const nextLevel = LEVELS[Math.min((levelIndex >= 0 ? levelIndex : 0) + 1, LEVELS.length - 1)];
+  const levelFloor = currentLevel.min;
+  const levelCeiling = currentLevel.max;
+  const levelProgress = currentLevel.label === nextLevel.label
+    ? 100
+    : clampPercent(((accountXp - levelFloor) / (levelCeiling - levelFloor + 1)) * 100);
+
+  const missionTrack = useMemo<MissionRailItem[]>(
+    () => [
+      {
+        id: 'profile',
+        label: 'Core profile',
+        detail: profileProgress === 100 ? 'Identity ready' : `${6 - profileFieldsComplete} fields left`,
+        progress: profileProgress,
+        tab: 'profile',
+        icon: UserRound,
+      },
+      {
+        id: 'connections',
+        label: 'Connection map',
+        detail:
+          connectionProgress === 100
+            ? 'Wallets, socials, and rails set'
+            : `${3 - [wallets.length > 0, socialAccounts.length > 0, bankAccounts.length > 0].filter(Boolean).length} surfaces left`,
+        progress: connectionProgress,
+        tab: 'connections',
+        icon: Link2,
+      },
+      {
+        id: 'security',
+        label: 'Trust lock',
+        detail: `${securityEnabledCount}/${securityControls.length} protections active`,
+        progress: securityScore,
+        tab: 'security',
+        icon: ShieldCheck,
+      },
+      {
+        id: 'support',
+        label: 'Support pack',
+        detail: supportProgress >= 100 ? 'Export and recovery ready' : 'Tighten response coverage',
+        progress: supportProgress,
+        tab: 'support',
+        icon: FileText,
+      },
+    ],
+    [bankAccounts.length, connectionProgress, profileFieldsComplete, profileProgress, securityEnabledCount, securityScore, securityControls.length, socialAccounts.length, supportProgress, wallets.length]
+  );
+
+  const accountAchievements = useMemo<AccountAchievement[]>(
+    () => [
+      {
+        id: 'profile-prime',
+        name: 'Profile Prime',
+        detail: 'Complete all core profile fields',
+        icon: Star,
+        unlocked: profileProgress === 100,
+        tone: 'sky',
+        tab: 'profile',
+      },
+      {
+        id: 'wallet-graph',
+        name: 'Wallet Graph',
+        detail: 'Add more than one trusted wallet',
+        icon: Wallet,
+        unlocked: wallets.length >= 2,
+        tone: 'emerald',
+        tab: 'connections',
+      },
+      {
+        id: 'signal-proof',
+        name: 'Signal Proof',
+        detail: 'Link at least one social handle',
+        icon: Sparkles,
+        unlocked: socialAccounts.length >= 1,
+        tone: 'amber',
+        tab: 'connections',
+      },
+      {
+        id: 'trust-lock',
+        name: 'Trust Lock',
+        detail: 'Reach 4 active protections',
+        icon: ShieldCheck,
+        unlocked: securityEnabledCount >= 4,
+        tone: 'emerald',
+        tab: 'security',
+      },
+      {
+        id: 'cash-rail',
+        name: 'Cash Rail',
+        detail: 'Connect at least one institution',
+        icon: Landmark,
+        unlocked: bankAccounts.length >= 1,
+        tone: 'sky',
+        tab: 'connections',
+      },
+      {
+        id: 'archive-ready',
+        name: 'Archive Ready',
+        detail: 'Save profile once to prepare exports',
+        icon: Trophy,
+        unlocked: profileSavedAt !== 'Not saved yet',
+        tone: 'zinc',
+        tab: 'support',
+      },
+    ],
+    [bankAccounts.length, profileProgress, profileSavedAt, securityEnabledCount, socialAccounts.length, wallets.length]
+  );
+
+  const accountPerks = useMemo<AccountPerk[]>(
+    () => [
+      {
+        id: 'priority-support',
+        name: 'Priority support lane',
+        description: 'Faster review context for profile and recovery issues.',
+        icon: Crown,
+        unlocked: securityEnabledCount >= 4,
+        requirement: 'Enable 4 protections',
+        tone: 'emerald',
+      },
+      {
+        id: 'verified-ribbon',
+        name: 'Verified account ribbon',
+        description: 'Stronger trust signal once profile and socials are complete.',
+        icon: Sparkles,
+        unlocked: profileCompletion >= 80 && socialAccounts.length > 0,
+        requirement: 'Finish profile + 1 social',
+        tone: 'sky',
+      },
+      {
+        id: 'recovery-fastpass',
+        name: 'Recovery fast-pass',
+        description: 'Cleaner handoff for identity checks and account escalations.',
+        icon: Gift,
+        unlocked: Boolean(profileForm.email && profileForm.phone && wallets.length > 0),
+        requirement: 'Add phone + email',
+        tone: 'amber',
+      },
+    ],
+    [profileCompletion, profileForm.email, profileForm.phone, securityEnabledCount, socialAccounts.length, wallets.length]
+  );
+
+  const unlockedAchievementCount = accountAchievements.filter((achievement) => achievement.unlocked).length;
+  const unlockedPerks = accountPerks.filter((perk) => perk.unlocked);
+
   const nextSteps = [
     !profileForm.legalName.trim() ? 'Add a legal name for compliance-ready account updates.' : null,
-    !profileForm.phone.trim() ? 'Add a recovery phone for high-risk account changes.' : null,
-    socialAccounts.length === 0 ? 'Link a social account to make your identity graph portable.' : null,
-    bankAccounts.length === 0 ? 'Connect a bank account for deposits, withdrawals, and cash sweeps.' : null,
+    !profileForm.phone.trim() ? 'Add a recovery phone for higher-trust account review.' : null,
+    socialAccounts.length === 0 ? 'Link a social account to unlock stronger profile trust.' : null,
+    bankAccounts.length === 0 ? 'Connect a funding source to complete your account rail.' : null,
     securityEnabledCount < 4 ? 'Turn on one more protection control to reach a strong security posture.' : null,
   ].filter(Boolean) as string[];
+
+  const handleTabOpen = (tab: AccountTab) => setSearchParams({ tab });
 
   const handleProfileFieldChange = (field: keyof ProfileFormState, value: string) => {
     setProfileForm((current) => ({ ...current, [field]: value }));
@@ -418,7 +680,7 @@ export default function AccountHome() {
   const handleProfileSave = () => {
     const savedAt = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     setProfileSavedAt(savedAt);
-    setBannerMessage('Profile changes saved to the local workspace preview.');
+    setBannerMessage('Profile changes saved to the local UI preview.');
   };
 
   const handleCopyAddress = async (value: string) => {
@@ -429,6 +691,18 @@ export default function AccountHome() {
       console.error('Failed to copy wallet address:', error);
       setBannerMessage('Clipboard access was blocked in this environment.');
     }
+  };
+
+  const handleAccountPulse = () => {
+    if (checkedInToday) {
+      setBannerMessage('Daily account pulse already logged.');
+      return;
+    }
+
+    setCheckedInToday(true);
+    setAccountStreak((current) => current + 1);
+    setRewardPoints((current) => current + 25);
+    setBannerMessage('Daily account pulse logged. +25 reward points.');
   };
 
   const openWalletDialog = (wallet?: WalletRecord) => {
@@ -546,7 +820,7 @@ export default function AccountHome() {
     setRefreshingBanks(true);
     window.setTimeout(() => {
       setRefreshingBanks(false);
-      setBannerMessage('Institution refresh is a UI placeholder for the upcoming account sync flow.');
+      setBannerMessage('Institution refresh is a UI placeholder for the upcoming sync flow.');
     }, 650);
   };
 
@@ -566,18 +840,33 @@ export default function AccountHome() {
             <motion.section
               {...sectionMotion}
               transition={sectionTransition}
-              className="overflow-hidden rounded-sm border border-zinc-200/70 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.92),_rgba(240,249,255,0.75)_45%,_rgba(236,253,245,0.66)_100%)] p-6 dark:border-zinc-800/70 dark:bg-[radial-gradient(circle_at_top_left,_rgba(20,20,20,0.96),_rgba(14,30,32,0.92)_45%,_rgba(15,19,17,0.96)_100%)] md:p-8"
+              className="overflow-hidden rounded-sm border border-zinc-200/70 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.96),_rgba(240,249,255,0.75)_45%,_rgba(236,253,245,0.62)_100%)] px-6 py-6 dark:border-zinc-800/70 dark:bg-[radial-gradient(circle_at_top_left,_rgba(20,20,20,0.98),_rgba(11,24,27,0.94)_48%,_rgba(16,16,16,0.98)_100%)] md:px-8 md:py-7"
             >
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                <div className="max-w-2xl">
-                  <Badge
-                    variant="outline"
-                    className="border-sky-500/30 bg-sky-500/10 text-[10px] uppercase tracking-[0.22em] text-sky-700 dark:text-sky-300"
-                  >
-                    Identity Hub
-                  </Badge>
-                  <div className="mt-5 flex items-start gap-4">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-sm border border-zinc-200 bg-white/80 text-lg font-medium text-zinc-900 shadow-sm dark:border-zinc-800 dark:bg-[#141414] dark:text-zinc-100">
+              <div className="flex flex-col gap-8 xl:flex-row xl:items-start xl:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className="border-sky-500/30 bg-sky-500/10 text-[10px] uppercase tracking-[0.22em] text-sky-700 dark:text-sky-300"
+                    >
+                      Identity Hub
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="border-zinc-300 bg-white/80 text-[10px] uppercase tracking-[0.18em] text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300"
+                    >
+                      {currentLevel.label} Lv.{Math.min(levelIndex + 1, LEVELS.length)}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-500/30 bg-emerald-500/10 text-[10px] uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300"
+                    >
+                      {unlockedAchievementCount}/{accountAchievements.length} achievements
+                    </Badge>
+                  </div>
+
+                  <div className="mt-6 flex items-start gap-4">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white/90 text-lg font-medium text-zinc-900 shadow-sm dark:border-zinc-800 dark:bg-[#141414] dark:text-zinc-100">
                       {(profileForm.displayName || profileMenuUser?.name || 'U').slice(0, 1).toUpperCase()}
                     </div>
                     <div className="min-w-0">
@@ -587,45 +876,67 @@ export default function AccountHome() {
                       <h1 className="mt-2 text-[36px] font-light tracking-tight text-black dark:text-white md:text-[42px]">
                         {profileForm.displayName || profileMenuUser?.name || 'Account profile'}
                       </h1>
-                      <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-                        Manage the identity layer of your account: profile details, associated wallets, linked socials,
-                        funding rails, security controls, and support utilities in one place.
+                      <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-600 dark:text-zinc-300">
+                        Shape the identity layer of the product without burying it in settings. This hub is about who
+                        the account is, which surfaces it controls, and what trust or perks it has unlocked.
                       </p>
-                      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-                        <span>{profileForm.email || 'Add an email address'}</span>
-                        <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-                        <span>{address ? shortAddress(address) : 'Wallet not connected'}</span>
-                        <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-                        <span>{activeNetworks || 1} active network{activeNetworks === 1 ? '' : 's'}</span>
+                      <div className="mt-4 flex flex-wrap gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                        <span className="rounded-full border border-zinc-300/80 px-3 py-1 dark:border-zinc-700">{profileForm.email || 'Add an email address'}</span>
+                        <span className="rounded-full border border-zinc-300/80 px-3 py-1 dark:border-zinc-700">{address ? shortAddress(address) : 'Wallet not connected'}</span>
+                        <span className="rounded-full border border-zinc-300/80 px-3 py-1 dark:border-zinc-700">{activeNetworks || 1} active network{activeNetworks === 1 ? '' : 's'}</span>
+                        <span className="rounded-full border border-zinc-300/80 px-3 py-1 dark:border-zinc-700">UI-only preview</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-3 lg:max-w-xs lg:flex-col lg:items-stretch">
-                  <Button
-                    className="rounded-full bg-black px-5 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-                    onClick={() => setSearchParams({ tab: 'profile' })}
-                  >
-                    <Edit3 className="h-4 w-4" />
-                    Edit profile
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="rounded-full border-zinc-300 bg-white/80 px-5 dark:border-zinc-700 dark:bg-[#121212]"
-                    onClick={() => setSearchParams({ tab: 'connections' })}
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add connection
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="rounded-full border-zinc-300 bg-white/80 px-5 dark:border-zinc-700 dark:bg-[#121212]"
-                    onClick={() => setSearchParams({ tab: 'security' })}
-                  >
-                    <Shield className="h-4 w-4" />
-                    Review security
-                  </Button>
+                <div className="w-full xl:max-w-[300px] xl:border-l xl:border-zinc-200/70 xl:pl-6 xl:dark:border-zinc-800/70">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">
+                        Daily Account Pulse
+                      </p>
+                      <div className="mt-3 flex items-end gap-2">
+                        <span className="text-4xl font-light text-black dark:text-white">{accountStreak}</span>
+                        <span className="pb-1 text-sm text-zinc-500 dark:text-zinc-400">day streak</span>
+                      </div>
+                      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+                        {checkedInToday ? 'Pulse locked for today.' : 'Run a quick trust check-in to keep your streak alive.'}
+                      </p>
+                    </div>
+                    <Button
+                      variant={checkedInToday ? 'outline' : 'default'}
+                      size="sm"
+                      className="rounded-full"
+                      onClick={handleAccountPulse}
+                    >
+                      <Flame className="h-4 w-4" />
+                      {checkedInToday ? 'Checked in' : 'Check in'}
+                    </Button>
+                  </div>
+
+                  <div className="mt-5 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500"
+                      style={{ width: `${levelProgress}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+                    <span>{accountXp} XP</span>
+                    <span>{currentLevel.label === nextLevel.label ? 'Max tier' : `Next: ${nextLevel.label}`}</span>
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                      <Gift className="mr-1 h-3 w-3" /> {rewardPoints} points
+                    </Badge>
+                    <Badge variant="outline" className="border-zinc-300 bg-white/80 text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
+                      {securityTone} posture
+                    </Badge>
+                    <Badge variant="outline" className="border-zinc-300 bg-white/80 text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
+                      {unlockedPerks.length} perks active
+                    </Badge>
+                  </div>
                 </div>
               </div>
 
@@ -635,146 +946,127 @@ export default function AccountHome() {
                 </div>
               ) : null}
 
-              <div className="mt-8 grid gap-4 md:grid-cols-3">
-                <InfoCard
-                  title="Protected balance"
-                  value={formatCurrencyCompact(totalBalanceUSD)}
-                  subtitle="Combined onchain and linked cash surfaces"
-                  icon={Wallet}
-                />
-                <InfoCard
-                  title="Connected surfaces"
-                  value={String(accountSurfaceCount)}
-                  subtitle="Wallets, socials, and institutions linked here"
-                  icon={Link2}
-                />
-                <InfoCard
-                  title="Security posture"
-                  value={securityTone}
-                  subtitle={`${securityEnabledCount}/${securityControls.length} controls active`}
-                  icon={ShieldCheck}
-                />
+              <div className="mt-7 grid overflow-hidden border-y border-zinc-200/70 md:grid-cols-4 md:divide-x dark:border-zinc-800/70 dark:md:divide-zinc-800/70">
+                <HeroMetric label="Protected balance" value={formatCurrencyCompact(totalBalanceUSD)} detail="Combined onchain and linked cash surfaces" />
+                <HeroMetric label="Connected surfaces" value={String(accountSurfaceCount)} detail="Wallets, socials, and institutions attached" />
+                <HeroMetric label="Profile completion" value={`${profileCompletion}%`} detail="Identity, connection, and trust readiness" />
+                <HeroMetric label="Cash visibility" value={formatCurrencyCompact(cashBalance.totalCash)} detail="Displayed for UI context only" />
+              </div>
+
+              <div className="mt-6 border-t border-zinc-200/70 pt-5 dark:border-zinc-800/70">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Mission Track</p>
+                    <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-300">Use progress rails instead of burying important state in settings cards.</p>
+                  </div>
+                  <Badge variant="outline" className="border-zinc-300 bg-white/80 text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
+                    {unlockedAchievementCount}/{accountAchievements.length} unlocked
+                  </Badge>
+                </div>
+                <div className="mt-4 overflow-hidden rounded-sm border border-zinc-200/70 dark:border-zinc-800/70">
+                  <div className="grid divide-y divide-zinc-200/70 md:grid-cols-2 md:divide-y-0 md:divide-x xl:grid-cols-4 dark:divide-zinc-800/70">
+                    {missionTrack.map((item) => (
+                      <MissionRail key={item.id} item={item} onOpen={handleTabOpen} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 border-t border-zinc-200/70 pt-5 dark:border-zinc-800/70">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="lg:max-w-[52%]">
+                    <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Achievements</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {accountAchievements.map((achievement) => (
+                        <AchievementChip key={achievement.id} achievement={achievement} onOpen={handleTabOpen} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="lg:max-w-[42%]">
+                    <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Active Perks</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {accountPerks.map((perk) => (
+                        <Badge
+                          key={perk.id}
+                          variant="outline"
+                          className={cn(
+                            'px-3 py-2 text-left text-xs font-normal',
+                            perk.unlocked ? toneClasses[perk.tone] : 'border-zinc-300 bg-white text-zinc-500 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-400'
+                          )}
+                          title={perk.description}
+                        >
+                          <perk.icon className="mr-1 h-3.5 w-3.5" />
+                          {perk.name}
+                          <span className="ml-2 text-[10px] opacity-80">{perk.unlocked ? 'Active' : perk.requirement}</span>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             </motion.section>
 
-            <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.05 }}>
+            <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.04 }}>
               <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
                 <TabsList className="grid w-full grid-cols-2 gap-1 rounded-full border border-zinc-200/80 bg-zinc-100/90 p-1 dark:border-zinc-800 dark:bg-[#111111] sm:grid-cols-4">
-                  <TabsTrigger value="profile" className="rounded-full py-2.5 text-sm">
-                    Profile
-                  </TabsTrigger>
-                  <TabsTrigger value="connections" className="rounded-full py-2.5 text-sm">
-                    Connections
-                  </TabsTrigger>
-                  <TabsTrigger value="security" className="rounded-full py-2.5 text-sm">
-                    Security
-                  </TabsTrigger>
-                  <TabsTrigger value="support" className="rounded-full py-2.5 text-sm">
-                    Support
-                  </TabsTrigger>
+                  <TabsTrigger value="profile" className="rounded-full py-2.5 text-sm">Profile</TabsTrigger>
+                  <TabsTrigger value="connections" className="rounded-full py-2.5 text-sm">Connections</TabsTrigger>
+                  <TabsTrigger value="security" className="rounded-full py-2.5 text-sm">Security</TabsTrigger>
+                  <TabsTrigger value="support" className="rounded-full py-2.5 text-sm">Support</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="profile" className="space-y-6 pt-4">
+                <TabsContent value="profile" className="space-y-8 pt-5">
                   <SectionPanel
                     eyebrow="Identity"
                     title="Personal information"
-                    description="Set the core account details users, support staff, and compliance flows will rely on."
-                    action={
-                      <Button variant="outline" size="sm" onClick={handleProfileSave}>
-                        Save profile
-                      </Button>
-                    }
+                    description="Keep editing obvious and direct. The account layer should feel closer to a profile editor than a settings maze."
+                    action={<Button variant="outline" size="sm" onClick={handleProfileSave}>Save profile</Button>}
                   >
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label htmlFor="legalName">Legal name</Label>
-                        <Input
-                          id="legalName"
-                          value={profileForm.legalName}
-                          onChange={(event) => handleProfileFieldChange('legalName', event.target.value)}
-                          placeholder="Jane Doe"
-                        />
+                        <Input id="legalName" value={profileForm.legalName} onChange={(event) => handleProfileFieldChange('legalName', event.target.value)} placeholder="Jane Doe" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="displayName">Display name</Label>
-                        <Input
-                          id="displayName"
-                          value={profileForm.displayName}
-                          onChange={(event) => handleProfileFieldChange('displayName', event.target.value)}
-                          placeholder="jane.clear"
-                        />
+                        <Input id="displayName" value={profileForm.displayName} onChange={(event) => handleProfileFieldChange('displayName', event.target.value)} placeholder="jane.clear" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="email">Email</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          value={profileForm.email}
-                          onChange={(event) => handleProfileFieldChange('email', event.target.value)}
-                          placeholder="jane@clearpath.app"
-                        />
+                        <Input id="email" type="email" value={profileForm.email} onChange={(event) => handleProfileFieldChange('email', event.target.value)} placeholder="jane@clearpath.app" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="phone">Recovery phone</Label>
-                        <Input
-                          id="phone"
-                          value={profileForm.phone}
-                          onChange={(event) => handleProfileFieldChange('phone', event.target.value)}
-                          placeholder="(555) 123-4567"
-                        />
+                        <Input id="phone" value={profileForm.phone} onChange={(event) => handleProfileFieldChange('phone', event.target.value)} placeholder="(555) 123-4567" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="location">Location</Label>
-                        <Input
-                          id="location"
-                          value={profileForm.location}
-                          onChange={(event) => handleProfileFieldChange('location', event.target.value)}
-                          placeholder="Los Angeles, CA"
-                        />
+                        <Input id="location" value={profileForm.location} onChange={(event) => handleProfileFieldChange('location', event.target.value)} placeholder="Los Angeles, CA" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="residency">Residency</Label>
-                        <Input
-                          id="residency"
-                          value={profileForm.residency}
-                          onChange={(event) => handleProfileFieldChange('residency', event.target.value)}
-                          placeholder="United States"
-                        />
+                        <Input id="residency" value={profileForm.residency} onChange={(event) => handleProfileFieldChange('residency', event.target.value)} placeholder="United States" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="timezone">Timezone</Label>
-                        <Input
-                          id="timezone"
-                          value={profileForm.timezone}
-                          onChange={(event) => handleProfileFieldChange('timezone', event.target.value)}
-                          placeholder="Pacific Time (PT)"
-                        />
+                        <Input id="timezone" value={profileForm.timezone} onChange={(event) => handleProfileFieldChange('timezone', event.target.value)} placeholder="Pacific Time (PT)" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="currency">Settlement currency</Label>
-                        <Input
-                          id="currency"
-                          value={profileForm.currency}
-                          onChange={(event) => handleProfileFieldChange('currency', event.target.value)}
-                          placeholder="USD"
-                        />
+                        <Input id="currency" value={profileForm.currency} onChange={(event) => handleProfileFieldChange('currency', event.target.value)} placeholder="USD" />
                       </div>
                       <div className="space-y-2 md:col-span-2">
                         <Label htmlFor="bio">Bio</Label>
-                        <Textarea
-                          id="bio"
-                          value={profileForm.bio}
-                          onChange={(event) => handleProfileFieldChange('bio', event.target.value)}
-                          placeholder="Tell other users what this account is for."
-                          className="min-h-[120px]"
-                        />
+                        <Textarea id="bio" className="min-h-[112px]" value={profileForm.bio} onChange={(event) => handleProfileFieldChange('bio', event.target.value)} placeholder="Tell other users what this account is for." />
                       </div>
                     </div>
-                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-sm border border-zinc-200/70 bg-zinc-50/80 px-4 py-3 text-sm dark:border-zinc-800/70 dark:bg-[#141414]/70">
-                      <div>
-                        <p className="font-medium text-black dark:text-white">Profile sync status</p>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Last saved at {profileSavedAt}</p>
-                      </div>
+                    <div className="mt-6 flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                      <Badge variant="outline" className="border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
+                        {profileFieldsComplete}/6 core fields complete
+                      </Badge>
+                      <Badge variant="outline" className="border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
+                        Last saved: {profileSavedAt}
+                      </Badge>
                       <Badge variant="outline" className="border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
                         Local preview only
                       </Badge>
@@ -782,91 +1074,53 @@ export default function AccountHome() {
                   </SectionPanel>
 
                   <SectionPanel
-                    eyebrow="Preferences"
+                    eyebrow="Defaults"
                     title="Account defaults"
-                    description="These settings shape how your profile appears across account, wallet, and support flows."
+                    description="Use dividers and compact summary rows instead of more settings cards."
                   >
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70">
-                        <p className="text-xs uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Primary region</p>
-                        <p className="mt-3 text-lg font-light text-black dark:text-white">{profileForm.residency || 'Unset'}</p>
-                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Controls settlement, disclosures, and cash movement defaults.</p>
-                      </div>
-                      <div className="rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70">
-                        <p className="text-xs uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Notification timezone</p>
-                        <p className="mt-3 text-lg font-light text-black dark:text-white">{profileForm.timezone || 'Unset'}</p>
-                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Used for statements, support windows, and scheduled alerts.</p>
-                      </div>
-                      <div className="rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70">
-                        <p className="text-xs uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Settlement currency</p>
-                        <p className="mt-3 text-lg font-light text-black dark:text-white">{profileForm.currency || 'Unset'}</p>
-                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Displayed wherever account-level balances and exports are normalized.</p>
-                      </div>
+                    <div className="grid overflow-hidden border-y border-zinc-200/70 md:grid-cols-3 md:divide-x dark:border-zinc-800/70 dark:md:divide-zinc-800/70">
+                      <HeroMetric label="Primary region" value={profileForm.residency || 'Unset'} detail="Controls disclosures and cash movement defaults" />
+                      <HeroMetric label="Notification timezone" value={profileForm.timezone || 'Unset'} detail="Used for statements, support windows, and alerts" />
+                      <HeroMetric label="Settlement currency" value={profileForm.currency || 'Unset'} detail="Normalizes account-level exports and summaries" />
                     </div>
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="connections" className="space-y-6 pt-4">
+                <TabsContent value="connections" className="space-y-8 pt-5">
                   <SectionPanel
                     eyebrow="Wallet graph"
                     title="Associated wallets"
-                    description="Track the wallets trusted by this account and keep their labels, network assignments, and recovery notes organized."
-                    action={
-                      <Button variant="outline" size="sm" onClick={() => openWalletDialog()}>
-                        <Plus className="h-4 w-4" />
-                        Add wallet
-                      </Button>
-                    }
+                    description="Keep trusted wallet surfaces in a clean list with labels, trust state, and minimal actions."
+                    action={<Button variant="outline" size="sm" onClick={() => openWalletDialog()}><Plus className="h-4 w-4" />Add wallet</Button>}
                   >
-                    <div className="space-y-3">
-                      {wallets.map((wallet) => (
-                        <div
-                          key={wallet.id}
-                          className="rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70"
-                        >
-                          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                            <div>
+                    <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
+                      {wallets.map((wallet, index) => (
+                        <div key={wallet.id} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-start md:justify-between', index !== wallets.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
+                          <div className="flex min-w-0 gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
+                              <Wallet className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
+                            </div>
+                            <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="text-sm font-medium text-black dark:text-white">{wallet.label}</p>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    'text-[10px] uppercase tracking-[0.18em]',
-                                    wallet.verified
-                                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                      : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                                  )}
-                                >
-                                  {wallet.verified ? 'Verified' : 'Pending'}
-                                </Badge>
-                                <Badge variant="outline" className="border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
-                                  {wallet.kind}
-                                </Badge>
+                                <Badge variant="outline" className={wallet.verified ? toneClasses.emerald : toneClasses.amber}>{wallet.verified ? 'Verified' : 'Pending'}</Badge>
+                                <Badge variant="outline" className={toneClasses.zinc}>{wallet.kind}</Badge>
                               </div>
                               <p className="mt-2 font-mono text-sm text-zinc-600 dark:text-zinc-300">{wallet.address}</p>
-                              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                              <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-500 dark:text-zinc-400">
                                 <span>{wallet.network}</span>
-                                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                                <span>•</span>
                                 <span>{wallet.lastActive}</span>
                               </div>
-                              <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">{wallet.note}</p>
+                              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{wallet.note}</p>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Button variant="outline" size="sm" onClick={() => handleCopyAddress(wallet.address)}>
-                                <Copy className="h-4 w-4" />
-                                Copy
-                              </Button>
-                              <Button variant="outline" size="sm" onClick={() => openWalletDialog(wallet)}>
-                                <Edit3 className="h-4 w-4" />
-                                Edit
-                              </Button>
-                              {wallet.id !== 'wallet-primary' ? (
-                                <Button variant="outline" size="sm" onClick={() => removeWallet(wallet.id)}>
-                                  <Trash2 className="h-4 w-4" />
-                                  Remove
-                                </Button>
-                              ) : null}
-                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2 md:justify-end">
+                            <Button variant="outline" size="sm" onClick={() => handleCopyAddress(wallet.address)}><Copy className="h-4 w-4" />Copy</Button>
+                            <Button variant="outline" size="sm" onClick={() => openWalletDialog(wallet)}><Edit3 className="h-4 w-4" />Edit</Button>
+                            {wallet.id !== 'wallet-primary' ? (
+                              <Button variant="outline" size="sm" onClick={() => removeWallet(wallet.id)}><Trash2 className="h-4 w-4" />Remove</Button>
+                            ) : null}
                           </div>
                         </div>
                       ))}
@@ -876,57 +1130,34 @@ export default function AccountHome() {
                   <SectionPanel
                     eyebrow="Social graph"
                     title="Linked social accounts"
-                    description="Connect the handles you want attached to this account for discovery, trust signals, and outbound support verification."
-                    action={
-                      <Button variant="outline" size="sm" onClick={() => openSocialDialog()}>
-                        <Plus className="h-4 w-4" />
-                        Link social
-                      </Button>
-                    }
+                    description="Surface handles as lightweight rows, not mini profile cards."
+                    action={<Button variant="outline" size="sm" onClick={() => openSocialDialog()}><Plus className="h-4 w-4" />Link social</Button>}
                   >
                     {socialAccounts.length === 0 ? (
-                      <div className="rounded-sm border border-dashed border-zinc-300/80 bg-zinc-50/60 px-4 py-8 text-center dark:border-zinc-700 dark:bg-[#131313]/60">
+                      <div className="border-y border-dashed border-zinc-300/80 px-0 py-8 text-center dark:border-zinc-700">
                         <p className="text-sm font-medium text-black dark:text-white">No social accounts linked yet</p>
-                        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-                          Add X, Farcaster, Discord, GitHub, or another social identity so users can verify who controls this account.
-                        </p>
+                        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">Add X, Farcaster, Discord, GitHub, or another identity layer when you are ready.</p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
-                        {socialAccounts.map((account) => (
-                          <div
-                            key={account.id}
-                            className="flex flex-col gap-4 rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70 md:flex-row md:items-center md:justify-between"
-                          >
+                      <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
+                        {socialAccounts.map((account, index) => (
+                          <div key={account.id} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== socialAccounts.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                             <div className="flex items-start gap-3">
-                              <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-zinc-200 bg-white text-sm font-medium text-zinc-700 dark:border-zinc-800 dark:bg-[#101010] dark:text-zinc-200">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white text-sm font-medium text-zinc-700 dark:border-zinc-800 dark:bg-[#121212] dark:text-zinc-200">
                                 {account.platform.slice(0, 2).toUpperCase()}
                               </div>
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="text-sm font-medium text-black dark:text-white">{account.platform}</p>
-                                  <Badge
-                                    variant="outline"
-                                    className="border-sky-500/30 bg-sky-500/10 text-[10px] uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300"
-                                  >
-                                    {account.status}
-                                  </Badge>
-                                  <Badge variant="outline" className="border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
-                                    {account.visibility}
-                                  </Badge>
+                                  <Badge variant="outline" className={toneClasses.sky}>{account.status}</Badge>
+                                  <Badge variant="outline" className={toneClasses.zinc}>{account.visibility}</Badge>
                                 </div>
                                 <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">{account.handle}</p>
                               </div>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Button variant="outline" size="sm" onClick={() => openSocialDialog(account)}>
-                                <Edit3 className="h-4 w-4" />
-                                Edit
-                              </Button>
-                              <Button variant="outline" size="sm" onClick={() => removeSocial(account.id)}>
-                                <Trash2 className="h-4 w-4" />
-                                Remove
-                              </Button>
+                            <div className="flex flex-wrap gap-2 md:justify-end">
+                              <Button variant="outline" size="sm" onClick={() => openSocialDialog(account)}><Edit3 className="h-4 w-4" />Edit</Button>
+                              <Button variant="outline" size="sm" onClick={() => removeSocial(account.id)}><Trash2 className="h-4 w-4" />Remove</Button>
                             </div>
                           </div>
                         ))}
@@ -937,64 +1168,36 @@ export default function AccountHome() {
                   <SectionPanel
                     eyebrow="Funding rails"
                     title="Linked banks and cash accounts"
-                    description="Monitor offchain cash surfaces connected to this wallet identity and refresh balances when institutions update."
-                    action={
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={handleRefreshBanks} disabled={refreshingBanks}>
-                          {refreshingBanks ? 'Refreshing...' : 'Refresh'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            setBannerMessage('Funding link and institution onboarding will be wired in the next pass.')
-                          }
-                        >
-                          <ArrowUpRight className="h-4 w-4" />
-                          Link funds
-                        </Button>
-                      </div>
-                    }
+                    description="Show banking rails as part of the account graph, but keep the UI-only flow obvious for now."
+                    action={<div className="flex gap-2"><Button variant="outline" size="sm" onClick={handleRefreshBanks} disabled={refreshingBanks}>{refreshingBanks ? 'Refreshing...' : 'Refresh'}</Button><Button size="sm" onClick={() => setBannerMessage('Funding link and institution onboarding will be wired in the next pass.')}><ArrowUpRight className="h-4 w-4" />Link funds</Button></div>}
                   >
                     {bankAccountsLoading ? (
-                      <div className="rounded-sm border border-zinc-200/70 bg-zinc-50/70 px-4 py-8 text-sm text-zinc-500 dark:border-zinc-800/70 dark:bg-[#141414]/70 dark:text-zinc-400">
-                        Loading linked institutions...
-                      </div>
+                      <div className="border-y border-zinc-200/70 px-0 py-8 text-sm text-zinc-500 dark:border-zinc-800/70 dark:text-zinc-400">Loading linked institutions...</div>
                     ) : bankAccounts.length === 0 ? (
-                      <div className="rounded-sm border border-dashed border-zinc-300/80 bg-zinc-50/60 px-4 py-8 text-center dark:border-zinc-700 dark:bg-[#131313]/60">
+                      <div className="border-y border-dashed border-zinc-300/80 px-0 py-8 text-center dark:border-zinc-700">
                         <p className="text-sm font-medium text-black dark:text-white">No banks connected</p>
-                        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-                          Link a checking, savings, or brokerage account to manage transfers and cash visibility from the same account page.
-                        </p>
+                        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">Link a checking, savings, or brokerage account to complete the funding layer later.</p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
-                        {bankAccounts.map((account) => (
-                          <div
-                            key={account.account_id}
-                            className="flex flex-col gap-4 rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70 md:flex-row md:items-center md:justify-between"
-                          >
+                      <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
+                        {bankAccounts.map((account, index) => (
+                          <div key={account.account_id} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== bankAccounts.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                             <div className="flex items-start gap-3">
-                              <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#101010]">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
                                 <Landmark className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
                               </div>
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="text-sm font-medium text-black dark:text-white">{account.name}</p>
-                                  <Badge variant="outline" className="border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300">
-                                    {account.subtype || account.type || 'linked'}
-                                  </Badge>
+                                  <Badge variant="outline" className={toneClasses.zinc}>{account.subtype || account.type || 'linked'}</Badge>
                                 </div>
-                                <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-                                  {account.mask ? `•••• ${account.mask}` : 'Mask unavailable'}
-                                </p>
+                                <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{account.mask ? `•••• ${account.mask}` : 'Mask unavailable'}</p>
                               </div>
                             </div>
-                            <div className="grid gap-1 text-right">
-                              <p className="text-xs uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Available</p>
-                              <p className="text-lg font-light text-black dark:text-white">{formatCurrency(account.available)}</p>
-                              {account.current != null ? (
-                                <p className="text-xs text-zinc-500 dark:text-zinc-400">Current {formatCurrency(account.current)}</p>
-                              ) : null}
+                            <div className="text-left md:text-right">
+                              <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Available</p>
+                              <p className="mt-2 text-lg font-light text-black dark:text-white">{formatCurrency(account.available)}</p>
+                              {account.current != null ? <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Current {formatCurrency(account.current)}</p> : null}
                             </div>
                           </div>
                         ))}
@@ -1003,38 +1206,25 @@ export default function AccountHome() {
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="security" className="space-y-6 pt-4">
+                <TabsContent value="security" className="space-y-8 pt-5">
                   <SectionPanel
                     eyebrow="Trust controls"
                     title="Security and privacy"
-                    description="Separate sensitive account controls from profile editing so recovery, alerts, and discovery can be managed intentionally."
+                    description="Treat protections like a clean checklist with visible state, not a pile of preference cards."
                   >
-                    <div className="space-y-3">
-                      {securityControls.map((control) => {
+                    <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
+                      {securityControls.map((control, index) => {
                         const Icon = control.icon;
                         return (
-                          <div
-                            key={control.id}
-                            className="flex flex-col gap-4 rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70 md:flex-row md:items-center md:justify-between"
-                          >
+                          <div key={control.id} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== securityControls.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                             <div className="flex items-start gap-3">
-                              <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#101010]">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
                                 <Icon className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
                               </div>
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="text-sm font-medium text-black dark:text-white">{control.label}</p>
-                                  <Badge
-                                    variant="outline"
-                                    className={cn(
-                                      'text-[10px] uppercase tracking-[0.18em]',
-                                      control.enabled
-                                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                        : 'border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300'
-                                    )}
-                                  >
-                                    {control.enabled ? 'Enabled' : 'Off'}
-                                  </Badge>
+                                  <Badge variant="outline" className={control.enabled ? toneClasses.emerald : toneClasses.zinc}>{control.enabled ? 'Enabled' : 'Off'}</Badge>
                                 </div>
                                 <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{control.description}</p>
                               </div>
@@ -1051,78 +1241,47 @@ export default function AccountHome() {
                   <SectionPanel
                     eyebrow="Recovery"
                     title="Recovery surfaces"
-                    description="A quick view of how a user could regain access or verify ownership if something looks wrong."
+                    description="Map the primary trust anchors with dividers and labels so the account is readable at a glance."
                   >
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70">
-                        <div className="flex items-center gap-2 text-sm font-medium text-black dark:text-white">
-                          <Wallet className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
-                          Primary signer
-                        </div>
-                        <p className="mt-3 font-mono text-sm text-zinc-600 dark:text-zinc-300">{address ? shortAddress(address) : 'Not connected'}</p>
-                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Wallet signatures remain the highest-trust recovery path.</p>
-                      </div>
-                      <div className="rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70">
-                        <div className="flex items-center gap-2 text-sm font-medium text-black dark:text-white">
-                          <Smartphone className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
-                          Recovery contacts
-                        </div>
-                        <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">{profileForm.phone || 'Add a recovery phone number'}</p>
-                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Use phone or email for security escalations and account review.</p>
-                      </div>
-                      <div className="rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70">
-                        <div className="flex items-center gap-2 text-sm font-medium text-black dark:text-white">
-                          <Lock className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
-                          Exposure map
-                        </div>
-                        <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">{wallets.length} wallets, {bankAccounts.length} institutions</p>
-                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Review linked surfaces regularly so old connections do not stay trusted forever.</p>
-                      </div>
+                    <div className="grid overflow-hidden border-y border-zinc-200/70 md:grid-cols-3 md:divide-x dark:border-zinc-800/70 dark:md:divide-zinc-800/70">
+                      <HeroMetric label="Primary signer" value={address ? shortAddress(address) : 'Not connected'} detail="Wallet signatures remain the highest-trust recovery path" />
+                      <HeroMetric label="Recovery contacts" value={profileForm.phone || 'Add a recovery phone'} detail="Phone and email speed up security review" />
+                      <HeroMetric label="Exposure map" value={`${wallets.length} wallets / ${bankAccounts.length} rails`} detail="Review trusted surfaces regularly to reduce stale links" />
+                    </div>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      {accountPerks.map((perk) => (
+                        <Badge key={perk.id} variant="outline" className={perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc} title={perk.description}>
+                          <perk.icon className="mr-1 h-3.5 w-3.5" />
+                          {perk.name}
+                        </Badge>
+                      ))}
                     </div>
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="support" className="space-y-6 pt-4">
+                <TabsContent value="support" className="space-y-8 pt-5">
                   <SectionPanel
                     eyebrow="Documents"
                     title="Statements and exports"
-                    description="Put account paperwork, tax exports, and activity summaries somewhere predictable so users do not hunt through settings."
+                    description="Keep documents in clean rows with action pills instead of more tiles."
                   >
-                    <div className="grid gap-4 md:grid-cols-3">
+                    <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {[
-                        {
-                          title: 'Monthly statements',
-                          detail: 'Snapshot of balances, linked accounts, and transfers.',
-                          cta: 'Prepare PDF',
-                        },
-                        {
-                          title: 'Tax package',
-                          detail: 'Export a year-to-date activity package for off-platform review.',
-                          cta: 'Generate export',
-                        },
-                        {
-                          title: 'Account archive',
-                          detail: 'Bundle profile, wallets, socials, and support metadata.',
-                          cta: 'Export JSON',
-                        },
-                      ].map((item) => (
-                        <div
-                          key={item.title}
-                          className="rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70"
-                        >
-                          <div className="flex h-10 w-10 items-center justify-center rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#101010]">
-                            <FileText className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
+                        { title: 'Monthly statements', detail: 'Snapshot of balances, linked accounts, and transfers.', cta: 'Prepare PDF' },
+                        { title: 'Tax package', detail: 'Export a year-to-date activity package for off-platform review.', cta: 'Generate export' },
+                        { title: 'Account archive', detail: 'Bundle profile, wallets, socials, and support metadata.', cta: 'Export JSON' },
+                      ].map((item, index, array) => (
+                        <div key={item.title} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== array.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
+                              <FileText className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-black dark:text-white">{item.title}</p>
+                              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{item.detail}</p>
+                            </div>
                           </div>
-                          <p className="mt-4 text-sm font-medium text-black dark:text-white">{item.title}</p>
-                          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{item.detail}</p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-4"
-                            onClick={() => setBannerMessage(`${item.cta} queued in the local preview.`)}
-                          >
-                            {item.cta}
-                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => setBannerMessage(`${item.cta} queued in the local preview.`)}>{item.cta}</Button>
                         </div>
                       ))}
                     </div>
@@ -1131,37 +1290,19 @@ export default function AccountHome() {
                   <SectionPanel
                     eyebrow="Support"
                     title="Support and privacy requests"
-                    description="Keep trust-and-safety, support, and privacy entry points close to the account center where users expect them."
+                    description="Put trust-and-safety, support, and privacy requests in one readable stream."
                   >
-                    <div className="space-y-3">
+                    <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {[
-                        {
-                          icon: Shield,
-                          title: 'Account review',
-                          detail: 'Report suspicious changes or ask support to review a linked wallet or bank account.',
-                          cta: 'Open review request',
-                        },
-                        {
-                          icon: Sparkles,
-                          title: 'Priority support',
-                          detail: 'Share profile, connection, and security context in one support conversation.',
-                          cta: 'Contact support',
-                        },
-                        {
-                          icon: AlertTriangle,
-                          title: 'Privacy request',
-                          detail: 'Request export or deletion of profile metadata stored beyond your wallet signature.',
-                          cta: 'Start privacy request',
-                        },
-                      ].map((item) => {
+                        { icon: Shield, title: 'Account review', detail: 'Report suspicious changes or request a manual review of linked surfaces.', cta: 'Open review request' },
+                        { icon: Sparkles, title: 'Priority support', detail: 'Share profile, connection, and trust context in one support conversation.', cta: 'Contact support' },
+                        { icon: AlertTriangle, title: 'Privacy request', detail: 'Request export or deletion of profile metadata stored beyond your wallet signature.', cta: 'Start privacy request' },
+                      ].map((item, index, array) => {
                         const Icon = item.icon;
                         return (
-                          <div
-                            key={item.title}
-                            className="flex flex-col gap-4 rounded-sm border border-zinc-200/70 bg-zinc-50/70 p-4 dark:border-zinc-800/70 dark:bg-[#141414]/70 md:flex-row md:items-center md:justify-between"
-                          >
+                          <div key={item.title} className={cn('flex flex-col gap-4 px-0 py-4 md:flex-row md:items-center md:justify-between', index !== array.length - 1 && 'border-b border-zinc-200/70 dark:border-zinc-800/70')}>
                             <div className="flex items-start gap-3">
-                              <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#101010]">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#121212]">
                                 <Icon className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
                               </div>
                               <div>
@@ -1169,9 +1310,7 @@ export default function AccountHome() {
                                 <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{item.detail}</p>
                               </div>
                             </div>
-                            <Button variant="outline" size="sm" onClick={() => setBannerMessage(`${item.title} opened in the local preview.`)}>
-                              {item.cta}
-                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => setBannerMessage(`${item.title} opened in the local preview.`)}>{item.cta}</Button>
                           </div>
                         );
                       })}
@@ -1182,156 +1321,110 @@ export default function AccountHome() {
             </motion.div>
           </div>
 
-          <div className="space-y-6 md:col-span-4">
-            <motion.section
+          <div className="md:col-span-4">
+            <motion.aside
               {...sectionMotion}
-              transition={{ ...sectionTransition, delay: 0.1 }}
-              className="rounded-sm border border-zinc-200/70 bg-white p-5 dark:border-zinc-800/70 dark:bg-[#111111]"
+              transition={{ ...sectionTransition, delay: 0.08 }}
+              className="sticky top-28 overflow-hidden rounded-sm border border-zinc-200/70 bg-white dark:border-zinc-800/70 dark:bg-[#111111]"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Overview</p>
-                  <h2 className="mt-1 text-base font-medium text-black dark:text-white">Account health</h2>
-                </div>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'text-[10px] uppercase tracking-[0.18em]',
-                    profileCompletion >= 80
-                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                      : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                  )}
-                >
-                  {profileCompletion}% complete
-                </Badge>
-              </div>
-
-              <div className="mt-5 h-2 rounded-full bg-zinc-200 dark:bg-zinc-800">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500"
-                  style={{ width: `${profileCompletion}%` }}
-                />
-              </div>
-
-              <div className="mt-5 space-y-4 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-500 dark:text-zinc-400">Security score</span>
-                  <span className="font-medium text-black dark:text-white">{securityScore}%</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-500 dark:text-zinc-400">Cash visibility</span>
-                  <span className="font-medium text-black dark:text-white">{formatCurrencyCompact(cashBalance.totalCash)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-zinc-500 dark:text-zinc-400">Linked institutions</span>
-                  <span className="font-medium text-black dark:text-white">{bankAccounts.length}</span>
-                </div>
-              </div>
-            </motion.section>
-
-            <motion.section
-              {...sectionMotion}
-              transition={{ ...sectionTransition, delay: 0.14 }}
-              className="rounded-sm border border-zinc-200/70 bg-white p-5 dark:border-zinc-800/70 dark:bg-[#111111]"
-            >
-              <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Next up</p>
-              <h2 className="mt-1 text-base font-medium text-black dark:text-white">Tighten the account</h2>
-              <div className="mt-4 space-y-3">
-                {nextSteps.length === 0 ? (
-                  <div className="rounded-sm border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-300">
-                    All major profile, connection, and security checkpoints are covered.
+              <div className="px-5 py-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Account health</p>
+                    <h2 className="mt-1 text-base font-medium text-black dark:text-white">Progress snapshot</h2>
                   </div>
-                ) : (
-                  nextSteps.map((step) => (
-                    <button
-                      key={step}
-                      type="button"
-                      onClick={() => {
-                        if (step.toLowerCase().includes('social') || step.toLowerCase().includes('bank')) {
-                          setSearchParams({ tab: 'connections' });
-                          return;
-                        }
-                        if (step.toLowerCase().includes('security')) {
-                          setSearchParams({ tab: 'security' });
-                          return;
-                        }
-                        setSearchParams({ tab: 'profile' });
-                      }}
-                      className="flex w-full items-start gap-3 rounded-sm border border-zinc-200/70 px-3 py-3 text-left hover:bg-zinc-50 dark:border-zinc-800/70 dark:hover:bg-[#151515]"
-                    >
-                      <div className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-zinc-300 text-[11px] text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-                        {nextSteps.indexOf(step) + 1}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm text-zinc-700 dark:text-zinc-300">{step}</p>
-                      </div>
-                      <ChevronRight className="mt-0.5 h-4 w-4 text-zinc-400" />
-                    </button>
-                  ))
-                )}
+                  <Badge variant="outline" className={profileCompletion >= 80 ? toneClasses.emerald : toneClasses.amber}>
+                    {profileCompletion}% complete
+                  </Badge>
+                </div>
+                <div className="mt-4 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
+                  <div className="h-full rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500" style={{ width: `${profileCompletion}%` }} />
+                </div>
+                <div className="mt-5 space-y-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-500 dark:text-zinc-400">Security score</span>
+                    <span className="font-medium text-black dark:text-white">{securityScore}%</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-500 dark:text-zinc-400">Reward points</span>
+                    <span className="font-medium text-black dark:text-white">{rewardPoints}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-500 dark:text-zinc-400">Active perks</span>
+                    <span className="font-medium text-black dark:text-white">{unlockedPerks.length}</span>
+                  </div>
+                </div>
               </div>
-            </motion.section>
 
-            <motion.section
-              {...sectionMotion}
-              transition={{ ...sectionTransition, delay: 0.18 }}
-              className="rounded-sm border border-zinc-200/70 bg-white p-5 dark:border-zinc-800/70 dark:bg-[#111111]"
-            >
-              <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Footprint</p>
-              <h2 className="mt-1 text-base font-medium text-black dark:text-white">Connected surfaces</h2>
-              <div className="mt-5 space-y-3">
-                {[
-                  { icon: Wallet, label: 'Wallets', value: wallets.length },
-                  { icon: UserRound, label: 'Social accounts', value: socialAccounts.length },
-                  { icon: Landmark, label: 'Institutions', value: bankAccounts.length },
-                  { icon: Globe, label: 'Networks', value: activeNetworks || 1 },
-                ].map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <div key={item.label} className="flex items-center justify-between rounded-sm border border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
-                      <div className="flex items-center gap-3 text-sm text-zinc-600 dark:text-zinc-300">
-                        <Icon className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
-                        <span>{item.label}</span>
-                      </div>
-                      <span className="text-sm font-medium text-black dark:text-white">{item.value}</span>
+              <div className="border-t border-zinc-200/70 px-5 py-5 dark:border-zinc-800/70">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Next up</p>
+                <div className="mt-4 space-y-3">
+                  {nextSteps.length === 0 ? (
+                    <div className="rounded-sm border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-800 dark:text-emerald-300">
+                      All major profile, connection, and security checkpoints are covered.
                     </div>
-                  );
-                })}
+                  ) : (
+                    nextSteps.map((step) => (
+                      <button
+                        key={step}
+                        type="button"
+                        onClick={() => {
+                          if (step.toLowerCase().includes('social') || step.toLowerCase().includes('bank')) {
+                            handleTabOpen('connections');
+                            return;
+                          }
+                          if (step.toLowerCase().includes('security')) {
+                            handleTabOpen('security');
+                            return;
+                          }
+                          handleTabOpen('profile');
+                        }}
+                        className="flex w-full items-start gap-3 text-left"
+                      >
+                        <div className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-zinc-300 text-[11px] text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+                          {nextSteps.indexOf(step) + 1}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm text-zinc-700 dark:text-zinc-300">{step}</p>
+                        </div>
+                        <ChevronRight className="mt-0.5 h-4 w-4 text-zinc-400" />
+                      </button>
+                    ))
+                  )}
+                </div>
               </div>
-            </motion.section>
 
-            <motion.section
-              {...sectionMotion}
-              transition={{ ...sectionTransition, delay: 0.22 }}
-              className="rounded-sm border border-zinc-200/70 bg-white p-5 dark:border-zinc-800/70 dark:bg-[#111111]"
-            >
-              <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Quick actions</p>
-              <h2 className="mt-1 text-base font-medium text-black dark:text-white">Useful jumps</h2>
-              <div className="mt-4 space-y-2">
-                {[
-                  { icon: CheckCircle2, label: 'Review profile completeness', tab: 'profile' as AccountTab },
-                  { icon: Link2, label: 'Manage linked accounts', tab: 'connections' as AccountTab },
-                  { icon: ShieldCheck, label: 'Run security review', tab: 'security' as AccountTab },
-                  { icon: FileText, label: 'Prepare account export', tab: 'support' as AccountTab },
-                ].map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.label}
-                      type="button"
-                      onClick={() => setSearchParams({ tab: item.tab })}
-                      className="flex w-full items-center justify-between rounded-sm border border-zinc-200/70 px-3 py-3 text-left hover:bg-zinc-50 dark:border-zinc-800/70 dark:hover:bg-[#151515]"
-                    >
-                      <div className="flex items-center gap-3 text-sm text-zinc-700 dark:text-zinc-300">
-                        <Icon className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
-                        <span>{item.label}</span>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-zinc-400" />
-                    </button>
-                  );
-                })}
+              <div className="border-t border-zinc-200/70 px-5 py-5 dark:border-zinc-800/70">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Achievement locker</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {accountAchievements.map((achievement) => (
+                    <AchievementChip key={achievement.id} achievement={achievement} onOpen={handleTabOpen} />
+                  ))}
+                </div>
               </div>
-            </motion.section>
+
+              <div className="border-t border-zinc-200/70 px-5 py-5 dark:border-zinc-800/70">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">Perks in play</p>
+                <div className="mt-4 space-y-3">
+                  {accountPerks.map((perk) => (
+                    <div key={perk.id} className="flex items-start gap-3">
+                      <div className={cn('mt-0.5 flex h-8 w-8 items-center justify-center rounded-full border', perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc)}>
+                        <perk.icon className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-medium text-black dark:text-white">{perk.name}</p>
+                          <Badge variant="outline" className={perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc}>
+                            {perk.unlocked ? 'Active' : perk.requirement}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{perk.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.aside>
           </div>
         </div>
       </main>
@@ -1341,48 +1434,27 @@ export default function AccountHome() {
           <DialogHeader>
             <DialogTitle>{editingWalletId ? 'Edit associated wallet' : 'Add associated wallet'}</DialogTitle>
             <DialogDescription>
-              Save the wallet label, network, and notes you want attached to this account center.
+              Save the wallet label, network, and note you want attached to this account center.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="walletLabel">Label</Label>
-              <Input
-                id="walletLabel"
-                value={walletDraft.label}
-                onChange={(event) => setWalletDraft((current) => ({ ...current, label: event.target.value }))}
-                placeholder="Treasury Safe"
-              />
+              <Input id="walletLabel" value={walletDraft.label} onChange={(event) => setWalletDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Treasury Safe" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="walletAddress">Wallet address</Label>
-              <Input
-                id="walletAddress"
-                value={walletDraft.address}
-                onChange={(event) => setWalletDraft((current) => ({ ...current, address: event.target.value }))}
-                placeholder="0x..."
-              />
+              <Input id="walletAddress" value={walletDraft.address} onChange={(event) => setWalletDraft((current) => ({ ...current, address: event.target.value }))} placeholder="0x..." />
             </div>
             <div className="space-y-2">
               <Label htmlFor="walletNetwork">Network</Label>
-              <Input
-                id="walletNetwork"
-                value={walletDraft.network}
-                onChange={(event) => setWalletDraft((current) => ({ ...current, network: event.target.value }))}
-                placeholder="Base"
-              />
+              <Input id="walletNetwork" value={walletDraft.network} onChange={(event) => setWalletDraft((current) => ({ ...current, network: event.target.value }))} placeholder="Base" />
             </div>
             <div className="space-y-2">
               <Label>Wallet type</Label>
               <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                 {(['Primary', 'Hardware', 'Smart', 'Embedded'] as WalletKind[]).map((kind) => (
-                  <Button
-                    key={kind}
-                    type="button"
-                    variant={walletDraft.kind === kind ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setWalletDraft((current) => ({ ...current, kind }))}
-                  >
+                  <Button key={kind} type="button" variant={walletDraft.kind === kind ? 'default' : 'outline'} size="sm" onClick={() => setWalletDraft((current) => ({ ...current, kind }))}>
                     {kind}
                   </Button>
                 ))}
@@ -1390,18 +1462,10 @@ export default function AccountHome() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="walletNote">Note</Label>
-              <Textarea
-                id="walletNote"
-                className="min-h-[96px]"
-                value={walletDraft.note}
-                onChange={(event) => setWalletDraft((current) => ({ ...current, note: event.target.value }))}
-                placeholder="What is this wallet used for?"
-              />
+              <Textarea id="walletNote" className="min-h-[96px]" value={walletDraft.note} onChange={(event) => setWalletDraft((current) => ({ ...current, note: event.target.value }))} placeholder="What is this wallet used for?" />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setWalletDialogOpen(false)}>
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => setWalletDialogOpen(false)}>Cancel</Button>
               <Button onClick={saveWallet}>Save wallet</Button>
             </div>
           </div>
@@ -1419,42 +1483,24 @@ export default function AccountHome() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="socialPlatform">Platform</Label>
-              <Input
-                id="socialPlatform"
-                value={socialDraft.platform}
-                onChange={(event) => setSocialDraft((current) => ({ ...current, platform: event.target.value }))}
-                placeholder="Farcaster"
-              />
+              <Input id="socialPlatform" value={socialDraft.platform} onChange={(event) => setSocialDraft((current) => ({ ...current, platform: event.target.value }))} placeholder="Farcaster" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="socialHandle">Handle / ID</Label>
-              <Input
-                id="socialHandle"
-                value={socialDraft.handle}
-                onChange={(event) => setSocialDraft((current) => ({ ...current, handle: event.target.value }))}
-                placeholder="@janeclear"
-              />
+              <Input id="socialHandle" value={socialDraft.handle} onChange={(event) => setSocialDraft((current) => ({ ...current, handle: event.target.value }))} placeholder="@janeclear" />
             </div>
             <div className="space-y-2">
               <Label>Visibility</Label>
               <div className="grid grid-cols-2 gap-2">
                 {(['Public', 'Private'] as SocialVisibility[]).map((visibility) => (
-                  <Button
-                    key={visibility}
-                    type="button"
-                    variant={socialDraft.visibility === visibility ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSocialDraft((current) => ({ ...current, visibility }))}
-                  >
+                  <Button key={visibility} type="button" variant={socialDraft.visibility === visibility ? 'default' : 'outline'} size="sm" onClick={() => setSocialDraft((current) => ({ ...current, visibility }))}>
                     {visibility}
                   </Button>
                 ))}
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setSocialDialogOpen(false)}>
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => setSocialDialogOpen(false)}>Cancel</Button>
               <Button onClick={saveSocial}>Save social</Button>
             </div>
           </div>
