@@ -481,8 +481,9 @@ function SavingsStreakCard({
               type="button"
               onClick={onCheckIn}
               disabled={checkedInToday}
-              className="mt-3 h-9 w-full rounded-sm bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-sm font-medium hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-zinc-900 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
             >
+              <Flame className="h-4 w-4" />
               {checkedInToday ? 'Checked in' : 'Check in'}
             </button>
           </div>
