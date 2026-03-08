@@ -31,6 +31,7 @@ import {
   Link2,
   Lock,
   Plus,
+  RefreshCw,
   ScanFace,
   Shield,
   ShieldCheck,
@@ -300,10 +301,13 @@ const rarityGlow = {
 };
 
 const ACCOUNT_TAB_BUTTON_PRIMARY_CLASS =
-  'rounded-full border-black/10 bg-black text-white font-normal shadow-none hover:bg-zinc-800 dark:border-white/10 dark:bg-white dark:text-black dark:hover:bg-zinc-200';
+  'rounded-full border-black/10 bg-black text-white font-normal shadow-none hover:bg-black/90 dark:border-white/10 dark:bg-white dark:text-black dark:hover:bg-white/90';
 
 const ACCOUNT_TAB_BUTTON_SECONDARY_CLASS =
-  'rounded-full border-zinc-200 bg-zinc-100 text-black font-normal shadow-none hover:bg-zinc-200 dark:border-zinc-800 dark:bg-[#141414] dark:text-white dark:hover:bg-zinc-800';
+  'rounded-full border-zinc-200 bg-zinc-100 text-black font-normal shadow-none hover:bg-zinc-100/80 dark:border-zinc-800 dark:bg-[#141414] dark:text-white dark:hover:bg-[#141414]/80';
+
+const ACCOUNT_TAB_BUTTON_SUCCESS_CLASS =
+  'rounded-full border-zinc-200 bg-emerald-500/10 text-emerald-700 font-normal shadow-none hover:bg-emerald-500/15 dark:border-zinc-800 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/15';
 
 const ACCOUNT_ACTIVITY_COLORS = ['#22c55e', '#14b8a6', '#06b6d4', '#3b82f6'];
 
@@ -542,7 +546,7 @@ function AccountPulseCard({
               type="button"
               onClick={onCheckIn}
               disabled={checkedInToday}
-              className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-zinc-900 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-zinc-900 text-sm font-medium text-white transition-colors hover:bg-zinc-900/90 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-100/90"
             >
               <Flame className="h-4 w-4" />
               {checkedInToday ? 'Checked in' : 'Check in'}
@@ -1344,7 +1348,7 @@ export default function AccountHome() {
               <div className="mt-5 flex flex-wrap gap-2.5">
                 <button
                   type="button"
-                  className="flex items-center gap-2 rounded-full bg-black px-4 py-2 text-sm font-normal text-white transition-colors hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                  className="flex items-center gap-2 rounded-full bg-black px-4 py-2 text-sm font-normal text-white transition-colors hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
                   onClick={() => handleHeroAction('profile')}
                 >
                   <Edit3 className="h-4 w-4" />
@@ -1352,14 +1356,14 @@ export default function AccountHome() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-full border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-normal text-black transition-colors hover:bg-zinc-200 dark:border-zinc-800 dark:bg-[#141414] dark:text-white dark:hover:bg-zinc-800"
+                  className="rounded-full border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-normal text-black transition-colors hover:bg-zinc-100/80 dark:border-zinc-800 dark:bg-[#141414] dark:text-white dark:hover:bg-[#141414]/80"
                   onClick={() => handleHeroAction('connections')}
                 >
                   Add connection
                 </button>
                 <button
                   type="button"
-                  className="rounded-full border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-normal text-black transition-colors hover:bg-zinc-200 dark:border-zinc-800 dark:bg-[#141414] dark:text-white dark:hover:bg-zinc-800"
+                  className="rounded-full border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-normal text-black transition-colors hover:bg-zinc-100/80 dark:border-zinc-800 dark:bg-[#141414] dark:text-white dark:hover:bg-[#141414]/80"
                   onClick={() => handleHeroAction('security')}
                 >
                   Review security
@@ -1603,7 +1607,20 @@ export default function AccountHome() {
                     eyebrow="Funding"
                     title="Linked banks and cash accounts"
                     description="Review linked bank accounts and manage the cash accounts connected to your profile."
-                    action={<div className="flex gap-2"><Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={handleRefreshBanks} disabled={refreshingBanks}>{refreshingBanks ? 'Refreshing...' : 'Refresh'}</Button><Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => setBannerMessage('Funding setup started.')}><ArrowUpRight className="h-4 w-4" />Link funds</Button></div>}
+                    action={
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleRefreshBanks}
+                          disabled={refreshingBanks}
+                          className="inline-flex items-center gap-1.5 text-[11px] font-medium text-zinc-500 transition-colors hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-200"
+                        >
+                          <RefreshCw className={cn('h-3.5 w-3.5', refreshingBanks && 'animate-spin')} />
+                          {refreshingBanks ? 'Refreshing...' : 'Refresh'}
+                        </button>
+                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => setBannerMessage('Funding setup started.')}><ArrowUpRight className="h-4 w-4" />Link funds</Button>
+                      </div>
+                    }
                   >
                     {bankAccountsLoading ? (
                       <div className="border-y border-zinc-200/70 px-0 py-8 text-[12px] leading-5 text-zinc-500 dark:border-zinc-800/70 dark:text-zinc-400">Loading linked institutions...</div>
@@ -1671,7 +1688,7 @@ export default function AccountHome() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className={control.enabled ? ACCOUNT_TAB_BUTTON_PRIMARY_CLASS : ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
+                              className={control.enabled ? ACCOUNT_TAB_BUTTON_SUCCESS_CLASS : ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
                               onClick={() => toggleSecurityControl(control.id)}
                             >
                               {control.enabled ? 'Turn off' : 'Turn on'}
@@ -1838,7 +1855,14 @@ export default function AccountHome() {
               <Label>Wallet type</Label>
               <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                 {(['Primary', 'Hardware', 'Smart', 'Embedded'] as WalletKind[]).map((kind) => (
-                  <Button key={kind} type="button" variant={walletDraft.kind === kind ? 'default' : 'outline'} size="sm" onClick={() => setWalletDraft((current) => ({ ...current, kind }))}>
+                  <Button
+                    key={kind}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={walletDraft.kind === kind ? ACCOUNT_TAB_BUTTON_PRIMARY_CLASS : ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
+                    onClick={() => setWalletDraft((current) => ({ ...current, kind }))}
+                  >
                     {kind}
                   </Button>
                 ))}
@@ -1849,8 +1873,8 @@ export default function AccountHome() {
               <Textarea id="walletNote" className="min-h-[96px]" value={walletDraft.note} onChange={(event) => setWalletDraft((current) => ({ ...current, note: event.target.value }))} placeholder="What is this wallet used for?" />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setWalletDialogOpen(false)}>Cancel</Button>
-              <Button onClick={saveWallet}>Save wallet</Button>
+              <Button variant="outline" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setWalletDialogOpen(false)}>Cancel</Button>
+              <Button variant="outline" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={saveWallet}>Save wallet</Button>
             </div>
           </div>
         </DialogContent>
@@ -1877,15 +1901,22 @@ export default function AccountHome() {
               <Label>Visibility</Label>
               <div className="grid grid-cols-2 gap-2">
                 {(['Public', 'Private'] as SocialVisibility[]).map((visibility) => (
-                  <Button key={visibility} type="button" variant={socialDraft.visibility === visibility ? 'default' : 'outline'} size="sm" onClick={() => setSocialDraft((current) => ({ ...current, visibility }))}>
+                  <Button
+                    key={visibility}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={socialDraft.visibility === visibility ? ACCOUNT_TAB_BUTTON_PRIMARY_CLASS : ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
+                    onClick={() => setSocialDraft((current) => ({ ...current, visibility }))}
+                  >
                     {visibility}
                   </Button>
                 ))}
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setSocialDialogOpen(false)}>Cancel</Button>
-              <Button onClick={saveSocial}>Save social</Button>
+              <Button variant="outline" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setSocialDialogOpen(false)}>Cancel</Button>
+              <Button variant="outline" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={saveSocial}>Save social</Button>
             </div>
           </div>
         </DialogContent>
