@@ -1,4 +1,4 @@
-import { createAppKit, useAppKitTheme } from '@reown/appkit/react';
+import { createAppKit, useAppKitState, useAppKitTheme } from '@reown/appkit/react';
 import { WagmiProvider } from 'wagmi';
 import { mainnet, base, sepolia, baseSepolia, arbitrum, optimism, polygon, gnosis } from '@reown/appkit/networks';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
