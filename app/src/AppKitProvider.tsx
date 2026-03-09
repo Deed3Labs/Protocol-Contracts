@@ -253,6 +253,43 @@ function AppKitThemeSync() {
   return null; // This component doesn't render anything
 }
 
+function AppKitScrollLockGuard() {
+  const { open } = useAppKitState();
+
+  React.useEffect(() => {
+    if (typeof document === 'undefined' || open) {
+      return;
+    }
+
+    const clearScrollLock = () => {
+      document.head
+        .querySelectorAll('style[data-w3m="scroll-lock"]')
+        .forEach((node) => node.remove());
+
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+      document.documentElement.style.overflow = '';
+      document.documentElement.style.touchAction = '';
+    };
+
+    clearScrollLock();
+
+    const observer = new MutationObserver(() => {
+      clearScrollLock();
+    });
+
+    observer.observe(document.head, { childList: true, subtree: true });
+    observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [open]);
+
+  return null;
+}
+
 export function AppKitProvider({ children }: { children: React.ReactNode }) {
   const [isAppKitInitialized, setIsAppKitInitialized] = React.useState(false);
 
@@ -335,6 +372,7 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
     <WagmiProvider config={wagmiAdapter.wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         {isAppKitInitialized && <AppKitThemeSync />}
+        {isAppKitInitialized && <AppKitScrollLockGuard />}
         <AppKitAuthProvider>{children}</AppKitAuthProvider>
       </QueryClientProvider>
     </WagmiProvider>
