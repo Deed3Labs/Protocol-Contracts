@@ -486,37 +486,6 @@ export default function UserOnboarding() {
   const chainLabel = chainId ? NETWORK_LABELS[chainId] ?? `Chain ${chainId}` : "Choose a network after connecting";
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    // AppKit injects a global body scroll lock. Keep native page scrolling enabled here.
-    const clearAppKitScrollLock = () => {
-      document.head
-        .querySelectorAll('style[data-w3m="scroll-lock"]')
-        .forEach((node) => node.remove());
-    };
-
-    clearAppKitScrollLock();
-
-    const frameId = window.requestAnimationFrame(clearAppKitScrollLock);
-    const timeoutIds = [180, 360, 720].map((delay) =>
-      window.setTimeout(clearAppKitScrollLock, delay)
-    );
-    const headObserver = new MutationObserver(clearAppKitScrollLock);
-
-    headObserver.observe(document.head, {
-      childList: true,
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
-      headObserver.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
     const nextCurrency = CURRENCY_BY_COUNTRY[form.country] ?? "USD";
     if (form.settlementCurrency !== nextCurrency) {
       setForm((prev) => ({ ...prev, settlementCurrency: nextCurrency }));
@@ -609,7 +578,7 @@ export default function UserOnboarding() {
 
   if (isComplete) {
     return (
-      <div className="min-h-screen bg-white text-black transition-colors duration-200 dark:bg-[#0e0e0e] dark:text-white">
+      <div className="min-h-dvh bg-white text-black transition-colors duration-200 dark:bg-[#0e0e0e] dark:text-white">
         <div className="sticky top-0 z-40 border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-900 dark:bg-[#0e0e0e]/80">
           <div className="container mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
             <div className="flex items-center gap-3">
@@ -702,7 +671,7 @@ export default function UserOnboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-black transition-colors duration-200 dark:bg-[#0e0e0e] dark:text-white">
+    <div className="min-h-dvh bg-white text-black transition-colors duration-200 dark:bg-[#0e0e0e] dark:text-white">
       <div className="sticky top-0 z-40 border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-900 dark:bg-[#0e0e0e]/80">
         <div className="container mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
