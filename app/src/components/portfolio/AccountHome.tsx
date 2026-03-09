@@ -4,17 +4,6 @@ import { motion } from 'framer-motion';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Bar,
-  BarChart,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import {
   AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
@@ -23,14 +12,12 @@ import {
   Crown,
   Edit3,
   FileText,
-  Flame,
   Gift,
   Globe,
   Info,
   KeyRound,
   Landmark,
   Link2,
-  Lock,
   Plus,
   RefreshCw,
   ScanFace,
@@ -50,12 +37,10 @@ import MobileNav from './MobileNav';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -150,19 +135,37 @@ interface AccountPerk {
   tab: AccountTab;
 }
 
-interface AccountPulseMilestone {
+interface AccountSetupTask {
   id: string;
-  label: string;
-  shortLabel: string;
+  title: string;
+  detail: string;
+  rewardXp: number;
+  progress: number;
+  progressLabel: string;
+  tab: AccountTab;
   icon: LucideIcon;
-  achieved: boolean;
+  completed: boolean;
 }
 
-interface AccountPulseDay {
-  date: Date;
-  active: boolean;
-  points: number;
-  isPast: boolean;
+interface AccountNextUnlock {
+  id: string;
+  name: string;
+  detail: string;
+  requirement: string;
+  tab: AccountTab;
+  icon: LucideIcon;
+  tone: Tone;
+}
+
+interface AccountBenefitItem {
+  id: string;
+  name: string;
+  detail: string;
+  requirement: string;
+  tab: AccountTab;
+  icon: LucideIcon;
+  tone: Tone;
+  live: boolean;
 }
 
 const ACCOUNT_TABS: AccountTab[] = ['profile', 'connections', 'security', 'support'];
@@ -287,20 +290,6 @@ const toneClasses: Record<Tone, string> = {
   zinc: 'border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300',
 };
 
-const rarityColors = {
-  common: 'text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 bg-zinc-100/80 dark:bg-zinc-900/40',
-  rare: 'text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/20',
-  epic: 'text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20',
-  legendary: 'text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20',
-};
-
-const rarityGlow = {
-  common: '',
-  rare: 'shadow-[0_0_10px_rgba(14,165,233,0.12)]',
-  epic: 'shadow-[0_0_12px_hsl(var(--equity)/0.10)]',
-  legendary: 'shadow-[0_0_14px_rgba(245,158,11,0.18)]',
-};
-
 const ACCOUNT_TAB_BUTTON_PRIMARY_CLASS =
   'rounded-full border-black/10 bg-black text-white font-normal shadow-none hover:bg-black/90 dark:border-white/10 dark:bg-white dark:text-black dark:hover:bg-white/90';
 
@@ -309,44 +298,6 @@ const ACCOUNT_TAB_BUTTON_SECONDARY_CLASS =
 
 const ACCOUNT_TAB_BUTTON_SUCCESS_CLASS =
   'h-[34px] rounded-full border-zinc-200 bg-emerald-500/10 text-emerald-700 font-normal shadow-none hover:bg-emerald-500/15 dark:border-zinc-800 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/15';
-
-const ACCOUNT_ACTIVITY_COLORS = ['#22c55e', '#14b8a6', '#06b6d4', '#3b82f6'];
-
-const startOfDay = (date: Date) => {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-};
-
-const formatDateShort = (date: Date) =>
-  date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-const formatPoints = (value: number) => `${value.toLocaleString('en-US')} pts`;
-
-function generateAccountPulseHeatmap(today: Date, seed: number, checkedInToday: boolean): AccountPulseDay[][] {
-  const todayStart = startOfDay(today);
-  const weeks: AccountPulseDay[][] = [];
-
-  for (let w = 3; w >= 0; w -= 1) {
-    const week: AccountPulseDay[] = [];
-
-    for (let d = 0; d < 7; d += 1) {
-      const date = new Date(todayStart);
-      date.setDate(date.getDate() - (w * 7 + (6 - d)));
-      const isPast = date <= todayStart;
-      const score = ((w + 1) * 71 + (d + 1) * 29 + seed * 17) % 100;
-      const isToday = date.getTime() === todayStart.getTime();
-      const active = isPast && (isToday ? checkedInToday : score > 32);
-      const points = active ? 10 + ((score * 7) % 24) : 0;
-
-      week.push({ date, active, points, isPast });
-    }
-
-    weeks.push(week);
-  }
-
-  return weeks;
-}
 
 function SectionPanel({
   title,
@@ -364,9 +315,9 @@ function SectionPanel({
   children: ReactNode;
 }) {
   return (
-    <section className={cn(withTopBorder ? 'border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70' : 'pt-0')}>
-      <div className="border-b border-zinc-200/70 pb-3 dark:border-zinc-800/70">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+    <section>
+      <div className={cn('border-b border-zinc-200/70 py-4 dark:border-zinc-800/70', withTopBorder && 'border-t dark:border-zinc-800/70')}>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             {eyebrow ? (
               <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">{eyebrow}</p>
@@ -377,7 +328,7 @@ function SectionPanel({
           {action}
         </div>
       </div>
-      <div className="pt-4">{children}</div>
+      <div className="pt-3">{children}</div>
     </section>
   );
 }
@@ -388,6 +339,25 @@ function HeroMetric({ label, value, detail }: { label: string; value: string; de
       <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">{label}</p>
       <p className="mt-2 text-base font-medium text-black dark:text-white">{value}</p>
       <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{detail}</p>
+    </div>
+  );
+}
+
+function RailSectionHeader({ label, meta }: { label: string; meta?: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <p className="shrink-0 text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">{label}</p>
+      <div className="h-px flex-1 bg-zinc-200/70 dark:bg-zinc-800/70" />
+      {meta ? <p className="shrink-0 text-[10px] text-zinc-500 dark:text-zinc-400">{meta}</p> : null}
+    </div>
+  );
+}
+
+function RailMetricCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="min-w-0 flex-1 rounded-sm border border-zinc-200/70 px-2.5 py-2 dark:border-zinc-800/70">
+      <p className="truncate text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">{label}</p>
+      <p className="mt-1 text-sm font-medium text-black dark:text-white">{value}</p>
     </div>
   );
 }
@@ -425,370 +395,284 @@ function MissionRail({ item, onOpen }: { item: MissionRailItem; onOpen: (tab: Ac
   );
 }
 
-function AccountPulseCard({
+function AccountFocusRailCard({
+  tasks,
+  currentTask,
+  queuedTasks,
+  completedTaskCount,
   levelLabel,
   levelNumber,
   levelProgress,
   accountXp,
-  nextLevelLabel,
   pointsToNextLevel,
-  accountStreak,
-  checkedInToday,
-  onCheckIn,
   rewardPoints,
-  profileCompletion,
-  securityScore,
-  accountSurfaceCount,
-  milestones,
-  weeks,
+  onOpen,
 }: {
+  tasks: AccountSetupTask[];
+  currentTask: AccountSetupTask | null;
+  queuedTasks: AccountSetupTask[];
+  completedTaskCount: number;
   levelLabel: string;
   levelNumber: number;
   levelProgress: number;
   accountXp: number;
-  nextLevelLabel: string;
   pointsToNextLevel: number;
-  accountStreak: number;
-  checkedInToday: boolean;
-  onCheckIn: () => void;
   rewardPoints: number;
-  profileCompletion: number;
-  securityScore: number;
-  accountSurfaceCount: number;
-  milestones: AccountPulseMilestone[];
-  weeks: AccountPulseDay[][];
+  onOpen: (tab: AccountTab) => void;
 }) {
-  const streakTarget = 60;
-  const recentDays = weeks.flat().slice(-14);
-  const weeklyTotals = weeks.map((week) => week.reduce((sum, day) => sum + (day.active ? day.points : 0), 0));
-  const activeRecentDays = recentDays.filter((day) => day.active).length;
-  const unlockedMilestones = milestones.filter((milestone) => milestone.achieved).length;
-  const nextMilestone = milestones.find((milestone) => !milestone.achieved);
-  const streakRingData = [
-    { name: 'Active', value: Math.min(accountStreak, streakTarget), color: '#10b981' },
-    { name: 'Remaining', value: Math.max(streakTarget - Math.min(accountStreak, streakTarget), 0), color: '#3f3f46' },
-  ];
-  const weeklyConsistencyData = weeklyTotals.map((total, index) => ({
-    label: `W${index + 1}`,
-    total,
-  }));
+  const totalTaskCount = tasks.length;
+  const openTaskCount = Math.max(totalTaskCount - completedTaskCount, 0);
+  const railState = totalTaskCount === 0 ? 'awaiting' : openTaskCount === 0 ? 'complete' : 'active';
 
   return (
-    <section className="rounded-sm border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-[#141414]">
-      <div className="space-y-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium tracking-widest text-zinc-500 dark:text-zinc-400 uppercase">
-            Account Pulse
-          </span>
-        </div>
-
-        <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-          <div className="pb-3">
-            <div className="flex items-center gap-3">
-              <div className="relative h-24 w-24 shrink-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={streakRingData}
-                      dataKey="value"
-                      innerRadius={31}
-                      outerRadius={42}
-                      startAngle={90}
-                      endAngle={-270}
-                      stroke="none"
-                      paddingAngle={streakRingData[1].value > 0 ? 2 : 0}
-                      isAnimationActive
-                      animationDuration={700}
-                    >
-                      {streakRingData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <Flame className="mb-0.5 h-3.5 w-3.5 text-orange-500" />
-                  <span className="text-base font-semibold leading-none">{accountStreak}</span>
-                  <span className="mt-0.5 text-[9px] uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                    Days
-                  </span>
-                </div>
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">Account Level {levelLabel} Lv.{levelNumber}</p>
-                <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                  {nextMilestone ? `Next: ${nextMilestone.label}` : 'All account milestones unlocked'}
-                </p>
-                <div className="mt-2.5 grid grid-cols-3 gap-2">
-                  <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
-                    <p className="text-sm font-semibold">{profileCompletion}%</p>
-                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Profile</p>
-                  </div>
-                  <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
-                    <p className="text-sm font-semibold">{securityScore}%</p>
-                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Security</p>
-                  </div>
-                  <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
-                    <p className="text-sm font-semibold">{rewardPoints}</p>
-                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Points</p>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <div className="mb-1 flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400">
-                    <span>{Math.round(levelProgress)}% to {nextLevelLabel}</span>
-                    <span>{levelProgress >= 100 ? 'Max tier' : `${pointsToNextLevel} XP left`}</span>
-                  </div>
-                  <Progress value={levelProgress} className="h-1.5" />
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onCheckIn}
-              disabled={checkedInToday}
-              className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-zinc-900 text-sm font-medium text-white transition-colors hover:bg-zinc-900/90 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-100/90"
-            >
-              <Flame className="h-4 w-4" />
-              {checkedInToday ? 'Checked in' : 'Check in'}
-            </button>
-            <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-              {accountSurfaceCount} linked account{accountSurfaceCount === 1 ? '' : 's'} across this profile. {accountXp} XP total.
+    <section className="overflow-hidden rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#141414]">
+      <div className="px-3 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Setup queue</p>
+            <p className="mt-1 text-sm font-medium text-black dark:text-white">
+              {railState === 'active'
+                ? `${openTaskCount} open task${openTaskCount === 1 ? '' : 's'}`
+                : railState === 'complete'
+                  ? 'All setup tasks complete'
+                  : 'Awaiting new tasks'}
             </p>
           </div>
-
-          <div className="py-3">
-            <div className="mb-2.5 flex items-center justify-between">
-              <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
-                Milestone Track
-              </p>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">{unlockedMilestones}/{milestones.length}</p>
-            </div>
-
-            <div className="relative">
-              <div className="absolute left-4 right-4 top-[14px] h-px bg-zinc-200 dark:bg-zinc-700" />
-              <div className="grid grid-cols-5 gap-2">
-                {milestones.map((milestone) => (
-                  <div key={milestone.id} className="text-center">
-                    <div
-                      className={cn(
-                        'relative z-10 mx-auto flex h-7 w-7 items-center justify-center rounded-full border',
-                        milestone.achieved
-                          ? 'border-emerald-600 bg-emerald-600 text-white'
-                          : 'border-zinc-300 bg-zinc-100 text-zinc-500 dark:border-zinc-700 dark:bg-[#0e0e0e] dark:text-zinc-400'
-                      )}
-                      title={milestone.label}
-                    >
-                      <milestone.icon className="h-3 w-3" />
-                    </div>
-                    <p className={cn('mt-2 text-[10px] font-medium', milestone.achieved ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 dark:text-zinc-400')}>
-                      {milestone.shortLabel}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="text-right text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+            <p>{totalTaskCount > 0 ? `${completedTaskCount}/${totalTaskCount} done` : 'No tasks'}</p>
+            <p className="mt-1">{rewardPoints} pts</p>
           </div>
+        </div>
+      </div>
 
-          <div className="pt-3">
-            <div className="mb-1.5 flex items-center justify-between">
-              <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
-                Recent Activity
-              </p>
-              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                {activeRecentDays}/14 active days
-              </p>
-            </div>
-            <div className="mb-2.5 grid grid-cols-14 gap-1">
-              {recentDays.map((day, index) => (
-                <div
-                  key={`${day.date.toISOString()}-${index}`}
-                  className={cn(
-                    'h-5 rounded-sm border border-zinc-200/80 dark:border-zinc-800',
-                    !day.active && 'bg-zinc-100 dark:bg-[#141414]'
-                  )}
-                  style={day.active ? { backgroundColor: `hsl(var(--equity) / ${0.22 + Math.min(day.points / 34, 1) * 0.62})` } : undefined}
-                  title={day.active ? `${formatDateShort(day.date)} · ${formatPoints(day.points)}` : `${formatDateShort(day.date)} · inactive`}
-                />
-              ))}
-            </div>
-            <div className="mb-2.5 flex items-center justify-between">
-              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Last 14 days</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Less</span>
-                <div className="flex gap-0.5">
-                  {[0.2, 0.45, 0.7, 0.95].map((opacity) => (
-                    <div
-                      key={opacity}
-                      className="h-2.5 w-2.5 rounded-sm bg-emerald-500"
-                      style={{ opacity }}
-                    />
-                  ))}
+      <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
+        {railState === 'active' && currentTask ? (
+          <button
+            type="button"
+            onClick={() => onOpen(currentTask.tab)}
+            className="group block w-full text-left transition-colors hover:text-black dark:hover:text-white"
+          >
+            <RailSectionHeader label="Current task" meta={`+${currentTask.rewardXp} XP`} />
+            <div className="mt-3 flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className={cn('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border', toneClasses[currentTask.completed ? 'emerald' : 'sky'])}>
+                  <currentTask.icon className="h-4 w-4" />
                 </div>
-                <span className="text-[10px] text-zinc-500 dark:text-zinc-400">More</span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-black dark:text-white">{currentTask.title}</p>
+                  <p className="mt-1 text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">{currentTask.detail}</p>
+                </div>
               </div>
+              <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
             </div>
-            <div className="rounded-sm border border-zinc-200/70 p-2 dark:border-zinc-800/70">
-              <div className="h-24">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={weeklyConsistencyData} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fill: '#71717a', fontSize: 10 }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis hide domain={[0, 'dataMax + 20']} />
-                    <Tooltip
-                      cursor={{ fill: 'transparent' }}
-                      contentStyle={{
-                        background: '#18181b',
-                        border: '1px solid #3f3f46',
-                        borderRadius: '8px',
-                        padding: '8px 10px',
-                      }}
-                      labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
-                      itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
-                      formatter={(value: number | string | undefined) => [formatPoints(Number(value ?? 0)), 'Activity']}
-                    />
-                    <Bar dataKey="total" radius={[4, 4, 0, 0]}>
-                      {weeklyConsistencyData.map((week, index) => (
-                        <Cell
-                          key={week.label}
-                          fill={ACCOUNT_ACTIVITY_COLORS[index % ACCOUNT_ACTIVITY_COLORS.length]}
-                          fillOpacity={0.9}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+            <div className="mt-3 flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">
+              <span>{currentTask.progressLabel}</span>
+              <span>Open {ACCOUNT_TAB_LABELS[currentTask.tab]}</span>
+            </div>
+            <div className="mt-2 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 transition-all"
+                style={{ width: `${currentTask.progress}%` }}
+              />
+            </div>
+          </button>
+        ) : railState === 'complete' ? (
+          <div>
+            <RailSectionHeader label="Current task" meta="Ready" />
+            <div className="mt-3 flex items-start gap-3">
+              <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border', toneClasses.emerald)}>
+                <ShieldCheck className="h-4 w-4" />
               </div>
-              <div className="mt-2 grid grid-cols-4 gap-1.5">
-                {weeklyTotals.map((weekTotal, index) => (
-                  <p key={index} className="text-center text-[10px] text-zinc-500 dark:text-zinc-400">
-                    W{index + 1}: {formatPoints(weekTotal)}
-                  </p>
-                ))}
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-black dark:text-white">Setup complete</p>
+                <p className="mt-1 text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">
+                  Your profile, linked accounts, protections, and recovery details are in place. Check back here when new account tasks are available.
+                </p>
               </div>
             </div>
           </div>
+        ) : (
+          <div>
+            <RailSectionHeader label="Current task" meta="Waiting" />
+            <div className="mt-3">
+              <p className="text-sm font-medium text-black dark:text-white">No setup tasks assigned</p>
+              <p className="mt-1 text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">
+                New setup items will appear here when your account needs attention or new requirements are added.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-3 flex items-stretch gap-2">
+          <RailMetricCard label="Open" value={openTaskCount} />
+          <RailMetricCard label="Done" value={completedTaskCount} />
+          <RailMetricCard label="Points" value={rewardPoints} />
+        </div>
+      </div>
+
+      {railState === 'active' && queuedTasks.length > 0 ? (
+        <div className="border-t border-zinc-200/70 dark:border-zinc-800/70">
+          <div className="px-3 py-3">
+            <RailSectionHeader label="Up next" meta={`${queuedTasks.length} queued`} />
+          </div>
+          <div className="border-t border-zinc-200/70 divide-y divide-zinc-200/70 dark:border-zinc-800/70 dark:divide-zinc-800/70">
+            {queuedTasks.map((task, index) => {
+              const Icon = task.icon;
+
+              return (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => onOpen(task.tab)}
+                  className="group grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-[#111111]"
+                >
+                  <span className="pt-0.5 text-[11px] font-medium text-zinc-400 dark:text-zinc-500">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-[12px] font-medium text-black dark:text-white">{task.title}</p>
+                          <div className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border', task.completed ? toneClasses.emerald : toneClasses.zinc)}>
+                            <Icon className="h-3 w-3" />
+                          </div>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{task.progressLabel}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
+        <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+          <span>{levelLabel} Lv.{levelNumber}</span>
+          <span>{accountXp} XP</span>
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-zinc-500 dark:text-zinc-400">
+          <span>{pointsToNextLevel === 0 ? 'Top tier reached' : `${pointsToNextLevel} XP to next level`}</span>
+          <span>{totalTaskCount > 0 ? `${completedTaskCount}/${totalTaskCount} complete` : 'Waiting'}</span>
+        </div>
+        <div className="mt-2 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 transition-all"
+            style={{ width: `${levelProgress}%` }}
+          />
         </div>
       </div>
     </section>
   );
 }
 
-function AccountRewardsCard({
-  achievements,
-  perks,
+function AccountBenefitsRailCard({
+  liveBenefits,
+  nextUnlock,
+  onDeckBenefits,
   onOpen,
 }: {
-  achievements: AccountAchievement[];
-  perks: AccountPerk[];
+  liveBenefits: AccountBenefitItem[];
+  nextUnlock: AccountNextUnlock | null;
+  onDeckBenefits: AccountBenefitItem[];
   onOpen: (tab: AccountTab) => void;
 }) {
-  const unlockedCount = achievements.filter((achievement) => achievement.unlocked).length;
-  const unlockedPerks = perks.filter((perk) => perk.unlocked).length;
-
   return (
-    <section className="rounded-sm border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-[#141414]">
-      <div className="space-y-4">
-        <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-          <div className="pb-3">
-            <div className="mb-2.5 flex items-center justify-between">
-              <span className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
-                Achievements
-              </span>
-              <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300">
-                <Trophy className="mr-1 h-3 w-3" /> {unlockedCount}/{achievements.length}
-              </Badge>
-            </div>
+    <section className="overflow-hidden rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#141414]">
+      <div className="px-3 py-3">
+        <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Why finish setup</p>
+        <p className="mt-1 text-sm font-medium text-black dark:text-white">What improves as this account matures</p>
+      </div>
 
-            <div className="grid grid-cols-4 gap-1.5">
-              {achievements.map((achievement) => (
-                <button
-                  key={achievement.id}
-                  type="button"
-                  onClick={() => onOpen(achievement.tab)}
-                  className={cn(
-                    'flex min-h-[96px] w-full flex-col items-center justify-center gap-1 rounded border p-2 text-center transition-all',
-                    achievement.unlocked
-                      ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-[1.02]')
-                      : 'border-dotted border-zinc-300 bg-zinc-100/40 text-zinc-500 opacity-50 dark:border-zinc-700 dark:bg-[#121212] dark:text-zinc-400'
-                  )}
-                  title={achievement.detail}
-                >
-                  <div
-                    className={cn(
-                      'flex h-8 w-8 items-center justify-center rounded-full',
-                      achievement.unlocked ? 'bg-current/10' : 'bg-zinc-200 dark:bg-[#0e0e0e]'
-                    )}
-                  >
-                    {achievement.unlocked ? (
-                      <achievement.icon className="h-4 w-4" />
-                    ) : (
-                      <Lock className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
-                    )}
-                  </div>
-                  <span className="text-[10px] font-medium leading-tight">{achievement.name}</span>
-                  {achievement.statusLabel ? (
-                    <span className="text-[8px] text-zinc-500 dark:text-zinc-400">
-                      {achievement.statusLabel}
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="pt-3">
-            <div className="mb-2.5 flex items-center justify-between">
-              <span className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
-                Perks & Rewards
-              </span>
-              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</span>
-            </div>
-
-            <div className="divide-y divide-zinc-200 border-y border-zinc-200/70 dark:divide-zinc-800 dark:border-zinc-800/70">
-              {perks.map((perk) => (
-                <div
-                  key={perk.id}
-                  className={cn(
-                    'flex items-center gap-3 py-2.5 transition-colors',
-                    perk.unlocked ? 'bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08]' : 'opacity-65'
-                  )}
-                >
-                  <div
-                    className={cn(
-                      'flex h-9 w-9 shrink-0 items-center justify-center rounded',
-                      perk.unlocked
-                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-zinc-200 text-zinc-500 dark:bg-[#141414]'
-                    )}
-                  >
-                    {perk.unlocked ? <perk.icon className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{perk.name}</p>
-                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{perk.description}</p>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'h-5 shrink-0 px-1.5 py-0 text-[9px]',
-                      perk.unlocked
-                        ? 'border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                        : 'text-zinc-500 dark:text-zinc-400'
-                    )}
-                  >
-                    {perk.unlocked ? 'Active' : perk.requirement}
-                  </Badge>
+      <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
+        <RailSectionHeader label="Live now" meta={`${liveBenefits.length} active`} />
+        {liveBenefits.length > 0 ? (
+          <div className="mt-3 space-y-3">
+            {liveBenefits.map((benefit) => (
+              <button
+                key={benefit.id}
+                type="button"
+                onClick={() => onOpen(benefit.tab)}
+                className="group flex w-full items-start gap-3 text-left transition-colors hover:text-black dark:hover:text-white"
+              >
+                <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border', toneClasses[benefit.tone])}>
+                  <benefit.icon className="h-4 w-4" />
                 </div>
-              ))}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[12px] font-medium text-black dark:text-white">{benefit.name}</p>
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">Live</span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{benefit.detail}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">
+            No account benefits are live yet. Finishing setup will unlock the first trust and recovery upgrades.
+          </p>
+        )}
+      </div>
+
+      {nextUnlock ? (
+        <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
+          <RailSectionHeader label="Next unlock" />
+          <button
+            type="button"
+            onClick={() => onOpen(nextUnlock.tab)}
+            className="group mt-3 flex w-full items-start gap-3 text-left transition-colors hover:text-black dark:hover:text-white"
+          >
+            <div className={cn('mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border', toneClasses[nextUnlock.tone])}>
+              <nextUnlock.icon className="h-4 w-4" />
             </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-black dark:text-white">{nextUnlock.name}</p>
+                </div>
+                <ArrowUpRight className="h-4 w-4 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
+              </div>
+              <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{nextUnlock.detail}</p>
+              <p className="mt-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">{nextUnlock.requirement}</p>
+            </div>
+          </button>
+        </div>
+      ) : null}
+
+      {onDeckBenefits.length > 0 ? (
+        <div className="border-t border-zinc-200/70 dark:border-zinc-800/70">
+          <div className="px-3 py-3">
+            <RailSectionHeader label="On deck" meta={`${onDeckBenefits.length} pending`} />
+          </div>
+          <div className="border-t border-zinc-200/70 divide-y divide-zinc-200/70 dark:border-zinc-800/70 dark:divide-zinc-800/70">
+            {onDeckBenefits.map((benefit) => (
+              <button
+                key={benefit.id}
+                type="button"
+                onClick={() => onOpen(benefit.tab)}
+                className="group flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 last:rounded-b-sm dark:hover:bg-[#111111]"
+              >
+                <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border', toneClasses[benefit.tone])}>
+                  <benefit.icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[12px] font-medium text-black dark:text-white">{benefit.name}</p>
+                    <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
+                  </div>
+                  <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{benefit.requirement}</p>
+                </div>
+              </button>
+            ))}
           </div>
         </div>
-      </div>
+      ) : null}
+
     </section>
   );
 }
@@ -812,9 +696,6 @@ export default function AccountHome() {
   const [editingSocialId, setEditingSocialId] = useState<string | null>(null);
   const [socialDraft, setSocialDraft] = useState<SocialDraft>(BLANK_SOCIAL_DRAFT);
   const [refreshingBanks, setRefreshingBanks] = useState(false);
-  const [accountStreak, setAccountStreak] = useState(14);
-  const [checkedInToday, setCheckedInToday] = useState(false);
-  const [rewardPoints, setRewardPoints] = useState(320);
 
   const initialProfileForm = useMemo<ProfileFormState>(
     () => ({
@@ -925,15 +806,17 @@ export default function AccountHome() {
     [profileForm]
   );
 
+  const linkedAccountGroupCount = [wallets.length > 0, socialAccounts.length > 0, bankAccounts.length > 0].filter(Boolean).length;
   const profileProgress = clampPercent((profileFieldsComplete / 6) * 100);
-  const connectionProgress = clampPercent(
-    ([wallets.length > 0, socialAccounts.length > 0, bankAccounts.length > 0].filter(Boolean).length / 3) * 100
-  );
+  const connectionProgress = clampPercent((linkedAccountGroupCount / 3) * 100);
   const securityEnabledCount = securityControls.filter((control) => control.enabled).length;
   const securityScore = clampPercent((securityEnabledCount / securityControls.length) * 100);
-  const supportProgress = clampPercent(
-    (Number(profileSavedAt !== 'Not saved yet') + Number(Boolean(profileForm.email)) + Number(Boolean(profileForm.phone)) + Number(securityEnabledCount >= 4)) * 25
-  );
+  const supportChecklistCount =
+    Number(profileSavedAt !== 'Not saved yet') +
+    Number(Boolean(profileForm.email)) +
+    Number(Boolean(profileForm.phone)) +
+    Number(securityEnabledCount >= 4);
+  const supportProgress = clampPercent(supportChecklistCount * 25);
   const securityTone = securityScore >= 80 ? 'Strong' : securityScore >= 60 ? 'Balanced' : 'Needs work';
   const activeNetworks = useMemo(
     () => new Set(holdings.map((holding) => holding.chainName).filter(Boolean)).size,
@@ -956,21 +839,6 @@ export default function AccountHome() {
   );
 
   const accountSurfaceCount = wallets.length + socialAccounts.length + bankAccounts.length;
-  const accountXp =
-    profileCompletion * 9 +
-    securityEnabledCount * 50 +
-    Math.min(accountStreak * 12, 240) +
-    socialAccounts.length * 40 +
-    bankAccounts.length * 50;
-  const levelIndex = LEVELS.findIndex((level) => accountXp >= level.min && accountXp <= level.max);
-  const currentLevel = LEVELS[levelIndex >= 0 ? levelIndex : 0];
-  const nextLevel = LEVELS[Math.min((levelIndex >= 0 ? levelIndex : 0) + 1, LEVELS.length - 1)];
-  const levelFloor = currentLevel.min;
-  const levelCeiling = currentLevel.max;
-  const levelProgress = currentLevel.label === nextLevel.label
-    ? 100
-    : clampPercent(((accountXp - levelFloor) / (levelCeiling - levelFloor + 1)) * 100);
-  const pointsToNextLevel = currentLevel.label === nextLevel.label ? 0 : Math.max(nextLevel.min - accountXp, 0);
 
   const missionTrack = useMemo<MissionRailItem[]>(
     () => [
@@ -988,7 +856,7 @@ export default function AccountHome() {
         detail:
           connectionProgress === 100
             ? 'Wallets, socials, and banks linked'
-            : `${3 - [wallets.length > 0, socialAccounts.length > 0, bankAccounts.length > 0].filter(Boolean).length} connections left`,
+            : `${3 - linkedAccountGroupCount} connections left`,
         progress: connectionProgress,
         tab: 'connections',
         icon: Link2,
@@ -1010,7 +878,7 @@ export default function AccountHome() {
         icon: FileText,
       },
     ],
-    [bankAccounts.length, connectionProgress, profileFieldsComplete, profileProgress, securityEnabledCount, securityScore, securityControls.length, socialAccounts.length, supportProgress, wallets.length]
+    [bankAccounts.length, connectionProgress, linkedAccountGroupCount, profileFieldsComplete, profileProgress, securityEnabledCount, securityScore, securityControls.length, socialAccounts.length, supportProgress, wallets.length]
   );
 
   const accountAchievements = useMemo<AccountAchievement[]>(
@@ -1084,6 +952,7 @@ export default function AccountHome() {
     ],
     [bankAccounts.length, profileProgress, profileSavedAt, securityEnabledCount, socialAccounts.length, wallets.length]
   );
+  const unlockedAchievementCount = accountAchievements.filter((achievement) => achievement.unlocked).length;
 
   const accountPerks = useMemo<AccountPerk[]>(
     () => [
@@ -1120,24 +989,153 @@ export default function AccountHome() {
     ],
     [profileCompletion, profileForm.email, profileForm.phone, securityEnabledCount, socialAccounts.length, wallets.length]
   );
+  const unlockedPerkCount = accountPerks.filter((perk) => perk.unlocked).length;
 
-  const accountPulseMilestones = useMemo<AccountPulseMilestone[]>(
+  const accountSetupTasks = useMemo<AccountSetupTask[]>(
+    () => {
+      const remainingProfileFields = Math.max(6 - profileFieldsComplete, 0);
+      const missingConnections = Math.max(3 - linkedAccountGroupCount, 0);
+      const protectionsToGoal = Math.max(4 - securityEnabledCount, 0);
+      const recoveryStepsLeft = Math.max(4 - supportChecklistCount, 0);
+
+      const tasks: AccountSetupTask[] = [
+        {
+          id: 'task-profile',
+          title: 'Finish core profile',
+          detail: remainingProfileFields === 0 ? 'Core identity details are complete and ready to review.' : 'Add your remaining identity details so your account is easier to verify.',
+          rewardXp: 120,
+          progress: profileProgress,
+          progressLabel: remainingProfileFields === 0 ? 'Complete' : `${remainingProfileFields} fields left`,
+          tab: 'profile',
+          icon: UserRound,
+          completed: remainingProfileFields === 0,
+        },
+        {
+          id: 'task-connections',
+          title: 'Link trusted accounts',
+          detail: missingConnections === 0 ? 'Wallets, social accounts, and banks are all linked.' : 'Add the remaining account types to complete your connected account map.',
+          rewardXp: 150,
+          progress: connectionProgress,
+          progressLabel: missingConnections === 0 ? 'Complete' : `${missingConnections} left`,
+          tab: 'connections',
+          icon: Link2,
+          completed: missingConnections === 0,
+        },
+        {
+          id: 'task-security',
+          title: 'Tighten security',
+          detail: protectionsToGoal === 0 ? 'Your core protections are active for sign-in and transfer reviews.' : 'Turn on more protections to strengthen sensitive changes and alerts.',
+          rewardXp: 140,
+          progress: clampPercent((Math.min(securityEnabledCount, 4) / 4) * 100),
+          progressLabel: protectionsToGoal === 0 ? 'Ready' : `${protectionsToGoal} left`,
+          tab: 'security',
+          icon: ShieldCheck,
+          completed: protectionsToGoal === 0,
+        },
+        {
+          id: 'task-recovery',
+          title: 'Prepare recovery',
+          detail: recoveryStepsLeft === 0 ? 'Recovery contacts and export setup are ready.' : 'Add recovery details and save your profile once to prepare account support.',
+          rewardXp: 110,
+          progress: supportProgress,
+          progressLabel: recoveryStepsLeft === 0 ? 'Ready' : `${recoveryStepsLeft} steps left`,
+          tab: 'support',
+          icon: FileText,
+          completed: recoveryStepsLeft === 0,
+        },
+      ];
+
+      return tasks.sort((left, right) => Number(left.completed) - Number(right.completed));
+    },
+    [connectionProgress, linkedAccountGroupCount, profileFieldsComplete, profileProgress, securityEnabledCount, supportChecklistCount, supportProgress]
+  );
+  const completedTaskCount = accountSetupTasks.filter((task) => task.completed).length;
+
+  const nextUnlock = useMemo<AccountNextUnlock | null>(() => {
+    const lockedPerk = accountPerks.find((perk) => !perk.unlocked);
+    if (lockedPerk) {
+      return {
+        id: lockedPerk.id,
+        name: lockedPerk.name,
+        detail: lockedPerk.description,
+        requirement: lockedPerk.requirement,
+        tab: lockedPerk.tab,
+        icon: lockedPerk.icon,
+        tone: lockedPerk.tone,
+      };
+    }
+
+    const lockedAchievement = accountAchievements.find((achievement) => !achievement.unlocked);
+    if (lockedAchievement) {
+      return {
+        id: lockedAchievement.id,
+        name: lockedAchievement.name,
+        detail: lockedAchievement.detail,
+        requirement: `Open ${ACCOUNT_TAB_LABELS[lockedAchievement.tab]}`,
+        tab: lockedAchievement.tab,
+        icon: lockedAchievement.icon,
+        tone: lockedAchievement.tone,
+      };
+    }
+
+    return null;
+  }, [accountAchievements, accountPerks]);
+
+  const focusTask = accountSetupTasks.find((task) => !task.completed) ?? accountSetupTasks[0] ?? null;
+  const queuedTasks = accountSetupTasks.filter((task) => focusTask ? task.id !== focusTask.id : true).slice(0, 2);
+  const rewardPoints =
+    completedTaskCount * 110 +
+    unlockedAchievementCount * 45 +
+    unlockedPerkCount * 55 +
+    Number(profileSavedAt !== 'Not saved yet') * 30;
+  const accountXp =
+    profileCompletion * 9 +
+    securityEnabledCount * 50 +
+    completedTaskCount * 150 +
+    unlockedAchievementCount * 40 +
+    unlockedPerkCount * 45 +
+    linkedAccountGroupCount * 45 +
+    Number(profileSavedAt !== 'Not saved yet') * 35;
+  const levelIndex = LEVELS.findIndex((level) => accountXp >= level.min && accountXp <= level.max);
+  const currentLevel = LEVELS[levelIndex >= 0 ? levelIndex : 0];
+  const nextLevel = LEVELS[Math.min((levelIndex >= 0 ? levelIndex : 0) + 1, LEVELS.length - 1)];
+  const levelFloor = currentLevel.min;
+  const levelCeiling = currentLevel.max;
+  const levelProgress = currentLevel.label === nextLevel.label
+    ? 100
+    : clampPercent(((accountXp - levelFloor) / (levelCeiling - levelFloor + 1)) * 100);
+  const pointsToNextLevel = currentLevel.label === nextLevel.label ? 0 : Math.max(nextLevel.min - accountXp, 0);
+
+  const accountBenefits = useMemo<AccountBenefitItem[]>(
     () => [
-      { id: 'profile', label: 'Profile Prime', shortLabel: 'PR', icon: Star, achieved: profileProgress === 100 },
-      { id: 'wallets', label: 'Wallet Graph', shortLabel: 'WL', icon: Wallet, achieved: wallets.length >= 2 },
-      { id: 'social', label: 'Signal Proof', shortLabel: 'SO', icon: Sparkles, achieved: socialAccounts.length >= 1 },
-      { id: 'security', label: 'Trust Lock', shortLabel: 'SC', icon: ShieldCheck, achieved: securityEnabledCount >= 4 },
-      { id: 'archive', label: 'Archive Ready', shortLabel: 'AR', icon: Trophy, achieved: profileSavedAt !== 'Not saved yet' },
+      ...accountPerks.map((perk) => ({
+        id: perk.id,
+        name: perk.name,
+        detail: perk.description,
+        requirement: perk.requirement,
+        tab: perk.tab,
+        icon: perk.icon,
+        tone: perk.tone,
+        live: perk.unlocked,
+      })),
+      ...accountAchievements.map((achievement) => ({
+        id: achievement.id,
+        name: achievement.name,
+        detail: achievement.detail,
+        requirement: achievement.statusLabel ?? `Open ${ACCOUNT_TAB_LABELS[achievement.tab]}`,
+        tab: achievement.tab,
+        icon: achievement.icon,
+        tone: achievement.tone,
+        live: achievement.unlocked,
+      })),
     ],
-    [profileProgress, profileSavedAt, securityEnabledCount, socialAccounts.length, wallets.length]
+    [accountAchievements, accountPerks]
   );
 
-  const accountPulseWeeks = useMemo(
-    () => generateAccountPulseHeatmap(new Date(), rewardPoints + profileCompletion + securityScore + accountStreak, checkedInToday),
-    [accountStreak, checkedInToday, profileCompletion, rewardPoints, securityScore]
-  );
-
-  const unlockedAchievementCount = accountAchievements.filter((achievement) => achievement.unlocked).length;
+  const liveBenefits = accountBenefits.filter((benefit) => benefit.live).slice(0, 2);
+  const onDeckBenefits = accountBenefits
+    .filter((benefit) => !benefit.live && benefit.id !== nextUnlock?.id)
+    .slice(0, 2);
 
   const handleTabOpen = (tab: AccountTab) => setSearchParams({ tab });
   const handleHeroAction = (tab: AccountTab) => {
@@ -1165,18 +1163,6 @@ export default function AccountHome() {
       console.error('Failed to copy wallet address:', error);
       setBannerMessage('Clipboard access was blocked in this environment.');
     }
-  };
-
-  const handleAccountPulse = () => {
-    if (checkedInToday) {
-      setBannerMessage('Daily account pulse already logged.');
-      return;
-    }
-
-    setCheckedInToday(true);
-    setAccountStreak((current) => current + 1);
-    setRewardPoints((current) => current + 25);
-    setBannerMessage('Daily account pulse logged. +25 reward points.');
   };
 
   const openWalletDialog = (wallet?: WalletRecord) => {
@@ -1378,8 +1364,8 @@ export default function AccountHome() {
               ) : null}
             </motion.div>
 
-            <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
-              <div className="border-b border-zinc-200/70 pb-3 dark:border-zinc-800/70">
+            <section>
+              <div className="border-y border-zinc-200/70 py-4 dark:border-zinc-800/70">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-light tracking-tight text-black dark:text-white">Account Snapshot</h2>
@@ -1401,8 +1387,8 @@ export default function AccountHome() {
               </div>
             </section>
 
-            <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
-              <div className="border-b border-zinc-200/70 pb-3 dark:border-zinc-800/70">
+            <section>
+              <div className="border-y border-zinc-200/70 py-4 dark:border-zinc-800/70">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-light tracking-tight text-black dark:text-white">Progress Track</h2>
@@ -1454,7 +1440,7 @@ export default function AccountHome() {
                   ))}
                 </div>
 
-                <TabsContent value="profile" className="space-y-8 pt-3">
+                <TabsContent value="profile" className="space-y-8 pt-2">
                   <SectionPanel
                     withTopBorder={false}
                     eyebrow="Identity"
@@ -1520,7 +1506,7 @@ export default function AccountHome() {
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="connections" className="space-y-8 pt-3">
+                <TabsContent value="connections" className="space-y-8 pt-2">
                   <SectionPanel
                     withTopBorder={false}
                     eyebrow="Wallets"
@@ -1660,7 +1646,7 @@ export default function AccountHome() {
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="security" className="space-y-8 pt-3">
+                <TabsContent value="security" className="space-y-8 pt-2">
                   <SectionPanel
                     withTopBorder={false}
                     eyebrow="Security"
@@ -1713,17 +1699,25 @@ export default function AccountHome() {
                     </div>
                     <div className="mt-6 divide-y divide-zinc-200/70 dark:divide-zinc-800/70">
                       {accountPerks.map((perk) => (
-                        <div key={perk.id} className="flex items-start justify-between gap-4 py-3.5 text-[12px] first:pt-0 last:pb-0">
+                        <div
+                          key={perk.id}
+                          className="flex flex-col gap-4 py-4 first:pt-0 last:pb-0 md:flex-row md:items-center md:justify-between"
+                        >
                           <div className="flex min-w-0 items-start gap-3">
-                            <div className={cn('flex h-7 w-7 items-center justify-center rounded-full border', perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc)}>
-                              <perk.icon className="h-3.5 w-3.5" />
+                            <div
+                              className={cn(
+                                'flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border bg-white dark:bg-[#121212]',
+                                perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc
+                              )}
+                            >
+                              <perk.icon className="h-4 w-4" />
                             </div>
                             <div className="min-w-0">
-                              <p className="font-medium text-black dark:text-white">{perk.name}</p>
-                              <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{perk.description}</p>
+                              <p className="text-sm font-medium text-black dark:text-white">{perk.name}</p>
+                              <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{perk.description}</p>
                             </div>
                           </div>
-                          <span className="shrink-0 pt-0.5 text-[11px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+                          <span className="shrink-0 text-[11px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 md:text-right">
                             {perk.unlocked ? 'Active' : perk.requirement}
                           </span>
                         </div>
@@ -1732,7 +1726,7 @@ export default function AccountHome() {
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="support" className="space-y-8 pt-3">
+                <TabsContent value="support" className="space-y-8 pt-2">
                   <SectionPanel
                     withTopBorder={false}
                     eyebrow="Documents"
@@ -1797,34 +1791,35 @@ export default function AccountHome() {
 
           <div className="space-y-8 md:col-span-4">
             <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.08 }}>
-              <AccountPulseCard
+              <AccountFocusRailCard
+                tasks={accountSetupTasks}
+                currentTask={focusTask}
+                queuedTasks={queuedTasks}
+                completedTaskCount={completedTaskCount}
                 levelLabel={currentLevel.label}
                 levelNumber={Math.min(levelIndex + 1, LEVELS.length)}
                 levelProgress={levelProgress}
                 accountXp={accountXp}
                 pointsToNextLevel={pointsToNextLevel}
-                nextLevelLabel={currentLevel.label === nextLevel.label ? 'Max tier' : nextLevel.label}
-                accountStreak={accountStreak}
-                checkedInToday={checkedInToday}
-                onCheckIn={handleAccountPulse}
                 rewardPoints={rewardPoints}
-                profileCompletion={profileCompletion}
-                securityScore={securityScore}
-                accountSurfaceCount={accountSurfaceCount}
-                milestones={accountPulseMilestones}
-                weeks={accountPulseWeeks}
+                onOpen={handleHeroAction}
               />
             </motion.div>
 
             <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.12 }}>
-              <AccountRewardsCard achievements={accountAchievements} perks={accountPerks} onOpen={handleTabOpen} />
+              <AccountBenefitsRailCard
+                liveBenefits={liveBenefits}
+                nextUnlock={nextUnlock}
+                onDeckBenefits={onDeckBenefits}
+                onOpen={handleHeroAction}
+              />
             </motion.div>
 
             <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
               <div className="space-y-2 rounded-sm border border-zinc-200/70 bg-gradient-to-r from-zinc-100/70 to-sky-50/60 p-4 dark:border-zinc-800/70 dark:from-[#141414] dark:to-[#10181a]">
-                <p className="text-sm font-medium text-black dark:text-white">Everything tied to your account, in one place.</p>
+                <p className="text-sm font-medium text-black dark:text-white">Keep moving the account forward.</p>
                 <p className="text-[11px] leading-5 text-zinc-600 dark:text-zinc-300">
-                  Review your profile, linked accounts, security settings, and account records from one place.
+                  Finish open tasks, unlock the remaining perks, and keep recovery details current so the account stays ready.
                 </p>
               </div>
             </section>
