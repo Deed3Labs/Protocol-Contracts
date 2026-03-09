@@ -1716,17 +1716,25 @@ export default function AccountHome() {
                     </div>
                     <div className="mt-6 divide-y divide-zinc-200/70 dark:divide-zinc-800/70">
                       {accountPerks.map((perk) => (
-                        <div key={perk.id} className="flex items-start justify-between gap-4 py-3.5 text-[12px] first:pt-0 last:pb-0">
+                        <div
+                          key={perk.id}
+                          className="flex flex-col gap-4 py-4 first:pt-0 last:pb-0 md:flex-row md:items-center md:justify-between"
+                        >
                           <div className="flex min-w-0 items-start gap-3">
-                            <div className={cn('flex h-7 w-7 items-center justify-center rounded-full border', perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc)}>
-                              <perk.icon className="h-3.5 w-3.5" />
+                            <div
+                              className={cn(
+                                'flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border bg-white dark:bg-[#121212]',
+                                perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc
+                              )}
+                            >
+                              <perk.icon className="h-4 w-4" />
                             </div>
                             <div className="min-w-0">
-                              <p className="text-[15px] font-medium text-black dark:text-white">{perk.name}</p>
-                              <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{perk.description}</p>
+                              <p className="text-sm font-medium text-black dark:text-white">{perk.name}</p>
+                              <p className="mt-2 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">{perk.description}</p>
                             </div>
                           </div>
-                          <span className="shrink-0 pt-0.5 text-[11px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+                          <span className="shrink-0 text-[11px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 md:text-right">
                             {perk.unlocked ? 'Active' : perk.requirement}
                           </span>
                         </div>
