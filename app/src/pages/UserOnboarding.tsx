@@ -119,38 +119,38 @@ const ONBOARDING_STEPS: StepDefinition[] = [
   {
     id: "access",
     label: "Step 1",
-    title: "Connect Wallet / Create Account",
-    description: "Choose how you want to get started and how much you'd like to share today.",
+    title: "Get Started",
+    description: "Connect your wallet or create your Clear account.",
     icon: Wallet,
   },
   {
-    id: "discovery",
+    id: "setup",
     label: "Step 2",
-    title: "Registration / Marketing Info",
-    description: "Capture source, income context, and product intent without leading with compliance.",
-    icon: Sparkles,
+    title: "Membership & Privacy",
+    description: "Choose your privacy level, membership, and account preferences.",
+    icon: Crown,
   },
   {
     id: "profile",
     label: "Step 3",
-    title: "Profile Information",
-    description: "Add your profile details, residency, and preferred settlement currency.",
+    title: "Profile Details",
+    description: "Add your details, residency, and preferred settlement currency.",
     icon: UserRound,
   },
   {
-    id: "setup",
+    id: "discovery",
     label: "Step 4",
-    title: "Account Setup",
-    description: "Choose your privacy level, membership, and account preferences.",
-    icon: Crown,
+    title: "Personalize Your Experience",
+    description: "Tell us how you found Clear and what you'd like to use first.",
+    icon: Sparkles,
   },
 ];
 
 const COMPACT_STEP_TITLES: Record<StepId, string> = {
-  access: "Access",
-  discovery: "Discovery",
+  access: "Start",
+  setup: "Membership",
   profile: "Profile",
-  setup: "Setup",
+  discovery: "Personalize",
 };
 
 const ACCESS_TRACKS: AccessTrack[] = [
@@ -402,7 +402,7 @@ function FlatOption({
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full rounded-2xl border p-4 text-left transition-colors",
+        "w-full rounded-xl border p-4 text-left transition-colors",
         active
           ? "border-sky-300 bg-[linear-gradient(180deg,rgba(240,249,255,0.96),rgba(236,253,245,0.7))] dark:border-sky-800 dark:bg-[linear-gradient(180deg,rgba(12,74,110,0.18),rgba(6,78,59,0.12))]"
           : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
@@ -542,15 +542,15 @@ export default function UserOnboarding() {
   const helperCopy = useMemo(() => {
     if (canContinue) return "Ready to continue.";
     if (currentStep.id === "access") return "Choose how you'd like to get started.";
-    if (currentStep.id === "discovery") {
-      return "Select a referral source, a primary income source, and at least one reason for joining.";
+    if (currentStep.id === "setup") {
+      return "Choose your privacy level, membership, and account preferences to continue.";
     }
     if (currentStep.id === "profile") {
       return form.identityMode === "anonymous"
         ? "Wallet-only onboarding requires username, city or region, and country."
         : "Complete username, email, city or region, and country to continue.";
     }
-    return "Choose membership, recovery method, and accept the membership terms.";
+    return "Select a referral source, a primary income source, and at least one reason for joining.";
   }, [canContinue, currentStep.id, form.identityMode]);
 
   const updateField = <K extends keyof OnboardingFormState>(key: K, value: OnboardingFormState[K]) => {
@@ -632,7 +632,7 @@ export default function UserOnboarding() {
               </p>
             </div>
 
-            <div className="mt-10 overflow-hidden rounded-3xl border border-zinc-200 dark:border-zinc-800">
+            <div className="mt-10 overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
               <div className="grid gap-0 md:grid-cols-2">
                 <div className="px-6 py-6 sm:px-8">
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
@@ -740,7 +740,7 @@ export default function UserOnboarding() {
                   type="button"
                   onClick={() => setCurrentStepIndex(index)}
                   className={cn(
-                    "flex w-[168px] flex-none min-h-[84px] items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors md:w-auto md:min-h-[92px] md:min-w-0",
+                    "flex w-[168px] flex-none min-h-[84px] items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors md:w-auto md:min-h-[92px] md:min-w-0",
                     status === "current" &&
                       "border-sky-300 bg-[linear-gradient(180deg,rgba(240,249,255,0.96),rgba(236,253,245,0.7))] dark:border-sky-800 dark:bg-[linear-gradient(180deg,rgba(12,74,110,0.18),rgba(6,78,59,0.12))]",
                     status === "complete" &&
@@ -778,7 +778,7 @@ export default function UserOnboarding() {
           </div>
         </div>
 
-        <section className="mt-4 overflow-hidden rounded-[28px] border border-zinc-200 dark:border-zinc-800">
+        <section className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
               <div className="border-b border-zinc-200 bg-[linear-gradient(90deg,rgba(240,249,255,0.9),rgba(255,255,255,1),rgba(255,251,235,0.9))] px-5 py-5 dark:border-zinc-800 dark:bg-[linear-gradient(90deg,rgba(8,47,73,0.18),rgba(14,14,14,1),rgba(120,53,15,0.12))] sm:px-8 sm:py-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
@@ -945,7 +945,7 @@ export default function UserOnboarding() {
                                 type="button"
                                 onClick={() => toggleReason(reason)}
                                 className={cn(
-                                  "rounded-2xl border px-4 py-4 text-left transition-colors",
+                                  "rounded-xl border px-4 py-4 text-left transition-colors",
                                   active
                                     ? "border-black bg-zinc-50 dark:border-white dark:bg-zinc-900"
                                     : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
@@ -1116,7 +1116,7 @@ export default function UserOnboarding() {
                                 type="button"
                                 onClick={() => updateField("identityMode", mode.id)}
                                 className={cn(
-                                  "rounded-2xl border p-4 text-left transition-colors",
+                                  "rounded-xl border p-4 text-left transition-colors",
                                   active
                                     ? "border-black bg-zinc-50 dark:border-white dark:bg-zinc-900"
                                     : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
@@ -1165,7 +1165,7 @@ export default function UserOnboarding() {
                                 type="button"
                                 onClick={() => updateField("membershipPlan", plan.id)}
                                 className={cn(
-                                  "rounded-2xl border p-4 text-left transition-colors",
+                                  "rounded-xl border p-4 text-left transition-colors",
                                   active
                                     ? "border-black bg-zinc-50 dark:border-white dark:bg-zinc-900"
                                     : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
@@ -1232,7 +1232,7 @@ export default function UserOnboarding() {
                                 type="button"
                                 onClick={() => updateField("recoveryMethod", method.id)}
                                 className={cn(
-                                  "rounded-2xl border p-4 text-left transition-colors",
+                                  "rounded-xl border p-4 text-left transition-colors",
                                   active
                                     ? "border-black bg-zinc-50 dark:border-white dark:bg-zinc-900"
                                     : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
@@ -1293,7 +1293,7 @@ export default function UserOnboarding() {
 
                         <label
                           htmlFor="terms-accepted"
-                          className="mt-6 flex cursor-pointer items-start gap-4 rounded-2xl border border-zinc-200 px-4 py-4 dark:border-zinc-800"
+                          className="mt-6 flex cursor-pointer items-start gap-4 rounded-xl border border-zinc-200 px-4 py-4 dark:border-zinc-800"
                         >
                           <Checkbox
                             id="terms-accepted"
@@ -1347,7 +1347,7 @@ export default function UserOnboarding() {
             </section>
 
           <div className="mt-8 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-3xl border border-zinc-200 px-6 py-5 dark:border-zinc-800">
+            <div className="rounded-2xl border border-zinc-200 px-6 py-5 dark:border-zinc-800">
               <p className="text-sm font-medium text-black dark:text-white">Application summary</p>
               <div className="mt-4 divide-y divide-zinc-200 dark:divide-zinc-800">
                 <SummaryRow label="Location" value={form.cityRegion.trim() ? `${form.cityRegion}, ${form.country}` : form.country} />
@@ -1357,7 +1357,7 @@ export default function UserOnboarding() {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-zinc-200 px-6 py-5 dark:border-zinc-800">
+            <div className="rounded-2xl border border-zinc-200 px-6 py-5 dark:border-zinc-800">
               <p className="text-sm font-medium text-black dark:text-white">What to expect</p>
               <div className="mt-4 space-y-3">
                 {[
