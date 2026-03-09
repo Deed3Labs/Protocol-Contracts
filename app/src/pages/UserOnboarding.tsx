@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -402,7 +402,7 @@ function FlatOption({
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full rounded-xl border p-4 text-left transition-colors",
+        "w-full rounded-lg border p-4 text-left transition-colors",
         active
           ? "border-sky-300 bg-[linear-gradient(180deg,rgba(240,249,255,0.96),rgba(236,253,245,0.7))] dark:border-sky-800 dark:bg-[linear-gradient(180deg,rgba(12,74,110,0.18),rgba(6,78,59,0.12))]"
           : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
@@ -412,7 +412,7 @@ function FlatOption({
         <div className="flex items-start gap-3">
           <div
             className={cn(
-              "flex size-10 shrink-0 items-center justify-center rounded border bg-white text-black dark:bg-[#0e0e0e] dark:text-white",
+            "flex size-10 shrink-0 items-center justify-center rounded-sm border bg-white text-black dark:bg-[#0e0e0e] dark:text-white",
               active
                 ? "border-sky-200 bg-sky-100 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
                 : "border-zinc-200 dark:border-zinc-800"
@@ -451,6 +451,7 @@ function FlatOption({
 export default function UserOnboarding() {
   const { address, chainId, isConnected, openModal } = useAppKitAuth();
   const navigate = useNavigate();
+  const formSectionRef = useRef<HTMLElement | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
   const [form, setForm] = useState<OnboardingFormState>({
@@ -581,22 +582,35 @@ export default function UserOnboarding() {
     setCurrentStepIndex((prev) => Math.max(prev - 1, 0));
   };
 
+  const scrollToFormTop = () => {
+    window.requestAnimationFrame(() => {
+      formSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
+
   const handleNext = () => {
     if (!canContinue) return;
     if (currentStepIndex === ONBOARDING_STEPS.length - 1) {
       setIsComplete(true);
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
       return;
     }
     setCurrentStepIndex((prev) => Math.min(prev + 1, ONBOARDING_STEPS.length - 1));
+    scrollToFormTop();
   };
 
   if (isComplete) {
     return (
       <div className="min-h-dvh bg-white text-black transition-colors duration-200 dark:bg-[#0e0e0e] dark:text-white">
-        <div className="sticky top-0 z-40 border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-900 dark:bg-[#0e0e0e]/80">
+        <div className="fixed inset-x-0 top-0 z-40 border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-900 dark:bg-[#0e0e0e]/80">
           <div className="container mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded border border-black/90 bg-white dark:border-white/10 dark:bg-[#0e0e0e]">
+              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-sm border border-black/90 bg-white dark:border-white/10 dark:bg-[#0e0e0e]">
                 <img src={ClearPathLogo} alt="ClearPath" className="h-full w-full object-cover" />
               </div>
               <div>
@@ -606,7 +620,7 @@ export default function UserOnboarding() {
             </div>
             <Button
               type="button"
-              className="rounded bg-black px-4 py-2 text-sm font-normal text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+              className="rounded-md bg-black px-4 py-2 text-sm font-normal text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
               onClick={() => navigate("/login")}
             >
               Return to login
@@ -614,7 +628,7 @@ export default function UserOnboarding() {
           </div>
         </div>
 
-        <main className="container mx-auto max-w-5xl px-4 py-8 sm:px-6 md:py-10">
+        <main className="container mx-auto max-w-5xl px-4 pb-8 pt-24 sm:px-6 md:pb-10 md:pt-26">
           <div className="mt-10">
             <div>
               <p className="text-sm font-medium text-zinc-500 dark:text-zinc-500">User onboarding</p>
@@ -626,7 +640,7 @@ export default function UserOnboarding() {
               </p>
             </div>
 
-            <div className="mt-10 overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
+            <div className="mt-10 overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
               <div className="grid gap-0 md:grid-cols-2">
                 <div className="px-6 py-6 sm:px-8">
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
@@ -669,7 +683,7 @@ export default function UserOnboarding() {
               <Button
                 type="button"
                 variant="outline"
-                className="rounded border-zinc-200 bg-white text-black hover:bg-zinc-100 dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white dark:hover:bg-zinc-900"
+                className="rounded-md border-zinc-200 bg-white text-black hover:bg-zinc-100 dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white dark:hover:bg-zinc-900"
                 onClick={() => {
                   setIsComplete(false);
                   setCurrentStepIndex(0);
@@ -686,10 +700,10 @@ export default function UserOnboarding() {
 
   return (
     <div className="min-h-dvh bg-white text-black transition-colors duration-200 dark:bg-[#0e0e0e] dark:text-white">
-      <div className="sticky top-0 z-40 border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-900 dark:bg-[#0e0e0e]/80">
+      <div className="fixed inset-x-0 top-0 z-40 border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-900 dark:bg-[#0e0e0e]/80">
         <div className="container mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded border border-black/90 bg-white dark:border-white/10 dark:bg-[#0e0e0e]">
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-sm border border-black/90 bg-white dark:border-white/10 dark:bg-[#0e0e0e]">
               <img src={ClearPathLogo} alt="ClearPath" className="h-full w-full object-cover" />
             </div>
             <div>
@@ -702,7 +716,7 @@ export default function UserOnboarding() {
             <Button
               asChild
               variant="outline"
-              className="rounded border-zinc-200 bg-white text-black hover:bg-zinc-100 dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white dark:hover:bg-zinc-900"
+              className="rounded-md border-zinc-200 bg-white text-black hover:bg-zinc-100 dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white dark:hover:bg-zinc-900"
             >
               <Link to="/login">
                 <ArrowLeft className="size-4" />
@@ -713,7 +727,7 @@ export default function UserOnboarding() {
         </div>
       </div>
 
-      <main className="container mx-auto max-w-6xl px-4 py-5 sm:px-6 md:py-6">
+      <main className="container mx-auto max-w-6xl px-4 pb-5 pt-24 sm:px-6 md:pb-6 md:pt-26">
         <div
           className="-mx-4 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0 md:overflow-visible"
           style={{ WebkitOverflowScrolling: "touch" }}
@@ -727,7 +741,7 @@ export default function UserOnboarding() {
                   type="button"
                   onClick={() => setCurrentStepIndex(index)}
                   className={cn(
-                    "flex w-[168px] flex-none min-h-[84px] items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors md:w-auto md:min-h-[92px] md:min-w-0",
+                    "flex w-[168px] flex-none min-h-[84px] items-center gap-3 rounded-md border px-3 py-3 text-left transition-colors md:w-auto md:min-h-[92px] md:min-w-0",
                     status === "current" &&
                       "border-sky-300 bg-[linear-gradient(180deg,rgba(240,249,255,0.96),rgba(236,253,245,0.7))] dark:border-sky-800 dark:bg-[linear-gradient(180deg,rgba(12,74,110,0.18),rgba(6,78,59,0.12))]",
                     status === "complete" &&
@@ -738,7 +752,7 @@ export default function UserOnboarding() {
                 >
                   <div
                     className={cn(
-                      "flex size-8 shrink-0 items-center justify-center rounded border bg-white text-black dark:bg-[#0e0e0e] dark:text-white",
+                      "flex size-8 shrink-0 items-center justify-center rounded-sm border bg-white text-black dark:bg-[#0e0e0e] dark:text-white",
                       status === "current" &&
                         "border-sky-200 bg-sky-100 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300",
                       status === "complete" &&
@@ -765,7 +779,10 @@ export default function UserOnboarding() {
           </div>
         </div>
 
-        <section className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
+        <section
+          ref={formSectionRef}
+          className="mt-4 scroll-mt-24 overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800 md:scroll-mt-28"
+        >
               <div className="border-b border-zinc-200 bg-[linear-gradient(90deg,rgba(240,249,255,0.9),rgba(255,255,255,1),rgba(255,251,235,0.9))] px-5 py-5 dark:border-zinc-800 dark:bg-[linear-gradient(90deg,rgba(8,47,73,0.18),rgba(14,14,14,1),rgba(120,53,15,0.12))] sm:px-8 sm:py-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
@@ -837,7 +854,7 @@ export default function UserOnboarding() {
                         <div className="mt-6">
                           <Button
                             type="button"
-                            className="w-full rounded bg-black text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                            className="w-full rounded-md bg-black text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
                             onClick={handleConnect}
                           >
                             Connect wallet or account
@@ -932,7 +949,7 @@ export default function UserOnboarding() {
                                 type="button"
                                 onClick={() => toggleReason(reason)}
                                 className={cn(
-                                  "rounded-xl border px-4 py-4 text-left transition-colors",
+                                  "rounded-md border px-4 py-4 text-left transition-colors",
                                   active
                                     ? "border-black bg-zinc-50 dark:border-white dark:bg-zinc-900"
                                     : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
@@ -1103,14 +1120,14 @@ export default function UserOnboarding() {
                                 type="button"
                                 onClick={() => updateField("identityMode", mode.id)}
                                 className={cn(
-                                  "rounded-xl border p-4 text-left transition-colors",
+                                  "rounded-md border p-4 text-left transition-colors",
                                   active
                                     ? "border-black bg-zinc-50 dark:border-white dark:bg-zinc-900"
                                     : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
                                 )}
                               >
                                 <div className="flex items-start justify-between gap-3">
-                                  <div className="flex size-10 items-center justify-center rounded border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
+                                  <div className="flex size-10 items-center justify-center rounded-sm border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
                                     <Icon className="size-4" />
                                   </div>
                                   {active ? (
@@ -1152,7 +1169,7 @@ export default function UserOnboarding() {
                                 type="button"
                                 onClick={() => updateField("membershipPlan", plan.id)}
                                 className={cn(
-                                  "rounded-xl border p-4 text-left transition-colors",
+                                  "rounded-md border p-4 text-left transition-colors",
                                   active
                                     ? "border-black bg-zinc-50 dark:border-white dark:bg-zinc-900"
                                     : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
@@ -1160,7 +1177,7 @@ export default function UserOnboarding() {
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="flex items-start gap-3">
-                                    <div className="flex size-10 items-center justify-center rounded border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
+                                    <div className="flex size-10 items-center justify-center rounded-sm border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
                                       <Icon className="size-4" />
                                     </div>
                                     <div>
@@ -1219,13 +1236,13 @@ export default function UserOnboarding() {
                                 type="button"
                                 onClick={() => updateField("recoveryMethod", method.id)}
                                 className={cn(
-                                  "rounded-xl border p-4 text-left transition-colors",
+                                  "rounded-md border p-4 text-left transition-colors",
                                   active
                                     ? "border-black bg-zinc-50 dark:border-white dark:bg-zinc-900"
                                     : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
                                 )}
                               >
-                                <div className="flex size-10 items-center justify-center rounded border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
+                                <div className="flex size-10 items-center justify-center rounded-sm border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
                                   <Icon className="size-4" />
                                 </div>
                                 <p className="mt-4 text-sm font-medium text-black dark:text-white">{method.title}</p>
@@ -1280,7 +1297,7 @@ export default function UserOnboarding() {
 
                         <label
                           htmlFor="terms-accepted"
-                          className="mt-6 flex cursor-pointer items-start gap-4 rounded-xl border border-zinc-200 px-4 py-4 dark:border-zinc-800"
+                          className="mt-6 flex cursor-pointer items-start gap-4 rounded-md border border-zinc-200 px-4 py-4 dark:border-zinc-800"
                         >
                           <Checkbox
                             id="terms-accepted"
@@ -1312,7 +1329,7 @@ export default function UserOnboarding() {
                     <Button
                       type="button"
                       variant="outline"
-                      className="rounded border-zinc-200 bg-white text-black hover:bg-zinc-100 dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white dark:hover:bg-zinc-900"
+                      className="rounded-md border-zinc-200 bg-white text-black hover:bg-zinc-100 dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white dark:hover:bg-zinc-900"
                       onClick={handleBack}
                       disabled={currentStepIndex === 0}
                     >
@@ -1321,7 +1338,7 @@ export default function UserOnboarding() {
                     </Button>
                     <Button
                       type="button"
-                      className="rounded bg-black text-white hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-500 dark:bg-white dark:text-black dark:hover:bg-zinc-200 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-500"
+                      className="rounded-md bg-black text-white hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-500 dark:bg-white dark:text-black dark:hover:bg-zinc-200 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-500"
                       onClick={handleNext}
                       disabled={!canContinue}
                     >
@@ -1334,7 +1351,7 @@ export default function UserOnboarding() {
             </section>
 
           <div className="mt-8 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-zinc-200 px-6 py-5 dark:border-zinc-800">
+            <div className="rounded-lg border border-zinc-200 px-6 py-5 dark:border-zinc-800">
               <p className="text-sm font-medium text-black dark:text-white">Application summary</p>
               <div className="mt-4 divide-y divide-zinc-200 dark:divide-zinc-800">
                 <SummaryRow label="Location" value={form.cityRegion.trim() ? `${form.cityRegion}, ${form.country}` : form.country} />
@@ -1344,7 +1361,7 @@ export default function UserOnboarding() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-zinc-200 px-6 py-5 dark:border-zinc-800">
+            <div className="rounded-lg border border-zinc-200 px-6 py-5 dark:border-zinc-800">
               <p className="text-sm font-medium text-black dark:text-white">What to expect</p>
               <div className="mt-4 space-y-3">
                 {[
@@ -1364,7 +1381,7 @@ export default function UserOnboarding() {
                   const Icon = item.icon;
                   return (
                     <div key={item.text} className="flex items-start gap-3">
-                      <div className="flex size-9 items-center justify-center rounded border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
+                      <div className="flex size-9 items-center justify-center rounded-sm border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
                         <Icon className="size-4" />
                       </div>
                       <p className="text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{item.text}</p>
