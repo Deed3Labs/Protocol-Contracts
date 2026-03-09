@@ -253,37 +253,26 @@ function AppKitThemeSync() {
   return null; // This component doesn't render anything
 }
 
-function AppKitScrollLockGuard() {
+function AppKitScrollLockCleanup() {
   const { open } = useAppKitState();
 
   React.useEffect(() => {
-    if (typeof document === 'undefined' || open) {
+    if (typeof window === 'undefined' || open) {
       return;
     }
 
-    const clearScrollLock = () => {
+    const clearStaleScrollLocks = () => {
       document.head
         .querySelectorAll('style[data-w3m="scroll-lock"]')
         .forEach((node) => node.remove());
-
-      document.body.style.overflow = '';
-      document.body.style.touchAction = '';
-      document.documentElement.style.overflow = '';
-      document.documentElement.style.touchAction = '';
     };
 
-    clearScrollLock();
-
-    const observer = new MutationObserver(() => {
-      clearScrollLock();
-    });
-
-    observer.observe(document.head, { childList: true, subtree: true });
-    observer.observe(document.body, { attributes: true, attributeFilter: ['style'] });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    const frameId = window.requestAnimationFrame(clearStaleScrollLocks);
+    const timeoutId = window.setTimeout(clearStaleScrollLocks, 180);
 
     return () => {
-      observer.disconnect();
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
     };
   }, [open]);
 
@@ -372,7 +361,7 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
     <WagmiProvider config={wagmiAdapter.wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         {isAppKitInitialized && <AppKitThemeSync />}
-        {isAppKitInitialized && <AppKitScrollLockGuard />}
+        {isAppKitInitialized && <AppKitScrollLockCleanup />}
         <AppKitAuthProvider>{children}</AppKitAuthProvider>
       </QueryClientProvider>
     </WagmiProvider>
