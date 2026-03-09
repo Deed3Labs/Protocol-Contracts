@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
+import { useAppKit, useAppKitState } from "@reown/appkit/react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -450,6 +451,8 @@ function FlatOption({
 
 export default function UserOnboarding() {
   const { address, chainId, isConnected, openModal } = useAppKitAuth();
+  const { close } = useAppKit();
+  const { open: isAppKitModalOpen } = useAppKitState();
   const navigate = useNavigate();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
@@ -495,22 +498,42 @@ export default function UserOnboarding() {
   useEffect(() => {
     if (typeof document === "undefined") return;
 
-    const unlockScroll = () => {
+    const clearAppKitScrollLock = () => {
+      const staleScrollLock = document.head.querySelector('style[data-w3m="scroll-lock"]');
+      if (staleScrollLock) {
+        staleScrollLock.remove();
+      }
+    };
+
+    const unlockScroll = async () => {
+      if (isAppKitModalOpen) {
+        try {
+          await close();
+        } catch (error) {
+          console.error("Failed to close AppKit modal on onboarding route:", error);
+        }
+      }
+
+      clearAppKitScrollLock();
       document.body.style.overflow = "";
       document.body.style.touchAction = "";
       document.documentElement.style.overflow = "";
       document.documentElement.style.touchAction = "";
     };
 
-    unlockScroll();
-    const frameId = window.requestAnimationFrame(unlockScroll);
-    const timeoutId = window.setTimeout(unlockScroll, 250);
+    void unlockScroll();
+    const frameId = window.requestAnimationFrame(() => {
+      void unlockScroll();
+    });
+    const timeoutId = window.setTimeout(() => {
+      void unlockScroll();
+    }, 250);
 
     return () => {
       window.cancelAnimationFrame(frameId);
       window.clearTimeout(timeoutId);
     };
-  }, []);
+  }, [close, isAppKitModalOpen]);
 
   const stepValidity = useMemo(() => {
     const hasContact = form.identityMode === "anonymous" || form.email.trim().length > 0;
