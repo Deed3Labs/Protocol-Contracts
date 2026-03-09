@@ -515,7 +515,7 @@ function AccountFocusRailCard({
           <div className="px-3 py-3">
             <RailSectionHeader label="Up next" meta={`${queuedTasks.length} queued`} />
           </div>
-          <div className="divide-y divide-zinc-200/70 dark:divide-zinc-800/70">
+          <div className="border-t border-zinc-200/70 divide-y divide-zinc-200/70 dark:border-zinc-800/70 dark:divide-zinc-800/70">
             {queuedTasks.map((task, index) => {
               const Icon = task.icon;
 
@@ -649,7 +649,7 @@ function AccountBenefitsRailCard({
           <div className="px-3 py-3">
             <RailSectionHeader label="On deck" meta={`${onDeckBenefits.length} pending`} />
           </div>
-          <div className="divide-y divide-zinc-200/70 dark:divide-zinc-800/70">
+          <div className="border-t border-zinc-200/70 divide-y divide-zinc-200/70 dark:border-zinc-800/70 dark:divide-zinc-800/70">
             {onDeckBenefits.map((benefit) => (
               <button
                 key={benefit.id}
