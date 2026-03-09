@@ -492,6 +492,26 @@ export default function UserOnboarding() {
     }
   }, [form.country, form.settlementCurrency]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const unlockScroll = () => {
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
+      document.documentElement.style.overflow = "";
+      document.documentElement.style.touchAction = "";
+    };
+
+    unlockScroll();
+    const frameId = window.requestAnimationFrame(unlockScroll);
+    const timeoutId = window.setTimeout(unlockScroll, 250);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
+
   const stepValidity = useMemo(() => {
     const hasContact = form.identityMode === "anonymous" || form.email.trim().length > 0;
     const hasLegalName = form.identityMode !== "verified" || form.legalName.trim().length > 0;
@@ -707,50 +727,55 @@ export default function UserOnboarding() {
       </div>
 
       <main className="container mx-auto max-w-6xl px-4 py-5 sm:px-6 md:py-6">
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
-          {ONBOARDING_STEPS.map((step, index) => {
-            const status = getStepStatus(index, currentStepIndex);
-            return (
-              <button
-                key={step.id}
-                type="button"
-                onClick={() => setCurrentStepIndex(index)}
-                className={cn(
-                  "flex min-h-[84px] items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors md:min-h-[92px]",
-                  status === "current" &&
-                    "border-sky-300 bg-[linear-gradient(180deg,rgba(240,249,255,0.96),rgba(236,253,245,0.7))] dark:border-sky-800 dark:bg-[linear-gradient(180deg,rgba(12,74,110,0.18),rgba(6,78,59,0.12))]",
-                  status === "complete" &&
-                    "border-emerald-300 bg-emerald-50/80 dark:border-emerald-800 dark:bg-emerald-950/20",
-                  status === "upcoming" &&
-                    "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
-                )}
-              >
-                <div
+        <div
+          className="-mx-4 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0 md:overflow-visible"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
+          <div className="flex min-w-max gap-2 md:grid md:min-w-0 md:grid-cols-4 md:gap-3">
+            {ONBOARDING_STEPS.map((step, index) => {
+              const status = getStepStatus(index, currentStepIndex);
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => setCurrentStepIndex(index)}
                   className={cn(
-                    "flex size-8 shrink-0 items-center justify-center rounded border bg-white text-black dark:bg-[#0e0e0e] dark:text-white",
+                    "flex w-[168px] flex-none min-h-[84px] items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors md:w-auto md:min-h-[92px] md:min-w-0",
                     status === "current" &&
-                      "border-sky-200 bg-sky-100 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300",
+                      "border-sky-300 bg-[linear-gradient(180deg,rgba(240,249,255,0.96),rgba(236,253,245,0.7))] dark:border-sky-800 dark:bg-[linear-gradient(180deg,rgba(12,74,110,0.18),rgba(6,78,59,0.12))]",
                     status === "complete" &&
-                      "border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
-                    status === "upcoming" && "border-zinc-200 dark:border-zinc-800"
+                      "border-emerald-300 bg-emerald-50/80 dark:border-emerald-800 dark:bg-emerald-950/20",
+                    status === "upcoming" &&
+                      "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
                   )}
                 >
-                  <step.icon className="size-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
-                    {step.label}
-                  </p>
-                  <p className="mt-1 text-sm font-medium leading-snug text-black dark:text-white sm:hidden">
-                    {COMPACT_STEP_TITLES[step.id]}
-                  </p>
-                  <p className="mt-1 hidden text-sm font-medium leading-snug text-black dark:text-white sm:block">
-                    {step.title}
-                  </p>
-                </div>
-              </button>
-            );
-          })}
+                  <div
+                    className={cn(
+                      "flex size-8 shrink-0 items-center justify-center rounded border bg-white text-black dark:bg-[#0e0e0e] dark:text-white",
+                      status === "current" &&
+                        "border-sky-200 bg-sky-100 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300",
+                      status === "complete" &&
+                        "border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
+                      status === "upcoming" && "border-zinc-200 dark:border-zinc-800"
+                    )}
+                  >
+                    <step.icon className="size-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
+                      {step.label}
+                    </p>
+                    <p className="mt-1 text-sm font-medium leading-snug text-black dark:text-white sm:hidden">
+                      {COMPACT_STEP_TITLES[step.id]}
+                    </p>
+                    <p className="mt-1 hidden text-sm font-medium leading-snug text-black dark:text-white sm:block">
+                      {step.title}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <section className="mt-4 overflow-hidden rounded-[28px] border border-zinc-200 dark:border-zinc-800">
