@@ -12,7 +12,6 @@ import {
   Crown,
   Edit3,
   FileText,
-  Flame,
   Gift,
   Globe,
   Info,
@@ -134,13 +133,6 @@ interface AccountPerk {
   requirement: string;
   tone: Tone;
   tab: AccountTab;
-}
-
-interface AccountPulseDay {
-  date: Date;
-  active: boolean;
-  points: number;
-  isPast: boolean;
 }
 
 interface AccountSetupTask {
@@ -307,40 +299,6 @@ const ACCOUNT_TAB_BUTTON_SECONDARY_CLASS =
 const ACCOUNT_TAB_BUTTON_SUCCESS_CLASS =
   'h-[34px] rounded-full border-zinc-200 bg-emerald-500/10 text-emerald-700 font-normal shadow-none hover:bg-emerald-500/15 dark:border-zinc-800 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/15';
 
-const startOfDay = (date: Date) => {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-};
-
-const formatDateShort = (date: Date) =>
-  date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-function generateAccountPulseHeatmap(today: Date, seed: number, checkedInToday: boolean): AccountPulseDay[][] {
-  const todayStart = startOfDay(today);
-  const weeks: AccountPulseDay[][] = [];
-
-  for (let w = 3; w >= 0; w -= 1) {
-    const week: AccountPulseDay[] = [];
-
-    for (let d = 0; d < 7; d += 1) {
-      const date = new Date(todayStart);
-      date.setDate(date.getDate() - (w * 7 + (6 - d)));
-      const isPast = date <= todayStart;
-      const score = ((w + 1) * 71 + (d + 1) * 29 + seed * 17) % 100;
-      const isToday = date.getTime() === todayStart.getTime();
-      const active = isPast && (isToday ? checkedInToday : score > 32);
-      const points = active ? 10 + ((score * 7) % 24) : 0;
-
-      week.push({ date, active, points, isPast });
-    }
-
-    weeks.push(week);
-  }
-
-  return weeks;
-}
-
 function SectionPanel({
   title,
   eyebrow,
@@ -419,130 +377,136 @@ function MissionRail({ item, onOpen }: { item: MissionRailItem; onOpen: (tab: Ac
 }
 
 function AccountFocusRailCard({
+  tasks,
   currentTask,
   queuedTasks,
+  completedTaskCount,
   levelLabel,
   levelNumber,
   levelProgress,
   accountXp,
   pointsToNextLevel,
-  accountStreak,
-  checkedInToday,
-  onCheckIn,
   rewardPoints,
-  momentumDays,
   onOpen,
 }: {
+  tasks: AccountSetupTask[];
   currentTask: AccountSetupTask | null;
   queuedTasks: AccountSetupTask[];
+  completedTaskCount: number;
   levelLabel: string;
   levelNumber: number;
   levelProgress: number;
   accountXp: number;
   pointsToNextLevel: number;
-  accountStreak: number;
-  checkedInToday: boolean;
-  onCheckIn: () => void;
   rewardPoints: number;
-  momentumDays: AccountPulseDay[];
   onOpen: (tab: AccountTab) => void;
 }) {
+  const totalTaskCount = tasks.length;
+  const openTaskCount = Math.max(totalTaskCount - completedTaskCount, 0);
+  const railState = totalTaskCount === 0 ? 'awaiting' : openTaskCount === 0 ? 'complete' : 'active';
+
   return (
     <section className="rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#141414]">
       <div className="px-3 py-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Current focus</p>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Setup queue</p>
             <p className="mt-1 text-sm font-medium text-black dark:text-white">
-              {currentTask ? currentTask.title : 'Account setup complete'}
+              {railState === 'active'
+                ? `${openTaskCount} open task${openTaskCount === 1 ? '' : 's'}`
+                : railState === 'complete'
+                  ? 'All setup tasks complete'
+                  : 'Awaiting new tasks'}
             </p>
           </div>
-          {currentTask ? (
-            <button
-              type="button"
-              onClick={() => onOpen(currentTask.tab)}
-              className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-500 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-            >
-              Open
-              <ArrowUpRight className="h-3.5 w-3.5" />
-            </button>
-          ) : null}
-        </div>
-
-        <p className="mt-3 text-[13px] leading-6 text-zinc-600 dark:text-zinc-300">
-          {currentTask
-            ? currentTask.detail
-            : 'Everything critical is configured. Review connected accounts, exports, and protections whenever you need to.'}
-        </p>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">
-          <span>{levelLabel} Lv.{levelNumber}</span>
-          <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-          <span>{accountXp} XP</span>
-          <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-          <span>{rewardPoints} pts</span>
-          {currentTask ? (
-            <>
-              <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-              <span>+{currentTask.rewardXp} XP</span>
-            </>
-          ) : null}
-        </div>
-
-        <div className="mt-3">
-          <div className="mb-1 flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400">
-            <span>{currentTask ? currentTask.progressLabel : 'All tasks complete'}</span>
-            <span>{pointsToNextLevel === 0 ? 'Max tier' : `${pointsToNextLevel} XP left`}</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 transition-all"
-              style={{ width: `${currentTask ? currentTask.progress : levelProgress}%` }}
-            />
+          <div className="text-right text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+            <p>{totalTaskCount > 0 ? `${completedTaskCount}/${totalTaskCount} done` : 'No tasks'}</p>
+            <p className="mt-1">{rewardPoints} pts</p>
           </div>
         </div>
       </div>
 
-      <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Session streak</p>
-            <div className="mt-2 grid grid-cols-7 gap-1">
-              {momentumDays.map((day, index) => (
-                <div
-                  key={`${day.date.toISOString()}-${index}`}
-                  className={cn(
-                    'h-6 rounded-sm border border-zinc-200/80 dark:border-zinc-800',
-                    day.active ? 'bg-emerald-500/85 dark:bg-emerald-500/75' : 'bg-zinc-100 dark:bg-[#111111]'
-                  )}
-                  title={day.active ? `${formatDateShort(day.date)} · active` : `${formatDateShort(day.date)} · inactive`}
-                />
-              ))}
-            </div>
-            <p className="mt-2 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">
-              {accountStreak}-day streak. Check in to keep momentum while you finish setup.
-            </p>
-          </div>
-
+      <div className="border-y border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
+        {railState === 'active' && currentTask ? (
           <button
             type="button"
-            onClick={onCheckIn}
-            disabled={checkedInToday}
-            className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-3.5 text-sm font-medium text-white transition-colors hover:bg-zinc-900/90 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-100/90"
+            onClick={() => onOpen(currentTask.tab)}
+            className="group block w-full rounded-sm border border-zinc-200/80 px-3 py-3 text-left transition-colors hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:bg-[#111111]"
           >
-            <Flame className="h-4 w-4" />
-            {checkedInToday ? 'Checked in' : 'Check in'}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Current task</p>
+                <p className="mt-2 text-sm font-medium text-black dark:text-white">{currentTask.title}</p>
+              </div>
+              <div className={cn('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border', toneClasses[currentTask.completed ? 'emerald' : 'sky'])}>
+                <currentTask.icon className="h-4 w-4" />
+              </div>
+            </div>
+            <p className="mt-2 text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">{currentTask.detail}</p>
+            <div className="mt-3 flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">
+              <span>{currentTask.progressLabel}</span>
+              <span>+{currentTask.rewardXp} XP</span>
+            </div>
+            <div className="mt-2 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 transition-all"
+                style={{ width: `${currentTask.progress}%` }}
+              />
+            </div>
+            <div className="mt-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-500 transition-colors group-hover:text-zinc-800 dark:text-zinc-400 dark:group-hover:text-zinc-200">
+              Open {ACCOUNT_TAB_LABELS[currentTask.tab]}
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </div>
           </button>
+        ) : railState === 'complete' ? (
+          <div className="rounded-sm border border-emerald-200 bg-emerald-50/70 px-3 py-3 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+            <div className="flex items-start gap-3">
+              <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border', toneClasses.emerald)}>
+                <ShieldCheck className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-black dark:text-white">Setup complete</p>
+                <p className="mt-1 text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">
+                  Your profile, linked accounts, protections, and recovery details are in place. Check back here when new account tasks are available.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-sm border border-dashed border-zinc-200 px-3 py-3 dark:border-zinc-800">
+            <p className="text-sm font-medium text-black dark:text-white">No setup tasks assigned</p>
+            <p className="mt-1 text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">
+              New setup items will appear here when your account needs attention or new requirements are added.
+            </p>
+          </div>
+        )}
+
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">Open</p>
+            <p className="mt-1 text-sm font-medium text-black dark:text-white">{openTaskCount}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">Done</p>
+            <p className="mt-1 text-sm font-medium text-black dark:text-white">{completedTaskCount}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">Points</p>
+            <p className="mt-1 text-sm font-medium text-black dark:text-white">{rewardPoints}</p>
+          </div>
         </div>
       </div>
 
-      {queuedTasks.length > 0 ? (
+      {railState === 'active' && queuedTasks.length > 0 ? (
         <div className="border-t border-zinc-200/70 dark:border-zinc-800/70">
           <div className="px-3 py-3">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Queue</p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Up next</p>
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{queuedTasks.length} queued</p>
+            </div>
           </div>
           <div className="divide-y divide-zinc-200/70 dark:divide-zinc-800/70">
-            {queuedTasks.map((task) => {
+            {queuedTasks.map((task, index) => {
               const Icon = task.icon;
 
               return (
@@ -550,26 +514,48 @@ function AccountFocusRailCard({
                   key={task.id}
                   type="button"
                   onClick={() => onOpen(task.tab)}
-                  className="group flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-[#111111]"
+                  className="group grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-[#111111]"
                 >
-                  <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border', task.completed ? toneClasses.emerald : toneClasses.zinc)}>
-                    <Icon className="h-4 w-4" />
-                  </div>
+                  <span className="pt-0.5 text-[11px] font-medium text-zinc-400 dark:text-zinc-500">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-[12px] font-medium text-black dark:text-white">{task.title}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-[12px] font-medium text-black dark:text-white">{task.title}</p>
+                          <div className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border', task.completed ? toneClasses.emerald : toneClasses.zinc)}>
+                            <Icon className="h-3 w-3" />
+                          </div>
+                        </div>
                         <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{task.progressLabel}</p>
                       </div>
-                      <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
                     </div>
                   </div>
+                  <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
                 </button>
               );
             })}
           </div>
         </div>
       ) : null}
+
+      <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
+        <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+          <span>{levelLabel} Lv.{levelNumber}</span>
+          <span>{accountXp} XP</span>
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-zinc-500 dark:text-zinc-400">
+          <span>{pointsToNextLevel === 0 ? 'Top tier reached' : `${pointsToNextLevel} XP to next level`}</span>
+          <span>{totalTaskCount > 0 ? `${completedTaskCount}/${totalTaskCount} complete` : 'Waiting'}</span>
+        </div>
+        <div className="mt-2 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 transition-all"
+            style={{ width: `${levelProgress}%` }}
+          />
+        </div>
+      </div>
     </section>
   );
 }
@@ -700,9 +686,6 @@ export default function AccountHome() {
   const [editingSocialId, setEditingSocialId] = useState<string | null>(null);
   const [socialDraft, setSocialDraft] = useState<SocialDraft>(BLANK_SOCIAL_DRAFT);
   const [refreshingBanks, setRefreshingBanks] = useState(false);
-  const [accountStreak, setAccountStreak] = useState(14);
-  const [checkedInToday, setCheckedInToday] = useState(false);
-  const [rewardPoints, setRewardPoints] = useState(320);
 
   const initialProfileForm = useMemo<ProfileFormState>(
     () => ({
@@ -846,21 +829,6 @@ export default function AccountHome() {
   );
 
   const accountSurfaceCount = wallets.length + socialAccounts.length + bankAccounts.length;
-  const accountXp =
-    profileCompletion * 9 +
-    securityEnabledCount * 50 +
-    Math.min(accountStreak * 12, 240) +
-    socialAccounts.length * 40 +
-    bankAccounts.length * 50;
-  const levelIndex = LEVELS.findIndex((level) => accountXp >= level.min && accountXp <= level.max);
-  const currentLevel = LEVELS[levelIndex >= 0 ? levelIndex : 0];
-  const nextLevel = LEVELS[Math.min((levelIndex >= 0 ? levelIndex : 0) + 1, LEVELS.length - 1)];
-  const levelFloor = currentLevel.min;
-  const levelCeiling = currentLevel.max;
-  const levelProgress = currentLevel.label === nextLevel.label
-    ? 100
-    : clampPercent(((accountXp - levelFloor) / (levelCeiling - levelFloor + 1)) * 100);
-  const pointsToNextLevel = currentLevel.label === nextLevel.label ? 0 : Math.max(nextLevel.min - accountXp, 0);
 
   const missionTrack = useMemo<MissionRailItem[]>(
     () => [
@@ -974,6 +942,7 @@ export default function AccountHome() {
     ],
     [bankAccounts.length, profileProgress, profileSavedAt, securityEnabledCount, socialAccounts.length, wallets.length]
   );
+  const unlockedAchievementCount = accountAchievements.filter((achievement) => achievement.unlocked).length;
 
   const accountPerks = useMemo<AccountPerk[]>(
     () => [
@@ -1010,12 +979,7 @@ export default function AccountHome() {
     ],
     [profileCompletion, profileForm.email, profileForm.phone, securityEnabledCount, socialAccounts.length, wallets.length]
   );
-
-  const accountPulseWeeks = useMemo(
-    () => generateAccountPulseHeatmap(new Date(), rewardPoints + profileCompletion + securityScore + accountStreak, checkedInToday),
-    [accountStreak, checkedInToday, profileCompletion, rewardPoints, securityScore]
-  );
-  const momentumDays = useMemo(() => accountPulseWeeks.flat().slice(-7), [accountPulseWeeks]);
+  const unlockedPerkCount = accountPerks.filter((perk) => perk.unlocked).length;
 
   const accountSetupTasks = useMemo<AccountSetupTask[]>(
     () => {
@@ -1075,6 +1039,7 @@ export default function AccountHome() {
     },
     [connectionProgress, linkedAccountGroupCount, profileFieldsComplete, profileProgress, securityEnabledCount, supportChecklistCount, supportProgress]
   );
+  const completedTaskCount = accountSetupTasks.filter((task) => task.completed).length;
 
   const nextUnlock = useMemo<AccountNextUnlock | null>(() => {
     const lockedPerk = accountPerks.find((perk) => !perk.unlocked);
@@ -1108,6 +1073,28 @@ export default function AccountHome() {
 
   const focusTask = accountSetupTasks.find((task) => !task.completed) ?? accountSetupTasks[0] ?? null;
   const queuedTasks = accountSetupTasks.filter((task) => focusTask ? task.id !== focusTask.id : true).slice(0, 2);
+  const rewardPoints =
+    completedTaskCount * 110 +
+    unlockedAchievementCount * 45 +
+    unlockedPerkCount * 55 +
+    Number(profileSavedAt !== 'Not saved yet') * 30;
+  const accountXp =
+    profileCompletion * 9 +
+    securityEnabledCount * 50 +
+    completedTaskCount * 150 +
+    unlockedAchievementCount * 40 +
+    unlockedPerkCount * 45 +
+    linkedAccountGroupCount * 45 +
+    Number(profileSavedAt !== 'Not saved yet') * 35;
+  const levelIndex = LEVELS.findIndex((level) => accountXp >= level.min && accountXp <= level.max);
+  const currentLevel = LEVELS[levelIndex >= 0 ? levelIndex : 0];
+  const nextLevel = LEVELS[Math.min((levelIndex >= 0 ? levelIndex : 0) + 1, LEVELS.length - 1)];
+  const levelFloor = currentLevel.min;
+  const levelCeiling = currentLevel.max;
+  const levelProgress = currentLevel.label === nextLevel.label
+    ? 100
+    : clampPercent(((accountXp - levelFloor) / (levelCeiling - levelFloor + 1)) * 100);
+  const pointsToNextLevel = currentLevel.label === nextLevel.label ? 0 : Math.max(nextLevel.min - accountXp, 0);
 
   const accountBenefits = useMemo<AccountBenefitItem[]>(
     () => [
@@ -1140,8 +1127,6 @@ export default function AccountHome() {
     .filter((benefit) => !benefit.live && benefit.id !== nextUnlock?.id)
     .slice(0, 2);
 
-  const unlockedAchievementCount = accountAchievements.filter((achievement) => achievement.unlocked).length;
-
   const handleTabOpen = (tab: AccountTab) => setSearchParams({ tab });
   const handleHeroAction = (tab: AccountTab) => {
     setSearchParams({ tab });
@@ -1168,18 +1153,6 @@ export default function AccountHome() {
       console.error('Failed to copy wallet address:', error);
       setBannerMessage('Clipboard access was blocked in this environment.');
     }
-  };
-
-  const handleAccountPulse = () => {
-    if (checkedInToday) {
-      setBannerMessage('Daily account pulse already logged.');
-      return;
-    }
-
-    setCheckedInToday(true);
-    setAccountStreak((current) => current + 1);
-    setRewardPoints((current) => current + 25);
-    setBannerMessage('Daily account pulse logged. +25 reward points.');
   };
 
   const openWalletDialog = (wallet?: WalletRecord) => {
@@ -1809,18 +1782,16 @@ export default function AccountHome() {
           <div className="space-y-8 md:col-span-4">
             <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.08 }}>
               <AccountFocusRailCard
+                tasks={accountSetupTasks}
                 currentTask={focusTask}
                 queuedTasks={queuedTasks}
+                completedTaskCount={completedTaskCount}
                 levelLabel={currentLevel.label}
                 levelNumber={Math.min(levelIndex + 1, LEVELS.length)}
                 levelProgress={levelProgress}
                 accountXp={accountXp}
                 pointsToNextLevel={pointsToNextLevel}
-                accountStreak={accountStreak}
-                checkedInToday={checkedInToday}
-                onCheckIn={handleAccountPulse}
                 rewardPoints={rewardPoints}
-                momentumDays={momentumDays}
                 onOpen={handleHeroAction}
               />
             </motion.div>
