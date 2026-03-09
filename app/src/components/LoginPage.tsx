@@ -214,6 +214,13 @@ export default function LoginPage() {
                     <span>Connect Wallet</span>
                     <ArrowUpRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
                   </motion.button>
+
+                  <button
+                    onClick={() => navigate('/onboarding')}
+                    className="w-full rounded-full border border-zinc-700/80 bg-transparent px-6 py-3 text-sm font-normal text-white transition-colors hover:bg-zinc-900/70"
+                  >
+                    Preview onboarding
+                  </button>
                 </div>
 
                 {/* Footer */}
