@@ -486,6 +486,20 @@ export default function UserOnboarding() {
   const chainLabel = chainId ? NETWORK_LABELS[chainId] ?? `Chain ${chainId}` : "Choose a network after connecting";
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    document.documentElement.classList.add("onboarding-scroll-enabled");
+    document.body.classList.add("onboarding-scroll-enabled");
+
+    return () => {
+      document.documentElement.classList.remove("onboarding-scroll-enabled");
+      document.body.classList.remove("onboarding-scroll-enabled");
+    };
+  }, []);
+
+  useEffect(() => {
     const nextCurrency = CURRENCY_BY_COUNTRY[form.country] ?? "USD";
     if (form.settlementCurrency !== nextCurrency) {
       setForm((prev) => ({ ...prev, settlementCurrency: nextCurrency }));
@@ -694,13 +708,6 @@ export default function UserOnboarding() {
                 <ArrowLeft className="size-4" />
                 Back
               </Link>
-            </Button>
-            <Button
-              type="button"
-              className="rounded bg-black px-4 py-2 text-sm font-normal text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-              onClick={handleConnect}
-            >
-              {isConnected ? "Connected" : "Connect"}
             </Button>
           </div>
         </div>
