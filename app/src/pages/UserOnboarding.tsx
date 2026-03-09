@@ -120,7 +120,7 @@ const ONBOARDING_STEPS: StepDefinition[] = [
     id: "access",
     label: "Step 1",
     title: "Connect Wallet / Create Account",
-    description: "Choose the entry path and how much identity the user wants to share at signup.",
+    description: "Choose how you want to get started and how much you'd like to share today.",
     icon: Wallet,
   },
   {
@@ -134,14 +134,14 @@ const ONBOARDING_STEPS: StepDefinition[] = [
     id: "profile",
     label: "Step 3",
     title: "Profile Information",
-    description: "Collect username, contact details, residency, and a settlement currency derived from location.",
+    description: "Add your profile details, residency, and preferred settlement currency.",
     icon: UserRound,
   },
   {
     id: "setup",
     label: "Step 4",
     title: "Account Setup",
-    description: "Let users choose privacy posture, membership plan, and security preferences.",
+    description: "Choose your privacy level, membership, and account preferences.",
     icon: Crown,
   },
 ];
@@ -158,7 +158,7 @@ const ACCESS_TRACKS: AccessTrack[] = [
     id: "wallet",
     title: "Wallet first",
     description: "Connect an existing wallet and keep the first session lightweight.",
-    detail: "Best for self-custody users who want to explore and finish identity checks later.",
+    detail: "Ideal if you want to explore first and finish the rest of your setup later.",
     badge: "No KYC at signup",
     accountMethod: "wallet",
     identityMode: "anonymous",
@@ -167,8 +167,8 @@ const ACCESS_TRACKS: AccessTrack[] = [
   {
     id: "hybrid",
     title: "Create a Clear account",
-    description: "Use AppKit login with a privacy-first profile and unlock more product depth later.",
-    detail: "Good default for a fintech-style onboarding path without forcing full KYC on day one.",
+    description: "Sign in with an account-first path and add more details as you go.",
+    detail: "A balanced option if you want a smoother setup without doing everything up front.",
     badge: "Recommended",
     accountMethod: "appkit-account",
     identityMode: "privacy",
@@ -178,7 +178,7 @@ const ACCESS_TRACKS: AccessTrack[] = [
     id: "verified",
     title: "Full membership path",
     description: "Prepare for virtual accounts, spend features, and higher limits with a verified profile.",
-    detail: "For users who already know they want card, fiat, and local investment features.",
+    detail: "Best if you already know you want card access, local investing, and expanded account features.",
     badge: "Expanded access",
     accountMethod: "wallet",
     identityMode: "verified",
@@ -256,7 +256,7 @@ const IDENTITY_MODES: IdentityModeOption[] = [
     id: "privacy",
     title: "Privacy-first",
     summary: "Collect contact details now and defer deeper checks.",
-    detail: "A middle path for members who want personalization without a full KYC wall at signup.",
+    detail: "A middle path if you want a more tailored experience without completing everything today.",
     icon: LockKeyhole,
     unlocks: [
       "Invite + referral tracking",
@@ -268,10 +268,10 @@ const IDENTITY_MODES: IdentityModeOption[] = [
     id: "verified",
     title: "Verified member",
     summary: "Prepare the account for higher limits and fiat-linked features.",
-    detail: "Best when the user expects a spend card, local investing access, or higher transaction limits.",
+    detail: "Best if you expect card access, local investing, or higher transaction limits.",
     icon: IdCard,
     unlocks: [
-      "Priority activation when KYC launches",
+      "Priority access to expanded features",
       "Higher future limits",
       "Expanded account access",
     ],
@@ -283,11 +283,11 @@ const MEMBERSHIP_PLANS: MembershipPlan[] = [
     id: "yearly",
     title: "Yearly membership",
     cadence: "Recurring annual plan",
-    summary: "Best for users who want flexibility while Clear continues expanding into new regions and products.",
+    summary: "A flexible option if you want annual access and the ability to revisit your plan over time.",
     badge: "Flexible",
     icon: CalendarDays,
     perks: [
-      "Annual membership registry renewal",
+      "Annual membership renewal",
       "Access to virtual accounts and card waitlists",
       "Member pricing on future launches",
       "Quarterly community updates",
@@ -297,11 +297,11 @@ const MEMBERSHIP_PLANS: MembershipPlan[] = [
     id: "lifetime",
     title: "Lifetime membership",
     cadence: "One-time access",
-    summary: "A founder-style plan for users who want permanent access and priority on new product rails.",
+    summary: "A long-term option for members who want permanent access and priority on new releases.",
     badge: "Founding tier",
     icon: Gem,
     perks: [
-      "Permanent membership registry access",
+      "Lifetime access with no annual renewal",
       "Priority for new city rollouts and local pools",
       "Higher-touch concierge onboarding when live",
       "Founder badge and long-term fee preference",
@@ -404,13 +404,20 @@ function FlatOption({
       className={cn(
         "w-full rounded-2xl border p-4 text-left transition-colors",
         active
-          ? "border-black dark:border-white bg-zinc-50 dark:bg-zinc-900"
+          ? "border-sky-300 bg-[linear-gradient(180deg,rgba(240,249,255,0.96),rgba(236,253,245,0.7))] dark:border-sky-800 dark:bg-[linear-gradient(180deg,rgba(12,74,110,0.18),rgba(6,78,59,0.12))]"
           : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
       )}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
+          <div
+            className={cn(
+              "flex size-10 shrink-0 items-center justify-center rounded border bg-white text-black dark:bg-[#0e0e0e] dark:text-white",
+              active
+                ? "border-sky-200 bg-sky-100 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
+                : "border-zinc-200 dark:border-zinc-800"
+            )}
+          >
             <Icon className="size-4" />
           </div>
           <div className="min-w-0">
@@ -476,7 +483,7 @@ export default function UserOnboarding() {
     IDENTITY_MODES.find((mode) => mode.id === form.identityMode) ?? IDENTITY_MODES[1];
   const selectedMembership =
     MEMBERSHIP_PLANS.find((plan) => plan.id === form.membershipPlan) ?? MEMBERSHIP_PLANS[0];
-  const chainLabel = chainId ? NETWORK_LABELS[chainId] ?? `Chain ${chainId}` : "AppKit network pending";
+  const chainLabel = chainId ? NETWORK_LABELS[chainId] ?? `Chain ${chainId}` : "Choose a network after connecting";
 
   useEffect(() => {
     const nextCurrency = CURRENCY_BY_COUNTRY[form.country] ?? "USD";
@@ -514,7 +521,7 @@ export default function UserOnboarding() {
 
   const helperCopy = useMemo(() => {
     if (canContinue) return "Ready to continue.";
-    if (currentStep.id === "access") return "Choose the path this user should start with.";
+    if (currentStep.id === "access") return "Choose how you'd like to get started.";
     if (currentStep.id === "discovery") {
       return "Select a referral source, a primary income source, and at least one reason for joining.";
     }
@@ -598,10 +605,10 @@ export default function UserOnboarding() {
             <div>
               <p className="text-sm font-medium text-zinc-500 dark:text-zinc-500">User onboarding</p>
               <h1 className="mt-2 text-3xl font-light tracking-tight text-black dark:text-white sm:text-4xl">
-                The flow is in place and ready to wire into AppKit, registry writes, and real account rules.
+                You're ready to continue with your Clear onboarding.
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
-                This is still a UI-only surface, but the structure now supports wallet-first onboarding, privacy-first signup, and a verified member path without changing the layout later.
+                Review your selections below, make any updates you want, and head back when you're ready to continue.
               </p>
             </div>
 
@@ -624,13 +631,13 @@ export default function UserOnboarding() {
 
                 <div className="border-t border-zinc-200 px-6 py-6 dark:border-zinc-800 md:border-t-0 md:border-l sm:px-8">
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
-                    Next functional wiring
+                    Next steps
                   </p>
                   <div className="mt-4 divide-y divide-zinc-200 dark:divide-zinc-800">
                     {[
-                      "Persist onboarding answers to the membership registry",
-                      "Branch real feature access by identity posture and membership plan",
-                      "Use AppKit connection state to auto-advance wallet setup",
+                      "Connect your wallet or account to keep moving",
+                      "Confirm your profile and membership choices",
+                      "Unlock more features as your account setup is completed",
                     ].map((item) => (
                       <div key={item} className="flex items-start gap-3 py-3">
                         <div className="mt-0.5 flex size-5 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-900">
@@ -700,24 +707,8 @@ export default function UserOnboarding() {
       </div>
 
       <main className="container mx-auto max-w-6xl px-4 py-5 sm:px-6 md:py-6">
-        <div className="flex flex-wrap gap-2">
-          {[
-            `Access: ${selectedTrack.title}`,
-            `Wallet: ${isConnected ? truncateAddress(address) : "Connect later"}`,
-            `Identity: ${selectedIdentity.title}`,
-            `Membership: ${selectedMembership.title}`,
-          ].map((item) => (
-            <span
-              key={item}
-              className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
-            >
-              {item}
-            </span>
-          ))}
-        </div>
-
-        <div className="mt-4 overflow-x-auto pb-1">
-          <div className="flex min-w-max gap-2">
+        <div className="overflow-x-auto pb-1">
+          <div className="flex min-w-max gap-2 md:grid md:min-w-0 md:grid-cols-4">
             {ONBOARDING_STEPS.map((step, index) => {
               const status = getStepStatus(index, currentStepIndex);
               return (
@@ -726,16 +717,25 @@ export default function UserOnboarding() {
                   type="button"
                   onClick={() => setCurrentStepIndex(index)}
                   className={cn(
-                    "flex min-w-[138px] items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors sm:min-w-[164px]",
+                    "flex w-[168px] flex-none items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors md:w-auto md:min-w-0 md:min-h-[92px]",
                     status === "current" &&
-                      "border-black bg-zinc-50 dark:border-white dark:bg-zinc-900",
+                      "border-sky-300 bg-[linear-gradient(180deg,rgba(240,249,255,0.96),rgba(236,253,245,0.7))] dark:border-sky-800 dark:bg-[linear-gradient(180deg,rgba(12,74,110,0.18),rgba(6,78,59,0.12))]",
                     status === "complete" &&
-                      "border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/70",
+                      "border-emerald-300 bg-emerald-50/80 dark:border-emerald-800 dark:bg-emerald-950/20",
                     status === "upcoming" &&
                       "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
                   )}
                 >
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
+                  <div
+                    className={cn(
+                      "flex size-8 shrink-0 items-center justify-center rounded border bg-white text-black dark:bg-[#0e0e0e] dark:text-white",
+                      status === "current" &&
+                        "border-sky-200 bg-sky-100 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300",
+                      status === "complete" &&
+                        "border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
+                      status === "upcoming" && "border-zinc-200 dark:border-zinc-800"
+                    )}
+                  >
                     <step.icon className="size-3.5" />
                   </div>
                   <div className="min-w-0">
@@ -755,8 +755,8 @@ export default function UserOnboarding() {
           </div>
         </div>
 
-        <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 dark:border-zinc-800">
-              <div className="border-b border-zinc-200 px-5 py-5 dark:border-zinc-800 sm:px-8 sm:py-6">
+        <section className="mt-4 overflow-hidden rounded-[28px] border border-zinc-200 dark:border-zinc-800">
+              <div className="border-b border-zinc-200 bg-[linear-gradient(90deg,rgba(240,249,255,0.9),rgba(255,255,255,1),rgba(255,251,235,0.9))] px-5 py-5 dark:border-zinc-800 dark:bg-[linear-gradient(90deg,rgba(8,47,73,0.18),rgba(14,14,14,1),rgba(120,53,15,0.12))] sm:px-8 sm:py-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
@@ -803,7 +803,7 @@ export default function UserOnboarding() {
                         <div className="mt-4 divide-y divide-zinc-200 dark:divide-zinc-800">
                           <SummaryRow
                             label="Wallet"
-                            value={isConnected ? truncateAddress(address) : "Connect later"}
+                            value={isConnected ? truncateAddress(address) : "Not connected yet"}
                           />
                           <SummaryRow label="Network" value={chainLabel} />
                           <SummaryRow label="Mode" value={selectedTrack.title} />
@@ -811,9 +811,9 @@ export default function UserOnboarding() {
 
                         <div className="mt-6 space-y-3">
                           {[
-                            "Use AppKit for wallet or embedded account entry",
-                            "Reserve a membership record later via smart contract",
-                            "Branch KYC and entitlements by selected path",
+                            "Choose a wallet or account sign-in that fits your setup",
+                            "Start with a lighter profile and add more details later if you want",
+                            "Unlock more features as your membership and profile are completed",
                           ].map((item) => (
                             <div key={item} className="flex items-start gap-3 py-2">
                               <div className="mt-0.5 flex size-5 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-900">
@@ -830,7 +830,7 @@ export default function UserOnboarding() {
                             className="w-full rounded bg-black text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
                             onClick={handleConnect}
                           >
-                            Connect with AppKit
+                            Connect wallet or account
                           </Button>
                         </div>
                       </div>
@@ -905,7 +905,7 @@ export default function UserOnboarding() {
                               Reasons for joining Clear
                             </p>
                             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                              Use product intent to decide what the first dashboard emphasizes.
+                              Tell us what matters most so we can personalize your first experience.
                             </p>
                           </div>
                           <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
@@ -1081,7 +1081,7 @@ export default function UserOnboarding() {
                       <div>
                         <p className="text-sm font-medium text-black dark:text-white">Identity posture</p>
                         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                          Make the anonymous, privacy-first, and verified paths explicit so users know what they are opting into.
+                          Choose the level of privacy and access that feels right for you today.
                         </p>
                         <div className="mt-4 grid gap-3 lg:grid-cols-3">
                           {IDENTITY_MODES.map((mode) => {
@@ -1130,7 +1130,7 @@ export default function UserOnboarding() {
                       <div className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
                         <p className="text-sm font-medium text-black dark:text-white">Membership</p>
                         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                          Offer yearly and lifetime side by side, with a clean breakdown of what changes between them.
+                          Compare yearly and lifetime membership so you can choose the plan that fits best.
                         </p>
                         <div className="mt-4 grid gap-4 lg:grid-cols-2">
                           {MEMBERSHIP_PLANS.map((plan) => {
@@ -1238,7 +1238,7 @@ export default function UserOnboarding() {
                               id: "card-waitlist",
                               checked: form.cardWaitlist,
                               label: "Join the Equity Credit (spend) Card waitlist",
-                              detail: "Keep this on if the user cares about future card access.",
+                              detail: "Turn this on if you'd like early access when card features become available.",
                               onChange: (checked: boolean) => updateField("cardWaitlist", checked),
                             },
                             {
@@ -1278,15 +1278,15 @@ export default function UserOnboarding() {
                             onCheckedChange={(checked) => updateField("termsAccepted", checked === true)}
                             className="mt-1 border-zinc-300 data-[state=checked]:border-black data-[state=checked]:bg-black data-[state=checked]:text-white dark:border-zinc-700 dark:data-[state=checked]:border-white dark:data-[state=checked]:bg-white dark:data-[state=checked]:text-black"
                           />
-                          <div>
-                            <p className="text-sm font-medium text-black dark:text-white">
-                              Accept membership terms and future registry activation
-                            </p>
-                            <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                              Placeholder UI copy for the membership agreement, disclosures, and future smart-contract authorization.
-                            </p>
-                          </div>
-                        </label>
+                            <div>
+                              <p className="text-sm font-medium text-black dark:text-white">
+                              Accept membership terms
+                              </p>
+                              <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                              By continuing, you agree to Clear's membership terms, disclosures, and account setup requirements.
+                              </p>
+                            </div>
+                          </label>
                       </div>
                     </div>
                   ) : null}
@@ -1325,7 +1325,7 @@ export default function UserOnboarding() {
 
           <div className="mt-8 grid gap-4 lg:grid-cols-2">
             <div className="rounded-3xl border border-zinc-200 px-6 py-5 dark:border-zinc-800">
-              <p className="text-sm font-medium text-black dark:text-white">Live summary</p>
+              <p className="text-sm font-medium text-black dark:text-white">Application summary</p>
               <div className="mt-4 divide-y divide-zinc-200 dark:divide-zinc-800">
                 <SummaryRow label="Location" value={form.cityRegion.trim() ? `${form.cityRegion}, ${form.country}` : form.country} />
                 <SummaryRow label="Currency" value={form.settlementCurrency} />
@@ -1335,20 +1335,20 @@ export default function UserOnboarding() {
             </div>
 
             <div className="rounded-3xl border border-zinc-200 px-6 py-5 dark:border-zinc-800">
-              <p className="text-sm font-medium text-black dark:text-white">Implementation notes</p>
+              <p className="text-sm font-medium text-black dark:text-white">What to expect</p>
               <div className="mt-4 space-y-3">
                 {[
                   {
                     icon: Globe,
-                    text: "Keep the layout touch-friendly on mobile with single-column sections and large tap targets.",
+                    text: "You can complete this flow comfortably on desktop or mobile with large, touch-friendly controls.",
                   },
                   {
                     icon: Landmark,
-                    text: "Auto-fill settlement currency from residency, but keep the value read-only until functional rules exist.",
+                    text: "Your local settlement currency is selected automatically from your country of residence.",
                   },
                   {
                     icon: CircleDollarSign,
-                    text: "Use this structure later to branch anonymous, privacy-first, and verified access without redesigning the page.",
+                    text: "You can begin with a lighter setup and unlock more access as your profile is completed.",
                   },
                 ].map((item) => {
                   const Icon = item.icon;
