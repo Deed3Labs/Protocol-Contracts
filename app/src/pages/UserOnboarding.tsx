@@ -486,6 +486,37 @@ export default function UserOnboarding() {
   const chainLabel = chainId ? NETWORK_LABELS[chainId] ?? `Chain ${chainId}` : "Choose a network after connecting";
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    // AppKit injects a global body scroll lock. Keep native page scrolling enabled here.
+    const clearAppKitScrollLock = () => {
+      document.head
+        .querySelectorAll('style[data-w3m="scroll-lock"]')
+        .forEach((node) => node.remove());
+    };
+
+    clearAppKitScrollLock();
+
+    const frameId = window.requestAnimationFrame(clearAppKitScrollLock);
+    const timeoutIds = [180, 360, 720].map((delay) =>
+      window.setTimeout(clearAppKitScrollLock, delay)
+    );
+    const headObserver = new MutationObserver(clearAppKitScrollLock);
+
+    headObserver.observe(document.head, {
+      childList: true,
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      headObserver.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
     const nextCurrency = CURRENCY_BY_COUNTRY[form.country] ?? "USD";
     if (form.settlementCurrency !== nextCurrency) {
       setForm((prev) => ({ ...prev, settlementCurrency: nextCurrency }));
