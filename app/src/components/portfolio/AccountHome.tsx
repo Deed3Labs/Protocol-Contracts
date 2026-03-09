@@ -425,7 +425,7 @@ function AccountFocusRailCard({
   const railState = totalTaskCount === 0 ? 'awaiting' : openTaskCount === 0 ? 'complete' : 'active';
 
   return (
-    <section className="rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#141414]">
+    <section className="overflow-hidden rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#141414]">
       <div className="px-3 py-3">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -582,7 +582,7 @@ function AccountBenefitsRailCard({
   onOpen: (tab: AccountTab) => void;
 }) {
   return (
-    <section className="rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#141414]">
+    <section className="overflow-hidden rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#141414]">
       <div className="px-3 py-3">
         <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Why finish setup</p>
         <p className="mt-1 text-sm font-medium text-black dark:text-white">What improves as this account matures</p>
@@ -655,7 +655,7 @@ function AccountBenefitsRailCard({
                 key={benefit.id}
                 type="button"
                 onClick={() => onOpen(benefit.tab)}
-                className="group flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-[#111111]"
+                className="group flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 last:rounded-b-sm dark:hover:bg-[#111111]"
               >
                 <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border', toneClasses[benefit.tone])}>
                   <benefit.icon className="h-4 w-4" />

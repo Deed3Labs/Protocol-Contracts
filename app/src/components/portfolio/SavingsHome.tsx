@@ -675,17 +675,15 @@ function RewardsPerksCard({ achievements, perks }: RewardsPerksCardProps) {
                   key={perk.id}
                   className={cn(
                     'flex items-center gap-3 py-2.5 transition-colors',
-                    perk.unlocked
-                      ? 'bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08]'
-                      : 'opacity-65'
+                    perk.unlocked ? 'hover:bg-zinc-50 dark:hover:bg-[#171717]' : 'opacity-65'
                   )}
                 >
                   <div
                     className={cn(
-                      'w-9 h-9 rounded flex items-center justify-center shrink-0',
+                      'w-9 h-9 rounded border flex items-center justify-center shrink-0',
                       perk.unlocked
-                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-zinc-200 dark:bg-[#141414] text-zinc-500'
+                        ? 'border-zinc-200 dark:border-zinc-800 text-emerald-700 dark:text-emerald-300'
+                        : 'border-zinc-200 dark:border-zinc-800 bg-zinc-200 dark:bg-[#141414] text-zinc-500'
                     )}
                   >
                     {perk.unlocked ? <perk.icon className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
