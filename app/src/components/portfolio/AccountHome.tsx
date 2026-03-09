@@ -4,15 +4,10 @@ import { motion } from 'framer-motion';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Bar,
-  BarChart,
   Cell,
   Pie,
   PieChart,
   ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
 } from 'recharts';
 import {
   AlertTriangle,
@@ -165,6 +160,28 @@ interface AccountPulseDay {
   isPast: boolean;
 }
 
+interface AccountSetupTask {
+  id: string;
+  title: string;
+  detail: string;
+  rewardXp: number;
+  progress: number;
+  progressLabel: string;
+  tab: AccountTab;
+  icon: LucideIcon;
+  completed: boolean;
+}
+
+interface AccountNextUnlock {
+  id: string;
+  name: string;
+  detail: string;
+  requirement: string;
+  tab: AccountTab;
+  icon: LucideIcon;
+  tone: Tone;
+}
+
 const ACCOUNT_TABS: AccountTab[] = ['profile', 'connections', 'security', 'support'];
 const ACCOUNT_TAB_LABELS: Record<AccountTab, string> = {
   profile: 'Profile',
@@ -310,8 +327,6 @@ const ACCOUNT_TAB_BUTTON_SECONDARY_CLASS =
 const ACCOUNT_TAB_BUTTON_SUCCESS_CLASS =
   'h-[34px] rounded-full border-zinc-200 bg-emerald-500/10 text-emerald-700 font-normal shadow-none hover:bg-emerald-500/15 dark:border-zinc-800 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/15';
 
-const ACCOUNT_ACTIVITY_COLORS = ['#22c55e', '#14b8a6', '#06b6d4', '#3b82f6'];
-
 const startOfDay = (date: Date) => {
   const next = new Date(date);
   next.setHours(0, 0, 0, 0);
@@ -377,7 +392,7 @@ function SectionPanel({
           {action}
         </div>
       </div>
-      <div className="pt-4">{children}</div>
+      <div className="pt-3">{children}</div>
     </section>
   );
 }
@@ -437,10 +452,14 @@ function AccountPulseCard({
   onCheckIn,
   rewardPoints,
   profileCompletion,
-  securityScore,
+  securityEnabledCount,
+  openTaskCount,
   accountSurfaceCount,
+  tasks,
   milestones,
+  nextUnlock,
   weeks,
+  onOpen,
 }: {
   levelLabel: string;
   levelNumber: number;
@@ -453,25 +472,23 @@ function AccountPulseCard({
   onCheckIn: () => void;
   rewardPoints: number;
   profileCompletion: number;
-  securityScore: number;
+  securityEnabledCount: number;
+  openTaskCount: number;
   accountSurfaceCount: number;
+  tasks: AccountSetupTask[];
   milestones: AccountPulseMilestone[];
+  nextUnlock: AccountNextUnlock | null;
   weeks: AccountPulseDay[][];
+  onOpen: (tab: AccountTab) => void;
 }) {
   const streakTarget = 60;
   const recentDays = weeks.flat().slice(-14);
-  const weeklyTotals = weeks.map((week) => week.reduce((sum, day) => sum + (day.active ? day.points : 0), 0));
   const activeRecentDays = recentDays.filter((day) => day.active).length;
   const unlockedMilestones = milestones.filter((milestone) => milestone.achieved).length;
-  const nextMilestone = milestones.find((milestone) => !milestone.achieved);
   const streakRingData = [
     { name: 'Active', value: Math.min(accountStreak, streakTarget), color: '#10b981' },
     { name: 'Remaining', value: Math.max(streakTarget - Math.min(accountStreak, streakTarget), 0), color: '#3f3f46' },
   ];
-  const weeklyConsistencyData = weeklyTotals.map((total, index) => ({
-    label: `W${index + 1}`,
-    total,
-  }));
 
   return (
     <section className="rounded-sm border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-[#141414]">
@@ -518,20 +535,20 @@ function AccountPulseCard({
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">Account Level {levelLabel} Lv.{levelNumber}</p>
                 <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                  {nextMilestone ? `Next: ${nextMilestone.label}` : 'All account milestones unlocked'}
+                  {nextUnlock ? `Next unlock: ${nextUnlock.name}` : 'All account unlocks are live'}
                 </p>
                 <div className="mt-2.5 grid grid-cols-3 gap-2">
                   <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
                     <p className="text-sm font-semibold">{profileCompletion}%</p>
-                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Profile</p>
+                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Setup</p>
                   </div>
                   <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
-                    <p className="text-sm font-semibold">{securityScore}%</p>
-                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Security</p>
+                    <p className="text-sm font-semibold">{securityEnabledCount}/5</p>
+                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Trust</p>
                   </div>
                   <div className="rounded-sm border border-zinc-200/70 p-2 text-center dark:border-zinc-800/70">
-                    <p className="text-sm font-semibold">{rewardPoints}</p>
-                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Points</p>
+                    <p className="text-sm font-semibold">{openTaskCount}</p>
+                    <p className="text-[9px] text-zinc-500 dark:text-zinc-400">Open</p>
                   </div>
                 </div>
                 <div className="mt-2">
@@ -553,18 +570,69 @@ function AccountPulseCard({
               {checkedInToday ? 'Checked in' : 'Check in'}
             </button>
             <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-              {accountSurfaceCount} linked account{accountSurfaceCount === 1 ? '' : 's'} across this profile. {accountXp} XP total.
+              {rewardPoints} points banked. {accountSurfaceCount} linked account{accountSurfaceCount === 1 ? '' : 's'} across this profile. {accountXp} XP total.
             </p>
           </div>
 
           <div className="py-3">
             <div className="mb-2.5 flex items-center justify-between">
               <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
-                Milestone Track
+                Setup Queue
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">{tasks.filter((task) => task.completed).length}/{tasks.length}</p>
+            </div>
+
+            <div className="space-y-2">
+              {tasks.map((task) => {
+                const Icon = task.icon;
+                return (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => onOpen(task.tab)}
+                    className="w-full rounded-sm border border-zinc-200/70 p-3 text-left transition-colors hover:bg-zinc-50 dark:border-zinc-800/70 dark:hover:bg-[#111111]"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border', task.completed ? toneClasses.emerald : toneClasses.zinc)}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[12px] font-medium text-black dark:text-white">{task.title}</p>
+                            <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{task.detail}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+                              +{task.rewardXp} XP
+                            </p>
+                            <p className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">{task.progressLabel}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <div className="h-1.5 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800">
+                            <div
+                              className={cn('h-full rounded-full transition-all', task.completed ? 'bg-emerald-500' : 'bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500')}
+                              style={{ width: `${task.progress}%` }}
+                            />
+                          </div>
+                          <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" />
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="pt-3">
+            <div className="mb-2.5 flex items-center justify-between">
+              <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
+                Unlock Path
               </p>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">{unlockedMilestones}/{milestones.length}</p>
             </div>
-
             <div className="relative">
               <div className="absolute left-4 right-4 top-[14px] h-px bg-zinc-200 dark:bg-zinc-700" />
               <div className="grid grid-cols-5 gap-2">
@@ -588,88 +656,29 @@ function AccountPulseCard({
                 ))}
               </div>
             </div>
-          </div>
-
-          <div className="pt-3">
-            <div className="mb-1.5 flex items-center justify-between">
-              <p className="text-xs font-medium tracking-wide uppercase text-zinc-500 dark:text-zinc-400">
-                Recent Activity
-              </p>
-              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                {activeRecentDays}/14 active days
-              </p>
-            </div>
-            <div className="mb-2.5 grid grid-cols-14 gap-1">
-              {recentDays.map((day, index) => (
-                <div
-                  key={`${day.date.toISOString()}-${index}`}
-                  className={cn(
-                    'h-5 rounded-sm border border-zinc-200/80 dark:border-zinc-800',
-                    !day.active && 'bg-zinc-100 dark:bg-[#141414]'
-                  )}
-                  style={day.active ? { backgroundColor: `hsl(var(--equity) / ${0.22 + Math.min(day.points / 34, 1) * 0.62})` } : undefined}
-                  title={day.active ? `${formatDateShort(day.date)} · ${formatPoints(day.points)}` : `${formatDateShort(day.date)} · inactive`}
-                />
-              ))}
-            </div>
-            <div className="mb-2.5 flex items-center justify-between">
-              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Last 14 days</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Less</span>
-                <div className="flex gap-0.5">
-                  {[0.2, 0.45, 0.7, 0.95].map((opacity) => (
-                    <div
-                      key={opacity}
-                      className="h-2.5 w-2.5 rounded-sm bg-emerald-500"
-                      style={{ opacity }}
-                    />
-                  ))}
-                </div>
-                <span className="text-[10px] text-zinc-500 dark:text-zinc-400">More</span>
+            <div className="mt-3 rounded-sm border border-zinc-200/70 p-2.5 dark:border-zinc-800/70">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
+                  Setup momentum
+                </p>
+                <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{activeRecentDays}/14 active days</p>
               </div>
-            </div>
-            <div className="rounded-sm border border-zinc-200/70 p-2 dark:border-zinc-800/70">
-              <div className="h-24">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={weeklyConsistencyData} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fill: '#71717a', fontSize: 10 }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis hide domain={[0, 'dataMax + 20']} />
-                    <Tooltip
-                      cursor={{ fill: 'transparent' }}
-                      contentStyle={{
-                        background: '#18181b',
-                        border: '1px solid #3f3f46',
-                        borderRadius: '8px',
-                        padding: '8px 10px',
-                      }}
-                      labelStyle={{ color: '#a1a1aa', fontSize: 11 }}
-                      itemStyle={{ color: '#e4e4e7', fontSize: 11 }}
-                      formatter={(value: number | string | undefined) => [formatPoints(Number(value ?? 0)), 'Activity']}
-                    />
-                    <Bar dataKey="total" radius={[4, 4, 0, 0]}>
-                      {weeklyConsistencyData.map((week, index) => (
-                        <Cell
-                          key={week.label}
-                          fill={ACCOUNT_ACTIVITY_COLORS[index % ACCOUNT_ACTIVITY_COLORS.length]}
-                          fillOpacity={0.9}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-2 grid grid-cols-4 gap-1.5">
-                {weeklyTotals.map((weekTotal, index) => (
-                  <p key={index} className="text-center text-[10px] text-zinc-500 dark:text-zinc-400">
-                    W{index + 1}: {formatPoints(weekTotal)}
-                  </p>
+              <div className="mt-2 grid grid-cols-14 gap-1">
+                {recentDays.map((day, index) => (
+                  <div
+                    key={`${day.date.toISOString()}-${index}`}
+                    className={cn(
+                      'h-4 rounded-sm border border-zinc-200/80 dark:border-zinc-800',
+                      !day.active && 'bg-zinc-100 dark:bg-[#141414]'
+                    )}
+                    style={day.active ? { backgroundColor: `hsl(var(--equity) / ${0.22 + Math.min(day.points / 34, 1) * 0.62})` } : undefined}
+                    title={day.active ? `${formatDateShort(day.date)} · ${formatPoints(day.points)}` : `${formatDateShort(day.date)} · inactive`}
+                  />
                 ))}
               </div>
+              <p className="mt-2 text-[10px] leading-5 text-zinc-500 dark:text-zinc-400">
+                Check in to keep momentum high while you finish setup tasks and unlock the next account tier.
+              </p>
             </div>
           </div>
         </div>
@@ -681,10 +690,12 @@ function AccountPulseCard({
 function AccountRewardsCard({
   achievements,
   perks,
+  nextUnlock,
   onOpen,
 }: {
   achievements: AccountAchievement[];
   perks: AccountPerk[];
+  nextUnlock: AccountNextUnlock | null;
   onOpen: (tab: AccountTab) => void;
 }) {
   const unlockedCount = achievements.filter((achievement) => achievement.unlocked).length;
@@ -697,24 +708,49 @@ function AccountRewardsCard({
           <div className="pb-3">
             <div className="mb-2.5 flex items-center justify-between">
               <span className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
-                Achievements
+                Unlock Board
               </span>
               <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300">
                 <Trophy className="mr-1 h-3 w-3" /> {unlockedCount}/{achievements.length}
               </Badge>
             </div>
 
-            <div className="grid grid-cols-4 gap-1.5">
+            {nextUnlock ? (
+              <button
+                type="button"
+                onClick={() => onOpen(nextUnlock.tab)}
+                className="mb-3 w-full rounded-sm border border-zinc-200/70 p-3 text-left transition-colors hover:bg-zinc-50 dark:border-zinc-800/70 dark:hover:bg-[#111111]"
+              >
+                <div className="flex items-start gap-3">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border', toneClasses[nextUnlock.tone])}>
+                    <nextUnlock.icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Focus unlock</p>
+                        <p className="mt-1 text-sm font-medium text-black dark:text-white">{nextUnlock.name}</p>
+                      </div>
+                      <ArrowUpRight className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400" />
+                    </div>
+                    <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{nextUnlock.detail}</p>
+                    <p className="mt-2 text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">{nextUnlock.requirement}</p>
+                  </div>
+                </div>
+              </button>
+            ) : null}
+
+            <div className="grid grid-cols-3 gap-1.5">
               {achievements.map((achievement) => (
                 <button
                   key={achievement.id}
                   type="button"
                   onClick={() => onOpen(achievement.tab)}
                   className={cn(
-                    'flex min-h-[96px] w-full flex-col items-center justify-center gap-1 rounded border p-2 text-center transition-all',
+                    'flex min-h-[94px] w-full flex-col items-center justify-center gap-1.5 rounded border p-2 text-center transition-all',
                     achievement.unlocked
-                      ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:scale-[1.02]')
-                      : 'border-dotted border-zinc-300 bg-zinc-100/40 text-zinc-500 opacity-50 dark:border-zinc-700 dark:bg-[#121212] dark:text-zinc-400'
+                      ? cn(rarityColors[achievement.rarity], rarityGlow[achievement.rarity], 'hover:opacity-95')
+                      : 'border-dotted border-zinc-300 bg-zinc-100/40 text-zinc-500 opacity-55 dark:border-zinc-700 dark:bg-[#121212] dark:text-zinc-400'
                   )}
                   title={achievement.detail}
                 >
@@ -731,11 +767,9 @@ function AccountRewardsCard({
                     )}
                   </div>
                   <span className="text-[10px] font-medium leading-tight">{achievement.name}</span>
-                  {achievement.statusLabel ? (
-                    <span className="text-[8px] text-zinc-500 dark:text-zinc-400">
-                      {achievement.statusLabel}
-                    </span>
-                  ) : null}
+                  <span className="text-[8px] uppercase tracking-[0.12em] text-zinc-500 dark:text-zinc-400">
+                    {achievement.statusLabel ?? 'Locked'}
+                  </span>
                 </button>
               ))}
             </div>
@@ -744,46 +778,43 @@ function AccountRewardsCard({
           <div className="pt-3">
             <div className="mb-2.5 flex items-center justify-between">
               <span className="text-xs font-medium uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
-                Perks & Rewards
+                Perks Live
               </span>
               <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</span>
             </div>
 
             <div className="divide-y divide-zinc-200 border-y border-zinc-200/70 dark:divide-zinc-800 dark:border-zinc-800/70">
               {perks.map((perk) => (
-                <div
+                <button
                   key={perk.id}
+                  type="button"
+                  onClick={() => onOpen(perk.tab)}
                   className={cn(
-                    'flex items-center gap-3 py-2.5 transition-colors',
-                    perk.unlocked ? 'bg-emerald-500/[0.04] hover:bg-emerald-500/[0.08]' : 'opacity-65'
+                    'flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-[#111111]',
+                    perk.unlocked ? 'bg-emerald-500/[0.04]' : 'opacity-75'
                   )}
                 >
                   <div
                     className={cn(
-                      'flex h-9 w-9 shrink-0 items-center justify-center rounded',
-                      perk.unlocked
-                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-zinc-200 text-zinc-500 dark:bg-[#141414]'
+                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border',
+                      perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc
                     )}
                   >
                     {perk.unlocked ? <perk.icon className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{perk.name}</p>
-                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{perk.description}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-black dark:text-white">{perk.name}</p>
+                      {perk.unlocked ? (
+                        <span className="text-[10px] uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">Live</span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{perk.description}</p>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'h-5 shrink-0 px-1.5 py-0 text-[9px]',
-                      perk.unlocked
-                        ? 'border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                        : 'text-zinc-500 dark:text-zinc-400'
-                    )}
-                  >
-                    {perk.unlocked ? 'Active' : perk.requirement}
-                  </Badge>
-                </div>
+                  <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">
+                    {perk.unlocked ? 'Open' : perk.requirement}
+                  </span>
+                </button>
               ))}
             </div>
           </div>
@@ -925,15 +956,17 @@ export default function AccountHome() {
     [profileForm]
   );
 
+  const linkedAccountGroupCount = [wallets.length > 0, socialAccounts.length > 0, bankAccounts.length > 0].filter(Boolean).length;
   const profileProgress = clampPercent((profileFieldsComplete / 6) * 100);
-  const connectionProgress = clampPercent(
-    ([wallets.length > 0, socialAccounts.length > 0, bankAccounts.length > 0].filter(Boolean).length / 3) * 100
-  );
+  const connectionProgress = clampPercent((linkedAccountGroupCount / 3) * 100);
   const securityEnabledCount = securityControls.filter((control) => control.enabled).length;
   const securityScore = clampPercent((securityEnabledCount / securityControls.length) * 100);
-  const supportProgress = clampPercent(
-    (Number(profileSavedAt !== 'Not saved yet') + Number(Boolean(profileForm.email)) + Number(Boolean(profileForm.phone)) + Number(securityEnabledCount >= 4)) * 25
-  );
+  const supportChecklistCount =
+    Number(profileSavedAt !== 'Not saved yet') +
+    Number(Boolean(profileForm.email)) +
+    Number(Boolean(profileForm.phone)) +
+    Number(securityEnabledCount >= 4);
+  const supportProgress = clampPercent(supportChecklistCount * 25);
   const securityTone = securityScore >= 80 ? 'Strong' : securityScore >= 60 ? 'Balanced' : 'Needs work';
   const activeNetworks = useMemo(
     () => new Set(holdings.map((holding) => holding.chainName).filter(Boolean)).size,
@@ -988,7 +1021,7 @@ export default function AccountHome() {
         detail:
           connectionProgress === 100
             ? 'Wallets, socials, and banks linked'
-            : `${3 - [wallets.length > 0, socialAccounts.length > 0, bankAccounts.length > 0].filter(Boolean).length} connections left`,
+            : `${3 - linkedAccountGroupCount} connections left`,
         progress: connectionProgress,
         tab: 'connections',
         icon: Link2,
@@ -1010,7 +1043,7 @@ export default function AccountHome() {
         icon: FileText,
       },
     ],
-    [bankAccounts.length, connectionProgress, profileFieldsComplete, profileProgress, securityEnabledCount, securityScore, securityControls.length, socialAccounts.length, supportProgress, wallets.length]
+    [bankAccounts.length, connectionProgress, linkedAccountGroupCount, profileFieldsComplete, profileProgress, securityEnabledCount, securityScore, securityControls.length, socialAccounts.length, supportProgress, wallets.length]
   );
 
   const accountAchievements = useMemo<AccountAchievement[]>(
@@ -1137,6 +1170,96 @@ export default function AccountHome() {
     [accountStreak, checkedInToday, profileCompletion, rewardPoints, securityScore]
   );
 
+  const accountSetupTasks = useMemo<AccountSetupTask[]>(
+    () => {
+      const remainingProfileFields = Math.max(6 - profileFieldsComplete, 0);
+      const missingConnections = Math.max(3 - linkedAccountGroupCount, 0);
+      const protectionsToGoal = Math.max(4 - securityEnabledCount, 0);
+      const recoveryStepsLeft = Math.max(4 - supportChecklistCount, 0);
+
+      const tasks: AccountSetupTask[] = [
+        {
+          id: 'task-profile',
+          title: 'Finish core profile',
+          detail: remainingProfileFields === 0 ? 'Core identity details are complete and ready to review.' : 'Add your remaining identity details so your account is easier to verify.',
+          rewardXp: 120,
+          progress: profileProgress,
+          progressLabel: remainingProfileFields === 0 ? 'Complete' : `${remainingProfileFields} fields left`,
+          tab: 'profile',
+          icon: UserRound,
+          completed: remainingProfileFields === 0,
+        },
+        {
+          id: 'task-connections',
+          title: 'Link trusted accounts',
+          detail: missingConnections === 0 ? 'Wallets, social accounts, and banks are all linked.' : 'Add the remaining account types to complete your connected account map.',
+          rewardXp: 150,
+          progress: connectionProgress,
+          progressLabel: missingConnections === 0 ? 'Complete' : `${missingConnections} left`,
+          tab: 'connections',
+          icon: Link2,
+          completed: missingConnections === 0,
+        },
+        {
+          id: 'task-security',
+          title: 'Tighten security',
+          detail: protectionsToGoal === 0 ? 'Your core protections are active for sign-in and transfer reviews.' : 'Turn on more protections to strengthen sensitive changes and alerts.',
+          rewardXp: 140,
+          progress: clampPercent((Math.min(securityEnabledCount, 4) / 4) * 100),
+          progressLabel: protectionsToGoal === 0 ? 'Ready' : `${protectionsToGoal} left`,
+          tab: 'security',
+          icon: ShieldCheck,
+          completed: protectionsToGoal === 0,
+        },
+        {
+          id: 'task-recovery',
+          title: 'Prepare recovery',
+          detail: recoveryStepsLeft === 0 ? 'Recovery contacts and export setup are ready.' : 'Add recovery details and save your profile once to prepare account support.',
+          rewardXp: 110,
+          progress: supportProgress,
+          progressLabel: recoveryStepsLeft === 0 ? 'Ready' : `${recoveryStepsLeft} steps left`,
+          tab: 'support',
+          icon: FileText,
+          completed: recoveryStepsLeft === 0,
+        },
+      ];
+
+      return tasks.sort((left, right) => Number(left.completed) - Number(right.completed));
+    },
+    [connectionProgress, linkedAccountGroupCount, profileFieldsComplete, profileProgress, securityEnabledCount, supportChecklistCount, supportProgress]
+  );
+
+  const nextUnlock = useMemo<AccountNextUnlock | null>(() => {
+    const lockedPerk = accountPerks.find((perk) => !perk.unlocked);
+    if (lockedPerk) {
+      return {
+        id: lockedPerk.id,
+        name: lockedPerk.name,
+        detail: lockedPerk.description,
+        requirement: lockedPerk.requirement,
+        tab: lockedPerk.tab,
+        icon: lockedPerk.icon,
+        tone: lockedPerk.tone,
+      };
+    }
+
+    const lockedAchievement = accountAchievements.find((achievement) => !achievement.unlocked);
+    if (lockedAchievement) {
+      return {
+        id: lockedAchievement.id,
+        name: lockedAchievement.name,
+        detail: lockedAchievement.detail,
+        requirement: `Open ${ACCOUNT_TAB_LABELS[lockedAchievement.tab]}`,
+        tab: lockedAchievement.tab,
+        icon: lockedAchievement.icon,
+        tone: lockedAchievement.tone,
+      };
+    }
+
+    return null;
+  }, [accountAchievements, accountPerks]);
+
+  const openSetupTaskCount = accountSetupTasks.filter((task) => !task.completed).length;
   const unlockedAchievementCount = accountAchievements.filter((achievement) => achievement.unlocked).length;
 
   const handleTabOpen = (tab: AccountTab) => setSearchParams({ tab });
@@ -1454,7 +1577,7 @@ export default function AccountHome() {
                   ))}
                 </div>
 
-                <TabsContent value="profile" className="space-y-8 pt-3">
+                <TabsContent value="profile" className="space-y-8 pt-2">
                   <SectionPanel
                     withTopBorder={false}
                     eyebrow="Identity"
@@ -1520,7 +1643,7 @@ export default function AccountHome() {
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="connections" className="space-y-8 pt-3">
+                <TabsContent value="connections" className="space-y-8 pt-2">
                   <SectionPanel
                     withTopBorder={false}
                     eyebrow="Wallets"
@@ -1660,7 +1783,7 @@ export default function AccountHome() {
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="security" className="space-y-8 pt-3">
+                <TabsContent value="security" className="space-y-8 pt-2">
                   <SectionPanel
                     withTopBorder={false}
                     eyebrow="Security"
@@ -1732,7 +1855,7 @@ export default function AccountHome() {
                   </SectionPanel>
                 </TabsContent>
 
-                <TabsContent value="support" className="space-y-8 pt-3">
+                <TabsContent value="support" className="space-y-8 pt-2">
                   <SectionPanel
                     withTopBorder={false}
                     eyebrow="Documents"
@@ -1809,22 +1932,26 @@ export default function AccountHome() {
                 onCheckIn={handleAccountPulse}
                 rewardPoints={rewardPoints}
                 profileCompletion={profileCompletion}
-                securityScore={securityScore}
+                securityEnabledCount={securityEnabledCount}
+                openTaskCount={openSetupTaskCount}
                 accountSurfaceCount={accountSurfaceCount}
+                tasks={accountSetupTasks}
                 milestones={accountPulseMilestones}
+                nextUnlock={nextUnlock}
                 weeks={accountPulseWeeks}
+                onOpen={handleHeroAction}
               />
             </motion.div>
 
             <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.12 }}>
-              <AccountRewardsCard achievements={accountAchievements} perks={accountPerks} onOpen={handleTabOpen} />
+              <AccountRewardsCard achievements={accountAchievements} perks={accountPerks} nextUnlock={nextUnlock} onOpen={handleHeroAction} />
             </motion.div>
 
             <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
               <div className="space-y-2 rounded-sm border border-zinc-200/70 bg-gradient-to-r from-zinc-100/70 to-sky-50/60 p-4 dark:border-zinc-800/70 dark:from-[#141414] dark:to-[#10181a]">
-                <p className="text-sm font-medium text-black dark:text-white">Everything tied to your account, in one place.</p>
+                <p className="text-sm font-medium text-black dark:text-white">Keep moving the account forward.</p>
                 <p className="text-[11px] leading-5 text-zinc-600 dark:text-zinc-300">
-                  Review your profile, linked accounts, security settings, and account records from one place.
+                  Finish open tasks, unlock the remaining perks, and keep recovery details current so the account stays ready.
                 </p>
               </div>
             </section>
