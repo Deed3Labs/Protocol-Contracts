@@ -364,9 +364,9 @@ function SectionPanel({
   children: ReactNode;
 }) {
   return (
-    <section className={cn(withTopBorder ? 'border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70' : 'pt-0')}>
-      <div className="border-b border-zinc-200/70 pb-3 dark:border-zinc-800/70">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+    <section>
+      <div className={cn('border-b border-zinc-200/70 py-4 dark:border-zinc-800/70', withTopBorder && 'border-t dark:border-zinc-800/70')}>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             {eyebrow ? (
               <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">{eyebrow}</p>
@@ -1378,8 +1378,8 @@ export default function AccountHome() {
               ) : null}
             </motion.div>
 
-            <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
-              <div className="border-b border-zinc-200/70 pb-3 dark:border-zinc-800/70">
+            <section>
+              <div className="border-y border-zinc-200/70 py-4 dark:border-zinc-800/70">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-light tracking-tight text-black dark:text-white">Account Snapshot</h2>
@@ -1401,8 +1401,8 @@ export default function AccountHome() {
               </div>
             </section>
 
-            <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
-              <div className="border-b border-zinc-200/70 pb-3 dark:border-zinc-800/70">
+            <section>
+              <div className="border-y border-zinc-200/70 py-4 dark:border-zinc-800/70">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-light tracking-tight text-black dark:text-white">Progress Track</h2>
