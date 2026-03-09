@@ -146,6 +146,13 @@ const ONBOARDING_STEPS: StepDefinition[] = [
   },
 ];
 
+const COMPACT_STEP_TITLES: Record<StepId, string> = {
+  access: "Access",
+  discovery: "Discovery",
+  profile: "Profile",
+  setup: "Setup",
+};
+
 const ACCESS_TRACKS: AccessTrack[] = [
   {
     id: "wallet",
@@ -565,8 +572,8 @@ export default function UserOnboarding() {
   if (isComplete) {
     return (
       <div className="min-h-screen bg-white text-black transition-colors duration-200 dark:bg-[#0e0e0e] dark:text-white">
-        <main className="container mx-auto max-w-5xl px-4 py-10 sm:px-6 md:py-14">
-          <div className="flex items-center justify-between gap-4">
+        <div className="sticky top-0 z-40 border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-900 dark:bg-[#0e0e0e]/80">
+          <div className="container mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded border border-black/90 bg-white dark:border-white/10 dark:bg-[#0e0e0e]">
                 <img src={ClearPathLogo} alt="ClearPath" className="h-full w-full object-cover" />
@@ -584,11 +591,13 @@ export default function UserOnboarding() {
               Return to login
             </Button>
           </div>
+        </div>
 
+        <main className="container mx-auto max-w-5xl px-4 py-8 sm:px-6 md:py-10">
           <div className="mt-10">
             <div>
               <p className="text-sm font-medium text-zinc-500 dark:text-zinc-500">User onboarding</p>
-              <h1 className="mt-2 text-[42px] font-light tracking-tight text-black dark:text-white sm:text-[52px]">
+              <h1 className="mt-2 text-3xl font-light tracking-tight text-black dark:text-white sm:text-4xl">
                 The flow is in place and ready to wire into AppKit, registry writes, and real account rules.
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
@@ -656,8 +665,8 @@ export default function UserOnboarding() {
 
   return (
     <div className="min-h-screen bg-white text-black transition-colors duration-200 dark:bg-[#0e0e0e] dark:text-white">
-      <main className="container mx-auto max-w-6xl px-4 py-10 sm:px-6 md:py-14">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+      <div className="sticky top-0 z-40 border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-900 dark:bg-[#0e0e0e]/80">
+        <div className="container mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded border border-black/90 bg-white dark:border-white/10 dark:bg-[#0e0e0e]">
               <img src={ClearPathLogo} alt="ClearPath" className="h-full w-full object-cover" />
@@ -688,89 +697,72 @@ export default function UserOnboarding() {
             </Button>
           </div>
         </div>
+      </div>
 
-        <div className="mt-10">
-          <div>
-            <p className="text-sm font-medium text-zinc-500 dark:text-zinc-500">User onboarding</p>
-            <h1 className="mt-2 text-[42px] font-light tracking-tight text-black dark:text-white sm:text-[52px]">
-              A clearer signup flow for wallet-first, privacy-first, and fully verified members.
-            </h1>
-            <p className="mt-4 max-w-3xl text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
-              This version keeps the portfolio page typography and border treatment, but removes shell chrome so the onboarding itself can stay focused, standalone, and easier to complete on mobile.
-            </p>
-          </div>
+      <main className="container mx-auto max-w-6xl px-4 py-5 sm:px-6 md:py-6">
+        <div className="flex flex-wrap gap-2">
+          {[
+            `Access: ${selectedTrack.title}`,
+            `Wallet: ${isConnected ? truncateAddress(address) : "Connect later"}`,
+            `Identity: ${selectedIdentity.title}`,
+            `Membership: ${selectedMembership.title}`,
+          ].map((item) => (
+            <span
+              key={item}
+              className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
 
-          <div className="mt-8 overflow-hidden rounded-3xl border border-zinc-200 dark:border-zinc-800">
-            <div className="grid gap-0 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                { label: "Access", value: selectedTrack.title },
-                { label: "Wallet", value: isConnected ? truncateAddress(address) : "Connect later" },
-                { label: "Identity", value: selectedIdentity.title },
-                { label: "Membership", value: selectedMembership.title },
-              ].map((item, index) => (
-                <div
-                  key={item.label}
+        <div className="mt-4 overflow-x-auto pb-1">
+          <div className="flex min-w-max gap-2">
+            {ONBOARDING_STEPS.map((step, index) => {
+              const status = getStepStatus(index, currentStepIndex);
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => setCurrentStepIndex(index)}
                   className={cn(
-                    "px-5 py-4",
-                    index > 0 && "border-t border-zinc-200 dark:border-zinc-800 sm:border-t-0",
-                    index % 2 === 1 && "sm:border-l sm:border-zinc-200 dark:sm:border-zinc-800",
-                    index > 1 && "xl:border-l xl:border-zinc-200 dark:xl:border-zinc-800"
+                    "flex min-w-[138px] items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors sm:min-w-[164px]",
+                    status === "current" &&
+                      "border-black bg-zinc-50 dark:border-white dark:bg-zinc-900",
+                    status === "complete" &&
+                      "border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/70",
+                    status === "upcoming" &&
+                      "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
                   )}
                 >
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
-                    {item.label}
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-black dark:text-white">{item.value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-8 border-y border-zinc-200 py-4 dark:border-zinc-800">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {ONBOARDING_STEPS.map((step, index) => {
-                const status = getStepStatus(index, currentStepIndex);
-                return (
-                  <button
-                    key={step.id}
-                    type="button"
-                    onClick={() => setCurrentStepIndex(index)}
-                    className={cn(
-                      "rounded-2xl border p-4 text-left transition-colors",
-                      status === "current" &&
-                        "border-black bg-zinc-50 dark:border-white dark:bg-zinc-900",
-                      status === "complete" &&
-                        "border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/70",
-                      status === "upcoming" &&
-                        "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex size-9 items-center justify-center rounded border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
-                        <step.icon className="size-4" />
-                      </div>
-                      <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
-                        {step.label}
-                      </span>
-                    </div>
-                    <p className="mt-4 text-sm font-medium text-black dark:text-white">{step.title}</p>
-                    <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                      {step.description}
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded border border-zinc-200 bg-white text-black dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white">
+                    <step.icon className="size-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
+                      {step.label}
                     </p>
-                  </button>
-                );
-              })}
-            </div>
+                    <p className="mt-1 truncate text-sm font-medium text-black dark:text-white sm:hidden">
+                      {COMPACT_STEP_TITLES[step.id]}
+                    </p>
+                    <p className="mt-1 hidden text-sm font-medium text-black dark:text-white sm:block">
+                      {step.title}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
           </div>
+        </div>
 
-          <section className="mt-8 overflow-hidden rounded-3xl border border-zinc-200 dark:border-zinc-800">
-              <div className="border-b border-zinc-200 px-6 py-6 dark:border-zinc-800 sm:px-8">
+        <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 dark:border-zinc-800">
+              <div className="border-b border-zinc-200 px-5 py-5 dark:border-zinc-800 sm:px-8 sm:py-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-500">
                       {currentStep.label}
                     </p>
-                    <h2 className="mt-2 text-2xl font-light tracking-tight text-black dark:text-white sm:text-[32px]">
+                    <h2 className="mt-1 text-xl font-medium tracking-tight text-black dark:text-white sm:text-2xl">
                       {currentStep.title}
                     </h2>
                   </div>
@@ -1372,7 +1364,6 @@ export default function UserOnboarding() {
               </div>
             </div>
           </div>
-        </div>
       </main>
     </div>
   );
