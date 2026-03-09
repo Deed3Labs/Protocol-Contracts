@@ -19,7 +19,6 @@ import {
   KeyRound,
   Landmark,
   Link2,
-  Lock,
   Plus,
   RefreshCw,
   ScanFace,
@@ -43,7 +42,6 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -165,6 +163,17 @@ interface AccountNextUnlock {
   tab: AccountTab;
   icon: LucideIcon;
   tone: Tone;
+}
+
+interface AccountBenefitItem {
+  id: string;
+  name: string;
+  detail: string;
+  requirement: string;
+  tab: AccountTab;
+  icon: LucideIcon;
+  tone: Tone;
+  live: boolean;
 }
 
 const ACCOUNT_TABS: AccountTab[] = ['profile', 'connections', 'security', 'support'];
@@ -289,13 +298,6 @@ const toneClasses: Record<Tone, string> = {
   zinc: 'border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-[#101010] dark:text-zinc-300',
 };
 
-const rarityColors = {
-  common: 'text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 bg-zinc-100/80 dark:bg-zinc-900/40',
-  rare: 'text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/20',
-  epic: 'text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20',
-  legendary: 'text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20',
-};
-
 const ACCOUNT_TAB_BUTTON_PRIMARY_CLASS =
   'rounded-full border-black/10 bg-black text-white font-normal shadow-none hover:bg-black/90 dark:border-white/10 dark:bg-white dark:text-black dark:hover:bg-white/90';
 
@@ -416,8 +418,9 @@ function MissionRail({ item, onOpen }: { item: MissionRailItem; onOpen: (tab: Ac
   );
 }
 
-function AccountSetupRailCard({
-  readinessScore,
+function AccountFocusRailCard({
+  currentTask,
+  queuedTasks,
   levelLabel,
   levelNumber,
   levelProgress,
@@ -427,13 +430,11 @@ function AccountSetupRailCard({
   checkedInToday,
   onCheckIn,
   rewardPoints,
-  securityEnabledCount,
-  linkedAccountGroups,
-  tasks,
   momentumDays,
   onOpen,
 }: {
-  readinessScore: number;
+  currentTask: AccountSetupTask | null;
+  queuedTasks: AccountSetupTask[];
   levelLabel: string;
   levelNumber: number;
   levelProgress: number;
@@ -443,100 +444,83 @@ function AccountSetupRailCard({
   checkedInToday: boolean;
   onCheckIn: () => void;
   rewardPoints: number;
-  securityEnabledCount: number;
-  linkedAccountGroups: number;
-  tasks: AccountSetupTask[];
   momentumDays: AccountPulseDay[];
   onOpen: (tab: AccountTab) => void;
 }) {
-  const openTaskCount = tasks.filter((task) => !task.completed).length;
-  const completedTaskCount = tasks.length - openTaskCount;
-  const leadTask = tasks.find((task) => !task.completed) ?? tasks[0];
-  const ringStyle = {
-    background: `conic-gradient(#10b981 0 ${readinessScore}%, rgba(113,113,122,0.26) ${readinessScore}% 100%)`,
-  };
-
   return (
     <section className="rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#141414]">
       <div className="px-3 py-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Setup guide</p>
-            <p className="mt-1 text-sm font-medium text-black dark:text-white">Build a ready account</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => leadTask && onOpen(leadTask.tab)}
-            className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-500 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-          >
-            {openTaskCount} open
-            <ArrowUpRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-
-      <div className="border-y border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
-        <div className="flex items-center gap-3">
-          <div className="relative h-24 w-24 shrink-0 rounded-full p-[8px]" style={ringStyle}>
-            <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white dark:bg-[#141414]">
-              <span className="text-lg font-semibold text-black dark:text-white">{readinessScore}%</span>
-              <span className="mt-0.5 text-[9px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">Ready</span>
-            </div>
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-black dark:text-white">{levelLabel} Lv.{levelNumber}</p>
-            <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">
-              {completedTaskCount}/4 setup tracks complete. {accountXp} XP earned so far.
+            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Current focus</p>
+            <p className="mt-1 text-sm font-medium text-black dark:text-white">
+              {currentTask ? currentTask.title : 'Account setup complete'}
             </p>
-            <div className="mt-3 overflow-hidden rounded-sm border border-zinc-200/70 dark:border-zinc-800/70">
-              <div className="grid grid-cols-3 divide-x divide-zinc-200/70 dark:divide-zinc-800/70">
-                <div className="px-2.5 py-2 text-center">
-                  <p className="text-sm font-medium text-black dark:text-white">{openTaskCount}</p>
-                  <p className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">Open</p>
-                </div>
-                <div className="px-2.5 py-2 text-center">
-                  <p className="text-sm font-medium text-black dark:text-white">{securityEnabledCount}/5</p>
-                  <p className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">Trust</p>
-                </div>
-                <div className="px-2.5 py-2 text-center">
-                  <p className="text-sm font-medium text-black dark:text-white">{linkedAccountGroups}/3</p>
-                  <p className="mt-0.5 text-[9px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">Links</p>
-                </div>
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="mb-1 flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400">
-                <span>{Math.round(levelProgress)}% to next level</span>
-                <span>{pointsToNextLevel === 0 ? 'Max tier' : `${pointsToNextLevel} XP left`}</span>
-              </div>
-              <Progress value={levelProgress} className="h-1.5" />
-            </div>
+          </div>
+          {currentTask ? (
+            <button
+              type="button"
+              onClick={() => onOpen(currentTask.tab)}
+              className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-500 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+            >
+              Open
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+
+        <p className="mt-3 text-[13px] leading-6 text-zinc-600 dark:text-zinc-300">
+          {currentTask
+            ? currentTask.detail
+            : 'Everything critical is configured. Review connected accounts, exports, and protections whenever you need to.'}
+        </p>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">
+          <span>{levelLabel} Lv.{levelNumber}</span>
+          <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+          <span>{accountXp} XP</span>
+          <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+          <span>{rewardPoints} pts</span>
+          {currentTask ? (
+            <>
+              <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+              <span>+{currentTask.rewardXp} XP</span>
+            </>
+          ) : null}
+        </div>
+
+        <div className="mt-3">
+          <div className="mb-1 flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400">
+            <span>{currentTask ? currentTask.progressLabel : 'All tasks complete'}</span>
+            <span>{pointsToNextLevel === 0 ? 'Max tier' : `${pointsToNextLevel} XP left`}</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 transition-all"
+              style={{ width: `${currentTask ? currentTask.progress : levelProgress}%` }}
+            />
           </div>
         </div>
       </div>
 
-      <div className="px-3 py-3">
+      <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Momentum</p>
-              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{accountStreak}-day streak</p>
-            </div>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Session streak</p>
             <div className="mt-2 grid grid-cols-7 gap-1">
               {momentumDays.map((day, index) => (
                 <div
                   key={`${day.date.toISOString()}-${index}`}
                   className={cn(
                     'h-6 rounded-sm border border-zinc-200/80 dark:border-zinc-800',
-                    day.active ? 'bg-emerald-500/80 dark:bg-emerald-500/70' : 'bg-zinc-100 dark:bg-[#111111]'
+                    day.active ? 'bg-emerald-500/85 dark:bg-emerald-500/75' : 'bg-zinc-100 dark:bg-[#111111]'
                   )}
                   title={day.active ? `${formatDateShort(day.date)} · active` : `${formatDateShort(day.date)} · inactive`}
                 />
               ))}
             </div>
             <p className="mt-2 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">
-              Check in to keep your streak active and build points while you finish setup.
+              {accountStreak}-day streak. Check in to keep momentum while you finish setup.
             </p>
           </div>
 
@@ -550,104 +534,114 @@ function AccountSetupRailCard({
             {checkedInToday ? 'Checked in' : 'Check in'}
           </button>
         </div>
-        <p className="mt-2 text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">{rewardPoints} points banked</p>
       </div>
 
-      <div className="border-t border-zinc-200/70 dark:border-zinc-800/70">
-        <div className="flex items-center justify-between px-3 py-3">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Priority tasks</p>
-          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{openTaskCount} remaining</p>
-        </div>
-        <div className="divide-y divide-zinc-200/70 dark:divide-zinc-800/70">
-          {tasks.map((task) => {
-            const Icon = task.icon;
+      {queuedTasks.length > 0 ? (
+        <div className="border-t border-zinc-200/70 dark:border-zinc-800/70">
+          <div className="px-3 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Queue</p>
+          </div>
+          <div className="divide-y divide-zinc-200/70 dark:divide-zinc-800/70">
+            {queuedTasks.map((task) => {
+              const Icon = task.icon;
 
-            return (
-              <button
-                key={task.id}
-                type="button"
-                onClick={() => onOpen(task.tab)}
-                className="group flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-[#111111]"
-              >
-                <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border', task.completed ? toneClasses.emerald : toneClasses.zinc)}>
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-medium text-black dark:text-white">{task.title}</p>
-                      <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{task.detail}</p>
-                    </div>
-                    <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
+              return (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => onOpen(task.tab)}
+                  className="group flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-[#111111]"
+                >
+                  <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border', task.completed ? toneClasses.emerald : toneClasses.zinc)}>
+                    <Icon className="h-4 w-4" />
                   </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="h-1.5 flex-1 rounded-full bg-zinc-200 dark:bg-zinc-800">
-                      <div
-                        className={cn('h-full rounded-full transition-all', task.completed ? 'bg-emerald-500' : 'bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500')}
-                        style={{ width: `${task.progress}%` }}
-                      />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-medium text-black dark:text-white">{task.title}</p>
+                        <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{task.progressLabel}</p>
+                      </div>
+                      <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
                     </div>
-                    <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">
-                      {task.progressLabel}
-                    </span>
                   </div>
-                  <p className="mt-1.5 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">+{task.rewardXp} XP</p>
-                </div>
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }
 
-function AccountUnlocksRailCard({
-  achievements,
-  perks,
+function AccountBenefitsRailCard({
+  liveBenefits,
   nextUnlock,
+  onDeckBenefits,
   onOpen,
 }: {
-  achievements: AccountAchievement[];
-  perks: AccountPerk[];
+  liveBenefits: AccountBenefitItem[];
   nextUnlock: AccountNextUnlock | null;
+  onDeckBenefits: AccountBenefitItem[];
   onOpen: (tab: AccountTab) => void;
 }) {
-  const unlockedAchievements = achievements.filter((achievement) => achievement.unlocked).length;
-  const unlockedPerks = perks.filter((perk) => perk.unlocked).length;
-  const perkRows = [...perks].sort((left, right) => Number(right.unlocked) - Number(left.unlocked));
-
   return (
     <section className="rounded-sm border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-[#141414]">
       <div className="px-3 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Unlocks</p>
-            <p className="mt-1 text-sm font-medium text-black dark:text-white">What this account can open</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">Live</p>
-            <p className="mt-1 text-sm font-medium text-black dark:text-white">{unlockedAchievements + unlockedPerks}/{achievements.length + perks.length}</p>
-          </div>
+        <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Why finish setup</p>
+        <p className="mt-1 text-sm font-medium text-black dark:text-white">What improves as this account matures</p>
+      </div>
+
+      <div className="border-y border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Live now</p>
+          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{liveBenefits.length} active</p>
         </div>
+        {liveBenefits.length > 0 ? (
+          <div className="mt-3 space-y-3">
+            {liveBenefits.map((benefit) => (
+              <button
+                key={benefit.id}
+                type="button"
+                onClick={() => onOpen(benefit.tab)}
+                className="group flex w-full items-start gap-3 text-left transition-colors hover:text-black dark:hover:text-white"
+              >
+                <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border', toneClasses[benefit.tone])}>
+                  <benefit.icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[12px] font-medium text-black dark:text-white">{benefit.name}</p>
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">Live</span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{benefit.detail}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">
+            No account benefits are live yet. Finishing setup will unlock the first trust and recovery upgrades.
+          </p>
+        )}
       </div>
 
       {nextUnlock ? (
         <button
           type="button"
           onClick={() => onOpen(nextUnlock.tab)}
-          className="flex w-full items-start gap-3 border-y border-zinc-200/70 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:border-zinc-800/70 dark:hover:bg-[#111111]"
+          className="group flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-[#111111]"
         >
-          <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border', toneClasses[nextUnlock.tone])}>
+          <div className={cn('mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border', toneClasses[nextUnlock.tone])}>
             <nextUnlock.icon className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">Focus unlock</p>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">Next unlock</p>
                 <p className="mt-1 text-sm font-medium text-black dark:text-white">{nextUnlock.name}</p>
               </div>
-              <ArrowUpRight className="h-4 w-4 shrink-0 text-zinc-400" />
+              <ArrowUpRight className="h-4 w-4 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
             </div>
             <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{nextUnlock.detail}</p>
             <p className="mt-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">{nextUnlock.requirement}</p>
@@ -655,65 +649,34 @@ function AccountUnlocksRailCard({
         </button>
       ) : null}
 
-      <div className="px-3 py-3">
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Perks live</p>
-          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedPerks} active</p>
-        </div>
-      </div>
-      <div className="divide-y divide-zinc-200/70 border-t border-zinc-200/70 dark:divide-zinc-800/70 dark:border-zinc-800/70">
-        {perkRows.map((perk) => (
-          <button
-            key={perk.id}
-            type="button"
-            onClick={() => onOpen(perk.tab)}
-            className="group flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-[#111111]"
-          >
-            <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border', perk.unlocked ? toneClasses[perk.tone] : toneClasses.zinc)}>
-              {perk.unlocked ? <perk.icon className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[12px] font-medium text-black dark:text-white">{perk.name}</p>
-                <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">
-                  {perk.unlocked ? 'Live' : perk.requirement}
-                </span>
-              </div>
-              <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{perk.description}</p>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Milestone map</p>
-          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{unlockedAchievements}/{achievements.length} unlocked</p>
-        </div>
-        <div className="mt-3 grid grid-cols-2 border-l border-t border-zinc-200/70 dark:border-zinc-800/70">
-          {achievements.map((achievement) => (
-            <button
-              key={achievement.id}
-              type="button"
-              onClick={() => onOpen(achievement.tab)}
-              className="flex min-h-[88px] flex-col justify-between border-b border-r border-zinc-200/70 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:border-zinc-800/70 dark:hover:bg-[#111111]"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className={cn('flex h-7 w-7 items-center justify-center rounded-full', achievement.unlocked ? 'bg-current/10' : 'bg-zinc-100 text-zinc-500 dark:bg-[#111111] dark:text-zinc-400', achievement.unlocked ? rarityColors[achievement.rarity] : '')}>
-                  {achievement.unlocked ? <achievement.icon className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+      {onDeckBenefits.length > 0 ? (
+        <div className="border-t border-zinc-200/70 dark:border-zinc-800/70">
+          <div className="px-3 py-3">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">On deck</p>
+          </div>
+          <div className="divide-y divide-zinc-200/70 dark:divide-zinc-800/70">
+            {onDeckBenefits.map((benefit) => (
+              <button
+                key={benefit.id}
+                type="button"
+                onClick={() => onOpen(benefit.tab)}
+                className="group flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-[#111111]"
+              >
+                <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border', toneClasses[benefit.tone])}>
+                  <benefit.icon className="h-4 w-4" />
                 </div>
-                <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-              </div>
-              <div>
-                <p className="text-[12px] font-medium text-black dark:text-white">{achievement.name}</p>
-                <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">
-                  {achievement.unlocked ? achievement.statusLabel ?? 'Unlocked' : 'Locked'}
-                </p>
-              </div>
-            </button>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[12px] font-medium text-black dark:text-white">{benefit.name}</p>
+                    <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
+                  </div>
+                  <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{benefit.requirement}</p>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }
@@ -861,7 +824,6 @@ export default function AccountHome() {
     Number(Boolean(profileForm.phone)) +
     Number(securityEnabledCount >= 4);
   const supportProgress = clampPercent(supportChecklistCount * 25);
-  const accountReadiness = clampPercent((profileProgress + connectionProgress + securityScore + supportProgress) / 4);
   const securityTone = securityScore >= 80 ? 'Strong' : securityScore >= 60 ? 'Balanced' : 'Needs work';
   const activeNetworks = useMemo(
     () => new Set(holdings.map((holding) => holding.chainName).filter(Boolean)).size,
@@ -1143,6 +1105,40 @@ export default function AccountHome() {
 
     return null;
   }, [accountAchievements, accountPerks]);
+
+  const focusTask = accountSetupTasks.find((task) => !task.completed) ?? accountSetupTasks[0] ?? null;
+  const queuedTasks = accountSetupTasks.filter((task) => focusTask ? task.id !== focusTask.id : true).slice(0, 2);
+
+  const accountBenefits = useMemo<AccountBenefitItem[]>(
+    () => [
+      ...accountPerks.map((perk) => ({
+        id: perk.id,
+        name: perk.name,
+        detail: perk.description,
+        requirement: perk.requirement,
+        tab: perk.tab,
+        icon: perk.icon,
+        tone: perk.tone,
+        live: perk.unlocked,
+      })),
+      ...accountAchievements.map((achievement) => ({
+        id: achievement.id,
+        name: achievement.name,
+        detail: achievement.detail,
+        requirement: achievement.statusLabel ?? `Open ${ACCOUNT_TAB_LABELS[achievement.tab]}`,
+        tab: achievement.tab,
+        icon: achievement.icon,
+        tone: achievement.tone,
+        live: achievement.unlocked,
+      })),
+    ],
+    [accountAchievements, accountPerks]
+  );
+
+  const liveBenefits = accountBenefits.filter((benefit) => benefit.live).slice(0, 2);
+  const onDeckBenefits = accountBenefits
+    .filter((benefit) => !benefit.live && benefit.id !== nextUnlock?.id)
+    .slice(0, 2);
 
   const unlockedAchievementCount = accountAchievements.filter((achievement) => achievement.unlocked).length;
 
@@ -1804,8 +1800,9 @@ export default function AccountHome() {
 
           <div className="space-y-8 md:col-span-4">
             <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.08 }}>
-              <AccountSetupRailCard
-                readinessScore={accountReadiness}
+              <AccountFocusRailCard
+                currentTask={focusTask}
+                queuedTasks={queuedTasks}
                 levelLabel={currentLevel.label}
                 levelNumber={Math.min(levelIndex + 1, LEVELS.length)}
                 levelProgress={levelProgress}
@@ -1815,16 +1812,18 @@ export default function AccountHome() {
                 checkedInToday={checkedInToday}
                 onCheckIn={handleAccountPulse}
                 rewardPoints={rewardPoints}
-                securityEnabledCount={securityEnabledCount}
-                linkedAccountGroups={linkedAccountGroupCount}
-                tasks={accountSetupTasks}
                 momentumDays={momentumDays}
                 onOpen={handleHeroAction}
               />
             </motion.div>
 
             <motion.div {...sectionMotion} transition={{ ...sectionTransition, delay: 0.12 }}>
-              <AccountUnlocksRailCard achievements={accountAchievements} perks={accountPerks} nextUnlock={nextUnlock} onOpen={handleHeroAction} />
+              <AccountBenefitsRailCard
+                liveBenefits={liveBenefits}
+                nextUnlock={nextUnlock}
+                onDeckBenefits={onDeckBenefits}
+                onOpen={handleHeroAction}
+              />
             </motion.div>
 
             <section className="border-t border-zinc-200/70 pt-6 dark:border-zinc-800/70">
