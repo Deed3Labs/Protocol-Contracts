@@ -343,6 +343,25 @@ function HeroMetric({ label, value, detail }: { label: string; value: string; de
   );
 }
 
+function RailSectionHeader({ label, meta }: { label: string; meta?: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <p className="shrink-0 text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">{label}</p>
+      <div className="h-px flex-1 bg-zinc-200/70 dark:bg-zinc-800/70" />
+      {meta ? <p className="shrink-0 text-[10px] text-zinc-500 dark:text-zinc-400">{meta}</p> : null}
+    </div>
+  );
+}
+
+function RailMetricCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="min-w-0 flex-1 rounded-sm border border-zinc-200/70 px-2.5 py-2 dark:border-zinc-800/70">
+      <p className="truncate text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">{label}</p>
+      <p className="mt-1 text-sm font-medium text-black dark:text-white">{value}</p>
+    </div>
+  );
+}
+
 function MissionRail({ item, onOpen }: { item: MissionRailItem; onOpen: (tab: AccountTab) => void }) {
   const Icon = item.icon;
 
@@ -426,26 +445,29 @@ function AccountFocusRailCard({
         </div>
       </div>
 
-      <div className="border-y border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
+      <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
         {railState === 'active' && currentTask ? (
           <button
             type="button"
             onClick={() => onOpen(currentTask.tab)}
-            className="group block w-full rounded-sm border border-zinc-200/80 px-3 py-3 text-left transition-colors hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:bg-[#111111]"
+            className="group block w-full text-left transition-colors hover:text-black dark:hover:text-white"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Current task</p>
-                <p className="mt-2 text-sm font-medium text-black dark:text-white">{currentTask.title}</p>
+            <RailSectionHeader label="Current task" meta={`+${currentTask.rewardXp} XP`} />
+            <div className="mt-3 flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className={cn('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border', toneClasses[currentTask.completed ? 'emerald' : 'sky'])}>
+                  <currentTask.icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-black dark:text-white">{currentTask.title}</p>
+                  <p className="mt-1 text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">{currentTask.detail}</p>
+                </div>
               </div>
-              <div className={cn('mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border', toneClasses[currentTask.completed ? 'emerald' : 'sky'])}>
-                <currentTask.icon className="h-4 w-4" />
-              </div>
+              <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
             </div>
-            <p className="mt-2 text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">{currentTask.detail}</p>
             <div className="mt-3 flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">
               <span>{currentTask.progressLabel}</span>
-              <span>+{currentTask.rewardXp} XP</span>
+              <span>Open {ACCOUNT_TAB_LABELS[currentTask.tab]}</span>
             </div>
             <div className="mt-2 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800">
               <div
@@ -453,14 +475,11 @@ function AccountFocusRailCard({
                 style={{ width: `${currentTask.progress}%` }}
               />
             </div>
-            <div className="mt-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-500 transition-colors group-hover:text-zinc-800 dark:text-zinc-400 dark:group-hover:text-zinc-200">
-              Open {ACCOUNT_TAB_LABELS[currentTask.tab]}
-              <ArrowUpRight className="h-3.5 w-3.5" />
-            </div>
           </button>
         ) : railState === 'complete' ? (
-          <div className="rounded-sm border border-emerald-200 bg-emerald-50/70 px-3 py-3 dark:border-emerald-900/60 dark:bg-emerald-950/20">
-            <div className="flex items-start gap-3">
+          <div>
+            <RailSectionHeader label="Current task" meta="Ready" />
+            <div className="mt-3 flex items-start gap-3">
               <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border', toneClasses.emerald)}>
                 <ShieldCheck className="h-4 w-4" />
               </div>
@@ -473,37 +492,28 @@ function AccountFocusRailCard({
             </div>
           </div>
         ) : (
-          <div className="rounded-sm border border-dashed border-zinc-200 px-3 py-3 dark:border-zinc-800">
-            <p className="text-sm font-medium text-black dark:text-white">No setup tasks assigned</p>
-            <p className="mt-1 text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">
-              New setup items will appear here when your account needs attention or new requirements are added.
-            </p>
+          <div>
+            <RailSectionHeader label="Current task" meta="Waiting" />
+            <div className="mt-3">
+              <p className="text-sm font-medium text-black dark:text-white">No setup tasks assigned</p>
+              <p className="mt-1 text-[12px] leading-5 text-zinc-600 dark:text-zinc-300">
+                New setup items will appear here when your account needs attention or new requirements are added.
+              </p>
+            </div>
           </div>
         )}
 
-        <div className="mt-3 grid grid-cols-3 gap-3">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">Open</p>
-            <p className="mt-1 text-sm font-medium text-black dark:text-white">{openTaskCount}</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">Done</p>
-            <p className="mt-1 text-sm font-medium text-black dark:text-white">{completedTaskCount}</p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">Points</p>
-            <p className="mt-1 text-sm font-medium text-black dark:text-white">{rewardPoints}</p>
-          </div>
+        <div className="mt-3 flex items-stretch gap-2">
+          <RailMetricCard label="Open" value={openTaskCount} />
+          <RailMetricCard label="Done" value={completedTaskCount} />
+          <RailMetricCard label="Points" value={rewardPoints} />
         </div>
       </div>
 
       {railState === 'active' && queuedTasks.length > 0 ? (
         <div className="border-t border-zinc-200/70 dark:border-zinc-800/70">
           <div className="px-3 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Up next</p>
-              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{queuedTasks.length} queued</p>
-            </div>
+            <RailSectionHeader label="Up next" meta={`${queuedTasks.length} queued`} />
           </div>
           <div className="divide-y divide-zinc-200/70 dark:divide-zinc-800/70">
             {queuedTasks.map((task, index) => {
@@ -578,11 +588,8 @@ function AccountBenefitsRailCard({
         <p className="mt-1 text-sm font-medium text-black dark:text-white">What improves as this account matures</p>
       </div>
 
-      <div className="border-y border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">Live now</p>
-          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{liveBenefits.length} active</p>
-        </div>
+      <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
+        <RailSectionHeader label="Live now" meta={`${liveBenefits.length} active`} />
         {liveBenefits.length > 0 ? (
           <div className="mt-3 space-y-3">
             {liveBenefits.map((benefit) => (
@@ -613,32 +620,34 @@ function AccountBenefitsRailCard({
       </div>
 
       {nextUnlock ? (
-        <button
-          type="button"
-          onClick={() => onOpen(nextUnlock.tab)}
-          className="group flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-[#111111]"
-        >
-          <div className={cn('mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border', toneClasses[nextUnlock.tone])}>
-            <nextUnlock.icon className="h-4 w-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400">Next unlock</p>
-                <p className="mt-1 text-sm font-medium text-black dark:text-white">{nextUnlock.name}</p>
-              </div>
-              <ArrowUpRight className="h-4 w-4 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
+        <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
+          <RailSectionHeader label="Next unlock" />
+          <button
+            type="button"
+            onClick={() => onOpen(nextUnlock.tab)}
+            className="group mt-3 flex w-full items-start gap-3 text-left transition-colors hover:text-black dark:hover:text-white"
+          >
+            <div className={cn('mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border', toneClasses[nextUnlock.tone])}>
+              <nextUnlock.icon className="h-4 w-4" />
             </div>
-            <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{nextUnlock.detail}</p>
-            <p className="mt-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">{nextUnlock.requirement}</p>
-          </div>
-        </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-black dark:text-white">{nextUnlock.name}</p>
+                </div>
+                <ArrowUpRight className="h-4 w-4 shrink-0 text-zinc-400 transition-colors group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
+              </div>
+              <p className="mt-1 text-[11px] leading-5 text-zinc-500 dark:text-zinc-400">{nextUnlock.detail}</p>
+              <p className="mt-2 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">{nextUnlock.requirement}</p>
+            </div>
+          </button>
+        </div>
       ) : null}
 
       {onDeckBenefits.length > 0 ? (
         <div className="border-t border-zinc-200/70 dark:border-zinc-800/70">
           <div className="px-3 py-3">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">On deck</p>
+            <RailSectionHeader label="On deck" meta={`${onDeckBenefits.length} pending`} />
           </div>
           <div className="divide-y divide-zinc-200/70 dark:divide-zinc-800/70">
             {onDeckBenefits.map((benefit) => (
@@ -663,6 +672,7 @@ function AccountBenefitsRailCard({
           </div>
         </div>
       ) : null}
+
     </section>
   );
 }
