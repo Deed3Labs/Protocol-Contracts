@@ -36,6 +36,7 @@ interface AppKitAuthContextValue extends AuthState {
   openModal: (view?: 'Account' | 'Connect' | 'Networks') => Promise<void>;
   disconnect: () => Promise<void>;
   signMessage: (message: string) => Promise<string>;
+  authenticate: () => Promise<boolean>;
   getUser: () => Promise<AuthState['user'] | null>;
   checkAuthentication: () => Promise<boolean>;
   setSessionMetadata: (metadata: object) => Promise<void>;
@@ -212,6 +213,40 @@ export function AppKitAuthProvider({ children }: { children: React.ReactNode }) 
     [siwx, checkAuthentication]
   );
 
+  const authenticate = useCallback(async () => {
+    if (!siwx || !isConnected || !address || !chainId) {
+      return false;
+    }
+
+    try {
+      const existingSession = await checkAuthentication();
+      if (existingSession) {
+        return true;
+      }
+
+      const caipChainId = `eip155:${chainId}` as const;
+      const siwxMessage = await siwx.createMessage({
+        accountAddress: address.toLowerCase(),
+        chainId: caipChainId,
+      });
+      const message = siwxMessage.toString();
+      const signature = await signMessage(message);
+
+      await siwx.addSession({
+        data: siwxMessage,
+        message,
+        signature,
+      });
+
+      return await checkAuthentication();
+    } catch (error) {
+      console.error('Failed to authenticate AppKit session:', error);
+      setIsAuthenticated(false);
+      setUser(undefined);
+      return false;
+    }
+  }, [address, chainId, checkAuthentication, isConnected, siwx, signMessage]);
+
   useEffect(() => {
     if (!isConnected) {
       setIsAuthenticated(false);
@@ -283,6 +318,7 @@ export function AppKitAuthProvider({ children }: { children: React.ReactNode }) 
       openModal,
       disconnect,
       signMessage,
+      authenticate,
       getUser,
       checkAuthentication,
       setSessionMetadata,
@@ -294,6 +330,7 @@ export function AppKitAuthProvider({ children }: { children: React.ReactNode }) 
       checkAuthentication,
       disconnect,
       getUser,
+      authenticate,
       isAuthenticated,
       isConnected,
       openModal,

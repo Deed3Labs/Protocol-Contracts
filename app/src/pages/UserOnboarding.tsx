@@ -459,7 +459,7 @@ function FlatOption({
 }
 
 export default function UserOnboarding() {
-  const { address, chainId, isConnected, isAuthenticated, openModal, checkAuthentication } = useAppKitAuth();
+  const { address, chainId, isConnected, isAuthenticated, openModal, checkAuthentication, authenticate } = useAppKitAuth();
   const navigate = useNavigate();
   const formSectionRef = useRef<HTMLElement | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -658,9 +658,12 @@ export default function UserOnboarding() {
       await openModal("Connect");
     }
 
-    const authenticated = await checkAuthentication();
+    let authenticated = await checkAuthentication();
     if (!authenticated) {
-      throw new Error("Connect and sign in with AppKit before finishing onboarding.");
+      authenticated = await authenticate();
+    }
+    if (!authenticated) {
+      throw new Error("Connect your wallet/account and approve the AppKit sign-in message before finishing onboarding.");
     }
   };
 
