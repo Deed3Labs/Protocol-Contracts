@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { verifyMessage } from 'ethers';
 import type { Pool } from 'pg';
 import { getPostgresPool } from '../config/postgres.js';
 import {
@@ -147,6 +148,16 @@ export interface MemberSocialAccountRecord {
   updatedAt: Date;
 }
 
+export interface MemberWalletLinkChallenge {
+  id: number;
+  walletAddress: string;
+  label: string | null;
+  kind: MemberWalletKind;
+  message: string;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
 export interface MemberCapabilities {
   canEditProfile: boolean;
   canJoinWaitlists: boolean;
@@ -264,6 +275,12 @@ export interface UpdateMemberMembershipStateInput {
   membershipMetadataHash?: string | null;
 }
 
+export interface CreateMemberWalletLinkChallengeInput {
+  walletAddress: string;
+  label?: string | null;
+  kind?: MemberWalletKind | null;
+}
+
 export interface AcceptTermsInput {
   documentType: string;
   documentVersion: string;
@@ -280,8 +297,10 @@ const TABLE_TERMS = 'member_terms_acceptances';
 const TABLE_SECURITY = 'member_security_settings';
 const TABLE_VERIFICATIONS = 'member_verifications';
 const TABLE_WALLETS = 'member_wallets';
+const TABLE_WALLET_LINK_CHALLENGES = 'member_wallet_link_challenges';
 const TABLE_SOCIALS = 'member_social_accounts';
 const DEFAULT_MAX_ATTEMPTS = 3;
+const WALLET_LINK_CHALLENGE_TTL_MS = 10 * 60 * 1000;
 
 type MemberDbRow = {
   id: string | number;
@@ -405,6 +424,19 @@ type MemberSocialDbRow = {
   updated_at: Date | string;
 };
 
+type MemberWalletLinkChallengeDbRow = {
+  id: string | number;
+  member_id: string | number;
+  wallet_address: string;
+  label: string | null;
+  kind: MemberWalletKind;
+  nonce: string;
+  message: string;
+  expires_at: Date | string;
+  consumed_at: Date | string | null;
+  created_at: Date | string;
+};
+
 function normalizeWalletAddress(walletAddress: string): string {
   return walletAddress.trim().toLowerCase();
 }
@@ -514,6 +546,26 @@ function normalizeWalletKind(value: MemberWalletKind | string | null | undefined
 function normalizeWalletStatus(value: MemberWalletStatus | string | null | undefined): MemberWalletStatus {
   const normalized = normalizeOptionalString(value ?? null, 32)?.toUpperCase();
   return normalized === 'REMOVED' ? 'REMOVED' : 'ACTIVE';
+}
+
+function buildWalletLinkMessage(input: {
+  memberId: number;
+  walletAddress: string;
+  nonce: string;
+  issuedAt: Date;
+  expiresAt: Date;
+}): string {
+  return [
+    'Clear wallet link request',
+    '',
+    `Member ID: ${input.memberId}`,
+    `Wallet: ${input.walletAddress}`,
+    `Nonce: ${input.nonce}`,
+    `Issued At: ${input.issuedAt.toISOString()}`,
+    `Expires At: ${input.expiresAt.toISOString()}`,
+    '',
+    'Only sign this message if you started linking this wallet from your Clear account settings.',
+  ].join('\n');
 }
 
 function normalizeSocialVisibility(value: MemberSocialVisibility | string | null | undefined): MemberSocialVisibility {
@@ -756,6 +808,18 @@ function mapSocialAccount(row: MemberSocialDbRow): MemberSocialAccountRecord {
     status: row.status,
     createdAt: parseDate(row.created_at) ?? new Date(0),
     updatedAt: parseDate(row.updated_at) ?? new Date(0),
+  };
+}
+
+function mapWalletLinkChallenge(row: MemberWalletLinkChallengeDbRow): MemberWalletLinkChallenge {
+  return {
+    id: parseNumericId(row.id) ?? 0,
+    walletAddress: row.wallet_address,
+    label: row.label,
+    kind: row.kind,
+    message: row.message,
+    expiresAt: parseDate(row.expires_at) ?? new Date(0),
+    createdAt: parseDate(row.created_at) ?? new Date(0),
   };
 }
 
@@ -1408,6 +1472,131 @@ export class MemberStore {
         [walletId, member.id]
       );
     });
+
+    return this.loadWallets(member.id);
+  }
+
+  async createWalletLinkChallengeByAuthSubject(
+    authSubject: string,
+    input: CreateMemberWalletLinkChallengeInput
+  ): Promise<MemberWalletLinkChallenge> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const walletAddress = normalizeWalletAddress(input.walletAddress);
+
+    if (walletAddress === member.primaryWallet) {
+      throw new Error('Wallet is already the primary signer for this account');
+    }
+
+    const existingWallet = await this.loadWalletRowByAddress(walletAddress);
+    if (existingWallet) {
+      const existingMemberId = parseNumericId(existingWallet.member_id);
+      if (existingMemberId && existingMemberId !== member.id) {
+        throw new Error('Wallet is already linked to another account');
+      }
+      if (
+        existingMemberId === member.id
+        && existingWallet.auth_alias_enabled
+        && existingWallet.status !== 'REMOVED'
+      ) {
+        throw new Error('Wallet is already linked to this account');
+      }
+    }
+
+    const issuedAt = new Date();
+    const expiresAt = new Date(issuedAt.getTime() + WALLET_LINK_CHALLENGE_TTL_MS);
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const message = buildWalletLinkMessage({
+      memberId: member.id,
+      walletAddress,
+      nonce,
+      issuedAt,
+      expiresAt,
+    });
+
+    const label = normalizeOptionalString(input.label ?? null, 120) ?? null;
+    const kind = normalizeWalletKind(input.kind ?? existingWallet?.kind ?? 'SMART');
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_WALLET_LINK_CHALLENGES}
+        SET consumed_at = NOW()
+        WHERE member_id = $1
+          AND wallet_address = $2
+          AND consumed_at IS NULL
+        `,
+        [member.id, walletAddress]
+      );
+
+      return pool.query<MemberWalletLinkChallengeDbRow>(
+        `
+        INSERT INTO ${TABLE_WALLET_LINK_CHALLENGES} (
+          member_id,
+          wallet_address,
+          label,
+          kind,
+          nonce,
+          message,
+          expires_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+        RETURNING *
+        `,
+        [member.id, walletAddress, label, kind, nonce, message, expiresAt]
+      );
+    });
+
+    return mapWalletLinkChallenge(result.rows[0]);
+  }
+
+  async completeWalletLinkChallengeByAuthSubject(
+    authSubject: string,
+    challengeId: number,
+    signature: string
+  ): Promise<MemberWalletRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const challenge = await this.loadWalletLinkChallenge(member.id, challengeId);
+
+    if (!challenge) {
+      throw new Error('Wallet link challenge not found');
+    }
+    if (challenge.consumed_at) {
+      throw new Error('Wallet link challenge has already been used');
+    }
+
+    const expiresAt = parseDate(challenge.expires_at);
+    if (!expiresAt || expiresAt.getTime() <= Date.now()) {
+      throw new Error('Wallet link challenge has expired');
+    }
+
+    const recoveredWallet = normalizeWalletAddress(verifyMessage(challenge.message, signature));
+    if (recoveredWallet !== normalizeWalletAddress(challenge.wallet_address)) {
+      throw new Error('Invalid wallet link signature');
+    }
+
+    await this.linkAuthenticatedWallet(member.id, challenge.wallet_address, {
+      label: challenge.label,
+      kind: challenge.kind,
+    });
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_WALLET_LINK_CHALLENGES}
+        SET consumed_at = NOW()
+        WHERE id = $1
+          AND member_id = $2
+        `,
+        [challengeId, member.id]
+      );
+    });
+
+    const updatedMember = await this.loadMemberById(member.id);
+    if (updatedMember) {
+      await this.backfillPlaidOwnership(updatedMember);
+    }
 
     return this.loadWallets(member.id);
   }
@@ -2079,6 +2268,26 @@ export class MemberStore {
     return result.rows[0] ?? null;
   }
 
+  private async loadWalletLinkChallenge(
+    memberId: number,
+    challengeId: number
+  ): Promise<MemberWalletLinkChallengeDbRow | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletLinkChallengeDbRow>(
+        `
+        SELECT *
+        FROM ${TABLE_WALLET_LINK_CHALLENGES}
+        WHERE id = $1
+          AND member_id = $2
+        LIMIT 1
+        `,
+        [challengeId, memberId]
+      );
+    });
+    return result.rows[0] ?? null;
+  }
+
   private async loadWallets(memberId: number): Promise<MemberWalletRecord[]> {
     const pool = this.mustPool();
     const result = await withRetry(async () => {
@@ -2202,8 +2411,25 @@ export class MemberStore {
     });
   }
 
-  private async linkAuthenticatedWallet(memberId: number, walletAddress: string): Promise<void> {
+  private async linkAuthenticatedWallet(
+    memberId: number,
+    walletAddress: string,
+    metadata?: { label?: string | null; kind?: MemberWalletKind | null }
+  ): Promise<void> {
     const normalizedWallet = normalizeWalletAddress(walletAddress);
+    const existingWallet = await this.loadWalletRowByAddress(normalizedWallet);
+    if (existingWallet && parseNumericId(existingWallet.member_id) !== memberId) {
+      throw new Error('Wallet is already linked to another account');
+    }
+
+    const label =
+      existingWallet?.label ??
+      normalizeOptionalString(metadata?.label ?? null, 120) ??
+      'Authenticated wallet';
+    const existingKind = existingWallet?.kind;
+    const kind = existingKind && existingKind !== 'PRIMARY'
+      ? existingKind
+      : normalizeWalletKind(metadata?.kind ?? 'SMART');
     const pool = this.mustPool();
     await withRetry(async () => {
       await pool.query(
@@ -2217,16 +2443,24 @@ export class MemberStore {
           is_primary,
           auth_alias_enabled,
           verified_at
-        ) VALUES ($1,$2,$3,'SMART','ACTIVE',FALSE,TRUE,NOW())
+        ) VALUES ($1,$2,$3,$4,'ACTIVE',FALSE,TRUE,NOW())
         ON CONFLICT (wallet_address)
         DO UPDATE SET
           member_id = EXCLUDED.member_id,
+          label = COALESCE(${TABLE_WALLETS}.label, EXCLUDED.label),
+          kind = CASE
+            WHEN ${TABLE_WALLETS}.is_primary = TRUE THEN 'PRIMARY'
+            WHEN ${TABLE_WALLETS}.kind = 'HARDWARE' THEN 'HARDWARE'
+            WHEN ${TABLE_WALLETS}.kind = 'SMART' THEN 'SMART'
+            WHEN ${TABLE_WALLETS}.kind = 'EMBEDDED' THEN 'EMBEDDED'
+            ELSE EXCLUDED.kind
+          END,
           status = 'ACTIVE',
           auth_alias_enabled = TRUE,
           verified_at = COALESCE(${TABLE_WALLETS}.verified_at, NOW()),
           updated_at = NOW()
         `,
-        [memberId, normalizedWallet, 'Authenticated wallet']
+        [memberId, normalizedWallet, label, kind]
       );
     });
   }
@@ -2457,6 +2691,31 @@ export class MemberStore {
         SET auth_alias_enabled = TRUE
         WHERE is_primary = TRUE
            OR label = 'Authenticated wallet'
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_WALLET_LINK_CHALLENGES} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          wallet_address TEXT NOT NULL,
+          label TEXT,
+          kind TEXT NOT NULL DEFAULT 'SMART',
+          nonce TEXT NOT NULL,
+          message TEXT NOT NULL,
+          expires_at TIMESTAMPTZ NOT NULL,
+          consumed_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLET_LINK_CHALLENGES}_member_wallet
+        ON ${TABLE_WALLET_LINK_CHALLENGES} (member_id, wallet_address)
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLET_LINK_CHALLENGES}_expires_at
+        ON ${TABLE_WALLET_LINK_CHALLENGES} (expires_at)
       `);
 
       await pool.query(`

@@ -46,6 +46,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import {
   createMemberMembershipCheckout,
+  createMemberWalletLinkChallenge,
   createMemberSocialAccount,
   createMemberWallet,
   deleteMemberSocialAccount,
@@ -60,6 +61,7 @@ import {
   updateMemberSecurity,
   updateMemberSocialAccount,
   updateMemberWallet,
+  verifyMemberWalletLink,
   bootstrapMemberAccount,
 } from '@/utils/apiClient';
 
@@ -800,7 +802,7 @@ function AccountBenefitsRailCard({
 
 export default function AccountHome() {
   const { address } = useAppKitAccount();
-  const { user, chainId, isAuthenticated, openModal } = useAppKitAuth();
+  const { user, chainId, isAuthenticated, openModal, signMessage } = useAppKitAuth();
   const { totalBalanceUSD, cashBalance, holdings, bankAccounts, bankAccountsLoading, refreshBankBalance } = usePortfolio();
   const { profileMenuUser, setActionModalOpen } = useGlobalModals();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1431,6 +1433,19 @@ export default function AccountHome() {
       return;
     }
 
+    const normalizedAddress = address.toLowerCase();
+    const existingLinkedWallet = wallets.find(
+      (wallet) => wallet.address.toLowerCase() === normalizedAddress
+    );
+    if (existingLinkedWallet?.verified) {
+      setBannerMessage(
+        existingLinkedWallet.id === 'wallet-primary'
+          ? 'This wallet is already the primary signer for your Clear account.'
+          : 'This wallet is already linked as a sign-in alias.'
+      );
+      return;
+    }
+
     if (!isAuthenticated) {
       setBannerMessage('Connect and sign in before linking this wallet.');
       await promptWalletConnect();
@@ -1438,41 +1453,66 @@ export default function AccountHome() {
     }
 
     setAccountLoading(true);
-    const bootstrap = await bootstrapMemberAccount();
-    if (!bootstrap) {
+
+    try {
+      const challenge = await createMemberWalletLinkChallenge({
+        walletAddress: address,
+      });
+      if (!challenge) {
+        setBannerMessage('We could not start wallet linking for the connected wallet.');
+        return;
+      }
+
+      const signature = await signMessage(challenge.message);
+      const linkedWallets = await verifyMemberWalletLink({
+        challengeId: challenge.id,
+        signature,
+      });
+      if (!linkedWallets) {
+        setBannerMessage('We could not verify the connected wallet signature.');
+        return;
+      }
+
+      setWallets(linkedWallets.map(walletRecordFromApi));
+
+      const [account, membership] = await Promise.all([
+        getMemberAccountCenter(),
+        getMemberMembershipSummary(),
+      ]);
+
+      if (account) {
+        setMemberAccount(account);
+        setProfileForm(profileFormFromAccount(account, user?.email));
+        setProfileSavedAt(formatSavedAtLabel(account.profile.publicProfile.updatedAt));
+        setSecurityControls(securityControlsFromAccount(account));
+        setWallets(account.wallets.map(walletRecordFromApi));
+        setSocialAccounts(account.socialAccounts.map(socialRecordFromApi));
+      }
+
+      if (membership) {
+        setMembershipSummary(membership.billing);
+      }
+
+      await refreshBankBalance(true);
+
+      const linkedWallet = linkedWallets.find(
+        (wallet) => wallet.walletAddress.toLowerCase() === address.toLowerCase()
+      );
+      setBannerMessage(
+        linkedWallet?.verifiedAt
+          ? 'Connected wallet signed and linked to your Clear account.'
+          : 'Connected wallet saved on your Clear account.'
+      );
+    } catch (error) {
+      console.error('Failed to link connected wallet:', error);
+      setBannerMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : 'Wallet linking was cancelled or failed.'
+      );
+    } finally {
       setAccountLoading(false);
-      setBannerMessage('We could not link the connected wallet to your Clear account.');
-      return;
     }
-
-    const account = await getMemberAccountCenter();
-    const membership = await getMemberMembershipSummary();
-
-    if (account) {
-      setMemberAccount(account);
-      setProfileForm(profileFormFromAccount(account, user?.email));
-      setProfileSavedAt(formatSavedAtLabel(account.profile.publicProfile.updatedAt));
-      setSecurityControls(securityControlsFromAccount(account));
-      setWallets(account.wallets.map(walletRecordFromApi));
-      setSocialAccounts(account.socialAccounts.map(socialRecordFromApi));
-    }
-
-    if (membership) {
-      setMembershipSummary(membership.billing);
-    }
-
-    setAccountLoading(false);
-
-    const linkedWallet = account?.wallets.find(
-      (wallet) => wallet.walletAddress.toLowerCase() === address.toLowerCase()
-    );
-
-    if (linkedWallet?.isPrimary || linkedWallet?.verifiedAt) {
-      setBannerMessage('Connected wallet linked to your Clear account.');
-      return;
-    }
-
-    setBannerMessage('Connected wallet saved on your Clear account.');
   };
 
   const removeWallet = async (walletId: string) => {
@@ -1868,7 +1908,7 @@ export default function AccountHome() {
                     withTopBorder={false}
                     eyebrow="Wallets"
                     title="Associated wallets"
-                    description="Manage wallets saved on this Clear account. To turn a wallet into a sign-in alias, connect it in AppKit and then link the connected wallet here."
+                    description="Manage wallets saved on this Clear account. To turn a wallet into a sign-in alias, connect it in AppKit and approve a dedicated wallet-link signature here."
                     action={(
                       <div className="flex flex-wrap items-center gap-2">
                         <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => void promptWalletConnect()}>
@@ -1877,7 +1917,7 @@ export default function AccountHome() {
                         </Button>
                         <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => void linkConnectedWallet()}>
                           <Link2 className="h-4 w-4" />
-                          Link connected wallet
+                          Sign and link wallet
                         </Button>
                         <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletDialog()}>
                           <Plus className="h-4 w-4" />

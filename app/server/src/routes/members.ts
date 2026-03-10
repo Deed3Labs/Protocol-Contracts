@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Router, type Request, type Response } from 'express';
 import {
+  type CreateMemberWalletLinkChallengeInput,
   memberStore,
   type AcceptTermsInput,
   type MemberMembershipPlan,
@@ -192,6 +193,9 @@ function handleMemberRouteError(res: Response, error: unknown): void {
       || error.message.includes('private data encryption')
       || error.message.includes('Authenticated')
       || error.message.includes('Primary wallet')
+      || error.message.includes('already linked')
+      || error.message.includes('Wallet link challenge')
+      || error.message.includes('Invalid wallet link signature')
     ) {
       res.status(409).json({
         error: 'Request rejected',
@@ -683,6 +687,85 @@ router.delete('/me/wallets/:id', async (req: Request, res: Response) => {
   try {
     const authSubject = await resolveMemberAuthSubject(req);
     const wallets = await memberStore.removeWalletByAuthSubject(authSubject, walletId);
+    res.json({ wallets });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.post('/me/wallet-links/challenge', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  if (!isObjectBody(req.body)) {
+    return res.status(400).json({
+      error: 'Invalid body',
+      message: 'Request body must be an object',
+    });
+  }
+
+  const body = req.body;
+  const walletAddress = parseOptionalString(body.walletAddress, 'walletAddress', 255, res);
+  if (walletAddress === INVALID) return;
+  if (!walletAddress) {
+    return res.status(400).json({
+      error: 'Invalid walletAddress',
+      message: 'walletAddress is required',
+    });
+  }
+  const label = parseOptionalString(body.label, 'label', 120, res, { allowNull: true });
+  if (label === INVALID) return;
+  const kind = parseOptionalString(body.kind, 'kind', 32, res, { allowNull: true });
+  if (kind === INVALID) return;
+
+  const input: CreateMemberWalletLinkChallengeInput = {
+    walletAddress,
+    label,
+    kind: (kind ?? undefined) as CreateMemberWalletLinkChallengeInput['kind'],
+  };
+
+  try {
+    const authSubject = await resolveMemberAuthSubject(req);
+    const challenge = await memberStore.createWalletLinkChallengeByAuthSubject(authSubject, input);
+    res.json({ challenge });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.post('/me/wallet-links/verify', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  if (!isObjectBody(req.body)) {
+    return res.status(400).json({
+      error: 'Invalid body',
+      message: 'Request body must be an object',
+    });
+  }
+
+  const challengeId = typeof req.body.challengeId === 'number'
+    ? req.body.challengeId
+    : Number.parseInt(String(req.body.challengeId ?? ''), 10);
+  if (!Number.isFinite(challengeId) || challengeId <= 0) {
+    return res.status(400).json({
+      error: 'Invalid challengeId',
+      message: 'challengeId must be a positive integer',
+    });
+  }
+
+  const signature = parseOptionalString(req.body.signature, 'signature', 4096, res);
+  if (signature === INVALID) return;
+  if (!signature) {
+    return res.status(400).json({
+      error: 'Invalid signature',
+      message: 'signature is required',
+    });
+  }
+
+  try {
+    const authSubject = await resolveMemberAuthSubject(req);
+    const wallets = await memberStore.completeWalletLinkChallengeByAuthSubject(
+      authSubject,
+      challengeId,
+      signature
+    );
     res.json({ wallets });
   } catch (error) {
     handleMemberRouteError(res, error);

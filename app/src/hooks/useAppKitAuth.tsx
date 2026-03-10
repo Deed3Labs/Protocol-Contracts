@@ -110,8 +110,6 @@ export function AppKitAuthProvider({ children }: { children: React.ReactNode }) 
   const [user, setUser] = useState<AuthState['user']>();
   const authCheckInFlightRef = useRef<Promise<boolean> | null>(null);
   const lastReauthPromptAtRef = useRef(0);
-  const autoAuthenticateKeyRef = useRef<string | null>(null);
-
   const getUser = useCallback(async () => {
     if (!siwx || !isConnected) {
       return null;
@@ -252,49 +250,11 @@ export function AppKitAuthProvider({ children }: { children: React.ReactNode }) 
     if (!isConnected) {
       setIsAuthenticated(false);
       setUser(undefined);
-      autoAuthenticateKeyRef.current = null;
       return;
     }
 
     void checkAuthentication();
   }, [isConnected, address, chainId, checkAuthentication]);
-
-  useEffect(() => {
-    if (!isConnected || !address || !chainId || !walletProvider) {
-      return;
-    }
-
-    const authKey = `${address.toLowerCase()}:${chainId}`;
-    if (isAuthenticated) {
-      autoAuthenticateKeyRef.current = authKey;
-      return;
-    }
-
-    if (autoAuthenticateKeyRef.current === authKey) {
-      return;
-    }
-
-    autoAuthenticateKeyRef.current = authKey;
-
-    void (async () => {
-      const existingSession = await checkAuthentication();
-      if (existingSession) {
-        return;
-      }
-
-      const now = Date.now();
-      if (now - lastReauthPromptAtRef.current < REAUTH_PROMPT_COOLDOWN_MS) {
-        autoAuthenticateKeyRef.current = null;
-        return;
-      }
-      lastReauthPromptAtRef.current = now;
-
-      const authenticated = await authenticate();
-      if (!authenticated) {
-        autoAuthenticateKeyRef.current = null;
-      }
-    })();
-  }, [address, authenticate, chainId, checkAuthentication, isAuthenticated, isConnected, walletProvider]);
 
   useEffect(() => {
     if (!siwx || typeof siwx.on !== 'function') {

@@ -1364,6 +1364,16 @@ export interface MemberWalletResponse {
   updatedAt: string;
 }
 
+export interface MemberWalletLinkChallengeResponse {
+  id: number;
+  walletAddress: string;
+  label: string | null;
+  kind: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+  message: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export interface MemberSocialAccountResponse {
   id: number;
   platform: string;
@@ -1625,6 +1635,37 @@ export async function deleteMemberWallet(walletId: number): Promise<MemberWallet
   const response = await apiRequest<{ wallets: MemberWalletResponse[] }>(`/api/members/me/wallets/${walletId}`, {
     method: 'DELETE',
   });
+  if (response.error || !response.data) return null;
+  return response.data.wallets;
+}
+
+export async function createMemberWalletLinkChallenge(payload: {
+  walletAddress: string;
+  label?: string | null;
+  kind?: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+}): Promise<MemberWalletLinkChallengeResponse | null> {
+  const response = await apiRequest<{ challenge: MemberWalletLinkChallengeResponse }>(
+    '/api/members/me/wallet-links/challenge',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (response.error || !response.data) return null;
+  return response.data.challenge;
+}
+
+export async function verifyMemberWalletLink(payload: {
+  challengeId: number;
+  signature: string;
+}): Promise<MemberWalletResponse[] | null> {
+  const response = await apiRequest<{ wallets: MemberWalletResponse[] }>(
+    '/api/members/me/wallet-links/verify',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
   if (response.error || !response.data) return null;
   return response.data.wallets;
 }

@@ -4,6 +4,7 @@ import {
   getPlaidHistoricalTransactions,
   type PlaidHistoricalTransactionsResponse,
 } from '@/utils/apiClient';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 
 const STALE_MS = 30 * 60 * 1000; // 30 minutes – historical window changes less frequently
 
@@ -24,12 +25,13 @@ export function usePlaidHistoricalTransactions(
   walletAddress: string | undefined,
   options?: { enabled?: boolean; limit?: number }
 ): UsePlaidHistoricalTransactionsResult {
+  const { isAuthenticated } = useAppKitAuth();
   const queryClient = useQueryClient();
   const limit = options?.limit && Number.isFinite(options.limit) && options.limit > 0
     ? Math.floor(options.limit)
     : 1500;
-  const queryKey = ['plaid-historical-transactions', walletAddress ?? '', limit] as const;
-  const enabled = !!walletAddress && (options?.enabled ?? true);
+  const queryKey = ['plaid-historical-transactions', walletAddress ?? '', limit, isAuthenticated ? 'auth' : 'guest'] as const;
+  const enabled = !!walletAddress && isAuthenticated && (options?.enabled ?? true);
 
   const {
     data,
@@ -48,8 +50,8 @@ export function usePlaidHistoricalTransactions(
   });
 
   const refresh = useCallback(async () => {
-    if (!walletAddress) return;
-    const key = ['plaid-historical-transactions', walletAddress, limit] as const;
+    if (!walletAddress || !enabled) return;
+    const key = ['plaid-historical-transactions', walletAddress, limit, 'auth'] as const;
     await queryClient.fetchQuery({
       queryKey: key,
       queryFn: async () => {
@@ -58,7 +60,7 @@ export function usePlaidHistoricalTransactions(
       },
       staleTime: 0,
     });
-  }, [limit, queryClient, walletAddress]);
+  }, [enabled, limit, queryClient, walletAddress]);
 
   return {
     transactions: data?.transactions ?? [],

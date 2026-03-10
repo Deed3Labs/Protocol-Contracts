@@ -4,6 +4,7 @@ import {
   getPlaidInvestmentAccounts,
   type PlaidInvestmentAccountsResponse,
 } from '@/utils/apiClient';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 
 const STALE_MS = 60 * 60 * 1000; // 1 hour
 
@@ -19,9 +20,10 @@ export function usePlaidInvestmentAccounts(
   walletAddress: string | undefined,
   options?: { enabled?: boolean }
 ): UsePlaidInvestmentAccountsResult {
+  const { isAuthenticated } = useAppKitAuth();
   const queryClient = useQueryClient();
-  const queryKey = ['plaid-investment-accounts', walletAddress ?? ''] as const;
-  const enabled = !!walletAddress && (options?.enabled ?? true);
+  const queryKey = ['plaid-investment-accounts', walletAddress ?? '', isAuthenticated ? 'auth' : 'guest'] as const;
+  const enabled = !!walletAddress && isAuthenticated && (options?.enabled ?? true);
 
   const {
     data,
@@ -40,8 +42,8 @@ export function usePlaidInvestmentAccounts(
   });
 
   const refresh = useCallback(() => {
-    if (!walletAddress) return;
-    const key = ['plaid-investment-accounts', walletAddress] as const;
+    if (!walletAddress || !isAuthenticated) return;
+    const key = ['plaid-investment-accounts', walletAddress, 'auth'] as const;
     queryClient.fetchQuery({
       queryKey: key,
       queryFn: () =>
@@ -49,7 +51,7 @@ export function usePlaidInvestmentAccounts(
         { accounts: [], linked: false },
       staleTime: STALE_MS,
     });
-  }, [walletAddress, queryClient]);
+  }, [isAuthenticated, walletAddress, queryClient]);
 
   return {
     accounts: data?.accounts ?? [],
