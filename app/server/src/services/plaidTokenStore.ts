@@ -116,62 +116,20 @@ export class PlaidTokenStore {
 
   async getItems(walletAddress: string | string[]): Promise<PlaidStoredItem[]> {
     await this.ensureReady();
-    const pool = this.mustPool();
     const wallets = normalizeWalletAddresses(walletAddress);
     if (wallets.length === 0) {
       return [];
     }
 
-    const rows = await withRetry(async () => {
-      const result = await pool.query<PlaidTokenRow>(
-        `
-        SELECT
-          wallet_address,
-          item_id,
-          access_token_ciphertext,
-          access_token_iv,
-          access_token_auth_tag,
-          wrapped_data_key_ciphertext,
-          wrapped_data_key_iv,
-          wrapped_data_key_auth_tag,
-          key_version
-        FROM ${TABLE_NAME}
-        WHERE wallet_address = ANY($1::text[])
-        ORDER BY created_at ASC
-        `,
-        [wallets]
-      );
-      return result.rows;
-    });
+    const rows = await this.queryRowsByWallets(wallets);
+    return this.hydrateItems(rows);
+  }
 
-    const items: PlaidStoredItem[] = [];
-    for (const row of rows) {
-      const wallet = normalizeWalletAddress(row.wallet_address);
-      try {
-        const itemId = normalizeItemId(row.item_id);
-        const accessToken = decryptWithEnvelope(
-          {
-            ciphertext: row.access_token_ciphertext,
-            iv: row.access_token_iv,
-            authTag: row.access_token_auth_tag,
-            wrappedKeyCiphertext: row.wrapped_data_key_ciphertext,
-            wrappedKeyIv: row.wrapped_data_key_iv,
-            wrappedKeyAuthTag: row.wrapped_data_key_auth_tag,
-            keyVersion: row.key_version,
-          },
-          encryptionContext(wallet, itemId)
-        );
-        items.push({ item_id: itemId, access_token: accessToken });
-      } catch (error) {
-        console.error('Failed to decrypt Plaid token row:', {
-          walletAddress: wallet,
-          itemId: row.item_id,
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    }
-
-    return items;
+  async getItemsForMember(memberId: number, fallbackWallets: string | string[] = []): Promise<PlaidStoredItem[]> {
+    await this.ensureReady();
+    const wallets = normalizeWalletAddresses(fallbackWallets);
+    const rows = await this.queryRowsByMember(memberId, wallets);
+    return this.hydrateItems(rows);
   }
 
   async countItems(walletAddress: string | string[]): Promise<number> {
@@ -191,6 +149,25 @@ export class PlaidTokenStore {
     });
   }
 
+  async countItemsForMember(memberId: number, fallbackWallets: string | string[] = []): Promise<number> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const wallets = normalizeWalletAddresses(fallbackWallets);
+
+    return withRetry(async () => {
+      const result = await pool.query<{ total: string }>(
+        `
+        SELECT COUNT(DISTINCT item_id)::text AS total
+        FROM ${TABLE_NAME}
+        WHERE member_id = $1
+           OR (member_id IS NULL AND wallet_address = ANY($2::text[]))
+        `,
+        [memberId, wallets]
+      );
+      return parseInt(result.rows[0]?.total || '0', 10) || 0;
+    });
+  }
+
   async upsertItem(
     walletAddress: string,
     itemId: string,
@@ -205,6 +182,43 @@ export class PlaidTokenStore {
     const encrypted = encryptWithEnvelope(accessToken, encryptionContext(wallet, normalizedItemId));
 
     await withRetry(async () => {
+      if (memberId != null) {
+        const updateResult = await pool.query(
+          `
+          UPDATE ${TABLE_NAME}
+          SET
+            member_id = $1,
+            wallet_address = $2,
+            access_token_ciphertext = $4,
+            access_token_iv = $5,
+            access_token_auth_tag = $6,
+            wrapped_data_key_ciphertext = $7,
+            wrapped_data_key_iv = $8,
+            wrapped_data_key_auth_tag = $9,
+            key_version = $10,
+            updated_at = NOW()
+          WHERE member_id = $1
+            AND item_id = $3
+          `,
+          [
+            memberId,
+            wallet,
+            normalizedItemId,
+            encrypted.ciphertext,
+            encrypted.iv,
+            encrypted.authTag,
+            encrypted.wrappedKeyCiphertext,
+            encrypted.wrappedKeyIv,
+            encrypted.wrappedKeyAuthTag,
+            encrypted.keyVersion,
+          ]
+        );
+
+        if (updateResult.rowCount && updateResult.rowCount > 0) {
+          return;
+        }
+      }
+
       await pool.query(
         `
         INSERT INTO ${TABLE_NAME} (
@@ -287,6 +301,31 @@ export class PlaidTokenStore {
     });
   }
 
+  async deleteItemForMember(
+    memberId: number,
+    itemId: string,
+    fallbackWallets: string | string[] = []
+  ): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const wallets = normalizeWalletAddresses(fallbackWallets);
+    const normalizedItemId = normalizeItemId(itemId);
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        DELETE FROM ${TABLE_NAME}
+        WHERE item_id = $2
+          AND (
+            member_id = $1
+            OR (member_id IS NULL AND wallet_address = ANY($3::text[]))
+          )
+        `,
+        [memberId, normalizedItemId, wallets]
+      );
+    });
+  }
+
   async deleteAllItems(walletAddress: string | string[]): Promise<void> {
     await this.ensureReady();
     const pool = this.mustPool();
@@ -297,6 +336,23 @@ export class PlaidTokenStore {
 
     await withRetry(async () => {
       await pool.query(`DELETE FROM ${TABLE_NAME} WHERE wallet_address = ANY($1::text[])`, [wallets]);
+    });
+  }
+
+  async deleteAllItemsForMember(memberId: number, fallbackWallets: string | string[] = []): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const wallets = normalizeWalletAddresses(fallbackWallets);
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        DELETE FROM ${TABLE_NAME}
+        WHERE member_id = $1
+           OR (member_id IS NULL AND wallet_address = ANY($2::text[]))
+        `,
+        [memberId, wallets]
+      );
     });
   }
 
@@ -343,7 +399,100 @@ export class PlaidTokenStore {
         CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_member_id
         ON ${TABLE_NAME} (member_id)
       `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_member_item
+        ON ${TABLE_NAME} (member_id, item_id)
+      `);
     });
+  }
+
+  private async queryRowsByWallets(wallets: string[]): Promise<PlaidTokenRow[]> {
+    const pool = this.mustPool();
+    return withRetry(async () => {
+      const result = await pool.query<PlaidTokenRow>(
+        `
+        SELECT
+          member_id,
+          wallet_address,
+          item_id,
+          access_token_ciphertext,
+          access_token_iv,
+          access_token_auth_tag,
+          wrapped_data_key_ciphertext,
+          wrapped_data_key_iv,
+          wrapped_data_key_auth_tag,
+          key_version
+        FROM ${TABLE_NAME}
+        WHERE wallet_address = ANY($1::text[])
+        ORDER BY created_at ASC
+        `,
+        [wallets]
+      );
+      return result.rows;
+    });
+  }
+
+  private async queryRowsByMember(memberId: number, fallbackWallets: string[]): Promise<PlaidTokenRow[]> {
+    const pool = this.mustPool();
+    return withRetry(async () => {
+      const result = await pool.query<PlaidTokenRow>(
+        `
+        SELECT DISTINCT ON (item_id)
+          member_id,
+          wallet_address,
+          item_id,
+          access_token_ciphertext,
+          access_token_iv,
+          access_token_auth_tag,
+          wrapped_data_key_ciphertext,
+          wrapped_data_key_iv,
+          wrapped_data_key_auth_tag,
+          key_version
+        FROM ${TABLE_NAME}
+        WHERE member_id = $1
+           OR (member_id IS NULL AND wallet_address = ANY($2::text[]))
+        ORDER BY
+          item_id,
+          CASE WHEN member_id = $1 THEN 0 ELSE 1 END,
+          updated_at DESC,
+          created_at ASC
+        `,
+        [memberId, fallbackWallets]
+      );
+      return result.rows;
+    });
+  }
+
+  private hydrateItems(rows: PlaidTokenRow[]): PlaidStoredItem[] {
+    const items: PlaidStoredItem[] = [];
+    for (const row of rows) {
+      const wallet = normalizeWalletAddress(row.wallet_address);
+      try {
+        const itemId = normalizeItemId(row.item_id);
+        const accessToken = decryptWithEnvelope(
+          {
+            ciphertext: row.access_token_ciphertext,
+            iv: row.access_token_iv,
+            authTag: row.access_token_auth_tag,
+            wrappedKeyCiphertext: row.wrapped_data_key_ciphertext,
+            wrappedKeyIv: row.wrapped_data_key_iv,
+            wrappedKeyAuthTag: row.wrapped_data_key_auth_tag,
+            keyVersion: row.key_version,
+          },
+          encryptionContext(wallet, itemId)
+        );
+        items.push({ item_id: itemId, access_token: accessToken });
+      } catch (error) {
+        console.error('Failed to decrypt Plaid token row:', {
+          walletAddress: wallet,
+          itemId: row.item_id,
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    return items;
   }
 }
 

@@ -348,35 +348,35 @@ export const CacheKeys = {
   rateLimit: (identifier: string, window: string) =>
     `ratelimit:${identifier}:${window}`,
 
-  // Plaid bank balances (per wallet) - reduces Plaid API usage
-  plaidBalances: (walletAddress: string) =>
-    `plaid_balances:${walletAddress.toLowerCase()}`,
+  // Plaid cache scope can be member-based (`member:123`) or legacy wallet-based (`wallet:0xabc...`).
+  plaidBalances: (scopeKey: string) =>
+    `plaid_balances:${scopeKey.toLowerCase()}`,
 
-  // Plaid recurring transactions (inflow/outflow streams) - reduces Plaid API usage
-  plaidRecurringTransactions: (walletAddress: string) =>
-    `plaid_recurring_tx:${walletAddress.toLowerCase()}`,
+  // Plaid recurring transactions (inflow/outflow streams)
+  plaidRecurringTransactions: (scopeKey: string) =>
+    `plaid_recurring_tx:${scopeKey.toLowerCase()}`,
 
-  // Plaid spend this month (outflows by day) - reduces Plaid API usage
-  plaidSpend: (walletAddress: string) =>
-    `plaid_spend:${walletAddress.toLowerCase()}`,
+  // Plaid spend this month (outflows by day)
+  plaidSpend: (scopeKey: string) =>
+    `plaid_spend:${scopeKey.toLowerCase()}`,
 
   // Plaid recent transactions (rolling 90 days, newest first)
-  plaidRecentTransactions: (walletAddress: string) =>
-    `plaid_recent_tx:${walletAddress.toLowerCase()}`,
+  plaidRecentTransactions: (scopeKey: string) =>
+    `plaid_recent_tx:${scopeKey.toLowerCase()}`,
 
   // Plaid historical transactions (multi-year history, newest first)
-  plaidHistoricalTransactions: (walletAddress: string) =>
-    `plaid_historical_tx:${walletAddress.toLowerCase()}`,
+  plaidHistoricalTransactions: (scopeKey: string) =>
+    `plaid_historical_tx:${scopeKey.toLowerCase()}`,
 
-  // Plaid investment holdings (per wallet) - reduces Plaid API usage
-  plaidInvestmentsHoldings: (walletAddress: string) =>
-    `plaid_investments_holdings:${walletAddress.toLowerCase()}`,
+  // Plaid investment holdings
+  plaidInvestmentsHoldings: (scopeKey: string) =>
+    `plaid_investments_holdings:${scopeKey.toLowerCase()}`,
 
-  // Plaid liabilities (credit/loan details) per wallet
-  plaidLiabilities: (walletAddress: string) =>
-    `plaid_liabilities:${walletAddress.toLowerCase()}`,
+  // Plaid liabilities (credit/loan details)
+  plaidLiabilities: (scopeKey: string) =>
+    `plaid_liabilities:${scopeKey.toLowerCase()}`,
 
   // Plaid investment account summaries (account-level metadata + aggregate holdings)
-  plaidInvestmentAccounts: (walletAddress: string) =>
-    `plaid_investment_accounts:${walletAddress.toLowerCase()}`,
+  plaidInvestmentAccounts: (scopeKey: string) =>
+    `plaid_investment_accounts:${scopeKey.toLowerCase()}`,
 };

@@ -10,6 +10,7 @@
     "start": "bun src/index.ts",
     "lint": "eslint src --ext .ts",
     "test": "bun test-api.ts",
+    "plaid:backfill-member-ownership": "node scripts/backfill-plaid-member-ownership.mjs",
     "send:cdp:account": "node scripts/cdp-relayer-account.mjs",
     "send:recover-claim": "node scripts/send-recover-claim-link.mjs"
   },
