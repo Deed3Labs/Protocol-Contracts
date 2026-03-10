@@ -16,6 +16,7 @@ import stripeRouter from './routes/stripe.js';
 import plaidRouter from './routes/plaid.js';
 import bridgeRouter from './routes/bridge.js';
 import sendRouter from './routes/send.js';
+import membersRouter from './routes/members.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
@@ -165,6 +166,7 @@ async function startServer() {
     app.use('/api/nfts', nftsRouter);
     app.use('/api/transactions', transactionsRouter);
     app.use('/api/stripe', requireAuth, stripeRouter);
+    app.use('/api/members', requireAuth, membersRouter);
     app.use('/api/plaid', requireAuth, plaidRouter);
     app.use('/api/bridge', requireAuth, bridgeRouter);
     app.use('/api/send', sendRouter);
@@ -176,6 +178,7 @@ async function startServer() {
     console.log('  - /api/nfts');
     console.log('  - /api/transactions');
     console.log('  - /api/stripe');
+    console.log('  - /api/members');
     console.log('  - /api/plaid');
     console.log('  - /api/bridge');
     console.log('  - /api/send');

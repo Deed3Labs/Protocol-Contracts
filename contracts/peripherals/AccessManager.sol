@@ -3,6 +3,7 @@ pragma solidity ^0.8.29;
 
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "../core/interfaces/stable-credit/IAccessManager.sol";
+import "../core/interfaces/stable-credit/IMembershipRegistry.sol";
 
 /// @title AccessManager
 /// @notice This contract is responsible for managing role based access control for the Admin,
@@ -10,6 +11,10 @@ import "../core/interfaces/stable-credit/IAccessManager.sol";
 /// @dev NOTE: Addresses granted the Admin role should be as limited as possible as this role has root level
 /// access to the network and can cause irreversible damage to the network.
 contract AccessManager is AccessControlUpgradeable, IAccessManager {
+    IMembershipRegistry public membershipRegistry;
+
+    event MembershipRegistryUpdated(address registry);
+
     /* ========== INITIALIZER ========== */
 
     /// @notice Initializes role hierarchy and grant provided address 'admin' role access.
@@ -38,7 +43,13 @@ contract AccessManager is AccessControlUpgradeable, IAccessManager {
 
     /// @notice returns true if the given address has member access
     function isMember(address member) public view override returns (bool) {
-        return hasRole("MEMBER", member) || isOperator(member);
+        return
+            hasRole("MEMBER", member)
+            || isOperator(member)
+            || (
+                address(membershipRegistry) != address(0)
+                && membershipRegistry.isActiveMember(member)
+            );
     }
 
     /* ========== RESTRICTED FUNCTIONS ========== */
@@ -94,6 +105,12 @@ contract AccessManager is AccessControlUpgradeable, IAccessManager {
     function revokeMember(address member) external override onlyOperator {
         revokeRole("MEMBER", member);
         emit MemberRemoved(member);
+    }
+
+    /// @notice sets the optional membership registry used for onchain membership resolution
+    function setMembershipRegistry(address registry) external onlyAdmin {
+        membershipRegistry = IMembershipRegistry(registry);
+        emit MembershipRegistryUpdated(registry);
     }
 
     /* ========== MODIFIERS ========== */
