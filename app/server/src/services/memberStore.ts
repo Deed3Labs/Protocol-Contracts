@@ -26,6 +26,10 @@ export type MemberVerificationStatus =
 export type MemberMembershipStatus = 'NONE' | 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'REVOKED';
 export type MemberMembershipPlan = 'YEARLY' | 'LIFETIME' | null;
 export type OnboardingDraftStatus = 'in_progress' | 'submitted' | 'complete';
+export type MemberWalletKind = 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+export type MemberWalletStatus = 'ACTIVE' | 'REMOVED';
+export type MemberSocialVisibility = 'PUBLIC' | 'PRIVATE';
+export type MemberSocialStatus = 'CONNECTED' | 'PENDING' | 'REMOVED';
 
 export interface MemberRecord {
   id: number;
@@ -120,6 +124,28 @@ export interface MemberVerificationSummary {
   updatedAt: Date | null;
 }
 
+export interface MemberWalletRecord {
+  id: number;
+  walletAddress: string;
+  label: string | null;
+  kind: MemberWalletKind;
+  status: MemberWalletStatus;
+  isPrimary: boolean;
+  verifiedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface MemberSocialAccountRecord {
+  id: number;
+  platform: string;
+  handle: string;
+  visibility: MemberSocialVisibility;
+  status: MemberSocialStatus;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface MemberCapabilities {
   canEditProfile: boolean;
   canJoinWaitlists: boolean;
@@ -137,6 +163,8 @@ export interface MemberAccountCenter {
   onboarding: MemberOnboardingRecord;
   security: MemberSecuritySettings;
   verification: MemberVerificationSummary;
+  wallets: MemberWalletRecord[];
+  socialAccounts: MemberSocialAccountRecord[];
   capabilities: MemberCapabilities;
   terms: MemberTermsSummaryItem[];
 }
@@ -162,6 +190,7 @@ export interface UpdateOnboardingInput {
   localPools?: boolean;
   residencyCountry?: string | null;
   settlementCurrency?: string | null;
+  membershipPlan?: MemberMembershipPlan;
 }
 
 export interface UpdateProfileInput {
@@ -188,6 +217,44 @@ export interface UpdateSecuritySettingsInput {
   transferAlerts?: boolean;
 }
 
+export interface UpsertMemberWalletInput {
+  label?: string | null;
+  walletAddress: string;
+  kind?: MemberWalletKind | null;
+  status?: MemberWalletStatus | null;
+}
+
+export interface UpdateMemberWalletInput {
+  label?: string | null;
+  walletAddress?: string | null;
+  kind?: MemberWalletKind | null;
+  status?: MemberWalletStatus | null;
+}
+
+export interface UpsertMemberSocialAccountInput {
+  platform: string;
+  handle: string;
+  visibility?: MemberSocialVisibility | null;
+  status?: MemberSocialStatus | null;
+}
+
+export interface UpdateMemberSocialAccountInput {
+  platform?: string | null;
+  handle?: string | null;
+  visibility?: MemberSocialVisibility | null;
+  status?: MemberSocialStatus | null;
+}
+
+export interface UpdateMemberMembershipStateInput {
+  membershipPlan?: MemberMembershipPlan;
+  membershipStatus?: MemberMembershipStatus;
+  membershipRegistryMemberId?: number | null;
+  membershipChainId?: number | null;
+  membershipTxHash?: string | null;
+  membershipSyncedAt?: Date | null;
+  membershipMetadataHash?: string | null;
+}
+
 export interface AcceptTermsInput {
   documentType: string;
   documentVersion: string;
@@ -203,6 +270,8 @@ const TABLE_ONBOARDING = 'member_onboarding';
 const TABLE_TERMS = 'member_terms_acceptances';
 const TABLE_SECURITY = 'member_security_settings';
 const TABLE_VERIFICATIONS = 'member_verifications';
+const TABLE_WALLETS = 'member_wallets';
+const TABLE_SOCIALS = 'member_social_accounts';
 const DEFAULT_MAX_ATTEMPTS = 3;
 
 type MemberDbRow = {
@@ -301,6 +370,30 @@ type MemberVerificationDbRow = {
   updated_at: Date | string | null;
 };
 
+type MemberWalletDbRow = {
+  id: string | number;
+  member_id: string | number;
+  wallet_address: string;
+  label: string | null;
+  kind: MemberWalletKind;
+  status: MemberWalletStatus;
+  is_primary: boolean;
+  verified_at: Date | string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
+type MemberSocialDbRow = {
+  id: string | number;
+  member_id: string | number;
+  platform: string;
+  handle: string;
+  visibility: MemberSocialVisibility;
+  status: MemberSocialStatus;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
 function normalizeWalletAddress(walletAddress: string): string {
   return walletAddress.trim().toLowerCase();
 }
@@ -361,9 +454,9 @@ function resolvePatchedArray(
 }
 
 function normalizeOptionalCountry(value: string | null | undefined): string | null | undefined {
-  const normalized = normalizeOptionalString(value, 3);
+  const normalized = normalizeOptionalString(value, 120);
   if (normalized == null) return normalized;
-  return normalized.toUpperCase();
+  return normalized.length <= 3 ? normalized.toUpperCase() : normalized;
 }
 
 function normalizeOptionalCurrency(value: string | null | undefined): string | null | undefined {
@@ -382,6 +475,47 @@ function normalizeOptionalPhone(value: string | null | undefined): string | null
   const normalized = normalizeOptionalString(value, 32);
   if (normalized == null) return normalized;
   return normalized.replace(/\s+/g, '');
+}
+
+function normalizeMembershipPlan(value: MemberMembershipPlan | string | undefined): MemberMembershipPlan | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'YEARLY' || normalized === 'LIFETIME') {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeWalletKind(value: MemberWalletKind | string | null | undefined): MemberWalletKind {
+  const normalized = normalizeOptionalString(value ?? null, 32)?.toUpperCase();
+  switch (normalized) {
+    case 'HARDWARE':
+    case 'SMART':
+    case 'EMBEDDED':
+      return normalized;
+    case 'PRIMARY':
+    default:
+      return 'PRIMARY';
+  }
+}
+
+function normalizeWalletStatus(value: MemberWalletStatus | string | null | undefined): MemberWalletStatus {
+  const normalized = normalizeOptionalString(value ?? null, 32)?.toUpperCase();
+  return normalized === 'REMOVED' ? 'REMOVED' : 'ACTIVE';
+}
+
+function normalizeSocialVisibility(value: MemberSocialVisibility | string | null | undefined): MemberSocialVisibility {
+  const normalized = normalizeOptionalString(value ?? null, 32)?.toUpperCase();
+  return normalized === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC';
+}
+
+function normalizeSocialStatus(value: MemberSocialStatus | string | null | undefined): MemberSocialStatus {
+  const normalized = normalizeOptionalString(value ?? null, 32)?.toUpperCase();
+  if (normalized === 'PENDING' || normalized === 'REMOVED') {
+    return normalized;
+  }
+  return 'CONNECTED';
 }
 
 function parseNumericId(value: string | number | null | undefined): number | null {
@@ -588,6 +722,32 @@ function mapVerification(
   };
 }
 
+function mapWallet(row: MemberWalletDbRow): MemberWalletRecord {
+  return {
+    id: parseNumericId(row.id) ?? 0,
+    walletAddress: row.wallet_address,
+    label: row.label,
+    kind: row.kind,
+    status: row.status,
+    isPrimary: row.is_primary,
+    verifiedAt: parseDate(row.verified_at),
+    createdAt: parseDate(row.created_at) ?? new Date(0),
+    updatedAt: parseDate(row.updated_at) ?? new Date(0),
+  };
+}
+
+function mapSocialAccount(row: MemberSocialDbRow): MemberSocialAccountRecord {
+  return {
+    id: parseNumericId(row.id) ?? 0,
+    platform: row.platform,
+    handle: row.handle,
+    visibility: row.visibility,
+    status: row.status,
+    createdAt: parseDate(row.created_at) ?? new Date(0),
+    updatedAt: parseDate(row.updated_at) ?? new Date(0),
+  };
+}
+
 function deriveCapabilities(member: MemberRecord): MemberCapabilities {
   const restricted =
     member.status === 'RESTRICTED' || member.verificationStatus === 'RESTRICTED';
@@ -707,6 +867,7 @@ export class MemberStore {
 
     const member = mapMember(result.rows[0]);
     await this.ensureDefaultRows(member.id);
+    await this.syncPrimaryWallet(member);
     await this.refreshDerivedState(member.id);
     return this.getAccountCenterByAuthSubject(authSubject, { includeLockedPrivateProfile: true, requireMember: true });
   }
@@ -714,6 +875,11 @@ export class MemberStore {
   async getMemberByAuthSubject(authSubject: string): Promise<MemberRecord | null> {
     await this.ensureReady();
     return this.loadMemberByAuthSubject(authSubject.trim());
+  }
+
+  async getMemberById(memberId: number): Promise<MemberRecord | null> {
+    await this.ensureReady();
+    return this.loadMemberById(memberId);
   }
 
   async getCapabilitiesByAuthSubject(authSubject: string): Promise<MemberCapabilities | null> {
@@ -816,6 +982,9 @@ export class MemberStore {
     await this.updateMemberResidency(member.id, {
       residencyCountry: normalizeOptionalCountry(patch.residencyCountry),
       settlementCurrency: normalizeOptionalCurrency(patch.settlementCurrency),
+    });
+    await this.updateMembershipStateByMemberId(member.id, {
+      membershipPlan: normalizeMembershipPlan(patch.membershipPlan),
     });
     await this.refreshDerivedState(member.id);
 
@@ -1052,6 +1221,297 @@ export class MemberStore {
     return mapSecurity(await this.loadSecurityRow(member.id));
   }
 
+  async listWalletsByAuthSubject(authSubject: string): Promise<MemberWalletRecord[] | null> {
+    await this.ensureReady();
+    const member = await this.loadMemberByAuthSubject(authSubject.trim());
+    if (!member) return null;
+    await this.syncPrimaryWallet(member);
+    return this.loadWallets(member.id);
+  }
+
+  async addWalletByAuthSubject(authSubject: string, input: UpsertMemberWalletInput): Promise<MemberWalletRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const walletAddress = normalizeWalletAddress(input.walletAddress);
+    const label = normalizeOptionalString(input.label ?? null, 120) ?? null;
+    const kind = normalizeWalletKind(input.kind);
+    const status = normalizeWalletStatus(input.status);
+    const pool = this.mustPool();
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_WALLETS} (
+          member_id,
+          wallet_address,
+          label,
+          kind,
+          status,
+          is_primary,
+          verified_at
+        ) VALUES ($1,$2,$3,$4,$5,FALSE,NOW())
+        ON CONFLICT (wallet_address)
+        DO UPDATE SET
+          member_id = EXCLUDED.member_id,
+          label = EXCLUDED.label,
+          kind = EXCLUDED.kind,
+          status = EXCLUDED.status,
+          updated_at = NOW()
+        `,
+        [member.id, walletAddress, label, kind, status]
+      );
+    });
+
+    await this.syncPrimaryWallet(member);
+    return this.loadWallets(member.id);
+  }
+
+  async updateWalletByAuthSubject(
+    authSubject: string,
+    walletId: number,
+    patch: UpdateMemberWalletInput
+  ): Promise<MemberWalletRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const current = await this.loadWalletById(member.id, walletId);
+    if (!current) {
+      throw new Error('Member wallet not found');
+    }
+    if (current.isPrimary && patch.walletAddress && normalizeWalletAddress(patch.walletAddress) !== current.walletAddress) {
+      throw new Error('Primary wallet address cannot be changed');
+    }
+
+    const nextWalletAddress = patch.walletAddress
+      ? normalizeWalletAddress(patch.walletAddress)
+      : current.walletAddress;
+    const nextLabel = patch.label === undefined
+      ? current.label
+      : normalizeOptionalString(patch.label, 120) ?? null;
+    const nextKind = patch.kind === undefined ? current.kind : normalizeWalletKind(patch.kind);
+    const nextStatus = patch.status === undefined ? current.status : normalizeWalletStatus(patch.status);
+    const pool = this.mustPool();
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_WALLETS}
+        SET
+          wallet_address = $3,
+          label = $4,
+          kind = $5,
+          status = $6,
+          updated_at = NOW()
+        WHERE id = $1
+          AND member_id = $2
+        `,
+        [walletId, member.id, nextWalletAddress, nextLabel, nextKind, nextStatus]
+      );
+    });
+
+    await this.syncPrimaryWallet(member);
+    return this.loadWallets(member.id);
+  }
+
+  async removeWalletByAuthSubject(authSubject: string, walletId: number): Promise<MemberWalletRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const current = await this.loadWalletById(member.id, walletId);
+    if (!current) {
+      throw new Error('Member wallet not found');
+    }
+    if (current.isPrimary) {
+      throw new Error('Primary wallet cannot be removed');
+    }
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `DELETE FROM ${TABLE_WALLETS} WHERE id = $1 AND member_id = $2`,
+        [walletId, member.id]
+      );
+    });
+
+    return this.loadWallets(member.id);
+  }
+
+  async listSocialAccountsByAuthSubject(authSubject: string): Promise<MemberSocialAccountRecord[] | null> {
+    await this.ensureReady();
+    const member = await this.loadMemberByAuthSubject(authSubject.trim());
+    if (!member) return null;
+    return this.loadSocialAccounts(member.id);
+  }
+
+  async addSocialAccountByAuthSubject(
+    authSubject: string,
+    input: UpsertMemberSocialAccountInput
+  ): Promise<MemberSocialAccountRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const platform = normalizeOptionalString(input.platform, 64) ?? null;
+    const handle = normalizeOptionalString(input.handle, 255) ?? null;
+    if (!platform || !handle) {
+      throw new Error('Social platform and handle are required');
+    }
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_SOCIALS} (
+          member_id,
+          platform,
+          handle,
+          visibility,
+          status
+        ) VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (member_id, platform, handle)
+        DO UPDATE SET
+          visibility = EXCLUDED.visibility,
+          status = EXCLUDED.status,
+          updated_at = NOW()
+        `,
+        [
+          member.id,
+          platform,
+          handle,
+          normalizeSocialVisibility(input.visibility),
+          normalizeSocialStatus(input.status),
+        ]
+      );
+    });
+
+    return this.loadSocialAccounts(member.id);
+  }
+
+  async updateSocialAccountByAuthSubject(
+    authSubject: string,
+    socialId: number,
+    patch: UpdateMemberSocialAccountInput
+  ): Promise<MemberSocialAccountRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const current = await this.loadSocialAccountById(member.id, socialId);
+    if (!current) {
+      throw new Error('Member social account not found');
+    }
+
+    const nextPlatform = patch.platform === undefined
+      ? current.platform
+      : normalizeOptionalString(patch.platform, 64) ?? null;
+    const nextHandle = patch.handle === undefined
+      ? current.handle
+      : normalizeOptionalString(patch.handle, 255) ?? null;
+    if (!nextPlatform || !nextHandle) {
+      throw new Error('Social platform and handle are required');
+    }
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_SOCIALS}
+        SET
+          platform = $3,
+          handle = $4,
+          visibility = $5,
+          status = $6,
+          updated_at = NOW()
+        WHERE id = $1
+          AND member_id = $2
+        `,
+        [
+          socialId,
+          member.id,
+          nextPlatform,
+          nextHandle,
+          patch.visibility === undefined ? current.visibility : normalizeSocialVisibility(patch.visibility),
+          patch.status === undefined ? current.status : normalizeSocialStatus(patch.status),
+        ]
+      );
+    });
+
+    return this.loadSocialAccounts(member.id);
+  }
+
+  async removeSocialAccountByAuthSubject(authSubject: string, socialId: number): Promise<MemberSocialAccountRecord[]> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const pool = this.mustPool();
+
+    await withRetry(async () => {
+      await pool.query(
+        `DELETE FROM ${TABLE_SOCIALS} WHERE id = $1 AND member_id = $2`,
+        [socialId, member.id]
+      );
+    });
+
+    return this.loadSocialAccounts(member.id);
+  }
+
+  async updateMembershipStateByMemberId(
+    memberId: number,
+    patch: UpdateMemberMembershipStateInput
+  ): Promise<MemberRecord> {
+    await this.ensureReady();
+    const updates: string[] = [];
+    const values: Array<string | number | Date | null> = [memberId];
+
+    if (patch.membershipPlan !== undefined) {
+      values.push(patch.membershipPlan);
+      updates.push(`membership_plan = $${values.length}`);
+    }
+    if (patch.membershipStatus !== undefined) {
+      values.push(patch.membershipStatus);
+      updates.push(`membership_status = $${values.length}`);
+    }
+    if (patch.membershipRegistryMemberId !== undefined) {
+      values.push(patch.membershipRegistryMemberId);
+      updates.push(`membership_registry_member_id = $${values.length}`);
+    }
+    if (patch.membershipChainId !== undefined) {
+      values.push(patch.membershipChainId);
+      updates.push(`membership_chain_id = $${values.length}`);
+    }
+    if (patch.membershipTxHash !== undefined) {
+      values.push(patch.membershipTxHash);
+      updates.push(`membership_tx_hash = $${values.length}`);
+    }
+    if (patch.membershipSyncedAt !== undefined) {
+      values.push(patch.membershipSyncedAt);
+      updates.push(`membership_synced_at = $${values.length}`);
+    }
+    if (patch.membershipMetadataHash !== undefined) {
+      values.push(patch.membershipMetadataHash);
+      updates.push(`membership_metadata_hash = $${values.length}`);
+    }
+
+    if (updates.length === 0) {
+      const member = await this.loadMemberById(memberId);
+      if (!member) throw new Error('Member record not found');
+      return member;
+    }
+
+    updates.push('updated_at = NOW()');
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `
+        UPDATE ${TABLE_MEMBERS}
+        SET ${updates.join(', ')}
+        WHERE id = $1
+        RETURNING *
+        `,
+        values
+      );
+    });
+
+    if (!result.rows[0]) {
+      throw new Error('Member record not found');
+    }
+
+    return mapMember(result.rows[0]);
+  }
+
   async acceptTermsByAuthSubject(
     authSubject: string,
     input: AcceptTermsInput
@@ -1180,6 +1640,10 @@ export class MemberStore {
       this.loadTermsSummary(member.id),
       this.loadVerificationRow(member.id),
     ]);
+    const [wallets, socialAccounts] = await Promise.all([
+      this.loadWallets(member.id),
+      this.loadSocialAccounts(member.id),
+    ]);
 
     const refreshedMember = (await this.loadMemberByAuthSubject(authSubject.trim())) ?? member;
 
@@ -1189,6 +1653,8 @@ export class MemberStore {
       onboarding: mapOnboarding(onboardingRow),
       security: mapSecurity(securityRow),
       verification: mapVerification(verificationRow, refreshedMember),
+      wallets,
+      socialAccounts,
       capabilities: deriveCapabilities(refreshedMember),
       terms,
     };
@@ -1226,6 +1692,17 @@ export class MemberStore {
       return pool.query<MemberDbRow>(
         `SELECT * FROM ${TABLE_MEMBERS} WHERE auth_subject = $1 LIMIT 1`,
         [authSubject]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  private async loadMemberById(memberId: number): Promise<MemberRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE id = $1 LIMIT 1`,
+        [memberId]
       );
     });
     return result.rows[0] ? mapMember(result.rows[0]) : null;
@@ -1394,6 +1871,68 @@ export class MemberStore {
     return result.rows[0] ?? null;
   }
 
+  private async loadWalletById(memberId: number, walletId: number): Promise<MemberWalletRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletDbRow>(
+        `
+        SELECT * FROM ${TABLE_WALLETS}
+        WHERE id = $1
+          AND member_id = $2
+        LIMIT 1
+        `,
+        [walletId, memberId]
+      );
+    });
+    return result.rows[0] ? mapWallet(result.rows[0]) : null;
+  }
+
+  private async loadWallets(memberId: number): Promise<MemberWalletRecord[]> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletDbRow>(
+        `
+        SELECT * FROM ${TABLE_WALLETS}
+        WHERE member_id = $1
+        ORDER BY is_primary DESC, created_at ASC, id ASC
+        `,
+        [memberId]
+      );
+    });
+    return result.rows.map(mapWallet).filter((wallet) => wallet.status !== 'REMOVED');
+  }
+
+  private async loadSocialAccountById(memberId: number, socialId: number): Promise<MemberSocialAccountRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberSocialDbRow>(
+        `
+        SELECT * FROM ${TABLE_SOCIALS}
+        WHERE id = $1
+          AND member_id = $2
+        LIMIT 1
+        `,
+        [socialId, memberId]
+      );
+    });
+    return result.rows[0] ? mapSocialAccount(result.rows[0]) : null;
+  }
+
+  private async loadSocialAccounts(memberId: number): Promise<MemberSocialAccountRecord[]> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberSocialDbRow>(
+        `
+        SELECT * FROM ${TABLE_SOCIALS}
+        WHERE member_id = $1
+        ORDER BY created_at ASC, id ASC
+        `,
+        [memberId]
+      );
+    });
+    return result.rows.map(mapSocialAccount).filter((account) => account.status !== 'REMOVED');
+  }
+
   private async updateMemberResidency(
     memberId: number,
     patch: { residencyCountry?: string | null; settlementCurrency?: string | null }
@@ -1425,6 +1964,46 @@ export class MemberStore {
         WHERE id = $1
         `,
         values
+      );
+    });
+  }
+
+  private async syncPrimaryWallet(member: MemberRecord): Promise<void> {
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_WALLETS}
+        SET
+          is_primary = FALSE,
+          updated_at = NOW()
+        WHERE member_id = $1
+        `,
+        [member.id]
+      );
+
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_WALLETS} (
+          member_id,
+          wallet_address,
+          label,
+          kind,
+          status,
+          is_primary,
+          verified_at
+        ) VALUES ($1,$2,$3,'PRIMARY','ACTIVE',TRUE,NOW())
+        ON CONFLICT (wallet_address)
+        DO UPDATE SET
+          member_id = EXCLUDED.member_id,
+          label = EXCLUDED.label,
+          kind = 'PRIMARY',
+          status = 'ACTIVE',
+          is_primary = TRUE,
+          verified_at = COALESCE(${TABLE_WALLETS}.verified_at, NOW()),
+          updated_at = NOW()
+        `,
+        [member.id, member.primaryWallet, 'Primary wallet']
       );
     });
   }
@@ -1595,6 +2174,51 @@ export class MemberStore {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           UNIQUE(member_id, provider, verification_level)
         )
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_WALLETS} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          wallet_address TEXT NOT NULL UNIQUE,
+          label TEXT,
+          kind TEXT NOT NULL DEFAULT 'PRIMARY',
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+          verified_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_WALLETS}_primary
+        ON ${TABLE_WALLETS} (member_id, is_primary)
+        WHERE is_primary = TRUE
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLETS}_member_id
+        ON ${TABLE_WALLETS} (member_id)
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_SOCIALS} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          platform TEXT NOT NULL,
+          handle TEXT NOT NULL,
+          visibility TEXT NOT NULL DEFAULT 'PUBLIC',
+          status TEXT NOT NULL DEFAULT 'CONNECTED',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(member_id, platform, handle)
+        )
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_SOCIALS}_member_id
+        ON ${TABLE_SOCIALS} (member_id)
       `);
 
       await pool.query(`

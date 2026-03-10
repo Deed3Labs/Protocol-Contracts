@@ -38,6 +38,16 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAppKitAuth } from "@/hooks/useAppKitAuth";
 import { cn } from "@/lib/utils";
+import {
+  acceptMemberTerms,
+  bootstrapMemberAccount,
+  createMemberMembershipCheckout,
+  getMemberAccountCenter,
+  type MemberAccountCenterResponse,
+  submitMemberOnboarding,
+  updateMemberOnboarding,
+  updateMemberProfile,
+} from "@/utils/apiClient";
 
 type StepId = "access" | "discovery" | "profile" | "setup";
 type AccessTrackId = "wallet" | "hybrid" | "verified";
@@ -449,11 +459,16 @@ function FlatOption({
 }
 
 export default function UserOnboarding() {
-  const { address, chainId, isConnected, openModal } = useAppKitAuth();
+  const { address, chainId, isConnected, isAuthenticated, openModal, checkAuthentication } = useAppKitAuth();
   const navigate = useNavigate();
   const formSectionRef = useRef<HTMLElement | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
+  const [bannerMessage, setBannerMessage] = useState<string | null>(null);
+  const [completedAccount, setCompletedAccount] = useState<MemberAccountCenterResponse | null>(null);
   const [form, setForm] = useState<OnboardingFormState>({
     accessTrack: "hybrid",
     accountMethod: "appkit-account",
@@ -507,6 +522,91 @@ export default function UserOnboarding() {
     }
   }, [form.country, form.settlementCurrency]);
 
+  useEffect(() => {
+    if (!bannerMessage) return;
+    const timer = window.setTimeout(() => setBannerMessage(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [bannerMessage]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadExistingOnboarding() {
+      if (!isConnected || !isAuthenticated) {
+        return;
+      }
+
+      setIsInitializing(true);
+      const bootstrap = await bootstrapMemberAccount();
+      if (!bootstrap) {
+        if (!cancelled) {
+          setBannerMessage("We couldn't initialize your member profile. Try reconnecting and signing in again.");
+          setIsInitializing(false);
+        }
+        return;
+      }
+
+      const account = await getMemberAccountCenter();
+      if (!account || cancelled) {
+        setIsInitializing(false);
+        return;
+      }
+
+      const onboardingStepIndex = ONBOARDING_STEPS.findIndex((step) => step.id === account.onboarding.currentStep);
+      const membershipPlan = account.member.membershipPlan?.toLowerCase() as MembershipPlanId | undefined;
+      const recoveryMethod = account.onboarding.recoveryMethod as RecoveryMethodId | null;
+      const identityMode = account.onboarding.identityModeSelected as IdentityMode | null;
+      const accessTrack = account.onboarding.accessTrack as AccessTrackId | null;
+      const accountMethod = account.onboarding.accountMethod as AccountMethod | null;
+
+      setCompletedAccount(account.onboarding.draftStatus === "submitted" ? account : null);
+      setForm((prev) => ({
+        ...prev,
+        accessTrack: ACCESS_TRACKS.some((track) => track.id === accessTrack) ? (accessTrack as AccessTrackId) : prev.accessTrack,
+        accountMethod: accountMethod === "wallet" || accountMethod === "appkit-account" || accountMethod === "anonymous-preview"
+          ? accountMethod
+          : prev.accountMethod,
+        identityMode: IDENTITY_MODES.some((mode) => mode.id === identityMode) ? (identityMode as IdentityMode) : prev.identityMode,
+        referralSource: account.onboarding.referralSource ?? prev.referralSource,
+        inviteCode: account.onboarding.inviteCode ?? prev.inviteCode,
+        incomeSource: account.onboarding.incomeSource ?? prev.incomeSource,
+        reasons: account.onboarding.reasons.length > 0 ? account.onboarding.reasons : prev.reasons,
+        goalsNote: account.onboarding.goalsNote ?? prev.goalsNote,
+        username: account.profile.publicProfile.username ?? prev.username,
+        legalName: account.profile.privateProfile?.legalName ?? prev.legalName,
+        email: account.profile.privateProfile?.email ?? prev.email,
+        phone: account.profile.privateProfile?.phone ?? prev.phone,
+        cityRegion: account.profile.privateProfile?.cityRegion ?? prev.cityRegion,
+        country: account.member.residencyCountry ?? prev.country,
+        settlementCurrency: account.member.settlementCurrency ?? prev.settlementCurrency,
+        membershipPlan:
+          membershipPlan === "yearly" || membershipPlan === "lifetime"
+            ? membershipPlan
+            : prev.membershipPlan,
+        recoveryMethod:
+          recoveryMethod === "passkey" || recoveryMethod === "hardware" || recoveryMethod === "multisig"
+            ? recoveryMethod
+            : prev.recoveryMethod,
+        notificationsOptIn: account.profile.publicProfile.notificationsOptIn,
+        cardWaitlist: account.onboarding.cardWaitlist,
+        localPools: account.onboarding.localPools,
+        termsAccepted: account.terms.some((item) => item.documentType === "membership_terms"),
+      }));
+
+      if (onboardingStepIndex >= 0) {
+        setCurrentStepIndex(onboardingStepIndex);
+      }
+
+      setIsInitializing(false);
+    }
+
+    void loadExistingOnboarding();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isConnected]);
+
   const stepValidity = useMemo(() => {
     const hasContact = form.identityMode === "anonymous" || form.email.trim().length > 0;
     const hasLegalName = form.identityMode !== "verified" || form.legalName.trim().length > 0;
@@ -535,6 +635,7 @@ export default function UserOnboarding() {
   const canContinue = stepValidity[currentStep.id];
 
   const helperCopy = useMemo(() => {
+    if (isInitializing) return "Loading your saved onboarding details.";
     if (canContinue) return "Ready to continue.";
     if (currentStep.id === "access") return "Choose how you'd like to get started.";
     if (currentStep.id === "setup") {
@@ -546,10 +647,21 @@ export default function UserOnboarding() {
         : "Complete username, email, city or region, and country to continue.";
     }
     return "Select a referral source, a primary income source, and at least one reason for joining.";
-  }, [canContinue, currentStep.id, form.identityMode]);
+  }, [canContinue, currentStep.id, form.identityMode, isInitializing]);
 
   const updateField = <K extends keyof OnboardingFormState>(key: K, value: OnboardingFormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const ensureAuthenticated = async () => {
+    if (!isConnected || !isAuthenticated) {
+      await openModal("Connect");
+    }
+
+    const authenticated = await checkAuthentication();
+    if (!authenticated) {
+      throw new Error("Connect and sign in with AppKit before finishing onboarding.");
+    }
   };
 
   const toggleReason = (reason: string) => {
@@ -591,13 +703,104 @@ export default function UserOnboarding() {
     });
   };
 
-  const handleNext = () => {
+  const submitOnboardingFlow = async () => {
+    await ensureAuthenticated();
+
+    const bootstrapped = await bootstrapMemberAccount();
+    if (!bootstrapped) {
+      throw new Error("We couldn't create your member record.");
+    }
+
+    const onboardingResult = await updateMemberOnboarding({
+      currentStep: "discovery",
+      accessTrack: form.accessTrack,
+      accountMethod: form.accountMethod,
+      identityModeSelected: form.identityMode,
+      referralSource: form.referralSource,
+      inviteCode: form.inviteCode || null,
+      incomeSource: form.incomeSource,
+      reasons: form.reasons,
+      goalsNote: form.goalsNote || null,
+      recoveryMethod: form.recoveryMethod,
+      residencyCountry: form.country,
+      settlementCurrency: form.settlementCurrency,
+      membershipPlan: form.membershipPlan.toUpperCase() as "YEARLY" | "LIFETIME",
+      cardWaitlist: form.cardWaitlist,
+      localPools: form.localPools,
+    });
+    if (!onboardingResult) {
+      throw new Error("We couldn't save your onboarding preferences.");
+    }
+
+    const profileResult = await updateMemberProfile({
+      username: form.username,
+      displayName: form.username,
+      legalName: form.legalName || null,
+      email: form.email || null,
+      phone: form.phone || null,
+      cityRegion: form.cityRegion,
+      residencyCountry: form.country,
+      settlementCurrency: form.settlementCurrency,
+      notificationsOptIn: form.notificationsOptIn,
+    });
+    if (!profileResult) {
+      throw new Error("We couldn't save your profile details.");
+    }
+
+    const termsResult = await acceptMemberTerms("membership_terms", "2026-03");
+    if (!termsResult) {
+      throw new Error("We couldn't record your membership terms acceptance.");
+    }
+
+    const account = await submitMemberOnboarding();
+    if (!account) {
+      throw new Error("We couldn't complete onboarding.");
+    }
+
+    setCompletedAccount(account);
+    setIsComplete(true);
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  };
+
+  const handleMembershipCheckout = async () => {
+    setIsCheckoutLoading(true);
+    setBannerMessage(null);
+
+    try {
+      await ensureAuthenticated();
+      const checkout = await createMemberMembershipCheckout({
+        plan: form.membershipPlan.toUpperCase() as "YEARLY" | "LIFETIME",
+        successUrl: `${window.location.origin}/account?tab=profile&membership=success`,
+        cancelUrl: `${window.location.origin}/onboarding?membership=cancelled`,
+      });
+
+      if (!checkout?.session.url) {
+        throw new Error("Stripe checkout didn't return a URL.");
+      }
+
+      window.location.assign(checkout.session.url);
+    } catch (error) {
+      console.error("Membership checkout error:", error);
+      setBannerMessage(error instanceof Error ? error.message : "We couldn't start membership checkout.");
+      setIsCheckoutLoading(false);
+    }
+  };
+
+  const handleNext = async () => {
     if (!canContinue) return;
     if (currentStepIndex === ONBOARDING_STEPS.length - 1) {
-      setIsComplete(true);
-      window.requestAnimationFrame(() => {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      });
+      setIsSubmitting(true);
+      setBannerMessage(null);
+      try {
+        await submitOnboardingFlow();
+      } catch (error) {
+        console.error("Onboarding submission failed:", error);
+        setBannerMessage(error instanceof Error ? error.message : "We couldn't finish onboarding.");
+      } finally {
+        setIsSubmitting(false);
+      }
       return;
     }
     setCurrentStepIndex((prev) => Math.min(prev + 1, ONBOARDING_STEPS.length - 1));
@@ -621,9 +824,9 @@ export default function UserOnboarding() {
             <Button
               type="button"
               className="rounded-md bg-black px-4 py-2 text-sm font-normal text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-              onClick={() => navigate("/login")}
+              onClick={() => navigate("/account?tab=profile")}
             >
-              Return to login
+              Open account center
             </Button>
           </div>
         </div>
@@ -636,9 +839,15 @@ export default function UserOnboarding() {
                 You're ready to continue with your Clear onboarding.
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
-                Review your selections below, make any updates you want, and head back when you're ready to continue.
+                Your member profile is saved. Review your selections below, then continue into the account center or start membership checkout.
               </p>
             </div>
+
+            {bannerMessage ? (
+              <div className="mt-6 border-y border-amber-500/30 bg-amber-500/10 px-0 py-3 text-[12px] leading-5 text-amber-800 dark:text-amber-300">
+                {bannerMessage}
+              </div>
+            ) : null}
 
             <div className="mt-10 overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
               <div className="grid gap-0 md:grid-cols-2">
@@ -663,9 +872,11 @@ export default function UserOnboarding() {
                   </p>
                   <div className="mt-4 divide-y divide-zinc-200 dark:divide-zinc-800">
                     {[
-                      "Connect your wallet or account to keep moving",
-                      "Confirm your profile and membership choices",
-                      "Unlock more features as your account setup is completed",
+                      "Account profile saved and ready to review",
+                      completedAccount?.member.membershipStatus === "ACTIVE"
+                        ? "Membership is already active"
+                        : "Use Stripe checkout to activate yearly or lifetime membership",
+                      "Regulated rails stay locked until verification is approved",
                     ].map((item) => (
                       <div key={item} className="flex items-start gap-3 py-3">
                         <div className="mt-0.5 flex size-5 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-900">
@@ -691,6 +902,24 @@ export default function UserOnboarding() {
               >
                 Review onboarding
               </Button>
+              <Button
+                type="button"
+                className="rounded-md bg-black px-4 py-2 text-sm font-normal text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                onClick={() => navigate("/account?tab=profile")}
+              >
+                Continue to account
+              </Button>
+              {completedAccount?.member.membershipStatus !== "ACTIVE" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-md border-zinc-200 bg-white text-black hover:bg-zinc-100 dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white dark:hover:bg-zinc-900"
+                  onClick={handleMembershipCheckout}
+                  disabled={isCheckoutLoading}
+                >
+                  {isCheckoutLoading ? "Starting checkout..." : `Start ${selectedMembership.title}`}
+                </Button>
+              ) : null}
             </div>
           </div>
         </main>
@@ -728,6 +957,12 @@ export default function UserOnboarding() {
       </div>
 
       <main className="container mx-auto max-w-6xl px-4 pb-5 pt-24 sm:px-6 md:pb-6 md:pt-26">
+        {bannerMessage ? (
+          <div className="mb-6 border-y border-amber-500/30 bg-amber-500/10 px-0 py-3 text-[12px] leading-5 text-amber-800 dark:text-amber-300">
+            {bannerMessage}
+          </div>
+        ) : null}
+
         <div
           className="-mx-4 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0 md:overflow-visible"
           style={{ WebkitOverflowScrolling: "touch" }}
@@ -1331,7 +1566,7 @@ export default function UserOnboarding() {
                       variant="outline"
                       className="rounded-md border-zinc-200 bg-white text-black hover:bg-zinc-100 dark:border-zinc-800 dark:bg-[#0e0e0e] dark:text-white dark:hover:bg-zinc-900"
                       onClick={handleBack}
-                      disabled={currentStepIndex === 0}
+                      disabled={currentStepIndex === 0 || isSubmitting}
                     >
                       <ArrowLeft className="size-4" />
                       Back
@@ -1340,9 +1575,13 @@ export default function UserOnboarding() {
                       type="button"
                       className="rounded-md bg-black text-white hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-500 dark:bg-white dark:text-black dark:hover:bg-zinc-200 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-500"
                       onClick={handleNext}
-                      disabled={!canContinue}
+                      disabled={!canContinue || isSubmitting || isInitializing}
                     >
-                      {currentStepIndex === ONBOARDING_STEPS.length - 1 ? "Finish flow" : "Continue"}
+                      {isSubmitting
+                        ? "Saving..."
+                        : currentStepIndex === ONBOARDING_STEPS.length - 1
+                          ? "Finish flow"
+                          : "Continue"}
                       <ArrowRight className="size-4" />
                     </Button>
                   </div>

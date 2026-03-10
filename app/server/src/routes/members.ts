@@ -1,6 +1,18 @@
 import crypto from 'crypto';
 import { Router, type Request, type Response } from 'express';
-import { memberStore, type AcceptTermsInput, type UpdateOnboardingInput, type UpdateProfileInput, type UpdateSecuritySettingsInput } from '../services/memberStore.js';
+import {
+  memberStore,
+  type AcceptTermsInput,
+  type MemberMembershipPlan,
+  type UpdateMemberSocialAccountInput,
+  type UpdateMemberWalletInput,
+  type UpdateOnboardingInput,
+  type UpdateProfileInput,
+  type UpdateSecuritySettingsInput,
+  type UpsertMemberSocialAccountInput,
+  type UpsertMemberWalletInput,
+} from '../services/memberStore.js';
+import { memberBillingService } from '../services/memberBillingService.js';
 
 const router = Router();
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
@@ -139,9 +151,18 @@ function handleMemberRouteError(res: Response, error: unknown): void {
       error.message.includes('not eligible')
       || error.message.includes('private data encryption')
       || error.message.includes('Authenticated')
+      || error.message.includes('Primary wallet')
     ) {
       res.status(409).json({
         error: 'Request rejected',
+        message: error.message,
+      });
+      return;
+    }
+
+    if (error.message.includes('not found')) {
+      res.status(404).json({
+        error: 'Not found',
         message: error.message,
       });
       return;
@@ -153,6 +174,46 @@ function handleMemberRouteError(res: Response, error: unknown): void {
     error: 'Internal server error',
     message: error instanceof Error ? error.message : 'Unknown error',
   });
+}
+
+function parseMembershipPlan(
+  value: unknown,
+  fieldName: string,
+  res: Response
+): MemberMembershipPlan | undefined | typeof INVALID {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') {
+    res.status(400).json({
+      error: `Invalid ${fieldName}`,
+      message: `${fieldName} must be a string`,
+    });
+    return INVALID;
+  }
+
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized === 'YEARLY' || normalized === 'LIFETIME') {
+    return normalized;
+  }
+
+  res.status(400).json({
+    error: `Invalid ${fieldName}`,
+    message: `${fieldName} must be YEARLY or LIFETIME`,
+  });
+  return INVALID;
+}
+
+function parseIdParam(value: string | undefined, fieldName: string, res: Response): number | typeof INVALID {
+  const parsed = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    res.status(400).json({
+      error: `Invalid ${fieldName}`,
+      message: `${fieldName} must be a positive integer`,
+    });
+    return INVALID;
+  }
+  return parsed;
 }
 
 router.put('/me/bootstrap', async (req: Request, res: Response) => {
@@ -225,6 +286,33 @@ router.get('/me/capabilities', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/me/membership', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+
+  try {
+    const member = await memberStore.getMemberByAuthSubject(resolveAuthSubject(req));
+    if (!member) {
+      return res.status(404).json({
+        error: 'Member not found',
+        message: 'Bootstrap the member account before using this route',
+      });
+    }
+
+    const billing = memberBillingService.isConfigured()
+      ? await memberBillingService.getMembershipSummaryForMember(member.id)
+      : {
+          customer: null,
+          latestCheckoutSession: null,
+          subscription: null,
+          latestPayment: null,
+        };
+
+    res.json({ member, billing });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
 router.get('/me/onboarding', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
@@ -279,7 +367,7 @@ router.patch('/me/onboarding', async (req: Request, res: Response) => {
   if (goalsNote === INVALID) return;
   const recoveryMethod = parseOptionalString(body.recoveryMethod, 'recoveryMethod', 128, res, { allowNull: true });
   if (recoveryMethod === INVALID) return;
-  const residencyCountry = parseOptionalString(body.residencyCountry, 'residencyCountry', 3, res, { allowNull: true });
+  const residencyCountry = parseOptionalString(body.residencyCountry, 'residencyCountry', 120, res, { allowNull: true });
   if (residencyCountry === INVALID) return;
   const settlementCurrency = parseOptionalString(
     body.settlementCurrency,
@@ -289,6 +377,8 @@ router.patch('/me/onboarding', async (req: Request, res: Response) => {
     { allowNull: true }
   );
   if (settlementCurrency === INVALID) return;
+  const membershipPlan = parseMembershipPlan(body.membershipPlan, 'membershipPlan', res);
+  if (membershipPlan === INVALID) return;
   const cardWaitlist = parseOptionalBoolean(body.cardWaitlist, 'cardWaitlist', res);
   if (cardWaitlist === INVALID) return;
   const localPools = parseOptionalBoolean(body.localPools, 'localPools', res);
@@ -307,6 +397,7 @@ router.patch('/me/onboarding', async (req: Request, res: Response) => {
     recoveryMethod,
     residencyCountry,
     settlementCurrency,
+    membershipPlan,
     cardWaitlist,
     localPools,
   };
@@ -373,7 +464,7 @@ router.patch('/me/profile', async (req: Request, res: Response) => {
   if (locale === INVALID) return;
   const avatarUrl = parseOptionalString(body.avatarUrl, 'avatarUrl', 2048, res, { allowNull: true });
   if (avatarUrl === INVALID) return;
-  const residencyCountry = parseOptionalString(body.residencyCountry, 'residencyCountry', 3, res, { allowNull: true });
+  const residencyCountry = parseOptionalString(body.residencyCountry, 'residencyCountry', 120, res, { allowNull: true });
   if (residencyCountry === INVALID) return;
   const settlementCurrency = parseOptionalString(
     body.settlementCurrency,
@@ -431,6 +522,288 @@ router.patch('/me/profile', async (req: Request, res: Response) => {
     const profile = await memberStore.updateProfileByAuthSubject(resolveAuthSubject(req), patch);
     const capabilities = await memberStore.getCapabilitiesByAuthSubject(resolveAuthSubject(req));
     res.json({ profile, capabilities });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.get('/me/wallets', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+
+  try {
+    const wallets = await memberStore.listWalletsByAuthSubject(resolveAuthSubject(req));
+    if (!wallets) {
+      return res.status(404).json({
+        error: 'Member not found',
+        message: 'Bootstrap the member account before using this route',
+      });
+    }
+
+    res.json({ wallets });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.post('/me/wallets', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  if (!isObjectBody(req.body)) {
+    return res.status(400).json({
+      error: 'Invalid body',
+      message: 'Request body must be an object',
+    });
+  }
+
+  const body = req.body;
+  const label = parseOptionalString(body.label, 'label', 120, res, { allowNull: true });
+  if (label === INVALID) return;
+  const walletAddress = parseOptionalString(body.walletAddress, 'walletAddress', 255, res);
+  if (walletAddress === INVALID) return;
+  if (walletAddress == null || walletAddress === '') {
+    return res.status(400).json({
+      error: 'Invalid walletAddress',
+      message: 'walletAddress is required',
+    });
+  }
+  const kind = parseOptionalString(body.kind, 'kind', 32, res, { allowNull: true });
+  if (kind === INVALID) return;
+  const status = parseOptionalString(body.status, 'status', 32, res, { allowNull: true });
+  if (status === INVALID) return;
+
+  const input: UpsertMemberWalletInput = {
+    label,
+    walletAddress,
+    kind: (kind ?? undefined) as UpsertMemberWalletInput['kind'],
+    status: (status ?? undefined) as UpsertMemberWalletInput['status'],
+  };
+
+  try {
+    const wallets = await memberStore.addWalletByAuthSubject(resolveAuthSubject(req), input);
+    res.json({ wallets });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.patch('/me/wallets/:id', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  if (!isObjectBody(req.body)) {
+    return res.status(400).json({
+      error: 'Invalid body',
+      message: 'Request body must be an object',
+    });
+  }
+
+  const walletId = parseIdParam(req.params.id, 'wallet id', res);
+  if (walletId === INVALID) return;
+
+  const body = req.body;
+  const label = parseOptionalString(body.label, 'label', 120, res, { allowNull: true });
+  if (label === INVALID) return;
+  const walletAddress = parseOptionalString(body.walletAddress, 'walletAddress', 255, res, { allowNull: true });
+  if (walletAddress === INVALID) return;
+  const kind = parseOptionalString(body.kind, 'kind', 32, res, { allowNull: true });
+  if (kind === INVALID) return;
+  const status = parseOptionalString(body.status, 'status', 32, res, { allowNull: true });
+  if (status === INVALID) return;
+
+  const input: UpdateMemberWalletInput = {
+    label,
+    walletAddress,
+    kind: (kind ?? undefined) as UpdateMemberWalletInput['kind'],
+    status: (status ?? undefined) as UpdateMemberWalletInput['status'],
+  };
+
+  try {
+    const wallets = await memberStore.updateWalletByAuthSubject(resolveAuthSubject(req), walletId, input);
+    res.json({ wallets });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.delete('/me/wallets/:id', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  const walletId = parseIdParam(req.params.id, 'wallet id', res);
+  if (walletId === INVALID) return;
+
+  try {
+    const wallets = await memberStore.removeWalletByAuthSubject(resolveAuthSubject(req), walletId);
+    res.json({ wallets });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.get('/me/socials', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+
+  try {
+    const socialAccounts = await memberStore.listSocialAccountsByAuthSubject(resolveAuthSubject(req));
+    if (!socialAccounts) {
+      return res.status(404).json({
+        error: 'Member not found',
+        message: 'Bootstrap the member account before using this route',
+      });
+    }
+
+    res.json({ socialAccounts });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.post('/me/socials', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  if (!isObjectBody(req.body)) {
+    return res.status(400).json({
+      error: 'Invalid body',
+      message: 'Request body must be an object',
+    });
+  }
+
+  const body = req.body;
+  const platform = parseOptionalString(body.platform, 'platform', 64, res);
+  if (platform === INVALID) return;
+  if (platform == null || platform === '') {
+    return res.status(400).json({
+      error: 'Invalid platform',
+      message: 'platform is required',
+    });
+  }
+  const handle = parseOptionalString(body.handle, 'handle', 255, res);
+  if (handle === INVALID) return;
+  if (handle == null || handle === '') {
+    return res.status(400).json({
+      error: 'Invalid handle',
+      message: 'handle is required',
+    });
+  }
+  const visibility = parseOptionalString(body.visibility, 'visibility', 32, res, { allowNull: true });
+  if (visibility === INVALID) return;
+  const status = parseOptionalString(body.status, 'status', 32, res, { allowNull: true });
+  if (status === INVALID) return;
+
+  const input: UpsertMemberSocialAccountInput = {
+    platform,
+    handle,
+    visibility: (visibility ?? undefined) as UpsertMemberSocialAccountInput['visibility'],
+    status: (status ?? undefined) as UpsertMemberSocialAccountInput['status'],
+  };
+
+  try {
+    const socialAccounts = await memberStore.addSocialAccountByAuthSubject(resolveAuthSubject(req), input);
+    res.json({ socialAccounts });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.patch('/me/socials/:id', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  if (!isObjectBody(req.body)) {
+    return res.status(400).json({
+      error: 'Invalid body',
+      message: 'Request body must be an object',
+    });
+  }
+
+  const socialId = parseIdParam(req.params.id, 'social id', res);
+  if (socialId === INVALID) return;
+
+  const body = req.body;
+  const platform = parseOptionalString(body.platform, 'platform', 64, res, { allowNull: true });
+  if (platform === INVALID) return;
+  const handle = parseOptionalString(body.handle, 'handle', 255, res, { allowNull: true });
+  if (handle === INVALID) return;
+  const visibility = parseOptionalString(body.visibility, 'visibility', 32, res, { allowNull: true });
+  if (visibility === INVALID) return;
+  const status = parseOptionalString(body.status, 'status', 32, res, { allowNull: true });
+  if (status === INVALID) return;
+
+  const input: UpdateMemberSocialAccountInput = {
+    platform,
+    handle,
+    visibility: (visibility ?? undefined) as UpdateMemberSocialAccountInput['visibility'],
+    status: (status ?? undefined) as UpdateMemberSocialAccountInput['status'],
+  };
+
+  try {
+    const socialAccounts = await memberStore.updateSocialAccountByAuthSubject(resolveAuthSubject(req), socialId, input);
+    res.json({ socialAccounts });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.delete('/me/socials/:id', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  const socialId = parseIdParam(req.params.id, 'social id', res);
+  if (socialId === INVALID) return;
+
+  try {
+    const socialAccounts = await memberStore.removeSocialAccountByAuthSubject(resolveAuthSubject(req), socialId);
+    res.json({ socialAccounts });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.post('/me/membership/checkout', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  if (!isObjectBody(req.body)) {
+    return res.status(400).json({
+      error: 'Invalid body',
+      message: 'Request body must be an object',
+    });
+  }
+
+  const body = req.body;
+  const plan = parseMembershipPlan(body.plan, 'plan', res);
+  if (plan === INVALID) return;
+  if (!plan) {
+    return res.status(400).json({
+      error: 'Invalid plan',
+      message: 'plan is required',
+    });
+  }
+
+  const successUrl = parseOptionalString(body.successUrl, 'successUrl', 2048, res);
+  if (successUrl === INVALID) return;
+  if (!successUrl) {
+    return res.status(400).json({
+      error: 'Invalid successUrl',
+      message: 'successUrl is required',
+    });
+  }
+
+  const cancelUrl = parseOptionalString(body.cancelUrl, 'cancelUrl', 2048, res);
+  if (cancelUrl === INVALID) return;
+  if (!cancelUrl) {
+    return res.status(400).json({
+      error: 'Invalid cancelUrl',
+      message: 'cancelUrl is required',
+    });
+  }
+
+  try {
+    const account = await memberStore.getAccountCenterByAuthSubject(resolveAuthSubject(req), {
+      includeLockedPrivateProfile: true,
+      requireMember: true,
+    });
+    const session = await memberBillingService.createCheckoutSession({
+      member: account.member,
+      email: account.profile.privateProfile?.email ?? req.auth?.email ?? null,
+      displayName: account.profile.publicProfile.displayName ?? null,
+      plan,
+      successUrl,
+      cancelUrl,
+    });
+    const billing = memberBillingService.isConfigured()
+      ? await memberBillingService.getMembershipSummaryForMember(account.member.id)
+      : null;
+
+    res.json({ session, billing });
   } catch (error) {
     handleMemberRouteError(res, error);
   }

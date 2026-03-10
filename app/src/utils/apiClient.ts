@@ -1243,3 +1243,456 @@ export async function checkServerHealth(): Promise<boolean> {
   const { checkServerHealthCached } = await import('./serverHealth.js');
   return checkServerHealthCached();
 }
+
+export type MemberStatus =
+  | 'ONBOARDING'
+  | 'BASIC_ACTIVE'
+  | 'VERIFICATION_ELIGIBLE'
+  | 'VERIFICATION_PENDING'
+  | 'VERIFIED'
+  | 'RESTRICTED';
+
+export type MemberVerificationStatus =
+  | 'NOT_STARTED'
+  | 'ELIGIBLE'
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'RESTRICTED';
+
+export type MemberMembershipStatus = 'NONE' | 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+export type MemberMembershipPlan = 'YEARLY' | 'LIFETIME' | null;
+
+export interface MemberRecordResponse {
+  id: number;
+  authSubject: string;
+  primaryWallet: string;
+  reownProfileUuid: string | null;
+  status: MemberStatus;
+  verificationStatus: MemberVerificationStatus;
+  membershipPlan: MemberMembershipPlan;
+  membershipStatus: MemberMembershipStatus;
+  residencyCountry: string | null;
+  settlementCurrency: string | null;
+  membershipRegistryMemberId: number | null;
+  membershipChainId: number | null;
+  membershipTxHash: string | null;
+  membershipSyncedAt: string | null;
+  membershipMetadataHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastAuthenticatedAt: string;
+}
+
+export interface MemberPublicProfileResponse {
+  username: string | null;
+  displayName: string | null;
+  bio: string | null;
+  timezone: string | null;
+  locale: string | null;
+  avatarUrl: string | null;
+  notificationsOptIn: boolean;
+  updatedAt: string;
+}
+
+export interface MemberPrivateProfileResponse {
+  legalName: string | null;
+  email: string | null;
+  phone: string | null;
+  cityRegion: string | null;
+}
+
+export interface MemberProfileViewResponse {
+  publicProfile: MemberPublicProfileResponse;
+  privateProfile: MemberPrivateProfileResponse | null;
+  privateProfileExists: boolean;
+  privateProfileLocked: boolean;
+}
+
+export interface MemberOnboardingResponse {
+  currentStep: string;
+  accessTrack: string;
+  accountMethod: string;
+  identityModeSelected: string;
+  referralSource: string | null;
+  inviteCode: string | null;
+  incomeSource: string | null;
+  reasons: string[];
+  goalsNote: string | null;
+  recoveryMethod: string | null;
+  cardWaitlist: boolean;
+  localPools: boolean;
+  draftStatus: 'in_progress' | 'submitted' | 'complete';
+  submittedAt: string | null;
+  completedAt: string | null;
+  updatedAt: string;
+}
+
+export interface MemberSecuritySettingsResponse {
+  signatureLock: boolean;
+  sessionReview: boolean;
+  biometricAccess: boolean;
+  socialDiscovery: boolean;
+  transferAlerts: boolean;
+  updatedAt: string;
+}
+
+export interface MemberVerificationSummaryResponse {
+  status: MemberVerificationStatus;
+  provider: string | null;
+  verificationLevel: string | null;
+  providerCustomerId: string | null;
+  providerCaseId: string | null;
+  requirements: unknown;
+  resultSummary: unknown;
+  submittedAt: string | null;
+  decidedAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface MemberWalletResponse {
+  id: number;
+  walletAddress: string;
+  label: string | null;
+  kind: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+  status: 'ACTIVE' | 'REMOVED';
+  isPrimary: boolean;
+  verifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberSocialAccountResponse {
+  id: number;
+  platform: string;
+  handle: string;
+  visibility: 'PUBLIC' | 'PRIVATE';
+  status: 'CONNECTED' | 'PENDING' | 'REMOVED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberCapabilitiesResponse {
+  canEditProfile: boolean;
+  canJoinWaitlists: boolean;
+  canStartVerification: boolean;
+  canUsePlaid: boolean;
+  canUseBridge: boolean;
+  canAccessDirectDeposit: boolean;
+  canAccessCard: boolean;
+  canUseRegulatedTransfers: boolean;
+}
+
+export interface MemberTermsSummaryItemResponse {
+  documentType: string;
+  documentVersion: string;
+  acceptedAt: string;
+}
+
+export interface MemberBillingCustomerResponse {
+  memberId: number;
+  stripeCustomerId: string;
+  email: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberBillingCheckoutSessionResponse {
+  memberId: number;
+  stripeSessionId: string;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  plan: 'YEARLY' | 'LIFETIME';
+  mode: 'payment' | 'subscription';
+  status: string | null;
+  paymentStatus: string | null;
+  checkoutUrl: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  payload: unknown;
+}
+
+export interface MemberBillingSubscriptionResponse {
+  memberId: number;
+  stripeSubscriptionId: string;
+  stripeCustomerId: string | null;
+  plan: 'YEARLY' | 'LIFETIME';
+  status: string;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  lastInvoiceId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberBillingPaymentResponse {
+  id: number;
+  memberId: number;
+  stripePaymentIntentId: string | null;
+  stripeInvoiceId: string | null;
+  stripeCheckoutSessionId: string | null;
+  plan: 'YEARLY' | 'LIFETIME';
+  amountTotal: number | null;
+  currency: string | null;
+  status: string;
+  payload: unknown;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemberBillingSummaryResponse {
+  customer: MemberBillingCustomerResponse | null;
+  latestCheckoutSession: MemberBillingCheckoutSessionResponse | null;
+  subscription: MemberBillingSubscriptionResponse | null;
+  latestPayment: MemberBillingPaymentResponse | null;
+}
+
+export interface MemberAccountCenterResponse {
+  member: MemberRecordResponse;
+  profile: MemberProfileViewResponse;
+  onboarding: MemberOnboardingResponse;
+  security: MemberSecuritySettingsResponse;
+  verification: MemberVerificationSummaryResponse;
+  wallets: MemberWalletResponse[];
+  socialAccounts: MemberSocialAccountResponse[];
+  capabilities: MemberCapabilitiesResponse;
+  terms: MemberTermsSummaryItemResponse[];
+}
+
+export async function bootstrapMemberAccount(): Promise<{
+  member: MemberRecordResponse;
+  onboarding: MemberOnboardingResponse;
+  capabilities: MemberCapabilitiesResponse;
+} | null> {
+  const response = await apiRequest<{
+    member: MemberRecordResponse;
+    onboarding: MemberOnboardingResponse;
+    capabilities: MemberCapabilitiesResponse;
+  }>('/api/members/me/bootstrap', {
+    method: 'PUT',
+    body: JSON.stringify({}),
+  });
+
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function getMemberAccountCenter(): Promise<MemberAccountCenterResponse | null> {
+  const response = await apiRequest<MemberAccountCenterResponse>('/api/members/me/account-center');
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function getMemberCapabilities(): Promise<MemberCapabilitiesResponse | null> {
+  const response = await apiRequest<{ capabilities: MemberCapabilitiesResponse }>('/api/members/me/capabilities');
+  if (response.error || !response.data) return null;
+  return response.data.capabilities;
+}
+
+export async function updateMemberOnboarding(
+  payload: Partial<{
+    currentStep: string | null;
+    accessTrack: string | null;
+    accountMethod: string | null;
+    identityModeSelected: string | null;
+    referralSource: string | null;
+    inviteCode: string | null;
+    incomeSource: string | null;
+    reasons: string[] | null;
+    goalsNote: string | null;
+    recoveryMethod: string | null;
+    residencyCountry: string | null;
+    settlementCurrency: string | null;
+    membershipPlan: MemberMembershipPlan;
+    cardWaitlist: boolean;
+    localPools: boolean;
+  }>
+): Promise<{ onboarding: MemberOnboardingResponse; capabilities: MemberCapabilitiesResponse | null } | null> {
+  const response = await apiRequest<{
+    onboarding: MemberOnboardingResponse;
+    capabilities: MemberCapabilitiesResponse | null;
+  }>('/api/members/me/onboarding', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function submitMemberOnboarding(): Promise<MemberAccountCenterResponse | null> {
+  const response = await apiRequest<MemberAccountCenterResponse>('/api/members/me/onboarding/submit', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function updateMemberProfile(
+  payload: Partial<{
+    username: string | null;
+    displayName: string | null;
+    bio: string | null;
+    timezone: string | null;
+    locale: string | null;
+    avatarUrl: string | null;
+    notificationsOptIn: boolean;
+    residencyCountry: string | null;
+    settlementCurrency: string | null;
+    legalName: string | null;
+    email: string | null;
+    phone: string | null;
+    cityRegion: string | null;
+  }>
+): Promise<{ profile: MemberProfileViewResponse; capabilities: MemberCapabilitiesResponse | null } | null> {
+  const response = await apiRequest<{
+    profile: MemberProfileViewResponse;
+    capabilities: MemberCapabilitiesResponse | null;
+  }>('/api/members/me/profile', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function updateMemberSecurity(
+  payload: Partial<{
+    signatureLock: boolean;
+    sessionReview: boolean;
+    biometricAccess: boolean;
+    socialDiscovery: boolean;
+    transferAlerts: boolean;
+  }>
+): Promise<MemberSecuritySettingsResponse | null> {
+  const response = await apiRequest<{ security: MemberSecuritySettingsResponse }>('/api/members/me/security', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data.security;
+}
+
+export async function acceptMemberTerms(documentType: string, documentVersion: string): Promise<{
+  terms: MemberTermsSummaryItemResponse[];
+  capabilities: MemberCapabilitiesResponse | null;
+} | null> {
+  const response = await apiRequest<{
+    terms: MemberTermsSummaryItemResponse[];
+    capabilities: MemberCapabilitiesResponse | null;
+  }>('/api/members/me/terms/accept', {
+    method: 'POST',
+    body: JSON.stringify({ documentType, documentVersion }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function createMemberWallet(payload: {
+  label?: string | null;
+  walletAddress: string;
+  kind?: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+  status?: 'ACTIVE' | 'REMOVED';
+}): Promise<MemberWalletResponse[] | null> {
+  const response = await apiRequest<{ wallets: MemberWalletResponse[] }>('/api/members/me/wallets', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data.wallets;
+}
+
+export async function updateMemberWallet(
+  walletId: number,
+  payload: Partial<{
+    label: string | null;
+    walletAddress: string | null;
+    kind: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+    status: 'ACTIVE' | 'REMOVED';
+  }>
+): Promise<MemberWalletResponse[] | null> {
+  const response = await apiRequest<{ wallets: MemberWalletResponse[] }>(`/api/members/me/wallets/${walletId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data.wallets;
+}
+
+export async function deleteMemberWallet(walletId: number): Promise<MemberWalletResponse[] | null> {
+  const response = await apiRequest<{ wallets: MemberWalletResponse[] }>(`/api/members/me/wallets/${walletId}`, {
+    method: 'DELETE',
+  });
+  if (response.error || !response.data) return null;
+  return response.data.wallets;
+}
+
+export async function createMemberSocialAccount(payload: {
+  platform: string;
+  handle: string;
+  visibility?: 'PUBLIC' | 'PRIVATE';
+  status?: 'CONNECTED' | 'PENDING' | 'REMOVED';
+}): Promise<MemberSocialAccountResponse[] | null> {
+  const response = await apiRequest<{ socialAccounts: MemberSocialAccountResponse[] }>('/api/members/me/socials', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data.socialAccounts;
+}
+
+export async function updateMemberSocialAccount(
+  socialId: number,
+  payload: Partial<{
+    platform: string | null;
+    handle: string | null;
+    visibility: 'PUBLIC' | 'PRIVATE';
+    status: 'CONNECTED' | 'PENDING' | 'REMOVED';
+  }>
+): Promise<MemberSocialAccountResponse[] | null> {
+  const response = await apiRequest<{ socialAccounts: MemberSocialAccountResponse[] }>(`/api/members/me/socials/${socialId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data.socialAccounts;
+}
+
+export async function deleteMemberSocialAccount(socialId: number): Promise<MemberSocialAccountResponse[] | null> {
+  const response = await apiRequest<{ socialAccounts: MemberSocialAccountResponse[] }>(`/api/members/me/socials/${socialId}`, {
+    method: 'DELETE',
+  });
+  if (response.error || !response.data) return null;
+  return response.data.socialAccounts;
+}
+
+export async function getMemberMembershipSummary(): Promise<{
+  member: MemberRecordResponse;
+  billing: MemberBillingSummaryResponse;
+} | null> {
+  const response = await apiRequest<{
+    member: MemberRecordResponse;
+    billing: MemberBillingSummaryResponse;
+  }>('/api/members/me/membership');
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function createMemberMembershipCheckout(payload: {
+  plan: 'YEARLY' | 'LIFETIME';
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{
+  session: { url: string; sessionId: string };
+  billing: MemberBillingSummaryResponse | null;
+} | null> {
+  const response = await apiRequest<{
+    session: { url: string; sessionId: string };
+    billing: MemberBillingSummaryResponse | null;
+  }>('/api/members/me/membership/checkout', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}

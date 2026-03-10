@@ -7,12 +7,14 @@ import { getRedisClient, closeRedisConnection } from './config/redis.js';
 import { closePostgresPool } from './config/postgres.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { requireAuth } from './middleware/auth.js';
+import { requireMemberCapability } from './middleware/memberCapabilities.js';
 import pricesRouter from './routes/prices.js';
 import balancesRouter from './routes/balances.js';
 import tokenBalancesRouter from './routes/tokenBalances.js';
 import nftsRouter from './routes/nfts.js';
 import transactionsRouter from './routes/transactions.js';
 import stripeRouter from './routes/stripe.js';
+import stripeWebhooksRouter from './routes/stripeWebhooks.js';
 import plaidRouter from './routes/plaid.js';
 import bridgeRouter from './routes/bridge.js';
 import sendRouter from './routes/send.js';
@@ -165,10 +167,11 @@ async function startServer() {
     app.use('/api/token-balances', tokenBalancesRouter); // Uses same service as balances (consolidated)
     app.use('/api/nfts', nftsRouter);
     app.use('/api/transactions', transactionsRouter);
+    app.use('/api/stripe/webhooks', stripeWebhooksRouter);
     app.use('/api/stripe', requireAuth, stripeRouter);
     app.use('/api/members', requireAuth, membersRouter);
-    app.use('/api/plaid', requireAuth, plaidRouter);
-    app.use('/api/bridge', requireAuth, bridgeRouter);
+    app.use('/api/plaid', requireAuth, requireMemberCapability('canUsePlaid'), plaidRouter);
+    app.use('/api/bridge', requireAuth, requireMemberCapability('canUseBridge'), bridgeRouter);
     app.use('/api/send', sendRouter);
     
     console.log('✅ API routes registered:');
@@ -177,6 +180,7 @@ async function startServer() {
     console.log('  - /api/token-balances (ERC20 token balances - uses same service)');
     console.log('  - /api/nfts');
     console.log('  - /api/transactions');
+    console.log('  - /api/stripe/webhooks');
     console.log('  - /api/stripe');
     console.log('  - /api/members');
     console.log('  - /api/plaid');

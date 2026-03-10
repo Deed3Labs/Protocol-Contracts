@@ -34,6 +34,7 @@ contract MembershipRegistry is
     event MembershipRenewed(uint256 indexed memberId, uint64 expiresAt);
     event WalletLinked(uint256 indexed memberId, address indexed wallet);
     event WalletUnlinked(uint256 indexed memberId, address indexed wallet);
+    event MemberTierUpdated(uint256 indexed memberId, MembershipTier tier, uint64 expiresAt);
     event MemberMetadataHashUpdated(uint256 indexed memberId, bytes32 metadataHash);
 
     function initialize(address admin) external initializer {
@@ -107,6 +108,22 @@ contract MembershipRegistry is
 
         emit MembershipRenewed(memberId, newExpiresAt);
         emit MemberStatusUpdated(memberId, MembershipStatus.ACTIVE);
+    }
+
+    function setMemberTier(uint256 memberId, MembershipTier tier, uint64 expiresAt)
+        external
+        whenNotPaused
+        onlyRole(REGISTRAR_ROLE)
+    {
+        require(tier != MembershipTier.NONE, "MembershipRegistry: invalid tier");
+        require(_validExpiry(tier, expiresAt), "MembershipRegistry: invalid expiry");
+
+        MemberRecord storage record = _memberRecord(memberId);
+        record.tier = tier;
+        record.expiresAt = expiresAt;
+        record.updatedAt = uint64(block.timestamp);
+
+        emit MemberTierUpdated(memberId, tier, expiresAt);
     }
 
     function updateMemberMetadataHash(uint256 memberId, bytes32 metadataHash)

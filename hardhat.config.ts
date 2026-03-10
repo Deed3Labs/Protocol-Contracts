@@ -26,7 +26,24 @@ const baseMainnetRpcUrl =
   process.env.VITE_ALCHEMY_BASE_MAINNET ||
   "https://mainnet.base.org";
 // If not set, it uses the hardhat account 0 private key.
-const deployerPrivateKey = process.env.DEPLOYER_PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000000";
+function normalizePrivateKey(rawValue: string | undefined): string {
+  const trimmed = (rawValue || "").trim();
+  if (!trimmed) {
+    return "0x0000000000000000000000000000000000000000000000000000000000000000";
+  }
+
+  if (/^0x[a-fA-F0-9]{64}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^[a-fA-F0-9]{64}$/.test(trimmed)) {
+    return `0x${trimmed}`;
+  }
+
+  return trimmed;
+}
+
+const deployerPrivateKey = normalizePrivateKey(process.env.DEPLOYER_PRIVATE_KEY);
 // If not set, it uses ours Etherscan default API key.
 const etherscanApiKey = process.env.ETHERSCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z68CJXQZSC6AW";
 const polygonscanApiKey = process.env.POLYGONSCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z68CJXQZSC6AW";
