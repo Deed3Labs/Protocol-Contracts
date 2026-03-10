@@ -1693,6 +1693,9 @@ export async function createMemberMembershipCheckout(payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  if (response.error || !response.data) return null;
+  if (response.error) {
+    throw new Error(response.error);
+  }
+  if (!response.data) return null;
   return response.data;
 }

@@ -65,6 +65,27 @@ function priceIdForPlan(plan: MemberBillingPlan): string {
   return (process.env.STRIPE_YEARLY_MEMBERSHIP_PRICE_ID || '').trim();
 }
 
+function assertStripePriceId(value: string, plan: MemberBillingPlan): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`Stripe price is not configured for ${plan}`);
+  }
+
+  if (trimmed.startsWith('prod_')) {
+    throw new Error(
+      `Stripe ${plan.toLowerCase()} membership value must be a Price ID (price_...), not a Product ID (prod_...)`
+    );
+  }
+
+  if (!trimmed.startsWith('price_')) {
+    throw new Error(
+      `Stripe ${plan.toLowerCase()} membership value must be a Price ID starting with price_`
+    );
+  }
+
+  return trimmed;
+}
+
 function normalizePlan(plan: MemberMembershipPlan | string | null | undefined): MemberBillingPlan | null {
   const normalized = (plan || '').trim().toUpperCase();
   if (normalized === 'YEARLY' || normalized === 'LIFETIME') {
@@ -255,10 +276,7 @@ export class MemberBillingService {
       email: input.email ?? null,
       name: input.displayName ?? null,
     });
-    const priceId = priceIdForPlan(input.plan);
-    if (!priceId) {
-      throw new Error(`Stripe price is not configured for ${input.plan}`);
-    }
+    const priceId = assertStripePriceId(priceIdForPlan(input.plan), input.plan);
 
     const formData = new URLSearchParams();
     const mode = input.plan === 'LIFETIME' ? 'payment' : 'subscription';

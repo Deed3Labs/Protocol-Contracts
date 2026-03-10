@@ -1540,6 +1540,10 @@ export default function AccountHome() {
         return;
       }
       window.location.assign(checkout.session.url);
+    } catch (error) {
+      setBannerMessage(
+        error instanceof Error ? error.message : 'Membership checkout could not be started.'
+      );
     } finally {
       setMembershipLoading(false);
     }

@@ -139,6 +139,31 @@ function handleMemberRouteError(res: Response, error: unknown): void {
   }
 
   if (error instanceof Error) {
+    if (
+      error.message.includes('Stripe membership billing is not configured')
+      || error.message.includes('STRIPE_SECRET_KEY is not configured')
+      || error.message.includes('Stripe price is not configured')
+    ) {
+      res.status(503).json({
+        error: 'Stripe billing unavailable',
+        message: error.message,
+      });
+      return;
+    }
+
+    if (
+      error.message.includes('Stripe request failed')
+      || error.message.startsWith('No such price:')
+      || error.message.startsWith('No such customer:')
+      || error.message.startsWith('No such subscription:')
+    ) {
+      res.status(502).json({
+        error: 'Stripe request failed',
+        message: error.message,
+      });
+      return;
+    }
+
     if (error.message === 'Member record not found') {
       res.status(404).json({
         error: 'Member not found',
