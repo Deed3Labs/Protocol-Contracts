@@ -6,14 +6,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import ClearPathLogo from '../assets/ClearPath-Logo.png';
 
 export default function LoginPage() {
-  const { isConnected, openModal } = useAppKitAuth();
+  const { isConnected, isAuthenticated, openModal } = useAppKitAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [hasNavigated, setHasNavigated] = useState(false);
 
   useEffect(() => {
     // If user is already connected, redirect to home (splash will be handled by App.tsx)
-    if (isConnected && !hasNavigated) {
+    if (isConnected && isAuthenticated && !hasNavigated) {
       setHasNavigated(true);
       const fromState = location.state as
         | {
@@ -31,10 +31,10 @@ export default function LoginPage() {
       setTimeout(() => {
         navigate(nextRoute, { replace: true });
       }, 100);
-    } else if (!isConnected) {
+    } else if (!isConnected || !isAuthenticated) {
       setHasNavigated(false);
     }
-  }, [isConnected, location.state, navigate, hasNavigated]);
+  }, [isAuthenticated, isConnected, location.state, navigate, hasNavigated]);
 
   const handleConnect = () => {
     openModal('Connect');

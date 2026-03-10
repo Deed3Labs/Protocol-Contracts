@@ -765,7 +765,7 @@ function deriveCapabilities(member: MemberRecord): MemberCapabilities {
     canEditProfile: !restricted,
     canJoinWaitlists: !restricted,
     canStartVerification: !restricted && verificationEligible && !verified && !verificationPending,
-    canUsePlaid: verified,
+    canUsePlaid: !restricted,
     canUseBridge: verified,
     canAccessDirectDeposit: verified,
     canAccessCard: verified,
@@ -840,6 +840,57 @@ export class MemberStore {
     const authSubject = input.authSubject.trim();
     const primaryWallet = normalizeWalletAddress(input.primaryWallet);
     const reownProfileUuid = normalizeOptionalString(input.reownProfileUuid ?? null, 255) ?? null;
+
+    const existingByAuthSubject = await this.loadMemberByAuthSubject(authSubject);
+    if (existingByAuthSubject) {
+      const result = await withRetry(async () => {
+        return pool.query<MemberDbRow>(
+          `
+          UPDATE ${TABLE_MEMBERS}
+          SET
+            primary_wallet = $2,
+            reown_profile_uuid = COALESCE($3, reown_profile_uuid),
+            last_authenticated_at = NOW(),
+            updated_at = NOW()
+          WHERE auth_subject = $1
+          RETURNING *
+          `,
+          [authSubject, primaryWallet, reownProfileUuid]
+        );
+      });
+
+      const member = mapMember(result.rows[0]);
+      await this.ensureDefaultRows(member.id);
+      await this.syncPrimaryWallet(member);
+      await this.refreshDerivedState(member.id);
+      return this.getAccountCenterByAuthSubject(authSubject, { includeLockedPrivateProfile: true, requireMember: true });
+    }
+
+    const existingByPrimaryWallet = await this.loadMemberByPrimaryWallet(primaryWallet);
+    if (existingByPrimaryWallet) {
+      const result = await withRetry(async () => {
+        return pool.query<MemberDbRow>(
+          `
+          UPDATE ${TABLE_MEMBERS}
+          SET
+            auth_subject = $1,
+            primary_wallet = $2,
+            reown_profile_uuid = COALESCE($3, reown_profile_uuid),
+            last_authenticated_at = NOW(),
+            updated_at = NOW()
+          WHERE id = $4
+          RETURNING *
+          `,
+          [authSubject, primaryWallet, reownProfileUuid, existingByPrimaryWallet.id]
+        );
+      });
+
+      const member = mapMember(result.rows[0]);
+      await this.ensureDefaultRows(member.id);
+      await this.syncPrimaryWallet(member);
+      await this.refreshDerivedState(member.id);
+      return this.getAccountCenterByAuthSubject(authSubject, { includeLockedPrivateProfile: true, requireMember: true });
+    }
 
     const result = await withRetry(async () => {
       return pool.query<MemberDbRow>(
@@ -1692,6 +1743,17 @@ export class MemberStore {
       return pool.query<MemberDbRow>(
         `SELECT * FROM ${TABLE_MEMBERS} WHERE auth_subject = $1 LIMIT 1`,
         [authSubject]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  private async loadMemberByPrimaryWallet(primaryWallet: string): Promise<MemberRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE primary_wallet = $1 LIMIT 1`,
+        [primaryWallet]
       );
     });
     return result.rows[0] ? mapMember(result.rows[0]) : null;

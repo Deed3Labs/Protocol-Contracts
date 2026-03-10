@@ -130,7 +130,7 @@ const ONBOARDING_STEPS: StepDefinition[] = [
     id: "access",
     label: "Step 1",
     title: "Get Started",
-    description: "Connect your wallet or create your Clear account.",
+    description: "Choose how you want to create your Clear account.",
     icon: Wallet,
   },
   {
@@ -167,7 +167,7 @@ const ACCESS_TRACKS: AccessTrack[] = [
   {
     id: "wallet",
     title: "Wallet first",
-    description: "Connect an existing wallet and keep the first session lightweight.",
+    description: "Create a Clear account backed by your wallet and keep the first session lightweight.",
     detail: "Ideal if you want to explore first and finish the rest of your setup later.",
     badge: "No KYC at signup",
     accountMethod: "wallet",
@@ -254,7 +254,7 @@ const IDENTITY_MODES: IdentityModeOption[] = [
     id: "anonymous",
     title: "Anonymous / wallet-only",
     summary: "Ask for only the basics now.",
-    detail: "Username and residency are enough to keep exploring without finishing KYC.",
+    detail: "Creates a wallet-backed Clear account with minimal profile data so you can explore first and verify later.",
     icon: Shield,
     unlocks: [
       "Wallet-first profile",

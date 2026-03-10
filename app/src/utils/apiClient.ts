@@ -704,7 +704,9 @@ export async function getBankBalances(
   const response = await apiRequest<BankBalancesResponse>(`/api/plaid/balances?walletAddress=${encoded}${qs}`, {
     ...(options?.skipCache && { cache: 'no-store' as RequestCache }),
   });
-  if (response.error) return null;
+  if (response.error) {
+    throw new Error(response.error);
+  }
   if (response.data) return response.data;
   return { accounts: [], totalBankBalance: 0, linked: false };
 }
