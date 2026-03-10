@@ -173,6 +173,14 @@ export interface BootstrapMemberInput {
   authSubject: string;
   primaryWallet: string;
   reownProfileUuid?: string | null;
+  email?: string | null;
+}
+
+export interface ResolveMemberAuthInput {
+  authSubject?: string | null;
+  profileUuid?: string | null;
+  walletAddress?: string | null;
+  email?: string | null;
 }
 
 export interface UpdateOnboardingInput {
@@ -279,6 +287,7 @@ type MemberDbRow = {
   auth_subject: string;
   primary_wallet: string;
   reown_profile_uuid: string | null;
+  reown_email_hash: string | null;
   status: MemberStatus;
   verification_status: MemberVerificationStatus;
   membership_plan: MemberMembershipPlan;
@@ -378,6 +387,7 @@ type MemberWalletDbRow = {
   kind: MemberWalletKind;
   status: MemberWalletStatus;
   is_primary: boolean;
+  auth_alias_enabled: boolean;
   verified_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
@@ -840,56 +850,41 @@ export class MemberStore {
     const authSubject = input.authSubject.trim();
     const primaryWallet = normalizeWalletAddress(input.primaryWallet);
     const reownProfileUuid = normalizeOptionalString(input.reownProfileUuid ?? null, 255) ?? null;
+    const email = normalizeOptionalEmail(input.email ?? null) ?? null;
+    const reownEmailHash = email ? sha256Hex(email) : null;
 
-    const existingByAuthSubject = await this.loadMemberByAuthSubject(authSubject);
-    if (existingByAuthSubject) {
+    const existingMember = await this.resolveMemberByAuthInput({
+      authSubject,
+      profileUuid: reownProfileUuid,
+      walletAddress: primaryWallet,
+      email,
+    });
+
+    if (existingMember) {
+      const nextAuthSubject = reownProfileUuid || existingMember.authSubject;
       const result = await withRetry(async () => {
         return pool.query<MemberDbRow>(
           `
           UPDATE ${TABLE_MEMBERS}
           SET
-            primary_wallet = $2,
+            auth_subject = $2,
             reown_profile_uuid = COALESCE($3, reown_profile_uuid),
+            reown_email_hash = COALESCE($4, reown_email_hash),
             last_authenticated_at = NOW(),
             updated_at = NOW()
-          WHERE auth_subject = $1
+          WHERE id = $1
           RETURNING *
           `,
-          [authSubject, primaryWallet, reownProfileUuid]
+          [existingMember.id, nextAuthSubject, reownProfileUuid, reownEmailHash]
         );
       });
 
       const member = mapMember(result.rows[0]);
       await this.ensureDefaultRows(member.id);
       await this.syncPrimaryWallet(member);
+      await this.linkAuthenticatedWallet(member.id, primaryWallet);
       await this.refreshDerivedState(member.id);
-      return this.getAccountCenterByAuthSubject(authSubject, { includeLockedPrivateProfile: true, requireMember: true });
-    }
-
-    const existingByPrimaryWallet = await this.loadMemberByPrimaryWallet(primaryWallet);
-    if (existingByPrimaryWallet) {
-      const result = await withRetry(async () => {
-        return pool.query<MemberDbRow>(
-          `
-          UPDATE ${TABLE_MEMBERS}
-          SET
-            auth_subject = $1,
-            primary_wallet = $2,
-            reown_profile_uuid = COALESCE($3, reown_profile_uuid),
-            last_authenticated_at = NOW(),
-            updated_at = NOW()
-          WHERE id = $4
-          RETURNING *
-          `,
-          [authSubject, primaryWallet, reownProfileUuid, existingByPrimaryWallet.id]
-        );
-      });
-
-      const member = mapMember(result.rows[0]);
-      await this.ensureDefaultRows(member.id);
-      await this.syncPrimaryWallet(member);
-      await this.refreshDerivedState(member.id);
-      return this.getAccountCenterByAuthSubject(authSubject, { includeLockedPrivateProfile: true, requireMember: true });
+      return this.getAccountCenterByAuthSubject(nextAuthSubject, { includeLockedPrivateProfile: true, requireMember: true });
     }
 
     const result = await withRetry(async () => {
@@ -899,28 +894,37 @@ export class MemberStore {
           auth_subject,
           primary_wallet,
           reown_profile_uuid,
+          reown_email_hash,
           status,
           verification_status,
           membership_status,
           last_authenticated_at
-        ) VALUES ($1, $2, $3, 'ONBOARDING', 'NOT_STARTED', 'NONE', NOW())
+        ) VALUES ($1, $2, $3, $4, 'ONBOARDING', 'NOT_STARTED', 'NONE', NOW())
         ON CONFLICT (auth_subject)
         DO UPDATE SET
           primary_wallet = EXCLUDED.primary_wallet,
           reown_profile_uuid = COALESCE(EXCLUDED.reown_profile_uuid, ${TABLE_MEMBERS}.reown_profile_uuid),
+          reown_email_hash = COALESCE(EXCLUDED.reown_email_hash, ${TABLE_MEMBERS}.reown_email_hash),
           last_authenticated_at = NOW(),
           updated_at = NOW()
         RETURNING *
         `,
-        [authSubject, primaryWallet, reownProfileUuid]
+        [authSubject, primaryWallet, reownProfileUuid, reownEmailHash]
       );
     });
 
     const member = mapMember(result.rows[0]);
     await this.ensureDefaultRows(member.id);
     await this.syncPrimaryWallet(member);
+    await this.linkAuthenticatedWallet(member.id, primaryWallet);
     await this.refreshDerivedState(member.id);
     return this.getAccountCenterByAuthSubject(authSubject, { includeLockedPrivateProfile: true, requireMember: true });
+  }
+
+  async resolveCanonicalAuthSubject(input: ResolveMemberAuthInput): Promise<string | null> {
+    await this.ensureReady();
+    const member = await this.resolveMemberByAuthInput(input);
+    return member?.authSubject ?? null;
   }
 
   async getMemberByAuthSubject(authSubject: string): Promise<MemberRecord | null> {
@@ -1288,6 +1292,10 @@ export class MemberStore {
     const kind = normalizeWalletKind(input.kind);
     const status = normalizeWalletStatus(input.status);
     const pool = this.mustPool();
+    const existingWallet = await this.loadWalletRowByAddress(walletAddress);
+    if (existingWallet && parseNumericId(existingWallet.member_id) !== member.id) {
+      throw new Error('Wallet is already linked to another account');
+    }
 
     await withRetry(async () => {
       await pool.query(
@@ -1299,11 +1307,11 @@ export class MemberStore {
           kind,
           status,
           is_primary,
+          auth_alias_enabled,
           verified_at
-        ) VALUES ($1,$2,$3,$4,$5,FALSE,NOW())
+        ) VALUES ($1,$2,$3,$4,$5,FALSE,FALSE,NULL)
         ON CONFLICT (wallet_address)
         DO UPDATE SET
-          member_id = EXCLUDED.member_id,
           label = EXCLUDED.label,
           kind = EXCLUDED.kind,
           status = EXCLUDED.status,
@@ -1340,6 +1348,20 @@ export class MemberStore {
       : normalizeOptionalString(patch.label, 120) ?? null;
     const nextKind = patch.kind === undefined ? current.kind : normalizeWalletKind(patch.kind);
     const nextStatus = patch.status === undefined ? current.status : normalizeWalletStatus(patch.status);
+    const walletAddressChanged = nextWalletAddress !== current.walletAddress;
+    if (walletAddressChanged) {
+      const existingWallet = await this.loadWalletRowByAddress(nextWalletAddress);
+      if (existingWallet) {
+        const existingMemberId = parseNumericId(existingWallet.member_id);
+        const existingWalletId = parseNumericId(existingWallet.id);
+        if (existingMemberId !== member.id) {
+          throw new Error('Wallet is already linked to another account');
+        }
+        if (existingWalletId !== walletId) {
+          throw new Error('Wallet is already linked to this account');
+        }
+      }
+    }
     const pool = this.mustPool();
 
     await withRetry(async () => {
@@ -1351,11 +1373,13 @@ export class MemberStore {
           label = $4,
           kind = $5,
           status = $6,
+          auth_alias_enabled = CASE WHEN $7 THEN FALSE ELSE auth_alias_enabled END,
+          verified_at = CASE WHEN $7 THEN NULL ELSE verified_at END,
           updated_at = NOW()
         WHERE id = $1
           AND member_id = $2
         `,
-        [walletId, member.id, nextWalletAddress, nextLabel, nextKind, nextStatus]
+        [walletId, member.id, nextWalletAddress, nextLabel, nextKind, nextStatus, walletAddressChanged]
       );
     });
 
@@ -1748,6 +1772,17 @@ export class MemberStore {
     return result.rows[0] ? mapMember(result.rows[0]) : null;
   }
 
+  private async loadMemberByReownProfileUuid(profileUuid: string): Promise<MemberRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE reown_profile_uuid = $1 LIMIT 1`,
+        [profileUuid]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
   private async loadMemberByPrimaryWallet(primaryWallet: string): Promise<MemberRecord | null> {
     const pool = this.mustPool();
     const result = await withRetry(async () => {
@@ -1757,6 +1792,83 @@ export class MemberStore {
       );
     });
     return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  private async loadMemberByLinkedWallet(walletAddress: string): Promise<MemberRecord | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `
+        SELECT m.*
+        FROM ${TABLE_MEMBERS} m
+        INNER JOIN ${TABLE_WALLETS} w
+          ON w.member_id = m.id
+        WHERE w.wallet_address = $1
+          AND w.auth_alias_enabled = TRUE
+          AND w.status != 'REMOVED'
+        LIMIT 1
+        `,
+        [walletAddress]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  private async loadMemberByReownEmail(email: string): Promise<MemberRecord | null> {
+    const normalizedEmail = normalizeOptionalEmail(email);
+    if (!normalizedEmail) {
+      return null;
+    }
+
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE reown_email_hash = $1 LIMIT 1`,
+        [sha256Hex(normalizedEmail)]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
+  private async resolveMemberByAuthInput(input: ResolveMemberAuthInput): Promise<MemberRecord | null> {
+    const authSubject = normalizeOptionalString(input.authSubject ?? null, 255) ?? null;
+    if (authSubject) {
+      const byAuthSubject = await this.loadMemberByAuthSubject(authSubject);
+      if (byAuthSubject) {
+        return byAuthSubject;
+      }
+    }
+
+    const profileUuid = normalizeOptionalString(input.profileUuid ?? null, 255) ?? null;
+    if (profileUuid) {
+      const byProfileUuid = await this.loadMemberByReownProfileUuid(profileUuid);
+      if (byProfileUuid) {
+        return byProfileUuid;
+      }
+    }
+
+    const walletAddress = input.walletAddress ? normalizeWalletAddress(input.walletAddress) : null;
+    if (walletAddress) {
+      const byPrimaryWallet = await this.loadMemberByPrimaryWallet(walletAddress);
+      if (byPrimaryWallet) {
+        return byPrimaryWallet;
+      }
+
+      const byLinkedWallet = await this.loadMemberByLinkedWallet(walletAddress);
+      if (byLinkedWallet) {
+        return byLinkedWallet;
+      }
+    }
+
+    const email = normalizeOptionalEmail(input.email ?? null) ?? null;
+    if (email) {
+      const byEmail = await this.loadMemberByReownEmail(email);
+      if (byEmail) {
+        return byEmail;
+      }
+    }
+
+    return null;
   }
 
   private async loadMemberById(memberId: number): Promise<MemberRecord | null> {
@@ -1949,6 +2061,21 @@ export class MemberStore {
     return result.rows[0] ? mapWallet(result.rows[0]) : null;
   }
 
+  private async loadWalletRowByAddress(walletAddress: string): Promise<MemberWalletDbRow | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletDbRow>(
+        `
+        SELECT * FROM ${TABLE_WALLETS}
+        WHERE wallet_address = $1
+        LIMIT 1
+        `,
+        [walletAddress]
+      );
+    });
+    return result.rows[0] ?? null;
+  }
+
   private async loadWallets(memberId: number): Promise<MemberWalletRecord[]> {
     const pool = this.mustPool();
     const result = await withRetry(async () => {
@@ -2053,8 +2180,9 @@ export class MemberStore {
           kind,
           status,
           is_primary,
+          auth_alias_enabled,
           verified_at
-        ) VALUES ($1,$2,$3,'PRIMARY','ACTIVE',TRUE,NOW())
+        ) VALUES ($1,$2,$3,'PRIMARY','ACTIVE',TRUE,TRUE,NOW())
         ON CONFLICT (wallet_address)
         DO UPDATE SET
           member_id = EXCLUDED.member_id,
@@ -2062,10 +2190,40 @@ export class MemberStore {
           kind = 'PRIMARY',
           status = 'ACTIVE',
           is_primary = TRUE,
+          auth_alias_enabled = TRUE,
           verified_at = COALESCE(${TABLE_WALLETS}.verified_at, NOW()),
           updated_at = NOW()
         `,
         [member.id, member.primaryWallet, 'Primary wallet']
+      );
+    });
+  }
+
+  private async linkAuthenticatedWallet(memberId: number, walletAddress: string): Promise<void> {
+    const normalizedWallet = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_WALLETS} (
+          member_id,
+          wallet_address,
+          label,
+          kind,
+          status,
+          is_primary,
+          auth_alias_enabled,
+          verified_at
+        ) VALUES ($1,$2,$3,'SMART','ACTIVE',FALSE,TRUE,NOW())
+        ON CONFLICT (wallet_address)
+        DO UPDATE SET
+          member_id = EXCLUDED.member_id,
+          status = 'ACTIVE',
+          auth_alias_enabled = TRUE,
+          verified_at = COALESCE(${TABLE_WALLETS}.verified_at, NOW()),
+          updated_at = NOW()
+        `,
+        [memberId, normalizedWallet, 'Authenticated wallet']
       );
     });
   }
@@ -2120,6 +2278,7 @@ export class MemberStore {
           auth_subject TEXT NOT NULL UNIQUE,
           primary_wallet TEXT NOT NULL UNIQUE,
           reown_profile_uuid TEXT,
+          reown_email_hash TEXT,
           status TEXT NOT NULL DEFAULT 'ONBOARDING',
           verification_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
           membership_plan TEXT,
@@ -2247,6 +2406,7 @@ export class MemberStore {
           kind TEXT NOT NULL DEFAULT 'PRIMARY',
           status TEXT NOT NULL DEFAULT 'ACTIVE',
           is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+          auth_alias_enabled BOOLEAN NOT NULL DEFAULT FALSE,
           verified_at TIMESTAMPTZ,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -2262,6 +2422,18 @@ export class MemberStore {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLETS}_member_id
         ON ${TABLE_WALLETS} (member_id)
+      `);
+
+      await pool.query(`
+        ALTER TABLE ${TABLE_WALLETS}
+        ADD COLUMN IF NOT EXISTS auth_alias_enabled BOOLEAN NOT NULL DEFAULT FALSE
+      `);
+
+      await pool.query(`
+        UPDATE ${TABLE_WALLETS}
+        SET auth_alias_enabled = TRUE
+        WHERE is_primary = TRUE
+           OR label = 'Authenticated wallet'
       `);
 
       await pool.query(`
@@ -2286,6 +2458,22 @@ export class MemberStore {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_${TABLE_MEMBERS}_wallet
         ON ${TABLE_MEMBERS} (primary_wallet)
+      `);
+
+      await pool.query(`
+        ALTER TABLE ${TABLE_MEMBERS}
+        ADD COLUMN IF NOT EXISTS reown_email_hash TEXT
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_MEMBERS}_profile_uuid
+        ON ${TABLE_MEMBERS} (reown_profile_uuid)
+      `);
+
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_MEMBERS}_reown_email_hash
+        ON ${TABLE_MEMBERS} (reown_email_hash)
+        WHERE reown_email_hash IS NOT NULL
       `);
     });
   }

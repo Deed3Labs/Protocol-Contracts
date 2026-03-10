@@ -12,6 +12,7 @@ export interface PlaidStoredItem {
 }
 
 type PlaidTokenRow = {
+  wallet_address: string;
   item_id: string;
   access_token_ciphertext: Buffer;
   access_token_iv: Buffer;
@@ -36,6 +37,11 @@ const TABLE_NAME = resolveTableName();
 
 function normalizeWalletAddress(walletAddress: string): string {
   return walletAddress.trim().toLowerCase();
+}
+
+function normalizeWalletAddresses(walletAddress: string | string[]): string[] {
+  const values = Array.isArray(walletAddress) ? walletAddress : [walletAddress];
+  return [...new Set(values.map(normalizeWalletAddress).filter(Boolean))];
 }
 
 function normalizeItemId(itemId: string): string {
@@ -107,15 +113,19 @@ export class PlaidTokenStore {
     return this.schemaReadyPromise;
   }
 
-  async getItems(walletAddress: string): Promise<PlaidStoredItem[]> {
+  async getItems(walletAddress: string | string[]): Promise<PlaidStoredItem[]> {
     await this.ensureReady();
     const pool = this.mustPool();
-    const wallet = normalizeWalletAddress(walletAddress);
+    const wallets = normalizeWalletAddresses(walletAddress);
+    if (wallets.length === 0) {
+      return [];
+    }
 
     const rows = await withRetry(async () => {
       const result = await pool.query<PlaidTokenRow>(
         `
         SELECT
+          wallet_address,
           item_id,
           access_token_ciphertext,
           access_token_iv,
@@ -125,16 +135,17 @@ export class PlaidTokenStore {
           wrapped_data_key_auth_tag,
           key_version
         FROM ${TABLE_NAME}
-        WHERE wallet_address = $1
+        WHERE wallet_address = ANY($1::text[])
         ORDER BY created_at ASC
         `,
-        [wallet]
+        [wallets]
       );
       return result.rows;
     });
 
     const items: PlaidStoredItem[] = [];
     for (const row of rows) {
+      const wallet = normalizeWalletAddress(row.wallet_address);
       try {
         const itemId = normalizeItemId(row.item_id);
         const accessToken = decryptWithEnvelope(
@@ -162,15 +173,18 @@ export class PlaidTokenStore {
     return items;
   }
 
-  async countItems(walletAddress: string): Promise<number> {
+  async countItems(walletAddress: string | string[]): Promise<number> {
     await this.ensureReady();
     const pool = this.mustPool();
-    const wallet = normalizeWalletAddress(walletAddress);
+    const wallets = normalizeWalletAddresses(walletAddress);
+    if (wallets.length === 0) {
+      return 0;
+    }
 
     return withRetry(async () => {
       const result = await pool.query<{ total: string }>(
-        `SELECT COUNT(*)::text AS total FROM ${TABLE_NAME} WHERE wallet_address = $1`,
-        [wallet]
+        `SELECT COUNT(*)::text AS total FROM ${TABLE_NAME} WHERE wallet_address = ANY($1::text[])`,
+        [wallets]
       );
       return parseInt(result.rows[0]?.total || '0', 10) || 0;
     });
@@ -224,27 +238,33 @@ export class PlaidTokenStore {
     });
   }
 
-  async deleteItem(walletAddress: string, itemId: string): Promise<void> {
+  async deleteItem(walletAddress: string | string[], itemId: string): Promise<void> {
     await this.ensureReady();
     const pool = this.mustPool();
-    const wallet = normalizeWalletAddress(walletAddress);
+    const wallets = normalizeWalletAddresses(walletAddress);
+    if (wallets.length === 0) {
+      return;
+    }
     const normalizedItemId = normalizeItemId(itemId);
 
     await withRetry(async () => {
       await pool.query(
-        `DELETE FROM ${TABLE_NAME} WHERE wallet_address = $1 AND item_id = $2`,
-        [wallet, normalizedItemId]
+        `DELETE FROM ${TABLE_NAME} WHERE wallet_address = ANY($1::text[]) AND item_id = $2`,
+        [wallets, normalizedItemId]
       );
     });
   }
 
-  async deleteAllItems(walletAddress: string): Promise<void> {
+  async deleteAllItems(walletAddress: string | string[]): Promise<void> {
     await this.ensureReady();
     const pool = this.mustPool();
-    const wallet = normalizeWalletAddress(walletAddress);
+    const wallets = normalizeWalletAddresses(walletAddress);
+    if (wallets.length === 0) {
+      return;
+    }
 
     await withRetry(async () => {
-      await pool.query(`DELETE FROM ${TABLE_NAME} WHERE wallet_address = $1`, [wallet]);
+      await pool.query(`DELETE FROM ${TABLE_NAME} WHERE wallet_address = ANY($1::text[])`, [wallets]);
     });
   }
 

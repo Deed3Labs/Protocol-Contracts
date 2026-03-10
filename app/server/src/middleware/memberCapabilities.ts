@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { memberStore, type MemberCapabilities } from '../services/memberStore.js';
 
-function resolveAuthSubject(req: Request): string {
+function resolveRawAuthSubject(req: Request): string {
   const profileUuid = req.auth?.profileUuid?.trim();
   if (profileUuid) return profileUuid;
 
@@ -9,6 +9,17 @@ function resolveAuthSubject(req: Request): string {
   if (walletAddress) return walletAddress;
 
   throw new Error('Authenticated subject missing');
+}
+
+async function resolveMemberAuthSubject(req: Request): Promise<string> {
+  const rawAuthSubject = resolveRawAuthSubject(req);
+  const canonicalAuthSubject = await memberStore.resolveCanonicalAuthSubject({
+    authSubject: rawAuthSubject,
+    profileUuid: req.auth?.profileUuid ?? null,
+    walletAddress: req.auth?.walletAddress ?? null,
+    email: req.auth?.email ?? null,
+  });
+  return canonicalAuthSubject ?? rawAuthSubject;
 }
 
 export type MemberCapabilityKey = keyof MemberCapabilities;
@@ -24,7 +35,8 @@ export function requireMemberCapability(capability: MemberCapabilityKey) {
 
     try {
       await memberStore.ensureReady();
-      const capabilities = await memberStore.getCapabilitiesByAuthSubject(resolveAuthSubject(req));
+      const authSubject = await resolveMemberAuthSubject(req);
+      const capabilities = await memberStore.getCapabilitiesByAuthSubject(authSubject);
       if (!capabilities) {
         return res.status(403).json({
           error: 'Forbidden',

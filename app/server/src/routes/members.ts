@@ -18,7 +18,7 @@ const router = Router();
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const INVALID = Symbol('invalid');
 
-function resolveAuthSubject(req: Request): string {
+function resolveRawAuthSubject(req: Request): string {
   const profileUuid = req.auth?.profileUuid?.trim();
   if (profileUuid) return profileUuid;
 
@@ -26,6 +26,21 @@ function resolveAuthSubject(req: Request): string {
   if (walletAddress) return walletAddress;
 
   throw new Error('Authenticated subject missing');
+}
+
+function buildMemberAuthInput(req: Request) {
+  return {
+    authSubject: resolveRawAuthSubject(req),
+    profileUuid: req.auth?.profileUuid ?? null,
+    walletAddress: req.auth?.walletAddress ?? null,
+    email: req.auth?.email ?? null,
+  };
+}
+
+async function resolveMemberAuthSubject(req: Request): Promise<string> {
+  const rawAuthSubject = resolveRawAuthSubject(req);
+  const canonicalAuthSubject = await memberStore.resolveCanonicalAuthSubject(buildMemberAuthInput(req));
+  return canonicalAuthSubject ?? rawAuthSubject;
 }
 
 function resolveWallet(req: Request): string {
@@ -246,9 +261,10 @@ router.put('/me/bootstrap', async (req: Request, res: Response) => {
 
   try {
     const account = await memberStore.bootstrapMember({
-      authSubject: resolveAuthSubject(req),
+      authSubject: resolveRawAuthSubject(req),
       primaryWallet: resolveWallet(req),
       reownProfileUuid: req.auth?.profileUuid ?? null,
+      email: req.auth?.email ?? null,
     });
 
     res.json({
@@ -265,7 +281,8 @@ router.get('/me', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
   try {
-    const member = await memberStore.getMemberByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const member = await memberStore.getMemberByAuthSubject(authSubject);
     if (!member) {
       return res.status(404).json({
         error: 'Member not found',
@@ -283,7 +300,8 @@ router.get('/me/account-center', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
   try {
-    const account = await memberStore.getAccountCenterByAuthSubject(resolveAuthSubject(req), {
+    const authSubject = await resolveMemberAuthSubject(req);
+    const account = await memberStore.getAccountCenterByAuthSubject(authSubject, {
       includeLockedPrivateProfile: true,
       requireMember: true,
     });
@@ -297,7 +315,8 @@ router.get('/me/capabilities', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
   try {
-    const capabilities = await memberStore.getCapabilitiesByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const capabilities = await memberStore.getCapabilitiesByAuthSubject(authSubject);
     if (!capabilities) {
       return res.status(404).json({
         error: 'Member not found',
@@ -315,7 +334,8 @@ router.get('/me/membership', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
   try {
-    const member = await memberStore.getMemberByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const member = await memberStore.getMemberByAuthSubject(authSubject);
     if (!member) {
       return res.status(404).json({
         error: 'Member not found',
@@ -342,7 +362,8 @@ router.get('/me/onboarding', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
   try {
-    const onboarding = await memberStore.getOnboardingByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const onboarding = await memberStore.getOnboardingByAuthSubject(authSubject);
     if (!onboarding) {
       return res.status(404).json({
         error: 'Member not found',
@@ -428,8 +449,9 @@ router.patch('/me/onboarding', async (req: Request, res: Response) => {
   };
 
   try {
-    const onboarding = await memberStore.updateOnboardingByAuthSubject(resolveAuthSubject(req), patch);
-    const capabilities = await memberStore.getCapabilitiesByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const onboarding = await memberStore.updateOnboardingByAuthSubject(authSubject, patch);
+    const capabilities = await memberStore.getCapabilitiesByAuthSubject(authSubject);
     res.json({ onboarding, capabilities });
   } catch (error) {
     handleMemberRouteError(res, error);
@@ -440,7 +462,8 @@ router.post('/me/onboarding/submit', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
   try {
-    const account = await memberStore.submitOnboardingByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const account = await memberStore.submitOnboardingByAuthSubject(authSubject);
     res.json(account);
   } catch (error) {
     handleMemberRouteError(res, error);
@@ -451,7 +474,8 @@ router.get('/me/profile', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
   try {
-    const profile = await memberStore.getProfileByAuthSubject(resolveAuthSubject(req), {
+    const authSubject = await resolveMemberAuthSubject(req);
+    const profile = await memberStore.getProfileByAuthSubject(authSubject, {
       includeLockedPrivateProfile: true,
     });
     if (!profile) {
@@ -544,8 +568,9 @@ router.patch('/me/profile', async (req: Request, res: Response) => {
   };
 
   try {
-    const profile = await memberStore.updateProfileByAuthSubject(resolveAuthSubject(req), patch);
-    const capabilities = await memberStore.getCapabilitiesByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const profile = await memberStore.updateProfileByAuthSubject(authSubject, patch);
+    const capabilities = await memberStore.getCapabilitiesByAuthSubject(authSubject);
     res.json({ profile, capabilities });
   } catch (error) {
     handleMemberRouteError(res, error);
@@ -556,7 +581,8 @@ router.get('/me/wallets', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
   try {
-    const wallets = await memberStore.listWalletsByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const wallets = await memberStore.listWalletsByAuthSubject(authSubject);
     if (!wallets) {
       return res.status(404).json({
         error: 'Member not found',
@@ -603,7 +629,8 @@ router.post('/me/wallets', async (req: Request, res: Response) => {
   };
 
   try {
-    const wallets = await memberStore.addWalletByAuthSubject(resolveAuthSubject(req), input);
+    const authSubject = await resolveMemberAuthSubject(req);
+    const wallets = await memberStore.addWalletByAuthSubject(authSubject, input);
     res.json({ wallets });
   } catch (error) {
     handleMemberRouteError(res, error);
@@ -640,7 +667,8 @@ router.patch('/me/wallets/:id', async (req: Request, res: Response) => {
   };
 
   try {
-    const wallets = await memberStore.updateWalletByAuthSubject(resolveAuthSubject(req), walletId, input);
+    const authSubject = await resolveMemberAuthSubject(req);
+    const wallets = await memberStore.updateWalletByAuthSubject(authSubject, walletId, input);
     res.json({ wallets });
   } catch (error) {
     handleMemberRouteError(res, error);
@@ -653,7 +681,8 @@ router.delete('/me/wallets/:id', async (req: Request, res: Response) => {
   if (walletId === INVALID) return;
 
   try {
-    const wallets = await memberStore.removeWalletByAuthSubject(resolveAuthSubject(req), walletId);
+    const authSubject = await resolveMemberAuthSubject(req);
+    const wallets = await memberStore.removeWalletByAuthSubject(authSubject, walletId);
     res.json({ wallets });
   } catch (error) {
     handleMemberRouteError(res, error);
@@ -664,7 +693,8 @@ router.get('/me/socials', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
   try {
-    const socialAccounts = await memberStore.listSocialAccountsByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const socialAccounts = await memberStore.listSocialAccountsByAuthSubject(authSubject);
     if (!socialAccounts) {
       return res.status(404).json({
         error: 'Member not found',
@@ -717,7 +747,8 @@ router.post('/me/socials', async (req: Request, res: Response) => {
   };
 
   try {
-    const socialAccounts = await memberStore.addSocialAccountByAuthSubject(resolveAuthSubject(req), input);
+    const authSubject = await resolveMemberAuthSubject(req);
+    const socialAccounts = await memberStore.addSocialAccountByAuthSubject(authSubject, input);
     res.json({ socialAccounts });
   } catch (error) {
     handleMemberRouteError(res, error);
@@ -754,7 +785,8 @@ router.patch('/me/socials/:id', async (req: Request, res: Response) => {
   };
 
   try {
-    const socialAccounts = await memberStore.updateSocialAccountByAuthSubject(resolveAuthSubject(req), socialId, input);
+    const authSubject = await resolveMemberAuthSubject(req);
+    const socialAccounts = await memberStore.updateSocialAccountByAuthSubject(authSubject, socialId, input);
     res.json({ socialAccounts });
   } catch (error) {
     handleMemberRouteError(res, error);
@@ -767,7 +799,8 @@ router.delete('/me/socials/:id', async (req: Request, res: Response) => {
   if (socialId === INVALID) return;
 
   try {
-    const socialAccounts = await memberStore.removeSocialAccountByAuthSubject(resolveAuthSubject(req), socialId);
+    const authSubject = await resolveMemberAuthSubject(req);
+    const socialAccounts = await memberStore.removeSocialAccountByAuthSubject(authSubject, socialId);
     res.json({ socialAccounts });
   } catch (error) {
     handleMemberRouteError(res, error);
@@ -812,7 +845,8 @@ router.post('/me/membership/checkout', async (req: Request, res: Response) => {
   }
 
   try {
-    const account = await memberStore.getAccountCenterByAuthSubject(resolveAuthSubject(req), {
+    const authSubject = await resolveMemberAuthSubject(req);
+    const account = await memberStore.getAccountCenterByAuthSubject(authSubject, {
       includeLockedPrivateProfile: true,
       requireMember: true,
     });
@@ -838,7 +872,8 @@ router.get('/me/security', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
   try {
-    const security = await memberStore.getSecurityByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const security = await memberStore.getSecurityByAuthSubject(authSubject);
     if (!security) {
       return res.status(404).json({
         error: 'Member not found',
@@ -882,7 +917,8 @@ router.patch('/me/security', async (req: Request, res: Response) => {
   };
 
   try {
-    const security = await memberStore.updateSecurityByAuthSubject(resolveAuthSubject(req), patch);
+    const authSubject = await resolveMemberAuthSubject(req);
+    const security = await memberStore.updateSecurityByAuthSubject(authSubject, patch);
     res.json({ security });
   } catch (error) {
     handleMemberRouteError(res, error);
@@ -925,8 +961,9 @@ router.post('/me/terms/accept', async (req: Request, res: Response) => {
   };
 
   try {
-    const terms = await memberStore.acceptTermsByAuthSubject(resolveAuthSubject(req), payload);
-    const capabilities = await memberStore.getCapabilitiesByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const terms = await memberStore.acceptTermsByAuthSubject(authSubject, payload);
+    const capabilities = await memberStore.getCapabilitiesByAuthSubject(authSubject);
     res.json({ terms, capabilities });
   } catch (error) {
     handleMemberRouteError(res, error);
@@ -937,7 +974,8 @@ router.get('/me/verification', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
   try {
-    const verification = await memberStore.getVerificationByAuthSubject(resolveAuthSubject(req));
+    const authSubject = await resolveMemberAuthSubject(req);
+    const verification = await memberStore.getVerificationByAuthSubject(authSubject);
     if (!verification) {
       return res.status(404).json({
         error: 'Member not found',
@@ -973,7 +1011,8 @@ router.post('/me/verification/start', async (req: Request, res: Response) => {
   if (verificationLevel === INVALID) return;
 
   try {
-    const account = await memberStore.startVerificationByAuthSubject(resolveAuthSubject(req), {
+    const authSubject = await resolveMemberAuthSubject(req);
+    const account = await memberStore.startVerificationByAuthSubject(authSubject, {
       provider,
       verificationLevel,
     });

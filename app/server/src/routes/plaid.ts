@@ -18,6 +18,7 @@ import {
 } from 'plaid';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { requireWalletMatch } from '../middleware/auth.js';
+import { memberStore } from '../services/memberStore.js';
 import { plaidTokenStore } from '../services/plaidTokenStore.js';
 
 const router = Router();
@@ -57,6 +58,76 @@ async function ensurePlaidTokenStore(res: Response): Promise<boolean> {
     });
     return false;
   }
+}
+
+function normalizeWalletAddress(walletAddress: string): string {
+  return walletAddress.trim().toLowerCase();
+}
+
+function resolveRawAuthSubject(req: Request): string {
+  const profileUuid = req.auth?.profileUuid?.trim();
+  if (profileUuid) return profileUuid;
+
+  const walletAddress = req.auth?.walletAddress?.trim().toLowerCase();
+  if (walletAddress) return walletAddress;
+
+  throw new Error('Authenticated subject missing');
+}
+
+async function resolvePlaidWalletScope(req: Request, walletAddress: string): Promise<string[]> {
+  const normalizedWallet = normalizeWalletAddress(walletAddress);
+  const walletScope = new Set<string>([normalizedWallet]);
+
+  if (!memberStore.isConfigured()) {
+    return [...walletScope];
+  }
+
+  const canonicalAuthSubject = await memberStore.resolveCanonicalAuthSubject({
+    authSubject: resolveRawAuthSubject(req),
+    profileUuid: req.auth?.profileUuid ?? null,
+    walletAddress: req.auth?.walletAddress ?? null,
+    email: req.auth?.email ?? null,
+  });
+
+  if (!canonicalAuthSubject) {
+    return [...walletScope];
+  }
+
+  const [member, wallets] = await Promise.all([
+    memberStore.getMemberByAuthSubject(canonicalAuthSubject),
+    memberStore.listWalletsByAuthSubject(canonicalAuthSubject),
+  ]);
+
+  if (member?.primaryWallet) {
+    walletScope.add(normalizeWalletAddress(member.primaryWallet));
+  }
+
+  for (const linkedWallet of wallets ?? []) {
+    walletScope.add(normalizeWalletAddress(linkedWallet.walletAddress));
+  }
+
+  return [...walletScope];
+}
+
+async function invalidatePlaidCaches(walletAddresses: string[]): Promise<void> {
+  const cacheService = await getCacheService();
+  if (!cacheService) {
+    return;
+  }
+
+  const normalizedWallets = [...new Set(walletAddresses.map(normalizeWalletAddress).filter(Boolean))];
+  await Promise.all(
+    normalizedWallets.flatMap((walletAddress) => [
+      cacheService.del(CacheKeys.plaidBalances(walletAddress)),
+      cacheService.del(CacheKeys.plaidRecurringTransactions(walletAddress)),
+      cacheService.del(CacheKeys.plaidSpend(walletAddress)),
+      cacheService.del(CacheKeys.plaidRecentTransactions(walletAddress)),
+      cacheService.del(CacheKeys.plaidHistoricalTransactions(walletAddress)),
+      cacheService.del(CacheKeys.plaidInvestmentsHoldings(walletAddress)),
+      cacheService.del(CacheKeys.plaidLiabilities(walletAddress)),
+      cacheService.del(CacheKeys.plaidInvestmentAccounts(walletAddress)),
+    ])
+  );
 }
 
 function getPlaidClient(): PlaidApi | null {
@@ -241,30 +312,19 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
     const accessToken = response.data.access_token;
     const itemId = response.data.item_id;
     const key = walletAddress.toLowerCase();
-    const existing = await plaidTokenStore.getItems(key);
+    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
+    const existing = await plaidTokenStore.getItems(walletScope);
     const alreadyExists = existing.some((item) => item.item_id === itemId);
     if (!alreadyExists && existing.length >= MAX_PLAID_ITEMS_PER_WALLET) {
       return res.status(400).json({
         error: 'Too many linked institutions',
-        message: `Maximum ${MAX_PLAID_ITEMS_PER_WALLET} institutions can be linked per wallet`,
+        message: `Maximum ${MAX_PLAID_ITEMS_PER_WALLET} institutions can be linked per Clear account`,
       });
     }
     await plaidTokenStore.upsertItem(key, itemId, accessToken);
 
     // Invalidate balance cache so next fetch (or client refresh) returns all linked accounts
-    const cacheService = await getCacheService();
-    if (cacheService) {
-      await Promise.all([
-        cacheService.del(CacheKeys.plaidBalances(key)),
-        cacheService.del(CacheKeys.plaidRecurringTransactions(key)),
-        cacheService.del(CacheKeys.plaidSpend(key)),
-        cacheService.del(CacheKeys.plaidRecentTransactions(key)),
-        cacheService.del(CacheKeys.plaidHistoricalTransactions(key)),
-        cacheService.del(CacheKeys.plaidInvestmentsHoldings(key)),
-        cacheService.del(CacheKeys.plaidLiabilities(key)),
-        cacheService.del(CacheKeys.plaidInvestmentAccounts(key)),
-      ]);
-    }
+    await invalidatePlaidCaches(walletScope);
 
     res.json({ success: true });
   } catch (error: unknown) {
@@ -918,7 +978,8 @@ router.get('/balances', async (req: Request, res: Response) => {
     if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = await plaidTokenStore.getItems(key);
+    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
+    const items = await plaidTokenStore.getItems(walletScope);
     if (items.length === 0) {
       return res.json(balancesResponse({
         accounts: [],
@@ -1082,16 +1143,8 @@ router.get('/balances', async (req: Request, res: Response) => {
 
     // Persist removal of any invalid/duplicate items
     if (staleItemIds.size > 0) {
-      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
-      const cacheServiceForInvalidate = await getCacheService();
-      if (cacheServiceForInvalidate) {
-        await Promise.all([
-          cacheServiceForInvalidate.del(cacheKey),
-          cacheServiceForInvalidate.del(CacheKeys.plaidLiabilities(key)),
-          cacheServiceForInvalidate.del(CacheKeys.plaidInvestmentAccounts(key)),
-          cacheServiceForInvalidate.del(CacheKeys.plaidInvestmentsHoldings(key)),
-        ]);
-      }
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(walletScope, itemId)));
+      await invalidatePlaidCaches(walletScope);
     }
 
     const remainingItemsCount = Math.max(0, items.length - staleItemIds.size);
@@ -1107,25 +1160,13 @@ router.get('/balances', async (req: Request, res: Response) => {
     if (errorCode === 'ITEM_LOGIN_REQUIRED' || errorCode === 'INVALID_ACCESS_TOKEN') {
       const walletAddress = req.query.walletAddress as string | undefined;
       if (walletAddress) {
-        const key = walletAddress.toLowerCase();
+        const walletScope = await resolvePlaidWalletScope(req, walletAddress);
         try {
-          await plaidTokenStore.deleteAllItems(key);
+          await plaidTokenStore.deleteAllItems(walletScope);
         } catch (storeError) {
           console.warn('Failed to clear invalid Plaid items:', storeError);
         }
-        const cacheService = await getCacheService();
-        if (cacheService) {
-          await Promise.all([
-            cacheService.del(CacheKeys.plaidBalances(key)),
-            cacheService.del(CacheKeys.plaidRecurringTransactions(key)),
-            cacheService.del(CacheKeys.plaidSpend(key)),
-            cacheService.del(CacheKeys.plaidRecentTransactions(key)),
-            cacheService.del(CacheKeys.plaidHistoricalTransactions(key)),
-            cacheService.del(CacheKeys.plaidInvestmentsHoldings(key)),
-            cacheService.del(CacheKeys.plaidLiabilities(key)),
-            cacheService.del(CacheKeys.plaidInvestmentAccounts(key)),
-          ]);
-        }
+        await invalidatePlaidCaches(walletScope);
       }
       return res.json(balancesResponse({
         accounts: [],
@@ -1170,7 +1211,8 @@ router.get('/liabilities', async (req: Request, res: Response) => {
     if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = await plaidTokenStore.getItems(key);
+    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
+    const items = await plaidTokenStore.getItems(walletScope);
     if (items.length === 0) {
       return res.json({ accounts: [], linked: false, cached: false });
     }
@@ -1271,7 +1313,8 @@ router.get('/liabilities', async (req: Request, res: Response) => {
     }
 
     if (staleItemIds.size > 0) {
-      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(walletScope, itemId)));
+      await invalidatePlaidCaches(walletScope);
     }
 
     const payload = { accounts: liabilityAccounts };
@@ -1316,7 +1359,8 @@ router.get('/investments/accounts', async (req: Request, res: Response) => {
     if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = await plaidTokenStore.getItems(key);
+    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
+    const items = await plaidTokenStore.getItems(walletScope);
     if (items.length === 0) {
       return res.json({ accounts: [], linked: false, cached: false });
     }
@@ -1403,7 +1447,8 @@ router.get('/investments/accounts', async (req: Request, res: Response) => {
     }
 
     if (staleItemIds.size > 0) {
-      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(walletScope, itemId)));
+      await invalidatePlaidCaches(walletScope);
     }
 
     const payload = { accounts: accountSummaries };
@@ -1464,7 +1509,8 @@ router.get('/investments/holdings', async (req: Request, res: Response) => {
     if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = await plaidTokenStore.getItems(key);
+    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
+    const items = await plaidTokenStore.getItems(walletScope);
     if (items.length === 0) {
       return res.json({ holdings: [], linked: false, cached: false });
     }
@@ -1527,7 +1573,8 @@ router.get('/investments/holdings', async (req: Request, res: Response) => {
     }
 
     if (staleItemIds.size > 0) {
-      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(walletScope, itemId)));
+      await invalidatePlaidCaches(walletScope);
     }
 
     const payload = { holdings: allHoldings };
@@ -1572,7 +1619,8 @@ router.post('/investments/refresh', async (req: Request, res: Response) => {
     if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = await plaidTokenStore.getItems(key);
+    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
+    const items = await plaidTokenStore.getItems(walletScope);
     if (items.length === 0) {
       return res.json({ success: true, message: 'No linked items' });
     }
@@ -1588,13 +1636,7 @@ router.post('/investments/refresh', async (req: Request, res: Response) => {
       }
     }
 
-    const cacheService = await getCacheService();
-    if (cacheService) {
-      await Promise.all([
-        cacheService.del(CacheKeys.plaidInvestmentsHoldings(key)),
-        cacheService.del(CacheKeys.plaidInvestmentAccounts(key)),
-      ]);
-    }
+    await invalidatePlaidCaches(walletScope);
 
     res.json({ success: true });
   } catch (error: unknown) {
@@ -1643,7 +1685,8 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
     if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = await plaidTokenStore.getItems(key);
+    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
+    const items = await plaidTokenStore.getItems(walletScope);
     if (items.length === 0) {
       return res.json({
         inflowStreams: [],
@@ -1830,7 +1873,8 @@ router.get('/recurring-transactions', async (req: Request, res: Response) => {
     }
 
     if (staleItemIds.size > 0) {
-      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(walletScope, itemId)));
+      await invalidatePlaidCaches(walletScope);
     }
 
     const payload = { inflowStreams, outflowStreams, notReady: hadNotReadyItem };
@@ -1888,7 +1932,7 @@ type PlaidTransactionsWindowResult = {
 
 async function fetchPlaidTransactionsWindow(params: {
   client: PlaidApi;
-  key: string;
+  walletScope: string[];
   items: Array<{ item_id: string; access_token: string }>;
   cacheKey: string;
   skipCache: boolean;
@@ -1899,7 +1943,7 @@ async function fetchPlaidTransactionsWindow(params: {
 }): Promise<PlaidTransactionsWindowResult> {
   const {
     client,
-    key,
+    walletScope,
     items,
     cacheKey,
     skipCache,
@@ -2077,7 +2121,8 @@ async function fetchPlaidTransactionsWindow(params: {
   }
 
   if (staleItemIds.size > 0) {
-    await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+    await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(walletScope, itemId)));
+    await invalidatePlaidCaches(walletScope);
   }
 
   allTransactions.sort((a, b) => {
@@ -2136,7 +2181,8 @@ router.get('/transactions/recent', async (req: Request, res: Response) => {
         : 500;
 
     const key = walletAddress.toLowerCase();
-    const items = await plaidTokenStore.getItems(key);
+    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
+    const items = await plaidTokenStore.getItems(walletScope);
     if (items.length === 0) {
       return res.json({
         transactions: [] as PlaidRecentTransactionPayload[],
@@ -2154,7 +2200,7 @@ router.get('/transactions/recent', async (req: Request, res: Response) => {
     start.setDate(start.getDate() - 90);
     const result = await fetchPlaidTransactionsWindow({
       client,
-      key,
+      walletScope,
       items,
       cacheKey,
       skipCache,
@@ -2210,7 +2256,8 @@ router.get('/transactions/historical', async (req: Request, res: Response) => {
         : 1500;
 
     const key = walletAddress.toLowerCase();
-    const items = await plaidTokenStore.getItems(key);
+    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
+    const items = await plaidTokenStore.getItems(walletScope);
     if (items.length === 0) {
       return res.json({
         transactions: [] as PlaidRecentTransactionPayload[],
@@ -2227,7 +2274,7 @@ router.get('/transactions/historical', async (req: Request, res: Response) => {
     start.setFullYear(start.getFullYear() - 2);
     const result = await fetchPlaidTransactionsWindow({
       client,
-      key,
+      walletScope,
       items,
       cacheKey,
       skipCache,
@@ -2279,7 +2326,8 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
     if (!(await ensurePlaidTokenStore(res))) return;
 
     const key = walletAddress.toLowerCase();
-    const items = await plaidTokenStore.getItems(key);
+    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
+    const items = await plaidTokenStore.getItems(walletScope);
     if (items.length === 0) {
       return res.json({
         spendingByDay: {} as SpendByDayPayload,
@@ -2392,7 +2440,8 @@ router.get('/transactions/spend', async (req: Request, res: Response) => {
     }
 
     if (staleItemIds.size > 0) {
-      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(key, itemId)));
+      await Promise.all([...staleItemIds].map((itemId) => plaidTokenStore.deleteItem(walletScope, itemId)));
+      await invalidatePlaidCaches(walletScope);
     }
 
     const payload = { spendingByDay, totalSpent, notReady: hadNotReadyItem };
@@ -2429,26 +2478,17 @@ router.post('/disconnect', async (req: Request, res: Response) => {
     if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
     if (!(await ensurePlaidTokenStore(res))) return;
     const key = walletAddress.toLowerCase();
-    const items = await plaidTokenStore.getItems(key);
+    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
+    const items = await plaidTokenStore.getItems(walletScope);
     if (items.length === 0) {
       return res.json({ success: true });
     }
     if (itemId) {
-      await plaidTokenStore.deleteItem(key, itemId);
+      await plaidTokenStore.deleteItem(walletScope, itemId);
     } else {
-      await plaidTokenStore.deleteAllItems(key);
+      await plaidTokenStore.deleteAllItems(walletScope);
     }
-    const cacheService = await getCacheService();
-    if (cacheService) {
-      await cacheService.del(CacheKeys.plaidBalances(key));
-      await cacheService.del(CacheKeys.plaidRecurringTransactions(key));
-      await cacheService.del(CacheKeys.plaidSpend(key));
-      await cacheService.del(CacheKeys.plaidRecentTransactions(key));
-      await cacheService.del(CacheKeys.plaidHistoricalTransactions(key));
-      await cacheService.del(CacheKeys.plaidInvestmentsHoldings(key));
-      await cacheService.del(CacheKeys.plaidLiabilities(key));
-      await cacheService.del(CacheKeys.plaidInvestmentAccounts(key));
-    }
+    await invalidatePlaidCaches([key, ...walletScope]);
     res.json({ success: true });
   } catch (error: unknown) {
     console.error('Plaid disconnect error:', error);
