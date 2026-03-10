@@ -4,6 +4,7 @@ import {
   getPlaidRecentTransactions,
   type PlaidRecentTransactionsResponse,
 } from '@/utils/apiClient';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 
 const STALE_MS = 15 * 60 * 1000; // 15 minutes – transaction list can update frequently
 
@@ -24,12 +25,13 @@ export function usePlaidRecentTransactions(
   walletAddress: string | undefined,
   options?: { enabled?: boolean; limit?: number }
 ): UsePlaidRecentTransactionsResult {
+  const { isAuthenticated } = useAppKitAuth();
   const queryClient = useQueryClient();
   const limit = options?.limit && Number.isFinite(options.limit) && options.limit > 0
     ? Math.floor(options.limit)
     : 500;
-  const queryKey = ['plaid-recent-transactions', walletAddress ?? '', limit] as const;
-  const enabled = !!walletAddress && (options?.enabled ?? true);
+  const queryKey = ['plaid-recent-transactions', walletAddress ?? '', limit, isAuthenticated ? 'auth' : 'guest'] as const;
+  const enabled = !!walletAddress && isAuthenticated && (options?.enabled ?? true);
 
   const {
     data,
@@ -49,7 +51,7 @@ export function usePlaidRecentTransactions(
 
   const refresh = useCallback(async () => {
     if (!walletAddress || !enabled) return;
-    const key = ['plaid-recent-transactions', walletAddress, limit] as const;
+    const key = ['plaid-recent-transactions', walletAddress, limit, 'auth'] as const;
     await queryClient.fetchQuery({
       queryKey: key,
       queryFn: async () => {

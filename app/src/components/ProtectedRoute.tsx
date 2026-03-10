@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isConnected } = useAppKitAuth();
+  const { isConnected, isAuthenticated } = useAppKitAuth();
   const location = useLocation();
   const [isChecking, setIsChecking] = useState(true);
   const [hasCheckedOnce, setHasCheckedOnce] = useState(false);
@@ -38,6 +38,10 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   // If not connected, redirect to login
   if (!isConnected) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (location.pathname.startsWith('/account') && !isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

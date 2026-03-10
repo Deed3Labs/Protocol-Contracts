@@ -37,6 +37,7 @@ import ScrollToTop from "@/components/ScrollToTop";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { ShareTarget } from "@/pages/ShareTarget";
 import ClaimFunds from "@/pages/ClaimFunds";
+import UserOnboarding from "@/pages/UserOnboarding";
 import { PWAInitializer } from "@/components/PWAInitializer";
 
 const LegacyLayout = () => {
@@ -139,6 +140,7 @@ function App() {
                   <Routes>
                     {/* Login Page - Public */}
                     <Route path="/login" element={<LoginPage />} />
+                    <Route path="/onboarding" element={<UserOnboarding />} />
                     
                     {/* Share Target - Public */}
                     <Route path="/share" element={<ShareTarget />} />

@@ -12,6 +12,8 @@ export interface PlaidStoredItem {
 }
 
 type PlaidTokenRow = {
+  member_id: string | number | null;
+  wallet_address: string;
   item_id: string;
   access_token_ciphertext: Buffer;
   access_token_iv: Buffer;
@@ -36,6 +38,11 @@ const TABLE_NAME = resolveTableName();
 
 function normalizeWalletAddress(walletAddress: string): string {
   return walletAddress.trim().toLowerCase();
+}
+
+function normalizeWalletAddresses(walletAddress: string | string[]): string[] {
+  const values = Array.isArray(walletAddress) ? walletAddress : [walletAddress];
+  return [...new Set(values.map(normalizeWalletAddress).filter(Boolean))];
 }
 
 function normalizeItemId(itemId: string): string {
@@ -107,15 +114,307 @@ export class PlaidTokenStore {
     return this.schemaReadyPromise;
   }
 
-  async getItems(walletAddress: string): Promise<PlaidStoredItem[]> {
+  async getItems(walletAddress: string | string[]): Promise<PlaidStoredItem[]> {
+    await this.ensureReady();
+    const wallets = normalizeWalletAddresses(walletAddress);
+    if (wallets.length === 0) {
+      return [];
+    }
+
+    const rows = await this.queryRowsByWallets(wallets);
+    return this.hydrateItems(rows);
+  }
+
+  async getItemsForMember(memberId: number, fallbackWallets: string | string[] = []): Promise<PlaidStoredItem[]> {
+    await this.ensureReady();
+    const wallets = normalizeWalletAddresses(fallbackWallets);
+    const rows = await this.queryRowsByMember(memberId, wallets);
+    return this.hydrateItems(rows);
+  }
+
+  async countItems(walletAddress: string | string[]): Promise<number> {
     await this.ensureReady();
     const pool = this.mustPool();
-    const wallet = normalizeWalletAddress(walletAddress);
+    const wallets = normalizeWalletAddresses(walletAddress);
+    if (wallets.length === 0) {
+      return 0;
+    }
 
-    const rows = await withRetry(async () => {
+    return withRetry(async () => {
+      const result = await pool.query<{ total: string }>(
+        `SELECT COUNT(*)::text AS total FROM ${TABLE_NAME} WHERE wallet_address = ANY($1::text[])`,
+        [wallets]
+      );
+      return parseInt(result.rows[0]?.total || '0', 10) || 0;
+    });
+  }
+
+  async countItemsForMember(memberId: number, fallbackWallets: string | string[] = []): Promise<number> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const wallets = normalizeWalletAddresses(fallbackWallets);
+
+    return withRetry(async () => {
+      const result = await pool.query<{ total: string }>(
+        `
+        SELECT COUNT(DISTINCT item_id)::text AS total
+        FROM ${TABLE_NAME}
+        WHERE member_id = $1
+           OR (member_id IS NULL AND wallet_address = ANY($2::text[]))
+        `,
+        [memberId, wallets]
+      );
+      return parseInt(result.rows[0]?.total || '0', 10) || 0;
+    });
+  }
+
+  async upsertItem(
+    walletAddress: string,
+    itemId: string,
+    accessToken: string,
+    memberId: number | null = null
+  ): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+
+    const wallet = normalizeWalletAddress(walletAddress);
+    const normalizedItemId = normalizeItemId(itemId);
+    const encrypted = encryptWithEnvelope(accessToken, encryptionContext(wallet, normalizedItemId));
+
+    await withRetry(async () => {
+      if (memberId != null) {
+        const updateResult = await pool.query(
+          `
+          UPDATE ${TABLE_NAME}
+          SET
+            member_id = $1,
+            wallet_address = $2,
+            access_token_ciphertext = $4,
+            access_token_iv = $5,
+            access_token_auth_tag = $6,
+            wrapped_data_key_ciphertext = $7,
+            wrapped_data_key_iv = $8,
+            wrapped_data_key_auth_tag = $9,
+            key_version = $10,
+            updated_at = NOW()
+          WHERE member_id = $1
+            AND item_id = $3
+          `,
+          [
+            memberId,
+            wallet,
+            normalizedItemId,
+            encrypted.ciphertext,
+            encrypted.iv,
+            encrypted.authTag,
+            encrypted.wrappedKeyCiphertext,
+            encrypted.wrappedKeyIv,
+            encrypted.wrappedKeyAuthTag,
+            encrypted.keyVersion,
+          ]
+        );
+
+        if (updateResult.rowCount && updateResult.rowCount > 0) {
+          return;
+        }
+      }
+
+      await pool.query(
+        `
+        INSERT INTO ${TABLE_NAME} (
+          member_id,
+          wallet_address,
+          item_id,
+          access_token_ciphertext,
+          access_token_iv,
+          access_token_auth_tag,
+          wrapped_data_key_ciphertext,
+          wrapped_data_key_iv,
+          wrapped_data_key_auth_tag,
+          key_version
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ON CONFLICT (wallet_address, item_id)
+        DO UPDATE SET
+          member_id = COALESCE(EXCLUDED.member_id, ${TABLE_NAME}.member_id),
+          access_token_ciphertext = EXCLUDED.access_token_ciphertext,
+          access_token_iv = EXCLUDED.access_token_iv,
+          access_token_auth_tag = EXCLUDED.access_token_auth_tag,
+          wrapped_data_key_ciphertext = EXCLUDED.wrapped_data_key_ciphertext,
+          wrapped_data_key_iv = EXCLUDED.wrapped_data_key_iv,
+          wrapped_data_key_auth_tag = EXCLUDED.wrapped_data_key_auth_tag,
+          key_version = EXCLUDED.key_version,
+          updated_at = NOW()
+        `,
+        [
+          memberId,
+          wallet,
+          normalizedItemId,
+          encrypted.ciphertext,
+          encrypted.iv,
+          encrypted.authTag,
+          encrypted.wrappedKeyCiphertext,
+          encrypted.wrappedKeyIv,
+          encrypted.wrappedKeyAuthTag,
+          encrypted.keyVersion,
+        ]
+      );
+    });
+  }
+
+  async attachMemberId(memberId: number, walletAddress: string | string[]): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const wallets = normalizeWalletAddresses(walletAddress);
+    if (wallets.length === 0) {
+      return;
+    }
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_NAME}
+        SET
+          member_id = $1,
+          updated_at = NOW()
+        WHERE wallet_address = ANY($2::text[])
+          AND (member_id IS NULL OR member_id != $1)
+        `,
+        [memberId, wallets]
+      );
+    });
+  }
+
+  async deleteItem(walletAddress: string | string[], itemId: string): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const wallets = normalizeWalletAddresses(walletAddress);
+    if (wallets.length === 0) {
+      return;
+    }
+    const normalizedItemId = normalizeItemId(itemId);
+
+    await withRetry(async () => {
+      await pool.query(
+        `DELETE FROM ${TABLE_NAME} WHERE wallet_address = ANY($1::text[]) AND item_id = $2`,
+        [wallets, normalizedItemId]
+      );
+    });
+  }
+
+  async deleteItemForMember(
+    memberId: number,
+    itemId: string,
+    fallbackWallets: string | string[] = []
+  ): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const wallets = normalizeWalletAddresses(fallbackWallets);
+    const normalizedItemId = normalizeItemId(itemId);
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        DELETE FROM ${TABLE_NAME}
+        WHERE item_id = $2
+          AND (
+            member_id = $1
+            OR (member_id IS NULL AND wallet_address = ANY($3::text[]))
+          )
+        `,
+        [memberId, normalizedItemId, wallets]
+      );
+    });
+  }
+
+  async deleteAllItems(walletAddress: string | string[]): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const wallets = normalizeWalletAddresses(walletAddress);
+    if (wallets.length === 0) {
+      return;
+    }
+
+    await withRetry(async () => {
+      await pool.query(`DELETE FROM ${TABLE_NAME} WHERE wallet_address = ANY($1::text[])`, [wallets]);
+    });
+  }
+
+  async deleteAllItemsForMember(memberId: number, fallbackWallets: string | string[] = []): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const wallets = normalizeWalletAddresses(fallbackWallets);
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        DELETE FROM ${TABLE_NAME}
+        WHERE member_id = $1
+           OR (member_id IS NULL AND wallet_address = ANY($2::text[]))
+        `,
+        [memberId, wallets]
+      );
+    });
+  }
+
+  private mustPool(): Pool {
+    const pool = getPostgresPool();
+    if (!pool) {
+      throw new Error('Postgres pool is unavailable');
+    }
+    return pool;
+  }
+
+  private async ensureSchema(): Promise<void> {
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_NAME} (
+          member_id BIGINT,
+          wallet_address TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          access_token_ciphertext BYTEA NOT NULL,
+          access_token_iv BYTEA NOT NULL,
+          access_token_auth_tag BYTEA NOT NULL,
+          wrapped_data_key_ciphertext BYTEA NOT NULL,
+          wrapped_data_key_iv BYTEA NOT NULL,
+          wrapped_data_key_auth_tag BYTEA NOT NULL,
+          key_version TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (wallet_address, item_id)
+        )
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_wallet
+        ON ${TABLE_NAME} (wallet_address)
+      `);
+
+      await pool.query(`
+        ALTER TABLE ${TABLE_NAME}
+        ADD COLUMN IF NOT EXISTS member_id BIGINT
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_member_id
+        ON ${TABLE_NAME} (member_id)
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_member_item
+        ON ${TABLE_NAME} (member_id, item_id)
+      `);
+    });
+  }
+
+  private async queryRowsByWallets(wallets: string[]): Promise<PlaidTokenRow[]> {
+    const pool = this.mustPool();
+    return withRetry(async () => {
       const result = await pool.query<PlaidTokenRow>(
         `
         SELECT
+          member_id,
+          wallet_address,
           item_id,
           access_token_ciphertext,
           access_token_iv,
@@ -125,16 +424,50 @@ export class PlaidTokenStore {
           wrapped_data_key_auth_tag,
           key_version
         FROM ${TABLE_NAME}
-        WHERE wallet_address = $1
+        WHERE wallet_address = ANY($1::text[])
         ORDER BY created_at ASC
         `,
-        [wallet]
+        [wallets]
       );
       return result.rows;
     });
+  }
 
+  private async queryRowsByMember(memberId: number, fallbackWallets: string[]): Promise<PlaidTokenRow[]> {
+    const pool = this.mustPool();
+    return withRetry(async () => {
+      const result = await pool.query<PlaidTokenRow>(
+        `
+        SELECT DISTINCT ON (item_id)
+          member_id,
+          wallet_address,
+          item_id,
+          access_token_ciphertext,
+          access_token_iv,
+          access_token_auth_tag,
+          wrapped_data_key_ciphertext,
+          wrapped_data_key_iv,
+          wrapped_data_key_auth_tag,
+          key_version
+        FROM ${TABLE_NAME}
+        WHERE member_id = $1
+           OR (member_id IS NULL AND wallet_address = ANY($2::text[]))
+        ORDER BY
+          item_id,
+          CASE WHEN member_id = $1 THEN 0 ELSE 1 END,
+          updated_at DESC,
+          created_at ASC
+        `,
+        [memberId, fallbackWallets]
+      );
+      return result.rows;
+    });
+  }
+
+  private hydrateItems(rows: PlaidTokenRow[]): PlaidStoredItem[] {
     const items: PlaidStoredItem[] = [];
     for (const row of rows) {
+      const wallet = normalizeWalletAddress(row.wallet_address);
       try {
         const itemId = normalizeItemId(row.item_id);
         const accessToken = decryptWithEnvelope(
@@ -160,127 +493,6 @@ export class PlaidTokenStore {
     }
 
     return items;
-  }
-
-  async countItems(walletAddress: string): Promise<number> {
-    await this.ensureReady();
-    const pool = this.mustPool();
-    const wallet = normalizeWalletAddress(walletAddress);
-
-    return withRetry(async () => {
-      const result = await pool.query<{ total: string }>(
-        `SELECT COUNT(*)::text AS total FROM ${TABLE_NAME} WHERE wallet_address = $1`,
-        [wallet]
-      );
-      return parseInt(result.rows[0]?.total || '0', 10) || 0;
-    });
-  }
-
-  async upsertItem(walletAddress: string, itemId: string, accessToken: string): Promise<void> {
-    await this.ensureReady();
-    const pool = this.mustPool();
-
-    const wallet = normalizeWalletAddress(walletAddress);
-    const normalizedItemId = normalizeItemId(itemId);
-    const encrypted = encryptWithEnvelope(accessToken, encryptionContext(wallet, normalizedItemId));
-
-    await withRetry(async () => {
-      await pool.query(
-        `
-        INSERT INTO ${TABLE_NAME} (
-          wallet_address,
-          item_id,
-          access_token_ciphertext,
-          access_token_iv,
-          access_token_auth_tag,
-          wrapped_data_key_ciphertext,
-          wrapped_data_key_iv,
-          wrapped_data_key_auth_tag,
-          key_version
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-        ON CONFLICT (wallet_address, item_id)
-        DO UPDATE SET
-          access_token_ciphertext = EXCLUDED.access_token_ciphertext,
-          access_token_iv = EXCLUDED.access_token_iv,
-          access_token_auth_tag = EXCLUDED.access_token_auth_tag,
-          wrapped_data_key_ciphertext = EXCLUDED.wrapped_data_key_ciphertext,
-          wrapped_data_key_iv = EXCLUDED.wrapped_data_key_iv,
-          wrapped_data_key_auth_tag = EXCLUDED.wrapped_data_key_auth_tag,
-          key_version = EXCLUDED.key_version,
-          updated_at = NOW()
-        `,
-        [
-          wallet,
-          normalizedItemId,
-          encrypted.ciphertext,
-          encrypted.iv,
-          encrypted.authTag,
-          encrypted.wrappedKeyCiphertext,
-          encrypted.wrappedKeyIv,
-          encrypted.wrappedKeyAuthTag,
-          encrypted.keyVersion,
-        ]
-      );
-    });
-  }
-
-  async deleteItem(walletAddress: string, itemId: string): Promise<void> {
-    await this.ensureReady();
-    const pool = this.mustPool();
-    const wallet = normalizeWalletAddress(walletAddress);
-    const normalizedItemId = normalizeItemId(itemId);
-
-    await withRetry(async () => {
-      await pool.query(
-        `DELETE FROM ${TABLE_NAME} WHERE wallet_address = $1 AND item_id = $2`,
-        [wallet, normalizedItemId]
-      );
-    });
-  }
-
-  async deleteAllItems(walletAddress: string): Promise<void> {
-    await this.ensureReady();
-    const pool = this.mustPool();
-    const wallet = normalizeWalletAddress(walletAddress);
-
-    await withRetry(async () => {
-      await pool.query(`DELETE FROM ${TABLE_NAME} WHERE wallet_address = $1`, [wallet]);
-    });
-  }
-
-  private mustPool(): Pool {
-    const pool = getPostgresPool();
-    if (!pool) {
-      throw new Error('Postgres pool is unavailable');
-    }
-    return pool;
-  }
-
-  private async ensureSchema(): Promise<void> {
-    const pool = this.mustPool();
-    await withRetry(async () => {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS ${TABLE_NAME} (
-          wallet_address TEXT NOT NULL,
-          item_id TEXT NOT NULL,
-          access_token_ciphertext BYTEA NOT NULL,
-          access_token_iv BYTEA NOT NULL,
-          access_token_auth_tag BYTEA NOT NULL,
-          wrapped_data_key_ciphertext BYTEA NOT NULL,
-          wrapped_data_key_iv BYTEA NOT NULL,
-          wrapped_data_key_auth_tag BYTEA NOT NULL,
-          key_version TEXT NOT NULL,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          PRIMARY KEY (wallet_address, item_id)
-        )
-      `);
-
-      await pool.query(`
-        CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_wallet
-        ON ${TABLE_NAME} (wallet_address)
-      `);
-    });
   }
 }
 

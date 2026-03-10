@@ -1,4 +1,4 @@
-import { createAppKit, useAppKitTheme } from '@reown/appkit/react';
+import { createAppKit, useAppKitState, useAppKitTheme } from '@reown/appkit/react';
 import { WagmiProvider } from 'wagmi';
 import { mainnet, base, sepolia, baseSepolia, arbitrum, optimism, polygon, gnosis } from '@reown/appkit/networks';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -253,6 +253,32 @@ function AppKitThemeSync() {
   return null; // This component doesn't render anything
 }
 
+function AppKitScrollLockCleanup() {
+  const { open } = useAppKitState();
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || open) {
+      return;
+    }
+
+    const clearStaleScrollLocks = () => {
+      document.head
+        .querySelectorAll('style[data-w3m="scroll-lock"]')
+        .forEach((node) => node.remove());
+    };
+
+    const frameId = window.requestAnimationFrame(clearStaleScrollLocks);
+    const timeoutId = window.setTimeout(clearStaleScrollLocks, 180);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [open]);
+
+  return null;
+}
+
 export function AppKitProvider({ children }: { children: React.ReactNode }) {
   const [isAppKitInitialized, setIsAppKitInitialized] = React.useState(false);
 
@@ -335,6 +361,7 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
     <WagmiProvider config={wagmiAdapter.wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         {isAppKitInitialized && <AppKitThemeSync />}
+        {isAppKitInitialized && <AppKitScrollLockCleanup />}
         <AppKitAuthProvider>{children}</AppKitAuthProvider>
       </QueryClientProvider>
     </WagmiProvider>

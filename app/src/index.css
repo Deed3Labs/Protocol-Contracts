@@ -256,6 +256,13 @@ html, body {
   overflow-x: hidden;
 }
 
+html.onboarding-scroll-enabled,
+body.onboarding-scroll-enabled {
+  overflow-y: auto !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y !important;
+}
+
 /* Allow scrolling in containers */
 .overflow-y-auto, .overflow-y-scroll {
   scrollbar-width: none;

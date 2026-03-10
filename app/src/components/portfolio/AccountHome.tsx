@@ -44,6 +44,26 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import {
+  createMemberMembershipCheckout,
+  createMemberWalletLinkChallenge,
+  createMemberSocialAccount,
+  createMemberWallet,
+  deleteMemberSocialAccount,
+  deleteMemberWallet,
+  getMemberAccountCenter,
+  getMemberMembershipSummary,
+  type MemberAccountCenterResponse,
+  type MemberBillingSummaryResponse,
+  type MemberSocialAccountResponse,
+  type MemberWalletResponse,
+  updateMemberProfile,
+  updateMemberSecurity,
+  updateMemberSocialAccount,
+  updateMemberWallet,
+  verifyMemberWalletLink,
+  bootstrapMemberAccount,
+} from '@/utils/apiClient';
 
 type AccountTab = 'profile' | 'connections' | 'security' | 'support';
 type WalletKind = 'Primary' | 'Hardware' | 'Smart' | 'Embedded';
@@ -280,6 +300,109 @@ const toTitleCase = (value: string) =>
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+
+const formatSavedAtLabel = (value: string | null | undefined) => {
+  if (!value) return 'Not saved yet';
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return 'Saved';
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+};
+
+const formatLocation = (cityRegion: string | null | undefined, residencyCountry: string | null | undefined) => {
+  if (cityRegion && residencyCountry) return `${cityRegion}, ${residencyCountry}`;
+  return cityRegion || residencyCountry || '';
+};
+
+const profileFormFromAccount = (
+  account: MemberAccountCenterResponse,
+  fallbackEmail?: string
+): ProfileFormState => ({
+  legalName: account.profile.privateProfile?.legalName || '',
+  displayName:
+    account.profile.publicProfile.displayName ||
+    account.profile.publicProfile.username ||
+    '',
+  email: account.profile.privateProfile?.email || fallbackEmail || '',
+  phone: account.profile.privateProfile?.phone || '',
+  location: formatLocation(
+    account.profile.privateProfile?.cityRegion,
+    account.member.residencyCountry
+  ),
+  residency: account.member.residencyCountry || '',
+  timezone: account.profile.publicProfile.timezone || '',
+  currency: account.member.settlementCurrency || '',
+  bio: account.profile.publicProfile.bio || '',
+});
+
+const securityControlsFromAccount = (account: MemberAccountCenterResponse): SecurityControl[] =>
+  DEFAULT_SECURITY_CONTROLS.map((control) => {
+    switch (control.id) {
+      case 'signature-lock':
+        return { ...control, enabled: account.security.signatureLock };
+      case 'session-review':
+        return { ...control, enabled: account.security.sessionReview };
+      case 'biometric-access':
+        return { ...control, enabled: account.security.biometricAccess };
+      case 'social-discovery':
+        return { ...control, enabled: account.security.socialDiscovery };
+      case 'transfer-alerts':
+        return { ...control, enabled: account.security.transferAlerts };
+      default:
+        return control;
+    }
+  });
+
+const walletRecordFromApi = (wallet: MemberWalletResponse): WalletRecord => ({
+  id: `wallet-${wallet.id}`,
+  label: wallet.label || (wallet.isPrimary ? 'Primary wallet' : 'Associated wallet'),
+  address: wallet.walletAddress,
+  network: wallet.isPrimary ? 'Primary signer' : 'Linked wallet',
+  kind: wallet.kind === 'EMBEDDED'
+    ? 'Embedded'
+    : wallet.kind === 'HARDWARE'
+      ? 'Hardware'
+      : wallet.kind === 'SMART'
+        ? 'Smart'
+        : 'Primary',
+  verified: Boolean(wallet.verifiedAt) || wallet.isPrimary,
+  note: wallet.isPrimary
+    ? 'Active signer for your ClearPath account.'
+    : wallet.verifiedAt
+      ? 'Authenticated and linked as a sign-in wallet for this Clear account.'
+      : 'Saved on your Clear account. Connect and authenticate with this wallet to activate it as a sign-in alias.',
+  lastActive: wallet.isPrimary ? 'Active now' : wallet.verifiedAt ? 'Authenticated' : 'Pending verification',
+});
+
+const socialRecordFromApi = (account: MemberSocialAccountResponse): SocialRecord => ({
+  id: `social-${account.id}`,
+  platform: account.platform,
+  handle: account.handle,
+  visibility: account.visibility === 'PRIVATE' ? 'Private' : 'Public',
+  status: account.status === 'PENDING' ? 'Pending' : 'Connected',
+});
+
+const walletKindToApi = (kind: WalletKind): 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED' => {
+  switch (kind) {
+    case 'Hardware':
+      return 'HARDWARE';
+    case 'Smart':
+      return 'SMART';
+    case 'Embedded':
+      return 'EMBEDDED';
+    case 'Primary':
+    default:
+      return 'PRIMARY';
+  }
+};
+
+const socialVisibilityToApi = (visibility: SocialVisibility): 'PUBLIC' | 'PRIVATE' =>
+  visibility === 'Private' ? 'PRIVATE' : 'PUBLIC';
+
+const parseLocalEntityId = (value: string, prefix: string): number | null => {
+  if (!value.startsWith(prefix)) return null;
+  const parsed = Number.parseInt(value.slice(prefix.length), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 const clampPercent = (value: number) => Math.max(0, Math.min(Math.round(value), 100));
 
@@ -679,14 +802,16 @@ function AccountBenefitsRailCard({
 
 export default function AccountHome() {
   const { address } = useAppKitAccount();
-  const { user, chainId } = useAppKitAuth();
-  const { totalBalanceUSD, cashBalance, holdings, bankAccounts, bankAccountsLoading } = usePortfolio();
+  const { user, chainId, isAuthenticated, openModal, signMessage } = useAppKitAuth();
+  const { totalBalanceUSD, cashBalance, holdings, bankAccounts, bankAccountsLoading, refreshBankBalance } = usePortfolio();
   const { profileMenuUser, setActionModalOpen } = useGlobalModals();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [isScrolledPast, setIsScrolledPast] = useState(false);
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [membershipLoading, setMembershipLoading] = useState(false);
   const tabsAnchorRef = useRef<HTMLDivElement | null>(null);
   const [profileSavedAt, setProfileSavedAt] = useState<string>('Not saved yet');
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
@@ -696,6 +821,8 @@ export default function AccountHome() {
   const [editingSocialId, setEditingSocialId] = useState<string | null>(null);
   const [socialDraft, setSocialDraft] = useState<SocialDraft>(BLANK_SOCIAL_DRAFT);
   const [refreshingBanks, setRefreshingBanks] = useState(false);
+  const [memberAccount, setMemberAccount] = useState<MemberAccountCenterResponse | null>(null);
+  const [membershipSummary, setMembershipSummary] = useState<MemberBillingSummaryResponse | null>(null);
 
   const initialProfileForm = useMemo<ProfileFormState>(
     () => ({
@@ -754,7 +881,67 @@ export default function AccountHome() {
   }, [bannerMessage]);
 
   useEffect(() => {
-    if (!address) return;
+    const membershipParam = searchParams.get('membership');
+    if (membershipParam === 'success') {
+      setBannerMessage('Membership checkout completed. Refreshing membership status.');
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('membership');
+      setSearchParams(nextParams, { replace: true });
+    } else if (membershipParam === 'cancelled') {
+      setBannerMessage('Membership checkout was cancelled.');
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('membership');
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMemberAccount() {
+      if (!isAuthenticated) {
+        return;
+      }
+
+      setAccountLoading(true);
+      const bootstrap = await bootstrapMemberAccount();
+      if (!bootstrap || cancelled) {
+        if (!cancelled) {
+          setAccountLoading(false);
+          setBannerMessage('We could not load your member account.');
+        }
+        return;
+      }
+
+      const account = await getMemberAccountCenter();
+      const membership = await getMemberMembershipSummary();
+      if (cancelled) return;
+
+      if (account) {
+        setMemberAccount(account);
+        setProfileForm(profileFormFromAccount(account, user?.email));
+        setProfileSavedAt(formatSavedAtLabel(account.profile.publicProfile.updatedAt));
+        setSecurityControls(securityControlsFromAccount(account));
+        setWallets(account.wallets.map(walletRecordFromApi));
+        setSocialAccounts(account.socialAccounts.map(socialRecordFromApi));
+      }
+
+      if (membership) {
+        setMembershipSummary(membership.billing);
+      }
+
+      setAccountLoading(false);
+    }
+
+    void loadMemberAccount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, user?.email]);
+
+  useEffect(() => {
+    if (!address || memberAccount) return;
 
     setWallets((current) => {
       const primaryWallet: WalletRecord = {
@@ -773,10 +960,10 @@ export default function AccountHome() {
 
       return current.map((wallet) => (wallet.id === 'wallet-primary' ? primaryWallet : wallet));
     });
-  }, [address, chainId]);
+  }, [address, chainId, memberAccount]);
 
   useEffect(() => {
-    if (!user?.social) return;
+    if (!user?.social || memberAccount) return;
 
     const authSocial: SocialRecord = {
       id: `social-${user.social.provider}`,
@@ -791,7 +978,7 @@ export default function AccountHome() {
       if (!existing) return [authSocial, ...current];
       return current.map((account) => (account.id === authSocial.id ? authSocial : account));
     });
-  }, [user?.social]);
+  }, [user?.social, memberAccount]);
 
   const profileFieldsComplete = useMemo(
     () =>
@@ -1149,8 +1336,25 @@ export default function AccountHome() {
     setProfileForm((current) => ({ ...current, [field]: value }));
   };
 
-  const handleProfileSave = () => {
-    const savedAt = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const handleProfileSave = async () => {
+    const profile = await updateMemberProfile({
+      legalName: profileForm.legalName || null,
+      displayName: profileForm.displayName || null,
+      email: profileForm.email || null,
+      phone: profileForm.phone || null,
+      cityRegion: profileForm.location || null,
+      residencyCountry: profileForm.residency || null,
+      timezone: profileForm.timezone || null,
+      settlementCurrency: profileForm.currency || null,
+      bio: profileForm.bio || null,
+    });
+
+    if (!profile) {
+      setBannerMessage('Profile update failed. Try again.');
+      return;
+    }
+
+    const savedAt = formatSavedAtLabel(profile.profile.publicProfile.updatedAt);
     setProfileSavedAt(savedAt);
     setBannerMessage('Profile updated.');
   };
@@ -1184,39 +1388,141 @@ export default function AccountHome() {
     setWalletDialogOpen(true);
   };
 
-  const saveWallet = () => {
+  const saveWallet = async () => {
     if (!walletDraft.label.trim() || !walletDraft.address.trim() || !walletDraft.network.trim()) {
       setBannerMessage('Wallet label, address, and network are required.');
       return;
     }
 
-    const nextWallet: WalletRecord = {
-      id: editingWalletId ?? `wallet-${Date.now()}`,
-      label: walletDraft.label.trim(),
-      address: walletDraft.address.trim(),
-      network: walletDraft.network.trim(),
-      kind: walletDraft.kind,
-      verified: editingWalletId === 'wallet-primary' || walletDraft.kind !== 'Embedded',
-      note: walletDraft.note.trim() || 'Added to your account.',
-      lastActive: editingWalletId ? 'Updated just now' : 'Added just now',
-    };
+    const persistedWallets = editingWalletId
+      ? await updateMemberWallet(parseLocalEntityId(editingWalletId, 'wallet-') ?? 0, {
+          label: walletDraft.label.trim(),
+          walletAddress: walletDraft.address.trim(),
+          kind: walletKindToApi(walletDraft.kind),
+        })
+      : await createMemberWallet({
+          label: walletDraft.label.trim(),
+          walletAddress: walletDraft.address.trim(),
+          kind: walletKindToApi(walletDraft.kind),
+        });
 
-    setWallets((current) => {
-      if (editingWalletId) {
-        return current.map((wallet) => (wallet.id === editingWalletId ? nextWallet : wallet));
-      }
-      return [...current, nextWallet];
-    });
+    if (!persistedWallets) {
+      setBannerMessage(editingWalletId ? 'Wallet update failed.' : 'Wallet save failed.');
+      return;
+    }
+
+    setWallets(persistedWallets.map(walletRecordFromApi));
 
     setWalletDialogOpen(false);
     setWalletDraft(BLANK_WALLET_DRAFT);
     setEditingWalletId(null);
-    setBannerMessage(editingWalletId ? 'Wallet updated.' : 'Wallet added.');
+    setBannerMessage(
+      editingWalletId
+        ? 'Wallet updated.'
+        : 'Wallet saved. Connect and authenticate with it to activate it as a sign-in alias.'
+    );
   };
 
-  const removeWallet = (walletId: string) => {
+  const promptWalletConnect = async () => {
+    await openModal('Connect');
+  };
+
+  const linkConnectedWallet = async () => {
+    if (!address) {
+      await promptWalletConnect();
+      return;
+    }
+
+    const normalizedAddress = address.toLowerCase();
+    const existingLinkedWallet = wallets.find(
+      (wallet) => wallet.address.toLowerCase() === normalizedAddress
+    );
+    if (existingLinkedWallet?.verified) {
+      setBannerMessage(
+        existingLinkedWallet.id === 'wallet-primary'
+          ? 'This wallet is already the primary signer for your Clear account.'
+          : 'This wallet is already linked as a sign-in alias.'
+      );
+      return;
+    }
+
+    if (!isAuthenticated) {
+      setBannerMessage('Connect and sign in before linking this wallet.');
+      await promptWalletConnect();
+      return;
+    }
+
+    setAccountLoading(true);
+
+    try {
+      const challenge = await createMemberWalletLinkChallenge({
+        walletAddress: address,
+      });
+      if (!challenge) {
+        setBannerMessage('We could not start wallet linking for the connected wallet.');
+        return;
+      }
+
+      const signature = await signMessage(challenge.message);
+      const linkedWallets = await verifyMemberWalletLink({
+        challengeId: challenge.id,
+        signature,
+      });
+      if (!linkedWallets) {
+        setBannerMessage('We could not verify the connected wallet signature.');
+        return;
+      }
+
+      setWallets(linkedWallets.map(walletRecordFromApi));
+
+      const [account, membership] = await Promise.all([
+        getMemberAccountCenter(),
+        getMemberMembershipSummary(),
+      ]);
+
+      if (account) {
+        setMemberAccount(account);
+        setProfileForm(profileFormFromAccount(account, user?.email));
+        setProfileSavedAt(formatSavedAtLabel(account.profile.publicProfile.updatedAt));
+        setSecurityControls(securityControlsFromAccount(account));
+        setWallets(account.wallets.map(walletRecordFromApi));
+        setSocialAccounts(account.socialAccounts.map(socialRecordFromApi));
+      }
+
+      if (membership) {
+        setMembershipSummary(membership.billing);
+      }
+
+      await refreshBankBalance(true);
+
+      const linkedWallet = linkedWallets.find(
+        (wallet) => wallet.walletAddress.toLowerCase() === address.toLowerCase()
+      );
+      setBannerMessage(
+        linkedWallet?.verifiedAt
+          ? 'Connected wallet signed and linked to your Clear account.'
+          : 'Connected wallet saved on your Clear account.'
+      );
+    } catch (error) {
+      console.error('Failed to link connected wallet:', error);
+      setBannerMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : 'Wallet linking was cancelled or failed.'
+      );
+    } finally {
+      setAccountLoading(false);
+    }
+  };
+
+  const removeWallet = async (walletId: string) => {
     if (walletId === 'wallet-primary') return;
-    setWallets((current) => current.filter((wallet) => wallet.id !== walletId));
+    const persistedWallets = await deleteMemberWallet(parseLocalEntityId(walletId, 'wallet-') ?? 0);
+    if (!persistedWallets) {
+      setBannerMessage('Wallet removal failed.');
+      return;
+    }
+    setWallets(persistedWallets.map(walletRecordFromApi));
     setBannerMessage('Wallet removed.');
   };
 
@@ -1234,28 +1540,30 @@ export default function AccountHome() {
     setSocialDialogOpen(true);
   };
 
-  const saveSocial = () => {
+  const saveSocial = async () => {
     if (!socialDraft.platform.trim() || !socialDraft.handle.trim()) {
       setBannerMessage('Platform and handle are required to link a social account.');
       return;
     }
 
-    const nextSocial: SocialRecord = {
-      id:
-        editingSocialId ??
-        `social-${socialDraft.platform.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`,
-      platform: socialDraft.platform.trim(),
-      handle: socialDraft.handle.trim(),
-      visibility: socialDraft.visibility,
-      status: 'Connected',
-    };
+    const persistedSocials = editingSocialId
+      ? await updateMemberSocialAccount(parseLocalEntityId(editingSocialId, 'social-') ?? 0, {
+          platform: socialDraft.platform.trim(),
+          handle: socialDraft.handle.trim(),
+          visibility: socialVisibilityToApi(socialDraft.visibility),
+        })
+      : await createMemberSocialAccount({
+          platform: socialDraft.platform.trim(),
+          handle: socialDraft.handle.trim(),
+          visibility: socialVisibilityToApi(socialDraft.visibility),
+        });
 
-    setSocialAccounts((current) => {
-      if (editingSocialId) {
-        return current.map((account) => (account.id === editingSocialId ? nextSocial : account));
-      }
-      return [...current, nextSocial];
-    });
+    if (!persistedSocials) {
+      setBannerMessage(editingSocialId ? 'Social account update failed.' : 'Social account link failed.');
+      return;
+    }
+
+    setSocialAccounts(persistedSocials.map(socialRecordFromApi));
 
     setSocialDialogOpen(false);
     setSocialDraft(BLANK_SOCIAL_DRAFT);
@@ -1263,25 +1571,84 @@ export default function AccountHome() {
     setBannerMessage(editingSocialId ? 'Social account updated.' : 'Social account linked.');
   };
 
-  const removeSocial = (socialId: string) => {
-    setSocialAccounts((current) => current.filter((account) => account.id !== socialId));
+  const removeSocial = async (socialId: string) => {
+    const persistedSocials = await deleteMemberSocialAccount(parseLocalEntityId(socialId, 'social-') ?? 0);
+    if (!persistedSocials) {
+      setBannerMessage('Social account removal failed.');
+      return;
+    }
+    setSocialAccounts(persistedSocials.map(socialRecordFromApi));
     setBannerMessage('Social account removed.');
   };
 
-  const toggleSecurityControl = (controlId: string) => {
-    setSecurityControls((current) =>
-      current.map((control) =>
-        control.id === controlId ? { ...control, enabled: !control.enabled } : control
-      )
+  const toggleSecurityControl = async (controlId: string) => {
+    const nextControls = securityControls.map((control) =>
+      control.id === controlId ? { ...control, enabled: !control.enabled } : control
+    );
+
+    const persistedSecurity = await updateMemberSecurity({
+      signatureLock: nextControls.find((control) => control.id === 'signature-lock')?.enabled,
+      sessionReview: nextControls.find((control) => control.id === 'session-review')?.enabled,
+      biometricAccess: nextControls.find((control) => control.id === 'biometric-access')?.enabled,
+      socialDiscovery: nextControls.find((control) => control.id === 'social-discovery')?.enabled,
+      transferAlerts: nextControls.find((control) => control.id === 'transfer-alerts')?.enabled,
+    });
+
+    if (!persistedSecurity) {
+      setBannerMessage('Security update failed.');
+      return;
+    }
+
+    setSecurityControls(
+      DEFAULT_SECURITY_CONTROLS.map((control) => {
+        switch (control.id) {
+          case 'signature-lock':
+            return { ...control, enabled: persistedSecurity.signatureLock };
+          case 'session-review':
+            return { ...control, enabled: persistedSecurity.sessionReview };
+          case 'biometric-access':
+            return { ...control, enabled: persistedSecurity.biometricAccess };
+          case 'social-discovery':
+            return { ...control, enabled: persistedSecurity.socialDiscovery };
+          case 'transfer-alerts':
+            return { ...control, enabled: persistedSecurity.transferAlerts };
+          default:
+            return control;
+        }
+      })
     );
   };
 
   const handleRefreshBanks = async () => {
     setRefreshingBanks(true);
-    window.setTimeout(() => {
-      setRefreshingBanks(false);
+    try {
+      await refreshBankBalance(true);
       setBannerMessage('Connected accounts refreshed.');
-    }, 650);
+    } finally {
+      setRefreshingBanks(false);
+    }
+  };
+
+  const handleMembershipCheckout = async () => {
+    setMembershipLoading(true);
+    try {
+      const checkout = await createMemberMembershipCheckout({
+        plan: ((memberAccount?.member.membershipPlan || 'YEARLY') as 'YEARLY' | 'LIFETIME'),
+        successUrl: `${window.location.origin}/account?tab=profile&membership=success`,
+        cancelUrl: `${window.location.origin}/account?tab=profile&membership=cancelled`,
+      });
+      if (!checkout?.session.url) {
+        setBannerMessage('Membership checkout could not be started.');
+        return;
+      }
+      window.location.assign(checkout.session.url);
+    } catch (error) {
+      setBannerMessage(
+        error instanceof Error ? error.message : 'Membership checkout could not be started.'
+      );
+    } finally {
+      setMembershipLoading(false);
+    }
   };
 
   return (
@@ -1361,6 +1728,36 @@ export default function AccountHome() {
                 <div className="mt-5 border-y border-emerald-500/30 bg-emerald-500/10 px-0 py-3 text-[12px] leading-5 text-emerald-800 dark:text-emerald-300">
                   {bannerMessage}
                 </div>
+              ) : null}
+
+              {memberAccount ? (
+                <div className="mt-5 flex flex-wrap items-center gap-3 border-y border-zinc-200/70 py-3 text-[12px] leading-5 text-zinc-600 dark:border-zinc-800/70 dark:text-zinc-300">
+                  <span>
+                    Membership: {memberAccount.member.membershipStatus.replace(/_/g, ' ')}
+                    {memberAccount.member.membershipPlan ? ` • ${memberAccount.member.membershipPlan}` : ''}
+                  </span>
+                  {membershipSummary?.subscription?.status ? (
+                    <span>Stripe: {membershipSummary.subscription.status}</span>
+                  ) : null}
+                  {memberAccount.member.membershipStatus !== 'ACTIVE' ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
+                      onClick={handleMembershipCheckout}
+                      disabled={membershipLoading}
+                    >
+                      <Crown className="h-4 w-4" />
+                      {membershipLoading ? 'Starting checkout...' : 'Activate membership'}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {accountLoading ? (
+                <p className="mt-4 text-[12px] leading-5 text-zinc-500 dark:text-zinc-400">
+                  Loading account center details...
+                </p>
               ) : null}
             </motion.div>
 
@@ -1511,8 +1908,23 @@ export default function AccountHome() {
                     withTopBorder={false}
                     eyebrow="Wallets"
                     title="Associated wallets"
-                    description="Manage the wallets connected to your account and review their status."
-                    action={<Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletDialog()}><Plus className="h-4 w-4" />Add wallet</Button>}
+                    description="Manage wallets saved on this Clear account. To turn a wallet into a sign-in alias, connect it in AppKit and approve a dedicated wallet-link signature here."
+                    action={(
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => void promptWalletConnect()}>
+                          <Wallet className="h-4 w-4" />
+                          Connect wallet
+                        </Button>
+                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => void linkConnectedWallet()}>
+                          <Link2 className="h-4 w-4" />
+                          Sign and link wallet
+                        </Button>
+                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletDialog()}>
+                          <Plus className="h-4 w-4" />
+                          Add wallet
+                        </Button>
+                      </div>
+                    )}
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {wallets.map((wallet, index) => (

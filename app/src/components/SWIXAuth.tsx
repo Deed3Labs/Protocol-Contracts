@@ -22,6 +22,7 @@ export function SWIXAuth() {
     isAuthenticated,
     address,
     user,
+    authenticate,
     checkAuthentication,
     setSessionMetadata,
     siwx,
@@ -35,17 +36,17 @@ export function SWIXAuth() {
   const handleAuthenticate = async () => {
     setError(null);
     try {
-      console.log('Checking SWIX authentication...');
-      const result = await checkAuthentication();
+      console.log('Authenticating SWIX session...');
+      const result = await authenticate();
       console.log('SWIX authentication result:', result);
       if (result) {
         setError(null);
       } else {
-        setError('SWIX authentication check failed');
+        setError('SWIX authentication failed');
       }
     } catch (err) {
-      console.error('Error checking SWIX authentication:', err);
-      setError('Failed to check SWIX authentication status');
+      console.error('Error authenticating SWIX session:', err);
+      setError('Failed to authenticate SWIX session');
     }
   };
 

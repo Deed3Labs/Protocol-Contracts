@@ -4,6 +4,7 @@ import {
   type BankBalancesResponse,
   type BankAccountBalance,
 } from '@/utils/apiClient';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 
 export interface UseBankBalanceResult {
   bankCash: number;
@@ -122,12 +123,13 @@ function normalizeBankBalances(response: BankBalancesResponse | null): BankBalan
  * - borrowingPower: available credit across linked liability accounts.
  */
 export function useBankBalance(walletAddress: string | undefined): UseBankBalanceResult {
+  const { isAuthenticated } = useAppKitAuth();
   const [data, setData] = useState<BankBalanceState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchBalances = useCallback(async (skipCache?: boolean) => {
-    if (!walletAddress) {
+    if (!walletAddress || !isAuthenticated) {
       setData(null);
       setError(null);
       return;
@@ -143,7 +145,7 @@ export function useBankBalance(walletAddress: string | undefined): UseBankBalanc
     } finally {
       setIsLoading(false);
     }
-  }, [walletAddress]);
+  }, [isAuthenticated, walletAddress]);
 
   useEffect(() => {
     fetchBalances();

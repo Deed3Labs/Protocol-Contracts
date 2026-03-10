@@ -4,6 +4,7 @@ import {
   plaidInvestmentsRefresh,
   type PlaidInvestmentHolding,
 } from '@/utils/apiClient';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 
 /** Portfolio-compatible holding shape for Plaid investment (equity) holdings */
 export interface PlaidEquityHolding {
@@ -62,13 +63,14 @@ function toEquityHolding(h: PlaidInvestmentHolding): PlaidEquityHolding {
 export function usePlaidInvestmentsHoldings(
   walletAddress: string | undefined
 ): UsePlaidInvestmentsHoldingsResult {
+  const { isAuthenticated } = useAppKitAuth();
   const [holdings, setHoldings] = useState<PlaidInvestmentHolding[]>([]);
   const [linked, setLinked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchHoldings = useCallback(async (skipCache?: boolean) => {
-    if (!walletAddress) {
+    if (!walletAddress || !isAuthenticated) {
       setHoldings([]);
       setLinked(false);
       setError(null);
@@ -87,7 +89,7 @@ export function usePlaidInvestmentsHoldings(
     } finally {
       setIsLoading(false);
     }
-  }, [walletAddress]);
+  }, [isAuthenticated, walletAddress]);
 
   useEffect(() => {
     fetchHoldings();
@@ -96,14 +98,14 @@ export function usePlaidInvestmentsHoldings(
   const refresh = useCallback(() => fetchHoldings(true), [fetchHoldings]);
 
   const refreshInvestments = useCallback(async () => {
-    if (!walletAddress) return;
+    if (!walletAddress || !isAuthenticated) return;
     try {
       await plaidInvestmentsRefresh(walletAddress);
       await fetchHoldings(true);
     } catch {
       await fetchHoldings(true);
     }
-  }, [walletAddress, fetchHoldings]);
+  }, [fetchHoldings, isAuthenticated, walletAddress]);
 
   const equityHoldings = useMemo(() => holdings.map(toEquityHolding), [holdings]);
 

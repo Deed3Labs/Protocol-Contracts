@@ -4,6 +4,7 @@ import {
   getPlaidSpend,
   type PlaidSpendResponse,
 } from '@/utils/apiClient';
+import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 
 const STALE_MS = 15 * 60 * 1000; // 15 minutes – spend updates more often than recurring
 
@@ -29,9 +30,10 @@ export function useSpendTransactions(
   walletAddress: string | undefined,
   options?: { enabled?: boolean }
 ): UseSpendTransactionsResult {
+  const { isAuthenticated } = useAppKitAuth();
   const queryClient = useQueryClient();
-  const queryKey = ['plaid-spend', walletAddress ?? ''] as const;
-  const enabled = !!walletAddress && (options?.enabled ?? true);
+  const queryKey = ['plaid-spend', walletAddress ?? '', isAuthenticated ? 'auth' : 'guest'] as const;
+  const enabled = !!walletAddress && isAuthenticated && (options?.enabled ?? true);
 
   const {
     data,
@@ -51,7 +53,7 @@ export function useSpendTransactions(
 
   const refresh = useCallback(async () => {
     if (!walletAddress || !enabled) return;
-    const key = ['plaid-spend', walletAddress] as const;
+    const key = ['plaid-spend', walletAddress, 'auth'] as const;
     await queryClient.fetchQuery({
       queryKey: key,
       queryFn: async () => {
