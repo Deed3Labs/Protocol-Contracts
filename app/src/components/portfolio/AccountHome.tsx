@@ -363,8 +363,12 @@ const walletRecordFromApi = (wallet: MemberWalletResponse): WalletRecord => ({
         ? 'Smart'
         : 'Primary',
   verified: Boolean(wallet.verifiedAt) || wallet.isPrimary,
-  note: wallet.isPrimary ? 'Active signer for your ClearPath account.' : 'Linked to your member profile.',
-  lastActive: wallet.isPrimary ? 'Active now' : 'Saved on account',
+  note: wallet.isPrimary
+    ? 'Active signer for your ClearPath account.'
+    : wallet.verifiedAt
+      ? 'Authenticated and linked as a sign-in wallet for this Clear account.'
+      : 'Saved on your Clear account. Connect and authenticate with this wallet to activate it as a sign-in alias.',
+  lastActive: wallet.isPrimary ? 'Active now' : wallet.verifiedAt ? 'Authenticated' : 'Pending verification',
 });
 
 const socialRecordFromApi = (account: MemberSocialAccountResponse): SocialRecord => ({
@@ -796,7 +800,7 @@ function AccountBenefitsRailCard({
 
 export default function AccountHome() {
   const { address } = useAppKitAccount();
-  const { user, chainId, isAuthenticated } = useAppKitAuth();
+  const { user, chainId, isAuthenticated, openModal } = useAppKitAuth();
   const { totalBalanceUSD, cashBalance, holdings, bankAccounts, bankAccountsLoading, refreshBankBalance } = usePortfolio();
   const { profileMenuUser, setActionModalOpen } = useGlobalModals();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1410,7 +1414,65 @@ export default function AccountHome() {
     setWalletDialogOpen(false);
     setWalletDraft(BLANK_WALLET_DRAFT);
     setEditingWalletId(null);
-    setBannerMessage(editingWalletId ? 'Wallet updated.' : 'Wallet added.');
+    setBannerMessage(
+      editingWalletId
+        ? 'Wallet updated.'
+        : 'Wallet saved. Connect and authenticate with it to activate it as a sign-in alias.'
+    );
+  };
+
+  const promptWalletConnect = async () => {
+    await openModal('Connect');
+  };
+
+  const linkConnectedWallet = async () => {
+    if (!address) {
+      await promptWalletConnect();
+      return;
+    }
+
+    if (!isAuthenticated) {
+      setBannerMessage('Connect and sign in before linking this wallet.');
+      await promptWalletConnect();
+      return;
+    }
+
+    setAccountLoading(true);
+    const bootstrap = await bootstrapMemberAccount();
+    if (!bootstrap) {
+      setAccountLoading(false);
+      setBannerMessage('We could not link the connected wallet to your Clear account.');
+      return;
+    }
+
+    const account = await getMemberAccountCenter();
+    const membership = await getMemberMembershipSummary();
+
+    if (account) {
+      setMemberAccount(account);
+      setProfileForm(profileFormFromAccount(account, user?.email));
+      setProfileSavedAt(formatSavedAtLabel(account.profile.publicProfile.updatedAt));
+      setSecurityControls(securityControlsFromAccount(account));
+      setWallets(account.wallets.map(walletRecordFromApi));
+      setSocialAccounts(account.socialAccounts.map(socialRecordFromApi));
+    }
+
+    if (membership) {
+      setMembershipSummary(membership.billing);
+    }
+
+    setAccountLoading(false);
+
+    const linkedWallet = account?.wallets.find(
+      (wallet) => wallet.walletAddress.toLowerCase() === address.toLowerCase()
+    );
+
+    if (linkedWallet?.isPrimary || linkedWallet?.verifiedAt) {
+      setBannerMessage('Connected wallet linked to your Clear account.');
+      return;
+    }
+
+    setBannerMessage('Connected wallet saved on your Clear account.');
   };
 
   const removeWallet = async (walletId: string) => {
@@ -1806,8 +1868,23 @@ export default function AccountHome() {
                     withTopBorder={false}
                     eyebrow="Wallets"
                     title="Associated wallets"
-                    description="Manage the wallets connected to your account and review their status."
-                    action={<Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletDialog()}><Plus className="h-4 w-4" />Add wallet</Button>}
+                    description="Manage wallets saved on this Clear account. To turn a wallet into a sign-in alias, connect it in AppKit and then link the connected wallet here."
+                    action={(
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => void promptWalletConnect()}>
+                          <Wallet className="h-4 w-4" />
+                          Connect wallet
+                        </Button>
+                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => void linkConnectedWallet()}>
+                          <Link2 className="h-4 w-4" />
+                          Link connected wallet
+                        </Button>
+                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletDialog()}>
+                          <Plus className="h-4 w-4" />
+                          Add wallet
+                        </Button>
+                      </div>
+                    )}
                   >
                     <div className="overflow-hidden border-y border-zinc-200/70 dark:border-zinc-800/70">
                       {wallets.map((wallet, index) => (

@@ -74,12 +74,17 @@ function resolveRawAuthSubject(req: Request): string {
   throw new Error('Authenticated subject missing');
 }
 
-async function resolvePlaidWalletScope(req: Request, walletAddress: string): Promise<string[]> {
+type PlaidScopeContext = {
+  memberId: number | null;
+  walletAddresses: string[];
+};
+
+async function resolvePlaidScopeContext(req: Request, walletAddress: string): Promise<PlaidScopeContext> {
   const normalizedWallet = normalizeWalletAddress(walletAddress);
   const walletScope = new Set<string>([normalizedWallet]);
 
   if (!memberStore.isConfigured()) {
-    return [...walletScope];
+    return { memberId: null, walletAddresses: [...walletScope] };
   }
 
   const canonicalAuthSubject = await memberStore.resolveCanonicalAuthSubject({
@@ -90,7 +95,7 @@ async function resolvePlaidWalletScope(req: Request, walletAddress: string): Pro
   });
 
   if (!canonicalAuthSubject) {
-    return [...walletScope];
+    return { memberId: null, walletAddresses: [...walletScope] };
   }
 
   const [member, wallets] = await Promise.all([
@@ -106,7 +111,20 @@ async function resolvePlaidWalletScope(req: Request, walletAddress: string): Pro
     walletScope.add(normalizeWalletAddress(linkedWallet.walletAddress));
   }
 
-  return [...walletScope];
+  const walletAddresses = [...walletScope];
+  if (member?.id && plaidTokenStore.isConfigured()) {
+    await plaidTokenStore.attachMemberId(member.id, walletAddresses);
+  }
+
+  return {
+    memberId: member?.id ?? null,
+    walletAddresses,
+  };
+}
+
+async function resolvePlaidWalletScope(req: Request, walletAddress: string): Promise<string[]> {
+  const context = await resolvePlaidScopeContext(req, walletAddress);
+  return context.walletAddresses;
 }
 
 async function invalidatePlaidCaches(walletAddresses: string[]): Promise<void> {
@@ -312,8 +330,8 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
     const accessToken = response.data.access_token;
     const itemId = response.data.item_id;
     const key = walletAddress.toLowerCase();
-    const walletScope = await resolvePlaidWalletScope(req, walletAddress);
-    const existing = await plaidTokenStore.getItems(walletScope);
+    const plaidScope = await resolvePlaidScopeContext(req, walletAddress);
+    const existing = await plaidTokenStore.getItems(plaidScope.walletAddresses);
     const alreadyExists = existing.some((item) => item.item_id === itemId);
     if (!alreadyExists && existing.length >= MAX_PLAID_ITEMS_PER_WALLET) {
       return res.status(400).json({
@@ -321,10 +339,10 @@ router.post('/exchange-token', async (req: Request, res: Response) => {
         message: `Maximum ${MAX_PLAID_ITEMS_PER_WALLET} institutions can be linked per Clear account`,
       });
     }
-    await plaidTokenStore.upsertItem(key, itemId, accessToken);
+    await plaidTokenStore.upsertItem(key, itemId, accessToken, plaidScope.memberId);
 
     // Invalidate balance cache so next fetch (or client refresh) returns all linked accounts
-    await invalidatePlaidCaches(walletScope);
+    await invalidatePlaidCaches(plaidScope.walletAddresses);
 
     res.json({ success: true });
   } catch (error: unknown) {

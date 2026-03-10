@@ -6,6 +6,7 @@ import {
   encryptMemberPrivateData,
   isMemberPrivateDataEncryptionConfigured,
 } from '../utils/memberPrivateDataEncryption.js';
+import { plaidTokenStore } from './plaidTokenStore.js';
 
 export type MemberStatus =
   | 'ONBOARDING'
@@ -883,6 +884,7 @@ export class MemberStore {
       await this.ensureDefaultRows(member.id);
       await this.syncPrimaryWallet(member);
       await this.linkAuthenticatedWallet(member.id, primaryWallet);
+      await this.backfillPlaidOwnership(member);
       await this.refreshDerivedState(member.id);
       return this.getAccountCenterByAuthSubject(nextAuthSubject, { includeLockedPrivateProfile: true, requireMember: true });
     }
@@ -917,6 +919,7 @@ export class MemberStore {
     await this.ensureDefaultRows(member.id);
     await this.syncPrimaryWallet(member);
     await this.linkAuthenticatedWallet(member.id, primaryWallet);
+    await this.backfillPlaidOwnership(member);
     await this.refreshDerivedState(member.id);
     return this.getAccountCenterByAuthSubject(authSubject, { includeLockedPrivateProfile: true, requireMember: true });
   }
@@ -2226,6 +2229,26 @@ export class MemberStore {
         [memberId, normalizedWallet, 'Authenticated wallet']
       );
     });
+  }
+
+  private async backfillPlaidOwnership(member: MemberRecord): Promise<void> {
+    if (!plaidTokenStore.isConfigured()) {
+      return;
+    }
+
+    try {
+      const wallets = await this.loadWallets(member.id);
+      const walletScope = [
+        member.primaryWallet,
+        ...wallets.map((wallet) => wallet.walletAddress),
+      ];
+      await plaidTokenStore.attachMemberId(member.id, walletScope);
+    } catch (error) {
+      console.warn('Failed to backfill Plaid member ownership:', {
+        memberId: member.id,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 
   private async refreshDerivedState(memberId: number): Promise<void> {

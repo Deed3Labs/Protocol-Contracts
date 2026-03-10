@@ -12,6 +12,7 @@ export interface PlaidStoredItem {
 }
 
 type PlaidTokenRow = {
+  member_id: string | number | null;
   wallet_address: string;
   item_id: string;
   access_token_ciphertext: Buffer;
@@ -190,7 +191,12 @@ export class PlaidTokenStore {
     });
   }
 
-  async upsertItem(walletAddress: string, itemId: string, accessToken: string): Promise<void> {
+  async upsertItem(
+    walletAddress: string,
+    itemId: string,
+    accessToken: string,
+    memberId: number | null = null
+  ): Promise<void> {
     await this.ensureReady();
     const pool = this.mustPool();
 
@@ -202,6 +208,7 @@ export class PlaidTokenStore {
       await pool.query(
         `
         INSERT INTO ${TABLE_NAME} (
+          member_id,
           wallet_address,
           item_id,
           access_token_ciphertext,
@@ -211,9 +218,10 @@ export class PlaidTokenStore {
           wrapped_data_key_iv,
           wrapped_data_key_auth_tag,
           key_version
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         ON CONFLICT (wallet_address, item_id)
         DO UPDATE SET
+          member_id = COALESCE(EXCLUDED.member_id, ${TABLE_NAME}.member_id),
           access_token_ciphertext = EXCLUDED.access_token_ciphertext,
           access_token_iv = EXCLUDED.access_token_iv,
           access_token_auth_tag = EXCLUDED.access_token_auth_tag,
@@ -224,6 +232,7 @@ export class PlaidTokenStore {
           updated_at = NOW()
         `,
         [
+          memberId,
           wallet,
           normalizedItemId,
           encrypted.ciphertext,
@@ -234,6 +243,29 @@ export class PlaidTokenStore {
           encrypted.wrappedKeyAuthTag,
           encrypted.keyVersion,
         ]
+      );
+    });
+  }
+
+  async attachMemberId(memberId: number, walletAddress: string | string[]): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const wallets = normalizeWalletAddresses(walletAddress);
+    if (wallets.length === 0) {
+      return;
+    }
+
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_NAME}
+        SET
+          member_id = $1,
+          updated_at = NOW()
+        WHERE wallet_address = ANY($2::text[])
+          AND (member_id IS NULL OR member_id != $1)
+        `,
+        [memberId, wallets]
       );
     });
   }
@@ -281,6 +313,7 @@ export class PlaidTokenStore {
     await withRetry(async () => {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS ${TABLE_NAME} (
+          member_id BIGINT,
           wallet_address TEXT NOT NULL,
           item_id TEXT NOT NULL,
           access_token_ciphertext BYTEA NOT NULL,
@@ -299,6 +332,16 @@ export class PlaidTokenStore {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_wallet
         ON ${TABLE_NAME} (wallet_address)
+      `);
+
+      await pool.query(`
+        ALTER TABLE ${TABLE_NAME}
+        ADD COLUMN IF NOT EXISTS member_id BIGINT
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_member_id
+        ON ${TABLE_NAME} (member_id)
       `);
     });
   }
