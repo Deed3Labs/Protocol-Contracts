@@ -612,6 +612,8 @@ router.post('/me/wallets', async (req: Request, res: Response) => {
   const body = req.body;
   const label = parseOptionalString(body.label, 'label', 120, res, { allowNull: true });
   if (label === INVALID) return;
+  const description = parseOptionalString(body.description, 'description', 280, res, { allowNull: true });
+  if (description === INVALID) return;
   const walletAddress = parseOptionalString(body.walletAddress, 'walletAddress', 255, res);
   if (walletAddress === INVALID) return;
   if (walletAddress == null || walletAddress === '') {
@@ -627,6 +629,7 @@ router.post('/me/wallets', async (req: Request, res: Response) => {
 
   const input: UpsertMemberWalletInput = {
     label,
+    description,
     walletAddress,
     kind: (kind ?? undefined) as UpsertMemberWalletInput['kind'],
     status: (status ?? undefined) as UpsertMemberWalletInput['status'],
@@ -656,6 +659,8 @@ router.patch('/me/wallets/:id', async (req: Request, res: Response) => {
   const body = req.body;
   const label = parseOptionalString(body.label, 'label', 120, res, { allowNull: true });
   if (label === INVALID) return;
+  const description = parseOptionalString(body.description, 'description', 280, res, { allowNull: true });
+  if (description === INVALID) return;
   const walletAddress = parseOptionalString(body.walletAddress, 'walletAddress', 255, res, { allowNull: true });
   if (walletAddress === INVALID) return;
   const kind = parseOptionalString(body.kind, 'kind', 32, res, { allowNull: true });
@@ -665,6 +670,7 @@ router.patch('/me/wallets/:id', async (req: Request, res: Response) => {
 
   const input: UpdateMemberWalletInput = {
     label,
+    description,
     walletAddress,
     kind: (kind ?? undefined) as UpdateMemberWalletInput['kind'],
     status: (status ?? undefined) as UpdateMemberWalletInput['status'],
@@ -713,12 +719,15 @@ router.post('/me/wallet-links/challenge', async (req: Request, res: Response) =>
   }
   const label = parseOptionalString(body.label, 'label', 120, res, { allowNull: true });
   if (label === INVALID) return;
+  const description = parseOptionalString(body.description, 'description', 280, res, { allowNull: true });
+  if (description === INVALID) return;
   const kind = parseOptionalString(body.kind, 'kind', 32, res, { allowNull: true });
   if (kind === INVALID) return;
 
   const input: CreateMemberWalletLinkChallengeInput = {
     walletAddress,
     label,
+    description,
     kind: (kind ?? undefined) as CreateMemberWalletLinkChallengeInput['kind'],
   };
 

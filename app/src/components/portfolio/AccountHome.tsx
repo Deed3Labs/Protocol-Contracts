@@ -48,7 +48,6 @@ import {
   createMemberMembershipCheckout,
   createMemberWalletLinkChallenge,
   createMemberSocialAccount,
-  createMemberWallet,
   deleteMemberSocialAccount,
   deleteMemberWallet,
   getMemberAccountCenter,
@@ -69,6 +68,8 @@ type AccountTab = 'profile' | 'connections' | 'security' | 'support';
 type WalletKind = 'Primary' | 'Hardware' | 'Smart' | 'Embedded';
 type SocialVisibility = 'Public' | 'Private';
 type Tone = 'emerald' | 'sky' | 'amber' | 'zinc';
+type WalletDialogMode = 'link' | 'edit';
+type WalletDialogStep = 'details' | 'connect';
 
 interface ProfileFormState {
   legalName: string;
@@ -86,6 +87,7 @@ interface WalletRecord {
   id: string;
   label: string;
   address: string;
+  description: string;
   network: string;
   kind: WalletKind;
   verified: boolean;
@@ -95,10 +97,8 @@ interface WalletRecord {
 
 interface WalletDraft {
   label: string;
-  address: string;
-  network: string;
+  description: string;
   kind: WalletKind;
-  note: string;
 }
 
 interface SocialRecord {
@@ -246,10 +246,8 @@ const DEFAULT_SECURITY_CONTROLS: SecurityControl[] = [
 
 const BLANK_WALLET_DRAFT: WalletDraft = {
   label: '',
-  address: '',
-  network: '',
+  description: '',
   kind: 'Hardware',
-  note: '',
 };
 
 const BLANK_SOCIAL_DRAFT: SocialDraft = {
@@ -356,6 +354,7 @@ const walletRecordFromApi = (wallet: MemberWalletResponse): WalletRecord => ({
   id: `wallet-${wallet.id}`,
   label: wallet.label || (wallet.isPrimary ? 'Primary wallet' : 'Associated wallet'),
   address: wallet.walletAddress,
+  description: wallet.description || '',
   network: wallet.isPrimary ? 'Primary signer' : 'Linked wallet',
   kind: wallet.kind === 'EMBEDDED'
     ? 'Embedded'
@@ -365,11 +364,13 @@ const walletRecordFromApi = (wallet: MemberWalletResponse): WalletRecord => ({
         ? 'Smart'
         : 'Primary',
   verified: Boolean(wallet.verifiedAt) || wallet.isPrimary,
-  note: wallet.isPrimary
-    ? 'Active signer for your ClearPath account.'
-    : wallet.verifiedAt
-      ? 'Authenticated and linked as a sign-in wallet for this Clear account.'
-      : 'Saved on your Clear account. Connect and authenticate with this wallet to activate it as a sign-in alias.',
+  note: wallet.description || (
+    wallet.isPrimary
+      ? 'Active signer for your ClearPath account.'
+      : wallet.verifiedAt
+        ? 'Authenticated and linked as a sign-in wallet for this Clear account.'
+        : 'Saved on your Clear account. Connect and authenticate with this wallet to activate it as a sign-in alias.'
+  ),
   lastActive: wallet.isPrimary ? 'Active now' : wallet.verifiedAt ? 'Authenticated' : 'Pending verification',
 });
 
@@ -815,6 +816,8 @@ export default function AccountHome() {
   const tabsAnchorRef = useRef<HTMLDivElement | null>(null);
   const [profileSavedAt, setProfileSavedAt] = useState<string>('Not saved yet');
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
+  const [walletDialogMode, setWalletDialogMode] = useState<WalletDialogMode>('link');
+  const [walletDialogStep, setWalletDialogStep] = useState<WalletDialogStep>('details');
   const [editingWalletId, setEditingWalletId] = useState<string | null>(null);
   const [walletDraft, setWalletDraft] = useState<WalletDraft>(BLANK_WALLET_DRAFT);
   const [socialDialogOpen, setSocialDialogOpen] = useState(false);
@@ -948,6 +951,7 @@ export default function AccountHome() {
         id: 'wallet-primary',
         label: 'Primary wallet',
         address,
+        description: '',
         network: getNetworkLabel(chainId),
         kind: 'Primary',
         verified: true,
@@ -1369,66 +1373,84 @@ export default function AccountHome() {
     }
   };
 
-  const openWalletDialog = (wallet?: WalletRecord) => {
-    setEditingWalletId(wallet?.id ?? null);
+  const resetWalletDialog = () => {
+    setWalletDialogOpen(false);
+    setWalletDialogMode('link');
+    setWalletDialogStep('details');
+    setEditingWalletId(null);
+    setWalletDraft(BLANK_WALLET_DRAFT);
+  };
+
+  const openWalletLinkDialog = (wallet?: WalletRecord, step: WalletDialogStep = 'details') => {
+    setWalletDialogMode('link');
+    setEditingWalletId(null);
+    setWalletDialogStep(step);
     setWalletDraft(
       wallet
         ? {
             label: wallet.label,
-            address: wallet.address,
-            network: wallet.network,
+            description: wallet.description,
             kind: wallet.kind,
-            note: wallet.note,
           }
-        : {
-            ...BLANK_WALLET_DRAFT,
-            network: getNetworkLabel(chainId),
-          }
+        : BLANK_WALLET_DRAFT
     );
     setWalletDialogOpen(true);
   };
 
-  const saveWallet = async () => {
-    if (!walletDraft.label.trim() || !walletDraft.address.trim() || !walletDraft.network.trim()) {
-      setBannerMessage('Wallet label, address, and network are required.');
-      return;
-    }
-
-    const persistedWallets = editingWalletId
-      ? await updateMemberWallet(parseLocalEntityId(editingWalletId, 'wallet-') ?? 0, {
-          label: walletDraft.label.trim(),
-          walletAddress: walletDraft.address.trim(),
-          kind: walletKindToApi(walletDraft.kind),
-        })
-      : await createMemberWallet({
-          label: walletDraft.label.trim(),
-          walletAddress: walletDraft.address.trim(),
-          kind: walletKindToApi(walletDraft.kind),
-        });
-
-    if (!persistedWallets) {
-      setBannerMessage(editingWalletId ? 'Wallet update failed.' : 'Wallet save failed.');
-      return;
-    }
-
-    setWallets(persistedWallets.map(walletRecordFromApi));
-
-    setWalletDialogOpen(false);
-    setWalletDraft(BLANK_WALLET_DRAFT);
-    setEditingWalletId(null);
-    setBannerMessage(
-      editingWalletId
-        ? 'Wallet updated.'
-        : 'Wallet saved. Connect and authenticate with it to activate it as a sign-in alias.'
-    );
+  const openWalletEditDialog = (wallet: WalletRecord) => {
+    setWalletDialogMode('edit');
+    setWalletDialogStep('details');
+    setEditingWalletId(wallet.id);
+    setWalletDraft({
+      label: wallet.label,
+      description: wallet.description,
+      kind: wallet.kind,
+    });
+    setWalletDialogOpen(true);
   };
 
   const promptWalletConnect = async () => {
     await openModal('Connect');
   };
 
-  const linkConnectedWallet = async () => {
+  const saveWallet = async () => {
+    if (!editingWalletId) return;
+    if (!walletDraft.label.trim()) {
+      setBannerMessage('Wallet name is required.');
+      return;
+    }
+
+    const persistedWallets = await updateMemberWallet(parseLocalEntityId(editingWalletId, 'wallet-') ?? 0, {
+      label: walletDraft.label.trim(),
+      description: walletDraft.description.trim() || null,
+      kind: walletKindToApi(walletDraft.kind),
+    });
+
+    if (!persistedWallets) {
+      setBannerMessage('Wallet update failed.');
+      return;
+    }
+
+    setWallets(persistedWallets.map(walletRecordFromApi));
+    resetWalletDialog();
+    setBannerMessage('Wallet updated.');
+  };
+
+  const continueWalletLink = async () => {
+    if (!walletDraft.label.trim()) {
+      setBannerMessage('Wallet name is required before you continue.');
+      return;
+    }
+
+    setWalletDialogStep('connect');
     if (!address) {
+      await promptWalletConnect();
+    }
+  };
+
+  const linkWalletFromDialog = async () => {
+    if (!address) {
+      setBannerMessage('Connect the wallet you want to link first.');
       await promptWalletConnect();
       return;
     }
@@ -1447,7 +1469,7 @@ export default function AccountHome() {
     }
 
     if (!isAuthenticated) {
-      setBannerMessage('Connect and sign in before linking this wallet.');
+      setBannerMessage('Approve the AppKit sign-in message for this wallet before linking it.');
       await promptWalletConnect();
       return;
     }
@@ -1457,6 +1479,9 @@ export default function AccountHome() {
     try {
       const challenge = await createMemberWalletLinkChallenge({
         walletAddress: address,
+        label: walletDraft.label.trim(),
+        description: walletDraft.description.trim() || null,
+        kind: walletKindToApi(walletDraft.kind),
       });
       if (!challenge) {
         setBannerMessage('We could not start wallet linking for the connected wallet.');
@@ -1494,15 +1519,8 @@ export default function AccountHome() {
       }
 
       await refreshBankBalance(true);
-
-      const linkedWallet = linkedWallets.find(
-        (wallet) => wallet.walletAddress.toLowerCase() === address.toLowerCase()
-      );
-      setBannerMessage(
-        linkedWallet?.verifiedAt
-          ? 'Connected wallet signed and linked to your Clear account.'
-          : 'Connected wallet saved on your Clear account.'
-      );
+      resetWalletDialog();
+      setBannerMessage('Connected wallet signed and linked to your Clear account.');
     } catch (error) {
       console.error('Failed to link connected wallet:', error);
       setBannerMessage(
@@ -1908,20 +1926,12 @@ export default function AccountHome() {
                     withTopBorder={false}
                     eyebrow="Wallets"
                     title="Associated wallets"
-                    description="Manage wallets saved on this Clear account. To turn a wallet into a sign-in alias, connect it in AppKit and approve a dedicated wallet-link signature here."
+                    description="Manage wallets saved on this Clear account. Start by naming the wallet, then connect it in AppKit and approve one wallet-link signature to finish linking."
                     action={(
                       <div className="flex flex-wrap items-center gap-2">
-                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => void promptWalletConnect()}>
-                          <Wallet className="h-4 w-4" />
-                          Connect wallet
-                        </Button>
-                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => void linkConnectedWallet()}>
+                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletLinkDialog()}>
                           <Link2 className="h-4 w-4" />
-                          Sign and link wallet
-                        </Button>
-                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletDialog()}>
-                          <Plus className="h-4 w-4" />
-                          Add wallet
+                          Link wallet
                         </Button>
                       </div>
                     )}
@@ -1953,7 +1963,10 @@ export default function AccountHome() {
                           </div>
                           <div className="flex flex-wrap gap-2 md:justify-end">
                             <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => handleCopyAddress(wallet.address)}><Copy className="h-4 w-4" />Copy</Button>
-                            <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => openWalletDialog(wallet)}><Edit3 className="h-4 w-4" />Edit</Button>
+                            {!wallet.verified && wallet.id !== 'wallet-primary' ? (
+                              <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletLinkDialog(wallet, 'connect')}><Link2 className="h-4 w-4" />Finish linking</Button>
+                            ) : null}
+                            <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => openWalletEditDialog(wallet)}><Edit3 className="h-4 w-4" />Edit</Button>
                             {wallet.id !== 'wallet-primary' ? (
                               <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => removeWallet(wallet.id)}><Trash2 className="h-4 w-4" />Remove</Button>
                             ) : null}
@@ -2239,51 +2252,103 @@ export default function AccountHome() {
         </div>
       </main>
 
-      <Dialog open={walletDialogOpen} onOpenChange={setWalletDialogOpen}>
+      <Dialog
+        open={walletDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetWalletDialog();
+            return;
+          }
+          setWalletDialogOpen(true);
+        }}
+      >
         <DialogContent className="border-zinc-200 dark:border-zinc-800 dark:bg-[#111111]">
           <DialogHeader>
-            <DialogTitle>{editingWalletId ? 'Edit associated wallet' : 'Add associated wallet'}</DialogTitle>
+            <DialogTitle>
+              {walletDialogMode === 'edit'
+                ? 'Edit linked wallet'
+                : walletDialogStep === 'details'
+                  ? 'Name the wallet you want to link'
+                  : 'Connect and sign the wallet'}
+            </DialogTitle>
             <DialogDescription>
-              Add a wallet name, network, and note so you can recognize it later.
+              {walletDialogMode === 'edit'
+                ? 'Update how this wallet appears on your Clear account.'
+                : walletDialogStep === 'details'
+                  ? 'Add a wallet name and optional description first. After that, connect the wallet in AppKit to finish linking it.'
+                  : 'Connect or switch to the wallet you want to link. We will use the connected address below and ask for one signature.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="walletLabel">Label</Label>
+              <Label htmlFor="walletLabel">Wallet name</Label>
               <Input id="walletLabel" value={walletDraft.label} onChange={(event) => setWalletDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Treasury Safe" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="walletAddress">Wallet address</Label>
-              <Input id="walletAddress" value={walletDraft.address} onChange={(event) => setWalletDraft((current) => ({ ...current, address: event.target.value }))} placeholder="0x..." />
+              <Label htmlFor="walletDescription">Description</Label>
+              <Textarea id="walletDescription" className="min-h-[96px]" value={walletDraft.description} onChange={(event) => setWalletDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Optional note about what this wallet is for." />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="walletNetwork">Network</Label>
-              <Input id="walletNetwork" value={walletDraft.network} onChange={(event) => setWalletDraft((current) => ({ ...current, network: event.target.value }))} placeholder="Base" />
-            </div>
-            <div className="space-y-2">
-              <Label>Wallet type</Label>
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                {(['Primary', 'Hardware', 'Smart', 'Embedded'] as WalletKind[]).map((kind) => (
-                  <Button
-                    key={kind}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className={walletDraft.kind === kind ? ACCOUNT_TAB_BUTTON_PRIMARY_CLASS : ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
-                    onClick={() => setWalletDraft((current) => ({ ...current, kind }))}
-                  >
-                    {kind}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="walletNote">Note</Label>
-              <Textarea id="walletNote" className="min-h-[96px]" value={walletDraft.note} onChange={(event) => setWalletDraft((current) => ({ ...current, note: event.target.value }))} placeholder="What is this wallet used for?" />
-            </div>
+            {walletDialogMode === 'edit' || walletDialogStep === 'connect' ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="walletAddress">Connected wallet address</Label>
+                  <Input
+                    id="walletAddress"
+                    value={walletDialogMode === 'edit'
+                      ? (wallets.find((wallet) => wallet.id === editingWalletId)?.address ?? '')
+                      : (address ?? '')}
+                    readOnly
+                    placeholder="Connect wallet to populate"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Wallet type</Label>
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                    {(['Primary', 'Hardware', 'Smart', 'Embedded'] as WalletKind[]).map((kind) => (
+                      <Button
+                        key={kind}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={walletDraft.kind === kind ? ACCOUNT_TAB_BUTTON_PRIMARY_CLASS : ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
+                        onClick={() => setWalletDraft((current) => ({ ...current, kind }))}
+                      >
+                        {kind}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                {walletDialogMode === 'link' ? (
+                  <div className="rounded-2xl border border-zinc-200/70 bg-zinc-50/70 p-3 text-[12px] leading-5 text-zinc-600 dark:border-zinc-800/70 dark:bg-[#171717] dark:text-zinc-300">
+                    {address
+                      ? `Connected in AppKit: ${shortAddress(address)} on ${getNetworkLabel(chainId)}.`
+                      : 'No wallet is connected in AppKit yet. Connect or switch to the wallet you want to link, then sign once to finish.'}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
             <div className="flex justify-end gap-2">
-              <Button variant="outline" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setWalletDialogOpen(false)}>Cancel</Button>
-              <Button variant="outline" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={saveWallet}>Save wallet</Button>
+              {walletDialogMode === 'link' && walletDialogStep === 'connect' ? (
+                <Button variant="outline" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setWalletDialogStep('details')}>Back</Button>
+              ) : (
+                <Button variant="outline" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={resetWalletDialog}>Cancel</Button>
+              )}
+              {walletDialogMode === 'edit' ? (
+                <Button variant="outline" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={saveWallet}>Save wallet</Button>
+              ) : walletDialogStep === 'details' ? (
+                <Button variant="outline" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => void continueWalletLink()}>Continue</Button>
+              ) : (
+                <>
+                  <Button variant="outline" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => void promptWalletConnect()}>
+                    <Wallet className="h-4 w-4" />
+                    Connect or switch wallet
+                  </Button>
+                  <Button variant="outline" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => void linkWalletFromDialog()}>
+                    <Link2 className="h-4 w-4" />
+                    Sign and link wallet
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </DialogContent>

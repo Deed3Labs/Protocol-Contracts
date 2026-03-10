@@ -130,6 +130,7 @@ export interface MemberWalletRecord {
   id: number;
   walletAddress: string;
   label: string | null;
+  description: string | null;
   kind: MemberWalletKind;
   status: MemberWalletStatus;
   isPrimary: boolean;
@@ -152,6 +153,7 @@ export interface MemberWalletLinkChallenge {
   id: number;
   walletAddress: string;
   label: string | null;
+  description: string | null;
   kind: MemberWalletKind;
   message: string;
   expiresAt: Date;
@@ -239,6 +241,7 @@ export interface UpdateSecuritySettingsInput {
 
 export interface UpsertMemberWalletInput {
   label?: string | null;
+  description?: string | null;
   walletAddress: string;
   kind?: MemberWalletKind | null;
   status?: MemberWalletStatus | null;
@@ -246,6 +249,7 @@ export interface UpsertMemberWalletInput {
 
 export interface UpdateMemberWalletInput {
   label?: string | null;
+  description?: string | null;
   walletAddress?: string | null;
   kind?: MemberWalletKind | null;
   status?: MemberWalletStatus | null;
@@ -278,6 +282,7 @@ export interface UpdateMemberMembershipStateInput {
 export interface CreateMemberWalletLinkChallengeInput {
   walletAddress: string;
   label?: string | null;
+  description?: string | null;
   kind?: MemberWalletKind | null;
 }
 
@@ -404,6 +409,7 @@ type MemberWalletDbRow = {
   member_id: string | number;
   wallet_address: string;
   label: string | null;
+  description: string | null;
   kind: MemberWalletKind;
   status: MemberWalletStatus;
   is_primary: boolean;
@@ -429,6 +435,7 @@ type MemberWalletLinkChallengeDbRow = {
   member_id: string | number;
   wallet_address: string;
   label: string | null;
+  description: string | null;
   kind: MemberWalletKind;
   nonce: string;
   message: string;
@@ -790,6 +797,7 @@ function mapWallet(row: MemberWalletDbRow): MemberWalletRecord {
     id: parseNumericId(row.id) ?? 0,
     walletAddress: row.wallet_address,
     label: row.label,
+    description: row.description,
     kind: row.kind,
     status: row.status,
     isPrimary: row.is_primary,
@@ -816,6 +824,7 @@ function mapWalletLinkChallenge(row: MemberWalletLinkChallengeDbRow): MemberWall
     id: parseNumericId(row.id) ?? 0,
     walletAddress: row.wallet_address,
     label: row.label,
+    description: row.description,
     kind: row.kind,
     message: row.message,
     expiresAt: parseDate(row.expires_at) ?? new Date(0),
@@ -1356,6 +1365,7 @@ export class MemberStore {
     const member = await this.mustMember(authSubject.trim());
     const walletAddress = normalizeWalletAddress(input.walletAddress);
     const label = normalizeOptionalString(input.label ?? null, 120) ?? null;
+    const description = normalizeOptionalString(input.description ?? null, 280) ?? null;
     const kind = normalizeWalletKind(input.kind);
     const status = normalizeWalletStatus(input.status);
     const pool = this.mustPool();
@@ -1371,20 +1381,22 @@ export class MemberStore {
           member_id,
           wallet_address,
           label,
+          description,
           kind,
           status,
           is_primary,
           auth_alias_enabled,
           verified_at
-        ) VALUES ($1,$2,$3,$4,$5,FALSE,FALSE,NULL)
+        ) VALUES ($1,$2,$3,$4,$5,$6,FALSE,FALSE,NULL)
         ON CONFLICT (wallet_address)
         DO UPDATE SET
           label = EXCLUDED.label,
+          description = EXCLUDED.description,
           kind = EXCLUDED.kind,
           status = EXCLUDED.status,
           updated_at = NOW()
         `,
-        [member.id, walletAddress, label, kind, status]
+        [member.id, walletAddress, label, description, kind, status]
       );
     });
 
@@ -1413,6 +1425,9 @@ export class MemberStore {
     const nextLabel = patch.label === undefined
       ? current.label
       : normalizeOptionalString(patch.label, 120) ?? null;
+    const nextDescription = patch.description === undefined
+      ? current.description
+      : normalizeOptionalString(patch.description, 280) ?? null;
     const nextKind = patch.kind === undefined ? current.kind : normalizeWalletKind(patch.kind);
     const nextStatus = patch.status === undefined ? current.status : normalizeWalletStatus(patch.status);
     const walletAddressChanged = nextWalletAddress !== current.walletAddress;
@@ -1438,15 +1453,25 @@ export class MemberStore {
         SET
           wallet_address = $3,
           label = $4,
-          kind = $5,
-          status = $6,
-          auth_alias_enabled = CASE WHEN $7 THEN FALSE ELSE auth_alias_enabled END,
-          verified_at = CASE WHEN $7 THEN NULL ELSE verified_at END,
+          description = $5,
+          kind = $6,
+          status = $7,
+          auth_alias_enabled = CASE WHEN $8 THEN FALSE ELSE auth_alias_enabled END,
+          verified_at = CASE WHEN $8 THEN NULL ELSE verified_at END,
           updated_at = NOW()
         WHERE id = $1
           AND member_id = $2
         `,
-        [walletId, member.id, nextWalletAddress, nextLabel, nextKind, nextStatus, walletAddressChanged]
+        [
+          walletId,
+          member.id,
+          nextWalletAddress,
+          nextLabel,
+          nextDescription,
+          nextKind,
+          nextStatus,
+          walletAddressChanged,
+        ]
       );
     });
 
@@ -1515,6 +1540,7 @@ export class MemberStore {
     });
 
     const label = normalizeOptionalString(input.label ?? null, 120) ?? null;
+    const description = normalizeOptionalString(input.description ?? null, 280) ?? null;
     const kind = normalizeWalletKind(input.kind ?? existingWallet?.kind ?? 'SMART');
     const pool = this.mustPool();
     const result = await withRetry(async () => {
@@ -1535,14 +1561,15 @@ export class MemberStore {
           member_id,
           wallet_address,
           label,
+          description,
           kind,
           nonce,
           message,
           expires_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         RETURNING *
         `,
-        [member.id, walletAddress, label, kind, nonce, message, expiresAt]
+        [member.id, walletAddress, label, description, kind, nonce, message, expiresAt]
       );
     });
 
@@ -1577,6 +1604,7 @@ export class MemberStore {
 
     await this.linkAuthenticatedWallet(member.id, challenge.wallet_address, {
       label: challenge.label,
+      description: challenge.description,
       kind: challenge.kind,
     });
 
@@ -2389,16 +2417,18 @@ export class MemberStore {
           member_id,
           wallet_address,
           label,
+          description,
           kind,
           status,
           is_primary,
           auth_alias_enabled,
           verified_at
-        ) VALUES ($1,$2,$3,'PRIMARY','ACTIVE',TRUE,TRUE,NOW())
+        ) VALUES ($1,$2,$3,NULL,'PRIMARY','ACTIVE',TRUE,TRUE,NOW())
         ON CONFLICT (wallet_address)
         DO UPDATE SET
           member_id = EXCLUDED.member_id,
           label = EXCLUDED.label,
+          description = COALESCE(${TABLE_WALLETS}.description, EXCLUDED.description),
           kind = 'PRIMARY',
           status = 'ACTIVE',
           is_primary = TRUE,
@@ -2414,7 +2444,7 @@ export class MemberStore {
   private async linkAuthenticatedWallet(
     memberId: number,
     walletAddress: string,
-    metadata?: { label?: string | null; kind?: MemberWalletKind | null }
+    metadata?: { label?: string | null; description?: string | null; kind?: MemberWalletKind | null }
   ): Promise<void> {
     const normalizedWallet = normalizeWalletAddress(walletAddress);
     const existingWallet = await this.loadWalletRowByAddress(normalizedWallet);
@@ -2426,6 +2456,10 @@ export class MemberStore {
       existingWallet?.label ??
       normalizeOptionalString(metadata?.label ?? null, 120) ??
       'Authenticated wallet';
+    const description =
+      existingWallet?.description ??
+      normalizeOptionalString(metadata?.description ?? null, 280) ??
+      null;
     const existingKind = existingWallet?.kind;
     const kind = existingKind && existingKind !== 'PRIMARY'
       ? existingKind
@@ -2438,16 +2472,18 @@ export class MemberStore {
           member_id,
           wallet_address,
           label,
+          description,
           kind,
           status,
           is_primary,
           auth_alias_enabled,
           verified_at
-        ) VALUES ($1,$2,$3,$4,'ACTIVE',FALSE,TRUE,NOW())
+        ) VALUES ($1,$2,$3,$4,$5,'ACTIVE',FALSE,TRUE,NOW())
         ON CONFLICT (wallet_address)
         DO UPDATE SET
           member_id = EXCLUDED.member_id,
           label = COALESCE(${TABLE_WALLETS}.label, EXCLUDED.label),
+          description = COALESCE(${TABLE_WALLETS}.description, EXCLUDED.description),
           kind = CASE
             WHEN ${TABLE_WALLETS}.is_primary = TRUE THEN 'PRIMARY'
             WHEN ${TABLE_WALLETS}.kind = 'HARDWARE' THEN 'HARDWARE'
@@ -2460,7 +2496,7 @@ export class MemberStore {
           verified_at = COALESCE(${TABLE_WALLETS}.verified_at, NOW()),
           updated_at = NOW()
         `,
-        [memberId, normalizedWallet, label, kind]
+        [memberId, normalizedWallet, label, description, kind]
       );
     });
   }
@@ -2660,6 +2696,7 @@ export class MemberStore {
           member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
           wallet_address TEXT NOT NULL UNIQUE,
           label TEXT,
+          description TEXT,
           kind TEXT NOT NULL DEFAULT 'PRIMARY',
           status TEXT NOT NULL DEFAULT 'ACTIVE',
           is_primary BOOLEAN NOT NULL DEFAULT FALSE,
@@ -2687,6 +2724,11 @@ export class MemberStore {
       `);
 
       await pool.query(`
+        ALTER TABLE ${TABLE_WALLETS}
+        ADD COLUMN IF NOT EXISTS description TEXT
+      `);
+
+      await pool.query(`
         UPDATE ${TABLE_WALLETS}
         SET auth_alias_enabled = TRUE
         WHERE is_primary = TRUE
@@ -2699,6 +2741,7 @@ export class MemberStore {
           member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
           wallet_address TEXT NOT NULL,
           label TEXT,
+          description TEXT,
           kind TEXT NOT NULL DEFAULT 'SMART',
           nonce TEXT NOT NULL,
           message TEXT NOT NULL,
@@ -2716,6 +2759,11 @@ export class MemberStore {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLET_LINK_CHALLENGES}_expires_at
         ON ${TABLE_WALLET_LINK_CHALLENGES} (expires_at)
+      `);
+
+      await pool.query(`
+        ALTER TABLE ${TABLE_WALLET_LINK_CHALLENGES}
+        ADD COLUMN IF NOT EXISTS description TEXT
       `);
 
       await pool.query(`

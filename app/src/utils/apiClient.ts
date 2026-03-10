@@ -1356,6 +1356,7 @@ export interface MemberWalletResponse {
   id: number;
   walletAddress: string;
   label: string | null;
+  description: string | null;
   kind: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
   status: 'ACTIVE' | 'REMOVED';
   isPrimary: boolean;
@@ -1368,6 +1369,7 @@ export interface MemberWalletLinkChallengeResponse {
   id: number;
   walletAddress: string;
   label: string | null;
+  description: string | null;
   kind: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
   message: string;
   expiresAt: string;
@@ -1602,6 +1604,7 @@ export async function acceptMemberTerms(documentType: string, documentVersion: s
 
 export async function createMemberWallet(payload: {
   label?: string | null;
+  description?: string | null;
   walletAddress: string;
   kind?: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
   status?: 'ACTIVE' | 'REMOVED';
@@ -1618,6 +1621,7 @@ export async function updateMemberWallet(
   walletId: number,
   payload: Partial<{
     label: string | null;
+    description: string | null;
     walletAddress: string | null;
     kind: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
     status: 'ACTIVE' | 'REMOVED';
@@ -1642,6 +1646,7 @@ export async function deleteMemberWallet(walletId: number): Promise<MemberWallet
 export async function createMemberWalletLinkChallenge(payload: {
   walletAddress: string;
   label?: string | null;
+  description?: string | null;
   kind?: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
 }): Promise<MemberWalletLinkChallengeResponse | null> {
   const response = await apiRequest<{ challenge: MemberWalletLinkChallengeResponse }>(
