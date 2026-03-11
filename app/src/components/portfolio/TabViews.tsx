@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { TrendingUp, TrendingDown, Info, ChevronRight, Settings, Share2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import InteractiveChart from './InteractiveChart';
 import IncomeChart from './IncomeChart';
 import { isStablecoin } from '@/utils/tokenUtils';
@@ -132,6 +133,47 @@ interface IncomeViewProps {
   recurringStreams?: { inflowStreams: RecurringStream[]; outflowStreams: RecurringStream[] };
 }
 
+type CashFlowDirection = 'inflow' | 'outflow';
+type CashFlowCategory =
+  | 'deposit'
+  | 'withdrawal'
+  | 'buy'
+  | 'sell'
+  | 'mint'
+  | 'trade'
+  | 'transfer'
+  | 'subscription'
+  | 'spend'
+  | 'income'
+  | 'other';
+
+interface CashFlowEntry {
+  id: string;
+  direction: CashFlowDirection;
+  category: CashFlowCategory;
+  amount: number;
+  date: Date;
+  accountKey: string;
+}
+
+interface TransferMatchEntry {
+  id: string;
+  direction: CashFlowDirection;
+  amount: number;
+  dateMs: number;
+  isTransfer: boolean;
+  accountKey: string;
+}
+
+interface MonthlyFlowPoint {
+  key: string;
+  label: string;
+  inflow: number;
+  outflow: number;
+  net: number;
+  isProjected: boolean;
+}
+
 const normalizeTimestampMs = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     if (value <= 0) return null;
@@ -185,6 +227,9 @@ const USD_DENOMINATED_SYMBOLS = new Set([
   'LUSD',
   'CLRUSD',
 ]);
+const PLAID_TRANSFER_NAME_HINTS = ['zelle', 'cash app', 'cashapp', 'venmo'];
+const INTERNAL_TRANSFER_MATCH_WINDOW_MS = 72 * 60 * 60 * 1000;
+const toAmountCents = (amount: number) => Math.round(Math.abs(amount) * 100);
 
 const getWalletAmountUsd = (tx: WalletTransaction) => {
   const amountUsd = Number(tx.amountUsd);
@@ -201,25 +246,107 @@ const getWalletAmountUsd = (tx: WalletTransaction) => {
   return amountRaw;
 };
 
-const getWalletFlowDirection = (type: WalletTransaction['type']) => {
+const getWalletFlowMeta = (type: WalletTransaction['type']) => {
   switch (type) {
     case 'deposit':
-    case 'sell':
-    case 'mint':
-      return 'inflow' as const;
+      return { direction: 'inflow' as const, category: 'deposit' as const };
     case 'withdraw':
+      return { direction: 'outflow' as const, category: 'withdrawal' as const };
     case 'buy':
+      return { direction: 'outflow' as const, category: 'buy' as const };
+    case 'sell':
+      return { direction: 'inflow' as const, category: 'sell' as const };
+    case 'mint':
+      return { direction: 'inflow' as const, category: 'mint' as const };
     case 'trade':
+      return { direction: 'outflow' as const, category: 'trade' as const };
     case 'transfer':
+      return { direction: 'outflow' as const, category: 'transfer' as const };
     case 'contract':
     default:
-      return 'outflow' as const;
+      return { direction: 'outflow' as const, category: 'other' as const };
   }
 };
 
+const hasTransferNameHint = (tx: PlaidRecentTransaction) => {
+  const descriptor = `${tx.name || ''} ${tx.merchant_name || ''}`.toLowerCase();
+  return PLAID_TRANSFER_NAME_HINTS.some((hint) => descriptor.includes(hint));
+};
+
+const getPlaidCategory = (tx: PlaidRecentTransaction): CashFlowCategory => {
+  const categoryText = `${tx.category_primary || ''} ${tx.category_detailed || ''}`.toLowerCase();
+  const hasTransferHint = categoryText.includes('transfer') || hasTransferNameHint(tx);
+
+  if (tx.direction === 'inflow') {
+    if (hasTransferHint) return 'transfer';
+    if (categoryText.includes('deposit')) return 'deposit';
+    return 'income';
+  }
+
+  if (hasTransferHint) return 'transfer';
+  if (
+    categoryText.includes('subscription') ||
+    categoryText.includes('rent') ||
+    categoryText.includes('insurance') ||
+    categoryText.includes('utilities')
+  ) {
+    return 'subscription';
+  }
+
+  return 'spend';
+};
+
+const detectInternalTransferIds = (entries: TransferMatchEntry[]) => {
+  const internalIds = new Set<string>();
+  const unmatchedInflows = new Map<number, TransferMatchEntry[]>();
+  const unmatchedOutflows = new Map<number, TransferMatchEntry[]>();
+
+  const transferEntries = entries
+    .filter((entry) => entry.isTransfer && entry.amount > 0 && Number.isFinite(entry.dateMs))
+    .sort((a, b) => a.dateMs - b.dateMs);
+
+  for (const entry of transferEntries) {
+    const amountKey = toAmountCents(entry.amount);
+    const oppositeMap = entry.direction === 'inflow' ? unmatchedOutflows : unmatchedInflows;
+    const ownMap = entry.direction === 'inflow' ? unmatchedInflows : unmatchedOutflows;
+    const candidates = oppositeMap.get(amountKey) ?? [];
+
+    let matchIndex = -1;
+    for (let i = 0; i < candidates.length; i += 1) {
+      const candidate = candidates[i];
+      if (candidate.accountKey === entry.accountKey) continue;
+      if (Math.abs(candidate.dateMs - entry.dateMs) > INTERNAL_TRANSFER_MATCH_WINDOW_MS) continue;
+      matchIndex = i;
+      break;
+    }
+
+    if (matchIndex >= 0) {
+      const [matched] = candidates.splice(matchIndex, 1);
+      internalIds.add(entry.id);
+      internalIds.add(matched.id);
+      if (candidates.length === 0) {
+        oppositeMap.delete(amountKey);
+      } else {
+        oppositeMap.set(amountKey, candidates);
+      }
+      continue;
+    }
+
+    const ownCandidates = ownMap.get(amountKey) ?? [];
+    ownCandidates.push(entry);
+    ownMap.set(amountKey, ownCandidates);
+  }
+
+  return internalIds;
+};
+
 export function IncomeView({ totalValue: _totalValue, transactions, bankTransactions, recurringStreams }: IncomeViewProps) {
-  const years = ['Next 12M', '2026', '2025', '2024', '2023', '2022'];
-  const [selectedYear, setSelectedYear] = useState('2026');
+  const navigate = useNavigate();
+  const years = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return ['Next 12M', ...Array.from({ length: 5 }, (_, index) => String(currentYear - index))];
+  }, []);
+  const [selectedYear, setSelectedYear] = useState(() => String(new Date().getFullYear()));
   
   const prevTransactionsRef = useRef<WalletTransaction[] | undefined>(transactions);
   const prevRecurringRef = useRef<IncomeViewProps['recurringStreams']>(recurringStreams);
@@ -232,91 +359,171 @@ export function IncomeView({ totalValue: _totalValue, transactions, bankTransact
       prevRecurringRef.current = recurringStreams;
     }
   }, [transactions, recurringStreams]);
+
+  const cashFlowEntries = useMemo<CashFlowEntry[]>(() => {
+    const walletEntries = (transactions ?? []).map((tx) => {
+      const flowMeta = getWalletFlowMeta(tx.type);
+      return {
+        id: `wallet-${tx.id}`,
+        direction: flowMeta.direction,
+        category: flowMeta.category,
+        amount: getWalletAmountUsd(tx),
+        date: getDateFromWalletTransaction(tx),
+        accountKey: `wallet:${tx.chainName || 'activity'}`,
+      };
+    });
+
+    const plaidEntries = (bankTransactions ?? [])
+      .map((tx) => ({
+        id: `plaid-${tx.item_id}-${tx.transaction_id}`,
+        direction: tx.direction,
+        category: getPlaidCategory(tx),
+        amount: Math.abs(Number(tx.amount) || 0),
+        date: getDateFromPlaidTransaction(tx),
+        accountKey: `bank:${tx.item_id}:${tx.account_id || tx.account_name || 'unknown'}`,
+      }))
+      .filter((tx) => tx.amount > 0);
+
+    return [...walletEntries, ...plaidEntries].filter(
+      (entry) => entry.amount > 0 && Number.isFinite(entry.date.getTime())
+    );
+  }, [bankTransactions, transactions]);
+
+  const internalTransferIds = useMemo(() => {
+    return detectInternalTransferIds(
+      cashFlowEntries.map((entry) => ({
+        id: entry.id,
+        direction: entry.direction,
+        amount: entry.amount,
+        dateMs: entry.date.getTime(),
+        isTransfer: entry.category === 'transfer',
+        accountKey: entry.accountKey,
+      }))
+    );
+  }, [cashFlowEntries]);
+
+  const historicalFlowEntries = useMemo(() => {
+    const nowMs = Date.now();
+    return cashFlowEntries.filter((entry) => {
+      if (entry.date.getTime() > nowMs) return false;
+      if (internalTransferIds.has(entry.id)) return false;
+      return entry.category !== 'transfer';
+    });
+  }, [cashFlowEntries, internalTransferIds]);
+
+  const recurringMonthlyBaseline = useMemo(() => {
+    return {
+      inflow: recurringStreams?.inflowStreams?.reduce((sum, stream) => sum + Math.abs(stream.amount ?? 0), 0) ?? 0,
+      outflow: recurringStreams?.outflowStreams?.reduce((sum, stream) => sum + Math.abs(stream.amount ?? 0), 0) ?? 0,
+    };
+  }, [recurringStreams]);
+
+  const historicalMonthlyBaseline = useMemo(() => {
+    const now = new Date();
+    const completeMonths: Array<{ inflow: number; outflow: number }> = [];
+
+    for (let offset = 6; offset >= 1; offset -= 1) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      const nextMonthStart = new Date(now.getFullYear(), now.getMonth() - offset + 1, 1);
+      let inflow = 0;
+      let outflow = 0;
+
+      historicalFlowEntries.forEach((entry) => {
+        const time = entry.date.getTime();
+        if (time < monthStart.getTime() || time >= nextMonthStart.getTime()) return;
+        if (entry.direction === 'inflow') inflow += entry.amount;
+        if (entry.direction === 'outflow') outflow += entry.amount;
+      });
+
+      completeMonths.push({ inflow, outflow });
+    }
+
+    const divisor = completeMonths.length || 1;
+    return {
+      inflow: completeMonths.reduce((sum, month) => sum + month.inflow, 0) / divisor,
+      outflow: completeMonths.reduce((sum, month) => sum + month.outflow, 0) / divisor,
+    };
+  }, [historicalFlowEntries]);
+
+  const projectedMonthlyBaseline = useMemo(() => {
+    const blend = (historical: number, recurring: number) => {
+      if (historical > 0 && recurring > 0) return historical * 0.75 + recurring * 0.25;
+      if (historical > 0) return historical;
+      return recurring;
+    };
+
+    return {
+      inflow: blend(historicalMonthlyBaseline.inflow, recurringMonthlyBaseline.inflow),
+      outflow: blend(historicalMonthlyBaseline.outflow, recurringMonthlyBaseline.outflow),
+    };
+  }, [historicalMonthlyBaseline, recurringMonthlyBaseline]);
   
   const getIncomeData = useCallback((year: string) => {
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonthIndex = now.getMonth();
-    const isForecastOnly = year === 'Next 12M';
-    const parsedTargetYear = Number.parseInt(year, 10);
-    const targetYear = isForecastOnly ? currentYear : parsedTargetYear;
-    
-    const monthlyData = months.map(month => ({ month, inflow: 0, outflow: 0 }));
-    let actualIncomeToDate = 0;
-    
-    if (!isForecastOnly && Number.isFinite(targetYear) && transactions && transactions.length > 0) {
-      transactions.forEach(tx => {
-        if (tx.status !== 'completed') return;
-        const amount = getWalletAmountUsd(tx);
-        if (!(amount > 0)) return;
+    const buildPoint = (monthDate: Date, isProjected = false): MonthlyFlowPoint => ({
+      key: `${monthDate.getFullYear()}-${monthDate.getMonth()}`,
+      label: monthDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
+      inflow: 0,
+      outflow: 0,
+      net: 0,
+      isProjected,
+    });
 
-        const txDate = getDateFromWalletTransaction(tx);
-        const txYear = txDate.getFullYear();
-        if (txYear !== targetYear) return;
+    const points =
+      year === 'Next 12M'
+        ? Array.from({ length: 12 }, (_, index) => {
+            const monthDate = new Date(currentYear, currentMonthIndex + index, 1);
+            return buildPoint(monthDate, index > 0);
+          })
+        : Array.from({ length: 12 }, (_, monthIndex) => {
+            const monthDate = new Date(Number(year), monthIndex, 1);
+            return buildPoint(monthDate, Number(year) === currentYear && monthIndex > currentMonthIndex);
+          });
 
-        const monthIndex = txDate.getMonth();
-        if (monthIndex >= 0 && monthIndex < 12) {
-          if (getWalletFlowDirection(tx.type) === 'inflow') {
-            monthlyData[monthIndex].inflow += amount;
-            actualIncomeToDate += amount;
-          } else {
-            monthlyData[monthIndex].outflow += amount;
-          }
-        }
-      });
-    }
-    
-    if (!isForecastOnly && Number.isFinite(targetYear) && bankTransactions && bankTransactions.length > 0) {
-      bankTransactions.forEach(tx => {
-        if (tx.pending) return;
-        const amount = Math.abs(Number(tx.amount) || 0);
-        if (!(amount > 0)) return;
+    const pointMap = new Map(points.map((point) => [point.key, point]));
 
-        const txDate = getDateFromPlaidTransaction(tx);
-        if (txDate.getFullYear() !== targetYear) return;
+    historicalFlowEntries.forEach((entry) => {
+      const key = `${entry.date.getFullYear()}-${entry.date.getMonth()}`;
+      const point = pointMap.get(key);
+      if (!point || point.isProjected) return;
+      if (entry.direction === 'inflow') point.inflow += entry.amount;
+      if (entry.direction === 'outflow') point.outflow += entry.amount;
+    });
 
-        const monthIndex = txDate.getMonth();
-        if (monthIndex < 0 || monthIndex >= 12) return;
-
-        if (tx.direction === 'inflow') {
-          monthlyData[monthIndex].inflow += amount;
-          actualIncomeToDate += amount;
-        } else {
-          monthlyData[monthIndex].outflow += amount;
-        }
-      });
-    }
-
-    // Only project recurring streams into future months. Historical months stay grounded in posted activity.
-    if (recurringStreams) {
-      const recurringInflowPerMonth =
-        recurringStreams.inflowStreams?.reduce((sum, s) => sum + (s.amount ?? 0), 0) ?? 0;
-      const recurringOutflowPerMonth =
-        recurringStreams.outflowStreams?.reduce((sum, s) => sum + Math.abs(s.amount ?? 0), 0) ?? 0;
-
-      const projectionStartMonth = isForecastOnly
-        ? 0
-        : targetYear === currentYear
-          ? currentMonthIndex + 1
-          : 12;
-
-      for (let i = projectionStartMonth; i < 12; i++) {
-        monthlyData[i].inflow += recurringInflowPerMonth;
-        monthlyData[i].outflow += recurringOutflowPerMonth;
+    points.forEach((point) => {
+      if (!point.isProjected) {
+        point.net = point.inflow - point.outflow;
+        return;
       }
-    }
-    
-    return { monthlyData, actualIncomeToDate };
-  }, [bankTransactions, transactions, recurringStreams]);
+
+      point.inflow = projectedMonthlyBaseline.inflow;
+      point.outflow = projectedMonthlyBaseline.outflow;
+      point.net = point.inflow - point.outflow;
+    });
+
+    const actualIncomeToDate = points
+      .filter((point) => !point.isProjected)
+      .reduce((sum, point) => sum + point.inflow, 0);
+
+    return {
+      monthlyFlowData: points,
+      actualIncomeToDate,
+    };
+  }, [historicalFlowEntries, projectedMonthlyBaseline]);
   
-  const { monthlyData: incomeData, actualIncomeToDate } = useMemo(
+  const { monthlyFlowData, actualIncomeToDate } = useMemo(
     () => getIncomeData(selectedYear),
     [getIncomeData, selectedYear]
   );
   const estIncome = useMemo(
-    () => incomeData.reduce((acc: number, curr: { month: string; inflow: number; outflow: number }) => acc + curr.inflow, 0),
-    [incomeData]
+    () => monthlyFlowData.reduce((acc, point) => acc + point.inflow, 0),
+    [monthlyFlowData]
+  );
+  const incomeData = useMemo(
+    () => monthlyFlowData.map((point) => ({ month: point.label, inflow: point.inflow, outflow: point.outflow })),
+    [monthlyFlowData]
   );
   
   return (
@@ -358,9 +565,12 @@ export function IncomeView({ totalValue: _totalValue, transactions, bankTransact
         </div>
       </div>
       
-      {/* Income Hub Link */}
-      <button className="w-full flex items-center justify-between py-4 border-t border-b border-zinc-200 dark:border-zinc-800">
-        <span className="text-black dark:text-white">Income hub</span>
+      {/* Transactions Hub Link */}
+      <button
+        onClick={() => navigate('/transactions')}
+        className="w-full flex items-center justify-between py-4 border-t border-b border-zinc-200 dark:border-zinc-800"
+      >
+        <span className="text-black dark:text-white">Transaction hub</span>
         <ChevronRight className="w-5 h-5 text-zinc-500" />
       </button>
     </div>
