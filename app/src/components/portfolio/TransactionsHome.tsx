@@ -1527,7 +1527,7 @@ export default function TransactionsHome() {
           <div className="md:col-span-8 space-y-8">
             <section className="space-y-3 pt-3">
               <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
-                <span className="text-sm font-medium">Consolidated cash flow</span>
+                <span className="text-sm font-medium">Transaction Hub</span>
                   <div className="group relative">
                     <Info className="w-4 h-4 cursor-help" />
                     <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap">
