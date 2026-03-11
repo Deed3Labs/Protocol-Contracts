@@ -1469,8 +1469,7 @@ export default function AccountHome() {
     }
 
     if (!isAuthenticated) {
-      setBannerMessage('Approve the AppKit sign-in message for this wallet before linking it.');
-      await promptWalletConnect();
+      setBannerMessage('Your original Clear session ended while switching wallets. Sign back into your existing Clear account first, then switch wallets and return here without completing a new Clear sign-in.');
       return;
     }
 
@@ -2276,7 +2275,7 @@ export default function AccountHome() {
                 ? 'Update how this wallet appears on your Clear account.'
                 : walletDialogStep === 'details'
                   ? 'Add a wallet name and optional description first. After that, connect the wallet in AppKit to finish linking it.'
-                  : 'Connect or switch to the wallet you want to link. We will use the connected address below and ask for one signature.'}
+                  : 'Connect or switch to the wallet you want to link. Stay signed into your current Clear account, then use the dedicated wallet-link signature below.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -2321,8 +2320,8 @@ export default function AccountHome() {
                 {walletDialogMode === 'link' ? (
                   <div className="rounded-2xl border border-zinc-200/70 bg-zinc-50/70 p-3 text-[12px] leading-5 text-zinc-600 dark:border-zinc-800/70 dark:bg-[#171717] dark:text-zinc-300">
                     {address
-                      ? `Connected in AppKit: ${shortAddress(address)} on ${getNetworkLabel(chainId)}.`
-                      : 'No wallet is connected in AppKit yet. Connect or switch to the wallet you want to link, then sign once to finish.'}
+                      ? `Connected in AppKit: ${shortAddress(address)} on ${getNetworkLabel(chainId)}. Do not complete a second Clear sign-in here; return and use the wallet-link signature below.`
+                      : 'No wallet is connected in AppKit yet. Connect or switch to the wallet you want to link, then return here and sign once to finish.'}
                   </div>
                 ) : null}
               </>
