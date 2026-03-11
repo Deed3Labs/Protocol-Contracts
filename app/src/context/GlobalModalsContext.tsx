@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
+import { getMemberAccountCenter, type MemberAccountCenterResponse } from '@/utils/apiClient';
 
 interface TradeModalAsset {
   symbol: string;
@@ -12,6 +13,15 @@ interface TradeModalAsset {
   type?: 'token' | 'nft' | 'rwa';
   chainId?: number;
   chainName?: string;
+}
+
+export interface ProfileMenuUser {
+  name: string;
+  email: string;
+  address: string | null;
+  membershipPlan: string | null;
+  membershipStatus: string | null;
+  levelLabel: string | null;
 }
 
 interface GlobalModalsContextType {
@@ -46,10 +56,7 @@ interface GlobalModalsContextType {
   // ProfileMenu
   profileMenuOpen: boolean;
   setProfileMenuOpen: (open: boolean) => void;
-  profileMenuUser: {
-    name: string;
-    email: string;
-  } | null;
+  profileMenuUser: ProfileMenuUser | null;
   
   // Helper functions
   openTradeModal: (type: 'buy' | 'sell' | 'swap', asset?: TradeModalAsset | null) => void;
@@ -61,10 +68,45 @@ interface GlobalModalsContextType {
 
 const GlobalModalsContext = createContext<GlobalModalsContextType | null>(null);
 
+function formatShortAddress(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function formatMembershipPlan(plan: MemberAccountCenterResponse['member']['membershipPlan']): string | null {
+  if (!plan) return null;
+  return plan === 'LIFETIME' ? 'Lifetime' : 'Yearly';
+}
+
+function formatMembershipStatus(status: MemberAccountCenterResponse['member']['membershipStatus']): string {
+  return status
+    .toLowerCase()
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+function formatMemberLevel(status: MemberAccountCenterResponse['member']['status']): string {
+  switch (status) {
+    case 'VERIFIED':
+      return 'Verified';
+    case 'VERIFICATION_PENDING':
+      return 'Review Pending';
+    case 'VERIFICATION_ELIGIBLE':
+      return 'Verification Ready';
+    case 'BASIC_ACTIVE':
+      return 'Basic';
+    case 'RESTRICTED':
+      return 'Restricted';
+    case 'ONBOARDING':
+    default:
+      return 'Onboarding';
+  }
+}
+
 export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Get wallet address and AppKit auth for user derivation
   const { address } = useAppKitAccount();
-  const { user: appKitUser } = useAppKitAuth();
+  const { user: appKitUser, isAuthenticated } = useAppKitAuth();
   
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const [sendFundsModalOpen, setSendFundsModalOpen] = useState(false);
@@ -83,22 +125,50 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
   
   // ProfileMenu state
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [memberAccount, setMemberAccount] = useState<MemberAccountCenterResponse | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isAuthenticated) {
+      setMemberAccount(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void (async () => {
+      const account = await getMemberAccountCenter();
+      if (!cancelled) {
+        setMemberAccount(account);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, address, appKitUser?.id]);
   
   // Derive user data globally from wallet address and AppKit auth
   const profileMenuUser = useMemo(() => {
-    const email = appKitUser?.email; // Get email from AppKit if user signed in with email
-    
-    if (address) {
-      // Format address for display name
-      const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
-      return {
-        name: shortAddress,
-        email: email || 'user@example.com', // Use AppKit email if available, otherwise mock data
-      };
-    }
-    // Fallback to mock data if no wallet connected
-    return { name: 'Username', email: email || 'user@example.com' };
-  }, [address, appKitUser?.email]);
+    const email =
+      memberAccount?.profile.privateProfile?.email?.trim()
+      || appKitUser?.email
+      || '';
+    const displayName =
+      memberAccount?.profile.publicProfile.displayName?.trim()
+      || memberAccount?.profile.publicProfile.username?.trim()
+      || (address ? formatShortAddress(address) : 'Username');
+
+    return {
+      name: displayName,
+      email: email || 'No email added',
+      address: address ?? memberAccount?.member.primaryWallet ?? null,
+      membershipPlan: memberAccount ? formatMembershipPlan(memberAccount.member.membershipPlan) : null,
+      membershipStatus: memberAccount ? formatMembershipStatus(memberAccount.member.membershipStatus) : null,
+      levelLabel: memberAccount ? formatMemberLevel(memberAccount.member.status) : null,
+    };
+  }, [address, appKitUser?.email, memberAccount]);
   
   const openTradeModal = (type: 'buy' | 'sell' | 'swap', asset: TradeModalAsset | null = null) => {
     setTradeModalType(type);
