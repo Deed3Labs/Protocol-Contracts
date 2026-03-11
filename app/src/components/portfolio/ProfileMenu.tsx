@@ -62,10 +62,6 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
     }
   };
 
-  const formatAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  };
-
   const getLatestMessage = (conversationId: string) => {
     const conversationMessages = messages[conversationId] || [];
     if (conversationMessages.length === 0) return null;
@@ -96,28 +92,6 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
                   {user?.email || 'No email added'}
                 </p>
-                {user?.address ? (
-                  <p className="mt-1 text-[11px] text-zinc-400 dark:text-zinc-500 truncate">
-                    {formatAddress(user.address)}
-                  </p>
-                ) : null}
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {user?.membershipPlan ? (
-                    <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-                      {user.membershipPlan}
-                    </span>
-                  ) : null}
-                  {user?.membershipStatus ? (
-                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
-                      {user.membershipStatus}
-                    </span>
-                  ) : null}
-                  {user?.levelLabel ? (
-                    <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300">
-                      {user.levelLabel}
-                    </span>
-                  ) : null}
-                </div>
               </div>
               <button
                 type="button"
@@ -127,7 +101,7 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
                 }}
                 className="text-xs bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-2 py-1 rounded hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors"
               >
-                Account
+                {user?.membershipLabel || 'Member'}
               </button>
             </div>
           </div>

@@ -62,6 +62,7 @@ import {
   updateMemberWallet,
   bootstrapMemberAccount,
 } from '@/utils/apiClient';
+import { ACCOUNT_LEVELS, computeAccountLevelMetrics } from '@/utils/accountLevel';
 import { savePendingWalletLinkHandoff } from '@/utils/walletLinkHandoff';
 
 type AccountTab = 'profile' | 'connections' | 'security' | 'support';
@@ -254,14 +255,6 @@ const BLANK_SOCIAL_DRAFT: SocialDraft = {
   handle: '',
   visibility: 'Public',
 };
-
-const LEVELS = [
-  { label: 'Scout', min: 0, max: 499 },
-  { label: 'Navigator', min: 500, max: 849 },
-  { label: 'Curator', min: 850, max: 1199 },
-  { label: 'Steward', min: 1200, max: 1599 },
-  { label: 'Prime', min: 1600, max: 9999 },
-] as const;
 
 const sectionMotion = {
   initial: { opacity: 0, y: 16 },
@@ -1029,6 +1022,37 @@ export default function AccountHome() {
   );
 
   const accountSurfaceCount = wallets.length + socialAccounts.length + bankAccounts.length;
+  const accountLevelMetrics = useMemo(
+    () =>
+      computeAccountLevelMetrics({
+        legalName: profileForm.legalName,
+        displayName: profileForm.displayName,
+        email: profileForm.email,
+        phone: profileForm.phone,
+        location: profileForm.location,
+        bio: profileForm.bio,
+        walletCount: wallets.length,
+        socialCount: socialAccounts.length,
+        bankCount: bankAccounts.length,
+        securityEnabledCount,
+        securityControlCount: securityControls.length,
+        hasSavedProfile: profileSavedAt !== 'Not saved yet',
+      }),
+    [
+      bankAccounts.length,
+      profileForm.bio,
+      profileForm.displayName,
+      profileForm.email,
+      profileForm.legalName,
+      profileForm.location,
+      profileForm.phone,
+      profileSavedAt,
+      securityControls.length,
+      securityEnabledCount,
+      socialAccounts.length,
+      wallets.length,
+    ]
+  );
 
   const missionTrack = useMemo<MissionRailItem[]>(
     () => [
@@ -1278,23 +1302,11 @@ export default function AccountHome() {
     unlockedAchievementCount * 45 +
     unlockedPerkCount * 55 +
     Number(profileSavedAt !== 'Not saved yet') * 30;
-  const accountXp =
-    profileCompletion * 9 +
-    securityEnabledCount * 50 +
-    completedTaskCount * 150 +
-    unlockedAchievementCount * 40 +
-    unlockedPerkCount * 45 +
-    linkedAccountGroupCount * 45 +
-    Number(profileSavedAt !== 'Not saved yet') * 35;
-  const levelIndex = LEVELS.findIndex((level) => accountXp >= level.min && accountXp <= level.max);
-  const currentLevel = LEVELS[levelIndex >= 0 ? levelIndex : 0];
-  const nextLevel = LEVELS[Math.min((levelIndex >= 0 ? levelIndex : 0) + 1, LEVELS.length - 1)];
-  const levelFloor = currentLevel.min;
-  const levelCeiling = currentLevel.max;
-  const levelProgress = currentLevel.label === nextLevel.label
-    ? 100
-    : clampPercent(((accountXp - levelFloor) / (levelCeiling - levelFloor + 1)) * 100);
-  const pointsToNextLevel = currentLevel.label === nextLevel.label ? 0 : Math.max(nextLevel.min - accountXp, 0);
+  const accountXp = accountLevelMetrics.accountXp;
+  const currentLevel = { label: accountLevelMetrics.levelLabel };
+  const levelIndex = Math.max(accountLevelMetrics.levelNumber - 1, 0);
+  const levelProgress = accountLevelMetrics.levelProgress;
+  const pointsToNextLevel = accountLevelMetrics.pointsToNextLevel;
 
   const accountBenefits = useMemo<AccountBenefitItem[]>(
     () => [
@@ -1602,17 +1614,17 @@ export default function AccountHome() {
       <main className="container mx-auto pt-24 pb-28 md:pt-32">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-12 md:gap-12">
           <div className="space-y-8 md:col-span-8">
-            <motion.div {...sectionMotion} transition={sectionTransition} className="pt-4">
-              <div className="mb-1 mt-4 flex flex-wrap items-center gap-2 text-zinc-500 dark:text-zinc-400">
-                <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Account Center</span>
+            <motion.div {...sectionMotion} transition={sectionTransition}>
+              <div className="mb-1 mt-4 flex flex-wrap items-center gap-2 text-zinc-500 dark:text-zinc-500">
+                <span className="text-sm font-medium">Account Center</span>
                 <div className="group relative">
                   <Info className="h-4 w-4 cursor-help" />
-                  <div className="absolute left-0 top-6 z-10 hidden max-w-[240px] rounded bg-zinc-900 px-2 py-1 text-xs text-white group-hover:block">
+                  <div className="absolute left-0 top-6 z-10 hidden rounded bg-zinc-900 px-2 py-1 text-xs whitespace-nowrap text-white dark:bg-zinc-800 group-hover:block">
                     Profile, linked accounts, recovery details, and security settings in one place.
                   </div>
                 </div>
                 <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-                <span className="text-xs">{currentLevel.label} Lv.{Math.min(levelIndex + 1, LEVELS.length)}</span>
+                <span className="text-xs">{currentLevel.label} Lv.{Math.min(levelIndex + 1, ACCOUNT_LEVELS.length)}</span>
                 <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
                 <span className="text-xs">{rewardPoints} pts</span>
                 <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
@@ -2142,7 +2154,7 @@ export default function AccountHome() {
                 queuedTasks={queuedTasks}
                 completedTaskCount={completedTaskCount}
                 levelLabel={currentLevel.label}
-                levelNumber={Math.min(levelIndex + 1, LEVELS.length)}
+                levelNumber={Math.min(levelIndex + 1, ACCOUNT_LEVELS.length)}
                 levelProgress={levelProgress}
                 accountXp={accountXp}
                 pointsToNextLevel={pointsToNextLevel}

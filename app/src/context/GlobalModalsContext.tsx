@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { getMemberAccountCenter, type MemberAccountCenterResponse } from '@/utils/apiClient';
+import { usePortfolio } from '@/context/PortfolioContext';
+import { computeAccountLevelMetrics } from '@/utils/accountLevel';
 
 interface TradeModalAsset {
   symbol: string;
@@ -18,10 +20,7 @@ interface TradeModalAsset {
 export interface ProfileMenuUser {
   name: string;
   email: string;
-  address: string | null;
-  membershipPlan: string | null;
-  membershipStatus: string | null;
-  levelLabel: string | null;
+  membershipLabel: string | null;
 }
 
 interface GlobalModalsContextType {
@@ -77,36 +76,21 @@ function formatMembershipPlan(plan: MemberAccountCenterResponse['member']['membe
   return plan === 'LIFETIME' ? 'Lifetime' : 'Yearly';
 }
 
-function formatMembershipStatus(status: MemberAccountCenterResponse['member']['membershipStatus']): string {
-  return status
-    .toLowerCase()
-    .split('_')
-    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-    .join(' ');
-}
-
-function formatMemberLevel(status: MemberAccountCenterResponse['member']['status']): string {
-  switch (status) {
-    case 'VERIFIED':
-      return 'Verified';
-    case 'VERIFICATION_PENDING':
-      return 'Review Pending';
-    case 'VERIFICATION_ELIGIBLE':
-      return 'Verification Ready';
-    case 'BASIC_ACTIVE':
-      return 'Basic';
-    case 'RESTRICTED':
-      return 'Restricted';
-    case 'ONBOARDING':
-    default:
-      return 'Onboarding';
-  }
+function buildMembershipLabel(
+  levelLabel: string,
+  levelNumber: number,
+  membershipPlan: MemberAccountCenterResponse['member']['membershipPlan']
+): string {
+  const level = `${levelLabel} Lv.${levelNumber}`;
+  const plan = formatMembershipPlan(membershipPlan);
+  return plan ? `${level} • ${plan}` : level;
 }
 
 export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Get wallet address and AppKit auth for user derivation
   const { address } = useAppKitAccount();
   const { user: appKitUser, isAuthenticated } = useAppKitAuth();
+  const { bankAccounts } = usePortfolio();
   
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const [sendFundsModalOpen, setSendFundsModalOpen] = useState(false);
@@ -160,15 +144,47 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
       || memberAccount?.profile.publicProfile.username?.trim()
       || (address ? formatShortAddress(address) : 'Username');
 
+    const levelMetrics = memberAccount
+      ? computeAccountLevelMetrics({
+          legalName: memberAccount.profile.privateProfile?.legalName || '',
+          displayName:
+            memberAccount.profile.publicProfile.displayName ||
+            memberAccount.profile.publicProfile.username ||
+            '',
+          email: memberAccount.profile.privateProfile?.email || appKitUser?.email || '',
+          phone: memberAccount.profile.privateProfile?.phone || '',
+          location:
+            memberAccount.profile.privateProfile?.cityRegion ||
+            memberAccount.member.residencyCountry ||
+            '',
+          bio: memberAccount.profile.publicProfile.bio || '',
+          walletCount: memberAccount.wallets.length,
+          socialCount: memberAccount.socialAccounts.length,
+          bankCount: bankAccounts.length,
+          securityEnabledCount: [
+            memberAccount.security.signatureLock,
+            memberAccount.security.sessionReview,
+            memberAccount.security.biometricAccess,
+            memberAccount.security.socialDiscovery,
+            memberAccount.security.transferAlerts,
+          ].filter(Boolean).length,
+          securityControlCount: 5,
+          hasSavedProfile: Boolean(memberAccount.profile.publicProfile.updatedAt),
+        })
+      : null;
+
     return {
       name: displayName,
       email: email || 'No email added',
-      address: address ?? memberAccount?.member.primaryWallet ?? null,
-      membershipPlan: memberAccount ? formatMembershipPlan(memberAccount.member.membershipPlan) : null,
-      membershipStatus: memberAccount ? formatMembershipStatus(memberAccount.member.membershipStatus) : null,
-      levelLabel: memberAccount ? formatMemberLevel(memberAccount.member.status) : null,
+      membershipLabel: levelMetrics
+        ? buildMembershipLabel(
+            levelMetrics.levelLabel,
+            levelMetrics.levelNumber,
+            memberAccount?.member.membershipPlan ?? null
+          )
+        : null,
     };
-  }, [address, appKitUser?.email, memberAccount]);
+  }, [address, appKitUser?.email, bankAccounts.length, memberAccount]);
   
   const openTradeModal = (type: 'buy' | 'sell' | 'swap', asset: TradeModalAsset | null = null) => {
     setTradeModalType(type);
