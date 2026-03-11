@@ -1,7 +1,10 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
+import { getMemberAccountCenter, type MemberAccountCenterResponse } from '@/utils/apiClient';
+import { usePortfolio } from '@/context/PortfolioContext';
+import { computeAccountLevelMetrics } from '@/utils/accountLevel';
 
 interface TradeModalAsset {
   symbol: string;
@@ -12,6 +15,12 @@ interface TradeModalAsset {
   type?: 'token' | 'nft' | 'rwa';
   chainId?: number;
   chainName?: string;
+}
+
+export interface ProfileMenuUser {
+  name: string;
+  email: string;
+  membershipLabel: string | null;
 }
 
 interface GlobalModalsContextType {
@@ -46,10 +55,7 @@ interface GlobalModalsContextType {
   // ProfileMenu
   profileMenuOpen: boolean;
   setProfileMenuOpen: (open: boolean) => void;
-  profileMenuUser: {
-    name: string;
-    email: string;
-  } | null;
+  profileMenuUser: ProfileMenuUser | null;
   
   // Helper functions
   openTradeModal: (type: 'buy' | 'sell' | 'swap', asset?: TradeModalAsset | null) => void;
@@ -61,10 +67,30 @@ interface GlobalModalsContextType {
 
 const GlobalModalsContext = createContext<GlobalModalsContextType | null>(null);
 
+function formatShortAddress(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function formatMembershipPlan(plan: MemberAccountCenterResponse['member']['membershipPlan']): string | null {
+  if (!plan) return null;
+  return plan === 'LIFETIME' ? 'Lifetime' : 'Yearly';
+}
+
+function buildMembershipLabel(
+  levelLabel: string,
+  levelNumber: number,
+  membershipPlan: MemberAccountCenterResponse['member']['membershipPlan']
+): string {
+  const level = `${levelLabel} Lv.${levelNumber}`;
+  const plan = formatMembershipPlan(membershipPlan);
+  return plan ? `${level} • ${plan}` : level;
+}
+
 export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Get wallet address and AppKit auth for user derivation
   const { address } = useAppKitAccount();
-  const { user: appKitUser } = useAppKitAuth();
+  const { user: appKitUser, isAuthenticated } = useAppKitAuth();
+  const { bankAccounts } = usePortfolio();
   
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const [sendFundsModalOpen, setSendFundsModalOpen] = useState(false);
@@ -83,22 +109,82 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
   
   // ProfileMenu state
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [memberAccount, setMemberAccount] = useState<MemberAccountCenterResponse | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isAuthenticated) {
+      setMemberAccount(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void (async () => {
+      const account = await getMemberAccountCenter();
+      if (!cancelled) {
+        setMemberAccount(account);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, address, appKitUser?.id]);
   
   // Derive user data globally from wallet address and AppKit auth
   const profileMenuUser = useMemo(() => {
-    const email = appKitUser?.email; // Get email from AppKit if user signed in with email
-    
-    if (address) {
-      // Format address for display name
-      const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
-      return {
-        name: shortAddress,
-        email: email || 'user@example.com', // Use AppKit email if available, otherwise mock data
-      };
-    }
-    // Fallback to mock data if no wallet connected
-    return { name: 'Username', email: email || 'user@example.com' };
-  }, [address, appKitUser?.email]);
+    const email =
+      memberAccount?.profile.privateProfile?.email?.trim()
+      || appKitUser?.email
+      || '';
+    const displayName =
+      memberAccount?.profile.publicProfile.displayName?.trim()
+      || memberAccount?.profile.publicProfile.username?.trim()
+      || (address ? formatShortAddress(address) : 'Username');
+
+    const levelMetrics = memberAccount
+      ? computeAccountLevelMetrics({
+          legalName: memberAccount.profile.privateProfile?.legalName || '',
+          displayName:
+            memberAccount.profile.publicProfile.displayName ||
+            memberAccount.profile.publicProfile.username ||
+            '',
+          email: memberAccount.profile.privateProfile?.email || appKitUser?.email || '',
+          phone: memberAccount.profile.privateProfile?.phone || '',
+          location:
+            memberAccount.profile.privateProfile?.cityRegion ||
+            memberAccount.member.residencyCountry ||
+            '',
+          bio: memberAccount.profile.publicProfile.bio || '',
+          walletCount: memberAccount.wallets.length,
+          socialCount: memberAccount.socialAccounts.length,
+          bankCount: bankAccounts.length,
+          securityEnabledCount: [
+            memberAccount.security.signatureLock,
+            memberAccount.security.sessionReview,
+            memberAccount.security.biometricAccess,
+            memberAccount.security.socialDiscovery,
+            memberAccount.security.transferAlerts,
+          ].filter(Boolean).length,
+          securityControlCount: 5,
+          hasSavedProfile: Boolean(memberAccount.profile.publicProfile.updatedAt),
+        })
+      : null;
+
+    return {
+      name: displayName,
+      email: email || 'No email added',
+      membershipLabel: levelMetrics
+        ? buildMembershipLabel(
+            levelMetrics.levelLabel,
+            levelMetrics.levelNumber,
+            memberAccount?.member.membershipPlan ?? null
+          )
+        : null,
+    };
+  }, [address, appKitUser?.email, bankAccounts.length, memberAccount]);
   
   const openTradeModal = (type: 'buy' | 'sell' | 'swap', asset: TradeModalAsset | null = null) => {
     setTradeModalType(type);

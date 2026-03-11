@@ -3,7 +3,8 @@ import { TrendingUp, TrendingDown, Info, ChevronRight, Settings, Share2 } from '
 import InteractiveChart from './InteractiveChart';
 import IncomeChart from './IncomeChart';
 import { isStablecoin } from '@/utils/tokenUtils';
-import type { RecurringStream } from '@/utils/apiClient';
+import type { RecurringStream, PlaidRecentTransaction } from '@/utils/apiClient';
+import type { WalletTransaction } from '@/types/transactions';
 
 interface ChartPoint {
   time: number;
@@ -21,17 +22,6 @@ interface Holding {
   current_price: number;
   valueUSD?: number;
   type: 'equity' | 'nft' | 'rwa' | 'token' | 'crypto';
-}
-
-interface WalletTransaction {
-  id: string;
-  type: 'buy' | 'sell' | 'deposit' | 'withdraw' | 'mint' | 'trade' | 'transfer' | 'contract';
-  assetSymbol: string;
-  amount: number;
-  currency: string;
-  date: string;
-  status: 'completed' | 'pending' | 'failed';
-  timestamp?: number;
 }
 
 interface ReturnViewProps {
@@ -137,11 +127,97 @@ export function ReturnView({ chartData, selectedRange, onRangeChange, dailyChang
 interface IncomeViewProps {
   totalValue: number;
   transactions?: WalletTransaction[];
+  bankTransactions?: PlaidRecentTransaction[];
   /** Plaid recurring inflow/outflow streams – merged into monthly income chart (same data as Upcoming Transactions) */
   recurringStreams?: { inflowStreams: RecurringStream[]; outflowStreams: RecurringStream[] };
 }
 
-export function IncomeView({ totalValue: _totalValue, transactions, recurringStreams }: IncomeViewProps) {
+const normalizeTimestampMs = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value <= 0) return null;
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+    }
+
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+
+  return null;
+};
+
+const getDateFromWalletTransaction = (tx: WalletTransaction) => {
+  const fromTimestamp = normalizeTimestampMs(tx.timestamp);
+  if (fromTimestamp != null) return new Date(fromTimestamp);
+
+  const fromDate = normalizeTimestampMs(tx.date);
+  if (fromDate != null) return new Date(fromDate);
+
+  return new Date(0);
+};
+
+const getDateFromPlaidTransaction = (tx: PlaidRecentTransaction) => {
+  const fromDate = normalizeTimestampMs(tx.date);
+  if (fromDate != null) return new Date(fromDate);
+
+  const fromAuthorizedDate = normalizeTimestampMs(tx.authorized_date);
+  if (fromAuthorizedDate != null) return new Date(fromAuthorizedDate);
+
+  return new Date(0);
+};
+
+const USD_DENOMINATED_SYMBOLS = new Set([
+  'USD',
+  'USDC',
+  'USDT',
+  'DAI',
+  'USDS',
+  'FDUSD',
+  'TUSD',
+  'PYUSD',
+  'GUSD',
+  'BUSD',
+  'LUSD',
+  'CLRUSD',
+]);
+
+const getWalletAmountUsd = (tx: WalletTransaction) => {
+  const amountUsd = Number(tx.amountUsd);
+  if (Number.isFinite(amountUsd) && amountUsd > 0) {
+    return Math.abs(amountUsd);
+  }
+
+  const amountRaw = Math.abs(Number(tx.amount) || 0);
+  const symbol = (tx.assetSymbol || tx.currency || '').toUpperCase();
+  if (USD_DENOMINATED_SYMBOLS.has(symbol) || String(tx.currency || '').toUpperCase() === 'USD') {
+    return amountRaw;
+  }
+
+  return amountRaw;
+};
+
+const getWalletFlowDirection = (type: WalletTransaction['type']) => {
+  switch (type) {
+    case 'deposit':
+    case 'sell':
+    case 'mint':
+      return 'inflow' as const;
+    case 'withdraw':
+    case 'buy':
+    case 'trade':
+    case 'transfer':
+    case 'contract':
+    default:
+      return 'outflow' as const;
+  }
+};
+
+export function IncomeView({ totalValue: _totalValue, transactions, bankTransactions, recurringStreams }: IncomeViewProps) {
   const years = ['Next 12M', '2026', '2025', '2024', '2023', '2022'];
   const [selectedYear, setSelectedYear] = useState('2026');
   
@@ -159,47 +235,89 @@ export function IncomeView({ totalValue: _totalValue, transactions, recurringStr
   
   const getIncomeData = useCallback((year: string) => {
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const currentYear = new Date().getFullYear();
-    const targetYear = year === 'Next 12M' ? currentYear + 1 : parseInt(year);
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthIndex = now.getMonth();
+    const isForecastOnly = year === 'Next 12M';
+    const parsedTargetYear = Number.parseInt(year, 10);
+    const targetYear = isForecastOnly ? currentYear : parsedTargetYear;
     
     const monthlyData = months.map(month => ({ month, inflow: 0, outflow: 0 }));
+    let actualIncomeToDate = 0;
     
-    // On-chain: deposit/mint = inflow, withdraw/sell = outflow
-    if (transactions && transactions.length > 0) {
+    if (!isForecastOnly && Number.isFinite(targetYear) && transactions && transactions.length > 0) {
       transactions.forEach(tx => {
-        if (!tx.timestamp) return;
-        const txDate = new Date(tx.timestamp);
+        if (tx.status !== 'completed') return;
+        const amount = getWalletAmountUsd(tx);
+        if (!(amount > 0)) return;
+
+        const txDate = getDateFromWalletTransaction(tx);
         const txYear = txDate.getFullYear();
-        if (txYear !== targetYear && !(year === 'Next 12M' && txYear >= currentYear)) return;
+        if (txYear !== targetYear) return;
+
         const monthIndex = txDate.getMonth();
         if (monthIndex >= 0 && monthIndex < 12) {
-          if (tx.type === 'deposit' || tx.type === 'mint') {
-            monthlyData[monthIndex].inflow += tx.amount;
-          } else if (tx.type === 'withdraw' || tx.type === 'sell') {
-            monthlyData[monthIndex].outflow += tx.amount;
+          if (getWalletFlowDirection(tx.type) === 'inflow') {
+            monthlyData[monthIndex].inflow += amount;
+            actualIncomeToDate += amount;
+          } else {
+            monthlyData[monthIndex].outflow += amount;
           }
         }
       });
     }
     
-    // Plaid recurring: add monthly totals to each month (streams are per-month; day = day of month)
+    if (!isForecastOnly && Number.isFinite(targetYear) && bankTransactions && bankTransactions.length > 0) {
+      bankTransactions.forEach(tx => {
+        if (tx.pending) return;
+        const amount = Math.abs(Number(tx.amount) || 0);
+        if (!(amount > 0)) return;
+
+        const txDate = getDateFromPlaidTransaction(tx);
+        if (txDate.getFullYear() !== targetYear) return;
+
+        const monthIndex = txDate.getMonth();
+        if (monthIndex < 0 || monthIndex >= 12) return;
+
+        if (tx.direction === 'inflow') {
+          monthlyData[monthIndex].inflow += amount;
+          actualIncomeToDate += amount;
+        } else {
+          monthlyData[monthIndex].outflow += amount;
+        }
+      });
+    }
+
+    // Only project recurring streams into future months. Historical months stay grounded in posted activity.
     if (recurringStreams) {
       const recurringInflowPerMonth =
         recurringStreams.inflowStreams?.reduce((sum, s) => sum + (s.amount ?? 0), 0) ?? 0;
       const recurringOutflowPerMonth =
         recurringStreams.outflowStreams?.reduce((sum, s) => sum + Math.abs(s.amount ?? 0), 0) ?? 0;
-      for (let i = 0; i < 12; i++) {
+
+      const projectionStartMonth = isForecastOnly
+        ? 0
+        : targetYear === currentYear
+          ? currentMonthIndex + 1
+          : 12;
+
+      for (let i = projectionStartMonth; i < 12; i++) {
         monthlyData[i].inflow += recurringInflowPerMonth;
         monthlyData[i].outflow += recurringOutflowPerMonth;
       }
     }
     
-    return monthlyData;
-  }, [transactions, recurringStreams]);
+    return { monthlyData, actualIncomeToDate };
+  }, [bankTransactions, transactions, recurringStreams]);
   
-  const incomeData = useMemo(() => getIncomeData(selectedYear), [getIncomeData, selectedYear]);
-  const totalIncome = useMemo(() => incomeData.reduce((acc: number, curr: { month: string; inflow: number; outflow: number }) => acc + curr.inflow, 0), [incomeData]);
-  const estIncome = useMemo(() => totalIncome * 1.1, [totalIncome]); // Projection estimate
+  const { monthlyData: incomeData, actualIncomeToDate } = useMemo(
+    () => getIncomeData(selectedYear),
+    [getIncomeData, selectedYear]
+  );
+  const estIncome = useMemo(
+    () => incomeData.reduce((acc: number, curr: { month: string; inflow: number; outflow: number }) => acc + curr.inflow, 0),
+    [incomeData]
+  );
   
   return (
     <div>
@@ -210,7 +328,7 @@ export function IncomeView({ totalValue: _totalValue, transactions, recurringStr
           <Info className="w-4 h-4 text-zinc-600" />
         </div>
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-[#30D158] font-medium">${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="text-[#30D158] font-medium">${actualIncomeToDate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           <span className="text-zinc-500">received income to date</span>
           <Info className="w-4 h-4 text-zinc-600" />
         </div>

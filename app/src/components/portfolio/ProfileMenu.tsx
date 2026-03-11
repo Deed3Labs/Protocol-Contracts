@@ -16,11 +16,12 @@ import { useXMTP } from '@/context/XMTPContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { formatDistanceToNow } from 'date-fns';
+import type { ProfileMenuUser } from '@/context/GlobalModalsContext';
 
 interface ProfileMenuProps {
   isOpen: boolean;
   onClose: () => void;
-  user: any;
+  user: ProfileMenuUser;
   onOpenXMTP: (conversationId?: string) => void;
 }
 
@@ -61,14 +62,16 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
     }
   };
 
-  const formatAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  };
-
   const getLatestMessage = (conversationId: string) => {
     const conversationMessages = messages[conversationId] || [];
     if (conversationMessages.length === 0) return null;
     return conversationMessages[conversationMessages.length - 1];
+  };
+
+  const formatAddress = (address: string) => {
+    if (!address) return '';
+    if (address.length <= 12) return address;
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
   return (
@@ -93,11 +96,18 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
                   {user?.name || 'User'}
                 </h3>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
-                  {user?.email || 'user@example.com'}
+                  {user?.email || 'No email added'}
                 </p>
               </div>
-              <button className="text-xs bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-2 py-1 rounded hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors">
-                Pro
+              <button
+                type="button"
+                onClick={() => {
+                  navigate('/account?tab=profile');
+                  onClose();
+                }}
+                className="text-xs bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-2 py-1 rounded hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+              >
+                {user?.membershipLabel || 'Member'}
               </button>
             </div>
           </div>

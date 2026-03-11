@@ -38,6 +38,7 @@ import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { ShareTarget } from "@/pages/ShareTarget";
 import ClaimFunds from "@/pages/ClaimFunds";
 import UserOnboarding from "@/pages/UserOnboarding";
+import WalletLinkPage from "@/pages/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
 
 const LegacyLayout = () => {
@@ -141,6 +142,7 @@ function App() {
                     {/* Login Page - Public */}
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/onboarding" element={<UserOnboarding />} />
+                    <Route path="/wallet-link" element={<WalletLinkPage />} />
                     
                     {/* Share Target - Public */}
                     <Route path="/share" element={<ShareTarget />} />

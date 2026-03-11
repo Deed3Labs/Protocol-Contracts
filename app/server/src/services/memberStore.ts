@@ -130,6 +130,7 @@ export interface MemberWalletRecord {
   id: number;
   walletAddress: string;
   label: string | null;
+  description: string | null;
   kind: MemberWalletKind;
   status: MemberWalletStatus;
   isPrimary: boolean;
@@ -152,8 +153,17 @@ export interface MemberWalletLinkChallenge {
   id: number;
   walletAddress: string;
   label: string | null;
+  description: string | null;
   kind: MemberWalletKind;
   message: string;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+export interface MemberWalletLinkHandoff {
+  token: string;
+  label: string | null;
+  description: string | null;
   expiresAt: Date;
   createdAt: Date;
 }
@@ -239,6 +249,7 @@ export interface UpdateSecuritySettingsInput {
 
 export interface UpsertMemberWalletInput {
   label?: string | null;
+  description?: string | null;
   walletAddress: string;
   kind?: MemberWalletKind | null;
   status?: MemberWalletStatus | null;
@@ -246,6 +257,7 @@ export interface UpsertMemberWalletInput {
 
 export interface UpdateMemberWalletInput {
   label?: string | null;
+  description?: string | null;
   walletAddress?: string | null;
   kind?: MemberWalletKind | null;
   status?: MemberWalletStatus | null;
@@ -278,7 +290,13 @@ export interface UpdateMemberMembershipStateInput {
 export interface CreateMemberWalletLinkChallengeInput {
   walletAddress: string;
   label?: string | null;
+  description?: string | null;
   kind?: MemberWalletKind | null;
+}
+
+export interface CreateMemberWalletLinkHandoffInput {
+  label?: string | null;
+  description?: string | null;
 }
 
 export interface AcceptTermsInput {
@@ -298,9 +316,11 @@ const TABLE_SECURITY = 'member_security_settings';
 const TABLE_VERIFICATIONS = 'member_verifications';
 const TABLE_WALLETS = 'member_wallets';
 const TABLE_WALLET_LINK_CHALLENGES = 'member_wallet_link_challenges';
+const TABLE_WALLET_LINK_HANDOFFS = 'member_wallet_link_handoffs';
 const TABLE_SOCIALS = 'member_social_accounts';
 const DEFAULT_MAX_ATTEMPTS = 3;
 const WALLET_LINK_CHALLENGE_TTL_MS = 10 * 60 * 1000;
+const WALLET_LINK_HANDOFF_TTL_MS = 30 * 60 * 1000;
 
 type MemberDbRow = {
   id: string | number;
@@ -404,6 +424,7 @@ type MemberWalletDbRow = {
   member_id: string | number;
   wallet_address: string;
   label: string | null;
+  description: string | null;
   kind: MemberWalletKind;
   status: MemberWalletStatus;
   is_primary: boolean;
@@ -429,9 +450,21 @@ type MemberWalletLinkChallengeDbRow = {
   member_id: string | number;
   wallet_address: string;
   label: string | null;
+  description: string | null;
   kind: MemberWalletKind;
   nonce: string;
   message: string;
+  expires_at: Date | string;
+  consumed_at: Date | string | null;
+  created_at: Date | string;
+};
+
+type MemberWalletLinkHandoffDbRow = {
+  id: string | number;
+  member_id: string | number;
+  token_hash: string;
+  label: string | null;
+  description: string | null;
   expires_at: Date | string;
   consumed_at: Date | string | null;
   created_at: Date | string;
@@ -565,6 +598,26 @@ function buildWalletLinkMessage(input: {
     `Expires At: ${input.expiresAt.toISOString()}`,
     '',
     'Only sign this message if you started linking this wallet from your Clear account settings.',
+  ].join('\n');
+}
+
+function buildWalletLinkHandoffMessage(input: {
+  memberId: number;
+  walletAddress: string;
+  handoffId: number;
+  tokenHash: string;
+  expiresAt: Date;
+}): string {
+  return [
+    'Clear wallet link handoff',
+    '',
+    `Member ID: ${input.memberId}`,
+    `Wallet: ${input.walletAddress}`,
+    `Handoff ID: ${input.handoffId}`,
+    `Token Fingerprint: ${input.tokenHash.slice(0, 16)}`,
+    `Expires At: ${input.expiresAt.toISOString()}`,
+    '',
+    'Only sign this message if you started a wallet-link handoff from your Clear account settings.',
   ].join('\n');
 }
 
@@ -790,6 +843,7 @@ function mapWallet(row: MemberWalletDbRow): MemberWalletRecord {
     id: parseNumericId(row.id) ?? 0,
     walletAddress: row.wallet_address,
     label: row.label,
+    description: row.description,
     kind: row.kind,
     status: row.status,
     isPrimary: row.is_primary,
@@ -816,8 +870,19 @@ function mapWalletLinkChallenge(row: MemberWalletLinkChallengeDbRow): MemberWall
     id: parseNumericId(row.id) ?? 0,
     walletAddress: row.wallet_address,
     label: row.label,
+    description: row.description,
     kind: row.kind,
     message: row.message,
+    expiresAt: parseDate(row.expires_at) ?? new Date(0),
+    createdAt: parseDate(row.created_at) ?? new Date(0),
+  };
+}
+
+function mapWalletLinkHandoff(row: MemberWalletLinkHandoffDbRow, token: string): MemberWalletLinkHandoff {
+  return {
+    token,
+    label: row.label,
+    description: row.description,
     expiresAt: parseDate(row.expires_at) ?? new Date(0),
     createdAt: parseDate(row.created_at) ?? new Date(0),
   };
@@ -1356,6 +1421,7 @@ export class MemberStore {
     const member = await this.mustMember(authSubject.trim());
     const walletAddress = normalizeWalletAddress(input.walletAddress);
     const label = normalizeOptionalString(input.label ?? null, 120) ?? null;
+    const description = normalizeOptionalString(input.description ?? null, 280) ?? null;
     const kind = normalizeWalletKind(input.kind);
     const status = normalizeWalletStatus(input.status);
     const pool = this.mustPool();
@@ -1371,20 +1437,22 @@ export class MemberStore {
           member_id,
           wallet_address,
           label,
+          description,
           kind,
           status,
           is_primary,
           auth_alias_enabled,
           verified_at
-        ) VALUES ($1,$2,$3,$4,$5,FALSE,FALSE,NULL)
+        ) VALUES ($1,$2,$3,$4,$5,$6,FALSE,FALSE,NULL)
         ON CONFLICT (wallet_address)
         DO UPDATE SET
           label = EXCLUDED.label,
+          description = EXCLUDED.description,
           kind = EXCLUDED.kind,
           status = EXCLUDED.status,
           updated_at = NOW()
         `,
-        [member.id, walletAddress, label, kind, status]
+        [member.id, walletAddress, label, description, kind, status]
       );
     });
 
@@ -1413,6 +1481,9 @@ export class MemberStore {
     const nextLabel = patch.label === undefined
       ? current.label
       : normalizeOptionalString(patch.label, 120) ?? null;
+    const nextDescription = patch.description === undefined
+      ? current.description
+      : normalizeOptionalString(patch.description, 280) ?? null;
     const nextKind = patch.kind === undefined ? current.kind : normalizeWalletKind(patch.kind);
     const nextStatus = patch.status === undefined ? current.status : normalizeWalletStatus(patch.status);
     const walletAddressChanged = nextWalletAddress !== current.walletAddress;
@@ -1438,15 +1509,25 @@ export class MemberStore {
         SET
           wallet_address = $3,
           label = $4,
-          kind = $5,
-          status = $6,
-          auth_alias_enabled = CASE WHEN $7 THEN FALSE ELSE auth_alias_enabled END,
-          verified_at = CASE WHEN $7 THEN NULL ELSE verified_at END,
+          description = $5,
+          kind = $6,
+          status = $7,
+          auth_alias_enabled = CASE WHEN $8 THEN FALSE ELSE auth_alias_enabled END,
+          verified_at = CASE WHEN $8 THEN NULL ELSE verified_at END,
           updated_at = NOW()
         WHERE id = $1
           AND member_id = $2
         `,
-        [walletId, member.id, nextWalletAddress, nextLabel, nextKind, nextStatus, walletAddressChanged]
+        [
+          walletId,
+          member.id,
+          nextWalletAddress,
+          nextLabel,
+          nextDescription,
+          nextKind,
+          nextStatus,
+          walletAddressChanged,
+        ]
       );
     });
 
@@ -1474,6 +1555,156 @@ export class MemberStore {
     });
 
     return this.loadWallets(member.id);
+  }
+
+  async createWalletLinkHandoffByAuthSubject(
+    authSubject: string,
+    input: CreateMemberWalletLinkHandoffInput
+  ): Promise<MemberWalletLinkHandoff> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const label = normalizeOptionalString(input.label ?? null, 120) ?? null;
+    const description = normalizeOptionalString(input.description ?? null, 280) ?? null;
+    if (!label) {
+      throw new Error('Wallet label is required');
+    }
+
+    const issuedAt = new Date();
+    const expiresAt = new Date(issuedAt.getTime() + WALLET_LINK_HANDOFF_TTL_MS);
+    const token = crypto.randomBytes(24).toString('hex');
+    const tokenHash = sha256Hex(token);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletLinkHandoffDbRow>(
+        `
+        INSERT INTO ${TABLE_WALLET_LINK_HANDOFFS} (
+          member_id,
+          token_hash,
+          label,
+          description,
+          expires_at
+        ) VALUES ($1,$2,$3,$4,$5)
+        RETURNING *
+        `,
+        [member.id, tokenHash, label, description, expiresAt]
+      );
+    });
+
+    return mapWalletLinkHandoff(result.rows[0], token);
+  }
+
+  async prepareWalletLinkHandoff(
+    token: string,
+    walletAddress: string
+  ): Promise<{ message: string; handoff: Omit<MemberWalletLinkHandoff, 'token'> }> {
+    await this.ensureReady();
+    const normalizedToken = normalizeOptionalString(token, 255);
+    if (!normalizedToken) {
+      throw new Error('Wallet link handoff token is required');
+    }
+
+    const handoff = await this.loadWalletLinkHandoffByToken(normalizedToken);
+    if (!handoff) {
+      throw new Error('Wallet link handoff not found');
+    }
+    if (handoff.consumed_at) {
+      throw new Error('Wallet link handoff has already been used');
+    }
+
+    const expiresAt = parseDate(handoff.expires_at);
+    if (!expiresAt || expiresAt.getTime() <= Date.now()) {
+      throw new Error('Wallet link handoff has expired');
+    }
+
+    const message = buildWalletLinkHandoffMessage({
+      memberId: parseNumericId(handoff.member_id) ?? 0,
+      walletAddress: normalizeWalletAddress(walletAddress),
+      handoffId: parseNumericId(handoff.id) ?? 0,
+      tokenHash: handoff.token_hash,
+      expiresAt,
+    });
+
+    return {
+      message,
+      handoff: {
+        label: handoff.label,
+        description: handoff.description,
+        expiresAt,
+        createdAt: parseDate(handoff.created_at) ?? new Date(0),
+      },
+    };
+  }
+
+  async completeWalletLinkHandoff(
+    token: string,
+    walletAddress: string,
+    signature: string,
+    kind?: MemberWalletKind | null
+  ): Promise<MemberWalletRecord[]> {
+    await this.ensureReady();
+    const normalizedToken = normalizeOptionalString(token, 255);
+    if (!normalizedToken) {
+      throw new Error('Wallet link handoff token is required');
+    }
+
+    const normalizedWallet = normalizeWalletAddress(walletAddress);
+    const handoff = await this.loadWalletLinkHandoffByToken(normalizedToken);
+    if (!handoff) {
+      throw new Error('Wallet link handoff not found');
+    }
+    if (handoff.consumed_at) {
+      throw new Error('Wallet link handoff has already been used');
+    }
+
+    const expiresAt = parseDate(handoff.expires_at);
+    if (!expiresAt || expiresAt.getTime() <= Date.now()) {
+      throw new Error('Wallet link handoff has expired');
+    }
+
+    const memberId = parseNumericId(handoff.member_id);
+    const handoffId = parseNumericId(handoff.id);
+    if (!memberId || !handoffId) {
+      throw new Error('Wallet link handoff is invalid');
+    }
+
+    const message = buildWalletLinkHandoffMessage({
+      memberId,
+      walletAddress: normalizedWallet,
+      handoffId,
+      tokenHash: handoff.token_hash,
+      expiresAt,
+    });
+    const recoveredWallet = normalizeWalletAddress(verifyMessage(message, signature));
+    if (recoveredWallet !== normalizedWallet) {
+      throw new Error('Invalid wallet link signature');
+    }
+
+    await this.absorbMergeablePlaceholderWalletMember(memberId, normalizedWallet);
+    await this.linkAuthenticatedWallet(memberId, normalizedWallet, {
+      label: handoff.label,
+      description: handoff.description,
+      kind: kind ?? 'SMART',
+    });
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(
+        `
+        UPDATE ${TABLE_WALLET_LINK_HANDOFFS}
+        SET consumed_at = NOW()
+        WHERE id = $1
+          AND member_id = $2
+        `,
+        [handoffId, memberId]
+      );
+    });
+
+    const member = await this.loadMemberById(memberId);
+    if (member) {
+      await this.backfillPlaidOwnership(member);
+    }
+
+    return this.loadWallets(memberId);
   }
 
   async createWalletLinkChallengeByAuthSubject(
@@ -1515,6 +1746,7 @@ export class MemberStore {
     });
 
     const label = normalizeOptionalString(input.label ?? null, 120) ?? null;
+    const description = normalizeOptionalString(input.description ?? null, 280) ?? null;
     const kind = normalizeWalletKind(input.kind ?? existingWallet?.kind ?? 'SMART');
     const pool = this.mustPool();
     const result = await withRetry(async () => {
@@ -1535,14 +1767,15 @@ export class MemberStore {
           member_id,
           wallet_address,
           label,
+          description,
           kind,
           nonce,
           message,
           expires_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         RETURNING *
         `,
-        [member.id, walletAddress, label, kind, nonce, message, expiresAt]
+        [member.id, walletAddress, label, description, kind, nonce, message, expiresAt]
       );
     });
 
@@ -1577,6 +1810,7 @@ export class MemberStore {
 
     await this.linkAuthenticatedWallet(member.id, challenge.wallet_address, {
       label: challenge.label,
+      description: challenge.description,
       kind: challenge.kind,
     });
 
@@ -2288,6 +2522,22 @@ export class MemberStore {
     return result.rows[0] ?? null;
   }
 
+  private async loadWalletLinkHandoffByToken(token: string): Promise<MemberWalletLinkHandoffDbRow | null> {
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberWalletLinkHandoffDbRow>(
+        `
+        SELECT *
+        FROM ${TABLE_WALLET_LINK_HANDOFFS}
+        WHERE token_hash = $1
+        LIMIT 1
+        `,
+        [sha256Hex(token)]
+      );
+    });
+    return result.rows[0] ?? null;
+  }
+
   private async loadWallets(memberId: number): Promise<MemberWalletRecord[]> {
     const pool = this.mustPool();
     const result = await withRetry(async () => {
@@ -2301,6 +2551,100 @@ export class MemberStore {
       );
     });
     return result.rows.map(mapWallet).filter((wallet) => wallet.status !== 'REMOVED');
+  }
+
+  private async isMergeablePlaceholderMember(memberId: number, walletAddress: string): Promise<boolean> {
+    const member = await this.loadMemberById(memberId);
+    if (!member) return false;
+    if (member.status !== 'ONBOARDING' || member.verificationStatus !== 'NOT_STARTED') {
+      return false;
+    }
+    if (member.primaryWallet !== walletAddress) {
+      return false;
+    }
+
+    const [wallets, onboardingRow, profile, terms, socials, verificationRow] = await Promise.all([
+      this.loadWallets(memberId),
+      this.loadOnboardingRow(memberId),
+      this.loadProfileView(memberId, false),
+      this.loadTermsSummary(memberId),
+      this.loadSocialAccounts(memberId),
+      this.loadVerificationRow(memberId),
+    ]);
+    const onboarding = mapOnboarding(onboardingRow);
+
+    if (
+      wallets.length !== 1
+      || wallets[0]?.walletAddress !== walletAddress
+      || !wallets[0]?.isPrimary
+    ) {
+      return false;
+    }
+
+    const publicProfile = profile.publicProfile;
+    const hasMeaningfulPublicProfile = Boolean(
+      publicProfile.username
+      || publicProfile.displayName
+      || publicProfile.bio
+      || publicProfile.timezone
+      || publicProfile.locale
+      || publicProfile.avatarUrl
+    );
+
+    return (
+      onboarding.draftStatus === 'in_progress'
+      && !profile.privateProfile
+      && !hasMeaningfulPublicProfile
+      && terms.length === 0
+      && socials.length === 0
+      && !verificationRow
+    );
+  }
+
+  private async absorbMergeablePlaceholderWalletMember(
+    targetMemberId: number,
+    walletAddress: string
+  ): Promise<void> {
+    const existingWallet = await this.loadWalletRowByAddress(walletAddress);
+    const existingMemberId = parseNumericId(existingWallet?.member_id);
+    if (!existingWallet || !existingMemberId || existingMemberId === targetMemberId) {
+      return;
+    }
+
+    const mergeable = await this.isMergeablePlaceholderMember(existingMemberId, walletAddress);
+    if (!mergeable) {
+      throw new Error('Wallet is already linked to another account');
+    }
+
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query('BEGIN');
+      try {
+        await pool.query(
+          `
+          UPDATE ${TABLE_WALLETS}
+          SET
+            member_id = $1,
+            label = COALESCE(NULLIF(label, 'Primary wallet'), 'Linked wallet'),
+            kind = CASE WHEN kind = 'PRIMARY' THEN 'SMART' ELSE kind END,
+            is_primary = FALSE,
+            auth_alias_enabled = TRUE,
+            updated_at = NOW()
+          WHERE member_id = $2
+            AND wallet_address = $3
+          `,
+          [targetMemberId, existingMemberId, walletAddress]
+        );
+        await pool.query(
+          `DELETE FROM ${TABLE_MEMBERS} WHERE id = $1`,
+          [existingMemberId]
+        );
+        await pool.query('COMMIT');
+      } catch (error) {
+        await pool.query('ROLLBACK');
+        throw error;
+      }
+    });
   }
 
   private async loadSocialAccountById(memberId: number, socialId: number): Promise<MemberSocialAccountRecord | null> {
@@ -2389,16 +2733,18 @@ export class MemberStore {
           member_id,
           wallet_address,
           label,
+          description,
           kind,
           status,
           is_primary,
           auth_alias_enabled,
           verified_at
-        ) VALUES ($1,$2,$3,'PRIMARY','ACTIVE',TRUE,TRUE,NOW())
+        ) VALUES ($1,$2,$3,NULL,'PRIMARY','ACTIVE',TRUE,TRUE,NOW())
         ON CONFLICT (wallet_address)
         DO UPDATE SET
           member_id = EXCLUDED.member_id,
           label = EXCLUDED.label,
+          description = COALESCE(${TABLE_WALLETS}.description, EXCLUDED.description),
           kind = 'PRIMARY',
           status = 'ACTIVE',
           is_primary = TRUE,
@@ -2414,7 +2760,7 @@ export class MemberStore {
   private async linkAuthenticatedWallet(
     memberId: number,
     walletAddress: string,
-    metadata?: { label?: string | null; kind?: MemberWalletKind | null }
+    metadata?: { label?: string | null; description?: string | null; kind?: MemberWalletKind | null }
   ): Promise<void> {
     const normalizedWallet = normalizeWalletAddress(walletAddress);
     const existingWallet = await this.loadWalletRowByAddress(normalizedWallet);
@@ -2426,6 +2772,10 @@ export class MemberStore {
       existingWallet?.label ??
       normalizeOptionalString(metadata?.label ?? null, 120) ??
       'Authenticated wallet';
+    const description =
+      existingWallet?.description ??
+      normalizeOptionalString(metadata?.description ?? null, 280) ??
+      null;
     const existingKind = existingWallet?.kind;
     const kind = existingKind && existingKind !== 'PRIMARY'
       ? existingKind
@@ -2438,16 +2788,18 @@ export class MemberStore {
           member_id,
           wallet_address,
           label,
+          description,
           kind,
           status,
           is_primary,
           auth_alias_enabled,
           verified_at
-        ) VALUES ($1,$2,$3,$4,'ACTIVE',FALSE,TRUE,NOW())
+        ) VALUES ($1,$2,$3,$4,$5,'ACTIVE',FALSE,TRUE,NOW())
         ON CONFLICT (wallet_address)
         DO UPDATE SET
           member_id = EXCLUDED.member_id,
           label = COALESCE(${TABLE_WALLETS}.label, EXCLUDED.label),
+          description = COALESCE(${TABLE_WALLETS}.description, EXCLUDED.description),
           kind = CASE
             WHEN ${TABLE_WALLETS}.is_primary = TRUE THEN 'PRIMARY'
             WHEN ${TABLE_WALLETS}.kind = 'HARDWARE' THEN 'HARDWARE'
@@ -2460,7 +2812,7 @@ export class MemberStore {
           verified_at = COALESCE(${TABLE_WALLETS}.verified_at, NOW()),
           updated_at = NOW()
         `,
-        [memberId, normalizedWallet, label, kind]
+        [memberId, normalizedWallet, label, description, kind]
       );
     });
   }
@@ -2660,6 +3012,7 @@ export class MemberStore {
           member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
           wallet_address TEXT NOT NULL UNIQUE,
           label TEXT,
+          description TEXT,
           kind TEXT NOT NULL DEFAULT 'PRIMARY',
           status TEXT NOT NULL DEFAULT 'ACTIVE',
           is_primary BOOLEAN NOT NULL DEFAULT FALSE,
@@ -2687,6 +3040,11 @@ export class MemberStore {
       `);
 
       await pool.query(`
+        ALTER TABLE ${TABLE_WALLETS}
+        ADD COLUMN IF NOT EXISTS description TEXT
+      `);
+
+      await pool.query(`
         UPDATE ${TABLE_WALLETS}
         SET auth_alias_enabled = TRUE
         WHERE is_primary = TRUE
@@ -2699,6 +3057,7 @@ export class MemberStore {
           member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
           wallet_address TEXT NOT NULL,
           label TEXT,
+          description TEXT,
           kind TEXT NOT NULL DEFAULT 'SMART',
           nonce TEXT NOT NULL,
           message TEXT NOT NULL,
@@ -2716,6 +3075,34 @@ export class MemberStore {
       await pool.query(`
         CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLET_LINK_CHALLENGES}_expires_at
         ON ${TABLE_WALLET_LINK_CHALLENGES} (expires_at)
+      `);
+
+      await pool.query(`
+        ALTER TABLE ${TABLE_WALLET_LINK_CHALLENGES}
+        ADD COLUMN IF NOT EXISTS description TEXT
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_WALLET_LINK_HANDOFFS} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          token_hash TEXT NOT NULL UNIQUE,
+          label TEXT,
+          description TEXT,
+          expires_at TIMESTAMPTZ NOT NULL,
+          consumed_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLET_LINK_HANDOFFS}_member_id
+        ON ${TABLE_WALLET_LINK_HANDOFFS} (member_id)
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_${TABLE_WALLET_LINK_HANDOFFS}_expires_at
+        ON ${TABLE_WALLET_LINK_HANDOFFS} (expires_at)
       `);
 
       await pool.query(`

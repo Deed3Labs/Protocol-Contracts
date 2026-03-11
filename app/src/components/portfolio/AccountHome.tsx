@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useAppKitAccount } from '@reown/appkit/react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowDownLeft,
@@ -46,9 +46,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import {
   createMemberMembershipCheckout,
-  createMemberWalletLinkChallenge,
+  createMemberWalletLinkHandoff,
   createMemberSocialAccount,
-  createMemberWallet,
   deleteMemberSocialAccount,
   deleteMemberWallet,
   getMemberAccountCenter,
@@ -61,14 +60,16 @@ import {
   updateMemberSecurity,
   updateMemberSocialAccount,
   updateMemberWallet,
-  verifyMemberWalletLink,
   bootstrapMemberAccount,
 } from '@/utils/apiClient';
+import { ACCOUNT_LEVELS, computeAccountLevelMetrics } from '@/utils/accountLevel';
+import { savePendingWalletLinkHandoff } from '@/utils/walletLinkHandoff';
 
 type AccountTab = 'profile' | 'connections' | 'security' | 'support';
 type WalletKind = 'Primary' | 'Hardware' | 'Smart' | 'Embedded';
 type SocialVisibility = 'Public' | 'Private';
 type Tone = 'emerald' | 'sky' | 'amber' | 'zinc';
+type WalletDialogMode = 'link' | 'edit';
 
 interface ProfileFormState {
   legalName: string;
@@ -86,6 +87,7 @@ interface WalletRecord {
   id: string;
   label: string;
   address: string;
+  description: string;
   network: string;
   kind: WalletKind;
   verified: boolean;
@@ -95,10 +97,8 @@ interface WalletRecord {
 
 interface WalletDraft {
   label: string;
-  address: string;
-  network: string;
+  description: string;
   kind: WalletKind;
-  note: string;
 }
 
 interface SocialRecord {
@@ -246,10 +246,8 @@ const DEFAULT_SECURITY_CONTROLS: SecurityControl[] = [
 
 const BLANK_WALLET_DRAFT: WalletDraft = {
   label: '',
-  address: '',
-  network: '',
+  description: '',
   kind: 'Hardware',
-  note: '',
 };
 
 const BLANK_SOCIAL_DRAFT: SocialDraft = {
@@ -257,14 +255,6 @@ const BLANK_SOCIAL_DRAFT: SocialDraft = {
   handle: '',
   visibility: 'Public',
 };
-
-const LEVELS = [
-  { label: 'Scout', min: 0, max: 499 },
-  { label: 'Navigator', min: 500, max: 849 },
-  { label: 'Curator', min: 850, max: 1199 },
-  { label: 'Steward', min: 1200, max: 1599 },
-  { label: 'Prime', min: 1600, max: 9999 },
-] as const;
 
 const sectionMotion = {
   initial: { opacity: 0, y: 16 },
@@ -356,6 +346,7 @@ const walletRecordFromApi = (wallet: MemberWalletResponse): WalletRecord => ({
   id: `wallet-${wallet.id}`,
   label: wallet.label || (wallet.isPrimary ? 'Primary wallet' : 'Associated wallet'),
   address: wallet.walletAddress,
+  description: wallet.description || '',
   network: wallet.isPrimary ? 'Primary signer' : 'Linked wallet',
   kind: wallet.kind === 'EMBEDDED'
     ? 'Embedded'
@@ -365,11 +356,13 @@ const walletRecordFromApi = (wallet: MemberWalletResponse): WalletRecord => ({
         ? 'Smart'
         : 'Primary',
   verified: Boolean(wallet.verifiedAt) || wallet.isPrimary,
-  note: wallet.isPrimary
-    ? 'Active signer for your ClearPath account.'
-    : wallet.verifiedAt
-      ? 'Authenticated and linked as a sign-in wallet for this Clear account.'
-      : 'Saved on your Clear account. Connect and authenticate with this wallet to activate it as a sign-in alias.',
+  note: wallet.description || (
+    wallet.isPrimary
+      ? 'Active signer for your ClearPath account.'
+      : wallet.verifiedAt
+        ? 'Authenticated and linked as a sign-in wallet for this Clear account.'
+        : 'Saved on your Clear account. Connect and authenticate with this wallet to activate it as a sign-in alias.'
+  ),
   lastActive: wallet.isPrimary ? 'Active now' : wallet.verifiedAt ? 'Authenticated' : 'Pending verification',
 });
 
@@ -801,8 +794,9 @@ function AccountBenefitsRailCard({
 }
 
 export default function AccountHome() {
+  const navigate = useNavigate();
   const { address } = useAppKitAccount();
-  const { user, chainId, isAuthenticated, openModal, signMessage } = useAppKitAuth();
+  const { user, chainId, isAuthenticated } = useAppKitAuth();
   const { totalBalanceUSD, cashBalance, holdings, bankAccounts, bankAccountsLoading, refreshBankBalance } = usePortfolio();
   const { profileMenuUser, setActionModalOpen } = useGlobalModals();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -815,6 +809,7 @@ export default function AccountHome() {
   const tabsAnchorRef = useRef<HTMLDivElement | null>(null);
   const [profileSavedAt, setProfileSavedAt] = useState<string>('Not saved yet');
   const [walletDialogOpen, setWalletDialogOpen] = useState(false);
+  const [walletDialogMode, setWalletDialogMode] = useState<WalletDialogMode>('link');
   const [editingWalletId, setEditingWalletId] = useState<string | null>(null);
   const [walletDraft, setWalletDraft] = useState<WalletDraft>(BLANK_WALLET_DRAFT);
   const [socialDialogOpen, setSocialDialogOpen] = useState(false);
@@ -948,6 +943,7 @@ export default function AccountHome() {
         id: 'wallet-primary',
         label: 'Primary wallet',
         address,
+        description: '',
         network: getNetworkLabel(chainId),
         kind: 'Primary',
         verified: true,
@@ -1026,6 +1022,37 @@ export default function AccountHome() {
   );
 
   const accountSurfaceCount = wallets.length + socialAccounts.length + bankAccounts.length;
+  const accountLevelMetrics = useMemo(
+    () =>
+      computeAccountLevelMetrics({
+        legalName: profileForm.legalName,
+        displayName: profileForm.displayName,
+        email: profileForm.email,
+        phone: profileForm.phone,
+        location: profileForm.location,
+        bio: profileForm.bio,
+        walletCount: wallets.length,
+        socialCount: socialAccounts.length,
+        bankCount: bankAccounts.length,
+        securityEnabledCount,
+        securityControlCount: securityControls.length,
+        hasSavedProfile: profileSavedAt !== 'Not saved yet',
+      }),
+    [
+      bankAccounts.length,
+      profileForm.bio,
+      profileForm.displayName,
+      profileForm.email,
+      profileForm.legalName,
+      profileForm.location,
+      profileForm.phone,
+      profileSavedAt,
+      securityControls.length,
+      securityEnabledCount,
+      socialAccounts.length,
+      wallets.length,
+    ]
+  );
 
   const missionTrack = useMemo<MissionRailItem[]>(
     () => [
@@ -1275,23 +1302,11 @@ export default function AccountHome() {
     unlockedAchievementCount * 45 +
     unlockedPerkCount * 55 +
     Number(profileSavedAt !== 'Not saved yet') * 30;
-  const accountXp =
-    profileCompletion * 9 +
-    securityEnabledCount * 50 +
-    completedTaskCount * 150 +
-    unlockedAchievementCount * 40 +
-    unlockedPerkCount * 45 +
-    linkedAccountGroupCount * 45 +
-    Number(profileSavedAt !== 'Not saved yet') * 35;
-  const levelIndex = LEVELS.findIndex((level) => accountXp >= level.min && accountXp <= level.max);
-  const currentLevel = LEVELS[levelIndex >= 0 ? levelIndex : 0];
-  const nextLevel = LEVELS[Math.min((levelIndex >= 0 ? levelIndex : 0) + 1, LEVELS.length - 1)];
-  const levelFloor = currentLevel.min;
-  const levelCeiling = currentLevel.max;
-  const levelProgress = currentLevel.label === nextLevel.label
-    ? 100
-    : clampPercent(((accountXp - levelFloor) / (levelCeiling - levelFloor + 1)) * 100);
-  const pointsToNextLevel = currentLevel.label === nextLevel.label ? 0 : Math.max(nextLevel.min - accountXp, 0);
+  const accountXp = accountLevelMetrics.accountXp;
+  const currentLevel = { label: accountLevelMetrics.levelLabel };
+  const levelIndex = Math.max(accountLevelMetrics.levelNumber - 1, 0);
+  const levelProgress = accountLevelMetrics.levelProgress;
+  const pointsToNextLevel = accountLevelMetrics.pointsToNextLevel;
 
   const accountBenefits = useMemo<AccountBenefitItem[]>(
     () => [
@@ -1369,150 +1384,85 @@ export default function AccountHome() {
     }
   };
 
-  const openWalletDialog = (wallet?: WalletRecord) => {
-    setEditingWalletId(wallet?.id ?? null);
+  const resetWalletDialog = () => {
+    setWalletDialogOpen(false);
+    setWalletDialogMode('link');
+    setEditingWalletId(null);
+    setWalletDraft(BLANK_WALLET_DRAFT);
+  };
+
+  const openWalletLinkDialog = (wallet?: WalletRecord) => {
+    setWalletDialogMode('link');
+    setEditingWalletId(null);
     setWalletDraft(
       wallet
         ? {
             label: wallet.label,
-            address: wallet.address,
-            network: wallet.network,
+            description: wallet.description,
             kind: wallet.kind,
-            note: wallet.note,
           }
-        : {
-            ...BLANK_WALLET_DRAFT,
-            network: getNetworkLabel(chainId),
-          }
+        : BLANK_WALLET_DRAFT
     );
     setWalletDialogOpen(true);
   };
 
+  const openWalletEditDialog = (wallet: WalletRecord) => {
+    setWalletDialogMode('edit');
+    setEditingWalletId(wallet.id);
+    setWalletDraft({
+      label: wallet.label,
+      description: wallet.description,
+      kind: wallet.kind,
+    });
+    setWalletDialogOpen(true);
+  };
+
   const saveWallet = async () => {
-    if (!walletDraft.label.trim() || !walletDraft.address.trim() || !walletDraft.network.trim()) {
-      setBannerMessage('Wallet label, address, and network are required.');
+    if (!editingWalletId) return;
+    if (!walletDraft.label.trim()) {
+      setBannerMessage('Wallet name is required.');
       return;
     }
 
-    const persistedWallets = editingWalletId
-      ? await updateMemberWallet(parseLocalEntityId(editingWalletId, 'wallet-') ?? 0, {
-          label: walletDraft.label.trim(),
-          walletAddress: walletDraft.address.trim(),
-          kind: walletKindToApi(walletDraft.kind),
-        })
-      : await createMemberWallet({
-          label: walletDraft.label.trim(),
-          walletAddress: walletDraft.address.trim(),
-          kind: walletKindToApi(walletDraft.kind),
-        });
+    const persistedWallets = await updateMemberWallet(parseLocalEntityId(editingWalletId, 'wallet-') ?? 0, {
+      label: walletDraft.label.trim(),
+      description: walletDraft.description.trim() || null,
+      kind: walletKindToApi(walletDraft.kind),
+    });
 
     if (!persistedWallets) {
-      setBannerMessage(editingWalletId ? 'Wallet update failed.' : 'Wallet save failed.');
+      setBannerMessage('Wallet update failed.');
       return;
     }
 
     setWallets(persistedWallets.map(walletRecordFromApi));
-
-    setWalletDialogOpen(false);
-    setWalletDraft(BLANK_WALLET_DRAFT);
-    setEditingWalletId(null);
-    setBannerMessage(
-      editingWalletId
-        ? 'Wallet updated.'
-        : 'Wallet saved. Connect and authenticate with it to activate it as a sign-in alias.'
-    );
+    resetWalletDialog();
+    setBannerMessage('Wallet updated.');
   };
 
-  const promptWalletConnect = async () => {
-    await openModal('Connect');
-  };
-
-  const linkConnectedWallet = async () => {
-    if (!address) {
-      await promptWalletConnect();
+  const startWalletLinkHandoff = async () => {
+    if (!walletDraft.label.trim()) {
+      setBannerMessage('Wallet name is required before you continue.');
       return;
     }
 
-    const normalizedAddress = address.toLowerCase();
-    const existingLinkedWallet = wallets.find(
-      (wallet) => wallet.address.toLowerCase() === normalizedAddress
-    );
-    if (existingLinkedWallet?.verified) {
-      setBannerMessage(
-        existingLinkedWallet.id === 'wallet-primary'
-          ? 'This wallet is already the primary signer for your Clear account.'
-          : 'This wallet is already linked as a sign-in alias.'
-      );
+    const handoff = await createMemberWalletLinkHandoff({
+      label: walletDraft.label.trim(),
+      description: walletDraft.description.trim() || null,
+    });
+    if (!handoff) {
+      setBannerMessage('We could not start wallet linking.');
       return;
     }
-
-    if (!isAuthenticated) {
-      setBannerMessage('Connect and sign in before linking this wallet.');
-      await promptWalletConnect();
-      return;
-    }
-
-    setAccountLoading(true);
-
-    try {
-      const challenge = await createMemberWalletLinkChallenge({
-        walletAddress: address,
-      });
-      if (!challenge) {
-        setBannerMessage('We could not start wallet linking for the connected wallet.');
-        return;
-      }
-
-      const signature = await signMessage(challenge.message);
-      const linkedWallets = await verifyMemberWalletLink({
-        challengeId: challenge.id,
-        signature,
-      });
-      if (!linkedWallets) {
-        setBannerMessage('We could not verify the connected wallet signature.');
-        return;
-      }
-
-      setWallets(linkedWallets.map(walletRecordFromApi));
-
-      const [account, membership] = await Promise.all([
-        getMemberAccountCenter(),
-        getMemberMembershipSummary(),
-      ]);
-
-      if (account) {
-        setMemberAccount(account);
-        setProfileForm(profileFormFromAccount(account, user?.email));
-        setProfileSavedAt(formatSavedAtLabel(account.profile.publicProfile.updatedAt));
-        setSecurityControls(securityControlsFromAccount(account));
-        setWallets(account.wallets.map(walletRecordFromApi));
-        setSocialAccounts(account.socialAccounts.map(socialRecordFromApi));
-      }
-
-      if (membership) {
-        setMembershipSummary(membership.billing);
-      }
-
-      await refreshBankBalance(true);
-
-      const linkedWallet = linkedWallets.find(
-        (wallet) => wallet.walletAddress.toLowerCase() === address.toLowerCase()
-      );
-      setBannerMessage(
-        linkedWallet?.verifiedAt
-          ? 'Connected wallet signed and linked to your Clear account.'
-          : 'Connected wallet saved on your Clear account.'
-      );
-    } catch (error) {
-      console.error('Failed to link connected wallet:', error);
-      setBannerMessage(
-        error instanceof Error && error.message
-          ? error.message
-          : 'Wallet linking was cancelled or failed.'
-      );
-    } finally {
-      setAccountLoading(false);
-    }
+    savePendingWalletLinkHandoff({
+      token: handoff.token,
+      label: handoff.label || walletDraft.label.trim(),
+      description: handoff.description || walletDraft.description.trim(),
+      createdAt: handoff.createdAt,
+      expiresAt: handoff.expiresAt,
+    });
+    resetWalletDialog();
+    navigate('/wallet-link');
   };
 
   const removeWallet = async (walletId: string) => {
@@ -1664,17 +1614,17 @@ export default function AccountHome() {
       <main className="container mx-auto pt-24 pb-28 md:pt-32">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-12 md:gap-12">
           <div className="space-y-8 md:col-span-8">
-            <motion.div {...sectionMotion} transition={sectionTransition} className="pt-4">
-              <div className="mb-1 mt-4 flex flex-wrap items-center gap-2 text-zinc-500 dark:text-zinc-400">
-                <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Account Center</span>
+            <motion.div {...sectionMotion} transition={sectionTransition}>
+              <div className="mb-1 mt-4 flex flex-wrap items-center gap-2 text-zinc-500 dark:text-zinc-500">
+                <span className="text-sm font-medium">Account Center</span>
                 <div className="group relative">
                   <Info className="h-4 w-4 cursor-help" />
-                  <div className="absolute left-0 top-6 z-10 hidden max-w-[240px] rounded bg-zinc-900 px-2 py-1 text-xs text-white group-hover:block">
+                  <div className="absolute left-0 top-6 z-10 hidden rounded bg-zinc-900 px-2 py-1 text-xs whitespace-nowrap text-white dark:bg-zinc-800 group-hover:block">
                     Profile, linked accounts, recovery details, and security settings in one place.
                   </div>
                 </div>
                 <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-                <span className="text-xs">{currentLevel.label} Lv.{Math.min(levelIndex + 1, LEVELS.length)}</span>
+                <span className="text-xs">{currentLevel.label} Lv.{Math.min(levelIndex + 1, ACCOUNT_LEVELS.length)}</span>
                 <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
                 <span className="text-xs">{rewardPoints} pts</span>
                 <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
@@ -1908,20 +1858,12 @@ export default function AccountHome() {
                     withTopBorder={false}
                     eyebrow="Wallets"
                     title="Associated wallets"
-                    description="Manage wallets saved on this Clear account. To turn a wallet into a sign-in alias, connect it in AppKit and approve a dedicated wallet-link signature here."
+                    description="Manage wallets saved on this Clear account. Start by naming the wallet, then connect it in AppKit and approve one wallet-link signature to finish linking."
                     action={(
                       <div className="flex flex-wrap items-center gap-2">
-                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => void promptWalletConnect()}>
-                          <Wallet className="h-4 w-4" />
-                          Connect wallet
-                        </Button>
-                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => void linkConnectedWallet()}>
+                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletLinkDialog()}>
                           <Link2 className="h-4 w-4" />
-                          Sign and link wallet
-                        </Button>
-                        <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletDialog()}>
-                          <Plus className="h-4 w-4" />
-                          Add wallet
+                          Link wallet
                         </Button>
                       </div>
                     )}
@@ -1953,7 +1895,10 @@ export default function AccountHome() {
                           </div>
                           <div className="flex flex-wrap gap-2 md:justify-end">
                             <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => handleCopyAddress(wallet.address)}><Copy className="h-4 w-4" />Copy</Button>
-                            <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => openWalletDialog(wallet)}><Edit3 className="h-4 w-4" />Edit</Button>
+                            {!wallet.verified && wallet.id !== 'wallet-primary' ? (
+                              <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => openWalletLinkDialog(wallet)}><Link2 className="h-4 w-4" />Finish linking</Button>
+                            ) : null}
+                            <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => openWalletEditDialog(wallet)}><Edit3 className="h-4 w-4" />Edit</Button>
                             {wallet.id !== 'wallet-primary' ? (
                               <Button variant="outline" size="sm" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => removeWallet(wallet.id)}><Trash2 className="h-4 w-4" />Remove</Button>
                             ) : null}
@@ -2209,7 +2154,7 @@ export default function AccountHome() {
                 queuedTasks={queuedTasks}
                 completedTaskCount={completedTaskCount}
                 levelLabel={currentLevel.label}
-                levelNumber={Math.min(levelIndex + 1, LEVELS.length)}
+                levelNumber={Math.min(levelIndex + 1, ACCOUNT_LEVELS.length)}
                 levelProgress={levelProgress}
                 accountXp={accountXp}
                 pointsToNextLevel={pointsToNextLevel}
@@ -2239,51 +2184,78 @@ export default function AccountHome() {
         </div>
       </main>
 
-      <Dialog open={walletDialogOpen} onOpenChange={setWalletDialogOpen}>
+      <Dialog
+        open={walletDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetWalletDialog();
+            return;
+          }
+          setWalletDialogOpen(true);
+        }}
+      >
         <DialogContent className="border-zinc-200 dark:border-zinc-800 dark:bg-[#111111]">
           <DialogHeader>
-            <DialogTitle>{editingWalletId ? 'Edit associated wallet' : 'Add associated wallet'}</DialogTitle>
+            <DialogTitle>
+              {walletDialogMode === 'edit'
+                ? 'Edit linked wallet'
+                : 'Start linking a wallet'}
+            </DialogTitle>
             <DialogDescription>
-              Add a wallet name, network, and note so you can recognize it later.
+              {walletDialogMode === 'edit'
+                ? 'Update how this wallet appears on your Clear account.'
+                : 'Add a wallet name and optional description. The app will then open a dedicated wallet-link handoff page where you can connect the new wallet and finish linking it safely.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="walletLabel">Label</Label>
+              <Label htmlFor="walletLabel">Wallet name</Label>
               <Input id="walletLabel" value={walletDraft.label} onChange={(event) => setWalletDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Treasury Safe" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="walletAddress">Wallet address</Label>
-              <Input id="walletAddress" value={walletDraft.address} onChange={(event) => setWalletDraft((current) => ({ ...current, address: event.target.value }))} placeholder="0x..." />
+              <Label htmlFor="walletDescription">Description</Label>
+              <Textarea id="walletDescription" className="min-h-[96px]" value={walletDraft.description} onChange={(event) => setWalletDraft((current) => ({ ...current, description: event.target.value }))} placeholder="Optional note about what this wallet is for." />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="walletNetwork">Network</Label>
-              <Input id="walletNetwork" value={walletDraft.network} onChange={(event) => setWalletDraft((current) => ({ ...current, network: event.target.value }))} placeholder="Base" />
-            </div>
-            <div className="space-y-2">
-              <Label>Wallet type</Label>
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                {(['Primary', 'Hardware', 'Smart', 'Embedded'] as WalletKind[]).map((kind) => (
-                  <Button
-                    key={kind}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className={walletDraft.kind === kind ? ACCOUNT_TAB_BUTTON_PRIMARY_CLASS : ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
-                    onClick={() => setWalletDraft((current) => ({ ...current, kind }))}
-                  >
-                    {kind}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="walletNote">Note</Label>
-              <Textarea id="walletNote" className="min-h-[96px]" value={walletDraft.note} onChange={(event) => setWalletDraft((current) => ({ ...current, note: event.target.value }))} placeholder="What is this wallet used for?" />
-            </div>
+            {walletDialogMode === 'edit' ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="walletAddress">Wallet address</Label>
+                  <Input
+                    id="walletAddress"
+                    value={wallets.find((wallet) => wallet.id === editingWalletId)?.address ?? ''}
+                    readOnly
+                    placeholder="Wallet address"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Wallet type</Label>
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                    {(['Primary', 'Hardware', 'Smart', 'Embedded'] as WalletKind[]).map((kind) => (
+                      <Button
+                        key={kind}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className={walletDraft.kind === kind ? ACCOUNT_TAB_BUTTON_PRIMARY_CLASS : ACCOUNT_TAB_BUTTON_SECONDARY_CLASS}
+                        onClick={() => setWalletDraft((current) => ({ ...current, kind }))}
+                      >
+                        {kind}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : null}
             <div className="flex justify-end gap-2">
-              <Button variant="outline" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={() => setWalletDialogOpen(false)}>Cancel</Button>
-              <Button variant="outline" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={saveWallet}>Save wallet</Button>
+              <Button variant="outline" className={ACCOUNT_TAB_BUTTON_SECONDARY_CLASS} onClick={resetWalletDialog}>Cancel</Button>
+              {walletDialogMode === 'edit' ? (
+                <Button variant="outline" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={saveWallet}>Save wallet</Button>
+              ) : (
+                <Button variant="outline" className={ACCOUNT_TAB_BUTTON_PRIMARY_CLASS} onClick={() => void startWalletLinkHandoff()}>
+                  <Link2 className="h-4 w-4" />
+                  Continue to wallet handoff
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>
