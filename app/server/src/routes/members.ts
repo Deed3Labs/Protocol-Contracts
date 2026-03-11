@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Router, type Request, type Response } from 'express';
 import {
   type CreateMemberWalletLinkChallengeInput,
+  type CreateMemberWalletLinkHandoffInput,
   memberStore,
   type AcceptTermsInput,
   type MemberMembershipPlan,
@@ -195,6 +196,7 @@ function handleMemberRouteError(res: Response, error: unknown): void {
       || error.message.includes('Primary wallet')
       || error.message.includes('already linked')
       || error.message.includes('Wallet link challenge')
+      || error.message.includes('Wallet link handoff')
       || error.message.includes('Invalid wallet link signature')
     ) {
       res.status(409).json({
@@ -694,6 +696,41 @@ router.delete('/me/wallets/:id', async (req: Request, res: Response) => {
     const authSubject = await resolveMemberAuthSubject(req);
     const wallets = await memberStore.removeWalletByAuthSubject(authSubject, walletId);
     res.json({ wallets });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.post('/me/wallet-link-handoffs', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  if (!isObjectBody(req.body)) {
+    return res.status(400).json({
+      error: 'Invalid body',
+      message: 'Request body must be an object',
+    });
+  }
+
+  const body = req.body;
+  const label = parseOptionalString(body.label, 'label', 120, res, { allowNull: true });
+  if (label === INVALID) return;
+  if (!label) {
+    return res.status(400).json({
+      error: 'Invalid label',
+      message: 'label is required',
+    });
+  }
+  const description = parseOptionalString(body.description, 'description', 280, res, { allowNull: true });
+  if (description === INVALID) return;
+
+  const input: CreateMemberWalletLinkHandoffInput = {
+    label,
+    description,
+  };
+
+  try {
+    const authSubject = await resolveMemberAuthSubject(req);
+    const handoff = await memberStore.createWalletLinkHandoffByAuthSubject(authSubject, input);
+    res.json({ handoff });
   } catch (error) {
     handleMemberRouteError(res, error);
   }

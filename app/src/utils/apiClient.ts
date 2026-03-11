@@ -1376,6 +1376,14 @@ export interface MemberWalletLinkChallengeResponse {
   createdAt: string;
 }
 
+export interface MemberWalletLinkHandoffResponse {
+  token: string;
+  label: string | null;
+  description: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export interface MemberSocialAccountResponse {
   id: number;
   platform: string;
@@ -1617,6 +1625,21 @@ export async function createMemberWallet(payload: {
   return response.data.wallets;
 }
 
+export async function createMemberWalletLinkHandoff(payload: {
+  label: string;
+  description?: string | null;
+}): Promise<MemberWalletLinkHandoffResponse | null> {
+  const response = await apiRequest<{ handoff: MemberWalletLinkHandoffResponse }>(
+    '/api/members/me/wallet-link-handoffs',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (response.error || !response.data) return null;
+  return response.data.handoff;
+}
+
 export async function updateMemberWallet(
   walletId: number,
   payload: Partial<{
@@ -1658,6 +1681,41 @@ export async function createMemberWalletLinkChallenge(payload: {
   );
   if (response.error || !response.data) return null;
   return response.data.challenge;
+}
+
+export async function prepareMemberWalletLinkHandoff(payload: {
+  token: string;
+  walletAddress: string;
+}): Promise<{
+  message: string;
+  handoff: Omit<MemberWalletLinkHandoffResponse, 'token'>;
+} | null> {
+  const response = await apiRequest<{
+    message: string;
+    handoff: Omit<MemberWalletLinkHandoffResponse, 'token'>;
+  }>('/api/member-links/wallet-link-handoffs/prepare', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function completeMemberWalletLinkHandoff(payload: {
+  token: string;
+  walletAddress: string;
+  signature: string;
+  kind?: 'PRIMARY' | 'HARDWARE' | 'SMART' | 'EMBEDDED';
+}): Promise<MemberWalletResponse[] | null> {
+  const response = await apiRequest<{ wallets: MemberWalletResponse[] }>(
+    '/api/member-links/wallet-link-handoffs/complete',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  if (response.error || !response.data) return null;
+  return response.data.wallets;
 }
 
 export async function verifyMemberWalletLink(payload: {

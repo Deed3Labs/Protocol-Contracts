@@ -19,12 +19,14 @@ import { useDeedName } from '@/hooks/useDeedName';
 import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
 import { getNetworkByChainId } from '@/config/networks';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { usePlaidHistoricalTransactions } from '@/hooks/usePlaidHistoricalTransactions';
 import { useRecurringTransactions } from '@/hooks/useRecurringTransactions';
 import { usePlaidLiabilities } from '@/hooks/usePlaidLiabilities';
 import { usePlaidInvestmentAccounts } from '@/hooks/usePlaidInvestmentAccounts';
+import { usePlaidRecentTransactions } from '@/hooks/usePlaidRecentTransactions';
 import { LargePriceWheel } from './PriceWheel';
 import type { MultichainDeedNFT } from '@/hooks/useMultichainDeedNFTs';
-import type { BankAccountBalance } from '@/utils/apiClient';
+import type { BankAccountBalance, PlaidRecentTransaction } from '@/utils/apiClient';
 
 // Types
 interface Holding {
@@ -578,6 +580,7 @@ const generateChartData = (
 export default function BrokerageHome() {
   // Wallet connection
   const { address, isConnected } = useAppKitAccount();
+  const [selectedTab, setSelectedTab] = useState('Return');
   
   // Global portfolio context - provides balances, holdings, cash balance, and activity
   const {
@@ -593,10 +596,40 @@ export default function BrokerageHome() {
     refreshBankBalance,
   } = usePortfolio();
   const bankLinked = portfolioCashBalance.bankLinked ?? false;
-  const plaidWalletAddress = bankLinked ? (address ?? undefined) : undefined;
+  const hasLinkedBankConnection = Boolean(bankLinked || bankAccounts.length > 0);
+  const isIncomeTabActive = selectedTab === 'Income';
+  const plaidWalletAddress = hasLinkedBankConnection ? (address ?? undefined) : undefined;
 
   // Plaid recurring streams – shared with UpcomingTransactions (React Query dedupes by key); no extra API call
-  const { inflowStreams, outflowStreams } = useRecurringTransactions(plaidWalletAddress);
+  const { inflowStreams, outflowStreams } = useRecurringTransactions(plaidWalletAddress, {
+    enabled: hasLinkedBankConnection && isIncomeTabActive,
+  });
+  const { transactions: plaidRecentTransactions } = usePlaidRecentTransactions(plaidWalletAddress, {
+    enabled: hasLinkedBankConnection && isIncomeTabActive,
+    limit: 500,
+  });
+  const { transactions: plaidHistoricalTransactions } = usePlaidHistoricalTransactions(plaidWalletAddress, {
+    enabled: hasLinkedBankConnection && isIncomeTabActive,
+    limit: 2500,
+  });
+
+  const bankTransactions = useMemo(() => {
+    if (plaidHistoricalTransactions.length === 0) return plaidRecentTransactions;
+
+    const merged = new Map<string, PlaidRecentTransaction>();
+    for (const tx of [...plaidRecentTransactions, ...plaidHistoricalTransactions]) {
+      merged.set(`${tx.item_id}:${tx.transaction_id}`, tx);
+    }
+
+    return Array.from(merged.values()).sort((a, b) => {
+      const timeA = Date.parse(a.date || a.authorized_date || '');
+      const timeB = Date.parse(b.date || b.authorized_date || '');
+      if (!Number.isNaN(timeA) && !Number.isNaN(timeB) && timeA !== timeB) {
+        return timeB - timeA;
+      }
+      return b.amount - a.amount;
+    });
+  }, [plaidHistoricalTransactions, plaidRecentTransactions]);
 
   const hasLiabilityAccounts = useMemo(
     () => bankAccounts.some((a) => {
@@ -695,7 +728,6 @@ export default function BrokerageHome() {
   
   
   // User data is now derived globally in GlobalModalsContext
-  const [selectedTab, setSelectedTab] = useState('Return');
   const [selectedRange, setSelectedRange] = useState('1D');
   const [portfolioFilter, setPortfolioFilter] = useState<'All' | 'RWAs' | 'NFTs' | 'Tokens' | 'Investments'>('All');
   const [isPortfolioExpanded, setIsPortfolioExpanded] = useState(false);
@@ -1044,6 +1076,7 @@ export default function BrokerageHome() {
           <IncomeView
             totalValue={totalValue}
             transactions={walletTransactions}
+            bankTransactions={bankTransactions}
             recurringStreams={{ inflowStreams, outflowStreams }}
           />
         );
