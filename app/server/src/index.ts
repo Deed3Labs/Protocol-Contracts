@@ -176,7 +176,7 @@ async function startServer() {
     app.use('/api/plaid', requireAuth, requireMemberCapability('canUsePlaid'), plaidRouter);
     app.use('/api/bridge', requireAuth, requireMemberCapability('canUseBridge'), bridgeRouter);
     app.use('/api/send', sendRouter);
-    app.use('/api/savings', savingsRouter);
+    app.use('/api/savings', requireAuth, savingsRouter);
     
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');
