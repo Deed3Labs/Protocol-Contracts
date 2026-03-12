@@ -18,6 +18,7 @@ import stripeWebhooksRouter from './routes/stripeWebhooks.js';
 import plaidRouter from './routes/plaid.js';
 import bridgeRouter from './routes/bridge.js';
 import sendRouter from './routes/send.js';
+import savingsRouter from './routes/savings.js';
 import membersRouter from './routes/members.js';
 import memberWalletLinksPublicRouter from './routes/memberWalletLinksPublic.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
@@ -175,6 +176,7 @@ async function startServer() {
     app.use('/api/plaid', requireAuth, requireMemberCapability('canUsePlaid'), plaidRouter);
     app.use('/api/bridge', requireAuth, requireMemberCapability('canUseBridge'), bridgeRouter);
     app.use('/api/send', sendRouter);
+    app.use('/api/savings', savingsRouter);
     
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');
@@ -189,6 +191,7 @@ async function startServer() {
     console.log('  - /api/plaid');
     console.log('  - /api/bridge');
     console.log('  - /api/send');
+    console.log('  - /api/savings');
 
     // 404 handler (must be after all routes)
     app.use((req: express.Request, res: express.Response) => {

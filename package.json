@@ -24,6 +24,7 @@
     "deploy:burner-bond-factory": "npx hardhat run deploy/10_deploy_BurnerBondFactory.ts --network",
     "deploy:clrusd": "npx hardhat run deploy/12_deploy_ClearUSD.ts --network",
     "deploy:esa-vault": "npx hardhat run deploy/13_deploy_ESADepositVault.ts --network",
+    "deploy:savings-intents": "npx hardhat run deploy/19_deploy_SavingsIntentFactory.ts --network",
     "deploy:clrusd-register": "npx hardhat run deploy/14_register_CLRUSD_in_registry.ts --network",
     "deploy:clrusd-pool": "npx hardhat run deploy/15_deploy_CLRUSDTokenPool.ts --network",
     "clrusd:ccip:configure": "npx hardhat run scripts/clrusd/configure_ccip.ts --network",

@@ -14,6 +14,12 @@ import type {
   SendTransferSummary,
   VerifyClaimOtpResponse,
 } from '@/types/send';
+import type {
+  CreateSavingsIntentRequest,
+  CreateSavingsIntentResponse,
+  FinalizeSavingsIntentResponse,
+  RefundSavingsIntentResponse,
+} from '@/types/savings';
 import { clearSiwxAuthToken, getSiwxAuthToken, notifyAuthExpired } from './authSession';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
@@ -1231,6 +1237,54 @@ export async function claimPayoutWallet(
 
   if (response.error || !response.data) {
     return null;
+  }
+
+  return response.data;
+}
+
+export async function createSavingsIntent(
+  payload: CreateSavingsIntentRequest
+): Promise<CreateSavingsIntentResponse> {
+  const response = await apiRequest<CreateSavingsIntentResponse>('/api/savings/intents/create', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to create savings intent.');
+  }
+
+  return response.data;
+}
+
+export async function finalizeSavingsIntent(
+  intentToken: string,
+  fundingTxHash: string
+): Promise<FinalizeSavingsIntentResponse> {
+  const response = await apiRequest<FinalizeSavingsIntentResponse>('/api/savings/intents/finalize', {
+    method: 'POST',
+    body: JSON.stringify({ intentToken, fundingTxHash }),
+    timeout: 120000,
+  });
+
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to finalize savings intent.');
+  }
+
+  return response.data;
+}
+
+export async function refundSavingsIntent(
+  intentToken: string
+): Promise<RefundSavingsIntentResponse> {
+  const response = await apiRequest<RefundSavingsIntentResponse>('/api/savings/intents/refund', {
+    method: 'POST',
+    body: JSON.stringify({ intentToken }),
+    timeout: 120000,
+  });
+
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to refund savings intent.');
   }
 
   return response.data;

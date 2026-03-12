@@ -51,6 +51,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { getNetworkInfo } from '@/config/networks';
 import { getCommonTokens } from '@/config/tokens';
+import { createSavingsIntent, finalizeSavingsIntent } from '@/utils/apiClient';
 import type { LucideIcon } from 'lucide-react';
 
 interface SavingsGoal {
@@ -118,6 +119,13 @@ interface CalculatorScenario {
   homePrice: number;
   downPct: number;
   monthlySave: number;
+}
+
+interface VaultRecoveryState {
+  action: 'deposit' | 'redeem';
+  amount: string;
+  intentToken: string;
+  fundingTxHash: string;
 }
 
 type CalculatorView = 'projection' | 'allocation' | 'timeline';
@@ -191,6 +199,7 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const CLRUSD_HOME_CHAIN_ID = Number(import.meta.env.VITE_CLRUSD_HOME_CHAIN_ID || 84532);
 
 const ERC20_ABI = [
+  'function transfer(address to, uint256 amount) external returns (bool)',
   'function approve(address spender, uint256 amount) external returns (bool)',
   'function allowance(address owner, address spender) external view returns (uint256)',
   'function balanceOf(address account) external view returns (uint256)',
@@ -753,6 +762,7 @@ export default function SavingsHome() {
   const [vaultPending, setVaultPending] = useState(false);
   const [vaultError, setVaultError] = useState<string | null>(null);
   const [vaultStatus, setVaultStatus] = useState<string | null>(null);
+  const [vaultRecovery, setVaultRecovery] = useState<VaultRecoveryState | null>(null);
   const [liveHomeClrUsdBalance, setLiveHomeClrUsdBalance] = useState<number | null>(null);
 
   const today = useMemo(() => new Date(), []);
@@ -1365,7 +1375,23 @@ export default function SavingsHome() {
     }
 
     setVaultPending(true);
+    let recoveryContext: VaultRecoveryState | null = vaultRecovery;
     try {
+      if (recoveryContext) {
+        setVaultStatus('Finalizing the previous transfer with the sponsored relayer...');
+        await finalizeSavingsIntent(recoveryContext.intentToken, recoveryContext.fundingTxHash);
+        setVaultRecovery(null);
+        setVaultStatus(
+          recoveryContext.action === 'deposit'
+            ? `Deposited ${recoveryContext.amount} USDC and minted CLRUSD.`
+            : `Redeemed ${recoveryContext.amount} CLRUSD into USDC.`
+        );
+        setVaultAmount('');
+        await refreshHomeClrUsdBalance();
+        await Promise.all([refreshHoldings(true), refreshBalances()]);
+        return;
+      }
+
       const provider = new ethers.BrowserProvider(requestProvider);
       const activeNetwork = await provider.getNetwork();
       if (Number(activeNetwork.chainId) !== CLRUSD_HOME_CHAIN_ID) {
@@ -1381,14 +1407,16 @@ export default function SavingsHome() {
       const esaVault = new ethers.Contract(homeVaultAddress, ESA_VAULT_ABI, signer);
 
       if (vaultAction === 'deposit') {
-        const allowance = (await usdcToken.allowance(signerAddress, homeVaultAddress)) as bigint;
-        if (allowance < amount) {
-          const approveTx = await usdcToken.approve(homeVaultAddress, amount);
-          await approveTx.wait();
+        const userUsdcBalance = (await usdcToken.balanceOf(signerAddress)) as bigint;
+        if (userUsdcBalance < amount) {
+          setVaultError(
+            `Insufficient USDC on ${homeNetworkInfo?.name || 'home chain'} (available: ${ethers.formatUnits(
+              userUsdcBalance,
+              6
+            )}).`
+          );
+          return;
         }
-        const tx = await esaVault.deposit(homeUsdcAddress, amount, signerAddress);
-        await tx.wait();
-        setVaultStatus(`Deposited ${vaultAmount} USDC and minted CLRUSD.`);
       } else {
         const userClrUsdBalance = (await clrusdToken.balanceOf(signerAddress)) as bigint;
         if (userClrUsdBalance < amount) {
@@ -1425,16 +1453,47 @@ export default function SavingsHome() {
           setVaultError('Vault is missing CLRUSD burner permissions. Admin must grant BURNER_ROLE.');
           return;
         }
-
-        const allowance = (await clrusdToken.allowance(signerAddress, homeVaultAddress)) as bigint;
-        if (allowance < amount) {
-          const approveTx = await clrusdToken.approve(homeVaultAddress, amount);
-          await approveTx.wait();
-        }
-        const tx = await esaVault.redeem(homeUsdcAddress, amount, signerAddress);
-        await tx.wait();
-        setVaultStatus(`Redeemed ${vaultAmount} CLRUSD into USDC.`);
       }
+
+      setVaultStatus('Preparing your one-confirm savings intent...');
+      const intent = await createSavingsIntent({
+        action: vaultAction,
+        ownerWallet: signerAddress,
+        receiverWallet: signerAddress,
+        amount: vaultAmount,
+        chainId: CLRUSD_HOME_CHAIN_ID,
+      });
+
+      setVaultStatus(
+        vaultAction === 'deposit'
+          ? 'Confirm the USDC transfer in your wallet...'
+          : 'Confirm the CLRUSD transfer in your wallet...'
+      );
+      const transferToken = vaultAction === 'deposit' ? usdcToken : clrusdToken;
+      const fundingTx = await transferToken.transfer(intent.escrowAddress, amount);
+
+      setVaultStatus('Waiting for transfer confirmation...');
+      const fundingReceipt = await fundingTx.wait();
+      if (!fundingReceipt || fundingReceipt.status !== 1) {
+        throw new Error('Funding transfer failed or was reverted.');
+      }
+
+      recoveryContext = {
+        action: vaultAction,
+        amount: vaultAmount,
+        intentToken: intent.intentToken,
+        fundingTxHash: fundingTx.hash as string,
+      };
+      setVaultRecovery(recoveryContext);
+
+      setVaultStatus('Finalizing with the sponsored relayer...');
+      await finalizeSavingsIntent(intent.intentToken, fundingTx.hash as string);
+      setVaultRecovery(null);
+      setVaultStatus(
+        vaultAction === 'deposit'
+          ? `Deposited ${vaultAmount} USDC and minted CLRUSD.`
+          : `Redeemed ${vaultAmount} CLRUSD into USDC.`
+      );
 
       setVaultAmount('');
       await refreshHomeClrUsdBalance();
@@ -1444,7 +1503,10 @@ export default function SavingsHome() {
         typeof error === 'object' && error !== null
           ? (error as { shortMessage?: string; message?: string })
           : null;
-      setVaultError(err?.shortMessage || err?.message || 'Vault transaction failed.');
+      const fallbackMessage = recoveryContext
+        ? 'Funding already transferred. Retry to finish the sponsored settlement without sending funds again.'
+        : 'Vault transaction failed.';
+      setVaultError(err?.shortMessage || err?.message || fallbackMessage);
     } finally {
       setVaultPending(false);
     }
@@ -1494,7 +1556,7 @@ export default function SavingsHome() {
           <div className="md:col-span-8 space-y-10">
             <div>
               <div className="flex items-center gap-2 mt-4 mb-1 text-zinc-500 dark:text-zinc-400">
-                <span className="text-sm font-medium">ELPA Deposit Power</span>
+                <span className="text-sm font-medium">Savings Balance</span>
                 <div className="group relative">
                   <Info className="h-4 w-4 cursor-help" />
                   <div className="absolute left-0 top-6 hidden group-hover:block z-10 bg-zinc-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap max-w-[240px]">
