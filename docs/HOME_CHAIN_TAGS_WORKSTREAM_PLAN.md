@@ -16,6 +16,7 @@ Scope: RFID/NFC/microchip/tag rails for physical item identity, provenance, resa
 2. Enable manufacturer controls and resale revenue policies.
 3. Provide retail/security signals (e.g., stolen/compromised tag states).
 4. Support analytics and engagement without overloading onchain storage.
+5. Enable manufacturer-as-distributor operations across own stores and partner retailers.
 
 ## Principles
 
@@ -31,6 +32,14 @@ Scope: RFID/NFC/microchip/tag rails for physical item identity, provenance, resa
 4. A provider abstraction is mandatory so `arx_halo` and future `internal_v1` hardware share the same backend and contract interfaces.
 5. Physical integration constraints must be tested before production batches (readability depth tolerance, material compatibility, anti-tamper behavior).
 6. Pilot assumes small-volume commercial procurement first; enterprise pricing and terms are required before scale.
+
+## Manufacturer Distribution Controls (Core Intent)
+
+1. Track distributed inventory state by partner/store location (consignment, wholesale, direct retail).
+2. Give manufacturers precise visibility into where tagged inventory sits after distribution.
+3. Support contract-aware operations for partner channels (onchain policies and offchain legal terms).
+4. Enable operational automations such as low-stock triggers, replenishment suggestions, and restock workflows.
+5. Keep this module usable for hobbyists first, then scale to SMB and enterprise channel complexity.
 
 ## Status Legend
 
@@ -72,6 +81,10 @@ Scope: RFID/NFC/microchip/tag rails for physical item identity, provenance, resa
 | TAG-018 | Phase 2 | Implement geofence policy contract/module (`GeoTransferPolicy`) | Protocol Eng | Not Started | TAG-017 | Policy checks are onchain-verifiable with role-based policy management |
 | TAG-019 | Phase 2 | Build verifier attestation service for geofence proofs | Backend Eng + Security | Not Started | TAG-017 | EIP-712 attestation flow implemented with expiry, nonce, replay protection, and signer rotation |
 | TAG-020 | Phase 2 | Integrate app UX and pilot rollout (soft then hard enforcement) | App Eng + Product/PM | Not Started | TAG-018, TAG-019 | Pilot supports warning mode first, then enforce mode with documented override/dispute path |
+| TAG-021 | Phase 2 | Define manufacturer distribution state model (owner, distributor, retailer, location, stock state) | Protocol Eng + Backend Eng | Not Started | TAG-003, TAG-011 | Canonical inventory/distribution schema approved for app, API, and contract use |
+| TAG-022 | Phase 2 | Implement consignment/wholesale policy templates and contract hooks | Product/PM + Protocol Eng + Security | Not Started | TAG-021 | Template set supports pilot deal types with auditable policy references |
+| TAG-023 | Phase 2 | Build partner inventory visibility dashboard | App Eng + Backend Eng | Not Started | TAG-021 | Manufacturers can view by-partner/by-store stock and movement snapshots |
+| TAG-024 | Phase 2 | Implement low-stock and auto-replenishment workflow | Backend Eng + Product/PM | Not Started | TAG-023 | Triggered refill recommendations and workflow actions are live for pilot partners |
 
 ## Integration Points with Home Chain Plan
 
