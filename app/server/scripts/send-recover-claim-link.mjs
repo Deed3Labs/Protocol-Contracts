@@ -75,6 +75,15 @@ function generateClaimToken() {
   return crypto.randomBytes(24).toString('base64url');
 }
 
+function normalizeOptionalEnv(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+  if (normalized.toLowerCase() === 'null' || normalized.toLowerCase() === 'undefined') {
+    return '';
+  }
+  return normalized;
+}
+
 function isTerminalStatus(status) {
   return (
     status === 'CLAIMED_DEBIT' ||
@@ -98,7 +107,7 @@ async function main() {
     process.exit(1);
   }
 
-  const tokenPepper = process.env.SEND_TOKEN_PEPPER || '';
+  const tokenPepper = normalizeOptionalEnv(process.env.SEND_TOKEN_PEPPER);
   const claimToken = args.claimToken || generateClaimToken();
   const claimTokenHash = hashClaimToken(claimToken, tokenPepper);
 
