@@ -86,3 +86,8 @@ Scope: Run protocol development and OP Stack home-chain testnet development in p
 2. Gate B (end of Phase 1): Monitoring, runbooks, and failover drills are operational.
 3. Gate C (end of Phase 2): Security and launch controls satisfy go/no-go criteria.
 
+## Companion Workstreams
+
+1. Physical-item tag rails (RFID/NFC/microchip) execution plan:  
+   [HOME_CHAIN_TAGS_WORKSTREAM_PLAN.md](/Users/kyngkai909/Documents/GitHub/Protocol-Contracts/docs/HOME_CHAIN_TAGS_WORKSTREAM_PLAN.md)
+2. Start rule: begin after Gate A, then run in parallel with Phase 1 and Phase 2 tasks in this document.
