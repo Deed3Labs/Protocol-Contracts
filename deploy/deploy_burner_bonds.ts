@@ -1,4 +1,9 @@
 import { saveDeployment } from "./helpers";
+import {
+  assertChainHasOracleFactory,
+  assertChainHasTokenAddresses,
+  requireChainConfigById,
+} from "../config/chain-manifest-loader";
 
 /**
  * Comprehensive deployment script for the entire BurnerBond system
@@ -28,36 +33,17 @@ async function main() {
   console.log("Network:", network.name, "(chainId:", network.chainId, ")");
   console.log("═══════════════════════════════════════════════════════════\n");
 
-  // Network-specific configuration
-  let uniswapFactoryAddress: string;
-  let wethAddress: string;
-  let usdcAddress: string;
-  let usdtAddress: string;
-  let daiAddress: string;
-  let reserveTokenAddress: string;
-  let stableCreditAddress: string;
+  const chainConfig = requireChainConfigById(Number(network.chainId));
+  assertChainHasTokenAddresses(chainConfig, ["usdc", "usdt", "dai", "weth"]);
+  assertChainHasOracleFactory(chainConfig);
 
-  if (network.chainId === 84532n) {
-    // Base Sepolia
-    uniswapFactoryAddress = "0x33128a8fC17869897dcE68Ed026d694621f6FDfD";
-    wethAddress = "0x4200000000000000000000000000000000000006";
-    usdcAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-    usdtAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-    daiAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-    reserveTokenAddress = usdcAddress;
-    stableCreditAddress = "0x0000000000000000000000000000000000000000"; // Placeholder
-  } else if (network.chainId === 8453n) {
-    // Base Mainnet
-    uniswapFactoryAddress = "0x33128a8fC17869897dcE68Ed026d694621f6FDfD";
-    wethAddress = "0x4200000000000000000000000000000000000006";
-    usdcAddress = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-    usdtAddress = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb";
-    daiAddress = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb";
-    reserveTokenAddress = usdcAddress;
-    stableCreditAddress = "0x0000000000000000000000000000000000000000"; // Placeholder
-  } else {
-    throw new Error(`Unsupported network: ${network.name} (${network.chainId})`);
-  }
+  const uniswapFactoryAddress = chainConfig.uniswapV3Factory;
+  const wethAddress = chainConfig.tokens.weth;
+  const usdcAddress = chainConfig.tokens.usdc;
+  const usdtAddress = chainConfig.tokens.usdt;
+  const daiAddress = chainConfig.tokens.dai;
+  const reserveTokenAddress = usdcAddress;
+  const stableCreditAddress = process.env.STABLE_CREDIT_ADDRESS || "0x0000000000000000000000000000000000000000";
 
   const deployedContracts: any = {};
 
@@ -266,4 +252,3 @@ main()
     console.error(error);
     process.exit(1);
   });
-

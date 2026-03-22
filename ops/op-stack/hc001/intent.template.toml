@@ -1,0 +1,33 @@
+# HC-001 frozen OP Stack intent template (testnet).
+# Use op-deployer init first, then apply these values to .deployer/intent.toml.
+
+configType = "standard-overrides"
+l1ChainID = 11155111
+fundDevAccounts = false
+useInterop = false
+
+# Keep these aligned with your op-deployer release output unless you have an approved exception.
+l1ContractsLocator = "tag://op-contracts/v2.0.0"
+l2ContractsLocator = "tag://op-contracts/v1.7.0-beta.1+l2-contracts"
+
+# Fill from your L1 network defaults / op-deployer init output.
+opcmAddress = "<REPLACE_OPCM_ADDRESS>"
+
+[[chains]]
+# 92373 in 32-byte hex form.
+id = "0x00000000000000000000000000000000000000000000000000000000000168d5"
+baseFeeVaultRecipient = "<REPLACE_BASE_FEE_VAULT_RECIPIENT>"
+l1FeeVaultRecipient = "<REPLACE_L1_FEE_VAULT_RECIPIENT>"
+sequencerFeeVaultRecipient = "<REPLACE_SEQUENCER_FEE_VAULT_RECIPIENT>"
+eip1559DenominatorCanyon = 250
+eip1559Denominator = 50
+eip1559Elasticity = 6
+
+[chains.roles]
+l1ProxyAdminOwner = "<REPLACE_L1_PROXY_ADMIN_OWNER>"
+l2ProxyAdminOwner = "<REPLACE_L2_PROXY_ADMIN_OWNER>"
+systemConfigOwner = "<REPLACE_SYSTEM_CONFIG_OWNER>"
+unsafeBlockSigner = "<REPLACE_UNSAFE_BLOCK_SIGNER>"
+batcher = "<REPLACE_BATCHER>"
+proposer = "<REPLACE_PROPOSER>"
+challenger = "<REPLACE_CHALLENGER>"

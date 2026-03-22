@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { ethers } from 'ethers';
+import { getRpcUrl as getSharedRpcUrl } from '../utils/rpc.js';
 
 export interface VerifyEscrowLockParams {
   txHash: string;
@@ -27,16 +28,7 @@ function getRpcUrl(chainId: number): string | null {
   if (chainSpecific) {
     return chainSpecific;
   }
-
-  if (chainId === 8453) {
-    return process.env.SEND_BASE_MAINNET_RPC_URL || process.env.BASE_MAINNET_RPC_URL || null;
-  }
-
-  if (chainId === 84532) {
-    return process.env.SEND_BASE_SEPOLIA_RPC_URL || process.env.BASE_SEPOLIA_RPC_URL || null;
-  }
-
-  return null;
+  return getSharedRpcUrl(chainId) || null;
 }
 
 function getEscrowAddress(chainId: number): string | null {

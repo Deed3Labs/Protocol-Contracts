@@ -1,4 +1,5 @@
 import { getDeployment, saveDeployment } from "./helpers";
+import { requireChainConfigById } from "../config/chain-manifest-loader";
 
 const DEFAULT_USDC_BY_CHAIN: Record<number, string> = {
   84532: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", // Base Sepolia
@@ -6,11 +7,17 @@ const DEFAULT_USDC_BY_CHAIN: Record<number, string> = {
   8453: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // Base
   1: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // Ethereum
 };
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+function isAddress(value: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(value);
+}
 
 async function main() {
   const hre = require("hardhat");
   const [deployer] = await hre.ethers.getSigners();
   const network = await hre.ethers.provider.getNetwork();
+  const chainConfig = requireChainConfigById(Number(network.chainId));
 
   const admin = process.env.CLRUSD_ADMIN?.trim() || deployer.address;
   const deployedClearUsd = getDeployment(network.name, "ClearUSD")?.address;
@@ -47,8 +54,10 @@ async function main() {
     await (await clearUsd.grantRole(burnerRole, vaultAddress)).wait();
   }
 
+  const manifestUsdc = chainConfig.tokens.usdc;
   const configuredDepositToken =
     process.env.ESA_VAULT_DEPOSIT_TOKEN?.trim() ||
+    (isAddress(manifestUsdc) && manifestUsdc !== ZERO_ADDRESS ? manifestUsdc : "") ||
     DEFAULT_USDC_BY_CHAIN[Number(network.chainId)] ||
     "";
   if (configuredDepositToken) {

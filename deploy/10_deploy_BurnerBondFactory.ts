@@ -1,4 +1,5 @@
 import { saveDeployment, getDeployment } from "./helpers";
+import { assertChainHasTokenAddresses, requireChainConfigById } from "../config/chain-manifest-loader";
 
 /**
  * Deploys the BurnerBondFactory contract
@@ -20,6 +21,8 @@ async function main() {
   // Get the network
   const network = await hre.ethers.provider.getNetwork();
   console.log("Deploying to network:", network.name, "(chainId:", network.chainId, ")");
+  const chainConfig = requireChainConfigById(Number(network.chainId));
+  assertChainHasTokenAddresses(chainConfig, ["usdc"]);
 
   // Get AssurancePool deployment
   const assurancePoolDeployment = getDeployment(network.name, "AssurancePool");
@@ -116,9 +119,7 @@ async function main() {
   // Example: Create a USDC collection
   console.log("\n💡 Example: Creating USDC collection...");
   try {
-    const usdcAddress = network.chainId === 84532n 
-      ? "0x036CbD53842c5426634e7929541eC2318f3dCF7e" 
-      : "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+    const usdcAddress = chainConfig.tokens.usdc;
     
     console.log(`Creating collection for USDC at ${usdcAddress}...`);
     const tx = await burnerBondFactory.createCollection(
@@ -163,4 +164,3 @@ main()
     console.error(error);
     process.exit(1);
   });
-

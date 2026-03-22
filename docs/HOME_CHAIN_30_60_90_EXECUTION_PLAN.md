@@ -36,14 +36,14 @@ Scope: Run protocol development and OP Stack home-chain testnet development in p
 
 | ID | Phase | Task | Owner | Status | Dependencies | Definition of Done |
 |---|---|---|---|---|---|---|
-| HC-001 | 0 | Select RaaS provider and freeze standard-chain config | Product/PM + Infra/Ops | Not Started | None | Signed provider decision, chain config doc approved, no non-standard deviations without written exception |
-| HC-002 | 0 | Bring up home testnet (RPC, explorer, faucet, bridge UI) | Infra/Ops | Not Started | HC-001 | Public endpoints live, internal runbook written, team can bridge/fund/test wallets end-to-end |
-| HC-003 | 0 | Create canonical chain manifest consumed by deploy/app/server | Protocol Eng + Backend Eng | Not Started | HC-001 | Single config source exists and is imported by deployment scripts and both app/server configs |
-| HC-004 | 0 | Add home testnet network to Hardhat and deploy tooling | Protocol Eng | Not Started | HC-003 | Hardhat commands run against home testnet with no manual code edits |
-| HC-005 | 0 | Remove Base-only guards in deployment scripts | Protocol Eng | Not Started | HC-004 | Deploy scripts are chain-parameterized; no `8453/84532` hard fail branches for target flows |
-| HC-006 | 0 | Add home testnet to frontend network config and wallet switching | App Eng | Not Started | HC-003 | User can connect wallet, read balances/NFTs, and execute transactions on home testnet |
-| HC-007 | 0 | Add home testnet to backend RPC, contract maps, listeners | Backend Eng | Not Started | HC-003 | Backend reads/writes and events work on home testnet with health checks passing |
-| HC-008 | 0 | Fix failing tests and restore green CI baseline | Protocol Eng | Not Started | None | CI green on branch; known failing suite in `SavingsIntentFactory.spec.ts` is fixed |
+| HC-001 | 0 | Select RaaS provider and freeze standard-chain config | Product/PM + Infra/Ops | In Progress | None | Signed provider decision, chain config doc approved, no non-standard deviations without written exception |
+| HC-002 | 0 | Bring up home testnet (RPC, explorer, faucet, bridge UI) | Infra/Ops | Done | HC-001 | Public endpoints live, internal runbook written, team can bridge/fund/test wallets end-to-end |
+| HC-003 | 0 | Create canonical chain manifest consumed by deploy/app/server | Protocol Eng + Backend Eng | Done | HC-001 | Single config source exists and is imported by deployment scripts and both app/server configs |
+| HC-004 | 0 | Add home testnet network to Hardhat and deploy tooling | Protocol Eng | Done | HC-003 | Hardhat commands run against home testnet with no manual code edits |
+| HC-005 | 0 | Remove Base-only guards in deployment scripts | Protocol Eng | Done | HC-004 | Deploy scripts are chain-parameterized; no `8453/84532` hard fail branches for target flows |
+| HC-006 | 0 | Add home testnet to frontend network config and wallet switching | App Eng | In Progress | HC-003 | User can connect wallet, read balances/NFTs, and execute transactions on home testnet |
+| HC-007 | 0 | Add home testnet to backend RPC, contract maps, listeners | Backend Eng | In Progress | HC-003 | Backend reads/writes and events work on home testnet with health checks passing |
+| HC-008 | 0 | Fix failing tests and restore green CI baseline | Protocol Eng | In Progress | None | CI green on branch; known failing suite in `SavingsIntentFactory.spec.ts` is fixed |
 | HC-009 | 0 | Implement dual-chain deployment pipeline and smoke tests | Protocol Eng + Backend Eng | Not Started | HC-004, HC-005, HC-008 | One command/pipeline deploys to Base Sepolia and home testnet, with automated post-deploy checks |
 | HC-010 | 0 | Establish dual-chain parity checklist for critical flows | Product/PM + Protocol Eng | Not Started | HC-009 | Checklist approved and first parity report published |
 | HC-011 | 1 | Stand up metrics/alerts for sequencer, proposer, batcher, challenger, RPC | Infra/Ops | Not Started | HC-002 | Alerting dashboard live, critical alerts tested, on-call routing confirmed |

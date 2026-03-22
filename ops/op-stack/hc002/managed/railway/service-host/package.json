@@ -1,0 +1,13 @@
+{
+  "name": "clear-testnet-services-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "ethers": "^6.15.0"
+  }
+}

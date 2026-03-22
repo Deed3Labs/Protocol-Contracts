@@ -1,0 +1,15 @@
+{
+  "chainName": "Clear Testnet",
+  "chainId": 92373,
+  "l1ChainId": 11155111,
+  "rpcUrl": "http://127.0.0.1:9545",
+  "explorerUrl": "http://127.0.0.1:4000",
+  "faucetUrl": "http://127.0.0.1:8090",
+  "contracts": {
+    "optimismPortalProxy": "0x0000000000000000000000000000000000000000",
+    "l1StandardBridgeProxy": "0x0000000000000000000000000000000000000000",
+    "l1CrossDomainMessengerProxy": "0x0000000000000000000000000000000000000000",
+    "l1Erc721BridgeProxy": "0x0000000000000000000000000000000000000000",
+    "systemConfigProxy": "0x0000000000000000000000000000000000000000"
+  }
+}

@@ -1,0 +1,6 @@
+.env
+jwt.txt
+op-geth-data/
+opnode_discovery_db/
+opnode_peerstore_db/
+opnode_p2p_priv.txt

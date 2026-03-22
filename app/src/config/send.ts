@@ -1,6 +1,9 @@
 import { getCommonTokens } from '@/config/tokens';
 
-const DEFAULT_SUPPORTED_CHAIN_IDS = [8453];
+const DEFAULT_SUPPORTED_CHAIN_IDS = (() => {
+  const parsed = Number.parseInt(import.meta.env.VITE_HOME_MAINNET_CHAIN_ID || '92401', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? [parsed] : [8453];
+})();
 
 function parseChainList(rawValue: string | undefined): number[] {
   if (!rawValue) return DEFAULT_SUPPORTED_CHAIN_IDS;

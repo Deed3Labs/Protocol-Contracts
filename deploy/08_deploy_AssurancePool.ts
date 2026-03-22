@@ -1,4 +1,5 @@
 import { saveDeployment, getDeployment } from "./helpers";
+import { assertChainHasTokenAddresses, requireChainConfigById } from "../config/chain-manifest-loader";
 
 /**
  * Deploys the AssurancePool contract (upgradeable)
@@ -21,23 +22,11 @@ async function main() {
   const network = await hre.ethers.provider.getNetwork();
   console.log("Deploying to network:", network.name, "(chainId:", network.chainId, ")");
 
-  // Network-specific configuration
-  let reserveTokenAddress: string;
-  let stableCreditAddress: string;
+  const chainConfig = requireChainConfigById(Number(network.chainId));
+  assertChainHasTokenAddresses(chainConfig, ["usdc", "usdt", "dai"]);
 
-  if (network.chainId === 84532n) {
-    // Base Sepolia
-    reserveTokenAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // USDC on Base Sepolia
-    // For testing, we'll use a placeholder for StableCredit
-    // In production, this should be the actual StableCredit address
-    stableCreditAddress = "0x0000000000000000000000000000000000000000"; // TODO: Replace with actual StableCredit
-  } else if (network.chainId === 8453n) {
-    // Base Mainnet
-    reserveTokenAddress = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC on Base
-    stableCreditAddress = "0x0000000000000000000000000000000000000000"; // TODO: Replace with actual StableCredit
-  } else {
-    throw new Error(`Unsupported network: ${network.name} (${network.chainId})`);
-  }
+  const reserveTokenAddress = chainConfig.tokens.usdc;
+  const stableCreditAddress = process.env.STABLE_CREDIT_ADDRESS || "0x0000000000000000000000000000000000000000";
 
   console.log("\nDeployment parameters:");
   console.log(`- Reserve Token: ${reserveTokenAddress}`);
@@ -66,9 +55,9 @@ async function main() {
 
   // Set token addresses for withdrawal priority
   console.log("\nConfiguring token addresses...");
-  const usdcAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-  const usdtAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-  const daiAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+  const usdcAddress = chainConfig.tokens.usdc;
+  const usdtAddress = chainConfig.tokens.usdt;
+  const daiAddress = chainConfig.tokens.dai;
   
   await assurancePool.setTokenAddresses(usdcAddress, usdtAddress, daiAddress);
   console.log("✓ Token addresses configured");
@@ -113,4 +102,3 @@ main()
     console.error(error);
     process.exit(1);
   });
-

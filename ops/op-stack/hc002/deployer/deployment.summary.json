@@ -1,0 +1,28 @@
+{
+  "generatedAt": "2026-03-22T11:12:55.000Z",
+  "networkName": "Clear Testnet",
+  "chainId": 92373,
+  "l1ChainId": 11155111,
+  "startBlock": {
+    "hash": "0x1b9d9c4d7b946eb39b1f0771e2aa364ba5cba610214a586882a7076ca53c0a4d",
+    "parentHash": "0x9747bbc5c47da52541f5a61f388503d3587a2e930f3641e4932681361fb25e42",
+    "number": "0xa02d6b",
+    "timestamp": "0x69bfce74"
+  },
+  "artifacts": {
+    "genesis": "ops/op-stack/hc002/deployer/genesis.json",
+    "rollup": "ops/op-stack/hc002/deployer/rollup.json",
+    "appliedState": "ops/op-stack/hc002/deployer/state.applied.json"
+  },
+  "l1Contracts": {
+    "optimismPortalProxy": "0xf96fccbf2410359deaf7e09bd670f504ea31c198",
+    "systemConfigProxy": "0x62945b248cbccdae6601ca32fba9b3afea9cd5e9",
+    "l1StandardBridgeProxy": "0xf3591cf345fa3b4dd69c3fb992fcd238edfb15bc",
+    "l1CrossDomainMessengerProxy": "0x1110b5eb7397e3f2a73d6acca6ead7e03fa863bc",
+    "disputeGameFactoryProxy": "0x2774bd19331fa67f364a2b91c120a33be3250ddc",
+    "optimismMintableErc20FactoryProxy": "0x5e0f1af7912ab70e78504084afe904463927df23",
+    "anchorStateRegistryProxy": "0x8a62c77330fe5b007a7e05edf3573289d3a8a9a8",
+    "l1Erc721BridgeProxy": "0xe323342e3406235f08ca8fde2961a9a5c1bef228",
+    "ethLockboxProxy": "0xb85bc1755e0f645bfea88343f5ef6d140c81a04c"
+  }
+}

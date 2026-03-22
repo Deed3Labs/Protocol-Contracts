@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+set -eu
+
+: "${OP_BATCHER_L1_ETH_RPC:?OP_BATCHER_L1_ETH_RPC is required}"
+: "${OP_BATCHER_PRIVATE_KEY:?OP_BATCHER_PRIVATE_KEY is required}"
+: "${OP_BATCHER_BATCH_INBOX_ADDR:?OP_BATCHER_BATCH_INBOX_ADDR is required}"
+
+export OP_BATCHER_L2_ETH_RPC="${OP_BATCHER_L2_ETH_RPC:-http://clear-op-geth.railway.internal:8545}"
+export OP_BATCHER_ROLLUP_RPC="${OP_BATCHER_ROLLUP_RPC:-http://clear-op-node.railway.internal:8547}"
+export OP_BATCHER_POLL_INTERVAL="${OP_BATCHER_POLL_INTERVAL:-1s}"
+export OP_BATCHER_SUB_SAFETY_MARGIN="${OP_BATCHER_SUB_SAFETY_MARGIN:-6}"
+export OP_BATCHER_NUM_CONFIRMATIONS="${OP_BATCHER_NUM_CONFIRMATIONS:-1}"
+export OP_BATCHER_SAFE_ABORT_NONCE_TOO_LOW_COUNT="${OP_BATCHER_SAFE_ABORT_NONCE_TOO_LOW_COUNT:-3}"
+export OP_BATCHER_MAX_CHANNEL_DURATION="${OP_BATCHER_MAX_CHANNEL_DURATION:-1}"
+export OP_BATCHER_DATA_AVAILABILITY_TYPE="${OP_BATCHER_DATA_AVAILABILITY_TYPE:-calldata}"
+
+exec op-batcher \
+  --rpc.addr=0.0.0.0 \
+  --rpc.port="${OP_BATCHER_RPC_PORT:-8548}" \
+  --rpc.enable-admin \
+  --resubmission-timeout=30s \
+  --log.level="${OP_BATCHER_LOG_LEVEL:-info}" \
+  --log.format=json

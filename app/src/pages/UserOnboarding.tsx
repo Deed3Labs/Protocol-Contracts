@@ -349,6 +349,10 @@ const NETWORK_LABELS: Record<number, string> = {
   84532: "Base Sepolia",
   42161: "Arbitrum",
   11155111: "Sepolia",
+  [Number(import.meta.env.VITE_HOME_TESTNET_CHAIN_ID || import.meta.env.VITE_CLRUSD_HOME_CHAIN_ID || 92373)]:
+    import.meta.env.VITE_HOME_TESTNET_NAME || "Clear Testnet",
+  [Number(import.meta.env.VITE_HOME_MAINNET_CHAIN_ID || 92401)]:
+    import.meta.env.VITE_HOME_MAINNET_NAME || "Clear Mainnet",
 };
 
 const panelMotion = {

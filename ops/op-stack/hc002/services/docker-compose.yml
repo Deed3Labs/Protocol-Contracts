@@ -1,0 +1,101 @@
+name: clear-testnet-services
+
+services:
+  blockscout-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: blockscout
+      POSTGRES_PASSWORD: blockscout
+      POSTGRES_DB: blockscout
+    volumes:
+      - ./blockscout-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blockscout -d blockscout"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  blockscout-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  blockscout:
+    image: blockscout/blockscout:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      blockscout-db:
+        condition: service_healthy
+      blockscout-redis:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://blockscout:blockscout@blockscout-db:5432/blockscout
+      ECTO_USE_SSL: "false"
+      ETHEREUM_JSONRPC_VARIANT: geth
+      ETHEREUM_JSONRPC_HTTP_URL: http://op-geth:8545
+      ETHEREUM_JSONRPC_WS_URL: ws://op-geth:8546
+      ETHEREUM_JSONRPC_TRACE_URL: http://op-geth:8545
+      CHAIN_ID: "${CLEAR_CHAIN_ID}"
+      NETWORK: "${CLEAR_CHAIN_NAME}"
+      SUBNETWORK: "${CLEAR_CHAIN_NAME}"
+      COIN: "${CLEAR_COIN_SYMBOL}"
+      COIN_NAME: "${CLEAR_COIN_NAME}"
+      SECRET_KEY_BASE: "${BLOCKSCOUT_SECRET_KEY_BASE}"
+      LOGO: /images/logo.svg
+      BLOCKSCOUT_HOST: "${BLOCKSCOUT_HOST}"
+      BLOCKSCOUT_PROTOCOL: "${BLOCKSCOUT_PROTOCOL}"
+      BLOCKSCOUT_PORT: "4000"
+      INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: "true"
+      INDEXER_DISABLE_INTERNAL_TRANSACTIONS_FETCHER: "true"
+      MICROSERVICE_VISUALIZE_SOL2UML_ENABLED: "false"
+      MICROSERVICE_SIG_PROVIDER_ENABLED: "false"
+      DISABLE_EXCHANGE_RATES: "true"
+      CACHE_TXS_COUNT_PERIOD: "10s"
+      POOL_SIZE: "50"
+      POOL_SIZE_API: "50"
+      ACCOUNT_POOL_SIZE: "20"
+      API_RATE_LIMIT: "false"
+      API_V2_ENABLED: "true"
+      PORT: "4000"
+      REDIS_URL: redis://blockscout-redis:6379
+    ports:
+      - "4000:4000"
+    networks:
+      default: {}
+      clear-runtime: {}
+
+  clear-faucet:
+    build:
+      context: ./faucet
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      RPC_URL: http://op-geth:8545
+      CHAIN_ID: "${CLEAR_CHAIN_ID}"
+      PORT: "${FAUCET_PORT}"
+      DRIP_AMOUNT_ETH: "${FAUCET_DRIP_AMOUNT_ETH}"
+      COOLDOWN_SECONDS: "${FAUCET_COOLDOWN_SECONDS}"
+      FAUCET_PRIVATE_KEY: "${FAUCET_PRIVATE_KEY}"
+    ports:
+      - "${FAUCET_PORT}:${FAUCET_PORT}"
+    networks:
+      default: {}
+      clear-runtime: {}
+
+  clear-bridge-ui:
+    image: nginx:alpine
+    restart: unless-stopped
+    volumes:
+      - ./bridge-ui:/usr/share/nginx/html:ro
+    ports:
+      - "8088:80"
+
+networks:
+  clear-runtime:
+    external: true
+    name: clear-testnet_default

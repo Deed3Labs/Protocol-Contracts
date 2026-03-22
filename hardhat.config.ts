@@ -13,18 +13,33 @@ import "@typechain/hardhat";
 import "hardhat-gas-reporter";
 import "@nomicfoundation/hardhat-ethers";
 import "hardhat-preprocessor";
+import { getChainConfigByKey } from "./config/chain-manifest-loader";
 
 // If not set, it uses ours Alchemy's default API key.
 // You can get your own at https://dashboard.alchemyapi.io
 const providerApiKey = process.env.ALCHEMY_API_KEY || "oKxs-03sij-U_N0iOlrSsZFr29-IqbuF";
+const baseSepoliaChain = getChainConfigByKey("base-sepolia");
+const baseMainnetChain = getChainConfigByKey("base");
+const homeMainnetChain = getChainConfigByKey("home-mainnet");
+const homeTestnetChain = getChainConfigByKey("home-testnet");
+
+if (!baseSepoliaChain || !baseMainnetChain || !homeMainnetChain || !homeTestnetChain) {
+  throw new Error("Missing required network entries in config/chain-manifest.json");
+}
+
 const baseSepoliaRpcUrl =
   process.env.BASE_SEPOLIA_RPC_URL ||
   process.env.VITE_ALCHEMY_BASE_SEPOLIA ||
-  "https://sepolia.base.org";
+  baseSepoliaChain.rpcUrl;
 const baseMainnetRpcUrl =
   process.env.BASE_MAINNET_RPC_URL ||
   process.env.VITE_ALCHEMY_BASE_MAINNET ||
-  "https://mainnet.base.org";
+  baseMainnetChain.rpcUrl;
+const homeMainnetRpcUrl = process.env.HOME_MAINNET_RPC_URL || homeMainnetChain.rpcUrl;
+const homeMainnetNetworkName = process.env.HOME_MAINNET_NETWORK_NAME || homeMainnetChain.hardhatNetworkName;
+const homeTestnetRpcUrl = process.env.HOME_TESTNET_RPC_URL || process.env.HOME_CHAIN_RPC_URL || homeTestnetChain.rpcUrl;
+const homeTestnetNetworkName =
+  process.env.HOME_TESTNET_NETWORK_NAME || process.env.HOME_CHAIN_NETWORK_NAME || homeTestnetChain.hardhatNetworkName;
 // If not set, it uses the hardhat account 0 private key.
 function normalizePrivateKey(rawValue: string | undefined): string {
   const trimmed = (rawValue || "").trim();
@@ -136,6 +151,8 @@ const config: HardhatUserConfig = {
       polygon: deployerAccount,
       arbitrum: deployerAccount,
       "base-sepolia": deployerAccount,
+      [homeMainnetNetworkName]: deployerAccount,
+      [homeTestnetNetworkName]: deployerAccount,
     },
     manager: {
       localhost: deployerAccount ?? "0x91B0d67D3F47A30FBEeB159E67209Ad6cb2cE22E",
@@ -143,6 +160,8 @@ const config: HardhatUserConfig = {
       polygon: "0xD0cC723ED8FEE1eaDFf8CB0883A244b16163361B",
       arbitrum: "0x84F1d8D4B10b1C56e032aE09bCA57f393638cd4E",
       "base-sepolia": deployerAccount,
+      [homeMainnetNetworkName]: deployerAccount,
+      [homeTestnetNetworkName]: deployerAccount,
     },
   },
   networks: {
@@ -174,7 +193,7 @@ const config: HardhatUserConfig = {
       url: baseSepoliaRpcUrl,
       accounts: [deployerPrivateKey],
       gasPrice: "auto",
-      chainId: 84532,
+      chainId: baseSepoliaChain.chainId,
       verify: {
         etherscan: {
           apiUrl: "https://base-sepolia.blockscout.com/api",
@@ -185,12 +204,40 @@ const config: HardhatUserConfig = {
       url: baseMainnetRpcUrl,
       accounts: [deployerPrivateKey],
       gasPrice: "auto",
-      chainId: 8453,
+      chainId: baseMainnetChain.chainId,
       verify: {
         etherscan: {
           apiUrl: "https://base.blockscout.com/api",
         }
       }
+    },
+    [homeMainnetNetworkName]: {
+      url: homeMainnetRpcUrl,
+      accounts: [deployerPrivateKey],
+      gasPrice: "auto",
+      chainId: homeMainnetChain.chainId,
+      saveDeployments: true,
+      verify: process.env.HOME_MAINNET_BLOCKSCOUT_API_URL
+        ? {
+            etherscan: {
+              apiUrl: process.env.HOME_MAINNET_BLOCKSCOUT_API_URL,
+            },
+          }
+        : undefined,
+    },
+    [homeTestnetNetworkName]: {
+      url: homeTestnetRpcUrl,
+      accounts: [deployerPrivateKey],
+      gasPrice: "auto",
+      chainId: homeTestnetChain.chainId,
+      saveDeployments: true,
+      verify: process.env.HOME_TESTNET_BLOCKSCOUT_API_URL || process.env.HOME_CHAIN_BLOCKSCOUT_API_URL
+        ? {
+            etherscan: {
+              apiUrl: process.env.HOME_TESTNET_BLOCKSCOUT_API_URL || process.env.HOME_CHAIN_BLOCKSCOUT_API_URL,
+            },
+          }
+        : undefined,
     },
     chiado: {
       url: "https://rpc.chiadochain.net",
@@ -230,12 +277,16 @@ const config: HardhatUserConfig = {
       polygon: `${polygonscanApiKey}`, 
       arbitrumOne: `${arbiscanApiKey}`,
       "base-sepolia": "PLACEHOLDER",
-      base: "PLACEHOLDER"
+      base: "PLACEHOLDER",
+      ...(process.env.HOME_MAINNET_BLOCKSCOUT_API_URL ? { [homeMainnetNetworkName]: "PLACEHOLDER" } : {}),
+      ...((process.env.HOME_TESTNET_BLOCKSCOUT_API_URL || process.env.HOME_CHAIN_BLOCKSCOUT_API_URL)
+        ? { [homeTestnetNetworkName]: "PLACEHOLDER" }
+        : {})
     },
     customChains: [
       {
         network: "base-sepolia",
-        chainId: 84532,
+        chainId: baseSepoliaChain.chainId,
         urls: {
           apiURL: "https://base-sepolia.blockscout.com/api",
           browserURL: "https://base-sepolia.blockscout.com"
@@ -243,12 +294,38 @@ const config: HardhatUserConfig = {
       },
       {
         network: "base",
-        chainId: 8453,
+        chainId: baseMainnetChain.chainId,
         urls: {
           apiURL: "https://base.blockscout.com/api",
           browserURL: "https://base.blockscout.com"
         }
-      }
+      },
+      ...(process.env.HOME_MAINNET_BLOCKSCOUT_API_URL && process.env.HOME_MAINNET_BLOCK_EXPLORER_URL
+        ? [
+            {
+              network: homeMainnetNetworkName,
+              chainId: homeMainnetChain.chainId,
+              urls: {
+                apiURL: process.env.HOME_MAINNET_BLOCKSCOUT_API_URL,
+                browserURL: process.env.HOME_MAINNET_BLOCK_EXPLORER_URL,
+              },
+            },
+          ]
+        : []),
+      ...((process.env.HOME_TESTNET_BLOCKSCOUT_API_URL || process.env.HOME_CHAIN_BLOCKSCOUT_API_URL) &&
+      (process.env.HOME_TESTNET_BLOCK_EXPLORER_URL || process.env.HOME_CHAIN_BLOCK_EXPLORER_URL)
+        ? [
+            {
+              network: homeTestnetNetworkName,
+              chainId: homeTestnetChain.chainId,
+              urls: {
+                apiURL: process.env.HOME_TESTNET_BLOCKSCOUT_API_URL || process.env.HOME_CHAIN_BLOCKSCOUT_API_URL,
+                browserURL:
+                  process.env.HOME_TESTNET_BLOCK_EXPLORER_URL || process.env.HOME_CHAIN_BLOCK_EXPLORER_URL,
+              },
+            },
+          ]
+        : [])
     ]
   },
   mocha: {

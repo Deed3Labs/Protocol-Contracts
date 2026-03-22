@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { ethers } from 'ethers';
+import { getRpcUrl as getSharedRpcUrl } from '../utils/rpc.js';
 
 const CLAIM_ESCROW_ABI = [
   'function claimToWallet(bytes32 transferId, address recipientWallet)',
@@ -179,7 +180,11 @@ class SendRelayerService {
       ? (process.env[`SEND_RPC_URL_${chainId}` as keyof NodeJS.ProcessEnv] || '').trim()
       : '';
     if (chainSpecific) return chainSpecific;
-    return (process.env.SEND_RELAYER_RPC_URL || '').trim();
+    const globalValue = (process.env.SEND_RELAYER_RPC_URL || '').trim();
+    if (globalValue) return globalValue;
+
+    const resolvedChainId = this.resolveChainId(chainId);
+    return getSharedRpcUrl(resolvedChainId) || '';
   }
 
   private resolveChainId(chainId?: number): number {
@@ -187,13 +192,15 @@ class SendRelayerService {
       return chainId;
     }
 
+    const parsedHomeMainnet = parseInt(process.env.HOME_MAINNET_CHAIN_ID || '', 10);
+    const homeMainnetFallback = Number.isFinite(parsedHomeMainnet) && parsedHomeMainnet > 0 ? parsedHomeMainnet : 8453;
     const rawDefaultChainId = (process.env.SEND_DEFAULT_CHAIN_ID || '').trim();
     if (!rawDefaultChainId) {
-      return 8453;
+      return homeMainnetFallback;
     }
 
     const parsed = parseInt(rawDefaultChainId, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 8453;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : homeMainnetFallback;
   }
 
   private resolveCdpNetwork(chainId?: number): string {
@@ -223,6 +230,19 @@ class SendRelayerService {
     const globalName = (process.env.SEND_CDP_EVM_ACCOUNT_NAME || '').trim();
     if (globalName) {
       return globalName;
+    }
+
+    const homeMainnetChainId = parseInt(process.env.HOME_MAINNET_CHAIN_ID || '', 10);
+    if (Number.isFinite(homeMainnetChainId) && resolvedChainId === homeMainnetChainId) {
+      return 'send-relayer-home-mainnet';
+    }
+
+    const homeTestnetChainId = parseInt(
+      process.env.HOME_TESTNET_CHAIN_ID || process.env.HOME_CHAIN_ID || process.env.CLRUSD_HOME_CHAIN_ID || '',
+      10
+    );
+    if (Number.isFinite(homeTestnetChainId) && resolvedChainId === homeTestnetChainId) {
+      return 'send-relayer-home-testnet';
     }
 
     if (resolvedChainId === 8453) {

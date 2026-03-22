@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clear Bridge UI</title>
+    <style>
+      :root {
+        --bg: #f3f0ea;
+        --card: #fffefb;
+        --ink: #1c1f24;
+        --muted: #596174;
+        --accent: #0a7c6b;
+        --line: #dde4df;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "Segoe UI", sans-serif;
+        background: radial-gradient(circle at 10% 10%, #ffffff 0%, var(--bg) 55%);
+        color: var(--ink);
+      }
+      .wrap {
+        max-width: 980px;
+        margin: 48px auto;
+        padding: 0 20px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 10px 30px rgba(22, 31, 38, 0.08);
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 36px;
+        letter-spacing: -0.03em;
+      }
+      p {
+        color: var(--muted);
+        margin: 0 0 14px;
+      }
+      .grid {
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 14px;
+      }
+      .item {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 14px;
+        background: #fff;
+      }
+      .k {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .v {
+        margin-top: 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px;
+        word-break: break-all;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 14px;
+      }
+      .btn {
+        appearance: none;
+        border: 1px solid var(--accent);
+        color: var(--accent);
+        background: #fff;
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .hint {
+        margin-top: 18px;
+        font-size: 14px;
+      }
+      .ok {
+        color: #117a37;
+      }
+      .bad {
+        color: #9c2335;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="card">
+        <h1>Clear Bridge UI</h1>
+        <p>
+          Internal bridge and network console for Clear Testnet. This page shows live chain config, contract
+          endpoints, and service links for bridge validation.
+        </p>
+
+        <div class="row">
+          <a id="explorer" class="btn" href="#" target="_blank" rel="noreferrer">Open Explorer</a>
+          <a id="faucet" class="btn" href="#" target="_blank" rel="noreferrer">Open Faucet</a>
+          <a id="rpc" class="btn" href="#" target="_blank" rel="noreferrer">RPC Endpoint</a>
+        </div>
+
+        <p id="rpc-status" class="hint">RPC check: pending...</p>
+
+        <div class="grid" id="meta-grid"></div>
+        <div class="grid" id="contract-grid"></div>
+      </section>
+    </main>
+
+    <script>
+      const metaGrid = document.getElementById("meta-grid");
+      const contractGrid = document.getElementById("contract-grid");
+      const statusEl = document.getElementById("rpc-status");
+
+      function addItem(target, key, value) {
+        const item = document.createElement("div");
+        item.className = "item";
+        item.innerHTML = `<div class="k">${key}</div><div class="v">${value}</div>`;
+        target.appendChild(item);
+      }
+
+      async function load() {
+        const response = await fetch("./bridge-config.json", { cache: "no-store" });
+        if (!response.ok) {
+          statusEl.className = "hint bad";
+          statusEl.textContent = "Bridge config missing. Run: npm run hc002:services:init";
+          return;
+        }
+
+        const cfg = await response.json();
+        document.title = `${cfg.chainName} Bridge UI`;
+
+        document.getElementById("explorer").href = cfg.explorerUrl;
+        document.getElementById("faucet").href = cfg.faucetUrl;
+        document.getElementById("rpc").href = cfg.rpcUrl;
+
+        addItem(metaGrid, "Chain", cfg.chainName);
+        addItem(metaGrid, "L2 Chain ID", cfg.chainId);
+        addItem(metaGrid, "L1 Chain ID", cfg.l1ChainId);
+        addItem(metaGrid, "RPC", cfg.rpcUrl);
+
+        Object.entries(cfg.contracts || {}).forEach(([k, v]) => addItem(contractGrid, k, v));
+
+        try {
+          const rpcRes = await fetch(cfg.rpcUrl, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              method: "eth_blockNumber",
+              params: []
+            })
+          });
+          const rpcJson = await rpcRes.json();
+          if (rpcJson.result) {
+            statusEl.className = "hint ok";
+            statusEl.textContent = `RPC check: healthy (latest block ${rpcJson.result})`;
+          } else {
+            statusEl.className = "hint bad";
+            statusEl.textContent = "RPC check: unhealthy";
+          }
+        } catch (_err) {
+          statusEl.className = "hint bad";
+          statusEl.textContent = "RPC check: unavailable";
+        }
+      }
+
+      load();
+    </script>
+  </body>
+</html>

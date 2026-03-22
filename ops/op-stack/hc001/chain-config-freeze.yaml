@@ -1,0 +1,40 @@
+version: 1
+updatedAt: 2026-03-21
+owner: Clear Infra/Ops
+
+opStack:
+  mode: standard-rollup
+  intentType: standard-overrides
+  allowNonStandardOverrides: false
+
+l1:
+  network: sepolia
+  chainId: 11155111
+
+l2:
+  testnet:
+    name: Clear Testnet
+    chainId: 92373
+    chainIdHex32: "0x00000000000000000000000000000000000000000000000000000000000168d5"
+  mainnet:
+    name: Clear Mainnet
+    chainId: 92401
+    chainIdHex32: "0x00000000000000000000000000000000000000000000000000000000000168f1"
+
+constraints:
+  useInterop: false
+  fundDevAccounts: false
+  altDataAvailability: false
+  modifySystemContracts: false
+  requireExceptionForAnyDeviation: true
+
+requiredComponents:
+  - op-geth
+  - op-node
+  - op-batcher
+  - op-proposer
+  - op-challenger
+  - rpc
+  - block-explorer
+  - faucet
+  - bridge-ui

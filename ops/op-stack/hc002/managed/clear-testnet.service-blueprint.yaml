@@ -1,0 +1,128 @@
+version: 1
+network:
+  name: Clear Testnet
+  chainId: 92373
+  l1:
+    chainId: 11155111
+    network: sepolia
+
+publicIngress:
+  - service: clear-rpc
+    endpoints:
+      - https://rpc.clear-testnet.example
+      - wss://ws.clear-testnet.example
+  - service: clear-explorer-frontend
+    endpoints:
+      - https://explorer.clear-testnet.example
+  - service: clear-faucet
+    endpoints:
+      - https://faucet.clear-testnet.example
+  - service: clear-bridge-ui
+    endpoints:
+      - https://bridge.clear-testnet.example
+
+services:
+  - key: clear-op-geth
+    role: execution
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:latest
+    internalPorts: [8551]
+    publicPorts: [8545, 8546]
+    persistentData: true
+    healthCheck:
+      type: json-rpc
+      endpoint: /eth_chainId
+      expectedResult: "0x168d5"
+    env:
+      - L2_GENESIS_PATH=/workspace/genesis.json
+
+  - key: clear-op-node
+    role: consensus
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.13.5
+    internalPorts: [8547, 9222]
+    dependsOn: [clear-op-geth]
+    healthCheck:
+      type: tcp
+      port: 8547
+    env:
+      - L1_RPC_URL
+      - L1_BEACON_URL
+      - SEQUENCER_PRIVATE_KEY
+      - ROLLUP_CONFIG_PATH=/workspace/rollup.json
+
+  - key: clear-op-batcher
+    role: data-availability
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.13.2
+    internalPorts: [8548]
+    dependsOn: [clear-op-node]
+    healthCheck:
+      type: tcp
+      port: 8548
+    env:
+      - OP_BATCHER_L1_ETH_RPC
+      - OP_BATCHER_PRIVATE_KEY
+      - OP_BATCHER_L2_ETH_RPC
+      - OP_BATCHER_ROLLUP_RPC
+      - OP_BATCHER_BATCH_INBOX_ADDR
+
+  - key: clear-op-proposer
+    role: state-root-proposals
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-proposer:v1.10.0
+    internalPorts: [8560]
+    dependsOn: [clear-op-node]
+    healthCheck:
+      type: tcp
+      port: 8560
+    env:
+      - OP_PROPOSER_L1_ETH_RPC
+      - OP_PROPOSER_ROLLUP_RPC
+      - OP_PROPOSER_GAME_FACTORY_ADDRESS
+      - OP_PROPOSER_PRIVATE_KEY
+
+  - key: clear-rpc
+    role: public-rpc-gateway
+    image: nginx:stable-alpine
+    publicPorts: [443]
+    dependsOn: [clear-op-geth]
+    healthCheck:
+      type: http
+      path: /health
+
+  - key: clear-explorer-backend
+    role: explorer-indexer-api
+    image: blockscout/blockscout:latest
+    internalPorts: [4000]
+    dependsOn: [clear-rpc]
+    env:
+      - ETHEREUM_JSONRPC_HTTP_URL
+      - ETHEREUM_JSONRPC_WS_URL
+      - DATABASE_URL
+      - SECRET_KEY_BASE
+
+  - key: clear-explorer-frontend
+    role: explorer-web
+    image: blockscout/frontend:latest
+    publicPorts: [443]
+    dependsOn: [clear-explorer-backend]
+    env:
+      - NEXT_PUBLIC_API_HOST
+
+  - key: clear-faucet
+    role: testnet-faucet
+    image: ghcr.io/ethpandaops/ethereum-faucet:latest
+    publicPorts: [443]
+    dependsOn: [clear-rpc]
+    env:
+      - RPC_URL
+      - CHAIN_ID
+      - FAUCET_PRIVATE_KEY
+
+  - key: clear-bridge-ui
+    role: bridge-frontend
+    image: ghcr.io/ethereum-optimism/bridge-ui:latest
+    publicPorts: [443]
+    dependsOn: [clear-rpc]
+    env:
+      - BRIDGE_L1_RPC_URL
+      - BRIDGE_L2_RPC_URL
+      - BRIDGE_L1_STANDARD_BRIDGE
+      - BRIDGE_L1_CROSS_DOMAIN_MESSENGER

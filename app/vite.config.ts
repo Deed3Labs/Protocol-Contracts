@@ -11,6 +11,11 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  server: {
+    fs: {
+      allow: [resolve(__dirname, '..')],
+    },
+  },
   optimizeDeps: {
     exclude: ["@xmtp/wasm-bindings", "@xmtp/browser-sdk"],
     include: ["@xmtp/proto", "buffer"],

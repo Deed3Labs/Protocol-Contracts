@@ -13,14 +13,37 @@ export interface TokenConfig {
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-function readClrUsdAddress(chainId: number): string {
-  const key = `VITE_CLRUSD_${chainId}`;
+function readIntEnv(key: string, fallback: number): number {
+  const raw = (import.meta.env as Record<string, string | undefined>)[key];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readAddressEnv(key: string): string {
   const raw = (import.meta.env as Record<string, string | undefined>)[key];
   if (raw && /^0x[a-fA-F0-9]{40}$/.test(raw) && raw !== ZERO_ADDRESS) {
     return raw;
   }
   return ZERO_ADDRESS;
 }
+
+function readClrUsdAddress(chainId: number): string {
+  const key = `VITE_CLRUSD_${chainId}`;
+  return readAddressEnv(key);
+}
+
+function readTokenAddress(chainId: number, symbol: 'USDC' | 'WETH'): string {
+  const byChainKey = `VITE_${symbol}_${chainId}`;
+  return readAddressEnv(byChainKey);
+}
+
+const HOME_TESTNET_CHAIN_ID = readIntEnv('VITE_HOME_TESTNET_CHAIN_ID', readIntEnv('VITE_CLRUSD_HOME_CHAIN_ID', 92373));
+const HOME_MAINNET_CHAIN_ID = readIntEnv('VITE_HOME_MAINNET_CHAIN_ID', 92401);
+const HOME_TESTNET_USDC = readAddressEnv('VITE_HOME_TESTNET_USDC_ADDRESS');
+const HOME_MAINNET_USDC = readAddressEnv('VITE_HOME_MAINNET_USDC_ADDRESS');
+const HOME_TESTNET_WETH = readAddressEnv('VITE_HOME_TESTNET_WETH_ADDRESS');
+const HOME_MAINNET_WETH = readAddressEnv('VITE_HOME_MAINNET_WETH_ADDRESS');
 
 /**
  * Common ERC20 tokens by chain ID
@@ -140,6 +163,48 @@ export const COMMON_TOKENS: Record<number, TokenConfig[]> = {
       name: 'Wrapped Ether', 
       decimals: 18 
     },
+  ],
+  [HOME_TESTNET_CHAIN_ID]: [
+    ...(readClrUsdAddress(HOME_TESTNET_CHAIN_ID) !== ZERO_ADDRESS
+      ? [{ address: readClrUsdAddress(HOME_TESTNET_CHAIN_ID), symbol: 'CLRUSD', name: 'Clear USD', decimals: 6 } as TokenConfig]
+      : []),
+    ...((HOME_TESTNET_USDC !== ZERO_ADDRESS || readTokenAddress(HOME_TESTNET_CHAIN_ID, 'USDC') !== ZERO_ADDRESS)
+      ? [{
+          address: HOME_TESTNET_USDC !== ZERO_ADDRESS ? HOME_TESTNET_USDC : readTokenAddress(HOME_TESTNET_CHAIN_ID, 'USDC'),
+          symbol: 'USDC',
+          name: 'USD Coin',
+          decimals: 6,
+        } as TokenConfig]
+      : []),
+    ...((HOME_TESTNET_WETH !== ZERO_ADDRESS || readTokenAddress(HOME_TESTNET_CHAIN_ID, 'WETH') !== ZERO_ADDRESS)
+      ? [{
+          address: HOME_TESTNET_WETH !== ZERO_ADDRESS ? HOME_TESTNET_WETH : readTokenAddress(HOME_TESTNET_CHAIN_ID, 'WETH'),
+          symbol: 'WETH',
+          name: 'Wrapped Ether',
+          decimals: 18,
+        } as TokenConfig]
+      : []),
+  ],
+  [HOME_MAINNET_CHAIN_ID]: [
+    ...(readClrUsdAddress(HOME_MAINNET_CHAIN_ID) !== ZERO_ADDRESS
+      ? [{ address: readClrUsdAddress(HOME_MAINNET_CHAIN_ID), symbol: 'CLRUSD', name: 'Clear USD', decimals: 6 } as TokenConfig]
+      : []),
+    ...((HOME_MAINNET_USDC !== ZERO_ADDRESS || readTokenAddress(HOME_MAINNET_CHAIN_ID, 'USDC') !== ZERO_ADDRESS)
+      ? [{
+          address: HOME_MAINNET_USDC !== ZERO_ADDRESS ? HOME_MAINNET_USDC : readTokenAddress(HOME_MAINNET_CHAIN_ID, 'USDC'),
+          symbol: 'USDC',
+          name: 'USD Coin',
+          decimals: 6,
+        } as TokenConfig]
+      : []),
+    ...((HOME_MAINNET_WETH !== ZERO_ADDRESS || readTokenAddress(HOME_MAINNET_CHAIN_ID, 'WETH') !== ZERO_ADDRESS)
+      ? [{
+          address: HOME_MAINNET_WETH !== ZERO_ADDRESS ? HOME_MAINNET_WETH : readTokenAddress(HOME_MAINNET_CHAIN_ID, 'WETH'),
+          symbol: 'WETH',
+          name: 'Wrapped Ether',
+          decimals: 18,
+        } as TokenConfig]
+      : []),
   ],
   // Arbitrum One
   42161: [

@@ -196,7 +196,11 @@ const WEEKLY_CONSISTENCY_COLORS = ['#22c55e', '#14b8a6', '#06b6d4', '#3b82f6'];
 const PROJECTION_PROGRESS_COLORS = ['#34d399', '#2dd4bf', '#22d3ee', '#60a5fa', '#818cf8', '#a78bfa'];
 const GOAL_DISTRIBUTION_CLASSES = ['bg-emerald-500', 'bg-sky-500', 'bg-violet-500', 'bg-amber-500'];
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-const CLRUSD_HOME_CHAIN_ID = Number(import.meta.env.VITE_CLRUSD_HOME_CHAIN_ID || 84532);
+const CLRUSD_HOME_CHAIN_ID = Number(
+  import.meta.env.VITE_HOME_TESTNET_CHAIN_ID ||
+    import.meta.env.VITE_CLRUSD_HOME_CHAIN_ID ||
+    92373
+);
 
 const ERC20_ABI = [
   'function transfer(address to, uint256 amount) external returns (bool)',

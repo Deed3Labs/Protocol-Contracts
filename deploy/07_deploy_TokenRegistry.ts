@@ -1,4 +1,5 @@
 import { saveDeployment } from "./helpers";
+import { assertChainHasTokenAddresses, requireChainConfigById } from "../config/chain-manifest-loader";
 
 /**
  * Deploys the TokenRegistry contract
@@ -29,27 +30,13 @@ async function main() {
   const tokenRegistryAddress = await tokenRegistry.getAddress();
   console.log("TokenRegistry deployed to:", tokenRegistryAddress);
 
-  // Network-specific token addresses
-  let usdcAddress: string;
-  let usdtAddress: string;
-  let daiAddress: string;
-  let wethAddress: string;
+  const chainConfig = requireChainConfigById(Number(network.chainId));
+  assertChainHasTokenAddresses(chainConfig, ["usdc", "usdt", "dai", "weth"]);
 
-  if (network.chainId === 84532n) {
-    // Base Sepolia
-    usdcAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // USDC on Base Sepolia
-    usdtAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // Using USDC as placeholder
-    daiAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // Using USDC as placeholder
-    wethAddress = "0x4200000000000000000000000000000000000006"; // WETH on Base Sepolia
-  } else if (network.chainId === 8453n) {
-    // Base Mainnet
-    usdcAddress = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC on Base
-    usdtAddress = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"; // USDT on Base
-    daiAddress = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"; // DAI on Base
-    wethAddress = "0x4200000000000000000000000000000000000006"; // WETH on Base
-  } else {
-    throw new Error(`Unsupported network: ${network.name} (${network.chainId})`);
-  }
+  const usdcAddress = chainConfig.tokens.usdc;
+  const usdtAddress = chainConfig.tokens.usdt;
+  const daiAddress = chainConfig.tokens.dai;
+  const wethAddress = chainConfig.tokens.weth;
 
   console.log("\nSetting up initial token configuration...");
   
@@ -147,4 +134,3 @@ main()
     console.error(error);
     process.exit(1);
   });
-

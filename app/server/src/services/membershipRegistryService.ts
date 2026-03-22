@@ -45,15 +45,20 @@ function normalizePrivateKey(rawValue: string | undefined): string | null {
 function membershipRpcUrl(): string {
   return (
     process.env.MEMBERSHIP_RPC_URL?.trim()
+    || process.env.HOME_TESTNET_RPC_URL?.trim()
+    || process.env.HOME_CHAIN_RPC_URL?.trim()
     || process.env.BASE_SEPOLIA_RPC_URL?.trim()
     || process.env.VITE_ALCHEMY_BASE_SEPOLIA?.trim()
-    || 'https://sepolia.base.org'
+    || 'http://127.0.0.1:9545'
   );
 }
 
 function membershipChainId(): number {
-  const parsed = Number.parseInt(process.env.MEMBERSHIP_CHAIN_ID || '84532', 10);
-  return Number.isFinite(parsed) ? parsed : 84532;
+  const parsed = Number.parseInt(
+    process.env.MEMBERSHIP_CHAIN_ID || process.env.HOME_TESTNET_CHAIN_ID || process.env.HOME_CHAIN_ID || process.env.CLRUSD_HOME_CHAIN_ID || '92373',
+    10
+  );
+  return Number.isFinite(parsed) ? parsed : 92373;
 }
 
 function membershipRegistryAddress(): string {

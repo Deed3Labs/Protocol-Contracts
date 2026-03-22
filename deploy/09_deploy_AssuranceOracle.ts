@@ -1,4 +1,9 @@
 import { saveDeployment, getDeployment } from "./helpers";
+import {
+  assertChainHasOracleFactory,
+  assertChainHasTokenAddresses,
+  requireChainConfigById,
+} from "../config/chain-manifest-loader";
 
 /**
  * Deploys the AssuranceOracle contract
@@ -35,30 +40,15 @@ async function main() {
   }
   console.log("Found TokenRegistry at:", tokenRegistryDeployment.address);
 
-  // Network-specific addresses
-  let uniswapFactoryAddress: string;
-  let wethAddress: string;
-  let usdcAddress: string;
-  let usdtAddress: string;
-  let daiAddress: string;
+  const chainConfig = requireChainConfigById(Number(network.chainId));
+  assertChainHasTokenAddresses(chainConfig, ["usdc", "usdt", "dai", "weth"]);
+  assertChainHasOracleFactory(chainConfig);
 
-  if (network.chainId === 84532n) {
-    // Base Sepolia
-    uniswapFactoryAddress = "0x33128a8fC17869897dcE68Ed026d694621f6FDfD"; // Uniswap V3 Factory on Base Sepolia
-    wethAddress = "0x4200000000000000000000000000000000000006"; // WETH on Base Sepolia
-    usdcAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // USDC on Base Sepolia
-    usdtAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // Using USDC as placeholder
-    daiAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // Using USDC as placeholder
-  } else if (network.chainId === 8453n) {
-    // Base Mainnet
-    uniswapFactoryAddress = "0x33128a8fC17869897dcE68Ed026d694621f6FDfD"; // Uniswap V3 Factory on Base
-    wethAddress = "0x4200000000000000000000000000000000000006"; // WETH on Base
-    usdcAddress = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC on Base
-    usdtAddress = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"; // USDT on Base
-    daiAddress = "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"; // DAI on Base
-  } else {
-    throw new Error(`Unsupported network: ${network.name} (${network.chainId})`);
-  }
+  const uniswapFactoryAddress = chainConfig.uniswapV3Factory;
+  const wethAddress = chainConfig.tokens.weth;
+  const usdcAddress = chainConfig.tokens.usdc;
+  const usdtAddress = chainConfig.tokens.usdt;
+  const daiAddress = chainConfig.tokens.dai;
 
   // Deploy parameters
   const targetRTD = hre.ethers.parseEther("1.0"); // 100% reserve to debt ratio
@@ -170,4 +160,3 @@ main()
     console.error(error);
     process.exit(1);
   });
-

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "networks": [
+    {
+      "key": "base-sepolia",
+      "hardhatNetworkName": "base-sepolia",
+      "chainId": 84532,
+      "rpcUrl": "https://sepolia.base.org",
+      "blockExplorer": "https://sepolia.basescan.org",
+      "uniswapV3Factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+      "tokens": {
+        "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "usdt": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "dai": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "weth": "0x4200000000000000000000000000000000000006"
+      }
+    },
+    {
+      "key": "base",
+      "hardhatNetworkName": "base",
+      "chainId": 8453,
+      "rpcUrl": "https://mainnet.base.org",
+      "blockExplorer": "https://basescan.org",
+      "uniswapV3Factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+      "tokens": {
+        "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "usdt": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+        "dai": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+        "weth": "0x4200000000000000000000000000000000000006"
+      }
+    },
+    {
+      "key": "home-testnet",
+      "hardhatNetworkName": "home-testnet",
+      "chainId": 92373,
+      "rpcUrl": "https://clear-rpc-gateway-production.up.railway.app",
+      "blockExplorer": "https://clear-testnet-explorer-production.up.railway.app",
+      "uniswapV3Factory": "0x0000000000000000000000000000000000000000",
+      "tokens": {
+        "usdc": "0x0000000000000000000000000000000000000000",
+        "usdt": "0x0000000000000000000000000000000000000000",
+        "dai": "0x0000000000000000000000000000000000000000",
+        "weth": "0x0000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "key": "home-mainnet",
+      "hardhatNetworkName": "home-mainnet",
+      "chainId": 92401,
+      "rpcUrl": "http://127.0.0.1:9546",
+      "blockExplorer": "",
+      "uniswapV3Factory": "0x0000000000000000000000000000000000000000",
+      "tokens": {
+        "usdc": "0x0000000000000000000000000000000000000000",
+        "usdt": "0x0000000000000000000000000000000000000000",
+        "dai": "0x0000000000000000000000000000000000000000",
+        "weth": "0x0000000000000000000000000000000000000000"
+      }
+    }
+  ]
+}

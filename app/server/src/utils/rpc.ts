@@ -1,6 +1,12 @@
+import { getServerChainById } from './chainManifest';
+
 /**
  * Shared RPC utilities for blockchain interactions
  */
+
+function getManifestRpcUrl(chainId: number): string | undefined {
+  return getServerChainById(chainId)?.rpcUrl;
+}
 
 /**
  * Get Alchemy RPC URL for a chain using API key
@@ -31,6 +37,8 @@ function getAlchemyUrl(chainId: number, apiKey: string): string | undefined {
  */
 export function getRpcUrl(chainId: number): string {
   const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  const homeChainIdRaw = process.env.HOME_CHAIN_ID || process.env.CLRUSD_HOME_CHAIN_ID || '';
+  const homeChainId = Number.parseInt(homeChainIdRaw, 10);
   
   const rpcUrls: Record<number, { custom?: string; alchemy?: string; fallback: string }> = {
     // Mainnets
@@ -47,7 +55,7 @@ export function getRpcUrl(chainId: number): string {
     8453: {
       custom: process.env.BASE_RPC_URL,
       alchemy: alchemyApiKey ? getAlchemyUrl(8453, alchemyApiKey) : undefined,
-      fallback: 'https://mainnet.base.org',
+      fallback: getManifestRpcUrl(8453) || 'https://mainnet.base.org',
     },
     100: {
       custom: process.env.GNOSIS_RPC_URL,
@@ -74,7 +82,7 @@ export function getRpcUrl(chainId: number): string {
     84532: {
       custom: process.env.BASE_SEPOLIA_RPC_URL,
       alchemy: alchemyApiKey ? getAlchemyUrl(84532, alchemyApiKey) : undefined,
-      fallback: 'https://sepolia.base.org',
+      fallback: getManifestRpcUrl(84532) || 'https://sepolia.base.org',
     },
     80001: {
       custom: process.env.MUMBAI_RPC_URL,
@@ -83,8 +91,18 @@ export function getRpcUrl(chainId: number): string {
     },
   };
 
+  if (Number.isFinite(homeChainId) && homeChainId > 0 && !rpcUrls[homeChainId]) {
+    rpcUrls[homeChainId] = {
+      custom: process.env.HOME_CHAIN_RPC_URL,
+      alchemy: alchemyApiKey ? getAlchemyUrl(homeChainId, alchemyApiKey) : undefined,
+      fallback: getManifestRpcUrl(homeChainId) || '',
+    };
+  }
+
   const config = rpcUrls[chainId];
-  if (!config) return '';
+  if (!config) {
+    return getManifestRpcUrl(chainId) || '';
+  }
 
   // Priority: Custom URL > Alchemy > Fallback
   return config.custom || config.alchemy || config.fallback;

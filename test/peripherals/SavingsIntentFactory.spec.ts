@@ -162,4 +162,4 @@ describe("SavingsIntentFactory", function () {
       })
     ).to.be.revertedWithCustomError(await ethers.getContractAt("SavingsIntentEscrow", predicted), "SavingsIntentEscrowFundingIncomplete");
   });
-}
+});

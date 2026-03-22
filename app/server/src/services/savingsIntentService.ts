@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { ethers } from 'ethers';
+import { getRpcUrl as getSharedRpcUrl } from '../utils/rpc.js';
 
 export type SavingsIntentAction = 'deposit' | 'redeem';
 
@@ -74,10 +75,18 @@ class SavingsIntentService {
   }
 
   defaultChainId(): number {
-    return parseIntEnv('SAVINGS_HOME_CHAIN_ID', parseIntEnv('CLRUSD_HOME_CHAIN_ID', 84532));
+    return parseIntEnv(
+      'SAVINGS_HOME_CHAIN_ID',
+      parseIntEnv('HOME_TESTNET_CHAIN_ID', parseIntEnv('HOME_CHAIN_ID', parseIntEnv('CLRUSD_HOME_CHAIN_ID', 92373)))
+    );
   }
 
   resolveRpcUrl(chainId: number): string {
+    const homeTestnetChainId = parseIntEnv(
+      'HOME_TESTNET_CHAIN_ID',
+      parseIntEnv('HOME_CHAIN_ID', parseIntEnv('CLRUSD_HOME_CHAIN_ID', 92373))
+    );
+    const homeMainnetChainId = parseIntEnv('HOME_MAINNET_CHAIN_ID', 92401);
     const keys = [
       `SAVINGS_RPC_URL_${chainId}`,
       `SEND_RPC_URL_${chainId}`,
@@ -85,6 +94,11 @@ class SavingsIntentService {
       chainId === 84532 ? 'BASE_SEPOLIA_RPC_URL' : '',
       chainId === 8453 ? 'SAVINGS_BASE_MAINNET_RPC_URL' : '',
       chainId === 8453 ? 'BASE_MAINNET_RPC_URL' : '',
+      chainId === homeTestnetChainId ? 'SAVINGS_HOME_TESTNET_RPC_URL' : '',
+      chainId === homeTestnetChainId ? 'HOME_TESTNET_RPC_URL' : '',
+      chainId === homeTestnetChainId ? 'HOME_CHAIN_RPC_URL' : '',
+      chainId === homeMainnetChainId ? 'SAVINGS_HOME_MAINNET_RPC_URL' : '',
+      chainId === homeMainnetChainId ? 'HOME_MAINNET_RPC_URL' : '',
     ].filter(Boolean);
 
     for (const key of keys) {
@@ -92,8 +106,8 @@ class SavingsIntentService {
       if (value) return value;
     }
 
-    if (chainId === 84532) return 'https://sepolia.base.org';
-    if (chainId === 8453) return 'https://mainnet.base.org';
+    const sharedRpc = getSharedRpcUrl(chainId);
+    if (sharedRpc) return sharedRpc;
 
     throw new Error(`No RPC URL configured for savings chain ${chainId}.`);
   }
@@ -114,6 +128,13 @@ class SavingsIntentService {
       '';
     const usdcAddress =
       process.env[`SAVINGS_USDC_${resolvedChainId}` as keyof NodeJS.ProcessEnv]?.trim() ||
+      process.env[`USDC_${resolvedChainId}` as keyof NodeJS.ProcessEnv]?.trim() ||
+      (resolvedChainId === parseIntEnv('HOME_TESTNET_CHAIN_ID', parseIntEnv('HOME_CHAIN_ID', parseIntEnv('CLRUSD_HOME_CHAIN_ID', 92373)))
+        ? process.env.HOME_TESTNET_USDC_ADDRESS?.trim() || process.env.HOME_CHAIN_USDC_ADDRESS?.trim() || ''
+        : '') ||
+      (resolvedChainId === parseIntEnv('HOME_MAINNET_CHAIN_ID', 92401)
+        ? process.env.HOME_MAINNET_USDC_ADDRESS?.trim() || ''
+        : '') ||
       DEFAULT_USDC_BY_CHAIN[resolvedChainId] ||
       ZERO_ADDRESS;
 

@@ -45,3 +45,24 @@ webflow/.vite/
 
 # Local Python virtualenvs (generated during one-off tooling)
 .venv-pdf/
+
+# OP Stack local tooling/runtime
+tools/op-stack/bin/op-deployer
+tools/op-stack/downloads/
+tools/kurtosis/bin/kurtosis
+tools/kurtosis/downloads/
+tmp/op-deployer-home/
+tmp/docker-config/
+tmp/hc002-services/
+
+# HC-002 local runtime secrets/state
+ops/op-stack/hc002/runtime/sequencer/.env
+ops/op-stack/hc002/runtime/sequencer/jwt.txt
+ops/op-stack/hc002/runtime/sequencer/op-geth-data/
+ops/op-stack/hc002/runtime/sequencer/opnode_discovery_db/
+ops/op-stack/hc002/runtime/sequencer/opnode_peerstore_db/
+ops/op-stack/hc002/runtime/sequencer/opnode_p2p_priv.txt
+ops/op-stack/hc002/services/.env
+ops/op-stack/hc002/services/bridge-ui/bridge-config.json
+ops/op-stack/hc002/services/blockscout-db-data/
+ops/op-stack/hc002/services/blockscout-logs/

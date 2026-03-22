@@ -109,10 +109,15 @@ class SavingsRelayerService {
     const sendSpecific = process.env[`SEND_CDP_EVM_ACCOUNT_NAME_${chainId}` as keyof NodeJS.ProcessEnv]?.trim();
     if (sendSpecific) return sendSpecific;
 
-    return (
-      process.env.SEND_CDP_EVM_ACCOUNT_NAME?.trim() ||
-      (chainId === 84532 ? 'savings-relayer-base-sepolia' : `savings-relayer-chain-${chainId}`)
+    const homeTestnetChainId = parseIntEnv(
+      'HOME_TESTNET_CHAIN_ID',
+      parseIntEnv('HOME_CHAIN_ID', parseIntEnv('CLRUSD_HOME_CHAIN_ID', 92373))
     );
+    if (chainId === homeTestnetChainId) {
+      return process.env.SEND_CDP_EVM_ACCOUNT_NAME?.trim() || 'savings-relayer-home-testnet';
+    }
+
+    return process.env.SEND_CDP_EVM_ACCOUNT_NAME?.trim() || (chainId === 84532 ? 'savings-relayer-base-sepolia' : `savings-relayer-chain-${chainId}`);
   }
 
   private resolveCdpAccountAddressOverride(chainId: number): string {

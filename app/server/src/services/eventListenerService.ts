@@ -25,7 +25,22 @@ class EventListenerService {
   private isRunning = false;
   private restartTimeouts: Map<number, number> = new Map();
 
-  private readonly SUPPORTED_CHAINS = [1, 10, 8453, 100, 11155111, 84532, 42161, 137];
+  private readonly SUPPORTED_CHAINS = this.resolveSupportedChains();
+
+  private resolveSupportedChains(): number[] {
+    const defaults = [1, 10, 8453, 100, 11155111, 84532, 42161, 137];
+    const configured = [
+      process.env.HOME_TESTNET_CHAIN_ID,
+      process.env.HOME_CHAIN_ID,
+      process.env.CLRUSD_HOME_CHAIN_ID,
+      process.env.HOME_MAINNET_CHAIN_ID,
+      process.env.MEMBERSHIP_CHAIN_ID,
+    ]
+      .map((value) => Number.parseInt((value || '').trim(), 10))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    return Array.from(new Set([...defaults, ...configured]));
+  }
 
   async initialize() {
     if (this.isRunning) {

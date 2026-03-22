@@ -4,7 +4,56 @@
  * 
  * For production, consider loading from deployment JSON files or environment variables
  */
+import { getServerChainByKey } from '../utils/chainManifest';
+
+function parseIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function addressEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  return value && /^0x[a-fA-F0-9]{40}$/.test(value)
+    ? value
+    : '0x0000000000000000000000000000000000000000';
+}
+
+const HOME_TESTNET_CHAIN_ID =
+  getServerChainByKey('home-testnet')?.chainId ||
+  parseIntEnv('HOME_TESTNET_CHAIN_ID', parseIntEnv('HOME_CHAIN_ID', parseIntEnv('CLRUSD_HOME_CHAIN_ID', 92373)));
+const HOME_MAINNET_CHAIN_ID =
+  getServerChainByKey('home-mainnet')?.chainId ||
+  parseIntEnv('HOME_MAINNET_CHAIN_ID', 92401);
+
 export const DEPLOYED_CONTRACTS: Record<number, Record<string, string>> = {
+  [HOME_TESTNET_CHAIN_ID]: {
+    DeedNFT: addressEnv(`DEEDNFT_${HOME_TESTNET_CHAIN_ID}`),
+    Validator: addressEnv(`VALIDATOR_${HOME_TESTNET_CHAIN_ID}`),
+    ValidatorRegistry: addressEnv(`VALIDATOR_REGISTRY_${HOME_TESTNET_CHAIN_ID}`),
+    FundManager: addressEnv(`FUND_MANAGER_${HOME_TESTNET_CHAIN_ID}`),
+    MetadataRenderer: addressEnv(`METADATA_RENDERER_${HOME_TESTNET_CHAIN_ID}`),
+    Subdivide: addressEnv(`SUBDIVIDE_${HOME_TESTNET_CHAIN_ID}`),
+    Fractionalize: addressEnv(`FRACTIONALIZE_${HOME_TESTNET_CHAIN_ID}`),
+    FractionTokenFactory: addressEnv(`FRACTION_TOKEN_FACTORY_${HOME_TESTNET_CHAIN_ID}`),
+    CLRUSD: process.env[`CLRUSD_${HOME_TESTNET_CHAIN_ID}`] || '0x0000000000000000000000000000000000000000',
+    ESADepositVault: process.env[`ESA_VAULT_${HOME_TESTNET_CHAIN_ID}`] || '0x0000000000000000000000000000000000000000',
+    CLRUSDTokenPool: process.env[`CLRUSD_POOL_${HOME_TESTNET_CHAIN_ID}`] || '0x0000000000000000000000000000000000000000',
+  },
+  [HOME_MAINNET_CHAIN_ID]: {
+    DeedNFT: addressEnv(`DEEDNFT_${HOME_MAINNET_CHAIN_ID}`),
+    Validator: addressEnv(`VALIDATOR_${HOME_MAINNET_CHAIN_ID}`),
+    ValidatorRegistry: addressEnv(`VALIDATOR_REGISTRY_${HOME_MAINNET_CHAIN_ID}`),
+    FundManager: addressEnv(`FUND_MANAGER_${HOME_MAINNET_CHAIN_ID}`),
+    MetadataRenderer: addressEnv(`METADATA_RENDERER_${HOME_MAINNET_CHAIN_ID}`),
+    Subdivide: addressEnv(`SUBDIVIDE_${HOME_MAINNET_CHAIN_ID}`),
+    Fractionalize: addressEnv(`FRACTIONALIZE_${HOME_MAINNET_CHAIN_ID}`),
+    FractionTokenFactory: addressEnv(`FRACTION_TOKEN_FACTORY_${HOME_MAINNET_CHAIN_ID}`),
+    CLRUSD: process.env[`CLRUSD_${HOME_MAINNET_CHAIN_ID}`] || '0x0000000000000000000000000000000000000000',
+    ESADepositVault: process.env[`ESA_VAULT_${HOME_MAINNET_CHAIN_ID}`] || '0x0000000000000000000000000000000000000000',
+    CLRUSDTokenPool: process.env[`CLRUSD_POOL_${HOME_MAINNET_CHAIN_ID}`] || '0x0000000000000000000000000000000000000000',
+  },
   // Base Sepolia
   84532: {
     DeedNFT: '0x1a4e89225015200f70e5a06f766399a3de6e21E6',

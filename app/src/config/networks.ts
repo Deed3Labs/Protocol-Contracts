@@ -1,3 +1,5 @@
+import { getManifestNetworkByKey } from './chainManifest';
+
 export interface NetworkConfig {
   id: number;
   name: string;
@@ -24,6 +26,17 @@ export interface NetworkConfig {
 // See docs/security-rpc-providers.md for details
 const INFURA_PROJECT_ID = import.meta.env.VITE_INFURA_PROJECT_ID || '';
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const baseSepoliaManifest = getManifestNetworkByKey('base-sepolia');
+const baseMainnetManifest = getManifestNetworkByKey('base');
+const homeTestnetManifest = getManifestNetworkByKey('home-testnet');
+const homeMainnetManifest = getManifestNetworkByKey('home-mainnet');
+
+function readIntEnv(key: string, fallback: number): number {
+  const raw = (import.meta.env as Record<string, string | undefined>)[key];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 function readAddressEnv(key: string, fallback: string = ZERO_ADDRESS): string {
   const raw = (import.meta.env as Record<string, string | undefined>)[key];
@@ -32,6 +45,19 @@ function readAddressEnv(key: string, fallback: string = ZERO_ADDRESS): string {
   }
   return fallback;
 }
+
+function readAddressByChain(prefix: string, chainId: number, fallback: string = ZERO_ADDRESS): string {
+  return readAddressEnv(`${prefix}_${chainId}`, fallback);
+}
+
+const HOME_TESTNET_CHAIN_ID = homeTestnetManifest?.chainId || readIntEnv('VITE_HOME_TESTNET_CHAIN_ID', readIntEnv('VITE_CLRUSD_HOME_CHAIN_ID', 92373));
+const HOME_MAINNET_CHAIN_ID = homeMainnetManifest?.chainId || readIntEnv('VITE_HOME_MAINNET_CHAIN_ID', 92401);
+const HOME_TESTNET_NAME = import.meta.env.VITE_HOME_TESTNET_NAME || homeTestnetManifest?.hardhatNetworkName || 'Clear Testnet';
+const HOME_MAINNET_NAME = import.meta.env.VITE_HOME_MAINNET_NAME || homeMainnetManifest?.hardhatNetworkName || 'Clear Mainnet';
+const HOME_TESTNET_RPC_URL = homeTestnetManifest?.rpcUrl || import.meta.env.VITE_HOME_TESTNET_RPC_URL || import.meta.env.VITE_HOME_CHAIN_RPC_URL || 'http://127.0.0.1:9545';
+const HOME_MAINNET_RPC_URL = homeMainnetManifest?.rpcUrl || import.meta.env.VITE_HOME_MAINNET_RPC_URL || 'http://127.0.0.1:9546';
+const HOME_TESTNET_EXPLORER = homeTestnetManifest?.blockExplorer || import.meta.env.VITE_HOME_TESTNET_BLOCK_EXPLORER_URL || import.meta.env.VITE_HOME_CHAIN_BLOCK_EXPLORER_URL || '';
+const HOME_MAINNET_EXPLORER = homeMainnetManifest?.blockExplorer || import.meta.env.VITE_HOME_MAINNET_BLOCK_EXPLORER_URL || '';
 
 export const SUPPORTED_NETWORKS: NetworkConfig[] = [
   {
@@ -69,12 +95,12 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     },
   },
   {
-    id: 8453,
+    id: baseMainnetManifest?.chainId || 8453,
     name: 'Base',
-    chainId: 8453,
-    rpcUrl: 'https://mainnet.base.org',
+    chainId: baseMainnetManifest?.chainId || 8453,
+    rpcUrl: baseMainnetManifest?.rpcUrl || 'https://mainnet.base.org',
     alchemyUrl: import.meta.env.VITE_ALCHEMY_BASE_MAINNET,
-    blockExplorer: 'https://basescan.org',
+    blockExplorer: baseMainnetManifest?.blockExplorer || 'https://basescan.org',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
     nativeCurrency: {
       name: 'Ether',
@@ -100,15 +126,41 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     },
   },
   {
-    id: 84532,
+    id: baseSepoliaManifest?.chainId || 84532,
     name: 'Base Sepolia',
-    chainId: 84532,
-    rpcUrl: 'https://sepolia.base.org',
+    chainId: baseSepoliaManifest?.chainId || 84532,
+    rpcUrl: baseSepoliaManifest?.rpcUrl || 'https://sepolia.base.org',
     alchemyUrl: import.meta.env.VITE_ALCHEMY_BASE_SEPOLIA,
-    blockExplorer: 'https://sepolia.basescan.org',
+    blockExplorer: baseSepoliaManifest?.blockExplorer || 'https://sepolia.basescan.org',
     contractAddress: '0x1a4e89225015200f70e5a06f766399a3de6e21E6',
     nativeCurrency: {
       name: 'Sepolia Ether',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+  },
+  {
+    id: HOME_TESTNET_CHAIN_ID,
+    name: HOME_TESTNET_NAME,
+    chainId: HOME_TESTNET_CHAIN_ID,
+    rpcUrl: HOME_TESTNET_RPC_URL,
+    blockExplorer: HOME_TESTNET_EXPLORER,
+    contractAddress: readAddressByChain('VITE_DEEDNFT', HOME_TESTNET_CHAIN_ID),
+    nativeCurrency: {
+      name: 'Ether',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+  },
+  {
+    id: HOME_MAINNET_CHAIN_ID,
+    name: HOME_MAINNET_NAME,
+    chainId: HOME_MAINNET_CHAIN_ID,
+    rpcUrl: HOME_MAINNET_RPC_URL,
+    blockExplorer: HOME_MAINNET_EXPLORER,
+    contractAddress: readAddressByChain('VITE_DEEDNFT', HOME_MAINNET_CHAIN_ID),
+    nativeCurrency: {
+      name: 'Ether',
       symbol: 'ETH',
       decimals: 18,
     },
@@ -165,6 +217,54 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
 
 // Network configuration with additional contract addresses
 export const networks = {
+  [HOME_TESTNET_CHAIN_ID]: {
+    name: HOME_TESTNET_NAME,
+    chainId: HOME_TESTNET_CHAIN_ID,
+    rpcUrl: HOME_TESTNET_RPC_URL,
+    blockExplorer: HOME_TESTNET_EXPLORER,
+    nativeCurrency: {
+      name: 'ETH',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: readAddressByChain('VITE_DEEDNFT', HOME_TESTNET_CHAIN_ID),
+      Validator: readAddressByChain('VITE_VALIDATOR', HOME_TESTNET_CHAIN_ID),
+      ValidatorRegistry: readAddressByChain('VITE_VALIDATOR_REGISTRY', HOME_TESTNET_CHAIN_ID),
+      FundManager: readAddressByChain('VITE_FUND_MANAGER', HOME_TESTNET_CHAIN_ID),
+      MetadataRenderer: readAddressByChain('VITE_METADATA_RENDERER', HOME_TESTNET_CHAIN_ID),
+      Subdivide: readAddressByChain('VITE_SUBDIVIDE', HOME_TESTNET_CHAIN_ID),
+      Fractionalize: readAddressByChain('VITE_FRACTIONALIZE', HOME_TESTNET_CHAIN_ID),
+      FractionTokenFactory: readAddressByChain('VITE_FRACTION_TOKEN_FACTORY', HOME_TESTNET_CHAIN_ID),
+      CLRUSD: readAddressByChain('VITE_CLRUSD', HOME_TESTNET_CHAIN_ID),
+      ESADepositVault: readAddressByChain('VITE_ESA_VAULT', HOME_TESTNET_CHAIN_ID),
+      CLRUSDTokenPool: readAddressByChain('VITE_CLRUSD_POOL', HOME_TESTNET_CHAIN_ID),
+    },
+  },
+  [HOME_MAINNET_CHAIN_ID]: {
+    name: HOME_MAINNET_NAME,
+    chainId: HOME_MAINNET_CHAIN_ID,
+    rpcUrl: HOME_MAINNET_RPC_URL,
+    blockExplorer: HOME_MAINNET_EXPLORER,
+    nativeCurrency: {
+      name: 'ETH',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    contracts: {
+      DeedNFT: readAddressByChain('VITE_DEEDNFT', HOME_MAINNET_CHAIN_ID),
+      Validator: readAddressByChain('VITE_VALIDATOR', HOME_MAINNET_CHAIN_ID),
+      ValidatorRegistry: readAddressByChain('VITE_VALIDATOR_REGISTRY', HOME_MAINNET_CHAIN_ID),
+      FundManager: readAddressByChain('VITE_FUND_MANAGER', HOME_MAINNET_CHAIN_ID),
+      MetadataRenderer: readAddressByChain('VITE_METADATA_RENDERER', HOME_MAINNET_CHAIN_ID),
+      Subdivide: readAddressByChain('VITE_SUBDIVIDE', HOME_MAINNET_CHAIN_ID),
+      Fractionalize: readAddressByChain('VITE_FRACTIONALIZE', HOME_MAINNET_CHAIN_ID),
+      FractionTokenFactory: readAddressByChain('VITE_FRACTION_TOKEN_FACTORY', HOME_MAINNET_CHAIN_ID),
+      CLRUSD: readAddressByChain('VITE_CLRUSD', HOME_MAINNET_CHAIN_ID),
+      ESADepositVault: readAddressByChain('VITE_ESA_VAULT', HOME_MAINNET_CHAIN_ID),
+      CLRUSDTokenPool: readAddressByChain('VITE_CLRUSD_POOL', HOME_MAINNET_CHAIN_ID),
+    },
+  },
   // Base Sepolia
   84532: {
     name: 'Base Sepolia',
@@ -423,6 +523,8 @@ export const getAbiPathForNetwork = (chainId: number, contractName: string): str
     42161: 'arbitrum',
     137: 'polygon',
     100: 'gnosis',
+    [HOME_TESTNET_CHAIN_ID]: 'base-sepolia',
+    [HOME_MAINNET_CHAIN_ID]: 'base',
   };
 
   const dirName = chainIdToDir[chainId];

@@ -1,4 +1,5 @@
 import { saveDeployment } from "./helpers";
+import { assertChainHasTokenAddresses, requireChainConfigById } from "../config/chain-manifest-loader";
 
 async function main() {
   const hre = require("hardhat");
@@ -8,14 +9,9 @@ async function main() {
   console.log("Deploying ClaimEscrow with:", deployer.address);
   console.log("Network:", network.name, "(chainId:", network.chainId, ")");
 
-  let usdcAddress: string;
-  if (network.chainId === 8453n) {
-    usdcAddress = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // Base mainnet USDC
-  } else if (network.chainId === 84532n) {
-    usdcAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // Base Sepolia USDC
-  } else {
-    throw new Error(`Unsupported network for ClaimEscrow: ${network.name} (${network.chainId})`);
-  }
+  const chainConfig = requireChainConfigById(Number(network.chainId));
+  assertChainHasTokenAddresses(chainConfig, ["usdc"]);
+  const usdcAddress = chainConfig.tokens.usdc;
 
   const payoutTreasury = process.env.SEND_PAYOUT_TREASURY || deployer.address;
   if (!hre.ethers.isAddress(payoutTreasury)) {
