@@ -65,6 +65,11 @@ const polygonscanApiKey = process.env.POLYGONSCAN_API_KEY || "DNXJA8RX2Q3VZ4URQI
 const arbiscanApiKey = process.env.ARBISCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z68CJXQZSC6AW";
 const deployerAccount = process.env.DEPLOYER_ACCOUNT || "0x0000000000000000000000000000000000000000";
 
+function reportGasEnabled(): boolean {
+  const value = (process.env.REPORT_GAS || "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
 function getRemappings(): [string, string][] {
   const remappingsFile = "node_modules/@chainlink/contracts-ccip/remappings.txt";
   if (!fs.existsSync(remappingsFile)) {
@@ -332,7 +337,7 @@ const config: HardhatUserConfig = {
     timeout: 100000
   },
   gasReporter: {
-    enabled: process.env.REPORT_GAS !== undefined,
+    enabled: reportGasEnabled(),
     currency: "USD",
     outputFile: "gas-report.txt",
     noColors: true,

@@ -143,6 +143,22 @@ class TransfersService {
   private activeChains: Map<string, Set<number>> = new Map(); // address -> Set<chainId> (chains with activity)
   private inactiveChainCount: Map<string, Map<number, number>> = new Map(); // address -> chainId -> consecutive no-activity checks
 
+  private resolveDefaultChains(): number[] {
+    const defaults = [1, 8453, 137, 42161, 100, 11155111, 84532];
+    const configured = [
+      process.env.HOME_TESTNET_CHAIN_ID,
+      process.env.HOME_CHAIN_ID,
+      process.env.CLRUSD_HOME_CHAIN_ID,
+      process.env.HOME_MAINNET_CHAIN_ID,
+      process.env.MEMBERSHIP_CHAIN_ID,
+      process.env.SEND_DEFAULT_CHAIN_ID,
+    ]
+      .map((value) => Number.parseInt((value || '').trim(), 10))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    return Array.from(new Set([...defaults, ...configured]));
+  }
+
   /**
    * Start monitoring transfers for an address
    * Smart Chain Monitoring: Only monitors chains where user has activity
@@ -157,8 +173,14 @@ class TransfersService {
     this.monitoringAddresses.add(normalizedAddress);
     this.isRunning = true;
 
-    // Supported chains for Alchemy Transfers API
-    const supportedChains = initialChains || [1, 8453, 137, 42161, 100, 11155111, 84532];
+    // Supported chains for transfer monitoring (Alchemy where available; non-Alchemy chains no-op gracefully).
+    const supportedChains = Array.from(
+      new Set(
+        (initialChains && initialChains.length > 0 ? initialChains : this.resolveDefaultChains()).filter(
+          (chainId) => Number.isFinite(chainId) && chainId > 0
+        )
+      )
+    );
 
     // Initialize active chains tracking
     this.activeChains.set(normalizedAddress, new Set(supportedChains));

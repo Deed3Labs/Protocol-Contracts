@@ -1,7 +1,9 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { SUPPORTED_NETWORKS } from '@/config/networks';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const DEFAULT_CHAIN_IDS = SUPPORTED_NETWORKS.map((network) => network.chainId);
 
 interface WebSocketSubscription {
   address: string;
@@ -57,7 +59,7 @@ export function useWebSocket(
       // Auto-subscribe on connect
       socket.emit('subscribe', {
         address,
-        chainIds: [1, 8453, 100, 11155111], // Default chains
+        chainIds: DEFAULT_CHAIN_IDS,
         subscriptions: ['balances', 'nfts', 'transactions', 'prices'],
       });
     });

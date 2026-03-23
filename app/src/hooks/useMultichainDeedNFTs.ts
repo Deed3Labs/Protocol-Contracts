@@ -20,6 +20,21 @@ interface UseMultichainDeedNFTsReturn {
   refreshChain: (chainId: number) => Promise<void>;
 }
 
+const ALCHEMY_PORTFOLIO_SUPPORTED_CHAIN_IDS = new Set<number>([
+  1,
+  10,
+  100,
+  137,
+  42161,
+  8453,
+  84532,
+  11155111,
+  80001,
+]);
+
+function isAlchemyPortfolioChain(chainId: number): boolean {
+  return ALCHEMY_PORTFOLIO_SUPPORTED_CHAIN_IDS.has(chainId);
+}
 
 /**
  * Hook to fetch DeedNFTs across all supported networks
@@ -233,6 +248,8 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
           return contractAddress && contractAddress !== '0x0000000000000000000000000000000000000000';
         })
         .map(network => network.chainId);
+      const portfolioChainIds = chainsWithContracts.filter(isAlchemyPortfolioChain);
+      const fallbackChainIds = chainsWithContracts.filter((chainId) => !isAlchemyPortfolioChain(chainId));
 
       if (chainsWithContracts.length === 0) {
         console.log('[useMultichainDeedNFTs] No chains with T-Deed contracts found');
@@ -245,8 +262,8 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
       // Split into batches if needed
       const maxNetworksPerRequest = 15;
       const batches: number[][] = [];
-      for (let i = 0; i < chainsWithContracts.length; i += maxNetworksPerRequest) {
-        batches.push(chainsWithContracts.slice(i, i + maxNetworksPerRequest));
+      for (let i = 0; i < portfolioChainIds.length; i += maxNetworksPerRequest) {
+        batches.push(portfolioChainIds.slice(i, i + maxNetworksPerRequest));
       }
 
       const allNFTs: MultichainDeedNFT[] = [];
@@ -286,6 +303,15 @@ export function useMultichainDeedNFTs(): UseMultichainDeedNFTsReturn {
             }
           }
         }
+      }
+
+      if (fallbackChainIds.length > 0) {
+        const fallbackNftBatches = await Promise.all(
+          fallbackChainIds.map((chainId) => fetchChainNFTs(chainId))
+        );
+        fallbackNftBatches.forEach((chainNfts) => {
+          allNFTs.push(...chainNfts);
+        });
       }
 
       console.log('[useMultichainDeedNFTs] Fetched T-Deeds via Portfolio API:', allNFTs.length);

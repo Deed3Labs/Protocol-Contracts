@@ -25,6 +25,22 @@ function getAlchemyNetworkName(chainId: number): string {
   return networkMap[chainId] || `chain-${chainId}`;
 }
 
+const ALCHEMY_PORTFOLIO_SUPPORTED_CHAIN_IDS = new Set<number>([
+  1,
+  10,
+  100,
+  137,
+  42161,
+  8453,
+  84532,
+  11155111,
+  80001,
+]);
+
+function isAlchemyPortfolioChain(chainId: number): boolean {
+  return ALCHEMY_PORTFOLIO_SUPPORTED_CHAIN_IDS.has(chainId);
+}
+
 const isClrUsdSymbol = (symbol: string): boolean => symbol.toUpperCase() === 'CLRUSD';
 
 /**
@@ -636,12 +652,14 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
       if (SUPPORTED_NETWORKS.length > 1) {
         try {
           const chainIds = SUPPORTED_NETWORKS.map(n => n.chainId);
+          const portfolioChainIds = chainIds.filter(isAlchemyPortfolioChain);
+          const unsupportedChainIds = chainIds.filter((chainId) => !isAlchemyPortfolioChain(chainId));
           
           // Portfolio API limits: max 2 addresses, 5 networks per address
           const maxNetworksPerRequest = 5;
           const batches: number[][] = [];
-          for (let i = 0; i < chainIds.length; i += maxNetworksPerRequest) {
-            batches.push(chainIds.slice(i, i + maxNetworksPerRequest));
+          for (let i = 0; i < portfolioChainIds.length; i += maxNetworksPerRequest) {
+            batches.push(portfolioChainIds.slice(i, i + maxNetworksPerRequest));
           }
 
           const allTokens: MultichainTokenBalance[] = [];
@@ -722,6 +740,26 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
                 }
               }
             }
+          }
+
+          if (unsupportedChainIds.length > 0) {
+            // Home-testnet and other non-Alchemy chains are fetched via chain RPC/server endpoints.
+            const [fallbackBalances, fallbackTokens] = await Promise.all([
+              Promise.all(unsupportedChainIds.map((chainId) => fetchChainBalance(chainId))),
+              Promise.all(unsupportedChainIds.map((chainId) => fetchChainTokens(chainId))),
+            ]);
+
+            fallbackBalances.forEach((balance) => {
+              nativeByChainId.set(balance.chainId, {
+                balance: balance.balance,
+                balanceWei: balance.balanceWei,
+                balanceUSD: balance.balanceUSD,
+              });
+            });
+
+            fallbackTokens.forEach((tokensForChain) => {
+              allTokens.push(...tokensForChain);
+            });
           }
 
           const hasAnyData = allTokens.length > 0 || nativeByChainId.size > 0;

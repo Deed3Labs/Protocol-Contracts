@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
 import { ReownAuthentication } from '@reown/appkit-siwx';
 import React from 'react';
+import { defineChain } from 'viem';
 import { AppKitAuthProvider } from '@/hooks/useAppKitAuth';
 
 const queryClient = new QueryClient();
@@ -76,9 +77,84 @@ const metadata = {
   icons: ['https://avatars.githubusercontent.com/u/179229932']
 };
 
+function parseChainId(raw: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(raw || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function createClearChain({
+  chainId,
+  name,
+  rpcUrl,
+  blockExplorer,
+  testnet,
+}: {
+  chainId: number;
+  name: string;
+  rpcUrl: string;
+  blockExplorer?: string;
+  testnet: boolean;
+}) {
+  const rpc = rpcUrl.trim();
+  const explorer = (blockExplorer || '').trim();
+
+  return defineChain({
+    id: chainId,
+    name,
+    nativeCurrency: {
+      name: 'Ether',
+      symbol: 'ETH',
+      decimals: 18,
+    },
+    rpcUrls: {
+      default: {
+        http: [rpc],
+      },
+      public: {
+        http: [rpc],
+      },
+    },
+    blockExplorers: explorer
+      ? {
+          default: {
+            name: `${name} Explorer`,
+            url: explorer,
+          },
+        }
+      : undefined,
+    testnet,
+  });
+}
+
+const HOME_TESTNET_CHAIN_ID = parseChainId(
+  import.meta.env.VITE_HOME_TESTNET_CHAIN_ID || import.meta.env.VITE_CLRUSD_HOME_CHAIN_ID,
+  92373
+);
+const HOME_MAINNET_CHAIN_ID = parseChainId(import.meta.env.VITE_HOME_MAINNET_CHAIN_ID, 92401);
+
+const homeTestnetChain = createClearChain({
+  chainId: HOME_TESTNET_CHAIN_ID,
+  name: import.meta.env.VITE_HOME_TESTNET_NAME || 'Clear Testnet',
+  rpcUrl: import.meta.env.VITE_HOME_TESTNET_RPC_URL || import.meta.env.VITE_HOME_CHAIN_RPC_URL || 'http://127.0.0.1:9545',
+  blockExplorer:
+    import.meta.env.VITE_HOME_TESTNET_BLOCK_EXPLORER_URL || import.meta.env.VITE_HOME_CHAIN_BLOCK_EXPLORER_URL,
+  testnet: true,
+});
+
+const homeMainnetChain = createClearChain({
+  chainId: HOME_MAINNET_CHAIN_ID,
+  name: import.meta.env.VITE_HOME_MAINNET_NAME || 'Clear Mainnet',
+  rpcUrl: import.meta.env.VITE_HOME_MAINNET_RPC_URL || 'http://127.0.0.1:9546',
+  blockExplorer: import.meta.env.VITE_HOME_MAINNET_BLOCK_EXPLORER_URL,
+  testnet: false,
+});
+
 // Networks enabled for wallet connections + wagmi switchChain.
 // Must include any chain LI.FI routes may require (e.g. Gnosis/Arbitrum).
-const supportedNetworks = [mainnet, base, sepolia, baseSepolia, arbitrum, optimism, polygon, gnosis];
+const baseNetworks = [mainnet, base, sepolia, baseSepolia, arbitrum, optimism, polygon, gnosis];
+const supportedNetworks = Array.from(
+  new Map([...baseNetworks, homeTestnetChain, homeMainnetChain].map((network) => [network.id, network])).values()
+);
 
 export const wagmiAdapter = new WagmiAdapter({
   networks: supportedNetworks,

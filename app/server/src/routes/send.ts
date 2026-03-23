@@ -28,6 +28,22 @@ function parseIntEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function defaultSendChainId(): number {
+  return parseIntEnv(
+    'SEND_DEFAULT_CHAIN_ID',
+    parseIntEnv('HOME_TESTNET_CHAIN_ID', parseIntEnv('HOME_CHAIN_ID', parseIntEnv('CLRUSD_HOME_CHAIN_ID', 92373)))
+  );
+}
+
+function defaultAllowedSendChains(): string {
+  const explicit = (process.env.SEND_ALLOWED_CHAIN_IDS || '').trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  return String(defaultSendChainId());
+}
+
 function parseUsdcMicros(value: unknown): bigint | null {
   if (typeof value === 'number') {
     if (!Number.isFinite(value) || value <= 0) return null;
@@ -381,10 +397,11 @@ senderRouter.post('/transfers/prepare', requireAuth, async (req: Request, res: R
     }
 
     const chainIdValue = typeof body.chainId === 'number' ? body.chainId : parseInt(String(body.chainId || ''), 10);
-    const chainId = Number.isFinite(chainIdValue) && chainIdValue > 0 ? chainIdValue : parseIntEnv('SEND_DEFAULT_CHAIN_ID', 8453);
+    const resolvedDefaultChainId = defaultSendChainId();
+    const chainId = Number.isFinite(chainIdValue) && chainIdValue > 0 ? chainIdValue : resolvedDefaultChainId;
 
     const allowedChainIds = new Set(
-      (process.env.SEND_ALLOWED_CHAIN_IDS || '8453')
+      defaultAllowedSendChains()
         .split(',')
         .map((value) => parseInt(value.trim(), 10))
         .filter((value) => Number.isFinite(value) && value > 0)

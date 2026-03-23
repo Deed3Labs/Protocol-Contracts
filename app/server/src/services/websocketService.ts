@@ -17,6 +17,23 @@ class WebSocketService {
   private io: SocketIOServer | null = null;
   private clients: Map<string, ClientSubscription> = new Map();
   private priceUpdateInterval: number | null = null;
+  private readonly defaultChainIds = this.resolveDefaultChainIds();
+
+  private resolveDefaultChainIds(): number[] {
+    const defaults = [1, 8453, 100, 11155111, 84532];
+    const configured = [
+      process.env.HOME_TESTNET_CHAIN_ID,
+      process.env.HOME_CHAIN_ID,
+      process.env.CLRUSD_HOME_CHAIN_ID,
+      process.env.HOME_MAINNET_CHAIN_ID,
+      process.env.MEMBERSHIP_CHAIN_ID,
+      process.env.SEND_DEFAULT_CHAIN_ID,
+    ]
+      .map((value) => Number.parseInt((value || '').trim(), 10))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    return Array.from(new Set([...defaults, ...configured]));
+  }
 
   /**
    * Initialize WebSocket server
@@ -37,26 +54,27 @@ class WebSocketService {
       // Subscribe to updates
       socket.on('subscribe', async (data: { address: string; chainIds?: number[]; subscriptions?: string[] }) => {
         const { address, chainIds = [], subscriptions = ['balances', 'nfts', 'transactions'] } = data;
+        const selectedChainIds = chainIds.length > 0 ? chainIds : this.defaultChainIds;
         
         this.clients.set(socket.id, {
           address: address.toLowerCase(),
-          chainIds: chainIds.length > 0 ? chainIds : [1, 8453, 100, 11155111], // Default chains
+          chainIds: selectedChainIds,
           subscriptions,
         });
 
-        console.log(`[WebSocket] Client ${socket.id} subscribed to ${address} on chains ${chainIds.join(', ')}`);
+        console.log(`[WebSocket] Client ${socket.id} subscribed to ${address} on chains ${selectedChainIds.join(', ')}`);
         
         // OPTIMIZATION: Only monitor chains the user actually uses, not all 7 chains
         // This dramatically reduces Alchemy compute unit usage
         // Start monitoring transfers for this address (using Alchemy Transfers API)
         // Pass the actual chainIds the user is subscribed to, not all chains
-        const chainsToMonitor = chainIds.length > 0 ? chainIds : [1, 8453, 100, 11155111]; // Use subscribed chains or defaults
+        const chainsToMonitor = selectedChainIds;
         transfersService.startMonitoring(address, chainsToMonitor).catch(error => {
           console.error(`[WebSocket] Failed to start transfer monitoring for ${address}:`, error);
         });
         
         // Send initial data
-        await this.sendInitialData(socket, address, chainIds, subscriptions);
+        await this.sendInitialData(socket, address, selectedChainIds, subscriptions);
       });
 
       // Unsubscribe

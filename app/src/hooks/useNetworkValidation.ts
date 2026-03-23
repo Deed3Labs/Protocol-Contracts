@@ -64,11 +64,53 @@ export function useNetworkValidation() {
     }
   }, [isConnected, embeddedWalletInfo, address, status, chainId]);
 
-  // Note: AppKit doesn't have a direct switchChain equivalent
-  // Users will need to switch networks through their wallet or AppKit modal
+  type EthereumRequest = (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+
   const switchToSupportedNetwork = useCallback(async () => {
-    console.warn('Network switching is not directly supported by AppKit. Please switch networks through your wallet or AppKit modal.');
-    throw new Error('Network switching not supported in AppKit mode. Please switch networks through your wallet.');
+    if (typeof window === 'undefined' || !window.ethereum) {
+      throw new Error('No wallet provider available');
+    }
+
+    const targetNetwork = SUPPORTED_NETWORKS.find((network) =>
+      isNetworkSupportedAndDeployed(network.chainId)
+    );
+
+    if (!targetNetwork) {
+      throw new Error('No supported network is configured for switching');
+    }
+
+    const request = (window.ethereum as { request?: EthereumRequest }).request;
+    if (!request) {
+      throw new Error('Wallet provider does not support JSON-RPC requests');
+    }
+
+    const targetChainHex = `0x${targetNetwork.chainId.toString(16)}`;
+
+    try {
+      await request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: targetChainHex }],
+      });
+      return;
+    } catch (error) {
+      const code = (error as { code?: number }).code;
+      if (code !== 4902) {
+        throw error;
+      }
+    }
+
+    await request({
+      method: 'wallet_addEthereumChain',
+      params: [
+        {
+          chainId: targetChainHex,
+          chainName: targetNetwork.name,
+          nativeCurrency: targetNetwork.nativeCurrency,
+          rpcUrls: [targetNetwork.rpcUrl],
+          blockExplorerUrls: targetNetwork.blockExplorer ? [targetNetwork.blockExplorer] : [],
+        },
+      ],
+    });
   }, []);
 
   const getNetworkDisplayName = useCallback((chainId: number) => {

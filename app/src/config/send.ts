@@ -1,8 +1,13 @@
 import { getCommonTokens } from '@/config/tokens';
 
 const DEFAULT_SUPPORTED_CHAIN_IDS = (() => {
-  const parsed = Number.parseInt(import.meta.env.VITE_HOME_MAINNET_CHAIN_ID || '92401', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? [parsed] : [8453];
+  const testnetChain = Number.parseInt(
+    import.meta.env.VITE_HOME_TESTNET_CHAIN_ID || import.meta.env.VITE_CLRUSD_HOME_CHAIN_ID || '92373',
+    10
+  );
+  const mainnetChain = Number.parseInt(import.meta.env.VITE_HOME_MAINNET_CHAIN_ID || '92401', 10);
+  const defaults = [testnetChain, mainnetChain].filter((chainId) => Number.isFinite(chainId) && chainId > 0);
+  return defaults.length > 0 ? Array.from(new Set(defaults)) : [92373];
 })();
 
 function parseChainList(rawValue: string | undefined): number[] {
