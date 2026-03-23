@@ -1,5 +1,3 @@
-import { ethers } from "ethers";
-import { MetadataRenderer__factory } from "../typechain-types/factories/contracts/core/MetadataRenderer__factory";
 import { saveDeployment, getDeployment } from "./helpers";
 
 async function main() {
@@ -34,13 +32,16 @@ async function main() {
   console.log("MetadataRenderer deployed to:", metadataRendererAddress);
 
   // Setup initial roles and configuration
-  const ADMIN_ROLE = await metadataRenderer.ADMIN_ROLE();
-  const REGISTRY_ADMIN_ROLE = await metadataRenderer.REGISTRY_ADMIN_ROLE();
+  const DEFAULT_ADMIN_ROLE = await metadataRenderer.DEFAULT_ADMIN_ROLE();
+  const VALIDATOR_ROLE = await metadataRenderer.VALIDATOR_ROLE();
 
-  // Grant roles to deployer
-  await metadataRenderer.grantRole(ADMIN_ROLE, deployer.address);
-  await metadataRenderer.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
-  console.log("Granted roles to deployer");
+  if (!(await metadataRenderer.hasRole(DEFAULT_ADMIN_ROLE, deployer.address))) {
+    await metadataRenderer.grantRole(DEFAULT_ADMIN_ROLE, deployer.address);
+  }
+  if (!(await metadataRenderer.hasRole(VALIDATOR_ROLE, deployer.address))) {
+    await metadataRenderer.grantRole(VALIDATOR_ROLE, deployer.address);
+  }
+  console.log("Ensured deployer has admin/validator roles");
 
   // Save deployment information
   const metadataRendererAbi = metadataRenderer.interface.formatJson();

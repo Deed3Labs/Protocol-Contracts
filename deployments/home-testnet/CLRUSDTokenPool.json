@@ -1,0 +1,7 @@
+{
+  "address": "0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1",
+  "abi": [
+    "function applyChainUpdates(uint64[] remoteChainSelectorsToRemove,(uint64 remoteChainSelector,bool allowed,bytes remotePoolAddress,bytes remoteTokenAddress,(bool isEnabled,uint128 capacity,uint128 rate) outboundRateLimiterConfig,(bool isEnabled,uint128 capacity,uint128 rate) inboundRateLimiterConfig)[] chainsToAdd) external"
+  ],
+  "blockNumber": 0
+}

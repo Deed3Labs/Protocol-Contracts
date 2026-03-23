@@ -130,7 +130,7 @@ contract DeedNFT is
         address _defaultValidator,
         address _validatorRegistry
     ) public initializer {
-        __ERC721_init("DeedNFT", "DEED");
+        __ERC721_init("Trust Deed", "T-DEED");
         __ERC721URIStorage_init();
         __AccessControl_init();
         __Pausable_init();

@@ -1,5 +1,3 @@
-//.import { ethers } from "ethers";
-import { DeedNFT } from "../typechain-types";
 import { saveDeployment, getDeployment } from "./helpers";
 
 async function main() {
@@ -40,16 +38,24 @@ async function main() {
   console.log("DeedNFT deployed to:", deedNFTAddress);
 
   // Setup initial roles
-  const ADMIN_ROLE = await deedNFT.ADMIN_ROLE();
+  const DEFAULT_ADMIN_ROLE = await deedNFT.DEFAULT_ADMIN_ROLE();
   const MINTER_ROLE = await deedNFT.MINTER_ROLE();
   const VALIDATOR_ROLE = await deedNFT.VALIDATOR_ROLE();
 
-  // Grant roles to deployer and validator
-  await deedNFT.grantRole(ADMIN_ROLE, deployer.address);
-  await deedNFT.grantRole(MINTER_ROLE, deployer.address);
-  await deedNFT.grantRole(MINTER_ROLE, validatorAddress);
-  await deedNFT.grantRole(VALIDATOR_ROLE, validatorAddress);
-  console.log("Granted roles to deployer and validator");
+  // Ensure roles for deployer and validator
+  if (!(await deedNFT.hasRole(DEFAULT_ADMIN_ROLE, deployer.address))) {
+    await (await deedNFT.grantRole(DEFAULT_ADMIN_ROLE, deployer.address)).wait();
+  }
+  if (!(await deedNFT.hasRole(MINTER_ROLE, deployer.address))) {
+    await (await deedNFT.grantRole(MINTER_ROLE, deployer.address)).wait();
+  }
+  if (!(await deedNFT.hasRole(MINTER_ROLE, validatorAddress))) {
+    await (await deedNFT.grantRole(MINTER_ROLE, validatorAddress)).wait();
+  }
+  if (!(await deedNFT.hasRole(VALIDATOR_ROLE, validatorAddress))) {
+    await (await deedNFT.grantRole(VALIDATOR_ROLE, validatorAddress)).wait();
+  }
+  console.log("Ensured roles for deployer and validator");
 
   // Set MetadataRenderer
   await deedNFT.setMetadataRenderer(metadataRendererAddress);

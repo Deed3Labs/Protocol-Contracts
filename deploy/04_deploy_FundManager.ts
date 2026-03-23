@@ -1,5 +1,3 @@
-import { ethers } from "ethers";
-import { FundManager } from "../typechain-types";
 import { saveDeployment, getDeployment } from "./helpers";
 
 /**
@@ -38,7 +36,6 @@ async function main() {
   console.log("Deploying FundManager...");
   const FundManager = await hre.ethers.getContractFactory("FundManager");
   const fundManager = await hre.upgrades.deployProxy(FundManager, [
-    deedNFTAddress,
     validatorRegistryAddress,
     500, // 5% initial commission percentage (500 basis points) - within 10% max limit
     deployer.address // Fee receiver address
@@ -54,17 +51,24 @@ async function main() {
   // Setup initial roles
   // Note: Additional roles will be managed through ValidatorRegistry integration
   const ADMIN_ROLE = await fundManager.ADMIN_ROLE();
-  const OPERATOR_ROLE = await fundManager.OPERATOR_ROLE();
+  const FEE_MANAGER_ROLE = await fundManager.FEE_MANAGER_ROLE();
 
   // Grant roles to deployer
-  await fundManager.grantRole(ADMIN_ROLE, deployer.address);
-  await fundManager.grantRole(OPERATOR_ROLE, deployer.address);
-  console.log("Granted initial roles to deployer");
+  if (!(await fundManager.hasRole(ADMIN_ROLE, deployer.address))) {
+    await (await fundManager.grantRole(ADMIN_ROLE, deployer.address)).wait();
+  }
+  if (!(await fundManager.hasRole(FEE_MANAGER_ROLE, deployer.address))) {
+    await (await fundManager.grantRole(FEE_MANAGER_ROLE, deployer.address)).wait();
+  }
+  console.log("Ensured initial roles for deployer");
 
-  // Set ValidatorRegistry and DeedNFT
-  await fundManager.setValidatorRegistry(validatorRegistryAddress);
-  await fundManager.setDeedNFT(deedNFTAddress);
-  console.log("Set ValidatorRegistry and DeedNFT");
+  // Set ValidatorRegistry and mark DeedNFT as compatible
+  await (await fundManager.setValidatorRegistry(validatorRegistryAddress)).wait();
+  const isCompatible = await fundManager.isCompatibleDeedNFT(deedNFTAddress);
+  if (!isCompatible) {
+    await (await fundManager.addCompatibleDeedNFT(deedNFTAddress)).wait();
+  }
+  console.log("Set ValidatorRegistry and compatible DeedNFT");
 
   // Save deployment information
   const fundManagerAbi = fundManager.interface.formatJson();
