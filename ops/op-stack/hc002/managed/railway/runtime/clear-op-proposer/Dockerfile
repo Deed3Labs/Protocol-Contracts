@@ -1,4 +1,4 @@
-FROM us-docker.pkg.dev/oplabs-tools-artifacts/images/op-proposer:v1.10.0
+FROM us-docker.pkg.dev/oplabs-tools-artifacts/images/op-proposer:latest
 
 WORKDIR /workspace
 COPY entrypoint.sh /entrypoint.sh

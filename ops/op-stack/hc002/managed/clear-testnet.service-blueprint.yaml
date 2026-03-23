@@ -51,7 +51,7 @@ services:
 
   - key: clear-op-batcher
     role: data-availability
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.13.2
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:latest
     internalPorts: [8548]
     dependsOn: [clear-op-node]
     healthCheck:
@@ -66,7 +66,7 @@ services:
 
   - key: clear-op-proposer
     role: state-root-proposals
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-proposer:v1.10.0
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-proposer:latest
     internalPorts: [8560]
     dependsOn: [clear-op-node]
     healthCheck:

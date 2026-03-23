@@ -1,4 +1,4 @@
-FROM us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.13.2
+FROM us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:latest
 
 WORKDIR /workspace
 COPY entrypoint.sh /entrypoint.sh

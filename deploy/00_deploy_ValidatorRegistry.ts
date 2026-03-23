@@ -34,17 +34,11 @@ async function main() {
   const validatorRegistryAddress = await validatorRegistry.getAddress();
   console.log("ValidatorRegistry deployed to:", validatorRegistryAddress);
 
-  // Setup initial roles and configuration
-  // Note: Additional roles will be managed through FundManager integration
+  // ValidatorRegistry initializes REGISTRY_ADMIN_ROLE + DEFAULT_ADMIN_ROLE
+  // for the deployer in initialize(), so no extra role wiring is required here.
   const REGISTRY_ADMIN_ROLE = await validatorRegistry.REGISTRY_ADMIN_ROLE();
-  const VALIDATOR_ROLE = await validatorRegistry.VALIDATOR_ROLE();
-  const OPERATOR_ROLE = await validatorRegistry.OPERATOR_ROLE();
-
-  // Grant roles to deployer
-  await validatorRegistry.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
-  await validatorRegistry.grantRole(VALIDATOR_ROLE, deployer.address);
-  await validatorRegistry.grantRole(OPERATOR_ROLE, deployer.address);
-  console.log("Granted initial roles to deployer");
+  const hasRegistryAdmin = await validatorRegistry.hasRole(REGISTRY_ADMIN_ROLE, deployer.address);
+  console.log("Deployer has REGISTRY_ADMIN_ROLE:", hasRegistryAdmin);
 
   // Save deployment information
   const validatorRegistryAbi = validatorRegistry.interface.formatJson();
