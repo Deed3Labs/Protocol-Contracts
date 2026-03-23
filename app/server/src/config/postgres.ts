@@ -22,6 +22,26 @@ function shouldUseSsl(connectionString: string): boolean {
   return process.env.NODE_ENV === 'production';
 }
 
+function resolveDefaultPoolMax(): number {
+  const isRailway = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
+  if (process.env.NODE_ENV === 'production' && isRailway) {
+    // Railway Postgres plans are often connection-constrained; prefer a safer default when unset.
+    return 3;
+  }
+  return 10;
+}
+
+function resolveConnectionLabel(connectionString: string): string {
+  try {
+    const url = new URL(connectionString);
+    const database = url.pathname.replace(/^\//, '') || '(default)';
+    const port = url.port || '5432';
+    return `${url.hostname}:${port}/${database}`;
+  } catch {
+    return 'configured';
+  }
+}
+
 function getPoolConfig(): PoolConfig | null {
   const connectionString =
     process.env.DATABASE_URL ||
@@ -34,10 +54,11 @@ function getPoolConfig(): PoolConfig | null {
   }
 
   const sslEnabled = shouldUseSsl(connectionString);
+  const max = parseIntEnv('POSTGRES_POOL_MAX', resolveDefaultPoolMax());
 
   return {
     connectionString,
-    max: parseIntEnv('POSTGRES_POOL_MAX', 10),
+    max,
     idleTimeoutMillis: parseIntEnv('POSTGRES_IDLE_TIMEOUT_MS', 30_000),
     connectionTimeoutMillis: parseIntEnv('POSTGRES_CONNECTION_TIMEOUT_MS', 10_000),
     ssl: sslEnabled ? { rejectUnauthorized: false } : undefined,
@@ -55,6 +76,11 @@ export function getPostgresPool(): Pool | null {
   }
 
   postgresPool = new Pool(config);
+  console.info(
+    `[Postgres] Pool initialized target=${resolveConnectionLabel(config.connectionString || '')} `
+      + `max=${config.max ?? 'default'} idleMs=${config.idleTimeoutMillis ?? 'default'} `
+      + `connectTimeoutMs=${config.connectionTimeoutMillis ?? 'default'} ssl=${Boolean(config.ssl)}`
+  );
   postgresPool.on('error', (error: Error) => {
     console.error('Postgres pool error:', error.message);
   });

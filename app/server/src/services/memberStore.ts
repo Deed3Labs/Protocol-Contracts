@@ -2618,9 +2618,10 @@ export class MemberStore {
 
     const pool = this.mustPool();
     await withRetry(async () => {
-      await pool.query('BEGIN');
+      const client = await pool.connect();
       try {
-        await pool.query(
+        await client.query('BEGIN');
+        await client.query(
           `
           UPDATE ${TABLE_WALLETS}
           SET
@@ -2635,14 +2636,20 @@ export class MemberStore {
           `,
           [targetMemberId, existingMemberId, walletAddress]
         );
-        await pool.query(
+        await client.query(
           `DELETE FROM ${TABLE_MEMBERS} WHERE id = $1`,
           [existingMemberId]
         );
-        await pool.query('COMMIT');
+        await client.query('COMMIT');
       } catch (error) {
-        await pool.query('ROLLBACK');
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          console.error('Failed to rollback placeholder member merge transaction:', rollbackError);
+        }
         throw error;
+      } finally {
+        client.release();
       }
     });
   }

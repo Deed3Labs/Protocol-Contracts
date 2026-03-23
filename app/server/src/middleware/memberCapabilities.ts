@@ -1,6 +1,20 @@
 import type { NextFunction, Request, Response } from 'express';
 import { memberStore, type MemberCapabilities } from '../services/memberStore.js';
 
+const TRANSIENT_POSTGRES_CODES = new Set([
+  '53300', // too_many_connections
+  '57P03', // cannot_connect_now
+  '08000', // connection_exception
+  '08001', // sqlclient_unable_to_establish_sqlconnection
+  '08003', // connection_does_not_exist
+  '08006', // connection_failure
+]);
+
+function isTransientPostgresError(error: unknown): boolean {
+  const code = (error as { code?: string })?.code;
+  return Boolean(code && TRANSIENT_POSTGRES_CODES.has(code));
+}
+
 function resolveRawAuthSubject(req: Request): string {
   const profileUuid = req.auth?.profileUuid?.trim();
   if (profileUuid) return profileUuid;
@@ -54,6 +68,13 @@ export function requireMemberCapability(capability: MemberCapabilityKey) {
       return next();
     } catch (error) {
       console.error('Member capability check failed:', error);
+      if (isTransientPostgresError(error)) {
+        res.setHeader('Retry-After', '2');
+        return res.status(503).json({
+          error: 'Service unavailable',
+          message: 'Member capability checks are temporarily unavailable. Please retry shortly.',
+        });
+      }
       return res.status(500).json({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Failed to check member capabilities',

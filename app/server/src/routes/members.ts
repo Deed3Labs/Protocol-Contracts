@@ -19,6 +19,14 @@ import { memberBillingService } from '../services/memberBillingService.js';
 const router = Router();
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const INVALID = Symbol('invalid');
+const TRANSIENT_POSTGRES_CODES = new Set([
+  '53300', // too_many_connections
+  '57P03', // cannot_connect_now
+  '08000', // connection_exception
+  '08001', // sqlclient_unable_to_establish_sqlconnection
+  '08003', // connection_does_not_exist
+  '08006', // connection_failure
+]);
 
 function resolveRawAuthSubject(req: Request): string {
   const profileUuid = req.auth?.profileUuid?.trim();
@@ -147,6 +155,15 @@ function parseOptionalStringArray(
 
 function handleMemberRouteError(res: Response, error: unknown): void {
   const pgCode = (error as { code?: string })?.code;
+  if (pgCode && TRANSIENT_POSTGRES_CODES.has(pgCode)) {
+    res.setHeader('Retry-After', '2');
+    res.status(503).json({
+      error: 'Service unavailable',
+      message: 'Member database is temporarily overloaded. Please retry shortly.',
+    });
+    return;
+  }
+
   if (pgCode === '23505') {
     res.status(409).json({
       error: 'Conflict',
