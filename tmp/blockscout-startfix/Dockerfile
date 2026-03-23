@@ -1,0 +1,1 @@
+FROM blockscout/blockscout:latest
