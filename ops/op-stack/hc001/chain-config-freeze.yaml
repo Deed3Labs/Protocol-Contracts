@@ -16,10 +16,16 @@ l2:
     name: Clear Testnet
     chainId: 92373
     chainIdHex32: "0x00000000000000000000000000000000000000000000000000000000000168d5"
+    nativeCurrency:
+      name: Sepolia ETH
+      symbol: ETH
   mainnet:
     name: Clear Mainnet
     chainId: 92401
     chainIdHex32: "0x00000000000000000000000000000000000000000000000000000000000168f1"
+    nativeCurrency:
+      name: Clear ETH
+      symbol: ETH
 
 constraints:
   useInterop: false

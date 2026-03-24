@@ -105,8 +105,8 @@ railway variables --service clear-testnet-blockscout --environment production \
   --set "CHAIN_ID=92373" \
   --set "NETWORK=Clear Testnet" \
   --set "SUBNETWORK=Clear Testnet" \
-  --set "COIN=CLEAR" \
-  --set "COIN_NAME=Clear" \
+  --set "COIN=ETH" \
+  --set "COIN_NAME=Sepolia ETH" \
   --set "SECRET_KEY_BASE=REPLACE_LONG_RANDOM_HEX" \
   --set "DISABLE_WEBAPP=true" \
   --set "API_V2_ENABLED=true"
@@ -130,8 +130,8 @@ railway variables --service clear-testnet-explorer --environment production \
   --set "NEXT_PUBLIC_NETWORK_SHORT_NAME=Clear" \
   --set "NEXT_PUBLIC_NETWORK_ID=92373" \
   --set "NEXT_PUBLIC_NETWORK_RPC_URL=https://REPLACE_CLEAR_RPC_PUBLIC_URL" \
-  --set "NEXT_PUBLIC_NETWORK_CURRENCY_NAME=Clear" \
-  --set "NEXT_PUBLIC_NETWORK_CURRENCY_SYMBOL=CLEAR" \
+  --set "NEXT_PUBLIC_NETWORK_CURRENCY_NAME=Sepolia ETH" \
+  --set "NEXT_PUBLIC_NETWORK_CURRENCY_SYMBOL=ETH" \
   --set "NEXT_PUBLIC_IS_TESTNET=true" \
   --set "NEXT_PUBLIC_API_PROTOCOL=https" \
   --set "NEXT_PUBLIC_API_HOST=clear-testnet-blockscout-production.up.railway.app" \

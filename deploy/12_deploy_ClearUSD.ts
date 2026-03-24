@@ -14,6 +14,21 @@ function parseSalt(hre: any, value: string | undefined): string {
   return hre.ethers.id(raw);
 }
 
+async function isUsableCreate2Factory(hre: any, address: string): Promise<boolean> {
+  if (!address) return false;
+
+  const code = await hre.ethers.provider.getCode(address);
+  if (!code || code === "0x") return false;
+
+  try {
+    const factory = await hre.ethers.getContractAt("Create2Deployer", address);
+    await factory.computeAddress(hre.ethers.ZeroHash, hre.ethers.ZeroHash);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function main() {
   const hre = require("hardhat");
   const [deployer] = await hre.ethers.getSigners();
@@ -44,24 +59,40 @@ async function main() {
     const providedFactory = process.env.CLRUSD_CREATE2_FACTORY_ADDRESS?.trim();
     let create2FactoryAddress = providedFactory || "";
 
-    if (!create2FactoryAddress) {
+    if (create2FactoryAddress) {
+      const providedIsUsable = await isUsableCreate2Factory(hre, create2FactoryAddress);
+      if (!providedIsUsable) {
+        throw new Error(
+          `Provided CLRUSD_CREATE2_FACTORY_ADDRESS is not a valid Create2Deployer on this chain: ${create2FactoryAddress}`
+        );
+      }
+    } else {
       const existingFactory = getDeployment(network.name, "Create2Deployer");
       if (existingFactory?.address) {
-        create2FactoryAddress = existingFactory.address;
-      } else {
-        console.log("Deploying Create2Deployer...");
-        const Create2Deployer = await hre.ethers.getContractFactory("Create2Deployer");
-        const deployedFactory = await Create2Deployer.deploy();
-        await deployedFactory.waitForDeployment();
-        create2FactoryAddress = await deployedFactory.getAddress();
-        saveDeployment(
-          network.name,
-          "Create2Deployer",
-          create2FactoryAddress,
-          JSON.parse(deployedFactory.interface.formatJson())
-        );
-        console.log("Create2Deployer deployed to:", create2FactoryAddress);
+        const existingIsUsable = await isUsableCreate2Factory(hre, existingFactory.address);
+        if (existingIsUsable) {
+          create2FactoryAddress = existingFactory.address;
+        } else {
+          console.warn(
+            `Saved Create2Deployer is stale or invalid on-chain (${existingFactory.address}); deploying a fresh factory.`
+          );
+        }
       }
+    }
+
+    if (!create2FactoryAddress) {
+      console.log("Deploying Create2Deployer...");
+      const Create2Deployer = await hre.ethers.getContractFactory("Create2Deployer");
+      const deployedFactory = await Create2Deployer.deploy();
+      await deployedFactory.waitForDeployment();
+      create2FactoryAddress = await deployedFactory.getAddress();
+      saveDeployment(
+        network.name,
+        "Create2Deployer",
+        create2FactoryAddress,
+        JSON.parse(deployedFactory.interface.formatJson())
+      );
+      console.log("Create2Deployer deployed to:", create2FactoryAddress);
     }
 
     const create2Factory = await hre.ethers.getContractAt(
