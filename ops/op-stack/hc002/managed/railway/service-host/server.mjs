@@ -64,6 +64,12 @@ const HOP_BY_HOP_HEADERS = new Set([
 const NFT_TOKEN_TYPES = new Set(["ERC-721", "ERC-1155", "ERC-404"]);
 const TOKEN_HOLDER_COUNT_CACHE_TTL_MS = 30_000;
 const tokenHolderCountCache = new Map();
+const TOKEN_REBUILD_CACHE_TTL_MS = 30_000;
+const ADDRESS_REBUILD_CACHE_TTL_MS = 30_000;
+const TRANSFER_EVENT_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const tokenRebuildCache = new Map();
+const addressTransfersRebuildCache = new Map();
 
 function json(res, code, payload) {
   res.writeHead(code, {
@@ -213,8 +219,11 @@ function getForwardHeaders(req) {
 }
 
 function parseBigInt(value, fallback = 0n) {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return fallback;
+  }
   try {
-    return BigInt(String(value ?? "0"));
+    return BigInt(String(value));
   } catch {
     return fallback;
   }
@@ -247,6 +256,46 @@ function setCachedTokenHolderCount(tokenAddress, count) {
   tokenHolderCountCache.set(tokenAddress.toLowerCase(), {
     value: count,
     expiresAt: Date.now() + TOKEN_HOLDER_COUNT_CACHE_TTL_MS,
+  });
+}
+
+function getCachedTokenRebuildData(tokenAddress) {
+  const key = tokenAddress.toLowerCase();
+  const cached = tokenRebuildCache.get(key);
+  if (!cached) {
+    return null;
+  }
+  if (cached.expiresAt < Date.now()) {
+    tokenRebuildCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedTokenRebuildData(tokenAddress, value) {
+  tokenRebuildCache.set(tokenAddress.toLowerCase(), {
+    value,
+    expiresAt: Date.now() + TOKEN_REBUILD_CACHE_TTL_MS,
+  });
+}
+
+function getCachedAddressRebuildData(addressHash) {
+  const key = addressHash.toLowerCase();
+  const cached = addressTransfersRebuildCache.get(key);
+  if (!cached) {
+    return null;
+  }
+  if (cached.expiresAt < Date.now()) {
+    addressTransfersRebuildCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedAddressRebuildData(addressHash, value) {
+  addressTransfersRebuildCache.set(addressHash.toLowerCase(), {
+    value,
+    expiresAt: Date.now() + ADDRESS_REBUILD_CACHE_TTL_MS,
   });
 }
 
@@ -333,7 +382,8 @@ function buildHoldersFromInstances(instances) {
       address: owner,
       value: 0n,
     };
-    current.value += parseBigInt(instance?.value, 1n);
+    const parsedValue = parseBigInt(instance?.value, 0n);
+    current.value += parsedValue > 0n ? parsedValue : 1n;
     grouped.set(key, current);
   }
 
@@ -373,17 +423,62 @@ async function fetchAllTokenInstances(req, tokenAddress) {
   return allItems;
 }
 
-async function countTokenHoldersFromInstances(req, tokenAddress) {
-  const cached = getCachedTokenHolderCount(tokenAddress);
-  if (cached !== null) {
+async function getTokenRebuildData(req, tokenAddress) {
+  const cached = getCachedTokenRebuildData(tokenAddress);
+  if (cached) {
     return cached;
   }
 
   const instances = await fetchAllTokenInstances(req, tokenAddress);
   const holders = buildHoldersFromInstances(instances);
-  const holderCount = holders.length;
+  const value = {
+    instances,
+    instancesCount: instances.length,
+    holders,
+    holdersCount: holders.length,
+  };
+  setCachedTokenRebuildData(tokenAddress, value);
+  return value;
+}
+
+async function countTokenHoldersFromInstances(req, tokenAddress) {
+  const rebuilt = getCachedTokenRebuildData(tokenAddress);
+  if (rebuilt) {
+    return rebuilt.holdersCount;
+  }
+
+  const cached = getCachedTokenHolderCount(tokenAddress);
+  if (cached !== null) {
+    return cached;
+  }
+
+  const tokenData = await getTokenRebuildData(req, tokenAddress);
+  const holderCount = tokenData.holdersCount;
   setCachedTokenHolderCount(tokenAddress, holderCount);
   return holderCount;
+}
+
+async function getAddressNftRebuildData(req, addressHash) {
+  const cached = getCachedAddressRebuildData(addressHash);
+  if (cached) {
+    return cached;
+  }
+
+  const [nft721, nft1155, nft404] = await Promise.all([
+    fetchBlockscoutJson(req, `/api/v2/addresses/${addressHash}/nft`, new URLSearchParams({ type: "ERC-721" })),
+    fetchBlockscoutJson(req, `/api/v2/addresses/${addressHash}/nft`, new URLSearchParams({ type: "ERC-1155" })),
+    fetchBlockscoutJson(req, `/api/v2/addresses/${addressHash}/nft`, new URLSearchParams({ type: "ERC-404" })),
+  ]);
+
+  const value = {
+    count721: Array.isArray(nft721?.items) ? nft721.items.length : 0,
+    count1155: Array.isArray(nft1155?.items) ? nft1155.items.length : 0,
+    count404: Array.isArray(nft404?.items) ? nft404.items.length : 0,
+  };
+  value.totalCount = value.count721 + value.count1155 + value.count404;
+
+  setCachedAddressRebuildData(addressHash, value);
+  return value;
 }
 
 async function maybePatchBlockscoutPayload(req, url, payload) {
@@ -391,53 +486,119 @@ async function maybePatchBlockscoutPayload(req, url, payload) {
 
   const addressMatch = path.match(/^\/api\/v2\/addresses\/([^/]+)$/u);
   if (addressMatch && payload && typeof payload === "object") {
-    if (payload.has_tokens === false) {
-      const [nft721, nft1155, nft404] = await Promise.all([
-        fetchBlockscoutJson(req, `/api/v2/addresses/${addressMatch[1]}/nft`, new URLSearchParams({ type: "ERC-721" })),
-        fetchBlockscoutJson(req, `/api/v2/addresses/${addressMatch[1]}/nft`, new URLSearchParams({ type: "ERC-1155" })),
-        fetchBlockscoutJson(req, `/api/v2/addresses/${addressMatch[1]}/nft`, new URLSearchParams({ type: "ERC-404" })),
-      ]);
+    const rebuilt = await getAddressNftRebuildData(req, addressMatch[1]);
+    if (payload.has_tokens === false && rebuilt.totalCount > 0) {
+      payload.has_tokens = true;
+    }
+    if (payload.has_token_transfers === false && rebuilt.totalCount > 0) {
+      payload.has_token_transfers = true;
+    }
+  }
 
-      const hasAnyNfts = [nft721, nft1155, nft404].some((entry) => Array.isArray(entry?.items) && entry.items.length > 0);
-      if (hasAnyNfts) {
-        payload.has_tokens = true;
+  const addressCountersMatch = path.match(/^\/api\/v2\/addresses\/([^/]+)\/counters$/u);
+  if (addressCountersMatch && payload && typeof payload === "object") {
+    if (String(payload.token_transfers_count || "0") === "0") {
+      const rebuilt = await getAddressNftRebuildData(req, addressCountersMatch[1]);
+      if (rebuilt.totalCount > 0) {
+        payload.token_transfers_count = String(rebuilt.totalCount);
       }
     }
   }
 
   const addressTabsCountersMatch = path.match(/^\/api\/v2\/addresses\/([^/]+)\/tabs-counters$/u);
-  if (addressTabsCountersMatch && payload && typeof payload === "object" && Number(payload.token_balances_count || 0) === 0) {
-    const [nft721, nft1155, nft404] = await Promise.all([
-      fetchBlockscoutJson(req, `/api/v2/addresses/${addressTabsCountersMatch[1]}/nft`, new URLSearchParams({ type: "ERC-721" })),
-      fetchBlockscoutJson(req, `/api/v2/addresses/${addressTabsCountersMatch[1]}/nft`, new URLSearchParams({ type: "ERC-1155" })),
-      fetchBlockscoutJson(req, `/api/v2/addresses/${addressTabsCountersMatch[1]}/nft`, new URLSearchParams({ type: "ERC-404" })),
-    ]);
-
-    const nftBalanceCount =
-      (Array.isArray(nft721?.items) ? nft721.items.length : 0) +
-      (Array.isArray(nft1155?.items) ? nft1155.items.length : 0) +
-      (Array.isArray(nft404?.items) ? nft404.items.length : 0);
-
-    if (nftBalanceCount > 0) {
-      payload.token_balances_count = nftBalanceCount;
+  if (addressTabsCountersMatch && payload && typeof payload === "object") {
+    if (Number(payload.token_balances_count || 0) === 0 || Number(payload.token_transfers_count || 0) === 0) {
+      const rebuilt = await getAddressNftRebuildData(req, addressTabsCountersMatch[1]);
+      if (Number(payload.token_balances_count || 0) === 0 && rebuilt.totalCount > 0) {
+        payload.token_balances_count = rebuilt.totalCount;
+      }
+      if (Number(payload.token_transfers_count || 0) === 0 && rebuilt.totalCount > 0) {
+        payload.token_transfers_count = rebuilt.totalCount;
+      }
     }
   }
 
-  const addressTokensMatch = path.match(/^\/api\/v2\/addresses\/([^/]+)\/tokens$/u);
-  if (addressTokensMatch && payload && typeof payload === "object" && Array.isArray(payload.items) && payload.items.length === 0) {
-    const requestedType = url.searchParams.get("type");
-    if (isNftTokenType(requestedType)) {
-      const nftPayload = await fetchBlockscoutJson(
-        req,
-        `/api/v2/addresses/${addressTokensMatch[1]}/nft`,
-        new URLSearchParams(url.searchParams),
-      );
+  const tokenHoldersMatch = path.match(/^\/api\/v2\/tokens\/([^/]+)\/holders$/u);
+  if (tokenHoldersMatch && payload && typeof payload === "object" && Array.isArray(payload.items) && payload.items.length === 0) {
+    const rebuilt = await getTokenRebuildData(req, tokenHoldersMatch[1]);
+    if (rebuilt.holders.length > 0) {
+      setCachedTokenHolderCount(tokenHoldersMatch[1], rebuilt.holdersCount);
+      payload = {
+        items: rebuilt.holders,
+        next_page_params: null,
+      };
+    }
+  }
 
-      if (nftPayload && Array.isArray(nftPayload.items) && nftPayload.items.length > 0) {
-        payload = {
-          items: nftPayload.items.map(toAddressTokenBalanceFromNft).filter(Boolean),
-          next_page_params: null,
-        };
+  const tokenCountersMatch = path.match(/^\/api\/v2\/tokens\/([^/]+)\/counters$/u);
+  if (tokenCountersMatch && payload && typeof payload === "object") {
+    if (
+      String(payload.token_holders_count || "0") === "0" ||
+      String(payload.transfers_count || "0") === "0"
+    ) {
+      const rebuilt = await getTokenRebuildData(req, tokenCountersMatch[1]);
+      if (String(payload.token_holders_count || "0") === "0" && rebuilt.holdersCount > 0) {
+        payload.token_holders_count = String(rebuilt.holdersCount);
+      }
+      if (String(payload.transfers_count || "0") === "0" && rebuilt.instancesCount > 0) {
+        // Minimum transfer floor for NFTs: one mint transfer per existing token instance.
+        payload.transfers_count = String(rebuilt.instancesCount);
+      }
+    }
+  }
+
+  if (path === "/api/v2/tokens" && payload && typeof payload === "object" && Array.isArray(payload.items)) {
+    payload.items = await Promise.all(payload.items.map(async (item) => {
+      if (!item || typeof item !== "object") {
+        return item;
+      }
+      if (!isNftTokenType(item.type)) {
+        return item;
+      }
+      const tokenAddress = String(item.address_hash || item.address || "");
+      if (!tokenAddress) {
+        return item;
+      }
+      let out = item;
+      if (String(item.holders || "0") === "0") {
+        const holderCount = await countTokenHoldersFromInstances(req, tokenAddress);
+        if (holderCount > 0) {
+          out = {
+            ...out,
+            holders: String(holderCount),
+          };
+        }
+      }
+      if (String(out.transfers_count || "0") === "0") {
+        const rebuilt = await getTokenRebuildData(req, tokenAddress);
+        if (rebuilt.instancesCount > 0) {
+          out = {
+            ...out,
+            transfers_count: String(rebuilt.instancesCount),
+          };
+        }
+      }
+      return out;
+    }));
+  }
+
+  const tokenSummaryMatch = path.match(/^\/api\/v2\/tokens\/([^/]+)$/u);
+  if (tokenSummaryMatch && payload && typeof payload === "object") {
+    if (isNftTokenType(payload.type)) {
+      const tokenAddress = String(payload.address_hash || payload.address || tokenSummaryMatch[1] || "");
+      if (tokenAddress) {
+        if (String(payload.holders || "0") === "0") {
+          const holderCount = await countTokenHoldersFromInstances(req, tokenAddress);
+          if (holderCount > 0) {
+            payload.holders = String(holderCount);
+          }
+        }
+        if (String(payload.transfers_count || "0") === "0") {
+          const rebuilt = await getTokenRebuildData(req, tokenAddress);
+          if (rebuilt.instancesCount > 0) {
+            payload.transfers_count = String(rebuilt.instancesCount);
+          }
+        }
       }
     }
   }
@@ -458,53 +619,21 @@ async function maybePatchBlockscoutPayload(req, url, payload) {
     }
   }
 
-  const tokenHoldersMatch = path.match(/^\/api\/v2\/tokens\/([^/]+)\/holders$/u);
-  if (tokenHoldersMatch && payload && typeof payload === "object" && Array.isArray(payload.items) && payload.items.length === 0) {
-    const holders = buildHoldersFromInstances(await fetchAllTokenInstances(req, tokenHoldersMatch[1]));
-    if (holders.length > 0) {
-      setCachedTokenHolderCount(tokenHoldersMatch[1], holders.length);
-      payload = {
-        items: holders,
-        next_page_params: null,
-      };
-    }
-  }
+  const addressTokensMatch = path.match(/^\/api\/v2\/addresses\/([^/]+)\/tokens$/u);
+  if (addressTokensMatch && payload && typeof payload === "object" && Array.isArray(payload.items) && payload.items.length === 0) {
+    const requestedType = url.searchParams.get("type");
+    if (isNftTokenType(requestedType)) {
+      const nftPayload = await fetchBlockscoutJson(
+        req,
+        `/api/v2/addresses/${addressTokensMatch[1]}/nft`,
+        new URLSearchParams(url.searchParams),
+      );
 
-  if (path === "/api/v2/tokens" && payload && typeof payload === "object" && Array.isArray(payload.items)) {
-    payload.items = await Promise.all(payload.items.map(async (item) => {
-      if (!item || typeof item !== "object") {
-        return item;
-      }
-      if (!isNftTokenType(item.type)) {
-        return item;
-      }
-      if (String(item.holders || "0") !== "0") {
-        return item;
-      }
-      const tokenAddress = String(item.address_hash || item.address || "");
-      if (!tokenAddress) {
-        return item;
-      }
-      const holderCount = await countTokenHoldersFromInstances(req, tokenAddress);
-      if (holderCount > 0) {
-        return {
-          ...item,
-          holders: String(holderCount),
+      if (nftPayload && Array.isArray(nftPayload.items) && nftPayload.items.length > 0) {
+        payload = {
+          items: nftPayload.items.map(toAddressTokenBalanceFromNft).filter(Boolean),
+          next_page_params: null,
         };
-      }
-      return item;
-    }));
-  }
-
-  const tokenSummaryMatch = path.match(/^\/api\/v2\/tokens\/([^/]+)$/u);
-  if (tokenSummaryMatch && payload && typeof payload === "object") {
-    if (isNftTokenType(payload.type) && String(payload.holders || "0") === "0") {
-      const tokenAddress = String(payload.address_hash || payload.address || tokenSummaryMatch[1] || "");
-      if (tokenAddress) {
-        const holderCount = await countTokenHoldersFromInstances(req, tokenAddress);
-        if (holderCount > 0) {
-          payload.holders = String(holderCount);
-        }
       }
     }
   }
