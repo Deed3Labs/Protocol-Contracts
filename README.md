@@ -1,6 +1,6 @@
 # Protocol Contracts
 
-Deed Protocol is an open-source infrastructure stack for real-world asset tokenization, validation, credit issuance, and programmable settlement.
+An open-source infrastructure stack for real-world asset tokenization, validation, credit issuance, and programmable settlement.
 
 It ships as a full developer platform: smart contracts, deployment and upgrade tooling, frontend clients, backend APIs, and operational scripts in one repository.
 
