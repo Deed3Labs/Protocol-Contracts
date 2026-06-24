@@ -1,4 +1,4 @@
-import { DollarSign } from 'lucide-react';
+import { DollarSign, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface UpcomingItem {
@@ -87,7 +87,7 @@ export default function UpcomingCalendar({
               </span>
               {dayItems.length > 0 ? (
                 <div className="flex -space-x-1">
-                  {dayItems.slice(0, 3).map((it) => (
+                  {(dayItems.length > 3 ? dayItems.slice(0, 2) : dayItems.slice(0, 3)).map((it) => (
                     <span
                       key={it.id}
                       className={cn(
@@ -98,6 +98,11 @@ export default function UpcomingCalendar({
                       {it.direction === 'in' && <DollarSign className="h-2 w-2 text-foreground" />}
                     </span>
                   ))}
+                  {dayItems.length > 3 && (
+                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-background bg-secondary text-secondary-foreground">
+                      <Plus className="h-2 w-2" />
+                    </span>
+                  )}
                 </div>
               ) : (
                 <span className="h-3.5" />

@@ -121,7 +121,7 @@ export default function TransactionsPage() {
       />
 
       <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
-        <div className="space-y-6 lg:col-span-8">
+        <div className="space-y-6 lg:col-span-7">
           <ChartCard label={s.caption} value={s.total} delta={s.delta} insight={s.insight}>
             <SpendingChart data={s.buckets} budget={s.budget} />
           </ChartCard>
@@ -137,7 +137,7 @@ export default function TransactionsPage() {
           </div>
         </div>
 
-        <div className="mt-6 lg:col-span-4 lg:mt-0">
+        <div className="mt-6 lg:col-span-5 lg:mt-0">
           <h3 className="mb-3 text-xs font-medium text-muted-foreground">Recent</h3>
           <div className="space-y-2.5">
             <Tx icon={ShoppingBag} title="Amazon" sub="Today · 4:12 PM" amount="-$9.50" />

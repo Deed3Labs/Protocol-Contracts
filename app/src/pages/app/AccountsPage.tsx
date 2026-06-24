@@ -27,9 +27,15 @@ const UPCOMING: UpcomingItem[] = [
   { id: 'gym', name: 'Gym', amount: 45, day: 5, direction: 'out' },
   { id: 'spotify', name: 'Spotify', amount: 12, day: 12, direction: 'out' },
   { id: 'payroll', name: 'Payroll', amount: 3200, day: 15, direction: 'in' },
+  { id: 'netflix', name: 'Netflix', amount: 18, day: 15, direction: 'out' },
+  { id: 'icloud', name: 'iCloud', amount: 3, day: 15, direction: 'out' },
   { id: 'card', name: 'Card', amount: 320, day: 22, direction: 'out' },
+  { id: 'insurance', name: 'Insurance', amount: 140, day: 25, direction: 'out' },
+  { id: 'internet', name: 'Internet', amount: 80, day: 25, direction: 'out' },
+  { id: 'phone', name: 'Phone', amount: 65, day: 25, direction: 'out' },
+  { id: 'water', name: 'Water', amount: 40, day: 25, direction: 'out' },
   { id: 'electric', name: 'Electric', amount: 124, day: 28, direction: 'out' },
-  { id: 'internet', name: 'Internet', amount: 80, day: 30, direction: 'out' },
+  { id: 'hoa', name: 'HOA dues', amount: 210, day: 28, direction: 'out' },
 ];
 
 /**
@@ -95,7 +101,7 @@ export default function AccountsPage() {
       />
 
       <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
-        <div className="space-y-6 lg:col-span-8">
+        <div className="space-y-6 lg:col-span-7">
           <div className="lg:rounded-3xl lg:border lg:border-border lg:bg-card lg:p-6">
             <BalanceHero label="Total balance" amount="$41,016.67" change="$421.03 this week" />
             <div className="mt-5 flex gap-3">
@@ -140,7 +146,7 @@ export default function AccountsPage() {
           <SpendHeatmap spendingByDay={SPEND_BY_DAY} />
         </div>
 
-        <div className="mt-6 space-y-6 lg:col-span-4 lg:mt-0">
+        <div className="mt-6 space-y-6 lg:col-span-5 lg:mt-0">
           <ClearDeedCard />
           <UpcomingCalendar items={UPCOMING} />
         </div>
