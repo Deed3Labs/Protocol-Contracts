@@ -239,6 +239,8 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
+  overscroll-behavior-y: none; /* pull-to-refresh guard on the root scroller */
 }
 
 body {
@@ -249,7 +251,6 @@ body {
   background-color: rgb(var(--background));
   color: rgb(var(--foreground));
   transition: background-color 0.3s ease, color 0.3s ease;
-  overscroll-behavior-y: none; /* Prevent native pull-to-refresh */
 }
 
 * {
@@ -284,10 +285,8 @@ body {
   scrollbar-color: rgb(var(--border)) transparent;
 }
 
-/* Ensure scrolling still works */
-html, body {
-  overflow-x: hidden;
-}
+/* overflow-x is clipped on <html> only, so <body> is NOT a scroll container
+   (a body scroll container + overscroll-behavior trapped wheel/touch over main). */
 
 html.onboarding-scroll-enabled,
 body.onboarding-scroll-enabled {
