@@ -25,11 +25,11 @@ import {
   ArrowDownLeft,
   FileText,
 } from 'lucide-react';
-import SideMenu from './SideMenu';
-import HeaderNav from './HeaderNav';
-import MobileNav from './MobileNav';
-import DepositModal from './DepositModal';
-import WithdrawModal from './WithdrawModal';
+import SideMenu from '@/components/portfolio/SideMenu';
+import HeaderNav from '@/components/portfolio/HeaderNav';
+import MobileNav from '@/components/portfolio/MobileNav';
+import DepositModal from '@/components/portfolio/DepositModal';
+import WithdrawModal from '@/components/portfolio/WithdrawModal';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { usePortfolio } from '@/context/PortfolioContext';

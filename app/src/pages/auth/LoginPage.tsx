@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Wallet, ArrowUpRight, Shield, Zap, Globe } from 'lucide-react';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useLocation, useNavigate } from 'react-router-dom';
-import ClearPathLogo from '../assets/ClearPath-Logo.png';
+import ClearPathLogo from '@/assets/ClearPath-Logo.png';
 
 export default function LoginPage() {
   const { isConnected, isAuthenticated, openModal } = useAppKitAuth();

@@ -34,9 +34,9 @@ import {
   X,
 } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
-import SideMenu from './SideMenu';
-import HeaderNav from './HeaderNav';
-import MobileNav from './MobileNav';
+import SideMenu from '@/components/portfolio/SideMenu';
+import HeaderNav from '@/components/portfolio/HeaderNav';
+import MobileNav from '@/components/portfolio/MobileNav';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { usePlaidHistoricalTransactions } from '@/hooks/usePlaidHistoricalTransactions';

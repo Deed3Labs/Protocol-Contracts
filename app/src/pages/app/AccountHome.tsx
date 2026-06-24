@@ -31,9 +31,9 @@ import {
   Wallet,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import SideMenu from './SideMenu';
-import HeaderNav from './HeaderNav';
-import MobileNav from './MobileNav';
+import SideMenu from '@/components/portfolio/SideMenu';
+import HeaderNav from '@/components/portfolio/HeaderNav';
+import MobileNav from '@/components/portfolio/MobileNav';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';

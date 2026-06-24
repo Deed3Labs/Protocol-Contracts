@@ -3,10 +3,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, Eye, RefreshCw } from "lucide-react";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { useState } from "react";
-import DeedNFTViewer from "./DeedNFTViewer";
-import DeedNFTMap from "./DeedNFTMap";
-import MakeOfferModal from "./MakeOfferModal";
-import DeedCard from "./DeedCard";
+import DeedNFTViewer from "@/components/DeedNFTViewer";
+import DeedNFTMap from "@/components/DeedNFTMap";
+import MakeOfferModal from "@/components/MakeOfferModal";
+import DeedCard from "@/components/DeedCard";
 import type { DeedNFT } from "@/hooks/useDeedNFTData";
 
 const Explore = () => {

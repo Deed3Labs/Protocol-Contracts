@@ -4,11 +4,11 @@ import { BarChart3, Wallet, FileText, Settings, TrendingUp, Activity, RefreshCw 
 import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { Link } from "react-router-dom";
-import DeedNFTViewer from "./DeedNFTViewer";
-import DashboardDeedCardWrapper from "./DashboardDeedCardWrapper";
-import TransferModal from "./TransferModal";
-import SubdivideModal from "./SubdivideModal";
-import FractionalizeModal from "./FractionalizeModal";
+import DeedNFTViewer from "@/components/DeedNFTViewer";
+import DashboardDeedCardWrapper from "@/components/DashboardDeedCardWrapper";
+import TransferModal from "@/components/TransferModal";
+import SubdivideModal from "@/components/SubdivideModal";
+import FractionalizeModal from "@/components/FractionalizeModal";
 import type { DeedNFT } from "@/hooks/useDeedNFTData";
 import { useState } from "react";
 

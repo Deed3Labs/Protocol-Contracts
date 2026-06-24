@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import DeedCard from "./DeedCard";
+import DeedCard from "@/components/DeedCard";
 import { 
   Search, 
   Plus, 
@@ -23,7 +23,7 @@ import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from "@reown/ap
 import { ethers } from "ethers";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
-import DeedNFTViewer from "./DeedNFTViewer";
+import DeedNFTViewer from "@/components/DeedNFTViewer";
 import { EIP5792Utils } from "@/utils/EIP5792Utils";
 
 // Dynamic ABI loading functions

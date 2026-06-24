@@ -7,12 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { SWIXAuth } from './SWIXAuth';
+import { SWIXAuth } from '@/pages/legacy/SWIXAuth';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
 import { getContractAddressForNetwork } from '@/config/networks';
 import { useNetworkValidation } from '@/hooks/useNetworkValidation';
-import XMTPMessaging from './XMTPMessaging';
+import XMTPMessaging from '@/components/XMTPMessaging';
 import { useXMTP } from '@/context/XMTPContext';
 import { useXMTPConnection } from '@/hooks/useXMTPConnection';
 import { 
