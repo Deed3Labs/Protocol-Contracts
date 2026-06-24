@@ -14,7 +14,7 @@ interface ThemeProviderState {
 }
 
 const initialState: ThemeProviderState = {
-  theme: 'dark',
+  theme: 'light',
   setTheme: () => null,
 };
 
@@ -22,19 +22,15 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
 export function ThemeProvider({
   children,
-  defaultTheme = 'dark',
+  defaultTheme = 'light',
   storageKey = 'theme',
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(
     () => {
       const stored = localStorage.getItem(storageKey) as Theme;
-      if (stored) return stored;
-      
-      // Fallback to system preference if no storage found
-      if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        return 'dark';
-      }
-      
+      if (stored === 'light' || stored === 'dark') return stored;
+
+      // Fresh visitors default to light; both themes are fully supported via the toggle.
       return defaultTheme;
     }
   );

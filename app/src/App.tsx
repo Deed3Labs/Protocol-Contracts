@@ -40,6 +40,11 @@ import ClaimFunds from "@/pages/auth/ClaimFunds";
 import UserOnboarding from "@/pages/auth/UserOnboarding";
 import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
+import AppShell from "@/components/shell/AppShell";
+import AccountsPage from "@/pages/app/AccountsPage";
+import PayPage from "@/pages/app/PayPage";
+import TransactionsPage from "@/pages/app/TransactionsPage";
+import SettingsPage from "@/pages/app/SettingsPage";
 
 const LegacyLayout = () => {
   return (
@@ -123,7 +128,7 @@ function App() {
 
   return (
     <BrowserRouter>
-      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+      <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
         <PortfolioProvider>
           <NotificationProvider>
             <DeedNFTProvider>
@@ -148,36 +153,41 @@ function App() {
                     <Route path="/share" element={<ShareTarget />} />
                     <Route path="/claim/:token" element={<ClaimFunds />} />
                     
-                    {/* App Routes wrapped in PullToRefresh Layout - Protected */}
-                    {/* Pass true if splash was skipped OR if splash just finished */}
-                    <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} />}>
-                      <Route path="/" element={<BrokerageHome />} />
-                      <Route path="/markets" element={<MarketsHome />} />
-                      <Route path="/transactions" element={<TransactionsHome />} />
-                      <Route path="/budget" element={<Navigate to="/transactions" replace />} />
-                      <Route path="/savings" element={<SavingsHome />} />
-                      <Route path="/earn" element={<Navigate to="/savings" replace />} />
-                      <Route path="/equity" element={<UnifiedWealthHome />} />
-                      <Route path="/borrow" element={<BorrowHome />} />
-                      <Route path="/account" element={<AccountHome />} />
+                    {/* Redesigned app — protected, bottom tab navigation */}
+                    <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
+                      <Route path="/" element={<AccountsPage />} />
+                      <Route path="/pay" element={<PayPage />} />
+                      <Route path="/transactions" element={<TransactionsPage />} />
+                      <Route path="/settings" element={<SettingsPage />} />
                     </Route>
-                    
+
+                    {/* Parked legacy fintech homes — off-nav, reachable for reference */}
+                    <Route element={<AppLayout startWithSkeleton={splashShown || showSkeletonAfterSplash} />}>
+                      <Route path="/legacy/brokerage" element={<BrokerageHome />} />
+                      <Route path="/legacy/markets" element={<MarketsHome />} />
+                      <Route path="/legacy/transactions" element={<TransactionsHome />} />
+                      <Route path="/legacy/savings" element={<SavingsHome />} />
+                      <Route path="/legacy/equity" element={<UnifiedWealthHome />} />
+                      <Route path="/legacy/borrow" element={<BorrowHome />} />
+                      <Route path="/legacy/account" element={<AccountHome />} />
+                    </Route>
+
+                    {/* Parked legacy utility pages — off-nav */}
+                    <Route element={<LegacyLayout />}>
+                      <Route path="/legacy/home" element={<Home />} />
+                      <Route path="/legacy/mint" element={<MintForm />} />
+                      <Route path="/legacy/explore" element={<Explore />} />
+                      <Route path="/legacy/dashboard" element={<Dashboard />} />
+                      <Route path="/legacy/validation" element={<Validation />} />
+                      <Route path="/legacy/bonds" element={<BurnerBondPage />} />
+                      <Route path="/legacy/admin" element={<AdminPanel />} />
+                      <Route path="/legacy/auth" element={<SWIXAuth />} />
+                      <Route path="/legacy/profile" element={<SWIXDemo />} />
+                      <Route path="/legacy/faucet" element={<Faucet />} />
+                    </Route>
+
                     {/* Redirect unknown routes to login */}
                     <Route path="*" element={<Navigate to="/login" replace />} />
-
-                    {/* Legacy Routes wrapped in Layout */}
-                    <Route element={<LegacyLayout />}>
-                      <Route path="/legacy-home" element={<Home />} />
-                      <Route path="/mint" element={<MintForm />} />
-                      <Route path="/explore" element={<Explore />} />
-                      <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/validation" element={<Validation />} />
-                      <Route path="/bonds" element={<BurnerBondPage />} />
-                      <Route path="/admin" element={<AdminPanel />} />
-                      <Route path="/auth" element={<SWIXAuth />} />
-                      <Route path="/profile" element={<SWIXDemo />} />
-                      <Route path="/faucet" element={<Faucet />} />
-                    </Route>
                   </Routes>
                   </GlobalModalsProvider>
                 </ModalProvider>

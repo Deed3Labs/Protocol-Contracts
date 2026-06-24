@@ -149,62 +149,78 @@
   font-weight: 400;
 
   color-scheme: light;
-  color: #1f2937;
-  background-color: #ffffff;
+  color: #0A0A0A;
+  background-color: #F4F4F2;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  
-  /* Light mode variables */
-  --radius: 0.75rem;
-  --background: 255 255 255;
-  --foreground: 15 23 42;
+
+  /* Light mode — ClearPath warm brand */
+  --radius: 1rem;
+  --background: 244 244 242;
+  --foreground: 10 10 10;
   --card: 255 255 255;
-  --card-foreground: 15 23 42;
+  --card-foreground: 10 10 10;
   --popover: 255 255 255;
-  --popover-foreground: 15 23 42;
-  --primary: 75 85 99;
+  --popover-foreground: 10 10 10;
+  --primary: 199 106 69;
   --primary-foreground: 255 255 255;
-  --secondary: 241 245 249;
-  --secondary-foreground: 15 23 42;
-  --muted: 248 250 252;
-  --muted-foreground: 100 116 139;
-  --accent: 241 245 249;
-  --accent-foreground: 15 23 42;
-  --destructive: 239 68 68;
+  --secondary: 236 230 218;
+  --secondary-foreground: 58 53 46;
+  --muted: 239 238 234;
+  --muted-foreground: 138 133 124;
+  --accent: 241 226 206;
+  --accent-foreground: 154 74 42;
+  --destructive: 199 64 46;
   --destructive-foreground: 255 255 255;
-  --border: 226 232 240;
-  --input: 226 232 240;
-  --ring: 75 85 99;
+  --border: 228 223 214;
+  --input: 228 223 214;
+  --ring: 199 106 69;
+
+  /* Brand section tints (Cash / Savings / External) */
+  --cp-cash: 230 240 233;
+  --cp-cash-fg: 47 109 76;
+  --cp-savings: 246 228 219;
+  --cp-savings-fg: 154 74 42;
+  --cp-external: 231 235 240;
+  --cp-external-fg: 62 86 110;
 }
 
 .dark {
   color-scheme: dark;
-  color: #f8fafc;
+  color: #F4F4F2;
   background-color: #0E0E0E;
-  
-  /* Dark mode variables */
+
+  /* Dark mode — ClearPath warm brand */
   --background: 14 14 14;
-  --foreground: 248 250 252;
-  --card: 30 41 59;
-  --card-foreground: 248 250 252;
-  --popover: 30 41 59;
-  --popover-foreground: 248 250 252;
-  --primary: 156 163 175;
-  --primary-foreground: 15 23 42;
-  --secondary: 51 65 85;
-  --secondary-foreground: 248 250 252;
-  --muted: 51 65 85;
-  --muted-foreground: 148 163 184;
-  --accent: 51 65 85;
-  --accent-foreground: 248 250 252;
-  --destructive: 239 68 68;
-  --destructive-foreground: 248 250 252;
-  --border: 51 65 85;
-  --input: 51 65 85;
-  --ring: 156 163 175;
+  --foreground: 244 244 242;
+  --card: 26 24 22;
+  --card-foreground: 244 244 242;
+  --popover: 26 24 22;
+  --popover-foreground: 244 244 242;
+  --primary: 214 118 79;
+  --primary-foreground: 14 14 14;
+  --secondary: 38 36 32;
+  --secondary-foreground: 244 244 242;
+  --muted: 35 34 32;
+  --muted-foreground: 163 158 148;
+  --accent: 58 42 34;
+  --accent-foreground: 233 183 158;
+  --destructive: 226 104 90;
+  --destructive-foreground: 14 14 14;
+  --border: 42 40 35;
+  --input: 42 40 35;
+  --ring: 214 118 79;
+
+  /* Brand section tints (Cash / Savings / External) */
+  --cp-cash: 28 38 32;
+  --cp-cash-fg: 122 196 158;
+  --cp-savings: 58 42 34;
+  --cp-savings-fg: 224 150 116;
+  --cp-external: 32 38 46;
+  --cp-external-fg: 140 170 200;
 }
 
 html {
@@ -298,6 +314,12 @@ body.onboarding-scroll-enabled {
   --color-border: rgb(var(--border));
   --color-input: rgb(var(--input));
   --color-ring: rgb(var(--ring));
+  --color-cp-cash: rgb(var(--cp-cash));
+  --color-cp-cash-fg: rgb(var(--cp-cash-fg));
+  --color-cp-savings: rgb(var(--cp-savings));
+  --color-cp-savings-fg: rgb(var(--cp-savings-fg));
+  --color-cp-external: rgb(var(--cp-external));
+  --color-cp-external-fg: rgb(var(--cp-external-fg));
 }
 
 /* Animation utilities */
