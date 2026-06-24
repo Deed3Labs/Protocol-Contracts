@@ -28,7 +28,7 @@ const statusStyle: Record<Status, string> = {
 /** Recent activity list with avatars + status, dashboard-style. */
 export default function RecentActivity({ className }: { className?: string }) {
   return (
-    <div className={cn('rounded-3xl border border-border bg-card p-5', className)}>
+    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-xs font-medium text-muted-foreground">Recent activity</h3>
         <button type="button" className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
@@ -38,7 +38,7 @@ export default function RecentActivity({ className }: { className?: string }) {
       <div className="divide-y divide-border">
         {items.map((it) => (
           <div key={it.id} className="flex items-center gap-3 py-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium text-secondary-foreground">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-xs font-medium text-secondary-foreground">
               {it.initials}
             </span>
             <div className="min-w-0 flex-1">

@@ -15,14 +15,14 @@ export default function SegmentedControl<T extends string>({
   className,
 }: SegmentedControlProps<T>) {
   return (
-    <div className={cn('flex gap-1 rounded-full bg-secondary p-1', className)}>
+    <div className={cn('flex gap-1 rounded-lg bg-secondary p-1', className)}>
       {options.map((opt) => (
         <button
           key={opt.value}
           type="button"
           onClick={() => onChange(opt.value)}
           className={cn(
-            'flex-1 rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors',
+            'flex-1 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors',
             value === opt.value
               ? 'bg-card text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',

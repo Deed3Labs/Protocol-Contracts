@@ -158,7 +158,7 @@
   -moz-osx-font-smoothing: grayscale;
 
   /* Light mode — neutral */
-  --radius: 1rem;
+  --radius: 0.5rem;
   --background: 245 245 245;
   --foreground: 10 10 10;
   --card: 255 255 255;

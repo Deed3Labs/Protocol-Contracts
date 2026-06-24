@@ -3,17 +3,17 @@ import { cn } from '@/lib/utils';
 /** A debit-card visual widget (monochrome, on-brand). */
 export default function CardVisual({ className }: { className?: string }) {
   return (
-    <div className={cn('rounded-3xl border border-border bg-card p-5', className)}>
+    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-xs font-medium text-muted-foreground">Your card</h3>
-        <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">Debit</span>
+        <span className="rounded-lg bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">Debit</span>
       </div>
-      <div className="aspect-[1.6/1] w-full rounded-2xl bg-foreground p-5 text-background">
+      <div className="aspect-[1.6/1] w-full rounded-lg bg-foreground p-5 text-background">
         <div className="flex items-start justify-between">
           <span className="text-sm font-medium">Clear</span>
           <span className="flex gap-1">
-            <span className="h-5 w-5 rounded-full bg-background/30" />
-            <span className="-ml-2.5 h-5 w-5 rounded-full bg-background/60" />
+            <span className="h-5 w-5 rounded-lg bg-background/30" />
+            <span className="-ml-2.5 h-5 w-5 rounded-lg bg-background/60" />
           </span>
         </div>
         <div className="mt-6 font-display text-lg tracking-[0.15em] tabular-nums">5231 7252 1769 8152</div>

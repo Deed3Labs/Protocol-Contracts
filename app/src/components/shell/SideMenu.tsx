@@ -28,7 +28,7 @@ export default function SideMenu({ isOpen, onClose }: { isOpen: boolean; onClose
       <div className="animate-slide-in-left relative flex h-full w-full max-w-[340px] flex-col border-r border-border bg-background p-6 shadow-2xl">
         <div className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-lg font-medium text-secondary-foreground">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary text-lg font-medium text-secondary-foreground">
               SS
             </div>
             <div>
@@ -39,7 +39,7 @@ export default function SideMenu({ isOpen, onClose }: { isOpen: boolean; onClose
           <button
             onClick={onClose}
             aria-label="Close menu"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
             <X className="h-5 w-5" />
           </button>

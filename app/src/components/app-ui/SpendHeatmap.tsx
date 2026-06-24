@@ -39,7 +39,7 @@ export default function SpendHeatmap({
   ];
 
   return (
-    <div className={cn('rounded-3xl border border-border bg-card p-5', className)}>
+    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
       <div className="mb-4 flex items-center justify-between">
         <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">Spend this month</span>
         <div className="flex items-center gap-1">
@@ -63,7 +63,7 @@ export default function SpendHeatmap({
 
       <div className="grid grid-cols-7 gap-1">
         {allDays.map((day, idx) => {
-          if (day === null) return <div key={`p${idx}`} className="min-h-[64px] lg:min-h-[80px]" aria-hidden />;
+          if (day === null) return <div key={`p${idx}`} className="aspect-[5/6]" aria-hidden />;
           const amount = spendingByDay[day] ?? 0;
           const isPast = day <= currentDay;
           const isToday = day === currentDay;
@@ -73,7 +73,7 @@ export default function SpendHeatmap({
             <div
               key={day}
               className={cn(
-                'relative flex min-h-[64px] lg:min-h-[80px] min-w-0 flex-col items-start justify-between rounded-[6px] border p-1.5',
+                'relative flex aspect-[5/6] min-w-0 flex-col items-start justify-between rounded-[6px] border p-1.5',
                 isPast ? 'border-border' : 'border-border/50',
                 isToday && 'ring-1 ring-foreground/40',
               )}

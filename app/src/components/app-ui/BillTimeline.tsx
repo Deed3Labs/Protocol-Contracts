@@ -24,7 +24,7 @@ export default function BillTimeline({
   let running = 0;
 
   return (
-    <div className={cn('rounded-3xl border border-border bg-card p-5', className)}>
+    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">Bill timeline</span>
         <span className="text-xs text-muted-foreground">{bills.length} bills</span>
@@ -42,7 +42,7 @@ export default function BillTimeline({
           return (
             <div key={b.id} className="flex gap-3">
               <div className="flex flex-col items-center pt-1.5">
-                <span className="h-3 w-3 shrink-0 rounded-full border-2 border-card bg-foreground" />
+                <span className="h-3 w-3 shrink-0 rounded-lg border-2 border-card bg-foreground" />
                 {!last && <span className="my-1 w-px flex-1 bg-border" />}
               </div>
               <div className={cn('flex flex-1 items-center gap-3', last ? '' : 'pb-4')}>

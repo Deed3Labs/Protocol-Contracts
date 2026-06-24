@@ -17,7 +17,7 @@ export default function QuickActions({ className }: { className?: string }) {
           <button
             key={label}
             type="button"
-            className="flex flex-col items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-secondary/50"
+            className="flex flex-col items-start gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-secondary/50"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary text-foreground">
               <Icon className="h-[18px] w-[18px]" />

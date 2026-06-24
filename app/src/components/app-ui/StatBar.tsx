@@ -15,7 +15,7 @@ export interface Stat {
  */
 export default function StatBar({ stats, className }: { stats: Stat[]; className?: string }) {
   return (
-    <div className={cn('overflow-hidden rounded-3xl border border-border bg-border', className)}>
+    <div className={cn('overflow-hidden rounded-xl border border-border bg-border', className)}>
       <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-4">
         {stats.map((s) => {
           const Icon = s.icon;
@@ -30,7 +30,7 @@ export default function StatBar({ stats, className }: { stats: Stat[]; className
               {s.change && (
                 <div
                   className={cn(
-                    'mt-1.5 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-medium',
+                    'mt-1.5 inline-flex items-center gap-0.5 rounded-lg px-1.5 py-0.5 text-[11px] font-medium',
                     negative ? 'bg-destructive/10 text-destructive' : 'bg-secondary text-foreground',
                   )}
                 >

@@ -30,7 +30,7 @@ export default function ChartCard({
   className,
 }: ChartCardProps) {
   return (
-    <div className={cn('rounded-3xl border border-border bg-card p-5', className)}>
+    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-xs font-medium text-muted-foreground">{label}</div>

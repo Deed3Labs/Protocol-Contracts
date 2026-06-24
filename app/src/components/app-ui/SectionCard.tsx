@@ -39,7 +39,7 @@ export default function SectionCard({
     <>
       <span
         className={cn(
-          'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl',
+          'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg',
           tintClasses[tint],
         )}
       >
@@ -61,7 +61,7 @@ export default function SectionCard({
   );
 
   const base =
-    'flex w-full items-center gap-3 rounded-3xl border border-black/[0.06] bg-card p-4 text-left dark:border-white/[0.06]';
+    'flex w-full items-center gap-3 rounded-xl border border-black/[0.06] bg-card p-4 text-left dark:border-white/[0.06]';
 
   if (onClick) {
     return (

@@ -40,7 +40,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       )}
     >
       <div className={cn('flex h-16 items-center border-b border-border', collapsed ? 'justify-center px-2' : 'gap-2.5 px-5')}>
-        <img src={ClearPathLogo} alt="Clear" className="h-9 w-9 shrink-0 rounded-xl border border-border object-cover" />
+        <img src={ClearPathLogo} alt="Clear" className="h-9 w-9 shrink-0 rounded-md border border-border object-cover" />
         {!collapsed && (
           <div className="min-w-0">
             <div className="font-display text-lg leading-none tracking-tight text-foreground">Clear</div>
@@ -85,7 +85,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
 
       <div className="space-y-3 p-3">
         {!collapsed && (
-          <div className="rounded-2xl border border-border bg-secondary/50 p-4">
+          <div className="rounded-lg border border-border bg-secondary/50 p-4">
             <div className="mb-2 flex items-center gap-2">
               <Home className="h-4 w-4 text-foreground" />
               <span className="text-sm font-medium text-foreground">Clear Deed</span>
@@ -93,8 +93,8 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
             <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
               $6,240 in equity credits · 25% to your milestone.
             </p>
-            <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-background">
-              <div className="h-full w-1/4 rounded-full bg-primary" />
+            <div className="mb-3 h-1.5 w-full overflow-hidden rounded-lg bg-background">
+              <div className="h-full w-1/4 rounded-lg bg-primary" />
             </div>
             <button
               type="button"
@@ -105,7 +105,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           </div>
         )}
         <div className={cn('flex items-center rounded-xl py-1.5', collapsed ? 'justify-center' : 'gap-3 px-2')}>
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium text-secondary-foreground">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-xs font-medium text-secondary-foreground">
             SS
           </div>
           {!collapsed && (

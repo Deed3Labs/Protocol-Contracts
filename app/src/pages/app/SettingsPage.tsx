@@ -17,20 +17,20 @@ export default function SettingsPage() {
       </header>
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <div className="rounded-3xl border border-border bg-card p-5 lg:col-span-2">
+        <div className="rounded-xl border border-border bg-card p-5 lg:col-span-2">
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-secondary text-xl font-medium text-secondary-foreground">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-secondary text-xl font-medium text-secondary-foreground">
               SS
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-lg font-medium text-foreground">Steven Spark</div>
               <div className="truncate text-sm text-muted-foreground">steven@clearpath.xyz</div>
               <div className="mt-1.5 flex flex-wrap gap-2">
-                <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">Member</span>
-                <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">KYC verified</span>
+                <span className="rounded-lg bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">Member</span>
+                <span className="rounded-lg bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">KYC verified</span>
               </div>
             </div>
-            <button type="button" className="rounded-full bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-muted">
+            <button type="button" className="rounded-lg bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-muted">
               Manage
             </button>
           </div>
@@ -58,8 +58,8 @@ export default function SettingsPage() {
         <SectionCard icon={ShieldCheck} tint="neutral" title="Security" subtitle="Passcode & biometrics" chevron onClick={() => {}} />
         <SectionCard icon={BellRing} tint="neutral" title="Notifications" subtitle="Alerts & reminders" chevron onClick={() => {}} />
 
-        <div className="flex items-center gap-3 rounded-3xl border border-border bg-card p-4">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary text-secondary-foreground">
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+          <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
             {isDark ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
           </span>
           <span className="min-w-0 flex-1">
@@ -72,10 +72,10 @@ export default function SettingsPage() {
             aria-checked={isDark}
             aria-label="Toggle dark mode"
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
-            className={cn('relative h-7 w-12 rounded-full transition-colors', isDark ? 'bg-primary' : 'bg-input')}
+            className={cn('relative h-7 w-12 rounded-lg transition-colors', isDark ? 'bg-primary' : 'bg-input')}
           >
             <span
-              className="absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-card shadow-sm ring-1 ring-black/10 transition-transform dark:ring-white/15"
+              className="absolute left-0.5 top-0.5 h-6 w-6 rounded-lg bg-card shadow-sm ring-1 ring-black/10 transition-transform dark:ring-white/15"
               style={{ transform: isDark ? 'translateX(20px)' : 'none' }}
             />
           </button>
@@ -86,7 +86,7 @@ export default function SettingsPage() {
 
       <button
         type="button"
-        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-destructive/30 py-3 text-sm font-medium text-destructive transition-transform active:scale-[0.99] sm:w-auto sm:px-8"
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-destructive/30 py-3 text-sm font-medium text-destructive transition-transform active:scale-[0.99] sm:w-auto sm:px-8"
       >
         <LogOut className="h-4 w-4" /> Log out
       </button>

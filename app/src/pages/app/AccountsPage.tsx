@@ -32,7 +32,7 @@ const UPCOMING: UpcomingItem[] = [
 function ClearDeedCard() {
   const pct = 25;
   return (
-    <div className="rounded-3xl border border-border bg-card p-5">
+    <div className="rounded-xl border border-border bg-card p-5">
       <div className="mb-4 flex items-center gap-2.5">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-secondary-foreground">
           <Home className="h-5 w-5" />
@@ -50,11 +50,11 @@ function ClearDeedCard() {
           <span>{pct}% to milestone · ~14 mo at this pace</span>
           <span>$25,000</span>
         </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
-          <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+        <div className="h-2 w-full overflow-hidden rounded-lg bg-secondary">
+          <div className="h-full rounded-lg bg-primary" style={{ width: `${pct}%` }} />
         </div>
       </div>
-      <p className="mt-4 rounded-2xl bg-secondary p-3 text-xs leading-relaxed text-muted-foreground">
+      <p className="mt-4 rounded-lg bg-secondary p-3 text-xs leading-relaxed text-muted-foreground">
         Earn 1:1 equity credits on your CLRUSD savings (up to $1,500/mo), plus credits for on-time
         rent. Credits convert into your Clear Deed — they can't be cashed out.
       </p>

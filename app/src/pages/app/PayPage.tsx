@@ -28,7 +28,7 @@ function ActionTile({ icon: Icon, label, sub, primary }: { icon: LucideIcon; lab
     <button
       type="button"
       className={cn(
-        'flex min-h-[112px] flex-col items-start gap-3 rounded-2xl border p-4 text-left transition-transform active:scale-[0.99]',
+        'flex min-h-[112px] flex-col items-start gap-3 rounded-lg border p-4 text-left transition-transform active:scale-[0.99]',
         primary ? 'border-transparent bg-primary text-primary-foreground' : 'border-border bg-card text-foreground hover:bg-secondary/50',
       )}
     >

@@ -26,7 +26,7 @@ export default function TopBar({
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md">
       <div className="flex h-16 items-center gap-3 px-5 lg:px-8">
-        <img src={ClearPathLogo} alt="Clear" className="h-8 w-8 shrink-0 rounded-lg border border-border object-cover lg:hidden" />
+        <img src={ClearPathLogo} alt="Clear" className="h-8 w-8 shrink-0 rounded-md border border-border object-cover lg:hidden" />
         <button
           type="button"
           onClick={onToggleSidebar}
@@ -70,12 +70,12 @@ export default function TopBar({
           <button
             type="button"
             aria-label="Notifications"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-secondary-foreground transition-colors hover:bg-muted"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-secondary-foreground transition-colors hover:bg-muted"
           >
             <Bell className="h-[18px] w-[18px]" />
           </button>
 
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-sm font-medium text-secondary-foreground">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-sm font-medium text-secondary-foreground">
             SS
           </div>
         </div>

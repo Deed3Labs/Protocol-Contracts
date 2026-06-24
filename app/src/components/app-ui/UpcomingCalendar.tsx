@@ -42,7 +42,7 @@ export default function UpcomingCalendar({
   ];
 
   return (
-    <div className={cn('rounded-3xl border border-border bg-card p-5', className)}>
+    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
       <div className="mb-4 flex items-center justify-between">
         <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">Upcoming transactions</span>
         <div className="flex items-center gap-1">
@@ -66,7 +66,7 @@ export default function UpcomingCalendar({
 
       <div className="grid grid-cols-7 gap-1">
         {allDays.map((day, idx) => {
-          if (day === null) return <div key={`p${idx}`} className="min-h-[64px] lg:min-h-[80px]" aria-hidden />;
+          if (day === null) return <div key={`p${idx}`} className="aspect-[5/6]" aria-hidden />;
           const dayItems = items.filter((i) => i.day === day);
           const isToday = day === currentDay;
           const isPast = day < currentDay;
@@ -77,12 +77,12 @@ export default function UpcomingCalendar({
             <div
               key={day}
               className={cn(
-                'flex min-h-[64px] lg:min-h-[80px] min-w-0 flex-col items-center justify-between rounded-[6px] border p-1',
+                'flex aspect-[5/6] min-w-0 flex-col items-center justify-between rounded-[6px] border p-1',
                 isPast ? 'border-border/50 opacity-60' : 'border-border',
                 isToday && 'bg-secondary/40 ring-1 ring-foreground/40',
               )}
             >
-              <span className={cn('text-[10px] font-medium', isToday ? 'flex h-4 w-4 items-center justify-center rounded-full bg-foreground text-[9px] text-background' : 'text-foreground')}>
+              <span className={cn('text-[10px] font-medium', isToday ? 'flex h-4 w-4 items-center justify-center rounded-lg bg-foreground text-[9px] text-background' : 'text-foreground')}>
                 {day}
               </span>
               {dayItems.length > 0 ? (
@@ -91,7 +91,7 @@ export default function UpcomingCalendar({
                     <span
                       key={it.id}
                       className={cn(
-                        'flex h-4 w-4 items-center justify-center rounded-full border border-card',
+                        'flex h-4 w-4 items-center justify-center rounded-lg border border-card',
                         it.direction === 'in' ? 'bg-background ring-1 ring-foreground/50' : 'bg-foreground',
                       )}
                     >
@@ -99,7 +99,7 @@ export default function UpcomingCalendar({
                     </span>
                   ))}
                   {overflow && (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full border border-card bg-secondary text-secondary-foreground">
+                    <span className="flex h-4 w-4 items-center justify-center rounded-lg border border-card bg-secondary text-secondary-foreground">
                       <Plus className="h-2 w-2" />
                     </span>
                   )}
