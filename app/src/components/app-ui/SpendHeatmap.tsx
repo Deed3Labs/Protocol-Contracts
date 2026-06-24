@@ -1,13 +1,18 @@
+import { TrendingDown, Calendar, Sparkles, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const fmt = (a: number) => (a >= 1000 ? `$${(a / 1000).toFixed(1)}k` : a > 0 ? `$${Math.round(a)}` : '');
+const weekDays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const headerIcons: LucideIcon[] = [TrendingDown, Calendar, Sparkles];
+
+const formatAmount = (amount: number): string => {
+  if (amount >= 1000) return `$${(amount / 1000).toFixed(1)}k`;
+  return amount > 0 ? `$${Math.round(amount)}` : '-';
+};
+const getIntensity = (amount: number, max: number) => (amount <= 0 || max <= 0 ? 0 : Math.min(amount / max, 1));
 
 /**
- * Spend-intensity heatmap calendar (restyle of the old portfolio SpendTracker).
- * Each day darkens with spend relative to the month's max — scannable spend rhythm.
- * Presentational: feed `spendingByDay` (day-of-month -> amount); wire to
- * usePlaidRecentTransactions later.
+ * Spend-intensity calendar — the old portfolio SpendTracker layout (day + amount
+ * per cell, Less/More legend), reskinned to neutral / Space Grotesk. Presentational.
  */
 export default function SpendHeatmap({
   spendingByDay,
@@ -24,85 +29,76 @@ export default function SpendHeatmap({
   const startDow = new Date(year, month, 1).getDay();
   const monthName = today.toLocaleDateString('en-US', { month: 'long' });
 
-  const values = Object.values(spendingByDay).filter((v) => v > 0);
-  const max = values.length ? Math.max(...values, 1) : 1;
-  const total = values.reduce((s, v) => s + v, 0);
+  const dayValues = Object.values(spendingByDay).filter((v) => v > 0);
+  const maxDaySpend = dayValues.length ? Math.max(...dayValues, 1) : 1;
+  const totalSpent = dayValues.reduce((s, v) => s + v, 0);
 
-  const cells: (number | null)[] = [
+  const allDays: (number | null)[] = [
     ...Array.from({ length: startDow }, () => null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
 
   return (
     <div className={cn('rounded-3xl border border-border bg-card p-5', className)}>
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">Spend this month</span>
-        <span className="text-xs text-muted-foreground">
-          {monthName} 1–{currentDay}
-        </span>
-      </div>
-      <div className="mt-1 font-display text-3xl tracking-tight text-foreground tabular-nums">
-        ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      <div className="mb-4 flex items-center justify-between">
+        <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">Spend this month</span>
+        <div className="flex items-center gap-1">
+          {headerIcons.map((Icon, i) => (
+            <button key={i} type="button" className="rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
+              <Icon className="h-4 w-4" />
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-7 gap-1">
+      <p className="mb-4 font-display text-3xl tracking-tight text-foreground tabular-nums">
+        ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </p>
+
+      <div className="mb-2 grid grid-cols-7 gap-1">
         {weekDays.map((d, i) => (
-          <div key={i} className="text-center text-[10px] font-medium text-muted-foreground">
-            {d}
-          </div>
+          <div key={i} className="text-center text-[10px] font-medium text-muted-foreground">{d}</div>
         ))}
       </div>
-      <div className="mt-1 grid grid-cols-7 gap-1">
-        {cells.map((day, idx) => {
-          if (day === null) return <div key={`p${idx}`} aria-hidden />;
+
+      <div className="grid grid-cols-7 gap-1">
+        {allDays.map((day, idx) => {
+          if (day === null) return <div key={`p${idx}`} className="min-h-[52px]" aria-hidden />;
           const amount = spendingByDay[day] ?? 0;
           const isPast = day <= currentDay;
           const isToday = day === currentDay;
-          const intensity = amount > 0 ? Math.min(amount / max, 1) : 0;
-          const inverted = isPast && intensity > 0.55;
+          const intensity = getIntensity(amount, maxDaySpend);
+          const inverted = isPast && intensity > 0.5;
           return (
             <div
               key={day}
               className={cn(
-                'relative flex aspect-square flex-col items-start justify-between rounded-md border p-1',
-                isPast ? 'border-border' : 'border-border/40',
+                'relative flex min-h-[52px] min-w-0 flex-col items-start justify-between rounded-lg border p-1.5',
+                isPast ? 'border-border' : 'border-border/50',
                 isToday && 'ring-1 ring-foreground/40',
               )}
             >
-              <div
-                className="pointer-events-none absolute inset-0 rounded-md bg-foreground"
-                style={{ opacity: isPast ? intensity : 0 }}
-                aria-hidden
-              />
-              <span
-                className={cn(
-                  'relative z-10 text-[10px] font-medium',
-                  inverted ? 'text-background' : isPast ? 'text-foreground' : 'text-muted-foreground',
-                )}
-              >
-                {day}
-              </span>
-              <span
-                className={cn(
-                  'relative z-10 w-full truncate text-[9px] font-medium',
-                  inverted ? 'text-background' : 'text-muted-foreground',
-                )}
-              >
-                {isPast ? fmt(amount) : ''}
+              <div className="pointer-events-none absolute inset-0 rounded-lg bg-foreground" style={{ opacity: isPast ? intensity : 0 }} aria-hidden />
+              <span className={cn('relative z-10 text-xs font-medium', inverted ? 'text-background' : isPast ? 'text-foreground' : 'text-muted-foreground')}>{day}</span>
+              <span className={cn('relative z-10 w-full truncate text-[10px] font-medium', inverted ? 'text-background/90' : 'text-muted-foreground')}>
+                {isPast ? formatAmount(amount) : '-'}
               </span>
             </div>
           );
         })}
       </div>
 
-      <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-3">
-        <span className="text-[11px] text-muted-foreground">Less</span>
-        <div className="flex gap-0.5">
-          {[0.15, 0.35, 0.55, 0.78, 1].map((o, i) => (
-            <div key={i} className="h-3 w-3 rounded-[3px] bg-foreground" style={{ opacity: o }} />
-          ))}
+      <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+        <span className="text-xs text-muted-foreground">{monthName} 1 – {currentDay}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Less</span>
+          <div className="flex gap-0.5">
+            {[0.2, 0.4, 0.6, 0.8, 1].map((o, i) => (
+              <div key={i} className="h-3 w-3 rounded bg-foreground" style={{ opacity: o }} />
+            ))}
+          </div>
+          <span className="text-xs text-muted-foreground">More</span>
         </div>
-        <span className="text-[11px] text-muted-foreground">More</span>
       </div>
     </div>
   );

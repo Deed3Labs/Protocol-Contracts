@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { Wallet, Send, LineChart, Settings, Home, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import ClearPathLogo from '@/assets/ClearPath-Logo.png';
 
 interface NavEntry {
   to: string;
@@ -39,9 +40,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       )}
     >
       <div className={cn('flex h-16 items-center border-b border-border', collapsed ? 'justify-center px-2' : 'gap-2.5 px-5')}>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary font-display text-lg text-primary-foreground">
-          C
-        </div>
+        <img src={ClearPathLogo} alt="Clear" className="h-9 w-9 shrink-0 rounded-xl border border-border object-cover" />
         {!collapsed && (
           <div className="min-w-0">
             <div className="font-display text-lg leading-none tracking-tight text-foreground">Clear</div>

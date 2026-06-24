@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { PanelLeft, Menu, Search, Plus, Bell, ChevronRight } from 'lucide-react';
+import ClearPathLogo from '@/assets/ClearPath-Logo.png';
 
 const TITLES: Record<string, string> = {
   '/': 'Accounts',
@@ -25,6 +26,7 @@ export default function TopBar({
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md">
       <div className="flex h-16 items-center gap-3 px-5 lg:px-8">
+        <img src={ClearPathLogo} alt="Clear" className="h-8 w-8 shrink-0 rounded-lg border border-border object-cover lg:hidden" />
         <button
           type="button"
           onClick={onToggleSidebar}
