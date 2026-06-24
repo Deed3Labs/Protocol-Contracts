@@ -22,7 +22,7 @@ export default function BalanceHero({
   return (
     <div className={cn('flex flex-col', className)}>
       <span className="text-[13px] text-muted-foreground">{label}</span>
-      <span className="font-coolvetica text-6xl leading-[0.92] tracking-tight text-foreground tabular-nums">
+      <span className="font-display text-6xl leading-[0.92] tracking-tight text-foreground tabular-nums">
         {amount}
       </span>
       {change && (

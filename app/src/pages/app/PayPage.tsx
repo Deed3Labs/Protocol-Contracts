@@ -76,32 +76,38 @@ export default function PayPage() {
         }
       />
 
-      <div className="mb-6">
-        <h2 className="font-coolvetica text-4xl leading-[0.95] tracking-tight text-foreground">
-          Pay rent &amp; bills,
-          <br />
-          send to anyone.
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Clear Pay handles your recurring rent and bills — plus one-off transfers when you need them.
-        </p>
-      </div>
+      <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
+        <div className="lg:col-span-7">
+          <div className="mb-6">
+            <h2 className="font-display text-4xl leading-[0.95] tracking-tight text-foreground lg:text-5xl">
+              Pay rent &amp; bills,
+              <br />
+              send to anyone.
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Clear Pay handles your recurring rent and bills — plus one-off transfers when you need them.
+            </p>
+          </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <BigTile icon={Home} title="Pay rent" subtitle="Schedule or pay now" primary />
-        <BigTile icon={FileText} title="Pay a bill" subtitle="Utilities, cards & more" />
-      </div>
+          <div className="grid grid-cols-2 gap-3">
+            <BigTile icon={Home} title="Pay rent" subtitle="Schedule or pay now" primary />
+            <BigTile icon={FileText} title="Pay a bill" subtitle="Utilities, cards & more" />
+          </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <SmallTile icon={ArrowUpRight} title="Send" />
-        <SmallTile icon={ArrowDownLeft} title="Request" />
-      </div>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <SmallTile icon={ArrowUpRight} title="Send" />
+            <SmallTile icon={ArrowDownLeft} title="Request" />
+          </div>
+        </div>
 
-      <h3 className="mb-3 mt-7 text-xs font-medium text-muted-foreground">Upcoming</h3>
-      <div className="space-y-2.5">
-        <SectionCard icon={Home} tint="primary" title="Rent — Maple Apartments" subtitle="Due Jul 1" amount="$1,850.00" />
-        <SectionCard icon={Zap} tint="neutral" title="Electric — ConEd" subtitle="Due Jun 28" amount="$124.30" />
-        <SectionCard icon={Wifi} tint="neutral" title="Internet — Verizon" subtitle="Due Jun 30" amount="$79.99" />
+        <div className="mt-7 lg:col-span-5 lg:mt-0">
+          <h3 className="mb-3 text-xs font-medium text-muted-foreground">Upcoming</h3>
+          <div className="space-y-2.5">
+            <SectionCard icon={Home} tint="primary" title="Rent — Maple Apartments" subtitle="Due Jul 1" amount="$1,850.00" />
+            <SectionCard icon={Zap} tint="neutral" title="Electric — ConEd" subtitle="Due Jun 28" amount="$124.30" />
+            <SectionCard icon={Wifi} tint="neutral" title="Internet — Verizon" subtitle="Due Jun 30" amount="$79.99" />
+          </div>
+        </div>
       </div>
     </div>
   );

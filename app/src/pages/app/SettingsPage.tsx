@@ -13,7 +13,7 @@ export default function SettingsPage() {
   const isDark = theme === 'dark';
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in lg:mx-auto lg:max-w-2xl">
       <ScreenHeader title="Settings" />
 
       <div className="mb-6 flex items-center gap-3 rounded-3xl border border-black/[0.06] bg-card p-4 dark:border-white/[0.06]">
@@ -57,11 +57,11 @@ export default function SettingsPage() {
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
             className={cn(
               'relative h-7 w-12 rounded-full transition-colors',
-              isDark ? 'bg-primary' : 'bg-secondary',
+              isDark ? 'bg-primary' : 'bg-input',
             )}
           >
             <span
-              className="absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-white transition-transform"
+              className="absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-card shadow-sm ring-1 ring-black/10 transition-transform dark:ring-white/15"
               style={{ transform: isDark ? 'translateX(20px)' : 'none' }}
             />
           </button>

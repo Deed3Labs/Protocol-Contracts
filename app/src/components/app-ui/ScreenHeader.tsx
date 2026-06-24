@@ -11,8 +11,10 @@ interface ScreenHeaderProps {
 /** Compact top bar shared across the redesigned screens. */
 export default function ScreenHeader({ title, action, className }: ScreenHeaderProps) {
   return (
-    <header className={cn('flex items-center justify-between pb-5', className)}>
-      <h1 className="text-[15px] font-medium text-foreground">{title}</h1>
+    <header className={cn('flex items-center justify-between pb-5 lg:pb-7', className)}>
+      <h1 className="text-[15px] font-medium text-foreground lg:font-display lg:text-3xl lg:tracking-tight">
+        {title}
+      </h1>
       {action}
     </header>
   );

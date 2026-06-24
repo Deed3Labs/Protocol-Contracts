@@ -150,77 +150,77 @@
 
   color-scheme: light;
   color: #0A0A0A;
-  background-color: #F4F4F2;
+  background-color: #F5F5F5;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* Light mode — ClearPath warm brand */
+  /* Light mode — neutral */
   --radius: 1rem;
-  --background: 244 244 242;
+  --background: 245 245 245;
   --foreground: 10 10 10;
   --card: 255 255 255;
   --card-foreground: 10 10 10;
   --popover: 255 255 255;
   --popover-foreground: 10 10 10;
-  --primary: 199 106 69;
-  --primary-foreground: 255 255 255;
-  --secondary: 236 230 218;
-  --secondary-foreground: 58 53 46;
-  --muted: 239 238 234;
-  --muted-foreground: 138 133 124;
-  --accent: 241 226 206;
-  --accent-foreground: 154 74 42;
-  --destructive: 199 64 46;
-  --destructive-foreground: 255 255 255;
-  --border: 228 223 214;
-  --input: 228 223 214;
-  --ring: 199 106 69;
+  --primary: 10 10 10;
+  --primary-foreground: 250 250 250;
+  --secondary: 240 240 240;
+  --secondary-foreground: 23 23 23;
+  --muted: 244 244 244;
+  --muted-foreground: 115 115 115;
+  --accent: 240 240 240;
+  --accent-foreground: 23 23 23;
+  --destructive: 220 38 38;
+  --destructive-foreground: 250 250 250;
+  --border: 228 228 228;
+  --input: 228 228 228;
+  --ring: 10 10 10;
 
-  /* Brand section tints (Cash / Savings / External) */
-  --cp-cash: 230 240 233;
-  --cp-cash-fg: 47 109 76;
-  --cp-savings: 246 228 219;
-  --cp-savings-fg: 154 74 42;
-  --cp-external: 231 235 240;
-  --cp-external-fg: 62 86 110;
+  /* Neutral section tiles (Cash / Savings / External) */
+  --cp-cash: 240 240 240;
+  --cp-cash-fg: 38 38 38;
+  --cp-savings: 240 240 240;
+  --cp-savings-fg: 38 38 38;
+  --cp-external: 240 240 240;
+  --cp-external-fg: 38 38 38;
 }
 
 .dark {
   color-scheme: dark;
-  color: #F4F4F2;
+  color: #F5F5F5;
   background-color: #0E0E0E;
 
-  /* Dark mode — ClearPath warm brand */
+  /* Dark mode — neutral */
   --background: 14 14 14;
-  --foreground: 244 244 242;
-  --card: 26 24 22;
-  --card-foreground: 244 244 242;
-  --popover: 26 24 22;
-  --popover-foreground: 244 244 242;
-  --primary: 214 118 79;
+  --foreground: 245 245 245;
+  --card: 23 23 23;
+  --card-foreground: 245 245 245;
+  --popover: 23 23 23;
+  --popover-foreground: 245 245 245;
+  --primary: 245 245 245;
   --primary-foreground: 14 14 14;
-  --secondary: 38 36 32;
-  --secondary-foreground: 244 244 242;
-  --muted: 35 34 32;
-  --muted-foreground: 163 158 148;
-  --accent: 58 42 34;
-  --accent-foreground: 233 183 158;
-  --destructive: 226 104 90;
+  --secondary: 38 38 38;
+  --secondary-foreground: 245 245 245;
+  --muted: 38 38 38;
+  --muted-foreground: 163 163 163;
+  --accent: 38 38 38;
+  --accent-foreground: 245 245 245;
+  --destructive: 239 68 68;
   --destructive-foreground: 14 14 14;
-  --border: 42 40 35;
-  --input: 42 40 35;
-  --ring: 214 118 79;
+  --border: 38 38 38;
+  --input: 38 38 38;
+  --ring: 245 245 245;
 
-  /* Brand section tints (Cash / Savings / External) */
-  --cp-cash: 28 38 32;
-  --cp-cash-fg: 122 196 158;
-  --cp-savings: 58 42 34;
-  --cp-savings-fg: 224 150 116;
-  --cp-external: 32 38 46;
-  --cp-external-fg: 140 170 200;
+  /* Neutral section tiles (Cash / Savings / External) */
+  --cp-cash: 38 38 38;
+  --cp-cash-fg: 212 212 212;
+  --cp-savings: 38 38 38;
+  --cp-savings-fg: 212 212 212;
+  --cp-external: 38 38 38;
+  --cp-external-fg: 212 212 212;
 }
 
 html {
@@ -231,7 +231,7 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  font-family: 'General Sans', system-ui, -apple-system, sans-serif;
+  font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
   background-color: rgb(var(--background));
   color: rgb(var(--foreground));
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -385,5 +385,12 @@ body.onboarding-scroll-enabled {
   
   .font-general {
     font-family: 'General Sans', system-ui, sans-serif;
+  }
+
+  /* Display face for large balance figures — Space Grotesk, tabular, tight */
+  .font-display {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-feature-settings: 'tnum' 1;
+    letter-spacing: -0.02em;
   }
 }

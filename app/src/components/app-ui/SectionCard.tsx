@@ -52,7 +52,7 @@ export default function SectionCard({
         )}
       </span>
       {amount && (
-        <span className="font-coolvetica text-2xl tracking-tight text-foreground tabular-nums">
+        <span className="font-display text-2xl tracking-tight text-foreground tabular-nums">
           {amount}
         </span>
       )}
