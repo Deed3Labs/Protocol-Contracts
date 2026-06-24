@@ -3,44 +3,96 @@ import { Bell, ShoppingBag, Coffee, Music, ArrowDownLeft, type LucideIcon } from
 import ScreenHeader from '@/components/app-ui/ScreenHeader';
 import SegmentedControl from '@/components/app-ui/SegmentedControl';
 import SectionCard from '@/components/app-ui/SectionCard';
+import ChartCard from '@/components/app-ui/charts/ChartCard';
+import SpendingChart from '@/components/app-ui/charts/SpendingChart';
 
 type Range = 'week' | 'month' | 'year';
 
-const SERIES: Record<Range, { bars: number[]; labels: string[]; total: string; caption: string }> = {
-  week: { bars: [40, 65, 30, 80, 55, 70, 45], labels: ['M', 'T', 'W', 'T', 'F', 'S', 'S'], total: '$842.10', caption: 'Spent this week' },
-  month: { bars: [52, 70, 44, 86, 60, 74, 50], labels: ['W1', 'W2', 'W3', 'W4', 'W5', '', ''], total: '$3,284.10', caption: 'Spent this month' },
-  year: { bars: [30, 48, 60, 42, 70, 55, 80], labels: ['J', 'F', 'M', 'A', 'M', 'J', 'J'], total: '$38,902.55', caption: 'Spent this year' },
+interface RangeData {
+  total: string;
+  caption: string;
+  delta: { text: string; positive: boolean };
+  insight: string;
+  budget: number;
+  buckets: { label: string; spending: number; previous: number }[];
+}
+
+const SERIES: Record<Range, RangeData> = {
+  week: {
+    total: '$842.10',
+    caption: 'Spent this week',
+    delta: { text: '8% vs last week', positive: false },
+    insight: '$108 under budget',
+    budget: 150,
+    buckets: [
+      { label: 'M', spending: 120, previous: 110 },
+      { label: 'T', spending: 86, previous: 95 },
+      { label: 'W', spending: 40, previous: 60 },
+      { label: 'T', spending: 150, previous: 140 },
+      { label: 'F', spending: 95, previous: 120 },
+      { label: 'S', spending: 210, previous: 180 },
+      { label: 'S', spending: 141, previous: 150 },
+    ],
+  },
+  month: {
+    total: '$3,284.10',
+    caption: 'Spent this month',
+    delta: { text: '5% vs last month', positive: false },
+    insight: '$416 under budget',
+    budget: 900,
+    buckets: [
+      { label: 'W1', spending: 820, previous: 900 },
+      { label: 'W2', spending: 910, previous: 860 },
+      { label: 'W3', spending: 640, previous: 700 },
+      { label: 'W4', spending: 914, previous: 980 },
+    ],
+  },
+  year: {
+    total: '$38,902.55',
+    caption: 'Spent this year',
+    delta: { text: '3% vs last year', positive: true },
+    insight: 'tracking to budget',
+    budget: 6500,
+    buckets: [
+      { label: 'Jan', spending: 5200, previous: 4800 },
+      { label: 'Feb', spending: 6100, previous: 5600 },
+      { label: 'Mar', spending: 5400, previous: 6000 },
+      { label: 'Apr', spending: 7200, previous: 5900 },
+      { label: 'May', spending: 6800, previous: 7000 },
+      { label: 'Jun', spending: 8200, previous: 7600 },
+    ],
+  },
 };
 
-function CategoryCard({ label, amount, pct }: { label: string; amount: string; pct: string }) {
+function CategoryRow({ label, amount, pct, change, up }: { label: string; amount: string; pct: number; change: string; up: boolean }) {
   return (
-    <div className="rounded-3xl border border-black/[0.06] bg-card p-4 dark:border-white/[0.06]">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 font-display text-2xl tracking-tight text-foreground tabular-nums">{amount}</div>
-      <div className="mt-0.5 text-[11px] font-medium text-accent-foreground">{pct} of spend</div>
+    <div className="rounded-3xl border border-border bg-card p-4">
+      <div className="flex items-baseline justify-between">
+        <span className="text-sm font-medium text-foreground">{label}</span>
+        <span className="font-display text-xl tracking-tight text-foreground tabular-nums">{amount}</span>
+      </div>
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+        <div className="h-full rounded-full bg-foreground/70" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
+        <span>{pct}% of spend</span>
+        <span>{up ? '↑' : '↓'} {change} vs last month</span>
+      </div>
     </div>
   );
 }
 
 function Tx({ icon, title, sub, amount, incoming }: { icon: LucideIcon; title: string; sub: string; amount: string; incoming?: boolean }) {
-  return (
-    <SectionCard
-      icon={icon}
-      tint={incoming ? 'cash' : 'neutral'}
-      title={title}
-      subtitle={sub}
-      amount={amount}
-    />
-  );
+  return <SectionCard icon={icon} tint={incoming ? 'cash' : 'neutral'} title={title} subtitle={sub} amount={amount} />;
 }
 
 /**
- * Transactions — visual-first. Spending hero + range chart + category breakdown
- * + recent list. Scaffold: CSS bars + sample data; recharts + Plaid wiring TODO.
+ * Transactions — visual-first. Insight-led spending chart (vs budget + last period),
+ * category breakdown with change, and recent activity. Scaffold: sample data.
  */
 export default function TransactionsPage() {
   const [range, setRange] = useState<Range>('month');
-  const series = SERIES[range];
+  const s = SERIES[range];
 
   return (
     <div className="animate-fade-in">
@@ -57,13 +109,6 @@ export default function TransactionsPage() {
         }
       />
 
-      <div className="mb-4">
-        <span className="text-[13px] text-muted-foreground">{series.caption}</span>
-        <div className="font-display text-5xl leading-none tracking-tight text-foreground tabular-nums">
-          {series.total}
-        </div>
-      </div>
-
       <SegmentedControl
         className="mb-5 lg:max-w-xs"
         value={range}
@@ -76,32 +121,23 @@ export default function TransactionsPage() {
       />
 
       <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
-        <div className="lg:col-span-8">
-          <div className="rounded-3xl border border-border bg-card p-5">
-            <div className="flex h-36 items-end justify-between gap-2 lg:h-52">
-              {series.bars.map((h, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-full bg-primary/80 transition-all duration-500"
-                  style={{ height: `${h}%` }}
-                />
-              ))}
-            </div>
-            <div className="mt-3 flex justify-between text-[10px] text-muted-foreground">
-              {series.labels.map((d, i) => (
-                <span key={i} className="flex-1 text-center">{d}</span>
-              ))}
-            </div>
-          </div>
+        <div className="space-y-6 lg:col-span-8">
+          <ChartCard label={s.caption} value={s.total} delta={s.delta} insight={s.insight}>
+            <SpendingChart data={s.buckets} budget={s.budget} />
+          </ChartCard>
 
-          <h3 className="mb-3 mt-7 text-xs font-medium text-muted-foreground">Top categories</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <CategoryCard label="Shopping" amount="$1,204" pct="37%" />
-            <CategoryCard label="Food & drink" amount="$842" pct="26%" />
+          <div>
+            <h3 className="mb-3 text-xs font-medium text-muted-foreground">Top categories</h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <CategoryRow label="Shopping" amount="$1,204" pct={37} change="8%" up />
+              <CategoryRow label="Food & drink" amount="$842" pct={26} change="4%" up={false} />
+              <CategoryRow label="Transport" amount="$418" pct={13} change="2%" up={false} />
+              <CategoryRow label="Subscriptions" amount="$286" pct={9} change="0%" up />
+            </div>
           </div>
         </div>
 
-        <div className="mt-7 lg:col-span-4 lg:mt-0">
+        <div className="mt-6 lg:col-span-4 lg:mt-0">
           <h3 className="mb-3 text-xs font-medium text-muted-foreground">Recent</h3>
           <div className="space-y-2.5">
             <Tx icon={ShoppingBag} title="Amazon" sub="Today · 4:12 PM" amount="-$9.50" />

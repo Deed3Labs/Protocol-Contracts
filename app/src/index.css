@@ -186,6 +186,13 @@
   --cp-savings-fg: 38 38 38;
   --cp-external: 240 240 240;
   --cp-external-fg: 38 38 38;
+
+  /* Chart ramp — neutral (shadcn charts) */
+  --chart-1: #0a0a0a;
+  --chart-2: #404040;
+  --chart-3: #737373;
+  --chart-4: #a3a3a3;
+  --chart-5: #d4d4d4;
 }
 
 .dark {
@@ -221,6 +228,13 @@
   --cp-savings-fg: 212 212 212;
   --cp-external: 38 38 38;
   --cp-external-fg: 212 212 212;
+
+  /* Chart ramp — neutral (shadcn charts) */
+  --chart-1: #fafafa;
+  --chart-2: #d4d4d4;
+  --chart-3: #a3a3a3;
+  --chart-4: #737373;
+  --chart-5: #404040;
 }
 
 html {

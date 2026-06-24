@@ -2,6 +2,35 @@ import { Bell, Plus, ArrowLeftRight, Banknote, PiggyBank, Landmark, Home } from 
 import ScreenHeader from '@/components/app-ui/ScreenHeader';
 import BalanceHero from '@/components/app-ui/BalanceHero';
 import SectionCard from '@/components/app-ui/SectionCard';
+import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
+import UpcomingCalendar, { type UpcomingItem } from '@/components/app-ui/UpcomingCalendar';
+import ChartCard from '@/components/app-ui/charts/ChartCard';
+import BalanceTrendChart from '@/components/app-ui/charts/BalanceTrendChart';
+
+const BALANCE_TREND = [
+  { label: 'Jan', value: 34200 },
+  { label: 'Feb', value: 36100 },
+  { label: 'Mar', value: 35400 },
+  { label: 'Apr', value: 38250 },
+  { label: 'May', value: 39600 },
+  { label: 'Jun', value: 41017 },
+];
+
+const SPEND_BY_DAY: Record<number, number> = {
+  1: 1850, 2: 42, 3: 18, 4: 96, 5: 210, 6: 64, 8: 12, 9: 140, 10: 38,
+  11: 9, 12: 75, 13: 320, 15: 54, 16: 22, 17: 88, 18: 240, 19: 16,
+  20: 130, 21: 47, 22: 8, 23: 162, 24: 31,
+};
+
+const UPCOMING: UpcomingItem[] = [
+  { id: 'rent', name: 'Rent', amount: 1850, day: 1, direction: 'out' },
+  { id: 'gym', name: 'Gym', amount: 45, day: 5, direction: 'out' },
+  { id: 'spotify', name: 'Spotify', amount: 12, day: 12, direction: 'out' },
+  { id: 'payroll', name: 'Payroll', amount: 3200, day: 15, direction: 'in' },
+  { id: 'card', name: 'Card', amount: 320, day: 22, direction: 'out' },
+  { id: 'electric', name: 'Electric', amount: 124, day: 28, direction: 'out' },
+  { id: 'internet', name: 'Internet', amount: 80, day: 30, direction: 'out' },
+];
 
 /**
  * Equity Credits → Clear Deed progress. Credits accrue 1:1 on the member's CLRUSD
@@ -29,7 +58,7 @@ function ClearDeedCard() {
 
       <div className="mt-4">
         <div className="mb-1.5 flex justify-between text-[11px] text-muted-foreground">
-          <span>{pct}% to milestone</span>
+          <span>{pct}% to milestone · ~14 mo at this pace</span>
           <span>${milestone.toLocaleString()}</span>
         </div>
         <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
@@ -66,7 +95,7 @@ export default function AccountsPage() {
       />
 
       <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
-        <div className="lg:col-span-7 xl:col-span-8">
+        <div className="space-y-6 lg:col-span-8">
           <div className="lg:rounded-3xl lg:border lg:border-border lg:bg-card lg:p-6">
             <BalanceHero label="Total balance" amount="$41,016.67" change="$421.03 this week" />
             <div className="mt-5 flex gap-3">
@@ -85,42 +114,35 @@ export default function AccountsPage() {
             </div>
           </div>
 
-          <h2 className="mb-3 mt-7 text-xs font-medium text-muted-foreground">Your accounts</h2>
-          <div className="space-y-2.5">
-            <SectionCard
-              icon={Banknote}
-              tint="cash"
-              title="Cash"
-              subtitle="USDC · available now"
-              amount="$12,480.20"
-            />
-            <SectionCard
-              icon={PiggyBank}
-              tint="savings"
-              title="Savings"
-              subtitle="CLRUSD · redeemable"
-              amount="$24,092.67"
-            />
-            <SectionCard
-              icon={Landmark}
-              tint="external"
-              title="External accounts"
-              subtitle="Chase ··6152 · Amex ··2791"
-              amount="$4,443.80"
-              chevron
-            />
+          <ChartCard
+            label="Balance trend"
+            delta={{ text: '4.2% over 6 months', positive: true }}
+            insight="+$6,817 since January"
+          >
+            <BalanceTrendChart data={BALANCE_TREND} />
+          </ChartCard>
+
+          <div>
+            <h2 className="mb-3 text-xs font-medium text-muted-foreground">Your accounts</h2>
+            <div className="space-y-2.5">
+              <SectionCard icon={Banknote} tint="cash" title="Cash" subtitle="USDC · available now" amount="$12,480.20" />
+              <SectionCard icon={PiggyBank} tint="savings" title="Savings" subtitle="CLRUSD · redeemable" amount="$24,092.67" />
+              <SectionCard icon={Landmark} tint="external" title="External accounts" subtitle="Chase ··6152 · Amex ··2791" amount="$4,443.80" chevron />
+            </div>
+            <button
+              type="button"
+              className="mt-3 flex w-full items-center justify-center gap-1.5 py-2 text-xs font-medium text-muted-foreground lg:w-auto"
+            >
+              <Plus className="h-3.5 w-3.5" /> Link a bank with Plaid
+            </button>
           </div>
 
-          <button
-            type="button"
-            className="mt-3 flex w-full items-center justify-center gap-1.5 py-2 text-xs font-medium text-muted-foreground lg:w-auto"
-          >
-            <Plus className="h-3.5 w-3.5" /> Link a bank with Plaid
-          </button>
+          <SpendHeatmap spendingByDay={SPEND_BY_DAY} />
         </div>
 
-        <div className="mt-7 lg:col-span-5 lg:mt-0 xl:col-span-4">
+        <div className="mt-6 space-y-6 lg:col-span-4 lg:mt-0">
           <ClearDeedCard />
+          <UpcomingCalendar items={UPCOMING} />
         </div>
       </div>
     </div>
