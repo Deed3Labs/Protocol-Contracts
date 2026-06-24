@@ -1,5 +1,5 @@
 import { Wallet, Banknote, PiggyBank, Landmark, Home } from 'lucide-react';
-import StatCard from '@/components/app-ui/StatCard';
+import StatBar from '@/components/app-ui/StatBar';
 import QuickActions from '@/components/app-ui/QuickActions';
 import RecentActivity from '@/components/app-ui/RecentActivity';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
@@ -75,12 +75,14 @@ export default function AccountsPage() {
         <p className="mt-1 text-sm text-muted-foreground">Here's where your money stands today.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Total balance" value="$41,016.67" change="2.1% this week" icon={Wallet} />
-        <StatCard label="Cash · USDC" value="$12,480.20" change="0.4%" icon={Banknote} />
-        <StatCard label="Savings · CLRUSD" value="$24,092.67" change="1.8%" icon={PiggyBank} />
-        <StatCard label="External · Plaid" value="$4,443.80" change="0.6%" changePositive={false} icon={Landmark} />
-      </div>
+      <StatBar
+        stats={[
+          { label: 'Total balance', value: '$41,016.67', change: '2.1% this week', icon: Wallet },
+          { label: 'Cash · USDC', value: '$12,480.20', change: '0.4%', icon: Banknote },
+          { label: 'Savings · CLRUSD', value: '$24,092.67', change: '1.8%', icon: PiggyBank },
+          { label: 'External · Plaid', value: '$4,443.80', change: '0.6%', changePositive: false, icon: Landmark },
+        ]}
+      />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <BalanceAnalyticsChart className="lg:col-span-2" />

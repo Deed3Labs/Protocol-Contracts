@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Receipt, ArrowDownLeft, TrendingUp, Hash } from 'lucide-react';
-import StatCard from '@/components/app-ui/StatCard';
+import StatBar from '@/components/app-ui/StatBar';
 import SegmentedControl from '@/components/app-ui/SegmentedControl';
 import ChartCard from '@/components/app-ui/charts/ChartCard';
 import SpendingChart from '@/components/app-ui/charts/SpendingChart';
@@ -64,12 +64,14 @@ export default function TransactionsPage() {
         <p className="mt-1 text-sm text-muted-foreground">Track and visualize where your money moves.</p>
       </header>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Spent this month" value="$3,284.10" change="5% vs last mo" changePositive={false} icon={Receipt} />
-        <StatCard label="Income this month" value="$5,640.00" change="3% vs last mo" icon={ArrowDownLeft} />
-        <StatCard label="Net flow" value="+$2,355.90" change="on track" icon={TrendingUp} />
-        <StatCard label="Transactions" value="84" icon={Hash} />
-      </div>
+      <StatBar
+        stats={[
+          { label: 'Spent this month', value: '$3,284.10', change: '5% vs last mo', changePositive: false, icon: Receipt },
+          { label: 'Income this month', value: '$5,640.00', change: '3% vs last mo', icon: ArrowDownLeft },
+          { label: 'Net flow', value: '+$2,355.90', change: 'on track', icon: TrendingUp },
+          { label: 'Transactions', value: '84', icon: Hash },
+        ]}
+      />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <ChartCard

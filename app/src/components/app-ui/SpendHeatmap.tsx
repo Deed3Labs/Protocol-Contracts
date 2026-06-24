@@ -63,7 +63,7 @@ export default function SpendHeatmap({
 
       <div className="grid grid-cols-7 gap-1">
         {allDays.map((day, idx) => {
-          if (day === null) return <div key={`p${idx}`} className="min-h-[52px]" aria-hidden />;
+          if (day === null) return <div key={`p${idx}`} className="min-h-[80px]" aria-hidden />;
           const amount = spendingByDay[day] ?? 0;
           const isPast = day <= currentDay;
           const isToday = day === currentDay;
@@ -73,12 +73,12 @@ export default function SpendHeatmap({
             <div
               key={day}
               className={cn(
-                'relative flex min-h-[52px] min-w-0 flex-col items-start justify-between rounded-lg border p-1.5',
+                'relative flex min-h-[80px] min-w-0 flex-col items-start justify-between rounded-[6px] border p-1.5',
                 isPast ? 'border-border' : 'border-border/50',
                 isToday && 'ring-1 ring-foreground/40',
               )}
             >
-              <div className="pointer-events-none absolute inset-0 rounded-lg bg-foreground" style={{ opacity: isPast ? intensity : 0 }} aria-hidden />
+              <div className="pointer-events-none absolute inset-0 rounded-[6px] bg-foreground" style={{ opacity: isPast ? intensity : 0 }} aria-hidden />
               <span className={cn('relative z-10 text-xs font-medium', inverted ? 'text-background' : isPast ? 'text-foreground' : 'text-muted-foreground')}>{day}</span>
               <span className={cn('relative z-10 w-full truncate text-[10px] font-medium', inverted ? 'text-background/90' : 'text-muted-foreground')}>
                 {isPast ? formatAmount(amount) : '-'}

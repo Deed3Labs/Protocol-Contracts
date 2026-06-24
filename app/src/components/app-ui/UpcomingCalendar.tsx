@@ -66,7 +66,7 @@ export default function UpcomingCalendar({
 
       <div className="grid grid-cols-7 gap-1">
         {allDays.map((day, idx) => {
-          if (day === null) return <div key={`p${idx}`} className="min-h-[52px]" aria-hidden />;
+          if (day === null) return <div key={`p${idx}`} className="min-h-[80px]" aria-hidden />;
           const dayItems = items.filter((i) => i.day === day);
           const isToday = day === currentDay;
           const isPast = day < currentDay;
@@ -77,7 +77,7 @@ export default function UpcomingCalendar({
             <div
               key={day}
               className={cn(
-                'flex min-h-[52px] min-w-0 flex-col items-center justify-between rounded-lg border p-1',
+                'flex min-h-[80px] min-w-0 flex-col items-center justify-between rounded-[6px] border p-1',
                 isPast ? 'border-border/50 opacity-60' : 'border-border',
                 isToday && 'bg-secondary/40 ring-1 ring-foreground/40',
               )}
