@@ -256,10 +256,10 @@ body {
   box-sizing: border-box;
 }
 
-/* Custom scrollbar */
+/* Thin, subtle scrollbar (keeps the desktop scroll affordance) */
 ::-webkit-scrollbar {
-  width: 0px;
-  height: 0px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -267,18 +267,21 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 0px;
+  background: rgb(var(--border));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: transparent;
+  background: rgb(var(--muted-foreground));
+  background-clip: content-box;
 }
 
-/* Hide scrollbars for Firefox */
+/* Thin scrollbars (Firefox) */
 * {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border)) transparent;
 }
 
 /* Ensure scrolling still works */
