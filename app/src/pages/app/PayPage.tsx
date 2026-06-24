@@ -1,8 +1,9 @@
-import { Bell, Home, FileText, ArrowUpRight, ArrowDownLeft, Zap, Wifi, CreditCard, Smartphone, type LucideIcon } from 'lucide-react';
-import ScreenHeader from '@/components/app-ui/ScreenHeader';
+import { Home, FileText, ArrowUpRight, ArrowDownLeft, Zap, Wifi, CreditCard, Smartphone, Calendar, CircleCheck, TrendingUp, Flame, type LucideIcon } from 'lucide-react';
+import StatCard from '@/components/app-ui/StatCard';
 import ChartCard from '@/components/app-ui/charts/ChartCard';
 import RentEquityChart from '@/components/app-ui/charts/RentEquityChart';
 import BillTimeline, { type TimelineBill } from '@/components/app-ui/BillTimeline';
+import CardVisual from '@/components/app-ui/CardVisual';
 import { cn } from '@/lib/utils';
 
 const RENT_EQUITY = [
@@ -22,116 +23,68 @@ const BILLS: TimelineBill[] = [
   { id: 'phone', name: 'Phone — Verizon', dateLabel: 'Jul 5', amount: 65, icon: Smartphone },
 ];
 
-function BigTile({
-  icon: Icon,
-  title,
-  subtitle,
-  primary,
-}: {
-  icon: LucideIcon;
-  title: string;
-  subtitle: string;
-  primary?: boolean;
-}) {
+function ActionTile({ icon: Icon, label, sub, primary }: { icon: LucideIcon; label: string; sub: string; primary?: boolean }) {
   return (
     <button
       type="button"
       className={cn(
-        'flex min-h-[124px] flex-col items-start gap-3 rounded-3xl border p-4 text-left transition-transform active:scale-[0.99]',
-        primary
-          ? 'border-transparent bg-primary text-primary-foreground'
-          : 'border-border bg-card text-foreground',
+        'flex min-h-[112px] flex-col items-start gap-3 rounded-2xl border p-4 text-left transition-transform active:scale-[0.99]',
+        primary ? 'border-transparent bg-primary text-primary-foreground' : 'border-border bg-secondary/40 text-foreground hover:bg-secondary',
       )}
     >
-      <span
-        className={cn(
-          'flex h-11 w-11 items-center justify-center rounded-2xl',
-          primary ? 'bg-white/20' : 'bg-secondary text-secondary-foreground',
-        )}
-      >
+      <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', primary ? 'bg-white/20' : 'bg-background text-foreground')}>
         <Icon className="h-5 w-5" />
       </span>
       <span className="mt-auto">
-        <span className="block text-[15px] font-medium">{title}</span>
-        <span className={cn('mt-0.5 block text-xs', primary ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
-          {subtitle}
-        </span>
+        <span className="block text-sm font-medium">{label}</span>
+        <span className={cn('mt-0.5 block text-xs', primary ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{sub}</span>
       </span>
     </button>
   );
 }
 
-function SmallTile({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
-  return (
-    <button
-      type="button"
-      className="flex items-center gap-3 rounded-3xl border border-border bg-card p-4 text-left text-foreground transition-transform active:scale-[0.99]"
-    >
-      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary text-secondary-foreground">
-        <Icon className="h-5 w-5" />
-      </span>
-      <span className="text-[15px] font-medium">{title}</span>
-    </button>
-  );
-}
-
-/**
- * Pay — Clear Pay's rent/bill-pay core, with Send/Request and data viz: a
- * rent-to-equity chart (on-time rent earns equity credits) and a bill timeline.
- */
+/** Pay — Clear Pay's rent/bill core, send/request, card, and rent-to-equity viz. */
 export default function PayPage() {
   return (
-    <div className="animate-fade-in">
-      <ScreenHeader
-        title="Pay"
-        action={
-          <button
-            type="button"
-            aria-label="Notifications"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-secondary-foreground"
-          >
-            <Bell className="h-[18px] w-[18px]" />
-          </button>
-        }
-      />
+    <div className="animate-fade-in space-y-5">
+      <header>
+        <h1 className="font-display text-3xl tracking-tight text-foreground">Pay</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Pay rent &amp; bills — and build equity with every on-time payment.
+        </p>
+      </header>
 
-      <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-6">
-        <div className="space-y-6 lg:col-span-7">
-          <div>
-            <h2 className="font-display text-4xl leading-[0.95] tracking-tight text-foreground lg:text-5xl">
-              Pay rent &amp; bills,
-              <br />
-              send to anyone.
-            </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Clear Pay handles your recurring rent and bills — and every on-time rent payment earns
-              equity credits toward your Clear Deed.
-            </p>
-          </div>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Due this month" value="$2,439.00" icon={Calendar} />
+        <StatCard label="Paid · 30 days" value="$4,512.00" change="8% vs last mo" icon={CircleCheck} />
+        <StatCard label="Equity from rent" value="$2,160" change="+$490 this mo" icon={TrendingUp} />
+        <StatCard label="On-time streak" value="6 months" icon={Flame} />
+      </div>
 
+      <div className="grid gap-5 lg:grid-cols-3">
+        <div className="rounded-3xl border border-border bg-card p-5 lg:col-span-2">
+          <h3 className="mb-3 text-xs font-medium text-muted-foreground">Make a payment</h3>
           <div className="grid grid-cols-2 gap-3">
-            <BigTile icon={Home} title="Pay rent" subtitle="Schedule or pay now" primary />
-            <BigTile icon={FileText} title="Pay a bill" subtitle="Utilities, cards & more" />
+            <ActionTile icon={Home} label="Pay rent" sub="Schedule or pay now" primary />
+            <ActionTile icon={FileText} label="Pay a bill" sub="Utilities, cards & more" />
+            <ActionTile icon={ArrowUpRight} label="Send" sub="To anyone" />
+            <ActionTile icon={ArrowDownLeft} label="Request" sub="Get paid" />
           </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <SmallTile icon={ArrowUpRight} title="Send" />
-            <SmallTile icon={ArrowDownLeft} title="Request" />
-          </div>
-
-          <ChartCard
-            label="Equity earned from rent"
-            value="$2,160"
-            delta={{ text: '+$490 this month', positive: true }}
-            insight="6 on-time payments → equity"
-          >
-            <RentEquityChart data={RENT_EQUITY} />
-          </ChartCard>
         </div>
+        <CardVisual />
+      </div>
 
-        <div className="mt-6 lg:col-span-5 lg:mt-0">
-          <BillTimeline bills={BILLS} />
-        </div>
+      <div className="grid gap-5 lg:grid-cols-3">
+        <ChartCard
+          className="lg:col-span-2"
+          label="Equity earned from rent"
+          value="$2,160"
+          delta={{ text: '+$490 this month', positive: true }}
+          insight="6 on-time payments → equity"
+        >
+          <RentEquityChart data={RENT_EQUITY} />
+        </ChartCard>
+        <BillTimeline bills={BILLS} />
       </div>
     </div>
   );
