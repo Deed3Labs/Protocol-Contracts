@@ -1,6 +1,5 @@
 import { Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
-import { cn } from '@/lib/utils';
 
 const config = {
   spending: { label: 'This period', color: 'var(--chart-1)' },
@@ -29,7 +28,7 @@ export default function SpendingChart({
   className?: string;
 }) {
   return (
-    <ChartContainer config={config} className={cn('aspect-auto h-[210px]', className)}>
+    <ChartContainer config={config} height={210} className={className}>
       <ComposedChart data={data} margin={{ left: 0, right: 10, top: 14, bottom: 0 }}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />

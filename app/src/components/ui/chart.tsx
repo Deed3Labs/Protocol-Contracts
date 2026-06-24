@@ -28,10 +28,12 @@ export function useChart() {
 export function ChartContainer({
   config,
   className,
+  height = 240,
   children,
   ...props
 }: React.ComponentProps<'div'> & {
   config: ChartConfig;
+  height?: number;
   children: React.ReactElement;
 }) {
   const styleVars = React.useMemo(() => {
@@ -50,10 +52,12 @@ export function ChartContainer({
           'w-full [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line]:stroke-border/70 [&_.recharts-surface]:outline-none',
           className,
         )}
-        style={styleVars}
+        style={{ ...styleVars, height }}
         {...props}
       >
-        <Recharts.ResponsiveContainer>{children}</Recharts.ResponsiveContainer>
+        <Recharts.ResponsiveContainer width="100%" height={height} minWidth={0}>
+          {children}
+        </Recharts.ResponsiveContainer>
       </div>
     </ChartContext.Provider>
   );

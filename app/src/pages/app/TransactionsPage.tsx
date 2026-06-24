@@ -98,8 +98,8 @@ export default function TransactionsPage() {
         <CategoryDonut />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <RecentActivity className="lg:col-span-2" />
+      <div className="grid gap-5 lg:grid-cols-2">
+        <RecentActivity />
         <SpendHeatmap spendingByDay={SPEND_BY_DAY} />
       </div>
     </div>

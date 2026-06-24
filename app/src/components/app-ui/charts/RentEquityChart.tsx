@@ -1,6 +1,5 @@
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
-import { cn } from '@/lib/utils';
 
 const config = {
   equity: { label: 'Equity from rent', color: 'var(--chart-1)' },
@@ -25,7 +24,7 @@ export default function RentEquityChart({
   className?: string;
 }) {
   return (
-    <ChartContainer config={config} className={cn('aspect-auto h-[190px]', className)}>
+    <ChartContainer config={config} height={190} className={className}>
       <BarChart data={data} margin={{ left: 0, right: 8, top: 12, bottom: 0 }}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
