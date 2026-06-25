@@ -4,7 +4,7 @@ import StatBar from '@/components/app-ui/StatBar';
 import SegmentedControl from '@/components/app-ui/SegmentedControl';
 import ChartCard from '@/components/app-ui/charts/ChartCard';
 import SpendingChart from '@/components/app-ui/charts/SpendingChart';
-import CategoryDonut from '@/components/app-ui/charts/CategoryDonut';
+import CategoryRadar from '@/components/app-ui/charts/CategoryRadar';
 import RecentActivity from '@/components/app-ui/RecentActivity';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
 
@@ -95,7 +95,7 @@ export default function TransactionsPage() {
         >
           <SpendingChart data={s.buckets} budget={s.budget} />
         </ChartCard>
-        <CategoryDonut />
+        <CategoryRadar />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
