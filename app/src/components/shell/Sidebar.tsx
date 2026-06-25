@@ -45,7 +45,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         {!collapsed && (
           <div className="min-w-0">
             <Wordmark className="text-2xl" />
-            <div className="truncate text-[11px] text-muted-foreground">Turn rent into ownership</div>
+            <div className="-mt-1 truncate text-[11px] text-muted-foreground">Turn rent into ownership</div>
           </div>
         )}
       </div>

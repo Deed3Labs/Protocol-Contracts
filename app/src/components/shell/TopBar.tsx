@@ -24,8 +24,8 @@ export default function TopBar({
   const title = TITLES[pathname] ?? 'Accounts';
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md">
-      <div className="flex h-16 items-center gap-3 px-5 lg:px-8">
+    <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md">
+      <div className="flex h-16 items-center gap-3 border-b border-border px-5 lg:px-8">
         <img src={ClearPathLogo} alt="Clear" className="h-8 w-8 shrink-0 rounded-md border border-border object-cover lg:hidden" />
         <button
           type="button"
