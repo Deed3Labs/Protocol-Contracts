@@ -1,8 +1,10 @@
+import type { ComponentType, SVGProps } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Wallet, Send, LineChart, Settings, Home, X, Sun, Sunset, Moon, type LucideIcon } from 'lucide-react';
+import { Wallet, Send, LineChart, Settings, Home, X, type LucideIcon } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { cn } from '@/lib/utils';
 import Wordmark from '@/components/app-ui/Wordmark';
+import { SunIcon, DuskIcon, MoonIcon } from '@/components/app-ui/ThemeIcons';
 import ClearPathLogo from '@/assets/ClearPath-Logo.png';
 
 interface NavEntry {
@@ -28,10 +30,10 @@ const groups: NavGroup[] = [
   { title: 'Account', items: [{ to: '/settings', label: 'Settings', icon: Settings }] },
 ];
 
-const THEMES: { id: 'light' | 'dusk' | 'dark'; icon: LucideIcon; label: string }[] = [
-  { id: 'light', icon: Sun, label: 'Light' },
-  { id: 'dusk', icon: Sunset, label: 'Dusk' },
-  { id: 'dark', icon: Moon, label: 'Dark' },
+const THEMES: { id: 'light' | 'dusk' | 'dark'; icon: ComponentType<SVGProps<SVGSVGElement>>; label: string }[] = [
+  { id: 'light', icon: SunIcon, label: 'Light' },
+  { id: 'dusk', icon: DuskIcon, label: 'Dusk' },
+  { id: 'dark', icon: MoonIcon, label: 'Dark' },
 ];
 
 /**
@@ -140,7 +142,7 @@ export default function SidebarNav({
                     theme === id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  <Icon className="h-3.5 w-3.5" /> {label}
+                  <Icon className="h-4 w-4" /> {label}
                 </button>
               ))}
             </div>
