@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
   Sparkles, Home, ShieldCheck, Zap, IdCard, ArrowRight, ArrowLeft, Check, Loader2,
-  Wallet, PiggyBank, CreditCard, BarChart3, Receipt, type LucideIcon,
+  PiggyBank, CreditCard, BarChart3, Receipt, type LucideIcon,
 } from 'lucide-react';
 import ClearPathLogo from '@/assets/ClearPath-Logo.png';
 import { cn } from '@/lib/utils';
