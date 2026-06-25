@@ -159,7 +159,7 @@ export default function RecentActivity({ className }: { className?: string }) {
                   {it.status}
                 </span>
                 {/* amount (mobile shows status beneath) */}
-                <div className="flex shrink-0 flex-col items-end gap-1 sm:w-32">
+                <div className="flex shrink-0 flex-col items-end gap-1 sm:w-24">
                   <div
                     className={cn(
                       'font-display text-base tracking-tight tabular-nums',

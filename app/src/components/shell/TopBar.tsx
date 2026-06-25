@@ -26,7 +26,19 @@ export default function TopBar({
   return (
     <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md">
       <div className="flex h-16 items-center gap-3 border-b border-border px-5 lg:px-8">
-        <img src={ClearPathLogo} alt="Clear" className="h-8 w-8 shrink-0 rounded-md border border-border object-cover lg:hidden" />
+        {/* mobile: logo · divider · Menu pill — matches the old portfolio top nav */}
+        <img src={ClearPathLogo} alt="Clear" className="h-9 w-9 shrink-0 rounded border border-border object-cover lg:hidden" />
+        <div className="h-5 w-px shrink-0 bg-border lg:hidden" aria-hidden />
+        <button
+          type="button"
+          onClick={onMenuOpen}
+          aria-label="Open menu"
+          className="flex items-center gap-2 rounded bg-secondary px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted lg:hidden"
+        >
+          <Menu className="h-4 w-4 shrink-0" /> Menu
+        </button>
+
+        {/* desktop: sidebar-collapse toggle */}
         <button
           type="button"
           onClick={onToggleSidebar}
@@ -34,14 +46,6 @@ export default function TopBar({
           className="hidden h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:flex"
         >
           <PanelLeft className="h-[18px] w-[18px]" />
-        </button>
-        <button
-          type="button"
-          onClick={onMenuOpen}
-          aria-label="Open menu"
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground lg:hidden"
-        >
-          <Menu className="h-[18px] w-[18px]" />
         </button>
 
         <div className="hidden items-center gap-1.5 text-sm text-muted-foreground lg:flex">
