@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { motion } from 'framer-motion';
 import {
   Sparkles, Home, ShieldCheck, Zap, IdCard, ArrowRight, ArrowLeft, Check, Loader2,
   Wallet, PiggyBank, CreditCard, BarChart3, Receipt, type LucideIcon,
@@ -17,7 +18,7 @@ export interface OnboardingResult {
   email: string;
   country: string;
   settlementCurrency: string;
-  membershipPlan: 'yearly' | 'lifetime';
+  membershipPlan: 'standard' | 'accelerated';
   cardWaitlist: boolean;
   notificationsOptIn: boolean;
   termsAccepted: boolean;
@@ -51,8 +52,8 @@ const COUNTRIES = ['United States', 'Canada', 'United Kingdom', 'Australia', 'Ot
 const CURRENCIES = ['USD', 'CAD', 'GBP', 'EUR'];
 
 const PLANS: { id: OnboardingResult['membershipPlan']; name: string; price: string; per: string; note: string; tag?: string }[] = [
-  { id: 'yearly', name: 'Yearly', price: '$96', per: '/year', note: 'Everything in Clear, billed annually.', tag: 'Best value' },
-  { id: 'lifetime', name: 'Lifetime', price: '$499', per: 'once', note: 'Pay once, member forever.' },
+  { id: 'standard', name: 'Standard', price: 'Free', per: '', note: '200 credits/mo · rent protection after a 90-day cliff.' },
+  { id: 'accelerated', name: 'Accelerated', price: '$250', per: '/yr', note: '300 credits/mo (1.5×) · protection from day one · ~$21/mo, fees capped.', tag: 'Most popular' },
 ];
 
 const emailValid = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
@@ -85,7 +86,7 @@ export default function OnboardingView({
     accessTrack: 'hybrid', accountMethod: 'appkit-account', identityMode: 'privacy',
     reasons: [], referralSource: '', inviteCode: '',
     username: '', email: '', country: 'United States', settlementCurrency: 'USD',
-    membershipPlan: 'yearly', cardWaitlist: true, notificationsOptIn: true, termsAccepted: false,
+    membershipPlan: 'standard', cardWaitlist: true, notificationsOptIn: true, termsAccepted: false,
   });
   const set = <K extends keyof OnboardingResult>(k: K, v: OnboardingResult[K]) => setData((d) => ({ ...d, [k]: v }));
   const toggleReason = (r: string) =>
@@ -125,14 +126,8 @@ export default function OnboardingView({
             <h2 className="font-display text-3xl leading-tight tracking-tight">
               You're minutes from building <span className="bg-gradient-to-r from-info to-positive bg-clip-text text-transparent">equity</span>.
             </h2>
-            <div className="mt-6 overflow-hidden rounded-xl bg-gradient-to-br from-neutral-800 via-neutral-900 to-black p-5 text-white">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/60">Your Clear Deed</span>
-                <span className="rounded-lg bg-positive/20 px-2 py-0.5 text-[10px] font-medium text-positive">1:1 match</span>
-              </div>
-              <div className="mt-2 font-display text-2xl tabular-nums">$0 <span className="text-sm font-normal text-white/50">/ $25,000</span></div>
-              <div className="mt-3 h-1.5 w-full overflow-hidden rounded-lg bg-white/15"><div className="h-full w-[2%] rounded-lg bg-gradient-to-r from-info to-positive" /></div>
-              <div className="mt-2 text-[11px] text-white/50">Start saving to begin your journey</div>
+            <div className="mt-6">
+              <AnimatedDeedCard step={step} />
             </div>
           </div>
           <ul className="space-y-2 text-sm text-muted-foreground">
@@ -361,5 +356,66 @@ function CheckRow({ checked, onChange, required, children }: { checked: boolean;
         {children}{required && <span className="text-negative"> *</span>}
       </span>
     </button>
+  );
+}
+
+const EQUITY_BY_STEP = [0, 2080, 4160, 6240];
+
+/**
+ * Gamified, non-interactive "live preview" of the Clear Deed: the equity figure counts
+ * up and the bar fills as the user advances steps, and the whole card floats + pulses
+ * so it reads as a dynamic display rather than something clickable.
+ */
+function AnimatedDeedCard({ step }: { step: number }) {
+  const target = EQUITY_BY_STEP[Math.min(step, EQUITY_BY_STEP.length - 1)] ?? 0;
+  const [val, setVal] = useState(0);
+
+  useEffect(() => {
+    let raf = 0;
+    const from = val;
+    const start = performance.now();
+    const dur = 900;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setVal(Math.round(from + (target - from) * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target]);
+
+  const pct = Math.min(100, (val / 25000) * 100);
+
+  return (
+    <motion.div
+      animate={{ y: [0, -6, 0] }}
+      transition={{ duration: 5, ease: 'easeInOut', repeat: Infinity }}
+      className="relative cursor-default select-none overflow-hidden rounded-xl bg-gradient-to-br from-neutral-800 via-neutral-900 to-black p-5 text-white"
+      aria-hidden
+    >
+      <div className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-info/40 blur-2xl" />
+      <div className="pointer-events-none absolute -bottom-10 -left-6 h-24 w-24 rounded-full bg-positive/30 blur-2xl" />
+      <div className="relative flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-xs text-white/60">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-positive opacity-75" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-positive" />
+          </span>
+          Live preview
+        </span>
+        <span className="rounded-lg bg-positive/20 px-2 py-0.5 text-[10px] font-medium text-positive">1:1 match</span>
+      </div>
+      <div className="relative mt-2 font-display text-2xl tabular-nums">
+        ${val.toLocaleString()} <span className="text-sm font-normal text-white/50">/ $25,000</span>
+      </div>
+      <div className="relative mt-3 h-1.5 w-full overflow-hidden rounded-lg bg-white/15">
+        <div className="h-full rounded-lg bg-gradient-to-r from-info to-positive transition-[width] duration-700 ease-out" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="relative mt-2 text-[11px] text-white/50">
+        {step === 0 ? 'Watch your equity grow as you set up' : 'Equity credits build with every step'}
+      </div>
+    </motion.div>
   );
 }

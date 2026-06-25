@@ -52,7 +52,8 @@ export default function UserOnboarding() {
         recoveryMethod: 'passkey',
         residencyCountry: r.country,
         settlementCurrency: r.settlementCurrency,
-        membershipPlan: r.membershipPlan.toUpperCase() as 'YEARLY' | 'LIFETIME',
+        // Backend tracks YEARLY/LIFETIME; Standard (free) and Accelerated ($250/yr) both map to the annual record.
+        membershipPlan: 'YEARLY',
         cardWaitlist: r.cardWaitlist,
         localPools: false,
       });
