@@ -45,7 +45,7 @@ export default function BillTimeline({
                 <span className="h-3 w-3 shrink-0 rounded-lg border-2 border-card bg-foreground" />
                 {!last && <span className="my-1 w-px flex-1 bg-border" />}
               </div>
-              <div className={cn('flex flex-1 items-center gap-3', last ? '' : 'pb-4')}>
+              <div className={cn('flex min-w-0 flex-1 items-center gap-3', last ? '' : 'pb-4')}>
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary text-secondary-foreground">
                   <Icon className="h-4 w-4" />
                 </span>
@@ -53,7 +53,7 @@ export default function BillTimeline({
                   <div className="truncate text-sm font-medium text-foreground">{b.name}</div>
                   <div className="text-xs text-muted-foreground">{b.dateLabel}</div>
                 </div>
-                <div className="text-right">
+                <div className="shrink-0 whitespace-nowrap text-right">
                   <div className="font-display text-base tracking-tight text-foreground tabular-nums">
                     ${b.amount.toLocaleString()}
                   </div>

@@ -1,19 +1,9 @@
 import { Home, FileText, SendHorizontal, ArrowDownLeft, Zap, Wifi, CreditCard, Smartphone, Calendar, CircleCheck, TrendingUp, Flame } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
 import ActionTile from '@/components/app-ui/ActionTile';
-import ChartCard from '@/components/app-ui/charts/ChartCard';
-import RentEquityChart from '@/components/app-ui/charts/RentEquityChart';
+import RentEquityAnalyticsChart from '@/components/app-ui/charts/RentEquityAnalyticsChart';
 import BillTimeline, { type TimelineBill } from '@/components/app-ui/BillTimeline';
 import CardVisual from '@/components/app-ui/CardVisual';
-
-const RENT_EQUITY = [
-  { label: 'Jan', equity: 280 },
-  { label: 'Feb', equity: 310 },
-  { label: 'Mar', equity: 330 },
-  { label: 'Apr', equity: 360 },
-  { label: 'May', equity: 390 },
-  { label: 'Jun', equity: 490 },
-];
 
 const BILLS: TimelineBill[] = [
   { id: 'electric', name: 'Electric — ConEd', dateLabel: 'Jun 28', amount: 124, icon: Zap },
@@ -57,15 +47,7 @@ export default function PayPage() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <ChartCard
-          className="lg:col-span-2"
-          label="Equity earned from rent"
-          value="$2,160"
-          delta={{ text: '+$490 this month', positive: true }}
-          insight="6 on-time payments → equity"
-        >
-          <RentEquityChart data={RENT_EQUITY} />
-        </ChartCard>
+        <RentEquityAnalyticsChart className="lg:col-span-2" />
         <BillTimeline bills={BILLS} />
       </div>
     </div>
