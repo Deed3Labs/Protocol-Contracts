@@ -480,6 +480,17 @@ body.onboarding-scroll-enabled {
   border: none;
 }
 
+/* Floating mobile tab bar offset. Sits just above the safe area in the browser; lifts
+   higher when installed (PWA standalone) so it's within easy thumb reach. */
+.mobile-tabbar {
+  bottom: max(env(safe-area-inset-bottom), 1rem);
+}
+@media (display-mode: standalone) {
+  .mobile-tabbar {
+    bottom: calc(env(safe-area-inset-bottom) + 1.75rem);
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

@@ -3,6 +3,10 @@ import { Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { navItems, type NavItem } from './navItems';
 
+// Reserve the widest label so the active tab — and therefore the whole pill — keeps a
+// constant width as you switch pages, rather than resizing per active label.
+const widestLabel = navItems.reduce((w, i) => (i.label.length > w.length ? i.label : w), '');
+
 function Tab({ to, label, icon: Icon, end }: NavItem) {
   return (
     <NavLink to={to} end={end} aria-label={label}>
@@ -14,7 +18,14 @@ function Tab({ to, label, icon: Icon, end }: NavItem) {
           )}
         >
           <Icon className="h-5 w-5 shrink-0" strokeWidth={2} />
-          {isActive && <span className="whitespace-nowrap text-[13px] font-medium">{label}</span>}
+          {isActive && (
+            <span className="grid text-[13px] font-medium">
+              <span aria-hidden className="invisible col-start-1 row-start-1 whitespace-nowrap">
+                {widestLabel}
+              </span>
+              <span className="col-start-1 row-start-1 whitespace-nowrap text-center">{label}</span>
+            </span>
+          )}
         </span>
       )}
     </NavLink>
@@ -22,16 +33,13 @@ function Tab({ to, label, icon: Icon, end }: NavItem) {
 }
 
 /**
- * Floating mobile footer (lg:hidden): the main nav pill on the left, and a standalone
- * Add-money button on the right (no surrounding card). Hidden on desktop, where the
- * Sidebar + top-bar Add money take over.
+ * Floating mobile footer (lg:hidden): the main nav pill on the left, a standalone
+ * Add-money button on the right. Bottom offset is in `.mobile-tabbar` (index.css), which
+ * lifts the bar higher in installed/PWA standalone mode for easier thumb reach.
  */
 export default function TabBar() {
   return (
-    <div
-      className="fixed inset-x-0 z-50 flex items-center justify-between px-4 lg:hidden"
-      style={{ bottom: 'max(env(safe-area-inset-bottom), 1rem)' }}
-    >
+    <div className="mobile-tabbar fixed inset-x-0 z-50 flex items-center justify-between px-4 lg:hidden">
       {/* Main nav — left */}
       <nav className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1.5 shadow-[0_8px_30px_rgb(0_0_0/0.12)] backdrop-blur-xl">
         {navItems.map((item) => (

@@ -1,4 +1,4 @@
-import { Wallet, Send, LineChart, Settings, type LucideIcon } from 'lucide-react';
+import { Wallet, Send, Receipt, Settings, type LucideIcon } from 'lucide-react';
 
 export interface NavItem {
   to: string;
@@ -11,6 +11,6 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { to: '/', label: 'Accounts', icon: Wallet, end: true },
   { to: '/pay', label: 'Pay', icon: Send },
-  { to: '/transactions', label: 'Transactions', icon: LineChart },
+  { to: '/transactions', label: 'Transactions', icon: Receipt },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];

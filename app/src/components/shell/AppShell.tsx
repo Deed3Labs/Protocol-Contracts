@@ -26,7 +26,7 @@ export default function AppShell() {
 
       <div className={cn('transition-[padding] duration-200', collapsed ? 'lg:pl-[76px]' : 'lg:pl-64')}>
         <TopBar onToggleSidebar={() => setCollapsed((c) => !c)} onMenuOpen={() => setMenuOpen(true)} />
-        <main className="mx-auto w-full max-w-[1400px] px-5 pb-28 pt-6 lg:px-8 lg:pb-12">
+        <main className="mx-auto w-full max-w-[1400px] px-5 pb-32 pt-6 lg:px-8 lg:pb-12">
           <Outlet />
         </main>
       </div>
