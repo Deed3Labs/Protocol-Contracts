@@ -5,5 +5,9 @@ import { cn } from '@/lib/utils';
  * marketing site at useclear.org. Size via the className (font-size + color).
  */
 export default function Wordmark({ className }: { className?: string }) {
-  return <span className={cn('font-wordmark leading-none text-foreground', className)}>ClearPath</span>;
+  return (
+    <span style={{ lineHeight: 0.8 }} className={cn('inline-block font-wordmark text-foreground', className)}>
+      ClearPath
+    </span>
+  );
 }
