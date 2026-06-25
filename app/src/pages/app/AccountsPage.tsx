@@ -1,6 +1,7 @@
 import { Wallet, Banknote, PiggyBank, Landmark } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
 import QuickActions from '@/components/app-ui/QuickActions';
+import CtaStack from '@/components/app-ui/CtaStack';
 import RecentActivity from '@/components/app-ui/RecentActivity';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
 import UpcomingCalendar, { type UpcomingItem } from '@/components/app-ui/UpcomingCalendar';
@@ -53,7 +54,10 @@ export default function AccountsPage() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         <BalanceAnalyticsChart className="lg:col-span-2" />
-        <QuickActions />
+        <div className="flex flex-col gap-5">
+          <CtaStack />
+          <QuickActions />
+        </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">

@@ -179,6 +179,11 @@
   --input: 228 228 228;
   --ring: 10 10 10;
 
+  /* Semantic accents — positive (green) / negative (red) / info (blue) */
+  --positive: 22 163 74;
+  --negative: 220 38 38;
+  --info: 37 99 235;
+
   /* Neutral section tiles (Cash / Savings / External) */
   --cp-cash: 240 240 240;
   --cp-cash-fg: 38 38 38;
@@ -220,6 +225,11 @@
   --border: 38 38 38;
   --input: 38 38 38;
   --ring: 245 245 245;
+
+  /* Semantic accents — tuned brighter for dark */
+  --positive: 74 222 128;
+  --negative: 248 113 113;
+  --info: 96 165 250;
 
   /* Neutral section tiles (Cash / Savings / External) */
   --cp-cash: 38 38 38;
@@ -327,6 +337,9 @@ body.onboarding-scroll-enabled {
   --color-accent-foreground: rgb(var(--accent-foreground));
   --color-destructive: rgb(var(--destructive));
   --color-destructive-foreground: rgb(var(--destructive-foreground));
+  --color-positive: rgb(var(--positive));
+  --color-negative: rgb(var(--negative));
+  --color-info: rgb(var(--info));
   --color-border: rgb(var(--border));
   --color-input: rgb(var(--input));
   --color-ring: rgb(var(--ring));

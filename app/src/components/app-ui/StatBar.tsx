@@ -31,7 +31,7 @@ export default function StatBar({ stats, className }: { stats: Stat[]; className
                 <div
                   className={cn(
                     'mt-1.5 inline-flex items-center gap-0.5 rounded-lg px-1.5 py-0.5 text-[11px] font-medium',
-                    negative ? 'bg-destructive/10 text-destructive' : 'bg-secondary text-foreground',
+                    negative ? 'bg-negative/10 text-negative' : 'bg-positive/10 text-positive',
                   )}
                 >
                   {negative ? <ArrowDownRight className="h-3 w-3" /> : <ArrowUpRight className="h-3 w-3" />}

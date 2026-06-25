@@ -51,7 +51,7 @@ export default function ClearDeedCard({ className }: { className?: string }) {
             <div className="text-xs text-muted-foreground">Your path to ownership</div>
           </div>
         </div>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-secondary px-2 py-1 text-[11px] font-medium text-foreground">
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-positive/10 px-2 py-1 text-[11px] font-medium text-positive">
           <Zap className="h-3 w-3" /> 1:1 match
         </span>
       </div>
@@ -80,7 +80,7 @@ export default function ClearDeedCard({ className }: { className?: string }) {
             const fill = clamp((CREDITS - i * segSize) / segSize, 0, 1) * 100;
             return (
               <div key={t.label} className="h-2.5 flex-1 overflow-hidden rounded-lg bg-secondary">
-                <div className="h-full rounded-lg bg-primary transition-[width] duration-500" style={{ width: `${fill}%` }} />
+                <div className="h-full rounded-lg bg-gradient-to-r from-info to-positive transition-[width] duration-500" style={{ width: `${fill}%` }} />
               </div>
             );
           })}
@@ -108,7 +108,7 @@ export default function ClearDeedCard({ className }: { className?: string }) {
 
       {/* next-milestone nudge */}
       <div className="mt-4 flex items-center gap-2.5 rounded-lg bg-secondary p-3">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-card text-foreground">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info">
           <Sparkles className="h-3.5 w-3.5" />
         </span>
         <p className="min-w-0 text-xs leading-snug text-muted-foreground">

@@ -20,9 +20,9 @@ const items: ActivityItem[] = [
 ];
 
 const statusStyle: Record<Status, string> = {
-  completed: 'text-foreground',
+  completed: 'text-positive',
   pending: 'text-muted-foreground',
-  failed: 'text-destructive',
+  failed: 'text-negative',
 };
 
 /** Recent activity list with avatars + status, dashboard-style. */
@@ -46,7 +46,14 @@ export default function RecentActivity({ className }: { className?: string }) {
               <div className="truncate text-xs text-muted-foreground">{it.sub}</div>
             </div>
             <div className="text-right">
-              <div className="font-display text-base tracking-tight text-foreground tabular-nums">{it.amount}</div>
+              <div
+                className={cn(
+                  'font-display text-base tracking-tight tabular-nums',
+                  it.amount.startsWith('+') ? 'text-positive' : it.amount.startsWith('-') ? 'text-negative' : 'text-foreground',
+                )}
+              >
+                {it.amount}
+              </div>
               <div className={cn('text-[11px] font-medium capitalize', statusStyle[it.status])}>{it.status}</div>
             </div>
           </div>

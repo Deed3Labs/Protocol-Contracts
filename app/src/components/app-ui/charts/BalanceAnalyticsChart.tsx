@@ -10,6 +10,13 @@ type Range = (typeof RANGES)[number];
 
 const POINTS: Record<Range, number> = { '1D': 24, '1W': 7, '1M': 30, '3M': 13, '6M': 26, YTD: 24, '1Y': 12, All: 24 };
 const BASE: Record<Metric, number> = { Balance: 41016, Income: 5640, Spending: 3284, Net: 2356 };
+/** Per-metric accent: Balance=blue, Income=green, Spending=red, Net=green (bars recolor by sign). */
+const METRIC_COLOR: Record<Metric, string> = {
+  Balance: 'rgb(var(--info))',
+  Income: 'rgb(var(--positive))',
+  Spending: 'rgb(var(--negative))',
+  Net: 'rgb(var(--positive))',
+};
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -75,7 +82,7 @@ export default function BalanceAnalyticsChart({ className }: { className?: strin
   const [range, setRange] = useState<Range>('1M');
   const data = useMemo(() => buildSeries(metric, range), [metric, range]);
   const config = useMemo(
-    () => ({ value: { label: metric, color: 'var(--chart-1)' } }) satisfies ChartConfig,
+    () => ({ value: { label: metric, color: METRIC_COLOR[metric] } }) satisfies ChartConfig,
     [metric],
   );
 
@@ -111,7 +118,7 @@ export default function BalanceAnalyticsChart({ className }: { className?: strin
         <div className="mt-1 flex items-center gap-1.5 text-xs">
           {isBalance ? (
             <>
-              <span className={cn('font-medium', up ? 'text-foreground' : 'text-destructive')}>
+              <span className={cn('font-medium', up ? 'text-positive' : 'text-negative')}>
                 {up ? '↑' : '↓'} {fmtMoney(Math.abs(change))} ({up ? '+' : ''}
                 {changePct.toFixed(2)}%)
               </span>
@@ -151,7 +158,7 @@ export default function BalanceAnalyticsChart({ className }: { className?: strin
               <Bar dataKey="value" fill="var(--color-value)" radius={metric === 'Net' ? 0 : [3, 3, 0, 0]} maxBarSize={28}>
                 {metric === 'Net' &&
                   data.map((d, i) => (
-                    <Cell key={i} fill={d.value >= 0 ? 'var(--color-value)' : 'rgb(var(--destructive))'} />
+                    <Cell key={i} fill={d.value >= 0 ? 'rgb(var(--positive))' : 'rgb(var(--negative))'} />
                   ))}
               </Bar>
             </BarChart>

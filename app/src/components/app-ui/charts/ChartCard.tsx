@@ -45,7 +45,7 @@ export default function ChartCard({
                 <span
                   className={cn(
                     'inline-flex items-center gap-0.5 font-medium',
-                    delta.positive ? 'text-foreground' : 'text-muted-foreground',
+                    delta.positive ? 'text-positive' : 'text-negative',
                   )}
                 >
                   {delta.positive ? (
