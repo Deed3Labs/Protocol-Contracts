@@ -12,6 +12,8 @@ interface ChartCardProps {
   /** Secondary insight, e.g. "$416 under budget". */
   insight?: string;
   action?: ReactNode;
+  /** Optional footer row (e.g. range buttons), rendered below a divider at the card bottom. */
+  footer?: ReactNode;
   children: ReactNode;
   className?: string;
 }
@@ -26,11 +28,12 @@ export default function ChartCard({
   delta,
   insight,
   action,
+  footer,
   children,
   className,
 }: ChartCardProps) {
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="text-xs font-medium text-muted-foreground">{label}</div>
@@ -62,7 +65,8 @@ export default function ChartCard({
         </div>
         {action}
       </div>
-      <div className="mt-4">{children}</div>
+      <div className="mt-4 flex-1">{children}</div>
+      {footer && <div className="mt-3 border-t border-border pt-3">{footer}</div>}
     </div>
   );
 }
