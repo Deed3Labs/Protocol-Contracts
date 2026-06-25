@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceLine, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { cn } from '@/lib/utils';
 
@@ -71,6 +71,26 @@ const tick = (v: number) => {
 };
 
 const MARGIN = { left: 0, right: 8, top: 8, bottom: 0 };
+
+/**
+ * Diverging bar shape for the Net tab — rounds the corner away from the zero baseline
+ * (top for gains, bottom for losses) and colors by sign. Recharts' array `radius`
+ * mis-renders bars that cross zero, so we draw the rounded rect path ourselves.
+ */
+function DivergingBar(props: { x?: number; y?: number; width?: number; height?: number; payload?: { value: number } }) {
+  const { x = 0, y = 0, width = 0, height = 0, payload } = props;
+  const v = payload?.value ?? 0;
+  const yTop = Math.min(y, y + height);
+  const h = Math.abs(height);
+  if (h <= 0 || width <= 0) return null;
+  const r = Math.max(0, Math.min(3, width / 2, h));
+  const fill = v >= 0 ? 'rgb(var(--positive))' : 'rgb(var(--negative))';
+  const d =
+    v >= 0
+      ? `M${x},${yTop + h} L${x},${yTop + r} Q${x},${yTop} ${x + r},${yTop} L${x + width - r},${yTop} Q${x + width},${yTop} ${x + width},${yTop + r} L${x + width},${yTop + h} Z`
+      : `M${x},${yTop} L${x},${yTop + h - r} Q${x},${yTop + h} ${x + r},${yTop + h} L${x + width - r},${yTop + h} Q${x + width},${yTop + h} ${x + width},${yTop + h - r} L${x + width},${yTop} Z`;
+  return <path d={d} fill={fill} />;
+}
 
 /**
  * Main analytics chart. Metric tabs choose the most fitting viz: Balance as an
@@ -155,12 +175,13 @@ export default function BalanceAnalyticsChart({ className }: { className?: strin
               <YAxis tickLine={false} axisLine={false} width={48} fontSize={11} tickMargin={6} tickFormatter={tick} />
               <ChartTooltip content={<ChartTooltipContent formatter={fmtMoney} />} />
               {metric === 'Net' && <ReferenceLine y={0} stroke="rgb(var(--border))" />}
-              <Bar dataKey="value" fill="var(--color-value)" radius={metric === 'Net' ? 0 : [3, 3, 0, 0]} maxBarSize={28}>
-                {metric === 'Net' &&
-                  data.map((d, i) => (
-                    <Cell key={i} fill={d.value >= 0 ? 'rgb(var(--positive))' : 'rgb(var(--negative))'} />
-                  ))}
-              </Bar>
+              <Bar
+                dataKey="value"
+                fill="var(--color-value)"
+                radius={[3, 3, 0, 0]}
+                maxBarSize={28}
+                shape={metric === 'Net' ? <DivergingBar /> : undefined}
+              />
             </BarChart>
           )}
         </ChartContainer>

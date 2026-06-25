@@ -12,6 +12,13 @@ const TIERS = [
   { label: 'Keys', value: 25000 },
 ];
 
+/** Where the equity credits came from — sums to CREDITS. */
+const SOURCES = [
+  { label: 'Savings 1:1 match', value: 3245, pct: 52, color: 'bg-positive' },
+  { label: 'On-time rent credits', value: 2120, pct: 34, color: 'bg-info' },
+  { label: 'Streak bonuses', value: 875, pct: 14, color: 'bg-violet-500' },
+];
+
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 function MiniStat({ label, value }: { label: string; value: string }) {
@@ -123,13 +130,34 @@ export default function ClearDeedCard({ className }: { className?: string }) {
         <MiniStat label="To goal" value="~14 mo" />
       </div>
 
-      {/* CTA */}
-      <button
-        type="button"
-        className="mt-4 w-full rounded-lg bg-foreground py-2.5 text-sm font-medium text-background transition-transform active:scale-[0.99]"
-      >
-        View your Clear Deed
-      </button>
+      {/* how you earned it — credit sources */}
+      <div className="mt-4">
+        <div className="mb-2 text-[11px] font-medium text-foreground">How you earned it</div>
+        <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-lg">
+          {SOURCES.map((s) => (
+            <div key={s.label} className={s.color} style={{ width: `${s.pct}%` }} />
+          ))}
+        </div>
+        <div className="mt-2.5 space-y-1.5">
+          {SOURCES.map((s) => (
+            <div key={s.label} className="flex items-center gap-2 text-[11px]">
+              <span className={cn('h-2 w-2 shrink-0 rounded-sm', s.color)} />
+              <span className="text-muted-foreground">{s.label}</span>
+              <span className="ml-auto font-medium tabular-nums text-foreground">${s.value.toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* footer CTA */}
+      <div className="mt-auto border-t border-border pt-4">
+        <button
+          type="button"
+          className="w-full rounded-lg bg-foreground py-2.5 text-sm font-medium text-background transition-transform active:scale-[0.99]"
+        >
+          View your Clear Deed
+        </button>
+      </div>
     </div>
   );
 }

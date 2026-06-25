@@ -59,8 +59,8 @@ export default function SidebarNav({
         <img src={ClearPathLogo} alt="Clear" className="h-9 w-9 shrink-0 rounded-md border border-border object-cover" />
         {!collapsed && (
           <div className="min-w-0 flex-1">
-            <Wordmark className="text-2xl" />
-            <div className="-mt-1 truncate text-[11px] text-muted-foreground">Turn rent into ownership</div>
+            <Wordmark className="text-xl" />
+            <div className="-mt-0.5 truncate text-[11px] text-muted-foreground">Turn rent into ownership</div>
           </div>
         )}
         {onClose && (
