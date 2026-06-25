@@ -115,7 +115,7 @@ export default function OnboardingView({
         <div className="absolute -bottom-44 right-0 h-[26rem] w-[26rem] rounded-full bg-positive/10 blur-3xl" />
       </div>
 
-      <div className="relative mx-auto grid min-h-screen max-w-5xl grid-cols-1 lg:grid-cols-[0.85fr_1fr]">
+      <div className="relative mx-auto grid min-h-screen max-w-4xl grid-cols-1 lg:grid-cols-[0.85fr_1fr]">
         {/* reassurance panel */}
         <aside className="hidden flex-col justify-between gap-8 border-r border-border px-8 py-10 lg:flex">
           <div className="flex items-center gap-2.5">
@@ -219,7 +219,7 @@ export default function OnboardingView({
 
             {step === 3 && (
               <Step title="Pick a plan & finish" subtitle="Start free — choose a plan when you're ready to convert.">
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3">
                   {PLANS.map((p) => (
                     <OptionCard
                       key={p.id}

@@ -3,88 +3,86 @@ import { Settings, Snowflake, Eye, EyeOff, Wifi } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const NUMBER = '5231 7252 1769 8152';
-const MASKED = '••••  ••••  ••••  8152';
+const MASKED = '•••• •••• •••• 8152';
 
 /**
- * Debit-card widget, contained in a card. A premium gradient card mock with a
- * hide/show toggle (details masked by default), the bottom row pinned to the card's
- * lower edge, plus a freeze switch + Manage button.
+ * Debit-card widget in a card container: a premium gradient card mock (number/expiry
+ * masked by default, with a Show/Hide toggle), and a footer — divided by a hairline —
+ * holding the freeze switch + Manage button.
  */
 export default function CardVisual({ className }: { className?: string }) {
   const [active, setActive] = useState(true);
   const [revealed, setRevealed] = useState(false);
 
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+    <div className={cn('overflow-hidden rounded-xl border border-border bg-card', className)}>
+      <div className="p-5">
+        <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-medium text-foreground">Your card</h3>
-          <span className="rounded-lg bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">Debit</span>
+          <button
+            type="button"
+            onClick={() => setRevealed((v) => !v)}
+            aria-label={revealed ? 'Hide card details' : 'Show card details'}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            {revealed ? 'Hide' : 'Show'}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setRevealed((v) => !v)}
-          aria-label={revealed ? 'Hide card details' : 'Show card details'}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+
+        {/* card graphic */}
+        <div
+          className={cn(
+            'relative flex aspect-[1.6/1] flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-neutral-800 via-neutral-900 to-black p-5 text-white shadow-[0_12px_28px_-14px_rgba(0,0,0,0.55)] transition-all duration-300',
+            !active && 'saturate-[0.4]',
+          )}
         >
-          {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          {revealed ? 'Hide' : 'Show'}
-        </button>
-      </div>
+          <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-gradient-to-br from-info/45 to-transparent blur-2xl" aria-hidden />
+          <div className="pointer-events-none absolute -bottom-14 -left-8 h-40 w-40 rounded-full bg-gradient-to-tr from-violet-500/30 to-transparent blur-2xl" aria-hidden />
 
-      <div
-        className={cn(
-          'relative flex aspect-[1.6/1] flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-neutral-800 via-neutral-900 to-black p-5 text-white shadow-[0_14px_34px_-14px_rgba(0,0,0,0.55)] transition-all duration-300',
-          !active && 'saturate-[0.4]',
-        )}
-      >
-        <div className="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-gradient-to-br from-info/45 to-transparent blur-2xl" aria-hidden />
-        <div className="pointer-events-none absolute -bottom-14 -left-8 h-44 w-44 rounded-full bg-gradient-to-tr from-violet-500/30 to-transparent blur-2xl" aria-hidden />
-
-        {/* top group: brand + chip + number */}
-        <div className="relative space-y-3">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-sm font-semibold tracking-wide">Clear</div>
-              <div className="text-[10px] uppercase tracking-[0.2em] text-white/50">Debit</div>
-            </div>
+          {/* top: brand + contactless */}
+          <div className="relative flex items-start justify-between">
+            <span className="text-base font-semibold tracking-wide">Clear</span>
             <Wifi className="h-5 w-5 rotate-90 text-white/70" />
           </div>
-          <div className="flex h-7 w-10 items-center justify-center gap-[3px] rounded-md bg-gradient-to-br from-amber-200 via-amber-300 to-amber-500/80 shadow-inner">
-            <span className="h-4 w-px bg-amber-800/40" />
-            <span className="h-4 w-px bg-amber-800/40" />
-            <span className="h-4 w-px bg-amber-800/40" />
-          </div>
-          <div className={cn('font-display text-[17px] tabular-nums transition-all', revealed ? 'tracking-[0.15em]' : 'tracking-[0.05em]')}>
-            {revealed ? NUMBER : MASKED}
-          </div>
-        </div>
 
-        {/* bottom group: pinned to the lower edge */}
-        <div className="relative flex items-end justify-between">
-          <div>
-            <div className="text-[9px] uppercase tracking-wider text-white/50">Card holder</div>
-            <div className="text-sm font-medium">Steven Spark</div>
+          {/* middle: chip + number */}
+          <div className="relative">
+            <div className="mb-2.5 flex h-7 w-10 items-center justify-center gap-[3px] rounded-md bg-gradient-to-br from-amber-200 via-amber-300 to-amber-500/80 shadow-inner">
+              <span className="h-4 w-px bg-amber-800/40" />
+              <span className="h-4 w-px bg-amber-800/40" />
+              <span className="h-4 w-px bg-amber-800/40" />
+            </div>
+            <div className="whitespace-nowrap font-display text-[15px] tracking-[0.12em] tabular-nums">{revealed ? NUMBER : MASKED}</div>
           </div>
-          <div>
-            <div className="text-[9px] uppercase tracking-wider text-white/50">Expires</div>
-            <div className="text-sm font-medium tabular-nums">{revealed ? '08/29' : '••/••'}</div>
-          </div>
-          <div className="flex items-center">
-            <span className="h-6 w-6 rounded-full bg-rose-500" />
-            <span className="-ml-2.5 h-6 w-6 rounded-full bg-amber-400 mix-blend-hard-light" />
-          </div>
-        </div>
 
-        {!active && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/40 backdrop-blur-[2px]">
-            <Snowflake className="h-6 w-6 text-white" />
-            <span className="text-xs font-medium text-white">Frozen</span>
+          {/* bottom: holder + expiry + network */}
+          <div className="relative flex items-end justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[9px] uppercase tracking-wider text-white/50">Card holder</div>
+              <div className="truncate text-sm font-medium">Steven Spark</div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase tracking-wider text-white/50">Expires</div>
+              <div className="text-sm font-medium tabular-nums">{revealed ? '08/29' : '••/••'}</div>
+            </div>
+            <div className="flex shrink-0 items-center">
+              <span className="h-6 w-6 rounded-full bg-rose-500" />
+              <span className="-ml-2.5 h-6 w-6 rounded-full bg-amber-400 mix-blend-hard-light" />
+            </div>
           </div>
-        )}
+
+          {!active && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/40 backdrop-blur-[2px]">
+              <Snowflake className="h-6 w-6 text-white" />
+              <span className="text-xs font-medium text-white">Frozen</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3">
+      {/* footer: controls, divided by a hairline */}
+      <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
         <button type="button" onClick={() => setActive((v) => !v)} className="flex items-center gap-2" aria-pressed={active}>
           <span className={cn('relative h-5 w-9 shrink-0 rounded-md transition-colors duration-200', active ? 'bg-positive' : 'bg-muted')}>
             <span
