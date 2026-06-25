@@ -13,10 +13,12 @@ const TIERS = [
 ];
 
 /** Where the equity credits came from — sums to CREDITS. */
+// Monochrome ramp of the theme's foreground (black in light, white in dark, dusk
+// brown in dusk) — keeps the breakdown on-theme without adding extra hues.
 const SOURCES = [
-  { label: 'Match', value: 3245, pct: 52, color: 'bg-positive', text: 'text-positive' },
-  { label: 'Rent', value: 2120, pct: 34, color: 'bg-info', text: 'text-info' },
-  { label: 'Bonus', value: 875, pct: 14, color: 'bg-violet-500', text: 'text-violet-500 dark:text-violet-400' },
+  { label: 'Match', value: 3245, pct: 52, color: 'bg-foreground' },
+  { label: 'Rent', value: 2120, pct: 34, color: 'bg-foreground/55' },
+  { label: 'Bonus', value: 875, pct: 14, color: 'bg-foreground/30' },
 ];
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -124,7 +126,7 @@ export default function ClearDeedCard({ className }: { className?: string }) {
       {/* how you earned it — credit sources */}
       <div className="mt-5">
         <div className="mb-2 text-[11px] font-medium text-foreground">How you earned it</div>
-        <div className="flex h-8 gap-0.5 overflow-hidden rounded-lg">
+        <div className="flex h-6 gap-0.5 overflow-hidden rounded-lg">
           {SOURCES.map((s) => (
             <div key={s.label} className={s.color} style={{ width: `${s.pct}%` }} />
           ))}
@@ -132,7 +134,7 @@ export default function ClearDeedCard({ className }: { className?: string }) {
         <div className="mt-2 flex items-center justify-between text-[10px]">
           {SOURCES.map((s) => (
             <span key={s.label} className="whitespace-nowrap">
-              <span className={cn('font-medium', s.text)}>{s.label}</span>{' '}
+              <span className="font-medium text-muted-foreground">{s.label}</span>{' '}
               <span className="tabular-nums text-foreground">{abbrev(s.value)}</span>
             </span>
           ))}
