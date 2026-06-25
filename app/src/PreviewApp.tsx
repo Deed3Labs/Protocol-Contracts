@@ -6,6 +6,7 @@ import PayPage from '@/pages/app/PayPage';
 import TransactionsPage from '@/pages/app/TransactionsPage';
 import SettingsPage from '@/pages/app/SettingsPage';
 import LoginView from '@/pages/auth/LoginView';
+import OnboardingView from '@/pages/auth/OnboardingView';
 
 /**
  * Dev-only preview harness. Mounts just the redesigned shell + pages with the
@@ -19,6 +20,7 @@ export default function PreviewApp() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginView onGetStarted={() => {}} onPreviewOnboarding={() => {}} />} />
+          <Route path="/onboarding" element={<OnboardingView onComplete={() => {}} onExit={() => {}} />} />
           <Route element={<AppShell />}>
             <Route path="/" element={<AccountsPage />} />
             <Route path="/pay" element={<PayPage />} />
