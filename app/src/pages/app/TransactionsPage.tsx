@@ -7,6 +7,7 @@ import CategoryRadial from '@/components/app-ui/charts/CategoryRadial';
 import RecentActivity from '@/components/app-ui/RecentActivity';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
 import UpcomingCalendar, { type UpcomingItem } from '@/components/app-ui/UpcomingCalendar';
+import BudgetGoals from '@/components/app-ui/BudgetGoals';
 import { cn } from '@/lib/utils';
 
 const RANGES = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', 'All'] as const;
@@ -117,10 +118,12 @@ export default function TransactionsPage() {
         <CategoryRadial />
       </div>
 
+      <RecentActivity />
+
       <div className="grid gap-5 lg:grid-cols-3">
-        <RecentActivity />
         <UpcomingCalendar items={UPCOMING} />
         <SpendHeatmap spendingByDay={SPEND_BY_DAY} />
+        <BudgetGoals />
       </div>
     </div>
   );
