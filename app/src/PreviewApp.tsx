@@ -5,6 +5,7 @@ import AccountsPage from '@/pages/app/AccountsPage';
 import PayPage from '@/pages/app/PayPage';
 import TransactionsPage from '@/pages/app/TransactionsPage';
 import SettingsPage from '@/pages/app/SettingsPage';
+import LoginView from '@/pages/auth/LoginView';
 
 /**
  * Dev-only preview harness. Mounts just the redesigned shell + pages with the
@@ -17,6 +18,7 @@ export default function PreviewApp() {
     <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
       <BrowserRouter>
         <Routes>
+          <Route path="/login" element={<LoginView onGetStarted={() => {}} onPreviewOnboarding={() => {}} />} />
           <Route element={<AppShell />}>
             <Route path="/" element={<AccountsPage />} />
             <Route path="/pay" element={<PayPage />} />
