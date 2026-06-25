@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceLine, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { cn } from '@/lib/utils';
 
@@ -21,25 +21,54 @@ function labelFor(range: Range, i: number, n: number): string {
   return `${i + 1}`;
 }
 
+/** Months each range spans — scales per-bucket flow amounts so range totals stay realistic. */
+const RANGE_MONTHS: Record<Range, number> = { '1D': 1 / 30, '1W': 0.25, '1M': 1, '3M': 3, '6M': 6, YTD: 6, '1Y': 12, All: 24 };
+
+/** Balance is a cumulative level (area); Income/Spending/Net are per-period flows (bars). */
 function buildSeries(metric: Metric, range: Range) {
   const n = POINTS[range];
   const base = BASE[metric];
-  const growth = metric === 'Spending' ? -0.04 : metric === 'Balance' ? 0.1 : 0.06;
   const out: { label: string; value: number }[] = [];
+
+  if (metric === 'Balance') {
+    for (let i = 0; i < n; i++) {
+      const t = n <= 1 ? 0 : i / (n - 1);
+      const wave = Math.sin(i * 0.8) * 0.035 + Math.sin(i * 0.31 + 1) * 0.025;
+      out.push({ label: labelFor(range, i, n), value: Math.round(base * (0.95 + 0.1 * t + wave)) });
+    }
+    return out;
+  }
+
+  // Flows: scale per bucket so the total over the range ≈ base × months spanned.
+  const perBucket = (base * RANGE_MONTHS[range]) / n;
   for (let i = 0; i < n; i++) {
-    const t = n <= 1 ? 0 : i / (n - 1);
-    const wave = Math.sin(i * 0.8) * 0.035 + Math.sin(i * 0.31 + 1) * 0.025;
-    out.push({ label: labelFor(range, i, n), value: Math.max(0, Math.round(base * (1 - growth / 2 + growth * t + wave))) });
+    let value: number;
+    if (metric === 'Net') {
+      const swing = Math.sin(i * 0.9) * 1.0 + Math.sin(i * 0.45 + 2) * 0.7;
+      value = perBucket * (1 + swing); // net flow — can dip negative
+    } else {
+      const seed = metric === 'Spending' ? 1.5 : 0;
+      value = perBucket * (0.6 + 0.8 * (0.5 + 0.5 * Math.sin(i * 0.7 + seed)));
+    }
+    out.push({ label: labelFor(range, i, n), value: Math.round(value) });
   }
   return out;
 }
 
-const fmtMoney = (v: number) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const tick = (v: number) => (v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`);
+const fmtMoney = (v: number) =>
+  `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const tick = (v: number) => {
+  const a = Math.abs(v);
+  const s = a >= 1000 ? `$${Math.round(a / 1000)}k` : `$${a}`;
+  return v < 0 ? `-${s}` : s;
+};
+
+const MARGIN = { left: 0, right: 8, top: 8, bottom: 0 };
 
 /**
- * Main analytics chart — modeled on the old portfolio/brokerage chart: metric tabs,
- * a hero figure + change %, an area chart, and a full range selector (1D…All).
+ * Main analytics chart. Metric tabs choose the most fitting viz: Balance as an
+ * area chart (a running level over time), Income/Spending/Net as bars (per-period
+ * flows; Net bars go up/down and turn red when negative). Full 1D…All range selector.
  */
 export default function BalanceAnalyticsChart({ className }: { className?: string }) {
   const [metric, setMetric] = useState<Metric>('Balance');
@@ -50,8 +79,11 @@ export default function BalanceAnalyticsChart({ className }: { className?: strin
     [metric],
   );
 
-  const first = data[0]?.value ?? 0;
+  const isBalance = metric === 'Balance';
+  const total = data.reduce((s, d) => s + d.value, 0);
   const last = data[data.length - 1]?.value ?? 0;
+  const first = data[0]?.value ?? 0;
+  const heroValue = isBalance ? last : total;
   const change = last - first;
   const changePct = first ? (change / first) * 100 : 0;
   const up = change >= 0;
@@ -75,31 +107,55 @@ export default function BalanceAnalyticsChart({ className }: { className?: strin
       </div>
 
       <div className="mt-4">
-        <div className="font-display text-3xl tracking-tight text-foreground tabular-nums">{fmtMoney(last)}</div>
+        <div className="font-display text-3xl tracking-tight text-foreground tabular-nums">{fmtMoney(heroValue)}</div>
         <div className="mt-1 flex items-center gap-1.5 text-xs">
-          <span className={cn('font-medium', up ? 'text-foreground' : 'text-destructive')}>
-            {up ? '↑' : '↓'} {fmtMoney(Math.abs(change))} ({up ? '+' : ''}
-            {changePct.toFixed(2)}%)
-          </span>
-          <span className="text-muted-foreground">over {range}</span>
+          {isBalance ? (
+            <>
+              <span className={cn('font-medium', up ? 'text-foreground' : 'text-destructive')}>
+                {up ? '↑' : '↓'} {fmtMoney(Math.abs(change))} ({up ? '+' : ''}
+                {changePct.toFixed(2)}%)
+              </span>
+              <span className="text-muted-foreground">over {range}</span>
+            </>
+          ) : (
+            <span className="text-muted-foreground">
+              total {metric.toLowerCase()} over {range}
+            </span>
+          )}
         </div>
       </div>
 
       <div className="mt-3 flex-1">
         <ChartContainer config={config} height={220}>
-          <AreaChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
-            <defs>
-              <linearGradient id="balFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="var(--color-value)" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="var(--color-value)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid vertical={false} />
-            <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={28} />
-            <YAxis tickLine={false} axisLine={false} width={48} fontSize={11} tickMargin={6} tickFormatter={tick} />
-            <ChartTooltip content={<ChartTooltipContent formatter={fmtMoney} />} />
-            <Area dataKey="value" type="monotone" stroke="var(--color-value)" strokeWidth={2} fill="url(#balFill)" />
-          </AreaChart>
+          {isBalance ? (
+            <AreaChart data={data} margin={MARGIN}>
+              <defs>
+                <linearGradient id="balFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--color-value)" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="var(--color-value)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={28} fontSize={11} />
+              <YAxis tickLine={false} axisLine={false} width={48} fontSize={11} tickMargin={6} tickFormatter={tick} />
+              <ChartTooltip content={<ChartTooltipContent formatter={fmtMoney} />} />
+              <Area dataKey="value" type="monotone" stroke="var(--color-value)" strokeWidth={2} fill="url(#balFill)" />
+            </AreaChart>
+          ) : (
+            <BarChart data={data} margin={MARGIN}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={28} fontSize={11} />
+              <YAxis tickLine={false} axisLine={false} width={48} fontSize={11} tickMargin={6} tickFormatter={tick} />
+              <ChartTooltip content={<ChartTooltipContent formatter={fmtMoney} />} />
+              {metric === 'Net' && <ReferenceLine y={0} stroke="rgb(var(--border))" />}
+              <Bar dataKey="value" fill="var(--color-value)" radius={metric === 'Net' ? 0 : [3, 3, 0, 0]} maxBarSize={28}>
+                {metric === 'Net' &&
+                  data.map((d, i) => (
+                    <Cell key={i} fill={d.value >= 0 ? 'var(--color-value)' : 'rgb(var(--destructive))'} />
+                  ))}
+              </Bar>
+            </BarChart>
+          )}
         </ChartContainer>
       </div>
 
