@@ -1,10 +1,11 @@
-import { Wallet, Banknote, PiggyBank, Landmark, Home } from 'lucide-react';
+import { Wallet, Banknote, PiggyBank, Landmark } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
 import QuickActions from '@/components/app-ui/QuickActions';
 import RecentActivity from '@/components/app-ui/RecentActivity';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
 import UpcomingCalendar, { type UpcomingItem } from '@/components/app-ui/UpcomingCalendar';
 import BalanceAnalyticsChart from '@/components/app-ui/charts/BalanceAnalyticsChart';
+import ClearDeedCard from '@/components/app-ui/ClearDeedCard';
 
 const SPEND_BY_DAY: Record<number, number> = {
   1: 1850, 2: 42, 3: 18, 4: 96, 5: 210, 6: 64, 8: 12, 9: 140, 10: 38,
@@ -27,40 +28,6 @@ const UPCOMING: UpcomingItem[] = [
   { id: 'electric', name: 'Electric', amount: 124, day: 28, direction: 'out' },
   { id: 'hoa', name: 'HOA dues', amount: 210, day: 28, direction: 'out' },
 ];
-
-/** Equity Credits → Clear Deed progress (non-redeemable). */
-function ClearDeedCard() {
-  const pct = 25;
-  return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="mb-4 flex items-center gap-2.5">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary text-secondary-foreground">
-          <Home className="h-5 w-5" />
-        </span>
-        <div>
-          <div className="text-[15px] font-medium text-foreground">Clear Deed progress</div>
-          <div className="text-xs text-muted-foreground">Credits + savings toward your home</div>
-        </div>
-      </div>
-      <div className="text-xs text-muted-foreground">Equity credits</div>
-      <div className="font-display text-4xl tracking-tight text-foreground tabular-nums">$6,240</div>
-      <div className="mt-1 text-[11px] text-muted-foreground">Non-withdrawable · applied at conversion</div>
-      <div className="mt-4">
-        <div className="mb-1.5 flex justify-between text-[11px] text-muted-foreground">
-          <span>{pct}% to milestone · ~14 mo at this pace</span>
-          <span>$25,000</span>
-        </div>
-        <div className="h-2 w-full overflow-hidden rounded-lg bg-secondary">
-          <div className="h-full rounded-lg bg-primary" style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-      <p className="mt-4 rounded-lg bg-secondary p-3 text-xs leading-relaxed text-muted-foreground">
-        Earn 1:1 equity credits on your CLRUSD savings (up to $1,500/mo), plus credits for on-time
-        rent. Credits convert into your Clear Deed — they can't be cashed out.
-      </p>
-    </div>
-  );
-}
 
 /**
  * Accounts — the dashboard. Stat row (Total / Cash / Savings / External), a big
