@@ -61,14 +61,12 @@ export default function AccountsPage() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <RecentActivity className="lg:col-span-2" />
+        <UpcomingCalendar items={UPCOMING} />
+        <SpendHeatmap spendingByDay={SPEND_BY_DAY} />
         <ClearDeedCard />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <UpcomingCalendar items={UPCOMING} />
-        <SpendHeatmap spendingByDay={SPEND_BY_DAY} />
-      </div>
+      <RecentActivity />
     </div>
   );
 }

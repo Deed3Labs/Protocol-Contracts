@@ -66,7 +66,7 @@ export default function CtaStack({ className }: { className?: string }) {
               )}
             >
               <div className={cn('pointer-events-none absolute inset-0 bg-gradient-to-br to-transparent', a.wash)} aria-hidden />
-              <div className="relative flex items-start gap-3 px-4 py-[18px]">
+              <div className="relative flex items-start gap-3 px-4 py-[25px]">
                 <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', a.chip)}>
                   <Icon className="h-[18px] w-[18px]" />
                 </span>

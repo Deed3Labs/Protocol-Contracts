@@ -438,6 +438,48 @@ body.onboarding-scroll-enabled {
   animation: slideInLeft 0.3s ease-out;
 }
 
+/* Dual-thumb range slider (components/ui/slider.tsx). The inputs overlap; only the
+   thumbs receive pointer events so each is independently grabbable. */
+.dual-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+}
+.dual-range:focus {
+  outline: none;
+}
+.dual-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  height: 16px;
+  width: 16px;
+  border-radius: 9999px;
+  background: rgb(var(--background));
+  border: 2px solid rgb(var(--primary));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+  cursor: pointer;
+}
+.dual-range::-moz-range-thumb {
+  pointer-events: auto;
+  height: 16px;
+  width: 16px;
+  border: 2px solid rgb(var(--primary));
+  border-radius: 9999px;
+  background: rgb(var(--background));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+  cursor: pointer;
+}
+.dual-range::-webkit-slider-runnable-track {
+  background: transparent;
+  border: none;
+}
+.dual-range::-moz-range-track {
+  background: transparent;
+  border: none;
+}
+
 @layer base {
   * {
     @apply border-border;
