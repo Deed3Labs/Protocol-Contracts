@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Cell, Label, Pie, PieChart } from 'recharts';
+import { Cell, Label, Pie, PieChart, type PieLabelRenderProps } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { cn } from '@/lib/utils';
 
@@ -50,19 +50,23 @@ export default function CategoryRadial({ className }: { className?: string }) {
               strokeWidth={2}
               stroke="rgb(var(--card))"
               labelLine={{ stroke: 'rgb(var(--border))' }}
-              label={(p: { x: number; y: number; cx: number; percent: number; payload: { name: string } }) => (
-                <text
-                  x={p.x}
-                  y={p.y}
-                  textAnchor={p.x > p.cx ? 'start' : 'end'}
-                  dominantBaseline="central"
-                  className="fill-foreground"
-                  fontSize={10}
-                  fontWeight={500}
-                >
-                  {`${p.payload.name} ${Math.round(p.percent * 100)}%`}
-                </text>
-              )}
+              label={(p: PieLabelRenderProps) => {
+                const x = Number(p.x ?? 0);
+                const cx = Number(p.cx ?? 0);
+                return (
+                  <text
+                    x={x}
+                    y={Number(p.y ?? 0)}
+                    textAnchor={x > cx ? 'start' : 'end'}
+                    dominantBaseline="central"
+                    className="fill-foreground"
+                    fontSize={10}
+                    fontWeight={500}
+                  >
+                    {`${p.payload?.name ?? ''} ${Math.round((p.percent ?? 0) * 100)}%`}
+                  </text>
+                );
+              }}
             >
               {data.map((d) => (
                 <Cell key={d.name} fill={d.fill} />
