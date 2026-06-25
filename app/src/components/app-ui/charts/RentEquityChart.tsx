@@ -2,7 +2,7 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 
 const config = {
-  equity: { label: 'Equity from rent', color: 'var(--chart-1)' },
+  equity: { label: 'Equity from rent', color: 'rgb(var(--positive))' },
 } satisfies ChartConfig;
 
 interface Point {

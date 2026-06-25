@@ -9,7 +9,7 @@ const data = [
   { name: 'Subscriptions', value: 286 },
   { name: 'Other', value: 534 },
 ];
-const colors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
+const colors = ['rgb(var(--info))', '#8b5cf6', '#06b6d4', '#f59e0b', 'var(--chart-4)'];
 const config = {} satisfies ChartConfig;
 
 /** Spending-by-category donut with a legend. Content fills the card height. */

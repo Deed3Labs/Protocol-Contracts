@@ -2,8 +2,8 @@ import { Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, XAxis, YAxis } 
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 
 const config = {
-  spending: { label: 'This period', color: 'var(--chart-1)' },
-  previous: { label: 'Last period', color: 'var(--chart-3)' },
+  spending: { label: 'This period', color: 'rgb(var(--negative))' },
+  previous: { label: 'Last period', color: 'var(--chart-4)' },
 } satisfies ChartConfig;
 
 interface Bucket {
@@ -36,10 +36,10 @@ export default function SpendingChart({
         <ChartTooltip content={<ChartTooltipContent />} />
         <ReferenceLine
           y={budget}
-          stroke="var(--color-previous)"
+          stroke="rgb(var(--info))"
           strokeDasharray="5 4"
-          strokeWidth={1}
-          label={{ value: 'Budget', position: 'insideTopRight', fontSize: 10, fill: 'var(--color-previous)' }}
+          strokeWidth={1.5}
+          label={{ value: 'Budget', position: 'insideTopRight', fontSize: 10, fill: 'rgb(var(--info))' }}
         />
         <Bar dataKey="spending" fill="var(--color-spending)" radius={[6, 6, 0, 0]} maxBarSize={30} />
         <Line
