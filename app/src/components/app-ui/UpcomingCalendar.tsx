@@ -42,7 +42,7 @@ export default function UpcomingCalendar({
   ];
 
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
       <div className="mb-4 flex items-center justify-between">
         <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">Upcoming transactions</span>
         <div className="flex items-center gap-1">
@@ -64,7 +64,7 @@ export default function UpcomingCalendar({
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-1">
+      <div className="mb-4 grid grid-cols-7 gap-1">
         {allDays.map((day, idx) => {
           if (day === null) return <div key={`p${idx}`} className="aspect-[9/10]" aria-hidden />;
           const dayItems = items.filter((i) => i.day === day);
@@ -115,7 +115,7 @@ export default function UpcomingCalendar({
         })}
       </div>
 
-      <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+      <div className="mt-auto flex items-center justify-between border-t border-border pt-3">
         <span className="text-xs text-muted-foreground">
           {monthName} {currentDay} – {daysInMonth}
         </span>

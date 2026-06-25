@@ -149,7 +149,7 @@ export default function ClearDeedCard({ className }: { className?: string }) {
         </div>
         <button
           type="button"
-          className="w-full rounded-xl bg-foreground py-[18px] text-sm font-semibold text-background transition-transform active:scale-[0.99]"
+          className="w-full rounded-xl bg-foreground py-4 text-sm font-semibold text-background transition-transform active:scale-[0.99]"
         >
           View your Clear Deed
         </button>
