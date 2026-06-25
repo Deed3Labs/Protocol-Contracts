@@ -22,31 +22,31 @@ function Tab({ to, label, icon: Icon, end }: NavItem) {
 }
 
 /**
- * Floating bottom nav (mobile only) — a blurred pill detached from the screen edges.
- * Active tab fills + expands to its label; a prominent center "+" exposes Add money
- * (which lives in the top bar on desktop). Hidden on desktop (lg+).
+ * Floating mobile footer (lg:hidden): the main nav pill on the left, and a standalone
+ * Add-money button on the right (no surrounding card). Hidden on desktop, where the
+ * Sidebar + top-bar Add money take over.
  */
 export default function TabBar() {
   return (
-    <nav
-      className="fixed left-1/2 z-50 -translate-x-1/2 lg:hidden"
+    <div
+      className="fixed inset-x-0 z-50 flex items-center justify-between px-4 lg:hidden"
       style={{ bottom: 'max(env(safe-area-inset-bottom), 1rem)' }}
     >
-      <div className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1.5 shadow-[0_8px_30px_rgb(0_0_0/0.12)] backdrop-blur-xl">
-        {navItems.slice(0, 2).map((item) => (
+      {/* Main nav — left */}
+      <nav className="flex items-center gap-1 rounded-lg border border-border/70 bg-background/80 p-1.5 shadow-[0_8px_30px_rgb(0_0_0/0.12)] backdrop-blur-xl">
+        {navItems.map((item) => (
           <Tab key={item.to} {...item} />
         ))}
-        <button
-          type="button"
-          aria-label="Add money"
-          className="mx-0.5 flex items-center justify-center rounded-lg bg-primary px-3 py-2.5 text-primary-foreground shadow-sm transition-transform active:scale-95"
-        >
-          <Plus className="h-5 w-5 shrink-0" strokeWidth={2.5} />
-        </button>
-        {navItems.slice(2).map((item) => (
-          <Tab key={item.to} {...item} />
-        ))}
-      </div>
-    </nav>
+      </nav>
+
+      {/* Add money — right, standalone button */}
+      <button
+        type="button"
+        aria-label="Add money"
+        className="flex items-center justify-center rounded-lg bg-primary p-4 text-primary-foreground shadow-[0_8px_30px_rgb(0_0_0/0.18)] transition-transform active:scale-95"
+      >
+        <Plus className="h-5 w-5 shrink-0" strokeWidth={2.5} />
+      </button>
+    </div>
   );
 }
