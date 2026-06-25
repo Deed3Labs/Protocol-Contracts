@@ -1,10 +1,11 @@
-import { Plus, ArrowUpRight, FileText, ArrowDownToLine, type LucideIcon } from 'lucide-react';
+import { Plus, SendHorizontal, FileText, ArrowDownToLine, type LucideIcon } from 'lucide-react';
+import ActionTile from '@/components/app-ui/ActionTile';
 
-const actions: { icon: LucideIcon; label: string }[] = [
-  { icon: Plus, label: 'Add money' },
-  { icon: ArrowUpRight, label: 'Send' },
-  { icon: FileText, label: 'Pay bill' },
-  { icon: ArrowDownToLine, label: 'Withdraw' },
+const actions: { icon: LucideIcon; label: string; hint: string }[] = [
+  { icon: Plus, label: 'Add money', hint: 'Bank or card' },
+  { icon: SendHorizontal, label: 'Send', hint: 'To anyone' },
+  { icon: FileText, label: 'Pay bill', hint: 'Rent & utilities' },
+  { icon: ArrowDownToLine, label: 'Withdraw', hint: 'To linked bank' },
 ];
 
 /** Dashboard quick-actions grid — no card wrapper; the tiles are the cards. */
@@ -13,17 +14,8 @@ export default function QuickActions({ className }: { className?: string }) {
     <div className={className}>
       <h3 className="mb-3 text-xs font-medium text-muted-foreground">Quick actions</h3>
       <div className="grid grid-cols-2 gap-3">
-        {actions.map(({ icon: Icon, label }) => (
-          <button
-            key={label}
-            type="button"
-            className="flex flex-col items-start gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-secondary/50"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary text-foreground">
-              <Icon className="h-[18px] w-[18px]" />
-            </span>
-            <span className="text-sm font-medium text-foreground">{label}</span>
-          </button>
+        {actions.map(({ icon, label, hint }) => (
+          <ActionTile key={label} icon={icon} label={label} hint={hint} />
         ))}
       </div>
     </div>

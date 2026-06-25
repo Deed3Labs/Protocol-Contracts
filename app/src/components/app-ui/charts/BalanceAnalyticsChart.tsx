@@ -96,7 +96,7 @@ export default function BalanceAnalyticsChart({ className }: { className?: strin
             </defs>
             <CartesianGrid vertical={false} />
             <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={28} />
-            <YAxis tickLine={false} axisLine={false} width={40} tickFormatter={tick} />
+            <YAxis tickLine={false} axisLine={false} width={48} fontSize={11} tickMargin={6} tickFormatter={tick} />
             <ChartTooltip content={<ChartTooltipContent formatter={fmtMoney} />} />
             <Area dataKey="value" type="monotone" stroke="var(--color-value)" strokeWidth={2} fill="url(#balFill)" />
           </AreaChart>

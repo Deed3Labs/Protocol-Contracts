@@ -32,7 +32,7 @@ export default function SpendingChart({
       <ComposedChart data={data} margin={{ left: 0, right: 10, top: 14, bottom: 0 }}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />
-        <YAxis tickLine={false} axisLine={false} width={38} fontSize={11} tickFormatter={tick} />
+        <YAxis tickLine={false} axisLine={false} width={48} fontSize={11} tickMargin={6} tickFormatter={tick} />
         <ChartTooltip content={<ChartTooltipContent />} />
         <ReferenceLine
           y={budget}

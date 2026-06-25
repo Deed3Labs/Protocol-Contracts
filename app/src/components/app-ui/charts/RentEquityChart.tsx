@@ -27,8 +27,8 @@ export default function RentEquityChart({
     <ChartContainer config={config} height={190} className={className}>
       <BarChart data={data} margin={{ left: 0, right: 8, top: 12, bottom: 0 }}>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
-        <YAxis tickLine={false} axisLine={false} width={38} tickFormatter={tick} />
+        <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />
+        <YAxis tickLine={false} axisLine={false} width={48} fontSize={11} tickMargin={6} tickFormatter={tick} />
         <ChartTooltip content={<ChartTooltipContent />} />
         <Bar dataKey="equity" fill="var(--color-equity)" radius={[6, 6, 0, 0]} maxBarSize={34} />
       </BarChart>

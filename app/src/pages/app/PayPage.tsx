@@ -1,10 +1,10 @@
-import { Home, FileText, ArrowUpRight, ArrowDownLeft, Zap, Wifi, CreditCard, Smartphone, Calendar, CircleCheck, TrendingUp, Flame, type LucideIcon } from 'lucide-react';
+import { Home, FileText, SendHorizontal, ArrowDownLeft, Zap, Wifi, CreditCard, Smartphone, Calendar, CircleCheck, TrendingUp, Flame } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
+import ActionTile from '@/components/app-ui/ActionTile';
 import ChartCard from '@/components/app-ui/charts/ChartCard';
 import RentEquityChart from '@/components/app-ui/charts/RentEquityChart';
 import BillTimeline, { type TimelineBill } from '@/components/app-ui/BillTimeline';
 import CardVisual from '@/components/app-ui/CardVisual';
-import { cn } from '@/lib/utils';
 
 const RENT_EQUITY = [
   { label: 'Jan', equity: 280 },
@@ -22,26 +22,6 @@ const BILLS: TimelineBill[] = [
   { id: 'card', name: 'Card — Amex', dateLabel: 'Jul 3', amount: 320, icon: CreditCard },
   { id: 'phone', name: 'Phone — Verizon', dateLabel: 'Jul 5', amount: 65, icon: Smartphone },
 ];
-
-function ActionTile({ icon: Icon, label, sub, primary }: { icon: LucideIcon; label: string; sub: string; primary?: boolean }) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'flex min-h-[112px] flex-col items-start gap-3 rounded-lg border p-4 text-left transition-transform active:scale-[0.99]',
-        primary ? 'border-transparent bg-primary text-primary-foreground' : 'border-border bg-card text-foreground hover:bg-secondary/50',
-      )}
-    >
-      <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', primary ? 'bg-white/20' : 'bg-background text-foreground')}>
-        <Icon className="h-5 w-5" />
-      </span>
-      <span className="mt-auto">
-        <span className="block text-sm font-medium">{label}</span>
-        <span className={cn('mt-0.5 block text-xs', primary ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{sub}</span>
-      </span>
-    </button>
-  );
-}
 
 /** Pay — Clear Pay's rent/bill core, send/request, card, and rent-to-equity viz. */
 export default function PayPage() {
@@ -67,10 +47,10 @@ export default function PayPage() {
         <div className="lg:col-span-2">
           <h3 className="mb-3 text-xs font-medium text-muted-foreground">Make a payment</h3>
           <div className="grid grid-cols-2 gap-3">
-            <ActionTile icon={Home} label="Pay rent" sub="Schedule or pay now" primary />
-            <ActionTile icon={FileText} label="Pay a bill" sub="Utilities, cards & more" />
-            <ActionTile icon={ArrowUpRight} label="Send" sub="To anyone" />
-            <ActionTile icon={ArrowDownLeft} label="Request" sub="Get paid" />
+            <ActionTile icon={Home} label="Pay rent" hint="Schedule or pay now" primary />
+            <ActionTile icon={FileText} label="Pay a bill" hint="Utilities, cards & more" />
+            <ActionTile icon={SendHorizontal} label="Send" hint="To anyone" />
+            <ActionTile icon={ArrowDownLeft} label="Request" hint="Get paid" />
           </div>
         </div>
         <CardVisual />

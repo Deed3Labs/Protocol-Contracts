@@ -247,7 +247,7 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: 'General Sans', system-ui, -apple-system, sans-serif;
   background-color: rgb(var(--background));
   color: rgb(var(--foreground));
   transition: background-color 0.3s ease, color 0.3s ease;
