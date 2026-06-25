@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Home, PiggyBank, ArrowRight, type LucideIcon } from 'lucide-react';
 import ClearPathLogo from '@/assets/ClearPath-Logo.png';
+import Wordmark from '@/components/app-ui/Wordmark';
 import { cn } from '@/lib/utils';
 
 interface Slide {
@@ -84,7 +85,7 @@ export default function LoginView({
           <div className="p-6">
             <div className="flex items-center gap-2.5">
               <img src={ClearPathLogo} alt="Clear" className="h-8 w-8 rounded-md border border-border object-cover" />
-              <span className="font-display tracking-tight">Clear</span>
+              <Wordmark className="text-xl" />
             </div>
             <h1 className="mt-4 font-display text-2xl leading-tight tracking-tight">Turn rent into ownership.</h1>
             <p className="mt-1.5 text-sm text-muted-foreground">Build equity with every payment. Start in minutes — it's free.</p>

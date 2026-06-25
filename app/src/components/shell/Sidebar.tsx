@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { Wallet, Send, LineChart, Settings, Home, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import Wordmark from '@/components/app-ui/Wordmark';
 import ClearPathLogo from '@/assets/ClearPath-Logo.png';
 
 interface NavEntry {
@@ -43,7 +44,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         <img src={ClearPathLogo} alt="Clear" className="h-9 w-9 shrink-0 rounded-md border border-border object-cover" />
         {!collapsed && (
           <div className="min-w-0">
-            <div className="font-display text-lg leading-none tracking-tight text-foreground">Clear</div>
+            <Wordmark className="text-2xl" />
             <div className="truncate text-[11px] text-muted-foreground">Turn rent into ownership</div>
           </div>
         )}
@@ -116,7 +117,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
             {!collapsed && (
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium text-foreground">Steven Spark</div>
-                <div className="truncate text-xs text-muted-foreground">steven@clearpath.xyz</div>
+                <div className="truncate text-xs text-muted-foreground">steven@useclear.org</div>
               </div>
             )}
           </div>

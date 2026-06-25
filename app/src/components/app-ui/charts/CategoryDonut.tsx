@@ -18,7 +18,7 @@ export default function CategoryDonut({ className }: { className?: string }) {
   return (
     <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
       <h3 className="mb-3 text-xs font-medium text-muted-foreground">Spending by category</h3>
-      <div className="flex flex-1 items-center gap-4">
+      <div className="flex flex-1 items-center gap-4 lg:flex-col lg:gap-5 xl:flex-row xl:gap-4">
         <ChartContainer config={config} height={132} className="w-[132px] shrink-0">
           <PieChart>
             <ChartTooltip content={<ChartTooltipContent hideLabel />} />
@@ -29,7 +29,7 @@ export default function CategoryDonut({ className }: { className?: string }) {
             </Pie>
           </PieChart>
         </ChartContainer>
-        <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-3 lg:w-full xl:w-auto">
           {data.map((d, i) => (
             <div key={d.name} className="flex items-center justify-between gap-2 text-xs">
               <span className="flex min-w-0 items-center gap-2 text-muted-foreground">

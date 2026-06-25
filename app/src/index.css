@@ -247,6 +247,53 @@
   --chart-5: #404040;
 }
 
+.dusk {
+  color-scheme: light;
+  color: #2e2012;
+  background-color: #f1e2ce;
+
+  /* Dusk — golden hour (warm peach-cream), mapped from useclear.org */
+  --background: 241 226 206;
+  --foreground: 46 32 18;
+  --card: 247 238 220;
+  --card-foreground: 46 32 18;
+  --popover: 252 245 234;
+  --popover-foreground: 46 32 18;
+  --primary: 46 32 18;
+  --primary-foreground: 252 245 234;
+  --secondary: 234 217 192;
+  --secondary-foreground: 46 32 18;
+  --muted: 234 217 192;
+  --muted-foreground: 122 104 84;
+  --accent: 234 217 192;
+  --accent-foreground: 46 32 18;
+  --destructive: 200 60 45;
+  --destructive-foreground: 252 245 234;
+  --border: 217 199 176;
+  --input: 217 199 176;
+  --ring: 46 32 18;
+
+  /* Semantic accents */
+  --positive: 22 140 72;
+  --negative: 200 60 45;
+  --info: 39 99 168;
+
+  /* Section tiles */
+  --cp-cash: 234 217 192;
+  --cp-cash-fg: 46 32 18;
+  --cp-savings: 234 217 192;
+  --cp-savings-fg: 46 32 18;
+  --cp-external: 234 217 192;
+  --cp-external-fg: 46 32 18;
+
+  /* Chart ramp — warm brown */
+  --chart-1: #2e2012;
+  --chart-2: #6b5a44;
+  --chart-3: #9a836a;
+  --chart-4: #c0a98c;
+  --chart-5: #ddccb0;
+}
+
 html {
   scroll-behavior: smooth;
   overflow-x: hidden;
@@ -421,5 +468,11 @@ body.onboarding-scroll-enabled {
     font-family: 'Space Grotesk', system-ui, sans-serif;
     font-feature-settings: 'tnum' 1;
     letter-spacing: -0.02em;
+  }
+
+  /* Brand wordmark — Bebas Neue, condensed all-caps (matches the marketing site) */
+  .font-wordmark {
+    font-family: 'Bebas Neue', 'Arial Narrow', system-ui, sans-serif;
+    letter-spacing: 0.01em;
   }
 }

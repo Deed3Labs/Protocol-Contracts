@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { X, ChevronRight, Sun, Moon, ShieldCheck, FileText, CircleHelp, LogOut, type LucideIcon } from 'lucide-react';
+import { X, ChevronRight, Sun, Sunset, Moon, ShieldCheck, FileText, CircleHelp, LogOut, type LucideIcon } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { cn } from '@/lib/utils';
 import { navItems } from './navItems';
@@ -10,13 +10,18 @@ const secondary: { icon: LucideIcon; label: string }[] = [
   { icon: CircleHelp, label: 'Help center' },
 ];
 
+const THEMES: { id: 'light' | 'dusk' | 'dark'; icon: LucideIcon; label: string }[] = [
+  { id: 'light', icon: Sun, label: 'Light' },
+  { id: 'dusk', icon: Sunset, label: 'Dusk' },
+  { id: 'dark', icon: Moon, label: 'Dark' },
+];
+
 /**
  * Collapsible side menu — a hamburger-triggered slide-in overlay (modeled on the
  * old portfolio SideMenu). Primary nav, account links, theme switch, and log out.
  */
 export default function SideMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { theme, setTheme } = useTheme();
-  const isDark = theme === 'dark';
   const navigate = useNavigate();
 
   if (!isOpen) return null;
@@ -94,24 +99,18 @@ export default function SideMenu({ isOpen, onClose }: { isOpen: boolean; onClose
           <div>
             <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Appearance</h3>
             <div className="flex rounded-xl border border-border bg-secondary p-1">
-              <button
-                onClick={() => setTheme('light')}
-                className={cn(
-                  'flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition-all',
-                  !isDark ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground',
-                )}
-              >
-                <Sun className="h-4 w-4" /> Light
-              </button>
-              <button
-                onClick={() => setTheme('dark')}
-                className={cn(
-                  'flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition-all',
-                  isDark ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground',
-                )}
-              >
-                <Moon className="h-4 w-4" /> Dark
-              </button>
+              {THEMES.map(({ id, icon: Icon, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setTheme(id)}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-all',
+                    theme === id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground',
+                  )}
+                >
+                  <Icon className="h-4 w-4" /> {label}
+                </button>
+              ))}
             </div>
           </div>
         </div>

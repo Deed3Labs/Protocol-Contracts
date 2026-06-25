@@ -2,7 +2,7 @@ import { Bar, CartesianGrid, Cell, ComposedChart, Line, ReferenceLine, XAxis, YA
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 
 const config = {
-  spending: { label: 'This period', color: 'var(--chart-1)' },
+  spending: { label: 'This period', color: 'rgb(var(--positive))' },
   previous: { label: 'Last period', color: 'var(--chart-4)' },
 } satisfies ChartConfig;
 

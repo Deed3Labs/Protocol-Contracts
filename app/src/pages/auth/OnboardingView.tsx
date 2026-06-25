@@ -5,6 +5,7 @@ import {
   PiggyBank, CreditCard, BarChart3, Receipt, type LucideIcon,
 } from 'lucide-react';
 import ClearPathLogo from '@/assets/ClearPath-Logo.png';
+import Wordmark from '@/components/app-ui/Wordmark';
 import { cn } from '@/lib/utils';
 
 export interface OnboardingResult {
@@ -120,7 +121,7 @@ export default function OnboardingView({
         <aside className="hidden flex-col justify-between gap-8 border-r border-border px-8 py-10 lg:flex">
           <div className="flex items-center gap-2.5">
             <img src={ClearPathLogo} alt="Clear" className="h-9 w-9 rounded-md border border-border object-cover" />
-            <span className="font-display text-lg tracking-tight">Clear</span>
+            <Wordmark className="text-xl" />
           </div>
           <div>
             <h2 className="font-display text-3xl leading-tight tracking-tight">
@@ -142,7 +143,7 @@ export default function OnboardingView({
           <div className="mb-6 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2.5 lg:hidden">
               <img src={ClearPathLogo} alt="Clear" className="h-8 w-8 rounded-md border border-border object-cover" />
-              <span className="font-display tracking-tight">Clear</span>
+              <Wordmark className="text-lg" />
             </div>
             <StepDots current={step} />
             <span className="text-xs font-medium text-muted-foreground">Step {step + 1} of {STEPS.length}</span>

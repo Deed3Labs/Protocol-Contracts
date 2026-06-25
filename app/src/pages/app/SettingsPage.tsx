@@ -1,13 +1,20 @@
-import { Landmark, CreditCard, ShieldCheck, BellRing, CircleHelp, LogOut, Sun, Moon } from 'lucide-react';
+import { Landmark, CreditCard, ShieldCheck, BellRing, CircleHelp, LogOut, Sun, Sunset, Moon, type LucideIcon } from 'lucide-react';
 import SectionCard from '@/components/app-ui/SectionCard';
 import CardVisual from '@/components/app-ui/CardVisual';
 import { useTheme } from '@/context/ThemeContext';
 import { cn } from '@/lib/utils';
 
+const THEMES: { id: 'light' | 'dusk' | 'dark'; icon: LucideIcon; label: string }[] = [
+  { id: 'light', icon: Sun, label: 'Light' },
+  { id: 'dusk', icon: Sunset, label: 'Dusk' },
+  { id: 'dark', icon: Moon, label: 'Dark' },
+];
+
 /** Settings — denser card layout to match the dashboard. Theme toggle is live. */
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
-  const isDark = theme === 'dark';
+  const active = THEMES.find((t) => t.id === theme) ?? THEMES[0];
+  const ActiveIcon = active.icon;
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -24,7 +31,7 @@ export default function SettingsPage() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-lg font-medium text-foreground">Steven Spark</div>
-              <div className="truncate text-sm text-muted-foreground">steven@clearpath.xyz</div>
+              <div className="truncate text-sm text-muted-foreground">steven@useclear.org</div>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 <span className="rounded-lg bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">Member</span>
                 <span className="rounded-lg bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">KYC verified</span>
@@ -59,26 +66,30 @@ export default function SettingsPage() {
         <SectionCard icon={BellRing} tint="neutral" title="Notifications" subtitle="Alerts & reminders" chevron onClick={() => {}} />
 
         <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-          <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
-            {isDark ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+            <ActiveIcon className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-[15px] font-medium text-foreground">Appearance</span>
-            <span className="block text-xs text-muted-foreground">{isDark ? 'Dark' : 'Light'} mode</span>
+            <span className="block text-xs text-muted-foreground">{active.label} mode</span>
           </span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={isDark}
-            aria-label="Toggle dark mode"
-            onClick={() => setTheme(isDark ? 'light' : 'dark')}
-            className={cn('relative h-7 w-12 rounded-lg transition-colors', isDark ? 'bg-primary' : 'bg-input')}
-          >
-            <span
-              className="absolute left-0.5 top-0.5 h-6 w-6 rounded-lg bg-card shadow-sm ring-1 ring-black/10 transition-transform dark:ring-white/15"
-              style={{ transform: isDark ? 'translateX(20px)' : 'none' }}
-            />
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-secondary p-0.5">
+            {THEMES.map(({ id, icon: Icon, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTheme(id)}
+                aria-label={`${label} theme`}
+                aria-pressed={theme === id}
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-md transition-colors',
+                  theme === id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Icon className="h-4 w-4" />
+              </button>
+            ))}
+          </div>
         </div>
 
         <SectionCard icon={CircleHelp} tint="neutral" title="Help & support" subtitle="Guides & contact" chevron onClick={() => {}} />
