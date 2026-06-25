@@ -22,6 +22,18 @@ const SUB: Record<Range, string> = { week: 'this week', month: 'this month', yea
 const config = {} satisfies ChartConfig;
 const fmtTotal = (n: number) => (n >= 10000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toLocaleString()}`);
 
+/** Elbow leader-line geometry: slice edge → short radial leg → horizontal leg to the label. */
+function elbow(cx: number, cy: number, midAngle: number, outerRadius: number) {
+  const RADIAN = Math.PI / 180;
+  const cos = Math.cos(-midAngle * RADIAN);
+  const sin = Math.sin(-midAngle * RADIAN);
+  const dir = cos >= 0 ? 1 : -1;
+  const edge = { x: cx + outerRadius * cos, y: cy + outerRadius * sin };
+  const bend = { x: cx + (outerRadius + 11) * cos, y: cy + (outerRadius + 11) * sin };
+  const end = { x: bend.x + dir * 16, y: bend.y };
+  return { edge, bend, end, dir };
+}
+
 /**
  * Spending-by-category donut — fills the card with the period total in the middle and
  * leader-line labels (name + %) pointing from each slice instead of a legend. A
@@ -37,27 +49,36 @@ export default function CategoryRadial({ className }: { className?: string }) {
       <h3 className="text-xs font-medium text-muted-foreground">Spending by category</h3>
 
       <div className="flex flex-1 items-center justify-center">
-        <ChartContainer config={config} height={270} className="w-full">
+        <ChartContainer config={config} height={280} className="mx-auto w-full max-w-[360px]">
           <PieChart margin={{ top: 6, right: 6, bottom: 6, left: 6 }}>
             <ChartTooltip content={<ChartTooltipContent hideLabel formatter={(v) => `$${Number(v).toLocaleString()}`} />} />
             <Pie
               data={data}
               dataKey="value"
               nameKey="name"
-              innerRadius={48}
-              outerRadius={72}
+              innerRadius={46}
+              outerRadius={68}
               paddingAngle={2}
               strokeWidth={2}
               stroke="rgb(var(--card))"
-              labelLine={{ stroke: 'rgb(var(--border))' }}
+              labelLine={(p) => {
+                const { edge, bend, end } = elbow(Number(p.cx ?? 0), Number(p.cy ?? 0), Number(p.midAngle ?? 0), Number(p.outerRadius ?? 0));
+                return (
+                  <polyline
+                    points={`${edge.x},${edge.y} ${bend.x},${bend.y} ${end.x},${end.y}`}
+                    stroke="rgb(var(--border))"
+                    strokeWidth={1}
+                    fill="none"
+                  />
+                );
+              }}
               label={(p: PieLabelRenderProps) => {
-                const x = Number(p.x ?? 0);
-                const cx = Number(p.cx ?? 0);
+                const { end, dir } = elbow(Number(p.cx ?? 0), Number(p.cy ?? 0), Number(p.midAngle ?? 0), Number(p.outerRadius ?? 0));
                 return (
                   <text
-                    x={x}
-                    y={Number(p.y ?? 0)}
-                    textAnchor={x > cx ? 'start' : 'end'}
+                    x={end.x + dir * 3}
+                    y={end.y}
+                    textAnchor={dir >= 0 ? 'start' : 'end'}
                     dominantBaseline="central"
                     className="fill-foreground"
                     fontSize={10}
