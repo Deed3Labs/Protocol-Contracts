@@ -39,7 +39,7 @@ export default function CtaStack({ className }: { className?: string }) {
   const visible = cards.slice(0, 3);
 
   return (
-    <div className={cn('relative h-[150px] select-none', className)}>
+    <div className={cn('relative h-[132px] select-none', className)}>
       <AnimatePresence initial={false}>
         {visible.map((c, i) => {
           const isTop = i === 0;

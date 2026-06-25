@@ -60,7 +60,7 @@ export default function ClearDeedCard({ className }: { className?: string }) {
       <div className="mt-5 flex items-end justify-between gap-3">
         <div>
           <div className="flex items-baseline gap-1.5">
-            <span className="font-display text-[2.5rem] leading-none tracking-tight text-foreground tabular-nums">
+            <span className="font-display text-3xl leading-none tracking-tight text-foreground tabular-nums">
               ${CREDITS.toLocaleString()}
             </span>
             <span className="text-xs text-muted-foreground">/ $25k</span>
