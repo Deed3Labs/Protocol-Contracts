@@ -14,9 +14,9 @@ const TIERS = [
 
 /** Where the equity credits came from — sums to CREDITS. */
 const SOURCES = [
-  { label: 'Savings 1:1 match', value: 3245, pct: 52, color: 'bg-positive' },
-  { label: 'On-time rent credits', value: 2120, pct: 34, color: 'bg-info' },
-  { label: 'Streak bonuses', value: 875, pct: 14, color: 'bg-violet-500' },
+  { label: 'Match', value: 3245, pct: 52, color: 'bg-positive' },
+  { label: 'Rent', value: 2120, pct: 34, color: 'bg-info' },
+  { label: 'Bonus', value: 875, pct: 14, color: 'bg-violet-500' },
 ];
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -113,47 +113,45 @@ export default function ClearDeedCard({ className }: { className?: string }) {
         </div>
       </div>
 
-      {/* next-milestone nudge */}
-      <div className="mt-4 flex items-center gap-2.5 rounded-lg bg-secondary p-3">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info">
-          <Sparkles className="h-3.5 w-3.5" />
-        </span>
-        <p className="min-w-0 text-xs leading-snug text-muted-foreground">
-          <span className="font-medium text-foreground">${toNext.toLocaleString()} to {nextTier.label}</span> — your next milestone
-        </p>
-      </div>
-
       {/* performance stats */}
-      <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
+      <div className="mt-5 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
         <MiniStat label="This month" value="+$520" />
         <MiniStat label="On-time streak" value="6 mo" />
         <MiniStat label="To goal" value="~14 mo" />
       </div>
 
       {/* how you earned it — credit sources */}
-      <div className="mt-4">
+      <div className="mt-5">
         <div className="mb-2 text-[11px] font-medium text-foreground">How you earned it</div>
         <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-lg">
           {SOURCES.map((s) => (
             <div key={s.label} className={s.color} style={{ width: `${s.pct}%` }} />
           ))}
         </div>
-        <div className="mt-2.5 space-y-1.5">
+        <div className="mt-2.5 grid grid-cols-3 gap-1.5">
           {SOURCES.map((s) => (
-            <div key={s.label} className="flex items-center gap-2 text-[11px]">
-              <span className={cn('h-2 w-2 shrink-0 rounded-sm', s.color)} />
-              <span className="text-muted-foreground">{s.label}</span>
-              <span className="ml-auto font-medium tabular-nums text-foreground">${s.value.toLocaleString()}</span>
+            <div key={s.label} className="rounded-lg bg-secondary/60 px-2 py-1.5 text-center">
+              <div className="font-display text-[13px] font-medium tabular-nums text-foreground">${s.value.toLocaleString()}</div>
+              <div className="mt-0.5 flex items-center justify-center gap-1">
+                <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', s.color)} />
+                <span className="text-[10px] text-muted-foreground">{s.label}</span>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* footer CTA */}
-      <div className="mt-auto border-t border-border pt-4">
+      {/* footer: next milestone + CTA */}
+      <div className="mt-auto pt-5">
+        <div className="mb-3 flex items-center justify-between rounded-lg bg-secondary px-3 py-2.5">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Sparkles className="h-3.5 w-3.5 text-info" /> Next: <span className="font-medium text-foreground">{nextTier.label}</span>
+          </span>
+          <span className="text-xs font-semibold text-foreground">${toNext.toLocaleString()} to go</span>
+        </div>
         <button
           type="button"
-          className="w-full rounded-lg bg-foreground py-2.5 text-sm font-medium text-background transition-transform active:scale-[0.99]"
+          className="w-full rounded-xl bg-foreground py-3.5 text-sm font-semibold text-background transition-transform active:scale-[0.99]"
         >
           View your Clear Deed
         </button>
