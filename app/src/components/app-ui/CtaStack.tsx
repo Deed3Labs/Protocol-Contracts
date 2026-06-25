@@ -39,7 +39,7 @@ export default function CtaStack({ className }: { className?: string }) {
   const visible = cards.slice(0, 3);
 
   return (
-    <div className={cn('relative h-[132px] select-none', className)}>
+    <div className={cn('relative h-[150px] select-none', className)}>
       <AnimatePresence initial={false}>
         {visible.map((c, i) => {
           const isTop = i === 0;
@@ -66,7 +66,7 @@ export default function CtaStack({ className }: { className?: string }) {
               )}
             >
               <div className={cn('pointer-events-none absolute inset-0 bg-gradient-to-br to-transparent', a.wash)} aria-hidden />
-              <div className="relative flex items-start gap-3 p-4">
+              <div className="relative flex items-start gap-3 px-4 py-[18px]">
                 <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', a.chip)}>
                   <Icon className="h-[18px] w-[18px]" />
                 </span>
