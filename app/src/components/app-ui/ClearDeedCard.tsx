@@ -14,12 +14,13 @@ const TIERS = [
 
 /** Where the equity credits came from — sums to CREDITS. */
 const SOURCES = [
-  { label: 'Match', value: 3245, pct: 52, color: 'bg-positive' },
-  { label: 'Rent', value: 2120, pct: 34, color: 'bg-info' },
-  { label: 'Bonus', value: 875, pct: 14, color: 'bg-violet-500' },
+  { label: 'Match', value: 3245, pct: 52, color: 'bg-positive', text: 'text-positive' },
+  { label: 'Rent', value: 2120, pct: 34, color: 'bg-info', text: 'text-info' },
+  { label: 'Bonus', value: 875, pct: 14, color: 'bg-violet-500', text: 'text-violet-500 dark:text-violet-400' },
 ];
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+const abbrev = (n: number) => (n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n}`);
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
@@ -123,20 +124,17 @@ export default function ClearDeedCard({ className }: { className?: string }) {
       {/* how you earned it — credit sources */}
       <div className="mt-5">
         <div className="mb-2 text-[11px] font-medium text-foreground">How you earned it</div>
-        <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-lg">
+        <div className="flex h-8 gap-0.5 overflow-hidden rounded-lg">
           {SOURCES.map((s) => (
             <div key={s.label} className={s.color} style={{ width: `${s.pct}%` }} />
           ))}
         </div>
-        <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+        <div className="mt-2 flex items-center justify-between text-[10px]">
           {SOURCES.map((s) => (
-            <div key={s.label} className="rounded-lg bg-secondary/60 px-2 py-1.5 text-center">
-              <div className="font-display text-[13px] font-medium tabular-nums text-foreground">${s.value.toLocaleString()}</div>
-              <div className="mt-0.5 flex items-center justify-center gap-1">
-                <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', s.color)} />
-                <span className="text-[10px] text-muted-foreground">{s.label}</span>
-              </div>
-            </div>
+            <span key={s.label} className="whitespace-nowrap">
+              <span className={cn('font-medium', s.text)}>{s.label}</span>{' '}
+              <span className="tabular-nums text-foreground">{abbrev(s.value)}</span>
+            </span>
           ))}
         </div>
       </div>
@@ -151,7 +149,7 @@ export default function ClearDeedCard({ className }: { className?: string }) {
         </div>
         <button
           type="button"
-          className="w-full rounded-xl bg-foreground py-3.5 text-sm font-semibold text-background transition-transform active:scale-[0.99]"
+          className="w-full rounded-xl bg-foreground py-[18px] text-sm font-semibold text-background transition-transform active:scale-[0.99]"
         >
           View your Clear Deed
         </button>
