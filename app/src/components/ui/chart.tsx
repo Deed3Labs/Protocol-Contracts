@@ -49,7 +49,7 @@ export function ChartContainer({
       <div
         data-slot="chart"
         className={cn(
-          'w-full [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line]:stroke-border/70 [&_.recharts-surface]:outline-none',
+          'w-full touch-pan-y [&_.recharts-surface]:touch-pan-y [&_.recharts-wrapper]:touch-pan-y [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line]:stroke-border/70 [&_.recharts-surface]:outline-none',
           className,
         )}
         style={{ ...styleVars, height }}

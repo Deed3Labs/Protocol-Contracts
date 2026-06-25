@@ -31,7 +31,7 @@ export default function ChartCard({
 }: ChartCardProps) {
   return (
     <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="text-xs font-medium text-muted-foreground">{label}</div>
           {value && (

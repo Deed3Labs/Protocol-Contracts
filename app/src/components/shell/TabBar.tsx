@@ -43,7 +43,7 @@ export default function TabBar() {
       <button
         type="button"
         aria-label="Add money"
-        className="flex items-center justify-center rounded-lg bg-primary p-4 text-primary-foreground shadow-[0_8px_30px_rgb(0_0_0/0.18)] transition-transform active:scale-95"
+        className="flex items-center justify-center rounded-full bg-primary p-4 text-primary-foreground shadow-[0_8px_30px_rgb(0_0_0/0.18)] transition-transform active:scale-95"
       >
         <Plus className="h-5 w-5 shrink-0" strokeWidth={2.5} />
       </button>
