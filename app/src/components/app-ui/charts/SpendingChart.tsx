@@ -1,8 +1,8 @@
-import { Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, XAxis, YAxis } from 'recharts';
+import { Bar, CartesianGrid, Cell, ComposedChart, Line, ReferenceLine, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 
 const config = {
-  spending: { label: 'This period', color: 'rgb(var(--negative))' },
+  spending: { label: 'This period', color: 'var(--chart-1)' },
   previous: { label: 'Last period', color: 'var(--chart-4)' },
 } satisfies ChartConfig;
 
@@ -41,7 +41,11 @@ export default function SpendingChart({
           strokeWidth={1.5}
           label={{ value: 'Budget', position: 'insideTopRight', fontSize: 10, fill: 'rgb(var(--info))' }}
         />
-        <Bar dataKey="spending" fill="var(--color-spending)" radius={[6, 6, 0, 0]} maxBarSize={30} />
+        <Bar dataKey="spending" fill="var(--color-spending)" radius={[6, 6, 0, 0]} maxBarSize={30}>
+          {data.map((d, i) => (
+            <Cell key={i} fill={d.spending > budget ? 'rgb(var(--negative))' : 'var(--color-spending)'} />
+          ))}
+        </Bar>
         <Line
           dataKey="previous"
           type="monotone"

@@ -83,37 +83,43 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         ))}
       </nav>
 
-      <div className="space-y-3 p-3">
+      <div>
         {!collapsed && (
-          <div className="rounded-lg border border-border bg-secondary/50 p-4">
-            <div className="mb-2 flex items-center gap-2">
-              <Home className="h-4 w-4 text-foreground" />
-              <span className="text-sm font-medium text-foreground">Clear Deed</span>
+          <div className="p-3">
+            <div className="rounded-lg border border-border bg-secondary/50 p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <Home className="h-4 w-4 text-foreground" />
+                <span className="text-sm font-medium text-foreground">Clear Deed</span>
+              </div>
+              <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                $6,240 in equity credits · 25% to your milestone.
+              </p>
+              <div className="mb-3 h-1.5 w-full overflow-hidden rounded-lg bg-background">
+                <div className="h-full w-1/4 rounded-lg bg-primary" />
+              </div>
+              <button
+                type="button"
+                className="w-full rounded-xl bg-primary py-2 text-xs font-medium text-primary-foreground"
+              >
+                View progress
+              </button>
             </div>
-            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-              $6,240 in equity credits · 25% to your milestone.
-            </p>
-            <div className="mb-3 h-1.5 w-full overflow-hidden rounded-lg bg-background">
-              <div className="h-full w-1/4 rounded-lg bg-primary" />
-            </div>
-            <button
-              type="button"
-              className="w-full rounded-xl bg-primary py-2 text-xs font-medium text-primary-foreground"
-            >
-              View progress
-            </button>
           </div>
         )}
-        <div className={cn('flex items-center rounded-xl py-1.5', collapsed ? 'justify-center' : 'gap-3 px-2')}>
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-xs font-medium text-secondary-foreground">
-            SS
-          </div>
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-foreground">Steven Spark</div>
-              <div className="truncate text-xs text-muted-foreground">steven@clearpath.xyz</div>
+
+        {/* profile footer — full-width divider above */}
+        <div className="border-t border-border p-3">
+          <div className={cn('flex items-center rounded-xl py-1.5', collapsed ? 'justify-center' : 'gap-3 px-2')}>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-xs font-medium text-secondary-foreground">
+              SS
             </div>
-          )}
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-foreground">Steven Spark</div>
+                <div className="truncate text-xs text-muted-foreground">steven@clearpath.xyz</div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </aside>
