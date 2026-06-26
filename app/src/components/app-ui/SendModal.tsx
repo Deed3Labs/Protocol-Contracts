@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useContacts, contactInitials } from '@/context/ContactsContext';
+import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { cn } from '@/lib/utils';
 
 /*
@@ -28,14 +29,14 @@ interface Source {
   detail: string;
   icon: typeof Wallet;
 }
-const SOURCES: Source[] = [
-  { id: 'balance', name: 'Clear balance', detail: fmt(BALANCE), icon: Wallet },
-  { id: 'bank', name: 'Chase ••4821', detail: 'Bank account', icon: Landmark },
-  { id: 'card', name: 'Visa ••7705', detail: 'Debit card', icon: CreditCard },
-];
-
 export default function SendModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { contacts, getContact, openManager } = useContacts();
+  const { accounts } = useExternalAccounts();
+  const sources: Source[] = [
+    { id: 'balance', name: 'Clear balance', detail: fmt(BALANCE), icon: Wallet },
+    ...accounts.map((a) => ({ id: a.id, name: `${a.name} ••${a.mask}`, detail: a.type, icon: Landmark })),
+    { id: 'card', name: 'Visa ••7705', detail: 'Debit card', icon: CreditCard },
+  ];
   const [step, setStep] = useState<'compose' | 'review' | 'status'>('compose');
   const [picking, setPicking] = useState(false);
   const [contactId, setContactId] = useState<string | null>(null);
@@ -69,7 +70,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
 
   const amount = Number(amountStr) || 0;
   const recipient = contactId ? getContact(contactId) : undefined;
-  const source = SOURCES.find((s) => s.id === sourceId) ?? SOURCES[0];
+  const source = sources.find((s) => s.id === sourceId) ?? sources[0];
   const fromBalance = sourceId === 'balance';
   const overBalance = fromBalance && amount > BALANCE;
   const amountValid = amount >= 1 && !overBalance;
@@ -279,7 +280,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
                 </button>
                 {sourceOpen && (
                   <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-md">
-                    {SOURCES.map((s) => (
+                    {sources.map((s) => (
                       <button
                         key={s.id}
                         type="button"

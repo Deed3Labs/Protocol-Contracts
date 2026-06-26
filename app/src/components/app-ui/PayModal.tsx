@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { usePay, creditsFor, streakMultiplier, type Bill } from '@/context/PayContext';
+import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { cn } from '@/lib/utils';
 
 /*
@@ -25,11 +26,6 @@ interface Source {
   detail: string;
   icon: typeof Wallet;
 }
-const SOURCES: Source[] = [
-  { id: 'balance', name: 'Clear balance', detail: '$4,820.55', icon: Wallet },
-  { id: 'bank', name: 'Chase ••4821', detail: 'Bank account', icon: Landmark },
-  { id: 'card', name: 'Visa ••7705', detail: 'Debit card', icon: CreditCard },
-];
 
 type Draft = { name: string; payee: string; amount: string; dueLabel: string };
 const emptyDraft: Draft = { name: '', payee: '', amount: '', dueLabel: '' };
@@ -44,6 +40,12 @@ export default function PayModal({
   initialBillId?: string;
 }) {
   const { bills, getBill, addBiller, streak } = usePay();
+  const { accounts } = useExternalAccounts();
+  const sources: Source[] = [
+    { id: 'balance', name: 'Clear balance', detail: '$4,820.55', icon: Wallet },
+    ...accounts.map((a) => ({ id: a.id, name: `${a.name} ••${a.mask}`, detail: a.type, icon: Landmark })),
+    { id: 'card', name: 'Visa ••7705', detail: 'Debit card', icon: CreditCard },
+  ];
   const [step, setStep] = useState<'choose' | 'addBiller' | 'review' | 'status'>('choose');
   const [billId, setBillId] = useState<string | null>(null);
   const [amountStr, setAmountStr] = useState('');
@@ -87,7 +89,7 @@ export default function PayModal({
 
   const amount = Number(amountStr) || 0;
   const bill = billId ? getBill(billId) : undefined;
-  const source = SOURCES.find((s) => s.id === sourceId) ?? SOURCES[0];
+  const source = sources.find((s) => s.id === sourceId) ?? sources[0];
   const isRent = bill?.type === 'rent';
   const credits = bill ? creditsFor(bill, streak) : 0;
   const mult = streakMultiplier(streak);
@@ -277,7 +279,7 @@ export default function PayModal({
               </button>
               {sourceOpen && (
                 <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-md">
-                  {SOURCES.map((s) => (
+                  {sources.map((s) => (
                     <button
                       key={s.id}
                       type="button"

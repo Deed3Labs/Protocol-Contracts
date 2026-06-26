@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, Landmark, Loader2, ShieldCheck, Sparkles, Wallet, Zap, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
+import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { cn } from '@/lib/utils';
 
 /*
@@ -39,16 +40,6 @@ const PROVIDERS: Provider[] = [
   { id: 'moonpay', name: 'MoonPay', feeRate: 0.02, fixed: 0 },
 ];
 
-// Linked bank accounts / payout destinations (Plaid-linked in production).
-interface Bank {
-  id: string;
-  label: string;
-}
-const BANKS: Bank[] = [
-  { id: 'b1', label: 'Chase ••4821' },
-  { id: 'b2', label: 'Ally ••7193' },
-];
-
 const QUICK = [50, 100, 250, 500];
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -71,6 +62,8 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const [bankOpen, setBankOpen] = useState(false);
   const [done, setDone] = useState(false);
   const { wallets, primaryId, openManager } = useLinkedWallets();
+  const { accounts, openManager: openAccounts } = useExternalAccounts();
+  const banks = accounts.map((a) => ({ id: a.id, label: `${a.name} ••${a.mask}` }));
 
   useEffect(() => {
     if (!open) return;
@@ -98,7 +91,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const best = quotes[0];
   const selected = (providerId ? quotes.find((q) => q.p.id === providerId) : null) ?? best;
   const wallet = wallets.find((w) => w.id === walletId) ?? wallets[0] ?? { id: '', label: 'No wallet linked', address: '' };
-  const bank = BANKS.find((b) => b.id === bankId) ?? BANKS[0];
+  const bank = banks.find((b) => b.id === bankId) ?? banks[0] ?? { id: '', label: 'No bank linked' };
   const amountValid = amount >= 10 && amount <= 10000;
 
   return (
@@ -257,7 +250,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
                 </button>
                 {bankOpen && (
                   <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-md">
-                    {BANKS.map((b) => (
+                    {banks.map((b) => (
                       <button
                         key={b.id}
                         type="button"
@@ -271,6 +264,16 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
                         {b.id === bankId && <Check className="h-4 w-4 shrink-0 text-foreground" />}
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBankOpen(false);
+                        openAccounts();
+                      }}
+                      className="flex w-full items-center gap-1.5 border-t border-border px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    >
+                      <Landmark className="h-3.5 w-3.5" /> Manage accounts
+                    </button>
                   </div>
                 )}
               </div>

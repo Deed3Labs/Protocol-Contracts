@@ -63,7 +63,7 @@ export default function SpendHeatmap({
 
       <div className="mb-4 grid grid-cols-7 gap-1">
         {allDays.map((day, idx) => {
-          if (day === null) return <div key={`p${idx}`} className="aspect-[9/10]" aria-hidden />;
+          if (day === null) return <div key={`p${idx}`} className="min-h-14" aria-hidden />;
           const amount = spendingByDay[day] ?? 0;
           const isPast = day <= currentDay;
           const isToday = day === currentDay;
@@ -73,7 +73,7 @@ export default function SpendHeatmap({
             <div
               key={day}
               className={cn(
-                'relative flex aspect-[9/10] min-w-0 flex-col items-start justify-between rounded-[6px] border p-1.5',
+                'relative flex min-h-14 min-w-0 flex-col items-start justify-between rounded-[6px] border p-1.5',
                 isPast ? 'border-border' : 'border-border/50',
                 isToday && 'ring-1 ring-foreground/40',
               )}

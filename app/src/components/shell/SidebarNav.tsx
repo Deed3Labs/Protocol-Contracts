@@ -1,4 +1,4 @@
-import type { ComponentType, SVGProps } from 'react';
+import { Fragment, type ComponentType, type SVGProps } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Wallet, Send, Receipt, Settings, Home, X, CreditCard, Umbrella, type LucideIcon } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
@@ -82,39 +82,63 @@ export default function SidebarNav({
         )}
       </div>
 
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
-        {groups.map((g) => (
-          <div key={g.title}>
-            {collapsed ? (
-              <div className="mx-2 mb-2 h-px bg-border" />
-            ) : (
-              <h3 className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {g.title}
-              </h3>
-            )}
-            <div className="space-y-0.5">
-              {g.items.map(({ to, label, icon: Icon, end }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={end}
-                  title={collapsed ? label : undefined}
-                  onClick={onNavigate}
-                  className={({ isActive }) =>
-                    cn(
-                      'flex items-center rounded-xl py-2.5 text-sm font-medium transition-colors',
-                      collapsed ? 'justify-center px-0' : 'gap-3 px-3',
-                      isActive ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground',
-                    )
-                  }
-                >
-                  <Icon className="h-[18px] w-[18px] shrink-0" />
-                  {!collapsed && label}
-                </NavLink>
-              ))}
-            </div>
+      <nav className="flex-1 overflow-y-auto px-3 py-5">
+        {collapsed ? (
+          /* icon rail — flat list with dividers between groups, evenly spaced */
+          <div className="flex flex-col gap-1.5">
+            {groups.map((g, gi) => (
+              <Fragment key={g.title}>
+                {gi > 0 && <div className="mx-auto h-px w-7 bg-border" />}
+                {g.items.map(({ to, label, icon: Icon, end }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={end}
+                    title={label}
+                    onClick={onNavigate}
+                    className={({ isActive }) =>
+                      cn(
+                        'flex items-center justify-center rounded-xl py-2.5 transition-colors',
+                        isActive ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground',
+                      )
+                    }
+                  >
+                    <Icon className="h-[18px] w-[18px] shrink-0" />
+                  </NavLink>
+                ))}
+              </Fragment>
+            ))}
           </div>
-        ))}
+        ) : (
+          <div className="space-y-6">
+            {groups.map((g) => (
+              <div key={g.title}>
+                <h3 className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {g.title}
+                </h3>
+                <div className="space-y-0.5">
+                  {g.items.map(({ to, label, icon: Icon, end }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      end={end}
+                      onClick={onNavigate}
+                      className={({ isActive }) =>
+                        cn(
+                          'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                          isActive ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground',
+                        )
+                      }
+                    >
+                      <Icon className="h-[18px] w-[18px] shrink-0" />
+                      {label}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </nav>
 
       <div>
