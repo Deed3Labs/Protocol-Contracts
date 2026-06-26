@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Plus, Flame, ArrowRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import BudgetGoalModal, { GOAL_ICONS, type Budget, type Goal, type Editing } from './BudgetGoalModal';
+import BudgetGoalModal, { GOAL_ICONS, type Budget, type BudgetCategory, type Goal, type Editing } from './BudgetGoalModal';
 
 const STREAK_MONTHS = 3; // consecutive months under the overall budget (collected)
 
@@ -127,6 +127,8 @@ export default function BudgetGoals({ className }: { className?: string }) {
       const i = gs.findIndex((x) => x.id === g.id);
       return i >= 0 ? gs.map((x, j) => (j === i ? g : x)) : [...gs, g];
     });
+  const deleteGoal = (id: string) => setGoals((gs) => gs.filter((g) => g.id !== id));
+  const deleteBudget = (category: BudgetCategory) => setCats((cs) => cs.filter((c) => c.category !== category));
 
   const overP = pct(overall.spent, overall.limit);
   const overBudget = overall.spent > overall.limit;
@@ -135,28 +137,18 @@ export default function BudgetGoals({ className }: { className?: string }) {
 
   return (
     <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-muted-foreground">Budgets &amp; goals</h3>
-        <button
-          type="button"
-          onClick={() => open(null)}
-          className="flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-transform active:scale-95"
-        >
-          <Plus className="h-3.5 w-3.5" /> New
-        </button>
-      </div>
+      <h3 className="text-xs font-medium text-muted-foreground">Budgets &amp; goals</h3>
 
-      {/* overall budget — balance figure + bar */}
-      <button type="button" onClick={() => open({ type: 'budget', data: overall })} className="mt-4 block w-full text-left">
+      {/* overall budget — balance figure + streak pill on one row */}
+      <button type="button" onClick={() => open({ type: 'budget', data: overall })} className="mt-3 block w-full text-left">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-medium text-foreground">Monthly budget</span>
+          <div className="font-display text-3xl tracking-tight text-foreground tabular-nums">
+            {money(overall.spent)}
+            <span className="ml-1 align-baseline text-sm font-normal text-muted-foreground">/ {money(overall.limit)}</span>
+          </div>
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-positive/10 px-2 py-0.5 text-[10px] font-medium text-positive">
             <Flame className="h-3 w-3" /> {STREAK_MONTHS} mo under
           </span>
-        </div>
-        <div className="mt-1 font-display text-3xl tracking-tight text-foreground tabular-nums">
-          {money(overall.spent)}
-          <span className="ml-1 align-baseline text-sm font-normal text-muted-foreground">/ {money(overall.limit)}</span>
         </div>
         <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-secondary">
           <div className={cn('h-full rounded-full', overBudget ? 'bg-negative' : 'bg-foreground')} style={{ width: `${overP}%` }} />
@@ -221,15 +213,32 @@ export default function BudgetGoals({ className }: { className?: string }) {
         )}
       </div>
 
-      {/* combined summary */}
-      <div className="mt-auto flex items-center justify-between border-t border-border pt-3 text-[11px]">
-        <span className="text-muted-foreground">Saved across goals</span>
-        <span className="font-medium tabular-nums text-foreground">
-          {money(totalSaved)} <span className="text-muted-foreground">of {money(totalTarget)} · {pct(totalSaved, totalTarget)}%</span>
-        </span>
+      {/* combined summary + primary action */}
+      <div className="mt-auto">
+        <div className="flex items-center justify-between border-t border-border pt-3 text-[11px]">
+          <span className="text-muted-foreground">Saved across goals</span>
+          <span className="font-medium tabular-nums text-foreground">
+            {money(totalSaved)} <span className="text-muted-foreground">of {money(totalTarget)} · {pct(totalSaved, totalTarget)}%</span>
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => open(null)}
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary py-3 text-sm font-medium text-primary-foreground transition-transform active:scale-[0.99]"
+        >
+          <Plus className="h-4 w-4" /> New budget or goal
+        </button>
       </div>
 
-      <BudgetGoalModal open={modalOpen} onOpenChange={setModalOpen} editing={editing} onSaveBudget={saveBudget} onSaveGoal={saveGoal} />
+      <BudgetGoalModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        editing={editing}
+        onSaveBudget={saveBudget}
+        onSaveGoal={saveGoal}
+        onDeleteBudget={deleteBudget}
+        onDeleteGoal={deleteGoal}
+      />
 
       {/* expanded all-goals modal */}
       <Dialog open={allOpen} onOpenChange={setAllOpen}>

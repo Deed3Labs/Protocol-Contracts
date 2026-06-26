@@ -52,12 +52,16 @@ export default function BudgetGoalModal({
   editing,
   onSaveBudget,
   onSaveGoal,
+  onDeleteBudget,
+  onDeleteGoal,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   editing: Editing;
   onSaveBudget: (b: Budget) => void;
   onSaveGoal: (g: Goal) => void;
+  onDeleteBudget?: (category: BudgetCategory) => void;
+  onDeleteGoal?: (id: string) => void;
 }) {
   const [kind, setKind] = useState<'budget' | 'goal'>('goal');
   const [category, setCategory] = useState<BudgetCategory>('Overall');
@@ -110,6 +114,13 @@ export default function BudgetGoalModal({
         deadline,
       });
     }
+    onOpenChange(false);
+  };
+
+  const canDelete = isEdit && (editing?.type === 'goal' || (editing?.type === 'budget' && editing.data.category !== 'Overall'));
+  const handleDelete = () => {
+    if (editing?.type === 'goal') onDeleteGoal?.(editing.data.id);
+    else if (editing?.type === 'budget') onDeleteBudget?.(editing.data.category);
     onOpenChange(false);
   };
 
@@ -225,22 +236,35 @@ export default function BudgetGoalModal({
           )}
         </div>
 
-        <DialogFooter className="flex-row justify-end gap-2 sm:justify-end">
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!canSave}
-            onClick={save}
-            className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.98] disabled:opacity-40"
-          >
-            {isEdit ? 'Save' : 'Create'}
-          </button>
+        <DialogFooter className="flex-row items-center justify-between gap-2 sm:justify-between">
+          {canDelete ? (
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-negative transition-colors hover:bg-negative/10"
+            >
+              Delete
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!canSave}
+              onClick={save}
+              className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.98] disabled:opacity-40"
+            >
+              {isEdit ? 'Save' : 'Create'}
+            </button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
