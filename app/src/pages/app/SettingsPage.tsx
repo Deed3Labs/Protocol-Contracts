@@ -1,8 +1,9 @@
-import { Landmark, CreditCard, ShieldCheck, BellRing, CircleHelp, LogOut, Sun, Sunset, Moon, Wallet, type LucideIcon } from 'lucide-react';
+import { Landmark, CreditCard, ShieldCheck, BellRing, CircleHelp, LogOut, Sun, Sunset, Moon, Wallet, Users, type LucideIcon } from 'lucide-react';
 import SectionCard from '@/components/app-ui/SectionCard';
 import CardVisual from '@/components/app-ui/CardVisual';
 import { useTheme } from '@/context/ThemeContext';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
+import { useContacts } from '@/context/ContactsContext';
 import { cn } from '@/lib/utils';
 
 const THEMES: { id: 'light' | 'dusk' | 'dark'; icon: LucideIcon; label: string }[] = [
@@ -15,6 +16,7 @@ const THEMES: { id: 'light' | 'dusk' | 'dark'; icon: LucideIcon; label: string }
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { openManager, wallets } = useLinkedWallets();
+  const { openManager: openContacts, contacts } = useContacts();
   const active = THEMES.find((t) => t.id === theme) ?? THEMES[0];
   const ActiveIcon = active.icon;
 
@@ -70,6 +72,14 @@ export default function SettingsPage() {
           subtitle={`${wallets.length} connected`}
           chevron
           onClick={openManager}
+        />
+        <SectionCard
+          icon={Users}
+          tint="neutral"
+          title="Contacts"
+          subtitle={`${contacts.length} people`}
+          chevron
+          onClick={() => openContacts()}
         />
         <SectionCard icon={CreditCard} tint="neutral" title="Cards" subtitle="Manage your cards" chevron onClick={() => {}} />
         <SectionCard icon={ShieldCheck} tint="neutral" title="Security" subtitle="Passcode & biometrics" chevron onClick={() => {}} />

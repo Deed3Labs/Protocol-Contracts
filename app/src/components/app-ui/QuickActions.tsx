@@ -4,10 +4,10 @@ import { useMoneyActions } from '@/context/MoneyActionsContext';
 
 /** Dashboard quick-actions grid — no card wrapper; the tiles are the cards. */
 export default function QuickActions({ className }: { className?: string }) {
-  const { openAddMoney, openWithdraw } = useMoneyActions();
+  const { openAddMoney, openWithdraw, openSend } = useMoneyActions();
   const actions: { icon: LucideIcon; label: string; hint: string; onClick?: () => void }[] = [
     { icon: Plus, label: 'Add money', hint: 'Bank or card', onClick: openAddMoney },
-    { icon: SendHorizontal, label: 'Send', hint: 'To anyone' },
+    { icon: SendHorizontal, label: 'Send', hint: 'To anyone', onClick: openSend },
     { icon: FileText, label: 'Pay bill', hint: 'Rent & utilities' },
     { icon: ArrowDownToLine, label: 'Withdraw', hint: 'To linked bank', onClick: openWithdraw },
   ];

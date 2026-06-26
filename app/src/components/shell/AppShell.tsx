@@ -5,6 +5,7 @@ import TopBar from './TopBar';
 import SideMenu from './SideMenu';
 import TabBar from './TabBar';
 import { LinkedWalletsProvider } from '@/context/LinkedWalletsContext';
+import { ContactsProvider } from '@/context/ContactsContext';
 import { MoneyActionsProvider } from '@/context/MoneyActionsContext';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import XMTPMessaging from '@/components/XMTPMessaging';
@@ -31,6 +32,7 @@ export default function AppShell() {
 
   return (
     <LinkedWalletsProvider>
+      <ContactsProvider>
       <MoneyActionsProvider>
         <div className="min-h-screen bg-background">
         <Sidebar collapsed={collapsed} />
@@ -47,6 +49,7 @@ export default function AppShell() {
           <XmtpModalHost />
         </div>
       </MoneyActionsProvider>
+      </ContactsProvider>
     </LinkedWalletsProvider>
   );
 }
