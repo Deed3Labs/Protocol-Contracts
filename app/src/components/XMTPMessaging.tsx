@@ -615,7 +615,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       <span className="sm:hidden">New</span>
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="w-[calc(100vw-2rem)] max-w-lg mx-auto rounded-sm border-border">
+                  <DialogContent overlayClassName="z-[110]" className="z-[120] w-[calc(100vw-2rem)] max-w-lg mx-auto rounded-sm border-border">
                     <DialogHeader>
                       <DialogTitle>Create New Conversation</DialogTitle>
                     </DialogHeader>
