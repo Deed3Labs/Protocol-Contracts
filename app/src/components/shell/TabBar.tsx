@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { Plus } from 'lucide-react';
-import { useAddMoney } from '@/context/AddMoneyContext';
+import { useMoneyActions } from '@/context/MoneyActionsContext';
 import { cn } from '@/lib/utils';
 import { navItems, type NavItem } from './navItems';
 
@@ -39,7 +39,7 @@ function Tab({ to, label, icon: Icon, end }: NavItem) {
  * lifts the bar higher in installed/PWA standalone mode for easier thumb reach.
  */
 export default function TabBar() {
-  const { open: openAddMoney } = useAddMoney();
+  const { openAddMoney } = useMoneyActions();
   return (
     <div className="mobile-tabbar fixed inset-x-0 z-50 flex items-center justify-between px-4 lg:hidden">
       {/* Main nav — left */}

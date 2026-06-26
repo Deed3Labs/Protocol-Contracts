@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { PanelLeft, Menu, Search, Plus, Bell, ChevronRight } from 'lucide-react';
-import { useAddMoney } from '@/context/AddMoneyContext';
+import { useMoneyActions } from '@/context/MoneyActionsContext';
 import ClearPathLogo from '@/assets/ClearPath-Logo.png';
 
 const TITLES: Record<string, string> = {
@@ -23,7 +23,7 @@ export default function TopBar({
 }) {
   const { pathname } = useLocation();
   const title = TITLES[pathname] ?? 'Accounts';
-  const { open: openAddMoney } = useAddMoney();
+  const { openAddMoney } = useMoneyActions();
 
   return (
     <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md">

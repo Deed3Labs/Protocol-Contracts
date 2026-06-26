@@ -4,7 +4,8 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import SideMenu from './SideMenu';
 import TabBar from './TabBar';
-import { AddMoneyProvider } from '@/context/AddMoneyContext';
+import { LinkedWalletsProvider } from '@/context/LinkedWalletsContext';
+import { MoneyActionsProvider } from '@/context/MoneyActionsContext';
 import { cn } from '@/lib/utils';
 
 /**
@@ -21,8 +22,9 @@ export default function AppShell() {
   }, [collapsed]);
 
   return (
-    <AddMoneyProvider>
-      <div className="min-h-screen bg-background">
+    <LinkedWalletsProvider>
+      <MoneyActionsProvider>
+        <div className="min-h-screen bg-background">
         <Sidebar collapsed={collapsed} />
         <SideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
 
@@ -33,8 +35,9 @@ export default function AppShell() {
           </main>
         </div>
 
-        <TabBar />
-      </div>
-    </AddMoneyProvider>
+          <TabBar />
+        </div>
+      </MoneyActionsProvider>
+    </LinkedWalletsProvider>
   );
 }

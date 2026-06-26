@@ -1,31 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, ChevronDown, CreditCard, Landmark, Loader2, Smartphone, ShieldCheck, Sparkles, Wallet, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Landmark, Loader2, ShieldCheck, Sparkles, Wallet, Zap, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { cn } from '@/lib/utils';
 
 /*
- * "Add money" — a fiat → USDC top-up framed like a neobank / Cash App deposit. Crypto is
- * abstracted away: the user adds dollars and they land in their balance; "USDC on Base" is a
- * footnote and the provider is auto-picked (best rate) with an Advanced override.
+ * "Withdraw" — a USDC → fiat off-ramp framed like a neobank cash-out. Mirrors AddMoneyModal:
+ * the user moves dollars from a linked wallet to a bank/debit; crypto stays hidden.
  *
- * SEAMS for Onramper headless wiring (https://docs.onramper.com):
- *   METHODS  ← GET /supported + /payment-types (by country + USD→USDC)
- *   buildQuotes() ← GET /quotes/usd/usdc_base?amount=&paymentMethod=&walletAddress=
- *   confirm() ← POST checkout-intent { wallet, quote } → redirect to the returned URL,
- *               then reconcile via webhook. Destination = the selected linked wallet on Base.
+ * SEAMS (Onramper sell OR Bridge.xyz; build is provider-agnostic):
+ *   METHODS/BANKS ← payout rails (ACH/wire/instant-debit); BANKS would be Plaid-linked.
+ *   buildQuotes() ← off-ramp /quotes (USDC_base → usd) by amount + payout method.
+ *   confirm() ← create a payout/redemption (Bridge transfer or Onramper sell intent) that
+ *               debits the selected linked wallet's USDC on Base and pays out fiat; webhook.
  */
 
-interface PayMethod {
+interface PayoutMethod {
   id: string;
   name: string;
   icon: LucideIcon;
   speed: string;
+  instantFeeRate: number;
 }
-const METHODS: PayMethod[] = [
-  { id: 'card', name: 'Debit or credit card', icon: CreditCard, speed: 'Instant' },
-  { id: 'applepay', name: 'Apple Pay', icon: Smartphone, speed: 'Instant' },
-  { id: 'bank', name: 'Bank transfer', icon: Landmark, speed: '1–3 business days' },
+const METHODS: PayoutMethod[] = [
+  { id: 'bank', name: 'Bank account', icon: Landmark, speed: '1–3 business days', instantFeeRate: 0 },
+  { id: 'instant', name: 'Instant to debit card', icon: Zap, speed: 'Arrives in minutes', instantFeeRate: 0.015 },
 ];
 
 interface Provider {
@@ -34,32 +33,42 @@ interface Provider {
   feeRate: number;
   fixed: number;
 }
-// Mock aggregated providers; replace with the /quotes response array.
 const PROVIDERS: Provider[] = [
-  { id: 'stripe', name: 'Stripe', feeRate: 0.029, fixed: 0.3 },
-  { id: 'coinbase', name: 'Coinbase Pay', feeRate: 0.034, fixed: 0 },
-  { id: 'transak', name: 'Transak', feeRate: 0.039, fixed: 0 },
-  { id: 'moonpay', name: 'MoonPay', feeRate: 0.045, fixed: 0 },
+  { id: 'bridge', name: 'Bridge', feeRate: 0.005, fixed: 0 },
+  { id: 'coinbase', name: 'Coinbase Pay', feeRate: 0.01, fixed: 0 },
+  { id: 'moonpay', name: 'MoonPay', feeRate: 0.02, fixed: 0 },
+];
+
+// Linked bank accounts / payout destinations (Plaid-linked in production).
+interface Bank {
+  id: string;
+  label: string;
+}
+const BANKS: Bank[] = [
+  { id: 'b1', label: 'Chase ••4821' },
+  { id: 'b2', label: 'Ally ••7193' },
 ];
 
 const QUICK = [50, 100, 250, 500];
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function buildQuotes(amount: number) {
+function buildQuotes(amount: number, instantFeeRate: number) {
   return PROVIDERS.map((p) => {
-    const fee = amount > 0 ? amount * p.feeRate + p.fixed : 0;
+    const fee = amount > 0 ? amount * (p.feeRate + instantFeeRate) + p.fixed : 0;
     return { p, fee, payout: Math.max(0, amount - fee) };
   }).sort((a, b) => b.payout - a.payout);
 }
 
-export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export default function WithdrawModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const [step, setStep] = useState<'amount' | 'review' | 'status'>('amount');
   const [amountStr, setAmountStr] = useState('');
-  const [methodId, setMethodId] = useState('card');
+  const [methodId, setMethodId] = useState('bank');
   const [walletId, setWalletId] = useState('');
-  const [providerId, setProviderId] = useState<string | null>(null); // null = auto-best
+  const [bankId, setBankId] = useState('b1');
+  const [providerId, setProviderId] = useState<string | null>(null);
   const [advanced, setAdvanced] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
+  const [bankOpen, setBankOpen] = useState(false);
   const [done, setDone] = useState(false);
   const { wallets, primaryId, openManager } = useLinkedWallets();
 
@@ -67,12 +76,14 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     if (!open) return;
     setStep('amount');
     setAmountStr('');
-    setMethodId('card');
+    setMethodId('bank');
     setWalletId(primaryId);
+    setBankId('b1');
     setProviderId(null);
     setAdvanced(false);
     setWalletOpen(false);
-  }, [open]);
+    setBankOpen(false);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (step !== 'status') return;
@@ -82,11 +93,12 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   }, [step]);
 
   const amount = Number(amountStr) || 0;
-  const quotes = useMemo(() => buildQuotes(amount), [amount]);
+  const method = METHODS.find((m) => m.id === methodId) ?? METHODS[0];
+  const quotes = useMemo(() => buildQuotes(amount, method.instantFeeRate), [amount, method.instantFeeRate]);
   const best = quotes[0];
   const selected = (providerId ? quotes.find((q) => q.p.id === providerId) : null) ?? best;
-  const method = METHODS.find((m) => m.id === methodId) ?? METHODS[0];
   const wallet = wallets.find((w) => w.id === walletId) ?? wallets[0] ?? { id: '', label: 'No wallet linked', address: '' };
+  const bank = BANKS.find((b) => b.id === bankId) ?? BANKS[0];
   const amountValid = amount >= 10 && amount <= 10000;
 
   return (
@@ -94,7 +106,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[420px]">
         {step === 'amount' && (
           <div className="p-5">
-            <div className="mb-5 text-base font-semibold text-foreground">Add money</div>
+            <div className="mb-5 text-base font-semibold text-foreground">Withdraw</div>
 
             <label className="mb-2 block text-xs font-medium text-muted-foreground">Amount</label>
             <div className="relative">
@@ -124,7 +136,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
               ))}
             </div>
 
-            <label className="mb-2 mt-5 block text-xs font-medium text-muted-foreground">Pay with</label>
+            <label className="mb-2 mt-5 block text-xs font-medium text-muted-foreground">Withdraw to</label>
             <div className="space-y-2">
               {METHODS.map((m) => {
                 const Icon = m.icon;
@@ -144,7 +156,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium text-foreground">{m.name}</span>
-                      <span className="block text-xs text-muted-foreground">{m.speed}</span>
+                      <span className="block text-xs text-muted-foreground">{m.speed}{m.instantFeeRate > 0 ? ` · ${(m.instantFeeRate * 100).toFixed(1)}% fee` : ' · Free'}</span>
                     </span>
                     <span className={cn('h-4 w-4 shrink-0 rounded-full border-2', active ? 'border-foreground bg-foreground' : 'border-border')}>
                       {active && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
@@ -162,7 +174,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
             >
               Review
             </button>
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Add $10–$10,000'}</p>
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Withdraw $10–$10,000'}</p>
           </div>
         )}
 
@@ -176,12 +188,12 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
             </div>
 
             <div className="text-center">
-              <div className="text-xs text-muted-foreground">You're adding</div>
+              <div className="text-xs text-muted-foreground">You're withdrawing</div>
               <div className="mt-0.5 font-display text-4xl tracking-tight text-foreground tabular-nums">{fmt(amount)}</div>
             </div>
 
-            {/* deposit-to (linked wallets) + method */}
             <div className="mt-5 space-y-2">
+              {/* from — linked wallet */}
               <div className="relative">
                 <button
                   type="button"
@@ -189,7 +201,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                   className="flex w-full items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-secondary/40"
                 >
                   <span className="min-w-0">
-                    <span className="block text-[11px] text-muted-foreground">Add to</span>
+                    <span className="block text-[11px] text-muted-foreground">From</span>
                     <span className="block truncate text-sm font-medium text-foreground">{wallet.label}</span>
                   </span>
                   <span className="flex items-center gap-1.5">
@@ -198,7 +210,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                   </span>
                 </button>
                 {walletOpen && (
-                  <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-md">
+                  <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-md">
                     {wallets.map((w) => (
                       <button
                         key={w.id}
@@ -230,20 +242,40 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                 )}
               </div>
 
-              <button
-                type="button"
-                onClick={() => setStep('amount')}
-                className="flex w-full items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-secondary/40"
-              >
-                <span>
-                  <span className="block text-[11px] text-muted-foreground">Pay with</span>
-                  <span className="block text-sm font-medium text-foreground">{method.name}</span>
-                </span>
-                <span className="text-xs text-muted-foreground">Change</span>
-              </button>
+              {/* to — bank */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setBankOpen((o) => !o)}
+                  className="flex w-full items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-secondary/40"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[11px] text-muted-foreground">To</span>
+                    <span className="block truncate text-sm font-medium text-foreground">{bank.label}</span>
+                  </span>
+                  <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', bankOpen && 'rotate-180')} />
+                </button>
+                {bankOpen && (
+                  <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-md">
+                    {BANKS.map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => {
+                          setBankId(b.id);
+                          setBankOpen(false);
+                        }}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-secondary"
+                      >
+                        <span className="font-medium text-foreground">{b.label}</span>
+                        {b.id === bankId && <Check className="h-4 w-4 shrink-0 text-foreground" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* cost breakdown */}
             <div className="mt-4 space-y-1.5 rounded-xl bg-secondary/40 p-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Amount</span>
@@ -254,12 +286,11 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                 <span className="tabular-nums text-foreground">{fmt(selected.fee)}</span>
               </div>
               <div className="flex justify-between border-t border-border pt-1.5 font-medium">
-                <span className="text-foreground">Added to balance</span>
+                <span className="text-foreground">Lands in your bank</span>
                 <span className="tabular-nums text-foreground">{fmt(selected.payout)}</span>
               </div>
             </div>
 
-            {/* provider — auto best, advanced to change */}
             <div className="mt-3">
               <button
                 type="button"
@@ -306,10 +337,10 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
               onClick={() => setStep('status')}
               className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
             >
-              Add {fmt(amount)}
+              Withdraw {fmt(amount)}
             </button>
             <p className="mt-2 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
-              <ShieldCheck className="h-3 w-3" /> Held as USDC, a regulated digital dollar, on Base
+              <ShieldCheck className="h-3 w-3" /> Your USDC balance on Base is converted to dollars
             </p>
           </div>
         )}
@@ -319,17 +350,17 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
             {!done ? (
               <>
                 <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-                <div className="mt-4 text-base font-semibold text-foreground">Connecting to secure checkout…</div>
-                <div className="mt-1 text-sm text-muted-foreground">Finishing your payment with {selected.p.name}.</div>
+                <div className="mt-4 text-base font-semibold text-foreground">Sending your withdrawal…</div>
+                <div className="mt-1 text-sm text-muted-foreground">Processing with {selected.p.name}.</div>
               </>
             ) : (
               <>
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-positive/10">
                   <Check className="h-7 w-7 text-positive" strokeWidth={3} />
                 </div>
-                <div className="mt-4 text-base font-semibold text-foreground">You're all set</div>
+                <div className="mt-4 text-base font-semibold text-foreground">On its way</div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">{fmt(selected.payout)}</span> is on its way to {wallet.label}. We'll let you know when it lands.
+                  <span className="font-medium text-foreground">{fmt(selected.payout)}</span> is heading to {bank.label} · {method.speed.toLowerCase()}.
                 </div>
                 <button
                   type="button"
