@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import SideMenu from './SideMenu';
 import TabBar from './TabBar';
+import { AddMoneyProvider } from '@/context/AddMoneyContext';
 import { cn } from '@/lib/utils';
 
 /**
@@ -20,18 +21,20 @@ export default function AppShell() {
   }, [collapsed]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Sidebar collapsed={collapsed} />
-      <SideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
+    <AddMoneyProvider>
+      <div className="min-h-screen bg-background">
+        <Sidebar collapsed={collapsed} />
+        <SideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
 
-      <div className={cn('transition-[padding] duration-200', collapsed ? 'lg:pl-[76px]' : 'lg:pl-64')}>
-        <TopBar onToggleSidebar={() => setCollapsed((c) => !c)} onMenuOpen={() => setMenuOpen(true)} />
-        <main className="mx-auto w-full max-w-[1400px] px-5 pb-32 pt-6 lg:px-8 lg:pb-12">
-          <Outlet />
-        </main>
+        <div className={cn('transition-[padding] duration-200', collapsed ? 'lg:pl-[76px]' : 'lg:pl-64')}>
+          <TopBar onToggleSidebar={() => setCollapsed((c) => !c)} onMenuOpen={() => setMenuOpen(true)} />
+          <main className="mx-auto w-full max-w-[1400px] px-5 pb-32 pt-6 lg:px-8 lg:pb-12">
+            <Outlet />
+          </main>
+        </div>
+
+        <TabBar />
       </div>
-
-      <TabBar />
-    </div>
+    </AddMoneyProvider>
   );
 }

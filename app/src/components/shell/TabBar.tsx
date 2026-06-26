@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { Plus } from 'lucide-react';
+import { useAddMoney } from '@/context/AddMoneyContext';
 import { cn } from '@/lib/utils';
 import { navItems, type NavItem } from './navItems';
 
@@ -38,6 +39,7 @@ function Tab({ to, label, icon: Icon, end }: NavItem) {
  * lifts the bar higher in installed/PWA standalone mode for easier thumb reach.
  */
 export default function TabBar() {
+  const { open: openAddMoney } = useAddMoney();
   return (
     <div className="mobile-tabbar fixed inset-x-0 z-50 flex items-center justify-between px-4 lg:hidden">
       {/* Main nav — left */}
@@ -51,6 +53,7 @@ export default function TabBar() {
       <button
         type="button"
         aria-label="Add money"
+        onClick={openAddMoney}
         className="flex items-center justify-center rounded-full bg-primary p-4 text-primary-foreground shadow-[0_8px_30px_rgb(0_0_0/0.18)] transition-transform active:scale-95"
       >
         <Plus className="h-5 w-5 shrink-0" strokeWidth={2.5} />

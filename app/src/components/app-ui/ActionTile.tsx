@@ -11,17 +11,20 @@ export default function ActionTile({
   label,
   hint,
   primary,
+  onClick,
   className,
 }: {
   icon: LucideIcon;
   label: string;
   hint?: string;
   primary?: boolean;
+  onClick?: () => void;
   className?: string;
 }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       className={cn(
         'group relative flex min-h-[108px] flex-col justify-between gap-4 overflow-hidden rounded-lg border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99]',
         primary
