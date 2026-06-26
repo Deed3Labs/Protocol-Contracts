@@ -1,6 +1,8 @@
 import { useLocation } from 'react-router-dom';
-import { PanelLeft, Menu, Search, Plus, Bell, ChevronRight } from 'lucide-react';
+import { PanelLeft, Menu, Search, Plus, ChevronRight } from 'lucide-react';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
+import NotificationsMenu from '@/components/app-ui/NotificationsMenu';
+import AccountMenu from '@/components/app-ui/AccountMenu';
 import ClearPathLogo from '@/assets/ClearPath-Logo.png';
 
 const TITLES: Record<string, string> = {
@@ -74,17 +76,8 @@ export default function TopBar({
             <Plus className="h-4 w-4" /> Add money
           </button>
 
-          <button
-            type="button"
-            aria-label="Notifications"
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-secondary-foreground transition-colors hover:bg-muted"
-          >
-            <Bell className="h-[18px] w-[18px]" />
-          </button>
-
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-sm font-medium text-secondary-foreground">
-            SS
-          </div>
+          <NotificationsMenu />
+          <AccountMenu />
         </div>
       </div>
     </header>

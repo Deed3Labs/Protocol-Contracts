@@ -1,7 +1,8 @@
-import { Landmark, CreditCard, ShieldCheck, BellRing, CircleHelp, LogOut, Sun, Sunset, Moon, type LucideIcon } from 'lucide-react';
+import { Landmark, CreditCard, ShieldCheck, BellRing, CircleHelp, LogOut, Sun, Sunset, Moon, Wallet, type LucideIcon } from 'lucide-react';
 import SectionCard from '@/components/app-ui/SectionCard';
 import CardVisual from '@/components/app-ui/CardVisual';
 import { useTheme } from '@/context/ThemeContext';
+import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { cn } from '@/lib/utils';
 
 const THEMES: { id: 'light' | 'dusk' | 'dark'; icon: LucideIcon; label: string }[] = [
@@ -13,6 +14,7 @@ const THEMES: { id: 'light' | 'dusk' | 'dark'; icon: LucideIcon; label: string }
 /** Settings — denser card layout to match the dashboard. Theme toggle is live. */
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
+  const { openManager, wallets } = useLinkedWallets();
   const active = THEMES.find((t) => t.id === theme) ?? THEMES[0];
   const ActiveIcon = active.icon;
 
@@ -61,6 +63,14 @@ export default function SettingsPage() {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <SectionCard icon={Landmark} tint="neutral" title="Linked accounts" subtitle="2 banks via Plaid" chevron onClick={() => {}} />
+        <SectionCard
+          icon={Wallet}
+          tint="neutral"
+          title="Linked wallets"
+          subtitle={`${wallets.length} connected`}
+          chevron
+          onClick={openManager}
+        />
         <SectionCard icon={CreditCard} tint="neutral" title="Cards" subtitle="Manage your cards" chevron onClick={() => {}} />
         <SectionCard icon={ShieldCheck} tint="neutral" title="Security" subtitle="Passcode & biometrics" chevron onClick={() => {}} />
         <SectionCard icon={BellRing} tint="neutral" title="Notifications" subtitle="Alerts & reminders" chevron onClick={() => {}} />
