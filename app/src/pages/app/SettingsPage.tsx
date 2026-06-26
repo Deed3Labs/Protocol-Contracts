@@ -4,6 +4,7 @@ import CardVisual from '@/components/app-ui/CardVisual';
 import { useTheme } from '@/context/ThemeContext';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useContacts } from '@/context/ContactsContext';
+import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { cn } from '@/lib/utils';
 
 const THEMES: { id: 'light' | 'dusk' | 'dark'; icon: LucideIcon; label: string }[] = [
@@ -17,6 +18,7 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { openManager, wallets } = useLinkedWallets();
   const { openManager: openContacts, contacts } = useContacts();
+  const { openManager: openExternal, accounts: externalAccounts } = useExternalAccounts();
   const active = THEMES.find((t) => t.id === theme) ?? THEMES[0];
   const ActiveIcon = active.icon;
 
@@ -64,7 +66,14 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <SectionCard icon={Landmark} tint="neutral" title="Linked accounts" subtitle="2 banks via Plaid" chevron onClick={() => {}} />
+        <SectionCard
+          icon={Landmark}
+          tint="neutral"
+          title="External accounts"
+          subtitle={`${externalAccounts.length} ${externalAccounts.length === 1 ? 'bank' : 'banks'} via Plaid`}
+          chevron
+          onClick={openExternal}
+        />
         <SectionCard
           icon={Wallet}
           tint="neutral"
