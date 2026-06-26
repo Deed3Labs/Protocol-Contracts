@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft, Award, Calendar, Check, ChevronDown, CreditCard, Landmark, Loader2, Plus, Sparkles,
   Wallet, Zap,
