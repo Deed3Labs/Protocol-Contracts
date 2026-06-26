@@ -171,7 +171,7 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
 
       // Surface the singular identity + how many installations the inbox has accumulated.
       try {
-        const state = await xmtpClient.inboxState(true);
+        const state = await xmtpClient.preferences.inboxState(true);
         console.log(`XMTP: inbox ${xmtpClient.inboxId} — ${state.installations.length} installation(s).`);
       } catch {
         console.log('XMTP: inbox', xmtpClient.inboxId);
@@ -202,9 +202,9 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
   // current one — i.e. collapse the inbox back to a single active installation on demand.
   const revokeOtherInstallations = async () => {
     if (!client) throw new Error('XMTP client not connected.');
-    const before = (await client.inboxState(true)).installations.length;
+    const before = (await client.preferences.inboxState(true)).installations.length;
     await client.revokeAllOtherInstallations();
-    const after = (await client.inboxState(true)).installations.length;
+    const after = (await client.preferences.inboxState(true)).installations.length;
     console.log(`XMTP: Revoked other installations (${before} → ${after}).`);
   };
 
