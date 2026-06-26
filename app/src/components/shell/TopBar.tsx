@@ -1,6 +1,7 @@
 import { useLocation } from 'react-router-dom';
 import { PanelLeft, Menu, Search, Plus, ChevronRight } from 'lucide-react';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
+import { useMessages } from '@/context/MessagesContext';
 import NotificationsMenu from '@/components/app-ui/NotificationsMenu';
 import AccountMenu from '@/components/app-ui/AccountMenu';
 import ClearPathLogo from '@/assets/ClearPath-Logo.png';
@@ -26,6 +27,7 @@ export default function TopBar({
   const { pathname } = useLocation();
   const title = TITLES[pathname] ?? 'Accounts';
   const { openAddMoney } = useMoneyActions();
+  const { openMessages } = useMessages();
 
   return (
     <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md">
@@ -76,7 +78,7 @@ export default function TopBar({
             <Plus className="h-4 w-4" /> Add money
           </button>
 
-          <NotificationsMenu />
+          <NotificationsMenu onOpenConversation={openMessages} />
           <AccountMenu />
         </div>
       </div>

@@ -6,6 +6,7 @@ import SideMenu from './SideMenu';
 import TabBar from './TabBar';
 import { LinkedWalletsProvider } from '@/context/LinkedWalletsContext';
 import { MoneyActionsProvider } from '@/context/MoneyActionsContext';
+import { MessagesProvider } from '@/context/MessagesContext';
 import { cn } from '@/lib/utils';
 
 /**
@@ -24,6 +25,7 @@ export default function AppShell() {
   return (
     <LinkedWalletsProvider>
       <MoneyActionsProvider>
+        <MessagesProvider>
         <div className="min-h-screen bg-background">
         <Sidebar collapsed={collapsed} />
         <SideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
@@ -37,6 +39,7 @@ export default function AppShell() {
 
           <TabBar />
         </div>
+        </MessagesProvider>
       </MoneyActionsProvider>
     </LinkedWalletsProvider>
   );

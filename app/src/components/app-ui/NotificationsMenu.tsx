@@ -59,16 +59,20 @@ function SwipeRow({ onDelete, children }: { onDelete: () => void; children: Reac
 /**
  * Top-bar bell popover: tabbed Notifications + Messages (XMTP), swipe-to-delete rows.
  *
- * Messages reuse the existing XMTP chat modal (`components/XMTPMessaging.tsx`, opened via
- * `useGlobalModals().openXmtpModal(conversationId)`). That hook throws outside its provider
- * and the redesign shell isn't wrapped in GlobalModalsProvider yet, so opening a thread is
- * routed through the optional `onOpenConversation` prop (no-op until wired). SEAM: in the
- * real app pass `onOpenConversation={openXmtpModal}` once the shell is within the provider.
+ * Opening a thread / "Open inbox" calls `onOpenConversation(conversationId?)`, wired in
+ * TopBar to the redesign-native MessagesModal (useMessages().openMessages). That modal is
+ * mock-backed for now and ready to swap onto the existing XMTP logic (useXMTP). SEAM: to
+ * use the legacy modal instead, pass `useGlobalModals().openXmtpModal` here.
  */
 export default function NotificationsMenu({ onOpenConversation }: { onOpenConversation?: (conversationId?: string) => void }) {
+  const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<'notifications' | 'messages'>('notifications');
   const [notifs, setNotifs] = useState(NOTIFS0);
   const [threads, setThreads] = useState(THREADS0);
+  const openConversation = (id?: string) => {
+    setOpen(false);
+    onOpenConversation?.(id);
+  };
 
   const unreadN = notifs.filter((n) => n.unread).length;
   const unreadM = threads.filter((t) => t.unread).length;
@@ -87,7 +91,7 @@ export default function NotificationsMenu({ onOpenConversation }: { onOpenConver
   );
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -155,7 +159,7 @@ export default function NotificationsMenu({ onOpenConversation }: { onOpenConver
               <AnimatePresence initial={false}>
                 {threads.map((t) => (
                   <SwipeRow key={t.id} onDelete={() => setThreads((xs) => xs.filter((x) => x.id !== t.id))}>
-                    <button type="button" onClick={() => onOpenConversation?.(t.id)} className="flex w-full gap-3 border-b border-border px-4 py-3 text-left">
+                    <button type="button" onClick={() => openConversation(t.id)} className="flex w-full gap-3 border-b border-border px-4 py-3 text-left">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium text-secondary-foreground">
                         {t.avatar}
                       </span>
@@ -177,7 +181,7 @@ export default function NotificationsMenu({ onOpenConversation }: { onOpenConver
               <span className="inline-flex items-center gap-1">
                 <ShieldCheck className="h-3 w-3" /> End-to-end encrypted · XMTP
               </span>
-              <button type="button" onClick={() => onOpenConversation?.()} className="font-medium transition-colors hover:text-foreground">
+              <button type="button" onClick={() => openConversation()} className="font-medium transition-colors hover:text-foreground">
                 Open inbox
               </button>
             </div>
