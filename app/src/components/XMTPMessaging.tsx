@@ -96,14 +96,45 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Opening to message a specific person (e.g. from Contacts) → jump into the New DM flow prefilled.
+  // Opening to message a specific person (e.g. from Contacts): auto-create the DM and jump
+  // straight into the thread. Falls back to the prefilled New DM dialog if not connected or the
+  // address can't be reached. Guarded by a ref so it runs once per open/address (no churn).
+  const composedAddressRef = useRef<string | null>(null);
   useEffect(() => {
-    if (isOpen && initialComposeAddress) {
+    if (!isOpen) {
+      composedAddressRef.current = null;
+      return;
+    }
+    if (!initialComposeAddress || composedAddressRef.current === initialComposeAddress) return;
+    composedAddressRef.current = initialComposeAddress;
+
+    const prefillDialog = () => {
       setConversationType('dm');
       setNewDmAddress(initialComposeAddress);
       setShowNewConversationDialog(true);
+    };
+    if (!isConnected) {
+      prefillDialog();
+      return;
     }
-  }, [isOpen, initialComposeAddress]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const convo = await createConversation(initialComposeAddress);
+        if (cancelled) return;
+        await loadConversations();
+        setSelectedConversation(convo.id);
+        await loadMessages(convo.id);
+      } catch (err) {
+        if (cancelled) return;
+        console.warn('XMTP: auto-compose failed, opening New DM dialog instead:', err);
+        prefillDialog();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, initialComposeAddress, isConnected, createConversation, loadConversations, loadMessages]);
 
   // Manual sync handler
   const handleManualSync = useCallback(() => {

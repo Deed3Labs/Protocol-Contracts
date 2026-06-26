@@ -16,9 +16,11 @@ export interface TimelineBill {
 export default function BillTimeline({
   bills,
   className,
+  onPay,
 }: {
   bills: TimelineBill[];
   className?: string;
+  onPay?: (id: string) => void;
 }) {
   const total = bills.reduce((s, b) => s + b.amount, 0);
   let running = 0;
@@ -45,7 +47,16 @@ export default function BillTimeline({
                 <span className="h-3 w-3 shrink-0 rounded-lg border-2 border-card bg-foreground" />
                 {!last && <span className="my-1 w-px flex-1 bg-border" />}
               </div>
-              <div className={cn('flex min-w-0 flex-1 items-center gap-3', last ? '' : 'pb-4')}>
+              <button
+                type="button"
+                onClick={() => onPay?.(b.id)}
+                disabled={!onPay}
+                className={cn(
+                  'group flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left transition-colors',
+                  last ? '' : 'pb-4',
+                  onPay ? '-mx-2 px-2 hover:bg-secondary/50' : 'cursor-default',
+                )}
+              >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary text-secondary-foreground">
                   <Icon className="h-4 w-4" />
                 </span>
@@ -58,10 +69,11 @@ export default function BillTimeline({
                     ${b.amount.toLocaleString()}
                   </div>
                   <div className="text-[10px] tabular-nums text-muted-foreground">
-                    ${running.toLocaleString()} by then
+                    <span className={cn(onPay && 'group-hover:hidden')}>${running.toLocaleString()} by then</span>
+                    {onPay && <span className="hidden font-medium text-foreground group-hover:inline">Pay now →</span>}
                   </div>
                 </div>
-              </div>
+              </button>
             </div>
           );
         })}
