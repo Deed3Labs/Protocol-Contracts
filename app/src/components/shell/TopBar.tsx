@@ -9,6 +9,8 @@ import ClearPathLogo from '@/assets/ClearPath-Logo.png';
 const TITLES: Record<string, string> = {
   '/': 'Accounts',
   '/pay': 'Pay',
+  '/borrow': 'Borrow',
+  '/assurance': 'Assurance',
   '/transactions': 'Transactions',
   '/settings': 'Settings',
 };

@@ -45,6 +45,8 @@ import AccountsPage from "@/pages/app/AccountsPage";
 import PayPage from "@/pages/app/PayPage";
 import TransactionsPage from "@/pages/app/TransactionsPage";
 import SettingsPage from "@/pages/app/SettingsPage";
+import BorrowPage from "@/pages/app/BorrowPage";
+import AssurancePage from "@/pages/app/AssurancePage";
 
 const LegacyLayout = () => {
   return (
@@ -157,6 +159,8 @@ function App() {
                     <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
                       <Route path="/" element={<AccountsPage />} />
                       <Route path="/pay" element={<PayPage />} />
+                      <Route path="/borrow" element={<BorrowPage />} />
+                      <Route path="/assurance" element={<AssurancePage />} />
                       <Route path="/transactions" element={<TransactionsPage />} />
                       <Route path="/settings" element={<SettingsPage />} />
                     </Route>

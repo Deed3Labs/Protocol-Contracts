@@ -1,6 +1,6 @@
 import type { ComponentType, SVGProps } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Wallet, Send, Receipt, Settings, Home, X, type LucideIcon } from 'lucide-react';
+import { Wallet, Send, Receipt, Settings, Home, X, CreditCard, Umbrella, type LucideIcon } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { cn } from '@/lib/utils';
 import Wordmark from '@/components/app-ui/Wordmark';
@@ -25,6 +25,13 @@ const groups: NavGroup[] = [
     items: [
       { to: '/pay', label: 'Pay', icon: Send },
       { to: '/transactions', label: 'Transactions', icon: Receipt },
+    ],
+  },
+  {
+    title: 'Credit',
+    items: [
+      { to: '/borrow', label: 'Borrow', icon: CreditCard },
+      { to: '/assurance', label: 'Assurance', icon: Umbrella },
     ],
   },
   { title: 'Account', items: [{ to: '/settings', label: 'Settings', icon: Settings }] },
