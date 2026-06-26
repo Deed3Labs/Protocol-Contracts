@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { Plus, Flame } from 'lucide-react';
+import { Plus, Flame, ArrowRight } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import BudgetGoalModal, { GOAL_ICONS, type Budget, type Goal, type Editing } from './BudgetGoalModal';
 
@@ -15,6 +16,9 @@ const initialGoals: Goal[] = [
   { id: 'g1', name: 'Emergency fund', iconKey: 'shield', current: 4200, target: 10000, start: '2025-02-01', deadline: '2028-12-31' },
   { id: 'g2', name: 'Vacation', iconKey: 'plane', current: 1800, target: 3000, start: '2026-01-01', deadline: '2026-09-01' },
   { id: 'g3', name: 'New car', iconKey: 'car', current: 7400, target: 18000, start: '2024-06-01', deadline: '2029-06-01' },
+  { id: 'g4', name: 'Home down payment', iconKey: 'home', current: 12400, target: 40000, start: '2024-01-01', deadline: '2030-01-01' },
+  { id: 'g5', name: 'New laptop', iconKey: 'piggy', current: 640, target: 1800, start: '2026-04-01', deadline: '2026-12-01' },
+  { id: 'g6', name: 'Holiday gifts', iconKey: 'gift', current: 300, target: 1200, start: '2026-06-01', deadline: '2026-12-01' },
 ];
 
 const money = (n: number) => `$${Math.abs(Math.round(n)).toLocaleString()}`;
@@ -28,7 +32,10 @@ function pace(g: Goal) {
   const elapsed = end > start ? Math.min(1, Math.max(0, (now - start) / (end - start))) : 1;
   const onTrack = p >= Math.round(elapsed * 100) - 3;
   const deadlineLabel = new Date(g.deadline).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-  return { p, onTrack, deadlineLabel };
+  const monthsLeft = (end - now) / (1000 * 60 * 60 * 24 * 30.44);
+  const remaining = Math.max(0, g.target - g.current);
+  const perMonth = remaining <= 0 ? 'reached' : monthsLeft < 0.5 ? 'due now' : `${money(remaining / monthsLeft)}/mo`;
+  return { p, onTrack, deadlineLabel, perMonth };
 }
 
 /** Lightweight SVG progress ring (no chart lib). */
@@ -58,12 +65,41 @@ function Ring({ value, size, stroke, color, children }: { value: number; size: n
   );
 }
 
+function GoalRow({ g, onClick, detailed, className }: { g: Goal; onClick: () => void; detailed?: boolean; className?: string }) {
+  const { p, onTrack, deadlineLabel, perMonth } = pace(g);
+  const Icon = GOAL_ICONS[g.iconKey] ?? GOAL_ICONS.shield;
+  return (
+    <button type="button" onClick={onClick} className={cn('flex w-full items-center gap-3 text-left', className)}>
+      <Ring value={p} size={46} stroke={4} color={onTrack ? 'rgb(var(--positive))' : '#f59e0b'}>
+        <Icon className="h-4 w-4 text-foreground" />
+      </Ring>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{g.name}</span>
+          <span
+            className={cn(
+              'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+              onTrack ? 'bg-positive/10 text-positive' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+            )}
+          >
+            {onTrack ? 'On track' : 'Behind'}
+          </span>
+        </div>
+        <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+          {money(g.current)} of {money(g.target)} · {deadlineLabel}
+          {detailed && <span> · {perMonth}</span>}
+        </div>
+      </div>
+    </button>
+  );
+}
+
 /**
  * Budgets & goals — set an overall + per-category monthly budget and savings goals (target +
- * deadline). Moderate gamification with a mix of visuals: a radial gauge for the budget, an
- * under-budget streak, per-category over/under pills, and a progress ring per goal (icon in
- * the centre) with an on-track / behind pace badge. Any item opens the editor; "New" creates
- * one. State is local (scaffold) but mirrors the real data model.
+ * deadline). Moderate gamification with mixed visuals: a balance figure + bar for the budget
+ * (radials are reserved for goals), an under-budget streak, per-category over/under pills, and
+ * a progress ring per goal with an on-track / behind pace badge. Shows 3 goals on desktop /
+ * 5 on mobile; "View all" opens the full list with per-goal monthly pace. State is local.
  */
 export default function BudgetGoals({ className }: { className?: string }) {
   const [overall, setOverall] = useState(initialOverall);
@@ -71,8 +107,10 @@ export default function BudgetGoals({ className }: { className?: string }) {
   const [goals, setGoals] = useState(initialGoals);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Editing>(null);
+  const [allOpen, setAllOpen] = useState(false);
 
   const open = (e: Editing) => {
+    setAllOpen(false);
     setEditing(e);
     setModalOpen(true);
   };
@@ -108,29 +146,29 @@ export default function BudgetGoals({ className }: { className?: string }) {
         </button>
       </div>
 
-      {/* overall budget — radial gauge */}
-      <button type="button" onClick={() => open({ type: 'budget', data: overall })} className="mt-4 flex items-center gap-4 text-left">
-        <Ring value={overP} size={86} stroke={9} color={overBudget ? 'rgb(var(--negative))' : 'rgb(var(--foreground))'}>
-          <div className="text-center leading-none">
-            <div className="font-display text-lg tabular-nums text-foreground">{overP}%</div>
-            <div className="mt-0.5 text-[9px] text-muted-foreground">used</div>
-          </div>
-        </Ring>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-foreground">Monthly budget</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            {overBudget ? (
-              <span className="font-medium text-negative">{money(overall.spent - overall.limit)} over</span>
-            ) : (
-              <>
-                <span className="font-medium text-foreground">{money(overall.limit - overall.spent)}</span> left
-              </>
-            )}{' '}
-            of {money(overall.limit)}
-          </div>
-          <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-positive/10 px-2 py-0.5 text-[10px] font-medium text-positive">
-            <Flame className="h-3 w-3" /> {STREAK_MONTHS} mo under budget
+      {/* overall budget — balance figure + bar */}
+      <button type="button" onClick={() => open({ type: 'budget', data: overall })} className="mt-4 block w-full text-left">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium text-foreground">Monthly budget</span>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-positive/10 px-2 py-0.5 text-[10px] font-medium text-positive">
+            <Flame className="h-3 w-3" /> {STREAK_MONTHS} mo under
           </span>
+        </div>
+        <div className="mt-1 font-display text-3xl tracking-tight text-foreground tabular-nums">
+          {money(overall.spent)}
+          <span className="ml-1 align-baseline text-sm font-normal text-muted-foreground">/ {money(overall.limit)}</span>
+        </div>
+        <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-secondary">
+          <div className={cn('h-full rounded-full', overBudget ? 'bg-negative' : 'bg-foreground')} style={{ width: `${overP}%` }} />
+        </div>
+        <div className="mt-1.5 text-[11px] text-muted-foreground">
+          {overBudget ? (
+            <span className="font-medium text-negative">{money(overall.spent - overall.limit)} over budget</span>
+          ) : (
+            <>
+              <span className="font-medium text-foreground">{money(overall.limit - overall.spent)}</span> left this month
+            </>
+          )}
         </div>
       </button>
 
@@ -161,38 +199,26 @@ export default function BudgetGoals({ className }: { className?: string }) {
         </div>
       </div>
 
-      {/* savings goals — progress rings */}
-      <div className="mt-5">
+      {/* savings goals — rings (3 on desktop, 5 on mobile) */}
+      <div className="mt-5 mb-5">
         <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Savings goals</div>
         <div className="space-y-3.5">
-          {goals.map((g) => {
-            const { p, onTrack, deadlineLabel } = pace(g);
-            const Icon = GOAL_ICONS[g.iconKey] ?? GOAL_ICONS.shield;
-            return (
-              <button type="button" key={g.id} onClick={() => open({ type: 'goal', data: g })} className="flex w-full items-center gap-3 text-left">
-                <Ring value={p} size={46} stroke={4} color={onTrack ? 'rgb(var(--positive))' : '#f59e0b'}>
-                  <Icon className="h-4 w-4 text-foreground" />
-                </Ring>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{g.name}</span>
-                    <span
-                      className={cn(
-                        'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
-                        onTrack ? 'bg-positive/10 text-positive' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-                      )}
-                    >
-                      {onTrack ? 'On track' : 'Behind'}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
-                    {money(g.current)} of {money(g.target)} · {deadlineLabel}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+          {goals.map((g, i) => (
+            <GoalRow key={g.id} g={g} onClick={() => open({ type: 'goal', data: g })} className={cn(i >= 3 && 'lg:hidden', i >= 5 && 'hidden')} />
+          ))}
         </div>
+        {goals.length > 3 && (
+          <button
+            type="button"
+            onClick={() => setAllOpen(true)}
+            className={cn(
+              'mt-3 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
+              goals.length <= 5 && 'hidden lg:inline-flex',
+            )}
+          >
+            View all {goals.length} goals <ArrowRight className="h-3 w-3" />
+          </button>
+        )}
       </div>
 
       {/* combined summary */}
@@ -204,6 +230,28 @@ export default function BudgetGoals({ className }: { className?: string }) {
       </div>
 
       <BudgetGoalModal open={modalOpen} onOpenChange={setModalOpen} editing={editing} onSaveBudget={saveBudget} onSaveGoal={saveGoal} />
+
+      {/* expanded all-goals modal */}
+      <Dialog open={allOpen} onOpenChange={setAllOpen}>
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle>Savings goals</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-1 overflow-y-auto py-1">
+            {goals.map((g) => (
+              <div key={g.id} className="rounded-lg px-1 py-2 transition-colors hover:bg-secondary/50">
+                <GoalRow g={g} detailed onClick={() => open({ type: 'goal', data: g })} />
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between border-t border-border pt-3 text-xs">
+            <span className="text-muted-foreground">Saved across goals</span>
+            <span className="font-medium tabular-nums text-foreground">
+              {money(totalSaved)} of {money(totalTarget)} · {pct(totalSaved, totalTarget)}%
+            </span>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
