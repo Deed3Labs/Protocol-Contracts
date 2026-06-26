@@ -558,22 +558,22 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
       
       {/* Modal Content */}
       <div className="fixed inset-0 z-[101] flex items-center justify-center p-0 sm:p-4">
-        <div className="bg-white dark:bg-[#0e0e0e] rounded-none sm:rounded-sm shadow-xl w-full h-full sm:max-w-6xl sm:h-[95vh] sm:max-h-[95vh] flex flex-col">
+        <div className="bg-card rounded-none sm:rounded-sm shadow-xl w-full h-full sm:max-w-6xl sm:h-[95vh] sm:max-h-[95vh] flex flex-col">
         {/* Main Header */}
-        <div className="p-4 border-b border-black/10 dark:border-white/10">
+        <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <MessageCircle className="w-6 h-6 text-blue-600" />
+              <MessageCircle className="w-6 h-6 text-info" />
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <h2 className="font-display text-lg font-semibold text-foreground">
                   {ownerAddress ? 'XMTP Messaging' : 'XMTP Inbox'}
                 </h2>
                 {ownerAddress ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground">
                     {assetType} #{tokenId} • {formatAddress(ownerAddress)}
                   </p>
                 ) : (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground">
                     Your conversations and messages
                   </p>
                 )}
@@ -593,7 +593,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 Connecting...
               </Badge>
             ) : (
-              <Badge variant="secondary" className="bg-gray-100 border-gray-200 text-gray-800 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200">
+              <Badge variant="secondary" className="bg-secondary border-border text-secondary-foreground">
                 <AlertCircle className="w-3 h-3 mr-1" />
                 Not Connected
               </Badge>
@@ -602,33 +602,33 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
         </div>
 
         {/* Action Buttons Subheader */}
-        <div className="p-3 border-b border-black/10 dark:border-white/10">
+        <div className="p-3 border-b border-border">
           <div className="flex items-center justify-between mx-0.75">
             <div className="flex items-center space-x-2">
               {/* New Conversation Button */}
               {isConnected && (
                 <Dialog open={showNewConversationDialog} onOpenChange={setShowNewConversationDialog}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="px-3 dark:bg-[#141414]">
+                    <Button variant="outline" size="sm" className="px-3 bg-background">
                       <Plus className="w-4 h-4 mr-0" />
                       <span className="hidden sm:inline">New Conversation</span>
                       <span className="sm:hidden">New</span>
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="w-[calc(100vw-2rem)] max-w-lg mx-auto rounded-sm border-black/10 dark:border-white/10">
+                  <DialogContent className="w-[calc(100vw-2rem)] max-w-lg mx-auto rounded-sm border-border">
                     <DialogHeader>
                       <DialogTitle>Create New Conversation</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
                       {/* Tab Navigation */}
-                      <div className="flex border-b border-black/10 dark:border-white/10">
+                      <div className="flex border-b border-border">
                         <button
                           onClick={() => setConversationType('dm')}
                           className={cn(
                             "flex-1 py-2 px-4 text-sm font-medium border-b-2 transition-colors",
                             conversationType === 'dm'
-                              ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                              : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                              ? "border-info text-info"
+                              : "border-transparent text-muted-foreground hover:text-foreground"
                           )}
                         >
                           <div className="flex items-center justify-center space-x-2">
@@ -641,8 +641,8 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                           className={cn(
                             "flex-1 py-2 px-4 text-sm font-medium border-b-2 transition-colors",
                             conversationType === 'group'
-                              ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                              : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                              ? "border-info text-info"
+                              : "border-transparent text-muted-foreground hover:text-foreground"
                           )}
                         >
                           <div className="flex items-center justify-center space-x-2">
@@ -656,16 +656,16 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       {conversationType === 'dm' && (
                         <div className="space-y-4">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            <label className="block text-sm font-medium text-foreground mb-2">
                               Wallet Address
                             </label>
                             <Input
                               placeholder="0x..."
                               value={newDmAddress}
                               onChange={(e) => setNewDmAddress(e.target.value)}
-                              className="font-mono text-sm dark:bg-[#141414]"
+                              className="font-mono text-sm bg-background"
                             />
-                            <p className="text-xs text-gray-500 mt-1">
+                            <p className="text-xs text-muted-foreground mt-1">
                               Enter the Ethereum address of the person you want to message
                             </p>
                           </div>
@@ -677,14 +677,14 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                 setNewDmAddress('');
                                 setConversationType('dm');
                               }}
-                              className="border-black/10 dark:border-white/10 dark:bg-[#141414]"
+                              className="border-border bg-background"
                             >
                               Cancel
                             </Button>
                             <Button
                               onClick={handleCreateNewDm}
                               disabled={!newDmAddress.trim() || isCreatingDm}
-                              className="bg-blue-600 hover:bg-blue-700 text-white border border-blue-500 dark:border-blue-500"
+                              className="bg-primary hover:opacity-90 text-primary-foreground border border-primary"
                             >
                               {isCreatingDm ? (
                                 <>
@@ -706,18 +706,18 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       {conversationType === 'group' && (
                         <div className="space-y-4">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            <label className="block text-sm font-medium text-foreground mb-2">
                               Group Name
                             </label>
                             <Input
                               placeholder="Enter group name..."
                               value={groupName}
                               onChange={(e) => setGroupName(e.target.value)}
-                              className="text-sm dark:bg-[#141414]"
+                              className="text-sm bg-background"
                             />
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            <label className="block text-sm font-medium text-foreground mb-2">
                               Members
                             </label>
                             <div className="space-y-2">
@@ -727,14 +727,14 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                     placeholder="0x..."
                                     value={member}
                                     onChange={(e) => updateGroupMember(index, e.target.value)}
-                                    className="font-mono text-sm flex-1 dark:bg-[#141414]"
+                                    className="font-mono text-sm flex-1 bg-background"
                                   />
                                   {groupMembers.length > 1 && (
                                     <Button
                                       variant="outline"
                                       size="sm"
                                       onClick={() => removeGroupMember(index)}
-                                      className="px-2 dark:bg-[#141414] border-black/10 dark:border-white/10"
+                                      className="px-2 bg-background border-border"
                                     >
                                       <X className="w-3 h-3" />
                                     </Button>
@@ -745,13 +745,13 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                 variant="outline"
                                 size="sm"
                                 onClick={addGroupMember}
-                                className="w-full h-10 bg-black hover:opacity-90 active:opacity-80 text-white border border-black/10 dark:border-white/10 dark:bg-white dark:hover:opacity-90 dark:active:opacity-80 dark:text-black dark:hover:text-gray-500 transition-all"
+                                className="w-full h-10 bg-primary text-primary-foreground hover:opacity-90 active:opacity-80 border border-border transition-all"
                               >
                                 <Plus className="w-4 h-4 mr-2" />
                                 Add Member
                               </Button>
                             </div>
-                            <p className="text-xs text-gray-500 mt-1">
+                            <p className="text-xs text-muted-foreground mt-1">
                               Add Ethereum addresses of group members
                             </p>
                           </div>
@@ -764,14 +764,14 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                 setGroupMembers(['']);
                                 setConversationType('dm');
                               }}
-                              className="border-black/10 dark:border-white/10 dark:bg-[#141414]"
+                              className="border-border bg-background"
                             >
                               Cancel
                             </Button>
                             <Button
                               onClick={handleCreateGroup}
                               disabled={!groupName.trim() || isCreatingGroup}
-                              className="bg-blue-600 hover:bg-blue-700 text-white border border-blue-700 dark:border-blue-500"
+                              className="bg-primary hover:opacity-90 text-primary-foreground border border-primary"
                             >
                               {isCreatingGroup ? (
                                 <>
@@ -801,7 +801,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                   onClick={handleManualSync}
                   disabled={isLoading || isAutoSyncing}
                   title="Sync messages"
-                  className="px-3 dark:bg-[#141414] w-11 md:w-auto"
+                  className="px-3 bg-background w-11 md:w-auto"
                 >
                   <RefreshCw className={cn("w-4 h-4 md:mr-0", (isAutoSyncing || isLoading) && "animate-spin")} />
                   <span className="hidden md:inline">Sync</span>
@@ -814,7 +814,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={() => setShowHiddenConversations(!showHiddenConversations)}
-                  className="px-3 dark:bg-[#141414]"
+                  className="px-3 bg-background"
                   title={showHiddenConversations ? "Show active conversations" : "Show hidden conversations"}
                 >
                   {showHiddenConversations ? (
@@ -833,7 +833,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
             </div>
             
             {/* Close Button */}
-            <Button variant="outline" size="sm" onClick={onClose} className="px-3 dark:bg-[#141414]">
+            <Button variant="outline" size="sm" onClick={onClose} className="px-3 bg-background">
               <X className="w-4 h-4" />
             </Button>
           </div>
@@ -845,14 +845,14 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
             {!selectedConversation ? (
               <>
                 {/* Mobile Search */}
-                <div className="p-4 border-b border-black/10 dark:border-white/10">
+                <div className="p-4 border-b border-border">
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                     <Input
                       placeholder="Search conversations..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9.5 h-[44px] dark:bg-[#141414] placeholder:text-sm placeholder:text-black/50 dark:placeholder:text-white/50"
+                      className="pl-9.5 h-[44px] bg-background placeholder:text-sm placeholder:text-muted-foreground"
                     />
                   </div>
                 </div>
@@ -864,8 +864,8 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       <Card>
                         <CardContent className="p-4">
                           <div className="text-center">
-                            <MessageCircle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                            <MessageCircle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                            <p className="text-sm text-muted-foreground mb-3">
                               {isConnecting 
                                 ? "Connecting to XMTP..." 
                                 : isConnected 
@@ -877,14 +877,14 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                               <Button 
                                 onClick={handleConnect} 
                                 disabled={isConnecting}
-                                className="w-full dark:bg-[#141414]"
+                                className="w-full bg-background"
                               >
                                 <MessageCircle className="w-4 h-4 mr-2" />
                                 Connect XMTP
                               </Button>
                             )}
                             {isConnecting && (
-                              <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+                              <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
                                 <Loader2 className="w-4 h-4 animate-spin" />
                                 <span>Connecting...</span>
                               </div>
@@ -895,17 +895,17 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                     </div>
                   ) : (
                     <div>
-                      <div className="text-xs text-gray-500 px-2 py-2 mb-0 border-b border-black/10 dark:border-white/10 pb-2">
+                      <div className="text-xs text-muted-foreground px-2 py-2 mb-0 border-b border-border pb-2">
                         {filteredConversations.length} conversation{filteredConversations.length !== 1 ? 's' : ''}
                       </div>
                       {filteredConversations.map((conversation) => (
                         <div
                           key={conversation.id}
                           className={cn(
-                            "p-3 transition-colors border-b border-black/10 dark:border-white/10 last:border-b-0",
+                            "p-3 transition-colors border-b border-border last:border-b-0",
                             selectedConversation === conversation.id
-                              ? "bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500 dark:border-l-blue-400"
-                              : "hover:bg-gray-50 dark:hover:bg-gray-800"
+                              ? "bg-info/10 border-l-4 border-l-blue-500 dark:border-l-blue-400"
+                              : "hover:bg-secondary"
                           )}
                         >
                                                       <div className="flex items-center justify-between">
@@ -916,14 +916,14 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                   loadMessages(conversation.id);
                                 }}
                               >
-                                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0">
-                                  <User className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                <div className="w-10 h-10 bg-info/15 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <User className="w-5 h-5 text-info" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                  <p className="text-sm font-medium text-foreground truncate">
                                     {formatAddress(conversation.id)}
                                   </p>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  <p className="text-xs text-muted-foreground">
                                     Direct Message
                                   </p>
                                 </div>
@@ -939,7 +939,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                     hideConversation(conversation.id);
                                   }
                                 }}
-                                className="px-2 py-1 h-10 dark:bg-[#141414]"
+                                className="px-2 py-1 h-10 bg-background"
                                 title={showHiddenConversations ? "Unhide conversation" : "Hide conversation"}
                               >
                                 {showHiddenConversations ? (
@@ -952,8 +952,8 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                         </div>
                       ))}
                       {filteredConversations.length === 0 && (
-                        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-sm">
-                          <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
+                        <div className="p-4 bg-secondary rounded-sm">
+                          <p className="text-sm text-muted-foreground text-center">
                             {showHiddenConversations 
                               ? "No hidden conversations" 
                               : "No conversations yet"
@@ -968,16 +968,16 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
             ) : (
               <>
                 {/* Mobile Conversation Header */}
-                <div className="p-4 border-b border-black/10 dark:border-white/10">
+                <div className="p-4 border-b border-border">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-sm font-medium text-gray-900 dark:text-white">
+                      <h3 className="text-sm font-medium text-foreground">
                         {isGroupConversation(selectedConversation || '') 
                           ? (getGroupMetadata(selectedConversation || '')?.name || 'Group Chat')
                           : formatAddress(selectedConversation || '')
                         }
                       </h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                      <p className="text-xs text-muted-foreground">
                         {getConversationType(selectedConversation || '') === 'Real XMTP Group' || getConversationType(selectedConversation || '') === 'Optimistic Group'
                           ? `Group Chat • ${getConversationMembersCount(selectedConversation || '')} members`
                           : `Direct Message • ${getConversationMembersCount(selectedConversation || '')} members`
@@ -992,7 +992,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                           onClick={manualSync}
                           disabled={isLoading || isAutoSyncing}
                           title="Sync messages"
-                          className="px-3 dark:bg-[#141414]"
+                          className="px-3 bg-background"
                         >
                           <RefreshCw className={cn("w-4 h-4", (isAutoSyncing || isLoading) && "animate-spin")} />
                         </Button>
@@ -1001,7 +1001,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                         variant="outline"
                         size="sm"
                         onClick={() => setSelectedConversation(null)}
-                        className="px-3 dark:bg-[#141414]"
+                        className="px-3 bg-background"
                       >
                         <ChevronLeft className="w-4 h-4 mr-1" />
                         <span>Back</span>
@@ -1043,8 +1043,8 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                           className={cn(
                             "max-w-[85%] px-4 py-3 rounded-sm",
                             isFromCurrentUser
-                              ? "bg-blue-600 text-white" // Sent message styling
-                              : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white" // Received message styling
+                              ? "bg-primary text-primary-foreground" // Sent message styling
+                              : "bg-secondary text-foreground" // Received message styling
                           )}
                         >
                           {/* Message content */}
@@ -1072,25 +1072,25 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 </div>
 
                 {/* Mobile Message Input */}
-                <div className="p-4 border-t border-black/10 dark:border-white/10">
+                <div className="p-4 border-t border-border">
                   <div className="flex space-x-2">
                     <Textarea
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       onKeyPress={handleKeyPress}
                       placeholder="Type your message..."
-                      className="flex-1 min-h-[44px] max-h-[120px] resize-none text-sm leading-relaxed py-2 dark:bg-[#141414]"
+                      className="flex-1 min-h-[44px] max-h-[120px] resize-none text-sm leading-relaxed py-2 bg-background"
                       rows={1}
                     />
                     <Button 
                       onClick={handleSendMessage}
                       disabled={!newMessage.trim() || isLoading}
-                      className="flex-shrink-0 w-[44px] h-[44px] p-0 flex items-center justify-center bg-black dark:bg-white"
+                      className="flex-shrink-0 w-[44px] h-[44px] p-0 flex items-center justify-center bg-primary"
                     >
                       {isLoading ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        <Send className="w-4 h-4 text-white dark:text-gray-900" />
+                        <Send className="w-4 h-4 text-primary-foreground" />
                       )}
                     </Button>
                   </div>
@@ -1101,22 +1101,22 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
 
           {/* Desktop Sidebar - Conversations */}
           <div className={cn(
-            "border-r border-black/10 dark:border-white/10 flex flex-col hidden md:flex transition-all duration-300",
+            "border-r border-border flex flex-col hidden md:flex transition-all duration-300",
             isConversationListCollapsed ? "w-16" : "w-80"
           )}>
             {/* Header with collapse toggle */}
             <div className={cn(
-              "border-b border-black/10 dark:border-white/10 flex items-center transition-all duration-300",
+              "border-b border-border flex items-center transition-all duration-300",
               isConversationListCollapsed ? "p-0 justify-center h-[69px]" : "p-3 justify-between"
             )}>
               {!isConversationListCollapsed && (
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-black dark:text-white w-4 h-4" />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-foreground w-4 h-4" />
                   <Input
                     placeholder="Search conversations..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9.5 h-[44px] placeholder:text-sm placeholder:text-black/50 dark:placeholder:text-white/50"
+                    className="pl-9.5 h-[44px] placeholder:text-sm placeholder:text-muted-foreground"
                   />
                 </div>
               )}
@@ -1125,7 +1125,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 size="sm"
                 onClick={() => setIsConversationListCollapsed(!isConversationListCollapsed)}
                 className={cn(
-                  "transition-all duration-300 dark:bg-[#141414]",
+                  "transition-all duration-300 bg-background",
                   isConversationListCollapsed ? "mx-auto" : "ml-2"
                 )}
                 title={isConversationListCollapsed ? "Expand conversations" : "Collapse conversations"}
@@ -1144,8 +1144,8 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                   <Card>
                     <CardContent className="p-4">
                       <div className="text-center">
-                        <MessageCircle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                        <MessageCircle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground mb-3">
                           {isConnecting 
                             ? "Connecting to XMTP..." 
                             : isConnected 
@@ -1164,7 +1164,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                           </Button>
                         )}
                         {isConnecting && (
-                          <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+                          <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
                             <Loader2 className="w-4 h-4 animate-spin" />
                             <span>Connecting...</span>
                           </div>
@@ -1179,7 +1179,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                   isConversationListCollapsed ? "" : ""
                 )}>
                   {!isConversationListCollapsed && (
-                    <div className="text-xs text-gray-500 px-3 py-2 mb-0 border-b border-black/10 dark:border-white/10 pb-2">
+                    <div className="text-xs text-muted-foreground px-3 py-2 mb-0 border-b border-border pb-2">
                       {filteredConversations.length} {showHiddenConversations ? 'hidden' : ''} conversation{filteredConversations.length !== 1 ? 's' : ''}
                     </div>
                   )}
@@ -1190,10 +1190,10 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                                   "transition-colors group",
                           isConversationListCollapsed 
                             ? "p-3 flex justify-center h-16" 
-                            : "p-3 h-16 content-center border-b border-black/10 dark:border-white/10 last:border-b-0",
+                            : "p-3 h-16 content-center border-b border-border last:border-b-0",
                         selectedConversation === conversation.id
-                          ? "bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500 dark:border-l-blue-400"
-                          : "hover:bg-gray-50 dark:hover:bg-gray-800"
+                          ? "bg-info/10 border-l-4 border-l-blue-500 dark:border-l-blue-400"
+                          : "hover:bg-secondary"
                       )}
                     >
                                               <div className={cn(
@@ -1211,18 +1211,18 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                               loadMessages(conversation.id);
                             }}
                           >
-                            <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0">
-                              <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            <div className="w-8 h-8 bg-info/15 rounded-full flex items-center justify-center flex-shrink-0">
+                              <User className="w-4 h-4 text-info" />
                             </div>
                             {!isConversationListCollapsed && (
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                <p className="text-sm font-medium text-foreground truncate">
                                   {isGroupConversation(conversation.id) 
                                     ? (getGroupMetadata(conversation.id)?.name || 'Group Chat')
                                     : formatAddress(conversation.id)
                                   }
                                 </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                <p className="text-xs text-muted-foreground">
                                   {getConversationType(conversation.id) === 'Real XMTP Group' || getConversationType(conversation.id) === 'Optimistic Group'
                                     ? `Group Chat • ${getConversationMembersCount(conversation.id)} members`
                                     : `Direct Message • ${getConversationMembersCount(conversation.id)} members`
@@ -1243,7 +1243,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                   hideConversation(conversation.id);
                                 }
                               }}
-                              className="px-2 py-1 h-8 opacity-0 group-hover:opacity-100 transition-opacity dark:bg-[#141414]"
+                              className="px-2 py-1 h-8 opacity-0 group-hover:opacity-100 transition-opacity bg-background"
                               title={showHiddenConversations ? "Unhide conversation" : "Hide conversation"}
                             >
                               {showHiddenConversations ? (
@@ -1266,16 +1266,16 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
             {selectedConversation ? (
               <>
                 {/* Desktop Conversation Header */}
-                <div className="p-4 border-b border-black/10 dark:border-white/10">
+                <div className="p-4 border-b border-border">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-sm font-medium text-gray-900 dark:text-white">
+                      <h3 className="text-sm font-medium text-foreground">
                         {isGroupConversation(selectedConversation || '') 
                           ? (getGroupMetadata(selectedConversation || '')?.name || 'Group Chat')
                           : formatAddress(selectedConversation || '')
                         }
                       </h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                      <p className="text-xs text-muted-foreground">
                         {getConversationType(selectedConversation || '') === 'Real XMTP Group' || getConversationType(selectedConversation || '') === 'Optimistic Group'
                           ? `Group Chat • ${getConversationMembersCount(selectedConversation || '')} members`
                           : `Direct Message • ${getConversationMembersCount(selectedConversation || '')} members`
@@ -1290,7 +1290,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                           onClick={handleManualSync}
                           disabled={isLoading || isAutoSyncing}
                           title="Sync messages"
-                          className="px-3 dark:bg-[#141414]"
+                          className="px-3 bg-background"
                         >
                           <RefreshCw className={cn("w-4 h-4", (isAutoSyncing || isLoading) && "animate-spin")} />
                         </Button>
@@ -1332,8 +1332,8 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                           className={cn(
                             "max-w-[85%] sm:max-w-xs lg:max-w-md px-4 py-3 rounded-sm",
                             isFromCurrentUser
-                              ? "bg-blue-600 text-white" // Sent message styling
-                              : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white" // Received message styling
+                              ? "bg-primary text-primary-foreground" // Sent message styling
+                              : "bg-secondary text-foreground" // Received message styling
                           )}
                         >
                           {/* Message content */}
@@ -1361,25 +1361,25 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 </div>
 
                 {/* Message Input */}
-                <div className="p-4 border-t border-black/10 dark:border-white/10">
+                <div className="p-4 border-t border-border">
                   <div className="flex space-x-2">
                     <Textarea
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       onKeyPress={handleKeyPress}
                       placeholder="Type your message..."
-                      className="flex-1 min-h-[44px] max-h-[120px] resize-none text-sm leading-relaxed py-2 dark:bg-[#141414]"
+                      className="flex-1 min-h-[44px] max-h-[120px] resize-none text-sm leading-relaxed py-2 bg-background"
                       rows={1}
                     />
                     <Button 
                       onClick={handleSendMessage}
                       disabled={!newMessage.trim() || isLoading}
-                      className="flex-shrink-0 w-[44px] h-[44px] p-0 flex items-center justify-center bg-black dark:bg-white"
+                      className="flex-shrink-0 w-[44px] h-[44px] p-0 flex items-center justify-center bg-primary"
                     >
                       {isLoading ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
-                        <Send className="w-4 h-4 text-white dark:text-gray-900" />
+                        <Send className="w-4 h-4 text-primary-foreground" />
                       )}
                     </Button>
                   </div>
@@ -1388,14 +1388,14 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
             ) : (
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center p-8">
-                  <MessageCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-xl font-medium text-gray-900 dark:text-white mb-2">
+                  <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="font-display text-xl font-medium text-foreground mb-2">
                     {isConnected 
                       ? (ownerAddress ? "Creating conversation..." : "Select a conversation") 
                       : "Connect to start messaging"
                     }
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-md">
+                  <p className="text-sm text-muted-foreground mb-6 max-w-md">
                     {isConnected 
                       ? (ownerAddress 
                           ? `Setting up conversation with ${formatAddress(ownerAddress)}...`
@@ -1405,13 +1405,13 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                     }
                   </p>
                   {!isConnected && !isConnecting && (
-                    <Button onClick={handleConnect} className="w-full max-w-xs dark:bg-[#141414]">
+                    <Button onClick={handleConnect} className="w-full max-w-xs bg-background">
                       <MessageCircle className="w-4 h-4 mr-2" />
                       Connect XMTP
                     </Button>
                   )}
                   {isConnected && ownerAddress && (
-                    <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+                    <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
                       <Loader2 className="w-4 h-4 animate-spin" />
                       <span>Setting up conversation...</span>
                     </div>
