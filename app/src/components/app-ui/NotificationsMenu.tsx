@@ -56,8 +56,16 @@ function SwipeRow({ onDelete, children }: { onDelete: () => void; children: Reac
   );
 }
 
-/** Top-bar bell popover: tabbed Notifications + Messages (XMTP), swipe-to-delete rows. */
-export default function NotificationsMenu() {
+/**
+ * Top-bar bell popover: tabbed Notifications + Messages (XMTP), swipe-to-delete rows.
+ *
+ * Messages reuse the existing XMTP chat modal (`components/XMTPMessaging.tsx`, opened via
+ * `useGlobalModals().openXmtpModal(conversationId)`). That hook throws outside its provider
+ * and the redesign shell isn't wrapped in GlobalModalsProvider yet, so opening a thread is
+ * routed through the optional `onOpenConversation` prop (no-op until wired). SEAM: in the
+ * real app pass `onOpenConversation={openXmtpModal}` once the shell is within the provider.
+ */
+export default function NotificationsMenu({ onOpenConversation }: { onOpenConversation?: (conversationId?: string) => void }) {
   const [tab, setTab] = useState<'notifications' | 'messages'>('notifications');
   const [notifs, setNotifs] = useState(NOTIFS0);
   const [threads, setThreads] = useState(THREADS0);
@@ -147,7 +155,7 @@ export default function NotificationsMenu() {
               <AnimatePresence initial={false}>
                 {threads.map((t) => (
                   <SwipeRow key={t.id} onDelete={() => setThreads((xs) => xs.filter((x) => x.id !== t.id))}>
-                    <button type="button" className="flex w-full gap-3 border-b border-border px-4 py-3 text-left">
+                    <button type="button" onClick={() => onOpenConversation?.(t.id)} className="flex w-full gap-3 border-b border-border px-4 py-3 text-left">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium text-secondary-foreground">
                         {t.avatar}
                       </span>
@@ -169,7 +177,9 @@ export default function NotificationsMenu() {
               <span className="inline-flex items-center gap-1">
                 <ShieldCheck className="h-3 w-3" /> End-to-end encrypted · XMTP
               </span>
-              <button type="button" className="font-medium transition-colors hover:text-foreground">Open inbox</button>
+              <button type="button" onClick={() => onOpenConversation?.()} className="font-medium transition-colors hover:text-foreground">
+                Open inbox
+              </button>
             </div>
           </>
         )}
