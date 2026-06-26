@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Check, ChevronDown, Loader2, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Loader2, PiggyBank, RefreshCw, ShieldCheck, Sparkles, Wallet } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useCredit, BASE_DRAW_FEE } from '@/context/CreditContext';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,12 @@ import { cn } from '@/lib/utils';
 
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Where the repayment is funded from (Cash USDC vs Savings CLRUSD). Mock balances.
+const ACCOUNTS = [
+  { id: 'cash', name: 'Cash Account', detail: 'USDC · $4,820.55', icon: Wallet },
+  { id: 'savings', name: 'Savings', detail: 'CLRUSD · $5,000.00', icon: PiggyBank },
+];
+
 export default function BorrowModal({
   open,
   onOpenChange,
@@ -30,6 +36,8 @@ export default function BorrowModal({
   const [amountStr, setAmountStr] = useState('');
   const [lineId, setLineId] = useState(activeLineId);
   const [lineOpen, setLineOpen] = useState(false);
+  const [accountId, setAccountId] = useState('cash');
+  const [accountOpen, setAccountOpen] = useState(false);
   const [done, setDone] = useState(false);
 
   const isBorrow = mode === 'borrow';
@@ -40,10 +48,13 @@ export default function BorrowModal({
     setAmountStr('');
     setLineId(activeLineId);
     setLineOpen(false);
+    setAccountId('cash');
+    setAccountOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mode]);
 
   const line = lines.find((l) => l.id === lineId) ?? lines[0];
+  const account = ACCOUNTS.find((a) => a.id === accountId) ?? ACCOUNTS[0];
   const lineRoom = line ? Math.max(0, line.limit - line.used) : 0;
   const max = isBorrow ? Math.min(lineRoom, available) : line?.used ?? 0;
 
@@ -73,14 +84,46 @@ export default function BorrowModal({
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[420px]">
         {step === 'amount' && line && (
           <div className="p-5">
-            <div className="mb-3 text-base font-semibold text-foreground">{isBorrow ? 'Borrow' : 'Repay'}</div>
+            <div className="mb-4 text-base font-semibold text-foreground">{isBorrow ? 'Borrow' : 'Repay'}</div>
+
+            {/* amount first */}
+            <label className="mb-2 block text-xs font-medium text-muted-foreground">Amount</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-display text-2xl text-muted-foreground">$</span>
+              <input
+                autoFocus
+                inputMode="decimal"
+                value={amountStr}
+                onChange={(e) => setAmountStr(e.target.value.replace(/[^0-9.]/g, ''))}
+                placeholder="0"
+                className="w-full rounded-xl border border-border bg-background py-3 pl-9 pr-4 font-display text-3xl tabular-nums text-foreground placeholder:text-muted-foreground/50 focus:border-foreground/30 focus:outline-none"
+              />
+            </div>
+            <div className="mt-2 flex gap-2">
+              {quick.map((q, i) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => setAmountStr(String(q))}
+                  className={cn(
+                    'flex-1 rounded-lg border py-1.5 text-sm font-medium transition-colors',
+                    amount === q ? 'border-foreground bg-foreground text-background' : 'border-border text-muted-foreground hover:bg-secondary',
+                  )}
+                >
+                  {!isBorrow && i === quick.length - 1 ? 'All' : `$${q.toLocaleString()}`}
+                </button>
+              ))}
+            </div>
 
             {/* line picker */}
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{isBorrow ? 'Borrow into' : 'Repay from'}</label>
+            <label className="mb-1.5 mt-5 block text-xs font-medium text-muted-foreground">{isBorrow ? 'Borrow from' : 'Pay down'}</label>
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setLineOpen((o) => !o)}
+                onClick={() => {
+                  setLineOpen((o) => !o);
+                  setAccountOpen(false);
+                }}
                 className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-secondary/40"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
@@ -119,33 +162,53 @@ export default function BorrowModal({
               )}
             </div>
 
-            <label className="mb-2 mt-5 block text-xs font-medium text-muted-foreground">Amount</label>
-            <div className="relative">
-              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-display text-2xl text-muted-foreground">$</span>
-              <input
-                autoFocus
-                inputMode="decimal"
-                value={amountStr}
-                onChange={(e) => setAmountStr(e.target.value.replace(/[^0-9.]/g, ''))}
-                placeholder="0"
-                className="w-full rounded-xl border border-border bg-background py-3 pl-9 pr-4 font-display text-3xl tabular-nums text-foreground placeholder:text-muted-foreground/50 focus:border-foreground/30 focus:outline-none"
-              />
-            </div>
-            <div className="mt-2 flex gap-2">
-              {quick.map((q, i) => (
-                <button
-                  key={q}
-                  type="button"
-                  onClick={() => setAmountStr(String(q))}
-                  className={cn(
-                    'flex-1 rounded-lg border py-1.5 text-sm font-medium transition-colors',
-                    amount === q ? 'border-foreground bg-foreground text-background' : 'border-border text-muted-foreground hover:bg-secondary',
+            {/* repay: which account funds it */}
+            {!isBorrow && (
+              <>
+                <label className="mb-1.5 mt-3 block text-xs font-medium text-muted-foreground">Pay with</label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountOpen((o) => !o);
+                      setLineOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-secondary/40"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
+                      <account.icon className="h-[18px] w-[18px]" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-foreground">{account.name}</span>
+                      <span className="block text-[11px] text-muted-foreground">{account.detail}</span>
+                    </span>
+                    <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', accountOpen && 'rotate-180')} />
+                  </button>
+                  {accountOpen && (
+                    <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-md">
+                      {ACCOUNTS.map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => {
+                            setAccountId(a.id);
+                            setAccountOpen(false);
+                          }}
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-secondary"
+                        >
+                          <a.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium text-foreground">{a.name}</span>
+                            <span className="block text-xs text-muted-foreground">{a.detail}</span>
+                          </span>
+                          {a.id === accountId && <Check className="h-4 w-4 shrink-0 text-foreground" />}
+                        </button>
+                      ))}
+                    </div>
                   )}
-                >
-                  {!isBorrow && i === quick.length - 1 ? 'All' : `$${q.toLocaleString()}`}
-                </button>
-              ))}
-            </div>
+                </div>
+              </>
+            )}
 
             <button
               type="button"
@@ -187,6 +250,7 @@ export default function BorrowModal({
                 <>
                   <Row label={`${line.name} owed`} value={fmt(line.used)} />
                   <Row label="Repaying" value={`– ${fmt(amount)}`} />
+                  <Row label="Paid with" value={account.name} />
                   <Row label="Remaining" value={fmt(newLineUsed)} strong border />
                 </>
               )}

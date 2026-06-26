@@ -79,7 +79,7 @@ export default function AssurancePage() {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4">
+          <div className="mt-4 grid grid-cols-3 gap-3 border-y border-border py-4">
             <div>
               <div className="text-lg font-semibold text-foreground">60 days</div>
               <div className="text-[11px] text-muted-foreground">Covers</div>
