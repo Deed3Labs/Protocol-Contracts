@@ -41,6 +41,7 @@ interface XMTPContextType {
   getCurrentInboxId: () => Promise<string | null>;
   syncOptimisticGroups: () => Promise<void>;
   cleanupExpiredInstallations: () => void;
+  revokeOtherInstallations: () => Promise<void>;
   isConnected: boolean;
 }
 
@@ -109,88 +110,84 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
   // No need for localStorage cleanup - XMTP network is the source of truth
   // History sync handles cross-device synchronization automatically
 
-  // Create XMTP client with proper installation validation and revocation detection
+  // --- Single-installation persistence ----------------------------------------------------
+  // XMTP v3 (MLS) keeps each device's *installation* in a local encrypted DB. Persisting a
+  // STABLE db path + encryption key (keyed to the wallet) lets the SAME browser reopen its one
+  // installation across sessions — no re-registration, no extra signature. The inbox id is
+  // derived from the wallet, so it stays singular across sessions and devices; each additional
+  // device/browser is its own installation under that one inbox (revocable below).
+  const XMTP_ENV = 'production' as const;
+  const dbKeyStorageKey = (address: string) => `xmtp-db-key-${address.toLowerCase()}`;
+  const dbPathFor = (address: string) => `xmtp-${XMTP_ENV}-${address.toLowerCase()}.db3`;
+
+  const getOrCreateDbEncryptionKey = (address: string): Uint8Array => {
+    const storageKey = dbKeyStorageKey(address);
+    const existing = localStorage.getItem(storageKey);
+    if (existing && /^[0-9a-f]{64}$/i.test(existing)) {
+      return Uint8Array.from(existing.match(/.{2}/g)!.map((h) => parseInt(h, 16)));
+    }
+    const key = crypto.getRandomValues(new Uint8Array(32));
+    localStorage.setItem(storageKey, Array.from(key).map((b) => b.toString(16).padStart(2, '0')).join(''));
+    return key;
+  };
+
+  // Create XMTP client, reusing this browser's existing installation when there is one.
   const connect = async (ethersSigner: ethers.Signer) => {
     try {
       console.log('XMTP: Starting connection...');
       setIsLoading(true);
       setError(null);
 
-      // Create XMTP signer from ethers signer
       const xmtpSigner = createXMTPSigner(ethersSigner);
-      
-      // Get the wallet address for installation tracking
       const walletAddress = await ethersSigner.getAddress();
+      const dbEncryptionKey = getOrCreateDbEncryptionKey(walletAddress);
+      const dbPath = dbPathFor(walletAddress);
       console.log('XMTP: Wallet address:', walletAddress);
-      
+
       let xmtpClient: Client;
-      
-      // Always create client with history sync to ensure network-first approach
-      // This forces XMTP to sync from network rather than using local IndexedDB data
-      console.log('XMTP: Creating client with network-first approach...');
-      
       try {
-        // Create client with history sync to pull from network, not local storage
-        xmtpClient = await Client.create(xmtpSigner, {
-          env: 'production'
-          // historySyncUrl is automatically set to https://message-history.production.ephemera.network
-          // when env is set to 'production' according to XMTP docs
-          // This ensures we get data from network, not local IndexedDB
-        });
-        
-        // Validate that the installation is working (not revoked)
-        const isValid = await validateInstallation(xmtpClient);
-        
-        if (isValid) {
-          console.log('XMTP: Successfully connected to network installation');
-        } else {
-          console.log('XMTP: Network installation is invalid/revoked, creating fresh installation...');
-          
-          try {
-            await xmtpClient.close();
-          } catch (closeError) {
-            console.log('XMTP: Error closing invalid client:', closeError);
-          }
-          
-          // Create fresh installation
-          xmtpClient = await Client.create(xmtpSigner, {
-            env: 'production'
-          });
-          console.log('XMTP: Created fresh installation');
-        }
-        
+        // Stable dbPath + persisted key: reopens the existing installation for this wallet on
+        // this browser if present (no new signature, no new installation), else registers one.
+        xmtpClient = await Client.create(xmtpSigner, { env: XMTP_ENV, dbEncryptionKey, dbPath });
       } catch (createError) {
-        console.log('XMTP: Failed to create client, creating new installation...');
-        
+        // Local DB is stale/corrupt (e.g. installation was revoked remotely). Reset the key and
+        // register once into a fresh DB so we don't keep reopening a dead installation.
+        console.warn('XMTP: Reopen failed — registering a fresh installation...', createError);
+        localStorage.removeItem(dbKeyStorageKey(walletAddress));
         xmtpClient = await Client.create(xmtpSigner, {
-          env: 'production'
+          env: XMTP_ENV,
+          dbEncryptionKey: getOrCreateDbEncryptionKey(walletAddress),
+          dbPath: `${dbPath}.${Date.now()}`,
         });
-        console.log('XMTP: Created new installation');
       }
-      
-      // No need to store installation references locally - XMTP network is the source of truth
-      // History sync will handle cross-device synchronization automatically
+
+      // Health check is non-fatal — a network blip shouldn't churn a new installation.
+      if (!(await validateInstallation(xmtpClient))) {
+        console.warn('XMTP: Installation health check failed (network blip or revoked).');
+      }
 
       setClient(xmtpClient);
       setIsConnected(true);
-      
-      // Load conversations after connecting
-      await loadConversations();
-      
-      // Conversation states are managed by XMTP network and history sync
-      // No need for local storage - XMTP handles cross-device synchronization
-      
-      // Trigger initial sync to get messages and conversations
-      // This addresses the FAQ issue: "A user logged into a new app installation and sees their conversations, but no messages"
+
+      // Surface the singular identity + how many installations the inbox has accumulated.
       try {
-        console.log('XMTP: Triggering initial sync for messages and conversations...');
+        const state = await xmtpClient.inboxState(true);
+        console.log(`XMTP: inbox ${xmtpClient.inboxId} — ${state.installations.length} installation(s).`);
+      } catch {
+        console.log('XMTP: inbox', xmtpClient.inboxId);
+      }
+
+      await loadConversations();
+
+      // Initial sync (FAQ: "logged into a new app installation and sees conversations but no messages").
+      try {
+        console.log('XMTP: Triggering initial sync...');
         await xmtpClient.conversations.syncAll(['allowed', 'unknown'] as any);
         console.log('XMTP: Initial sync completed successfully');
       } catch (syncError) {
         console.warn('XMTP: Initial sync failed, but connection is still functional:', syncError);
-        // Don't throw here - connection should still work even if sync fails
       }
-      
+
       console.log('XMTP: Connection complete');
     } catch (err) {
       console.error('Failed to connect to XMTP:', err);
@@ -199,6 +196,16 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Revoke every OTHER installation under this inbox (old browsers/devices), keeping the
+  // current one — i.e. collapse the inbox back to a single active installation on demand.
+  const revokeOtherInstallations = async () => {
+    if (!client) throw new Error('XMTP client not connected.');
+    const before = (await client.inboxState(true)).installations.length;
+    await client.revokeAllOtherInstallations();
+    const after = (await client.inboxState(true)).installations.length;
+    console.log(`XMTP: Revoked other installations (${before} → ${after}).`);
   };
 
 
@@ -988,6 +995,7 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     getCurrentInboxId,
     syncOptimisticGroups,
     cleanupExpiredInstallations,
+    revokeOtherInstallations,
     isConnected,
   };
 
