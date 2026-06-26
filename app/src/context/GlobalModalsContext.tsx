@@ -51,6 +51,8 @@ interface GlobalModalsContextType {
   setXmtpModalOpen: (open: boolean) => void;
   xmtpConversationId: string | null;
   setXmtpConversationId: (id: string | null) => void;
+  xmtpComposeAddress: string | null;
+  setXmtpComposeAddress: (address: string | null) => void;
   
   // ProfileMenu
   profileMenuOpen: boolean;
@@ -61,7 +63,7 @@ interface GlobalModalsContextType {
   openTradeModal: (type: 'buy' | 'sell' | 'swap', asset?: TradeModalAsset | null) => void;
   openSendFundsModal: () => void;
   openSearchModal: () => void;
-  openXmtpModal: (conversationId?: string) => void;
+  openXmtpModal: (conversationId?: string, composeAddress?: string) => void;
   toggleProfileMenu: () => void;
 }
 
@@ -106,6 +108,7 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
   // XMTPMessaging state
   const [xmtpModalOpen, setXmtpModalOpen] = useState(false);
   const [xmtpConversationId, setXmtpConversationId] = useState<string | null>(null);
+  const [xmtpComposeAddress, setXmtpComposeAddress] = useState<string | null>(null);
   
   // ProfileMenu state
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -200,8 +203,9 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
     setSendFundsModalOpen(true);
   };
   
-  const openXmtpModal = (conversationId?: string) => {
+  const openXmtpModal = (conversationId?: string, composeAddress?: string) => {
     setXmtpConversationId(conversationId || null);
+    setXmtpComposeAddress(composeAddress || null);
     setXmtpModalOpen(true);
   };
   
@@ -232,6 +236,8 @@ export const GlobalModalsProvider: React.FC<{ children: ReactNode }> = ({ childr
         setXmtpModalOpen,
         xmtpConversationId,
         setXmtpConversationId,
+        xmtpComposeAddress,
+        setXmtpComposeAddress,
         profileMenuOpen,
         setProfileMenuOpen,
         profileMenuUser,

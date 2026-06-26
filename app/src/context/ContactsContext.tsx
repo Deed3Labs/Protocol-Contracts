@@ -50,8 +50,8 @@ export function useContacts(): ContactsValue {
 }
 
 const SEED: Contact[] = [
-  { id: 'c1', name: 'Ahmad Sulaiman', email: 'ahmad@example.com', phone: '+1 415 555 0132', wallet: '0x9F2b…7c4A' },
-  { id: 'c2', name: 'Macellyn Annya', email: 'macellyn@example.com', wallet: '0x3aD1…b8E2' },
+  { id: 'c1', name: 'Ahmad Sulaiman', email: 'ahmad@example.com', phone: '+1 415 555 0132', wallet: '0x9F2b1C4a3E5d7F8a0B1c2D3e4F5a6B7c8D9e0F1a' },
+  { id: 'c2', name: 'Macellyn Annya', email: 'macellyn@example.com', wallet: '0x3aD17b8E2c5D4f6A1b9C0d8E7f6A5b4C3d2E1f0A' },
   { id: 'c3', name: 'Maria Garcia', email: 'maria.garcia@example.com', phone: '+1 408 555 0190' },
   { id: 'c4', name: 'Devon Lane', email: 'devon.lane@example.com' },
 ];

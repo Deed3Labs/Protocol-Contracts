@@ -23,9 +23,11 @@ import {
   Eye,
   EyeOff,
   Archive,
-  Users
+  Users,
+  Check
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useContacts, contactInitials } from '@/context/ContactsContext';
 
 interface XMTPMessagingProps {
   ownerAddress?: string;
@@ -34,6 +36,8 @@ interface XMTPMessagingProps {
   isOpen: boolean;
   onClose: () => void;
   initialConversationId?: string | null;
+  /** When opening to message a specific person (e.g. from Contacts), prefill the New DM flow. */
+  initialComposeAddress?: string | null;
 }
 
 const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
@@ -43,6 +47,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   isOpen,
   onClose,
   initialConversationId,
+  initialComposeAddress,
 }) => {
   const { 
     conversations, 
@@ -62,7 +67,9 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   } = useXMTP();
   
   const { handleConnect, isConnecting, isEmbeddedWallet, address } = useXMTPConnection();
-  
+  const { contacts } = useContacts();
+  const contactsWithWallet = contacts.filter((c) => c.wallet);
+
   const [selectedConversation, setSelectedConversation] = useState<string | null>(initialConversationId || null);
 
   // Update selected conversation when initialConversationId changes
@@ -88,6 +95,15 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   const [showHiddenConversations, setShowHiddenConversations] = useState(false);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Opening to message a specific person (e.g. from Contacts) → jump into the New DM flow prefilled.
+  useEffect(() => {
+    if (isOpen && initialComposeAddress) {
+      setConversationType('dm');
+      setNewDmAddress(initialComposeAddress);
+      setShowNewConversationDialog(true);
+    }
+  }, [isOpen, initialComposeAddress]);
 
   // Manual sync handler
   const handleManualSync = useCallback(() => {
@@ -655,6 +671,36 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       {/* DM Tab Content */}
                       {conversationType === 'dm' && (
                         <div className="space-y-4">
+                          {contactsWithWallet.length > 0 && (
+                            <div>
+                              <label className="block text-sm font-medium text-foreground mb-2">From your contacts</label>
+                              <div className="max-h-40 space-y-1 overflow-y-auto">
+                                {contactsWithWallet.map((c) => {
+                                  const active = newDmAddress.trim().toLowerCase() === c.wallet!.toLowerCase();
+                                  return (
+                                    <button
+                                      key={c.id}
+                                      type="button"
+                                      onClick={() => setNewDmAddress(c.wallet!)}
+                                      className={cn(
+                                        'flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors',
+                                        active ? 'border-foreground bg-secondary/50' : 'border-border hover:bg-secondary/40',
+                                      )}
+                                    >
+                                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-foreground">
+                                        {contactInitials(c.name)}
+                                      </span>
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate text-sm font-medium text-foreground">{c.name}</span>
+                                        <span className="block truncate text-xs text-muted-foreground">{c.email}</span>
+                                      </span>
+                                      {active && <Check className="h-4 w-4 shrink-0 text-foreground" />}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                           <div>
                             <label className="block text-sm font-medium text-foreground mb-2">
                               Wallet Address

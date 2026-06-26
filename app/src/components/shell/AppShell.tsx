@@ -13,8 +13,15 @@ import { cn } from '@/lib/utils';
 
 /** Mounts the shared XMTP modal once for the redesign, driven by GlobalModals state. */
 function XmtpModalHost() {
-  const { xmtpModalOpen, setXmtpModalOpen, xmtpConversationId } = useGlobalModals();
-  return <XMTPMessaging isOpen={xmtpModalOpen} onClose={() => setXmtpModalOpen(false)} initialConversationId={xmtpConversationId} />;
+  const { xmtpModalOpen, setXmtpModalOpen, xmtpConversationId, xmtpComposeAddress } = useGlobalModals();
+  return (
+    <XMTPMessaging
+      isOpen={xmtpModalOpen}
+      onClose={() => setXmtpModalOpen(false)}
+      initialConversationId={xmtpConversationId}
+      initialComposeAddress={xmtpComposeAddress}
+    />
+  );
 }
 
 /**

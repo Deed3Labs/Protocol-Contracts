@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Mail, Phone, Plus, Search, ShieldCheck, Trash2, Wallet, Zap } from 'lucide-react';
+import { ArrowLeft, Mail, MessageCircle, Phone, Plus, Search, ShieldCheck, Trash2, Wallet, Zap } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useContacts, contactInitials, type Contact } from '@/context/ContactsContext';
+import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { cn } from '@/lib/utils';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,6 +24,7 @@ export default function ContactsModal({
   startInAdd?: boolean;
 }) {
   const { contacts, addContact, updateContact, removeContact } = useContacts();
+  const { openXmtpModal } = useGlobalModals();
   const [view, setView] = useState<'list' | 'form'>('list');
   const [editId, setEditId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(empty);
@@ -115,6 +117,17 @@ export default function ContactsModal({
                       </span>
                     ) : (
                       <span className="shrink-0 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Link</span>
+                    )}
+                    {c.wallet && (
+                      <MessageCircle
+                        aria-label={`Message ${c.name}`}
+                        className="h-4 w-4 shrink-0 cursor-pointer text-muted-foreground transition-colors hover:text-info"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openXmtpModal(undefined, c.wallet);
+                          onOpenChange(false);
+                        }}
+                      />
                     )}
                     <Trash2
                       className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-negative group-hover:opacity-100"
