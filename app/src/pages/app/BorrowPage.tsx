@@ -127,12 +127,9 @@ export default function BorrowPage() {
       </div>
 
       {/* purpose lines */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Your lines</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">Organize borrowing into purpose lines — all part of your one credit line.</p>
-          </div>
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-xs font-medium text-muted-foreground">Your lines · all part of your one credit line</h3>
           <button
             type="button"
             onClick={() => setAddOpen((o) => !o)}
@@ -143,7 +140,7 @@ export default function BorrowPage() {
         </div>
 
         {addOpen && (
-          <div className="mt-3 flex flex-col gap-2 rounded-xl border border-border bg-secondary/30 p-3 sm:flex-row sm:items-end">
+          <div className="mb-3 flex flex-col gap-2 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-end">
             <label className="flex-1">
               <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Line name</span>
               <input
@@ -178,7 +175,7 @@ export default function BorrowPage() {
           </div>
         )}
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {lines.map((l) => (
             <PurposeLineCard
               key={l.id}
@@ -246,7 +243,7 @@ function PurposeLineCard({
   const Icon = line.icon;
   const pct = line.limit > 0 ? Math.min(100, (line.used / line.limit) * 100) : 0;
   return (
-    <div className="rounded-xl border border-border p-3">
+    <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center gap-2.5">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
           <Icon className="h-4 w-4" />

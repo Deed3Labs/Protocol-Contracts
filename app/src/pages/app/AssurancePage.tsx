@@ -79,10 +79,19 @@ export default function AssurancePage() {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <MiniStat label="Covers" value="60 days" />
-            <MiniStat label="Premium" value="$0" />
-            <MiniStat label="To pay back" value="$0" />
+          <div className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4">
+            <div>
+              <div className="text-lg font-semibold text-foreground">60 days</div>
+              <div className="text-[11px] text-muted-foreground">Covers</div>
+            </div>
+            <div>
+              <div className="text-lg font-semibold text-foreground">$0</div>
+              <div className="text-[11px] text-muted-foreground">Premium</div>
+            </div>
+            <div>
+              <div className="text-lg font-semibold text-foreground">$0</div>
+              <div className="text-[11px] text-muted-foreground">To pay back</div>
+            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -102,31 +111,31 @@ export default function AssurancePage() {
         {/* your unlock power */}
         <div className="rounded-xl border border-border bg-card p-5">
           <h3 className="text-sm font-semibold text-foreground">Your unlock power</h3>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-border bg-secondary/30 p-3">
+          <div className="mt-3 grid grid-cols-2 divide-x divide-border">
+            <div className="pr-4">
               <PiggyBank className="h-4 w-4 text-muted-foreground" />
-              <div className="mt-1.5 text-base font-semibold tabular-nums text-foreground">{fmt(SAVINGS)}</div>
+              <div className="mt-1.5 text-lg font-semibold tabular-nums text-foreground">{fmt(SAVINGS)}</div>
               <div className="text-[11px] text-muted-foreground">Saved</div>
             </div>
-            <div className="rounded-xl border border-border bg-secondary/30 p-3">
+            <div className="pl-4">
               <Award className="h-4 w-4 text-positive" />
-              <div className="mt-1.5 text-base font-semibold tabular-nums text-foreground">{EQUITY_CREDITS.toLocaleString()}</div>
+              <div className="mt-1.5 text-lg font-semibold tabular-nums text-foreground">{EQUITY_CREDITS.toLocaleString()}</div>
               <div className="text-[11px] text-muted-foreground">Equity credits</div>
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl border border-border bg-secondary/30 p-3">
+          <div className="mt-4 border-t border-border pt-4">
             <div className="flex items-center justify-between text-xs">
               <span className="font-medium text-foreground">Next unlock</span>
               <span className="text-muted-foreground">Home Repair</span>
             </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-background">
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
               <div className="h-full rounded-full bg-info" style={{ width: '67%' }} />
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">$2,500 more in savings to unlock — free.</p>
           </div>
 
-          <div className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <div className="mt-4 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <Sparkles className="h-3 w-3 text-positive" /> Grow savings &amp; credits to unlock more.
           </div>
         </div>
@@ -146,15 +155,6 @@ export default function AssurancePage() {
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-secondary/30 p-2.5 text-center">
-      <div className="text-base font-semibold text-foreground">{value}</div>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
     </div>
   );
 }
