@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Check, Loader2, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Loader2, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useCredit, BASE_DRAW_FEE } from '@/context/CreditContext';
 import { cn } from '@/lib/utils';
 
 /*
- * Borrow / Repay against the base Stable Credit line — crypto + mutual-credit plumbing abstracted
- * to "borrow USD against your limit." Borrow = overdraft (flat fee, no interest); repay = return
- * toward $0 to keep full borrowing power within the credit cycle.
+ * Borrow / Repay against the base Stable Credit line, scoped to a PURPOSE LINE (a named
+ * allocation of the one base line). Crypto + mutual-credit plumbing abstracted to "borrow USD
+ * against your limit." Borrow = overdraft (flat fee, no interest); repay = return toward $0 to
+ * keep full borrowing power within the credit cycle.
  *
- * SEAM: wire to the StableCredit ledger (borrow = createCreditLine/overdraft transfer to the
- * user's USDC balance; repay = transfer USDC/CLRUSD to burn the negative balance).
+ * SEAM: wire to the StableCredit ledger (borrow = overdraft transfer to the user's USDC balance;
+ * repay = transfer USDC/CLRUSD to burn the negative balance). Purpose lines are UI-only buckets.
  */
 
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -24,27 +25,35 @@ export default function BorrowModal({
   onOpenChange: (o: boolean) => void;
   mode: 'borrow' | 'repay';
 }) {
-  const { available, borrowed, baseLimit, cycleDaysLeft, borrow, repay } = useCredit();
+  const { lines, activeLineId, available, cycleDaysLeft, baseLimit, borrow, repay } = useCredit();
   const [step, setStep] = useState<'amount' | 'review' | 'status'>('amount');
   const [amountStr, setAmountStr] = useState('');
+  const [lineId, setLineId] = useState(activeLineId);
+  const [lineOpen, setLineOpen] = useState(false);
   const [done, setDone] = useState(false);
 
   const isBorrow = mode === 'borrow';
-  const max = isBorrow ? available : borrowed;
 
   useEffect(() => {
     if (!open) return;
     setStep('amount');
     setAmountStr('');
+    setLineId(activeLineId);
+    setLineOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mode]);
+
+  const line = lines.find((l) => l.id === lineId) ?? lines[0];
+  const lineRoom = line ? Math.max(0, line.limit - line.used) : 0;
+  const max = isBorrow ? Math.min(lineRoom, available) : line?.used ?? 0;
 
   useEffect(() => {
     if (step !== 'status') return;
     setDone(false);
     const t = setTimeout(() => {
       const amt = Number(amountStr) || 0;
-      if (isBorrow) borrow(amt);
-      else repay(amt);
+      if (isBorrow) borrow(amt, lineId);
+      else repay(amt, lineId);
       setDone(true);
     }, 1500);
     return () => clearTimeout(t);
@@ -53,23 +62,64 @@ export default function BorrowModal({
 
   const amount = Number(amountStr) || 0;
   const fee = isBorrow ? amount * BASE_DRAW_FEE : 0;
-  const valid = amount >= 1 && amount <= max;
+  const valid = amount >= 1 && amount <= max && !!line;
+  const newLineUsed = isBorrow ? (line?.used ?? 0) + amount : Math.max(0, (line?.used ?? 0) - amount);
   const quick = isBorrow
     ? [100, 250, 500, Math.floor(max)].filter((n, i, a) => n > 0 && a.indexOf(n) === i)
-    : [Math.round(borrowed / 2), borrowed].filter((n, i, a) => n > 0 && a.indexOf(n) === i);
-
-  const newBorrowed = isBorrow ? borrowed + amount + fee : Math.max(0, borrowed - amount);
+    : [Math.round((line?.used ?? 0) / 2), line?.used ?? 0].filter((n, i, a) => n > 0 && a.indexOf(n) === i);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[420px]">
-        {step === 'amount' && (
+        {step === 'amount' && line && (
           <div className="p-5">
-            <div className="mb-1 text-base font-semibold text-foreground">{isBorrow ? 'Borrow' : 'Repay'}</div>
-            <p className="mb-4 text-xs text-muted-foreground">
-              {isBorrow ? `${fmt(available)} available on your credit line` : `${fmt(borrowed)} currently owed`}
-            </p>
+            <div className="mb-3 text-base font-semibold text-foreground">{isBorrow ? 'Borrow' : 'Repay'}</div>
 
+            {/* line picker */}
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{isBorrow ? 'Borrow into' : 'Repay from'}</label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setLineOpen((o) => !o)}
+                className="flex w-full items-center gap-3 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-secondary/40"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
+                  <line.icon className="h-[18px] w-[18px]" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-foreground">{line.name}</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {isBorrow ? `${fmt(Math.min(lineRoom, available))} available` : `${fmt(line.used)} borrowed`}
+                  </span>
+                </span>
+                <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', lineOpen && 'rotate-180')} />
+              </button>
+              {lineOpen && (
+                <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-border bg-popover shadow-md">
+                  {lines.map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      onClick={() => {
+                        setLineId(l.id);
+                        setLineOpen(false);
+                        setAmountStr('');
+                      }}
+                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-secondary"
+                    >
+                      <l.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate font-medium text-foreground">{l.name}</span>
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                        {isBorrow ? fmt(Math.max(0, l.limit - l.used)) : fmt(l.used)}
+                      </span>
+                      {l.id === lineId && <Check className="h-4 w-4 shrink-0 text-foreground" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <label className="mb-2 mt-5 block text-xs font-medium text-muted-foreground">Amount</label>
             <div className="relative">
               <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-display text-2xl text-muted-foreground">$</span>
               <input
@@ -111,7 +161,7 @@ export default function BorrowModal({
           </div>
         )}
 
-        {step === 'review' && (
+        {step === 'review' && line && (
           <div className="p-5">
             <div className="mb-4 flex items-center gap-2">
               <button type="button" onClick={() => setStep('amount')} aria-label="Back" className="-ml-1 rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
@@ -123,6 +173,7 @@ export default function BorrowModal({
             <div className="text-center">
               <div className="text-xs text-muted-foreground">{isBorrow ? "You're borrowing" : "You're repaying"}</div>
               <div className="mt-0.5 font-display text-4xl tracking-tight text-foreground tabular-nums">{fmt(amount)}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{isBorrow ? 'into' : 'from'} {line.name}</div>
             </div>
 
             <div className="mt-5 space-y-1.5 rounded-xl bg-secondary/40 p-3 text-sm">
@@ -130,13 +181,13 @@ export default function BorrowModal({
                 <>
                   <Row label="Deposited to your balance" value={fmt(amount)} />
                   <Row label="Flat fee (1%)" value={fmt(fee)} />
-                  <Row label="New balance owed" value={fmt(newBorrowed)} strong border />
+                  <Row label={`${line.name} balance after`} value={fmt(newLineUsed + fee)} strong border />
                 </>
               ) : (
                 <>
-                  <Row label="Currently owed" value={fmt(borrowed)} />
+                  <Row label={`${line.name} owed`} value={fmt(line.used)} />
                   <Row label="Repaying" value={`– ${fmt(amount)}`} />
-                  <Row label="Remaining owed" value={fmt(newBorrowed)} strong border />
+                  <Row label="Remaining" value={fmt(newLineUsed)} strong border />
                 </>
               )}
             </div>
@@ -145,7 +196,7 @@ export default function BorrowModal({
               <RefreshCw className="h-4 w-4 shrink-0 text-info" />
               <p className="text-[11px] leading-relaxed text-muted-foreground">
                 {isBorrow
-                  ? `No fixed due date. Balance back to ${fmt(0)} within your cycle (${cycleDaysLeft} days left) to keep full borrowing power.`
+                  ? `No fixed due date. Balance back to $0 within your cycle (${cycleDaysLeft} days left) to keep full borrowing power.`
                   : 'Repaying within your cycle keeps your borrowing power at full strength.'}
               </p>
             </div>
@@ -163,7 +214,7 @@ export default function BorrowModal({
           </div>
         )}
 
-        {step === 'status' && (
+        {step === 'status' && line && (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
             {!done ? (
               <>
@@ -178,9 +229,9 @@ export default function BorrowModal({
                 <div className="mt-4 text-base font-semibold text-foreground">{isBorrow ? 'Money borrowed' : 'Repayment complete'}</div>
                 <div className="mt-1 text-sm text-muted-foreground">
                   {isBorrow ? (
-                    <><span className="font-medium text-foreground">{fmt(amount)}</span> is in your balance. You owe {fmt(newBorrowed)}.</>
+                    <><span className="font-medium text-foreground">{fmt(amount)}</span> is in your balance, from {line.name}.</>
                   ) : (
-                    <>You now owe <span className="font-medium text-foreground">{fmt(newBorrowed)}</span>{newBorrowed === 0 && ' — fully balanced 🎉'}.</>
+                    <>{line.name} now owes <span className="font-medium text-foreground">{fmt(newLineUsed)}</span>{newLineUsed === 0 && ' — balanced 🎉'}.</>
                   )}
                 </div>
                 {isBorrow && (

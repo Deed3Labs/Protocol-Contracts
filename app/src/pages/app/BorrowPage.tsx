@@ -1,6 +1,7 @@
-import { TrendingUp, RefreshCw, Wallet, ArrowUpRight, Minus, Plus, ShieldCheck, Sparkles, ArrowRight } from 'lucide-react';
+import { useState } from 'react';
+import { TrendingUp, RefreshCw, Wallet, ArrowUpRight, Minus, Plus, ShieldCheck, Sparkles, ArrowRight, Trash2, X } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
-import { useCredit, type CreditProduct } from '@/context/CreditContext';
+import { useCredit, type CreditProduct, type PurposeLine } from '@/context/CreditContext';
 import { cn } from '@/lib/utils';
 
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -8,9 +9,21 @@ const fmt2 = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigit
 
 /** Borrow — consolidated borrowing power, the base Stable Credit line, and Clear credit products. */
 export default function BorrowPage() {
-  const { baseLimit, borrowed, available, totalPower, cycleDaysLeft, cycleLength, powerPct, products, openBorrow, openRepay } = useCredit();
+  const { baseLimit, borrowed, available, totalPower, cycleDaysLeft, cycleLength, powerPct, products, lines, addPurposeLine, removePurposeLine, openBorrow, openRepay } = useCredit();
   const used = baseLimit > 0 ? Math.min(100, (borrowed / baseLimit) * 100) : 0;
   const cycleProgress = ((cycleLength - cycleDaysLeft) / cycleLength) * 100;
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newLimit, setNewLimit] = useState('');
+  const submitLine = () => {
+    const lim = Number(newLimit) || 0;
+    if (!newName.trim() || lim <= 0) return;
+    addPurposeLine(newName.trim(), lim);
+    setNewName('');
+    setNewLimit('');
+    setAddOpen(false);
+  };
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -57,14 +70,14 @@ export default function BorrowPage() {
           <div className="mt-4 flex gap-2">
             <button
               type="button"
-              onClick={openBorrow}
+              onClick={() => openBorrow()}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
             >
               <Plus className="h-4 w-4" /> Borrow
             </button>
             <button
               type="button"
-              onClick={openRepay}
+              onClick={() => openRepay()}
               disabled={borrowed <= 0}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-secondary disabled:opacity-40"
             >
@@ -113,6 +126,71 @@ export default function BorrowPage() {
         </div>
       </div>
 
+      {/* purpose lines */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Your lines</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">Organize borrowing into purpose lines — all part of your one credit line.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAddOpen((o) => !o)}
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary"
+          >
+            {addOpen ? <><X className="h-3.5 w-3.5" /> Cancel</> : <><Plus className="h-3.5 w-3.5" /> Add line</>}
+          </button>
+        </div>
+
+        {addOpen && (
+          <div className="mt-3 flex flex-col gap-2 rounded-xl border border-border bg-secondary/30 p-3 sm:flex-row sm:items-end">
+            <label className="flex-1">
+              <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Line name</span>
+              <input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g. Emergency"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
+              />
+            </label>
+            <label className="sm:w-32">
+              <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Limit</span>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                <input
+                  inputMode="decimal"
+                  value={newLimit}
+                  onChange={(e) => setNewLimit(e.target.value.replace(/[^0-9.]/g, ''))}
+                  placeholder="0"
+                  className="w-full rounded-lg border border-border bg-background py-2 pl-6 pr-2 text-sm tabular-nums text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
+                />
+              </div>
+            </label>
+            <button
+              type="button"
+              onClick={submitLine}
+              disabled={!newName.trim() || !(Number(newLimit) > 0)}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.98] disabled:opacity-40"
+            >
+              Add
+            </button>
+          </div>
+        )}
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {lines.map((l) => (
+            <PurposeLineCard
+              key={l.id}
+              line={l}
+              onBorrow={() => openBorrow(l.id)}
+              onRepay={() => openRepay(l.id)}
+              onRemove={l.id !== 'general' && l.used === 0 ? () => removePurposeLine(l.id) : undefined}
+            />
+          ))}
+        </div>
+      </div>
+
       {/* credit products */}
       <div>
         <h3 className="mb-3 text-xs font-medium text-muted-foreground">More ways to borrow</h3>
@@ -144,12 +222,67 @@ function ProductCard({ product, onBorrow }: { product: CreditProduct; onBorrow: 
         {soon ? (
           <span className="text-xs font-medium text-muted-foreground">Soon</span>
         ) : (
-          <button type="button" onClick={onBorrow} className="inline-flex items-center gap-1 text-xs font-semibold text-foreground transition-colors hover:text-info">
+          <button type="button" onClick={() => onBorrow()} className="inline-flex items-center gap-1 text-xs font-semibold text-foreground transition-colors hover:text-info">
             Borrow <ArrowRight className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
       {limit && !soon && <div className="mt-1 text-[11px] text-muted-foreground">{terms}</div>}
+    </div>
+  );
+}
+
+function PurposeLineCard({
+  line,
+  onBorrow,
+  onRepay,
+  onRemove,
+}: {
+  line: PurposeLine;
+  onBorrow: () => void;
+  onRepay: () => void;
+  onRemove?: () => void;
+}) {
+  const Icon = line.icon;
+  const pct = line.limit > 0 ? Math.min(100, (line.used / line.limit) * 100) : 0;
+  return (
+    <div className="rounded-xl border border-border p-3">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{line.name}</span>
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Remove ${line.name}`}
+            className="shrink-0 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-negative/10 hover:text-negative"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      <div className="mt-2 flex items-center justify-between text-[11px]">
+        <span className="text-muted-foreground tabular-nums">{fmt2(line.used)} of {fmt2(line.limit)}</span>
+        <span className="text-foreground tabular-nums">{fmt2(Math.max(0, line.limit - line.used))} left</span>
+      </div>
+      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+        <div className="h-full rounded-full bg-foreground" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="mt-2.5 flex gap-2">
+        <button type="button" onClick={onBorrow} className="flex-1 rounded-lg border border-border py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary">
+          Borrow
+        </button>
+        <button
+          type="button"
+          onClick={onRepay}
+          disabled={line.used <= 0}
+          className="flex-1 rounded-lg border border-border py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-40"
+        >
+          Repay
+        </button>
+      </div>
     </div>
   );
 }
