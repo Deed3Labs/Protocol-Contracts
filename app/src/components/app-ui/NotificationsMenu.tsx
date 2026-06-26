@@ -60,9 +60,8 @@ function SwipeRow({ onDelete, children }: { onDelete: () => void; children: Reac
  * Top-bar bell popover: tabbed Notifications + Messages (XMTP), swipe-to-delete rows.
  *
  * Opening a thread / "Open inbox" calls `onOpenConversation(conversationId?)`, wired in
- * TopBar to the redesign-native MessagesModal (useMessages().openMessages). That modal is
- * mock-backed for now and ready to swap onto the existing XMTP logic (useXMTP). SEAM: to
- * use the legacy modal instead, pass `useGlobalModals().openXmtpModal` here.
+ * TopBar to `useGlobalModals().openXmtpModal` — which opens the real XMTPMessaging modal
+ * mounted in AppShell.
  */
 export default function NotificationsMenu({ onOpenConversation }: { onOpenConversation?: (conversationId?: string) => void }) {
   const [open, setOpen] = useState(false);

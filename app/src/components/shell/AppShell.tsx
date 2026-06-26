@@ -6,8 +6,15 @@ import SideMenu from './SideMenu';
 import TabBar from './TabBar';
 import { LinkedWalletsProvider } from '@/context/LinkedWalletsContext';
 import { MoneyActionsProvider } from '@/context/MoneyActionsContext';
-import { MessagesProvider } from '@/context/MessagesContext';
+import { useGlobalModals } from '@/context/GlobalModalsContext';
+import XMTPMessaging from '@/components/XMTPMessaging';
 import { cn } from '@/lib/utils';
+
+/** Mounts the shared XMTP modal once for the redesign, driven by GlobalModals state. */
+function XmtpModalHost() {
+  const { xmtpModalOpen, setXmtpModalOpen, xmtpConversationId } = useGlobalModals();
+  return <XMTPMessaging isOpen={xmtpModalOpen} onClose={() => setXmtpModalOpen(false)} initialConversationId={xmtpConversationId} />;
+}
 
 /**
  * Dashboard shell: a fixed, collapsible left Sidebar (desktop) with the main
@@ -25,7 +32,6 @@ export default function AppShell() {
   return (
     <LinkedWalletsProvider>
       <MoneyActionsProvider>
-        <MessagesProvider>
         <div className="min-h-screen bg-background">
         <Sidebar collapsed={collapsed} />
         <SideMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
@@ -38,8 +44,8 @@ export default function AppShell() {
         </div>
 
           <TabBar />
+          <XmtpModalHost />
         </div>
-        </MessagesProvider>
       </MoneyActionsProvider>
     </LinkedWalletsProvider>
   );
