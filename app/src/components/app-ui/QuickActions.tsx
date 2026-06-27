@@ -1,16 +1,14 @@
-import { Plus, SendHorizontal, FileText, ArrowDownToLine, type LucideIcon } from 'lucide-react';
+import { Plus, SendHorizontal, ArrowLeftRight, ArrowDownToLine, type LucideIcon } from 'lucide-react';
 import ActionTile from '@/components/app-ui/ActionTile';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
-import { usePay } from '@/context/PayContext';
 
 /** Dashboard quick-actions grid — no card wrapper; the tiles are the cards. */
 export default function QuickActions({ className }: { className?: string }) {
-  const { openAddMoney, openWithdraw, openSend } = useMoneyActions();
-  const { openPay } = usePay();
+  const { openAddMoney, openWithdraw, openSend, openTransfer } = useMoneyActions();
   const actions: { icon: LucideIcon; label: string; hint: string; onClick?: () => void }[] = [
     { icon: Plus, label: 'Add money', hint: 'Bank or card', onClick: openAddMoney },
     { icon: SendHorizontal, label: 'Send', hint: 'To anyone', onClick: openSend },
-    { icon: FileText, label: 'Pay bill', hint: 'Rent & utilities', onClick: () => openPay() },
+    { icon: ArrowLeftRight, label: 'Transfer', hint: 'Between accounts', onClick: openTransfer },
     { icon: ArrowDownToLine, label: 'Withdraw', hint: 'To linked bank', onClick: openWithdraw },
   ];
   return (
