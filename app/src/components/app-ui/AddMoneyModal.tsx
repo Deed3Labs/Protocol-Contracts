@@ -119,8 +119,14 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const isBank = methodId === 'bank';
   const rail = RAILS.find((r) => r.id === railId) ?? RAILS[0];
   const source = banks.find((b) => b.id === sourceId) ?? banks[0];
+  // Bridge: wire is ACH-only for Chase & Bank of America.
+  const wireBlocked = !!source && /chase|bank of america|bofa/i.test(source.name);
   const fee = isBank ? rail.fee : selected.fee;
   const payout = Math.max(0, amount - fee);
+
+  useEffect(() => {
+    if (wireBlocked && railId === 'wire') setRailId('ach');
+  }, [wireBlocked, railId]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -327,20 +333,26 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                 {RAILS.map((r) => {
                   const RIcon = r.icon;
                   const active = railId === r.id;
+                  const disabled = r.id === 'wire' && wireBlocked;
                   return (
                     <button
                       key={r.id}
                       type="button"
+                      disabled={disabled}
                       onClick={() => setRailId(r.id)}
                       className={cn(
                         'flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors',
-                        active ? 'border-foreground bg-secondary/50' : 'border-border hover:bg-secondary/40',
+                        disabled
+                          ? 'cursor-not-allowed border-border opacity-50'
+                          : active
+                            ? 'border-foreground bg-secondary/50'
+                            : 'border-border hover:bg-secondary/40',
                       )}
                     >
                       <RIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-medium text-foreground">{r.name}</span>
-                        <span className="block text-[11px] text-muted-foreground">{r.speed}</span>
+                        <span className="block text-[11px] text-muted-foreground">{disabled ? `Not available for ${source?.name}` : r.speed}</span>
                       </span>
                       <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{r.fee === 0 ? 'Free' : fmt(r.fee)}</span>
                     </button>
