@@ -11,7 +11,9 @@ import { cn } from '@/lib/utils';
  * From account's scope, so internal↔external is impossible by design (that's Add money / Withdraw).
  * Crypto abstracted as USD.
  *
- * SEAM: internal = ESA mint/redeem (USDC↔CLRUSD) or ledger move; external = ACH / debit rail.
+ * SEAM: internal = ESA mint/redeem (USDC↔CLRUSD) or ledger move (on-chain, no KYC). External
+ * bank↔bank is a pure-fiat ACH move that Bridge does NOT handle (Bridge is fiat↔stablecoin) — it
+ * needs a SEPARATE ACH processor (e.g. Plaid Transfer / Dwolla / processor token); KYC-gated.
  */
 
 type Scope = 'internal' | 'external';
@@ -292,7 +294,8 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
             <button
               type="button"
               onClick={() => {
-                // internal Cash↔Savings is on-chain (no KYC); external bank↔bank is ACH (needs KYC).
+                // internal Cash↔Savings is on-chain (no KYC); external bank↔bank is a separate ACH
+                // rail (not Bridge) and needs KYC.
                 if (isExternal && !verified) openKyc(() => setStep('status'));
                 else setStep('status');
               }}

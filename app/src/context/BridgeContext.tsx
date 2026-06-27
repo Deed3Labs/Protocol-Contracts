@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useKyc } from '@/context/KycContext';
+import * as bridge from '@/lib/integrations/bridge';
 
 /*
  * Bridge customer + USD virtual account, modeled on Bridge's Customers API.
@@ -51,19 +52,29 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
   const [baseEndorsement, setBaseEndorsement] = useState<EndorsementStatus>('incomplete');
   const [virtualAccount, setVirtualAccount] = useState<VirtualAccount>(NONE);
 
+  // On KYC success: create the Bridge customer (passing the Persona inquiry), request the `base`
+  // endorsement, then create/fetch the virtual account. Live → backend; otherwise mock fallback.
   useEffect(() => {
     if (!verified || customerStatus !== 'not_started') return;
-    // SEAM: POST /customers (+ persona inquiry) → poll kyc_status → request `base` → create VA.
-    void inquiryId; // passed to Bridge as the Persona reference in the real call
-    setCustomerStatus('active');
-    setBaseEndorsement('approved');
-    setVirtualAccount({
-      status: 'active',
-      accountNumber: '1500 0048 2917',
-      routingNumber: '101 019 644',
-      bankName: 'Lead Bank',
-      beneficiary: 'Steven Spark',
-    });
+    let cancelled = false;
+    (async () => {
+      try {
+        const customer = await bridge.createCustomer({ personaInquiryId: inquiryId });
+        if (cancelled) return;
+        setCustomerStatus(customer.kycStatus);
+        const endorsement = await bridge.ensureBaseEndorsement(customer.id);
+        if (cancelled) return;
+        setBaseEndorsement(endorsement);
+        const va = await bridge.ensureVirtualAccount(customer.id);
+        if (cancelled) return;
+        setVirtualAccount(va);
+      } catch {
+        // leave unprovisioned on failure — surfaces as the "Verify to activate" CTA.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [verified, customerStatus, inquiryId]);
 
   return (
