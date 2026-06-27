@@ -1,11 +1,15 @@
+import { useState } from 'react';
 import { Landmark, CreditCard, ShieldCheck, BellRing, CircleHelp, LogOut, Sun, Sunset, Moon, Wallet, Users, type LucideIcon } from 'lucide-react';
 import SectionCard from '@/components/app-ui/SectionCard';
 import CardVisual from '@/components/app-ui/CardVisual';
+import { AccountModal, CardsModal, SecurityModal, NotificationsModal, SupportModal } from '@/components/app-ui/SettingsModals';
 import { useTheme } from '@/context/ThemeContext';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useContacts } from '@/context/ContactsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { cn } from '@/lib/utils';
+
+type SettingsModal = 'account' | 'cards' | 'security' | 'notifications' | 'support' | null;
 
 const THEMES: { id: 'light' | 'dusk' | 'dark'; icon: LucideIcon; label: string }[] = [
   { id: 'light', icon: Sun, label: 'Light' },
@@ -21,6 +25,7 @@ export default function SettingsPage() {
   const { openManager: openExternal, accounts: externalAccounts } = useExternalAccounts();
   const active = THEMES.find((t) => t.id === theme) ?? THEMES[0];
   const ActiveIcon = active.icon;
+  const [modal, setModal] = useState<SettingsModal>(null);
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -43,7 +48,7 @@ export default function SettingsPage() {
                 <span className="rounded-lg bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">KYC verified</span>
               </div>
             </div>
-            <button type="button" className="rounded-lg bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-muted">
+            <button type="button" onClick={() => setModal('account')} className="rounded-lg bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-muted">
               Manage
             </button>
           </div>
@@ -62,7 +67,7 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-        <CardVisual />
+        <CardVisual onManage={() => setModal('cards')} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -90,9 +95,9 @@ export default function SettingsPage() {
           chevron
           onClick={() => openContacts()}
         />
-        <SectionCard icon={CreditCard} tint="neutral" title="Cards" subtitle="Manage your cards" chevron onClick={() => {}} />
-        <SectionCard icon={ShieldCheck} tint="neutral" title="Security" subtitle="Passcode & biometrics" chevron onClick={() => {}} />
-        <SectionCard icon={BellRing} tint="neutral" title="Notifications" subtitle="Alerts & reminders" chevron onClick={() => {}} />
+        <SectionCard icon={CreditCard} tint="neutral" title="Cards" subtitle="Cards & virtual account" chevron onClick={() => setModal('cards')} />
+        <SectionCard icon={ShieldCheck} tint="neutral" title="Security" subtitle="Passcode & biometrics" chevron onClick={() => setModal('security')} />
+        <SectionCard icon={BellRing} tint="neutral" title="Notifications" subtitle="Alerts & reminders" chevron onClick={() => setModal('notifications')} />
 
         <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
@@ -121,7 +126,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <SectionCard icon={CircleHelp} tint="neutral" title="Help & support" subtitle="Guides & contact" chevron onClick={() => {}} />
+        <SectionCard icon={CircleHelp} tint="neutral" title="Help & support" subtitle="Guides & contact" chevron onClick={() => setModal('support')} />
       </div>
 
       <button
@@ -130,6 +135,12 @@ export default function SettingsPage() {
       >
         <LogOut className="h-4 w-4" /> Log out
       </button>
+
+      <AccountModal open={modal === 'account'} onOpenChange={(o) => !o && setModal(null)} />
+      <CardsModal open={modal === 'cards'} onOpenChange={(o) => !o && setModal(null)} />
+      <SecurityModal open={modal === 'security'} onOpenChange={(o) => !o && setModal(null)} />
+      <NotificationsModal open={modal === 'notifications'} onOpenChange={(o) => !o && setModal(null)} />
+      <SupportModal open={modal === 'support'} onOpenChange={(o) => !o && setModal(null)} />
     </div>
   );
 }

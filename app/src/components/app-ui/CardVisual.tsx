@@ -10,7 +10,7 @@ const MASKED = '•••• •••• •••• 8152';
  * with brand · number · holder/expiry, details masked by default. Footer (divided by a
  * hairline) holds the freeze switch + Manage.
  */
-export default function CardVisual({ className }: { className?: string }) {
+export default function CardVisual({ className, onManage }: { className?: string; onManage?: () => void }) {
   const [active, setActive] = useState(true);
   const [revealed, setRevealed] = useState(false);
 
@@ -77,6 +77,7 @@ export default function CardVisual({ className }: { className?: string }) {
 
         <button
           type="button"
+          onClick={onManage}
           className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
         >
           <Settings className="h-3.5 w-3.5" /> Manage
