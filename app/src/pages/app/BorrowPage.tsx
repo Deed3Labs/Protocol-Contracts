@@ -10,8 +10,9 @@ const fmt2 = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigit
 /** Borrow — consolidated borrowing power, the base Stable Credit line, and Clear credit products. */
 export default function BorrowPage() {
   const { baseLimit, borrowed, available, totalPower, cycleDaysLeft, cycleLength, powerPct, products, lines, addPurposeLine, removePurposeLine, openBorrow, openRepay } = useCredit();
-  const used = baseLimit > 0 ? Math.min(100, (borrowed / baseLimit) * 100) : 0;
   const cycleProgress = ((cycleLength - cycleDaysLeft) / cycleLength) * 100;
+  const usedLines = lines.filter((l) => l.used > 0);
+  const shade = ['bg-foreground', 'bg-foreground/60', 'bg-foreground/35', 'bg-foreground/20'];
 
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
@@ -62,9 +63,26 @@ export default function BorrowPage() {
             </div>
           </div>
 
-          {/* utilization bar */}
-          <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-secondary">
-            <div className="h-full rounded-full bg-foreground transition-[width]" style={{ width: `${used}%` }} />
+          {/* utilization — broken down by line */}
+          <div className="mt-3 flex h-6 gap-0.5 overflow-hidden rounded-lg bg-secondary">
+            {usedLines.map((l, i) => (
+              <div key={l.id} className={shade[i % shade.length]} style={{ width: `${(l.used / baseLimit) * 100}%` }} />
+            ))}
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3 text-[10px]">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
+              {usedLines.length > 0 ? (
+                usedLines.map((l) => (
+                  <span key={l.id} className="whitespace-nowrap">
+                    <span className="font-medium text-muted-foreground">{l.name}</span>{' '}
+                    <span className="tabular-nums text-foreground">{fmt(l.used)}</span>
+                  </span>
+                ))
+              ) : (
+                <span className="text-muted-foreground">Nothing borrowed yet</span>
+              )}
+            </div>
+            <span className="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">{fmt(available)} left</span>
           </div>
 
           <div className="mt-4 flex gap-2">
@@ -93,7 +111,7 @@ export default function BorrowPage() {
               </span>
               <span className="text-muted-foreground">{cycleDaysLeft} days left in cycle</span>
             </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-background">
+            <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-background">
               <div className="h-full rounded-full bg-info" style={{ width: `${cycleProgress}%` }} />
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
@@ -264,7 +282,7 @@ function PurposeLineCard({
         <span className="text-muted-foreground tabular-nums">{fmt2(line.used)} of {fmt2(line.limit)}</span>
         <span className="text-foreground tabular-nums">{fmt2(Math.max(0, line.limit - line.used))} left</span>
       </div>
-      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+      <div className="mt-1.5 h-3 w-full overflow-hidden rounded-full bg-secondary">
         <div className="h-full rounded-full bg-foreground" style={{ width: `${pct}%` }} />
       </div>
       <div className="mt-2.5 flex gap-2">

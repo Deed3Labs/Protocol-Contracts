@@ -171,20 +171,30 @@ export default function AssurancePage() {
           </div>
 
           <div className="mt-4 border-t border-border pt-4">
-            {next ? (
-              <>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-foreground">Next unlock</span>
-                  <span className="truncate pl-2 text-muted-foreground">{next.name}</span>
-                </div>
-                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                  <div className="h-full rounded-full bg-info" style={{ width: `${next.progress}%` }} />
-                </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">{next.remaining} · unlocks free.</p>
-              </>
-            ) : (
-              <div className="text-sm font-medium text-foreground">All protections unlocked 🎉</div>
-            )}
+            <div className="mb-2 flex items-center justify-between text-xs">
+              <span className="font-medium text-foreground">Protections</span>
+              <span className="text-muted-foreground">{activeCount} of 5 active</span>
+            </div>
+            <div className="flex h-6 gap-0.5 overflow-hidden rounded-lg">
+              <div className="flex-1 bg-positive" />
+              {LOCKED.map((p) => {
+                const isUnlocked = unlocked.has(p.id);
+                const isNext = p.id === next?.id;
+                return (
+                  <div key={p.id} className="relative flex-1 bg-secondary">
+                    {isUnlocked && <div className="absolute inset-0 bg-positive" />}
+                    {!isUnlocked && isNext && <div className="absolute inset-y-0 left-0 bg-info" style={{ width: `${p.progress}%` }} />}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              {next ? (
+                <>Next: <span className="font-medium text-foreground">{next.name}</span> · {next.remaining}</>
+              ) : (
+                'All protections unlocked 🎉'
+              )}
+            </p>
           </div>
 
           <div className="mt-4 flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -267,7 +277,7 @@ function ProtectionCard({ p, isNext, unlocked, onAccelerate, onViewCoverage }: {
       <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{p.tagline}</p>
       <div className="mt-2.5 text-xs font-medium text-foreground">{p.coverage}</div>
 
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+      <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-secondary">
         <div className={cn('h-full rounded-full', isNext ? 'bg-info' : 'bg-muted-foreground/40')} style={{ width: `${p.progress}%` }} />
       </div>
       <div className="mt-2 flex items-center justify-between gap-2">
