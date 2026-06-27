@@ -38,12 +38,14 @@ export function MoneyActionsProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider
       value={{
-        // moving money requires KYC; requesting (asking to be paid) doesn't.
-        openAddMoney: () => gate(() => setAddOpen(true)),
+        // KYC gates the fiat/TradFi edges only. Withdraw (off-ramp to bank) always hits that edge,
+        // so it's gated here. Add money + Transfer are mixed (card/on-chain vs bank/ACH), so they
+        // gate the specific fiat path INSIDE the modal. Send (on-chain) + Request aren't gated.
+        openAddMoney: () => setAddOpen(true),
         openWithdraw: () => gate(() => setWithdrawOpen(true)),
-        openSend: () => gate(() => setSendOpen(true)),
+        openSend: () => setSendOpen(true),
         openRequest: () => setRequestOpen(true),
-        openTransfer: () => gate(() => setTransferOpen(true)),
+        openTransfer: () => setTransferOpen(true),
       }}
     >
       {children}

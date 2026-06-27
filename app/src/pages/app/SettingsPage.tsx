@@ -7,6 +7,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useContacts } from '@/context/ContactsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
+import { useKyc } from '@/context/KycContext';
 import { useLogout } from '@/hooks/useLogout';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +29,7 @@ export default function SettingsPage() {
   const ActiveIcon = active.icon;
   const [modal, setModal] = useState<SettingsModal>(null);
   const logout = useLogout();
+  const { verified, openKyc } = useKyc();
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -47,7 +49,19 @@ export default function SettingsPage() {
               <div className="truncate text-sm text-muted-foreground">steven@useclear.org</div>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 <span className="rounded-lg bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">Member</span>
-                <span className="rounded-lg bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">KYC verified</span>
+                {verified ? (
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-positive/10 px-2 py-0.5 text-[11px] font-medium text-positive">
+                    <ShieldCheck className="h-3 w-3" /> KYC verified
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openKyc()}
+                    className="inline-flex items-center gap-1 rounded-lg bg-info/10 px-2 py-0.5 text-[11px] font-medium text-info transition-colors hover:bg-info/15"
+                  >
+                    <ShieldCheck className="h-3 w-3" /> Verify identity
+                  </button>
+                )}
               </div>
             </div>
             <button type="button" onClick={() => setModal('account')} className="rounded-lg bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-muted">

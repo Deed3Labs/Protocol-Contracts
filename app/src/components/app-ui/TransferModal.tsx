@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowDownUp, ArrowLeft, Check, ChevronDown, Landmark, Loader2, PiggyBank, ShieldCheck, Wallet, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
+import { useKyc } from '@/context/KycContext';
 import { cn } from '@/lib/utils';
 
 /*
@@ -35,6 +36,7 @@ const INSTANT_FEE = 0.015;
 
 export default function TransferModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { accounts: external, openManager } = useExternalAccounts();
+  const { verified, openKyc } = useKyc();
   const accounts: Acct[] = [
     ...INTERNAL,
     ...external.map((a) => ({ id: a.id, name: a.name, detail: `${a.type} ••${a.mask}`, scope: 'external' as Scope, icon: Landmark })),
@@ -289,7 +291,11 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
 
             <button
               type="button"
-              onClick={() => setStep('status')}
+              onClick={() => {
+                // internal Cash↔Savings is on-chain (no KYC); external bank↔bank is ACH (needs KYC).
+                if (isExternal && !verified) openKyc(() => setStep('status'));
+                else setStep('status');
+              }}
               className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
             >
               Transfer {fmt(amount)}

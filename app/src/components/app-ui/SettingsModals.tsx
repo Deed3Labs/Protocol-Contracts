@@ -5,6 +5,7 @@ import {
   Mail, Shield, ShieldCheck, Snowflake, Sparkles, Smartphone, Receipt, Home, TrendingUp, Bell,
   Megaphone, FileText, AlertTriangle, ChevronRight, type LucideIcon,
 } from 'lucide-react';
+import { useKyc } from '@/context/KycContext';
 import { cn } from '@/lib/utils';
 
 /*
@@ -86,6 +87,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
 
 /* ----------------------------------- Account ----------------------------------- */
 export function AccountModal({ open, onOpenChange }: ModalProps) {
+  const { verified, openKyc } = useKyc();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[460px]">
@@ -99,9 +101,19 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
             <div className="truncate text-sm font-medium text-foreground">Steven Spark</div>
             <div className="truncate text-xs text-muted-foreground">steven@useclear.org</div>
           </div>
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-positive/10 px-2 py-0.5 text-[11px] font-medium text-positive">
-            <ShieldCheck className="h-3 w-3" /> KYC verified
-          </span>
+          {verified ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-positive/10 px-2 py-0.5 text-[11px] font-medium text-positive">
+              <ShieldCheck className="h-3 w-3" /> KYC verified
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => openKyc()}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-info/10 px-2 py-0.5 text-[11px] font-medium text-info transition-colors hover:bg-info/15"
+            >
+              <ShieldCheck className="h-3 w-3" /> Verify
+            </button>
+          )}
         </div>
 
         <div className="mt-1 space-y-3">
@@ -148,6 +160,7 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
 
 /* ------------------------------------ Cards ------------------------------------ */
 export function CardsModal({ open, onOpenChange }: ModalProps) {
+  const { verified, openKyc } = useKyc();
   const [revealed, setRevealed] = useState(false);
   const [frozen, setFrozen] = useState(false);
 
@@ -216,7 +229,15 @@ export function CardsModal({ open, onOpenChange }: ModalProps) {
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">Build credit with every on-time payment — issued on Colossus.</p>
           </div>
-          <button type="button" className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">Apply</button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!verified) openKyc();
+            }}
+            className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+          >
+            Apply
+          </button>
         </div>
       </DialogContent>
     </Dialog>

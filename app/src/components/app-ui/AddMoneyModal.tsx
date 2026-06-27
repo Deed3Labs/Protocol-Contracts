@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, CreditCard, Landmark, Loader2, Smartphone, ShieldCheck, Sparkles, Wallet, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
+import { useKyc } from '@/context/KycContext';
 import { cn } from '@/lib/utils';
 
 /*
@@ -62,6 +63,12 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const [walletOpen, setWalletOpen] = useState(false);
   const [done, setDone] = useState(false);
   const { wallets, primaryId, openManager } = useLinkedWallets();
+  const { verified, openKyc } = useKyc();
+  // Card / Apple Pay on-ramps KYC at the provider; a bank/ACH deposit needs our KYC.
+  const proceed = () => {
+    if (methodId === 'bank' && !verified) openKyc(() => setStep('status'));
+    else setStep('status');
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -303,7 +310,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
 
             <button
               type="button"
-              onClick={() => setStep('status')}
+              onClick={proceed}
               className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
             >
               Add {fmt(amount)}

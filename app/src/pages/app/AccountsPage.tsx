@@ -1,5 +1,6 @@
-import { Wallet, Banknote, PiggyBank, Landmark } from 'lucide-react';
+import { Wallet, Banknote, PiggyBank, Landmark, ShieldCheck } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
+import { useKyc } from '@/context/KycContext';
 import QuickActions from '@/components/app-ui/QuickActions';
 import CtaStack from '@/components/app-ui/CtaStack';
 import RecentActivity from '@/components/app-ui/RecentActivity';
@@ -36,12 +37,30 @@ const UPCOMING: UpcomingItem[] = [
  * and the upcoming/spend calendars. Scaffold: placeholder figures.
  */
 export default function AccountsPage() {
+  const { verified, openKyc } = useKyc();
   return (
     <div className="animate-fade-in space-y-5">
       <div>
         <h1 className="font-display text-3xl tracking-tight text-foreground">Good morning, Steven</h1>
         <p className="mt-1 text-sm text-muted-foreground">Here's where your money stands today.</p>
       </div>
+
+      {!verified && (
+        <button
+          type="button"
+          onClick={() => openKyc()}
+          className="flex w-full items-center gap-3 rounded-xl border border-info/20 bg-info/5 p-3 text-left transition-colors hover:bg-info/10"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info">
+            <ShieldCheck className="h-[18px] w-[18px]" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-foreground">Verify your identity</span>
+            <span className="block text-xs text-muted-foreground">Unlock bank deposits, withdrawals, transfers &amp; bill pay.</span>
+          </span>
+          <span className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">Verify</span>
+        </button>
+      )}
 
       <StatBar
         stats={[
