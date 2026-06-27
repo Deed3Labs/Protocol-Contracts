@@ -40,9 +40,40 @@ const LOCKED: Protection[] = [
   { id: 'device', name: 'Device & Purchase Protection', icon: Smartphone, tagline: 'Coverage on big purchases through Clear.', coverage: 'Up to $1,000 / item', unlockLabel: 'Unlocks with Clear Partner spend', progress: 15, remaining: 'Start using Clear Partner', accelerate: '$39' },
 ];
 
+interface Coverage {
+  name: string;
+  icon: LucideIcon;
+  coverage: string;
+  blurb: string;
+  covered: string[];
+  note: string;
+  cta: string;
+}
+
+const RENT_COVERAGE: Coverage = {
+  name: 'Rent Protection',
+  icon: ShieldCheck,
+  coverage: 'Up to 60 days of rent',
+  blurb: 'If a crisis hits, the co-op pays your rent so you stay in your home — no premium, no payback.',
+  covered: ['Job loss or a sudden drop in income', 'Medical emergency or hospitalization', 'Natural disaster or displacement'],
+  note: 'Standard track · 90-day waiting period active. Switch to the Accelerated track to remove the wait.',
+  cta: 'Get help in a crisis',
+};
+
+const coverageFor = (p: Protection): Coverage => ({
+  name: p.name,
+  icon: p.icon,
+  coverage: p.coverage,
+  blurb: p.tagline,
+  covered: ['Eligible costs paid from the Assurance Pool', 'No premium and nothing to pay back', 'Apply any time you need it'],
+  note: 'Mutual-benefit coverage backed by the Assurance Pool.',
+  cta: 'File a claim',
+});
+
 export default function AssurancePage() {
   const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
   const [accelTarget, setAccelTarget] = useState<Protection | null>(null);
+  const [coverage, setCoverage] = useState<Coverage | null>(null);
 
   const remaining = LOCKED.filter((p) => !unlocked.has(p.id));
   const next = remaining.length ? remaining.reduce((a, b) => (b.progress > a.progress ? b : a)) : null;
@@ -102,10 +133,18 @@ export default function AssurancePage() {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button type="button" className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.98]">
+            <button
+              type="button"
+              onClick={() => setCoverage(RENT_COVERAGE)}
+              className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.98]"
+            >
               View coverage
             </button>
-            <button type="button" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+            <button
+              type="button"
+              onClick={() => setCoverage(RENT_COVERAGE)}
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
               Get help in a crisis →
             </button>
           </div>
@@ -164,7 +203,14 @@ export default function AssurancePage() {
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {LOCKED.map((p) => (
-            <ProtectionCard key={p.id} p={p} isNext={p.id === next?.id} unlocked={unlocked.has(p.id)} onAccelerate={() => setAccelTarget(p)} />
+            <ProtectionCard
+              key={p.id}
+              p={p}
+              isNext={p.id === next?.id}
+              unlocked={unlocked.has(p.id)}
+              onAccelerate={() => setAccelTarget(p)}
+              onViewCoverage={() => setCoverage(coverageFor(p))}
+            />
           ))}
         </div>
       </div>
@@ -174,11 +220,12 @@ export default function AssurancePage() {
         onOpenChange={(o) => !o && setAccelTarget(null)}
         onUnlocked={(id) => setUnlocked((s) => new Set(s).add(id))}
       />
+      <CoverageModal coverage={coverage} onOpenChange={(o) => !o && setCoverage(null)} />
     </div>
   );
 }
 
-function ProtectionCard({ p, isNext, unlocked, onAccelerate }: { p: Protection; isNext: boolean; unlocked: boolean; onAccelerate: () => void }) {
+function ProtectionCard({ p, isNext, unlocked, onAccelerate, onViewCoverage }: { p: Protection; isNext: boolean; unlocked: boolean; onAccelerate: () => void; onViewCoverage: () => void }) {
   const Icon = p.icon;
 
   if (unlocked) {
@@ -195,7 +242,7 @@ function ProtectionCard({ p, isNext, unlocked, onAccelerate }: { p: Protection; 
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{p.tagline}</p>
         <div className="mt-2.5 text-xs font-medium text-foreground">{p.coverage}</div>
-        <button type="button" className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground">
+        <button type="button" onClick={onViewCoverage} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground">
           View coverage <ArrowRight className="h-3 w-3" />
         </button>
       </div>
@@ -335,6 +382,78 @@ function AccelerateModal({ protection, onOpenChange, onUnlocked }: { protection:
                 </button>
               </>
             )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Coverage details for an active protection (opened from "View coverage"). */
+function CoverageModal({ coverage, onOpenChange }: { coverage: Coverage | null; onOpenChange: (o: boolean) => void }) {
+  const Icon = coverage?.icon ?? ShieldCheck;
+  return (
+    <Dialog open={!!coverage} onOpenChange={onOpenChange}>
+      <DialogContent className="gap-0 p-0 sm:max-w-[420px]">
+        {coverage && (
+          <div className="p-5">
+            <div className="flex items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-positive/10 text-positive">
+                <Icon className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-semibold text-foreground">{coverage.name}</h2>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-positive/10 px-2 py-0.5 text-[10px] font-medium text-positive">
+                    <Check className="h-2.5 w-2.5" /> Active
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{coverage.blurb}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-positive/20 bg-positive/5 p-4 text-center">
+              <div className="text-[11px] text-muted-foreground">Your coverage</div>
+              <div className="font-display text-2xl tracking-tight text-foreground">{coverage.coverage}</div>
+              <div className="mt-3 grid grid-cols-2 divide-x divide-positive/15 border-t border-positive/15 pt-3">
+                <div>
+                  <div className="text-sm font-semibold text-foreground">$0</div>
+                  <div className="text-[11px] text-muted-foreground">Premium</div>
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-foreground">$0</div>
+                  <div className="text-[11px] text-muted-foreground">To pay back</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <h4 className="mb-2 text-xs font-medium text-muted-foreground">What's covered</h4>
+              <ul className="space-y-2">
+                {coverage.covered.map((c) => (
+                  <li key={c} className="flex items-start gap-2 text-sm text-foreground">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-positive" /> {c}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <p className="mt-3 border-t border-border pt-3 text-[11px] leading-relaxed text-muted-foreground">{coverage.note}</p>
+
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+            >
+              {coverage.cta}
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="mt-2 w-full rounded-xl border border-border py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+            >
+              Close
+            </button>
           </div>
         )}
       </DialogContent>
