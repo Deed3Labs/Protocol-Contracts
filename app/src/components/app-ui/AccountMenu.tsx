@@ -4,6 +4,7 @@ import { Settings, Wallet, LifeBuoy, LogOut, type LucideIcon } from 'lucide-reac
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { useTheme } from '@/context/ThemeContext';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
+import { useLogout } from '@/hooks/useLogout';
 import { SunIcon, DuskIcon, MoonIcon } from '@/components/app-ui/ThemeIcons';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +35,7 @@ export default function AccountMenu() {
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const { openManager } = useLinkedWallets();
+  const logout = useLogout();
   const go = (fn: () => void) => () => {
     setOpen(false);
     fn();
@@ -88,7 +90,7 @@ export default function AccountMenu() {
         </div>
 
         <div className="my-1 h-px bg-border" />
-        <Item icon={LogOut} label="Sign out" onClick={go(() => {})} danger />
+        <Item icon={LogOut} label="Sign out" onClick={go(logout)} danger />
       </PopoverContent>
     </Popover>
   );

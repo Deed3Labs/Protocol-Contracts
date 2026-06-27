@@ -7,6 +7,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useContacts } from '@/context/ContactsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
+import { useLogout } from '@/hooks/useLogout';
 import { cn } from '@/lib/utils';
 
 type SettingsModal = 'account' | 'cards' | 'security' | 'notifications' | 'support' | null;
@@ -26,6 +27,7 @@ export default function SettingsPage() {
   const active = THEMES.find((t) => t.id === theme) ?? THEMES[0];
   const ActiveIcon = active.icon;
   const [modal, setModal] = useState<SettingsModal>(null);
+  const logout = useLogout();
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -131,6 +133,7 @@ export default function SettingsPage() {
 
       <button
         type="button"
+        onClick={logout}
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-destructive/30 py-3 text-sm font-medium text-destructive transition-transform active:scale-[0.99] sm:w-auto sm:px-8"
       >
         <LogOut className="h-4 w-4" /> Log out
