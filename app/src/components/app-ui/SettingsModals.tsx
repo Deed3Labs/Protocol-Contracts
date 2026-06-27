@@ -6,6 +6,7 @@ import {
   Megaphone, FileText, AlertTriangle, ChevronRight, type LucideIcon,
 } from 'lucide-react';
 import { useKyc } from '@/context/KycContext';
+import { useBridge } from '@/context/BridgeContext';
 import { cn } from '@/lib/utils';
 
 /*
@@ -161,6 +162,7 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
 /* ------------------------------------ Cards ------------------------------------ */
 export function CardsModal({ open, onOpenChange }: ModalProps) {
   const { verified, openKyc } = useKyc();
+  const { virtualAccount } = useBridge();
   const [revealed, setRevealed] = useState(false);
   const [frozen, setFrozen] = useState(false);
 
@@ -205,16 +207,35 @@ export function CardsModal({ open, onOpenChange }: ModalProps) {
           </div>
         </div>
 
-        {/* virtual account */}
+        {/* virtual account (Bridge) */}
         <div className="mt-2">
           <h4 className="mb-2 text-xs font-medium text-muted-foreground">Virtual account</h4>
-          <div className="space-y-2">
-            <CopyRow label="Account number" value="1500 0048 2917" />
-            <CopyRow label="Routing number" value="101019644" />
-          </div>
-          <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <Landmark className="h-3.5 w-3.5" /> Lead Bank · via Bridge — use for direct deposit or ACH to add money.
-          </p>
+          {virtualAccount.status === 'active' ? (
+            <>
+              <div className="space-y-2">
+                <CopyRow label="Account number" value={virtualAccount.accountNumber} />
+                <CopyRow label="Routing number" value={virtualAccount.routingNumber} />
+              </div>
+              <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Landmark className="h-3.5 w-3.5" /> {virtualAccount.bankName} · via Bridge — use for direct deposit, ACH or wire to add money.
+              </p>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => openKyc()}
+              className="flex w-full items-center gap-2.5 rounded-xl border border-dashed border-border p-3 text-left transition-colors hover:bg-secondary/40"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info">
+                <Landmark className="h-4 w-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-foreground">Activate your account &amp; routing numbers</span>
+                <span className="block text-[11px] text-muted-foreground">Verify your identity to open a USD account via Bridge.</span>
+              </span>
+              <span className="shrink-0 text-xs font-semibold text-info">Verify</span>
+            </button>
+          )}
         </div>
 
         {/* credit card */}

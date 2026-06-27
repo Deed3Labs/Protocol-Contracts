@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, ChevronDown, CreditCard, Landmark, Loader2, Smartphone, ShieldCheck, Sparkles, Wallet, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, CreditCard, Landmark, Loader2, Smartphone, ShieldCheck, Sparkles, Wallet, Zap, Send, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
+import { useExternalAccounts } from '@/context/ExternalAccountsContext';
+import { useBridge } from '@/context/BridgeContext';
 import { useKyc } from '@/context/KycContext';
 import { cn } from '@/lib/utils';
 
@@ -43,6 +45,17 @@ const PROVIDERS: Provider[] = [
   { id: 'moonpay', name: 'MoonPay', feeRate: 0.045, fixed: 0 },
 ];
 
+/*
+ * Bank funding rails. A bank deposit pulls fiat from a Plaid-linked account through the user's
+ * Bridge USD virtual account (which auto-converts to USDC). Fees are illustrative.
+ * SEAM: rails + fees come from Bridge; the source account is a Plaid-linked external account.
+ */
+const RAILS = [
+  { id: 'ach', name: 'ACH', speed: '1–3 business days', fee: 0, icon: Landmark },
+  { id: 'ach_sd', name: 'Same-day ACH', speed: 'Today by 6pm ET', fee: 1.5, icon: Zap },
+  { id: 'wire', name: 'Wire', speed: 'Within hours', fee: 15, icon: Send },
+] as const;
+
 const QUICK = [50, 100, 250, 500];
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -62,7 +75,12 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const [advanced, setAdvanced] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
   const [done, setDone] = useState(false);
+  const [sourceId, setSourceId] = useState('');
+  const [railId, setRailId] = useState<string>('ach');
+  const [sourceOpen, setSourceOpen] = useState(false);
   const { wallets, primaryId, openManager } = useLinkedWallets();
+  const { accounts: banks, openManager: openBankManager } = useExternalAccounts();
+  const { virtualAccount } = useBridge();
   const { verified, openKyc } = useKyc();
   // Card / Apple Pay on-ramps KYC at the provider; a bank/ACH deposit needs our KYC.
   const proceed = () => {
@@ -79,6 +97,9 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     setProviderId(null);
     setAdvanced(false);
     setWalletOpen(false);
+    setSourceId(banks[0]?.id ?? '');
+    setRailId('ach');
+    setSourceOpen(false);
   }, [open]);
 
   useEffect(() => {
@@ -95,6 +116,11 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const method = METHODS.find((m) => m.id === methodId) ?? METHODS[0];
   const wallet = wallets.find((w) => w.id === walletId) ?? wallets[0] ?? { id: '', label: 'No wallet linked', address: '' };
   const amountValid = amount >= 10 && amount <= 10000;
+  const isBank = methodId === 'bank';
+  const rail = RAILS.find((r) => r.id === railId) ?? RAILS[0];
+  const source = banks.find((b) => b.id === sourceId) ?? banks[0];
+  const fee = isBank ? rail.fee : selected.fee;
+  const payout = Math.max(0, amount - fee);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -237,18 +263,91 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                 )}
               </div>
 
-              <button
-                type="button"
-                onClick={() => setStep('amount')}
-                className="flex w-full items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-secondary/40"
-              >
-                <span>
-                  <span className="block text-[11px] text-muted-foreground">Pay with</span>
-                  <span className="block text-sm font-medium text-foreground">{method.name}</span>
-                </span>
-                <span className="text-xs text-muted-foreground">Change</span>
-              </button>
+              {isBank ? (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setSourceOpen((o) => !o)}
+                    className="flex w-full items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-secondary/40"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-[11px] text-muted-foreground">From</span>
+                      <span className="block truncate text-sm font-medium text-foreground">{source ? `${source.name} ••${source.mask}` : 'Link a bank'}</span>
+                    </span>
+                    <ChevronDown className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', sourceOpen && 'rotate-180')} />
+                  </button>
+                  {sourceOpen && (
+                    <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-md">
+                      {banks.map((b) => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() => {
+                            setSourceId(b.id);
+                            setSourceOpen(false);
+                          }}
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-secondary"
+                        >
+                          <span className="truncate font-medium text-foreground">
+                            {b.name} <span className="text-muted-foreground">••{b.mask}</span>
+                          </span>
+                          {b.id === source?.id && <Check className="h-4 w-4 shrink-0 text-foreground" />}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSourceOpen(false);
+                          openBankManager();
+                        }}
+                        className="flex w-full items-center gap-1.5 border-t border-border px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+                      >
+                        <Landmark className="h-3.5 w-3.5" /> Manage banks
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setStep('amount')}
+                  className="flex w-full items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:bg-secondary/40"
+                >
+                  <span>
+                    <span className="block text-[11px] text-muted-foreground">Pay with</span>
+                    <span className="block text-sm font-medium text-foreground">{method.name}</span>
+                  </span>
+                  <span className="text-xs text-muted-foreground">Change</span>
+                </button>
+              )}
             </div>
+
+            {isBank && (
+              <div className="mt-2 space-y-1.5">
+                {RAILS.map((r) => {
+                  const RIcon = r.icon;
+                  const active = railId === r.id;
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setRailId(r.id)}
+                      className={cn(
+                        'flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors',
+                        active ? 'border-foreground bg-secondary/50' : 'border-border hover:bg-secondary/40',
+                      )}
+                    >
+                      <RIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-foreground">{r.name}</span>
+                        <span className="block text-[11px] text-muted-foreground">{r.speed}</span>
+                      </span>
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{r.fee === 0 ? 'Free' : fmt(r.fee)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* cost breakdown */}
             <div className="mt-4 space-y-1.5 rounded-xl bg-secondary/40 p-3 text-sm">
@@ -257,16 +356,17 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                 <span className="tabular-nums text-foreground">{fmt(amount)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Fee</span>
-                <span className="tabular-nums text-foreground">{fmt(selected.fee)}</span>
+                <span className="text-muted-foreground">{isBank ? `Fee · ${rail.name}` : 'Fee'}</span>
+                <span className="tabular-nums text-foreground">{fee === 0 ? 'Free' : fmt(fee)}</span>
               </div>
               <div className="flex justify-between border-t border-border pt-1.5 font-medium">
                 <span className="text-foreground">Added to balance</span>
-                <span className="tabular-nums text-foreground">{fmt(selected.payout)}</span>
+                <span className="tabular-nums text-foreground">{fmt(payout)}</span>
               </div>
             </div>
 
-            {/* provider — auto best, advanced to change */}
+            {/* provider — auto best, advanced to change (card / Apple Pay only) */}
+            {!isBank && (
             <div className="mt-3">
               <button
                 type="button"
@@ -307,6 +407,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                 </div>
               )}
             </div>
+            )}
 
             <button
               type="button"
@@ -316,7 +417,10 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
               Add {fmt(amount)}
             </button>
             <p className="mt-2 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
-              <ShieldCheck className="h-3 w-3" /> Held as USDC, a regulated digital dollar, on Base
+              <ShieldCheck className="h-3 w-3" />{' '}
+              {isBank
+                ? `Via your Clear USD account${virtualAccount.bankName ? ` (${virtualAccount.bankName})` : ''} · held as USDC on Base`
+                : 'Held as USDC, a regulated digital dollar, on Base'}
             </p>
           </div>
         )}
@@ -326,8 +430,10 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
             {!done ? (
               <>
                 <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-                <div className="mt-4 text-base font-semibold text-foreground">Connecting to secure checkout…</div>
-                <div className="mt-1 text-sm text-muted-foreground">Finishing your payment with {selected.p.name}.</div>
+                <div className="mt-4 text-base font-semibold text-foreground">{isBank ? 'Submitting your transfer…' : 'Connecting to secure checkout…'}</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {isBank ? `Initiating a ${rail.name} transfer from ${source?.name ?? 'your bank'}.` : `Finishing your payment with ${selected.p.name}.`}
+                </div>
               </>
             ) : (
               <>
@@ -336,7 +442,8 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                 </div>
                 <div className="mt-4 text-base font-semibold text-foreground">You're all set</div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">{fmt(selected.payout)}</span> is on its way to {wallet.label}. We'll let you know when it lands.
+                  <span className="font-medium text-foreground">{fmt(payout)}</span> is on its way to {wallet.label}
+                  {isBank ? ` via ${rail.name}` : ''}. We'll let you know when it lands.
                 </div>
                 <button
                   type="button"

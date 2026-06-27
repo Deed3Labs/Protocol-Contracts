@@ -5,6 +5,7 @@ import TopBar from './TopBar';
 import SideMenu from './SideMenu';
 import TabBar from './TabBar';
 import { KycProvider } from '@/context/KycContext';
+import { BridgeProvider } from '@/context/BridgeContext';
 import { LinkedWalletsProvider } from '@/context/LinkedWalletsContext';
 import { ExternalAccountsProvider } from '@/context/ExternalAccountsContext';
 import { ContactsProvider } from '@/context/ContactsContext';
@@ -43,6 +44,7 @@ export default function AppShell() {
 
   return (
     <KycProvider>
+      <BridgeProvider>
       <LinkedWalletsProvider>
       <ExternalAccountsProvider>
       <ContactsProvider>
@@ -69,6 +71,7 @@ export default function AppShell() {
       </ContactsProvider>
       </ExternalAccountsProvider>
       </LinkedWalletsProvider>
+      </BridgeProvider>
     </KycProvider>
   );
 }
