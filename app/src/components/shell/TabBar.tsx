@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Plus, SendHorizontal, ArrowDownLeft, ArrowLeftRight, type LucideIcon } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
 import { cn } from '@/lib/utils';
@@ -44,11 +44,11 @@ export default function TabBar() {
   const { openAddMoney, openSend, openRequest, openTransfer } = useMoneyActions();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const actions: { label: string; icon: LucideIcon; onClick: () => void }[] = [
-    { label: 'Add money', icon: Plus, onClick: openAddMoney },
-    { label: 'Send', icon: SendHorizontal, onClick: openSend },
-    { label: 'Request', icon: ArrowDownLeft, onClick: openRequest },
-    { label: 'Transfer', icon: ArrowLeftRight, onClick: openTransfer },
+  const actions: { label: string; onClick: () => void }[] = [
+    { label: 'Add money', onClick: openAddMoney },
+    { label: 'Send', onClick: openSend },
+    { label: 'Request', onClick: openRequest },
+    { label: 'Transfer', onClick: openTransfer },
   ];
   const run = (fn: () => void) => () => {
     setMenuOpen(false);
@@ -93,26 +93,18 @@ export default function TabBar() {
                   closed: { transition: { staggerChildren: 0.03, staggerDirection: -1 } },
                 }}
               >
-                {actions.map((a) => {
-                  const Icon = a.icon;
-                  return (
-                    <motion.button
-                      key={a.label}
-                      type="button"
-                      onClick={run(a.onClick)}
-                      variants={{ open: { opacity: 1, y: 0, scale: 1 }, closed: { opacity: 0, y: 14, scale: 0.9 } }}
-                      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                      className="flex items-center gap-2.5"
-                    >
-                      <span className="rounded-lg border border-border/70 bg-background/90 px-2.5 py-1 text-sm font-medium text-foreground shadow-sm backdrop-blur-xl">
-                        {a.label}
-                      </span>
-                      <span className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-[0_8px_30px_rgb(0_0_0/0.18)]">
-                        <Icon className="h-5 w-5 shrink-0" strokeWidth={2} />
-                      </span>
-                    </motion.button>
-                  );
-                })}
+                {actions.map((a) => (
+                  <motion.button
+                    key={a.label}
+                    type="button"
+                    onClick={run(a.onClick)}
+                    variants={{ open: { opacity: 1, y: 0, scale: 1 }, closed: { opacity: 0, y: 14, scale: 0.9 } }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    className="whitespace-nowrap rounded-full border border-border/70 bg-background/90 px-6 py-2.5 text-sm font-medium text-foreground shadow-[0_8px_30px_rgb(0_0_0/0.18)] backdrop-blur-xl"
+                  >
+                    {a.label}
+                  </motion.button>
+                ))}
               </motion.div>
             )}
           </AnimatePresence>
