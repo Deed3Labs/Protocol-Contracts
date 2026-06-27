@@ -5,6 +5,7 @@ import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useBridge } from '@/context/BridgeContext';
 import { useKyc } from '@/context/KycContext';
+import DepositInstructions from '@/components/app-ui/DepositInstructions';
 import { cn } from '@/lib/utils';
 
 /*
@@ -78,6 +79,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const [sourceId, setSourceId] = useState('');
   const [railId, setRailId] = useState<string>('ach');
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [depositOpen, setDepositOpen] = useState(false);
   const { wallets, primaryId, openManager } = useLinkedWallets();
   const { accounts: banks, openManager: openBankManager } = useExternalAccounts();
   const { virtualAccount } = useBridge();
@@ -100,6 +102,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     setSourceId(banks[0]?.id ?? '');
     setRailId('ach');
     setSourceOpen(false);
+    setDepositOpen(false);
   }, [open]);
 
   useEffect(() => {
@@ -192,6 +195,26 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                 );
               })}
             </div>
+
+            {isBank && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setDepositOpen((o) => !o)}
+                  className="flex w-full items-center justify-between text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <Landmark className="h-3 w-3" /> Receive a direct deposit or push from your bank
+                  </span>
+                  <ChevronDown className={cn('h-3 w-3 transition-transform', depositOpen && 'rotate-180')} />
+                </button>
+                {depositOpen && (
+                  <div className="mt-2">
+                    <DepositInstructions />
+                  </div>
+                )}
+              </div>
+            )}
 
             <button
               type="button"
