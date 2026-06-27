@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { Home, Zap, Wifi, CreditCard, Smartphone, Receipt, type LucideIcon } from 'lucide-react';
 import PayModal from '@/components/app-ui/PayModal';
+import { useKyc } from '@/context/KycContext';
 
 export type BillType = 'rent' | 'utility' | 'card' | 'phone' | 'other';
 
@@ -67,6 +68,7 @@ const SEED: Bill[] = [
  * still earn credits. Mock/local; wire to the Clear Pay rent-routing + biller backend later.
  */
 export function PayProvider({ children }: { children: ReactNode }) {
+  const { gate } = useKyc();
   const [bills, setBills] = useState<Bill[]>(SEED);
   const [payOpen, setPayOpen] = useState(false);
   const [initialBillId, setInitialBillId] = useState<string | undefined>(undefined);
@@ -82,10 +84,11 @@ export function PayProvider({ children }: { children: ReactNode }) {
     getBill: (id) => bills.find((b) => b.id === id),
     addBiller,
     streak: ON_TIME_STREAK,
-    openPay: (billId) => {
-      setInitialBillId(billId);
-      setPayOpen(true);
-    },
+    openPay: (billId) =>
+      gate(() => {
+        setInitialBillId(billId);
+        setPayOpen(true);
+      }),
   };
 
   return (

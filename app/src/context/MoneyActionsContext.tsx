@@ -4,6 +4,7 @@ import WithdrawModal from '@/components/app-ui/WithdrawModal';
 import SendModal from '@/components/app-ui/SendModal';
 import RequestModal from '@/components/app-ui/RequestModal';
 import TransferModal from '@/components/app-ui/TransferModal';
+import { useKyc } from '@/context/KycContext';
 
 interface MoneyActionsValue {
   openAddMoney: () => void;
@@ -28,6 +29,7 @@ export function useMoneyActions(): MoneyActionsValue {
 }
 
 export function MoneyActionsProvider({ children }: { children: ReactNode }) {
+  const { gate } = useKyc();
   const [addOpen, setAddOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
@@ -36,11 +38,12 @@ export function MoneyActionsProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider
       value={{
-        openAddMoney: () => setAddOpen(true),
-        openWithdraw: () => setWithdrawOpen(true),
-        openSend: () => setSendOpen(true),
+        // moving money requires KYC; requesting (asking to be paid) doesn't.
+        openAddMoney: () => gate(() => setAddOpen(true)),
+        openWithdraw: () => gate(() => setWithdrawOpen(true)),
+        openSend: () => gate(() => setSendOpen(true)),
         openRequest: () => setRequestOpen(true),
-        openTransfer: () => setTransferOpen(true),
+        openTransfer: () => gate(() => setTransferOpen(true)),
       }}
     >
       {children}

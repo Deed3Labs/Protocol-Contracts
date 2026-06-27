@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { Zap, Lock, Users, Wallet, ShoppingBag, Home, Tag, type LucideIcon } from 'lucide-react';
 import BorrowModal from '@/components/app-ui/BorrowModal';
+import { useKyc } from '@/context/KycContext';
 
 export type ProductStatus = 'available' | 'active' | 'soon';
 export interface CreditProduct {
@@ -91,6 +92,7 @@ export function useCredit(): CreditValue {
 }
 
 export function CreditProvider({ children }: { children: ReactNode }) {
+  const { gate } = useKyc();
   const [lines, setLines] = useState<PurposeLine[]>(SEED_LINES);
   const [mode, setMode] = useState<'borrow' | 'repay'>('borrow');
   const [open, setOpen] = useState(false);
@@ -128,16 +130,18 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     removePurposeLine: (id) => setLines((ls) => ls.filter((l) => l.id !== id)),
     borrow,
     repay,
-    openBorrow: (lineId) => {
-      setMode('borrow');
-      setActiveLineId(lineId ?? lines[0]?.id ?? 'general');
-      setOpen(true);
-    },
-    openRepay: (lineId) => {
-      setMode('repay');
-      setActiveLineId(lineId ?? lines.find((l) => l.used > 0)?.id ?? lines[0]?.id ?? 'general');
-      setOpen(true);
-    },
+    openBorrow: (lineId) =>
+      gate(() => {
+        setMode('borrow');
+        setActiveLineId(lineId ?? lines[0]?.id ?? 'general');
+        setOpen(true);
+      }),
+    openRepay: (lineId) =>
+      gate(() => {
+        setMode('repay');
+        setActiveLineId(lineId ?? lines.find((l) => l.used > 0)?.id ?? lines[0]?.id ?? 'general');
+        setOpen(true);
+      }),
   };
 
   return (
