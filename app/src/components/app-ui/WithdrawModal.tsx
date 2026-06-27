@@ -3,6 +3,7 @@ import { ArrowLeft, Check, ChevronDown, Landmark, Loader2, ShieldCheck, Sparkles
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
+import { useKyc } from '@/context/KycContext';
 import { cn } from '@/lib/utils';
 
 /*
@@ -23,10 +24,14 @@ interface PayoutMethod {
   speed: string;
   instantFeeRate: number;
 }
+// `bank`/`bank_sd` settle to a bank via the Bridge virtual account (ACH) → need KYC.
+// `instant` is a provider off-ramp to a debit card → KYC handled by the off-ramp, none in-app.
 const METHODS: PayoutMethod[] = [
   { id: 'bank', name: 'Bank account', icon: Landmark, speed: '1–3 business days', instantFeeRate: 0 },
+  { id: 'bank_sd', name: 'Same-day to bank', icon: Zap, speed: 'Today by 6pm ET', instantFeeRate: 0.005 },
   { id: 'instant', name: 'Instant to debit card', icon: Zap, speed: 'Arrives in minutes', instantFeeRate: 0.015 },
 ];
+const BANK_METHODS = new Set(['bank', 'bank_sd']);
 
 interface Provider {
   id: string;
@@ -64,6 +69,11 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const { wallets, primaryId, openManager } = useLinkedWallets();
   const { accounts, openManager: openAccounts } = useExternalAccounts();
   const banks = accounts.map((a) => ({ id: a.id, label: `${a.name} ••${a.mask}` }));
+  const { verified, openKyc } = useKyc();
+  const proceed = () => {
+    if (BANK_METHODS.has(methodId) && !verified) openKyc(() => setStep('status'));
+    else setStep('status');
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -337,7 +347,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
 
             <button
               type="button"
-              onClick={() => setStep('status')}
+              onClick={proceed}
               className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
             >
               Withdraw {fmt(amount)}
