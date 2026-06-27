@@ -117,7 +117,7 @@ export default function PayModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[420px]">
+      <DialogContent className="gap-0 p-0 sm:max-w-[420px]">
         {/* ---- CHOOSE A BILL ---- */}
         {step === 'choose' && (
           <div className="p-5">
@@ -241,23 +241,6 @@ export default function PayModal({
               </div>
             </div>
 
-            {/* Clear Pay credits callout */}
-            <div className="mt-3 overflow-hidden rounded-xl border border-positive/20 bg-positive/5 p-3">
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-positive/15 text-positive">
-                  <Sparkles className="h-[18px] w-[18px]" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-foreground">+{fmtInt(credits)} Equity Credits</div>
-                  <div className="text-[11px] text-muted-foreground">Pay on time · {streak}-mo streak ({mult.toFixed(2)}×)</div>
-                </div>
-                <Award className="h-4 w-4 shrink-0 text-positive" />
-              </div>
-              <div className="mt-2 border-t border-positive/15 pt-2 text-[11px] text-muted-foreground">
-                {isRent ? 'Counts toward your Clear Deed down-payment.' : 'Builds equity + reports to your credit history.'}
-              </div>
-            </div>
-
             {/* funding source */}
             <div className="relative mt-3">
               <button
@@ -299,6 +282,23 @@ export default function PayModal({
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Clear Pay credits callout */}
+            <div className="mt-3 overflow-hidden rounded-xl border border-positive/20 bg-positive/5 p-3">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-positive/15 text-positive">
+                  <Sparkles className="h-[18px] w-[18px]" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-foreground">+{fmtInt(credits)} Equity Credits</div>
+                  <div className="text-[11px] text-muted-foreground">Pay on time · {streak}-mo streak ({mult.toFixed(2)}×)</div>
+                </div>
+                <Award className="h-4 w-4 shrink-0 text-positive" />
+              </div>
+              <div className="mt-2 border-t border-positive/15 pt-2 text-[11px] text-muted-foreground">
+                {isRent ? 'Counts toward your Clear Deed down-payment.' : 'Builds equity + reports to your credit history.'}
+              </div>
             </div>
 
             {/* when */}

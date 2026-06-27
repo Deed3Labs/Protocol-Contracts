@@ -81,7 +81,7 @@ export default function BorrowModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[420px]">
+      <DialogContent className="gap-0 p-0 sm:max-w-[420px]">
         {step === 'amount' && line && (
           <div className="p-5">
             <div className="mb-4 text-base font-semibold text-foreground">{isBorrow ? 'Borrow' : 'Repay'}</div>
