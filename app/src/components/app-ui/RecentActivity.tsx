@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, SlidersHorizontal, ArrowLeftRight, ArrowDownLeft, Briefcase, Receipt, CreditCard, Repeat, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClearTransactions, type ActivityStatus as Status } from '@/hooks/useClearTransactions';
@@ -32,8 +33,10 @@ function money(n: number) {
  * box, and an advanced filter modal (categories, status, direction, amount range).
  * Category icon + tint, signed amount (income green), and a colored status pill.
  */
-export default function RecentActivity({ className }: { className?: string }) {
+export default function RecentActivity({ className, limit }: { className?: string; limit?: number }) {
   const { items, loading } = useClearTransactions();
+  const navigate = useNavigate();
+  const compact = typeof limit === 'number';
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('All');
   const [adv, setAdv] = useState<AdvFilters>(DEFAULT_ADV);
@@ -60,15 +63,25 @@ export default function RecentActivity({ className }: { className?: string }) {
     });
   }, [items, query, filter, adv]);
 
+  const visible = compact ? filtered.slice(0, limit) : filtered;
+
   return (
     <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-foreground">Recent activity</h3>
-        <button type="button" className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
-          See all
-        </button>
+        {compact && (
+          <button
+            type="button"
+            onClick={() => navigate('/transactions')}
+            className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            See all
+          </button>
+        )}
       </div>
 
+      {!compact && (
+        <>
       {/* search + advanced filters */}
       <div className="mt-3 flex items-center gap-2">
         <div className="relative flex-1">
@@ -115,15 +128,17 @@ export default function RecentActivity({ className }: { className?: string }) {
           </button>
         ))}
       </div>
+        </>
+      )}
 
       {/* list */}
       <div className="mt-1 flex-1 divide-y divide-border">
         {loading && items.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">Loading activity…</div>
-        ) : filtered.length === 0 ? (
+        ) : visible.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">No transactions found.</div>
         ) : (
-          filtered.map((it) => {
+          visible.map((it) => {
             const { icon: Icon, tint } = CATEGORY[it.category];
             return (
               <div key={it.id} className="flex items-center gap-3 py-3 sm:gap-4">

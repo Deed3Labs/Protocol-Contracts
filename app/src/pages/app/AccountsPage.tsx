@@ -92,7 +92,7 @@ export default function AccountsPage() {
         <ClearDeedCard />
       </div>
 
-      <RecentActivity />
+      <RecentActivity limit={5} />
     </div>
   );
 }

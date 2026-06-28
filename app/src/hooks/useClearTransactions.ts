@@ -1,6 +1,6 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
-import { getTransactionsBatch } from '@/utils/apiClient';
+import { getTransactionsBatch, getPlaidRecentTransactions, type PlaidRecentTransaction } from '@/utils/apiClient';
 import { SUPPORTED_NETWORKS } from '@/config/networks';
 import type { Category } from '@/components/app-ui/TransactionFilterModal';
 
@@ -80,6 +80,26 @@ function toActivity(tx: RawTx): ActivityItem {
   };
 }
 
+function plaidToActivity(t: PlaidRecentTransaction): ActivityItem {
+  const inbound = t.direction === 'inflow';
+  const amt = Math.abs(t.amount || 0);
+  const cat = (t.category_primary || '').toLowerCase();
+  let category: Category = inbound ? 'Deposit' : 'Card';
+  if (!inbound) {
+    if (/rent|util|bill|loan|mortgage|insurance/.test(cat)) category = 'Bill';
+    else if (/subscription|recurring/.test(cat)) category = 'Subscription';
+    else if (/income|payroll|deposit/.test(cat)) category = 'Payroll';
+  }
+  return {
+    id: t.transaction_id,
+    name: t.merchant_name || t.name || 'Bank transaction',
+    category,
+    date: formatDate(t.date),
+    amount: inbound ? amt : -amt,
+    status: t.pending ? 'pending' : 'completed',
+  };
+}
+
 export function ClearTransactionsProvider({ children }: { children: ReactNode }) {
   const { address, isConnected } = useAppKitAccount();
   const [items, setItems] = useState<ActivityItem[]>([]);
@@ -92,11 +112,22 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
     }
     setLoading(true);
     try {
+      // On-chain (linked wallet) + Plaid (external accounts), merged + newest-first.
       const requests = SUPPORTED_NETWORKS.map((n) => ({ chainId: n.chainId, address, limit: 15 }));
-      const results = await getTransactionsBatch(requests);
-      const raw = results.flatMap((r) => (r.transactions as RawTx[]) || []);
-      raw.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      setItems(raw.slice(0, 30).map(toActivity));
+      const [chainResults, plaid] = await Promise.all([
+        getTransactionsBatch(requests).catch(() => []),
+        getPlaidRecentTransactions(address).catch(() => null),
+      ]);
+      const onchain = (chainResults || [])
+        .flatMap((r) => (r.transactions as RawTx[]) || [])
+        .map((t) => ({ ts: Date.parse(t.date || '') || 0, act: toActivity(t) }));
+      const bank = (plaid?.transactions || []).map((t) => ({ ts: Date.parse(t.date || '') || 0, act: plaidToActivity(t) }));
+      setItems(
+        [...onchain, ...bank]
+          .sort((a, b) => b.ts - a.ts)
+          .slice(0, 50)
+          .map((x) => x.act),
+      );
     } catch {
       setItems([]);
     } finally {
