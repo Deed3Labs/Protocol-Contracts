@@ -39,7 +39,7 @@ export default function PayModal({
   onOpenChange: (o: boolean) => void;
   initialBillId?: string;
 }) {
-  const { bills, getBill, addBiller, streak } = usePay();
+  const { bills, getBill, addBiller, streak, recordBillPayment } = usePay();
   const { accounts } = useExternalAccounts();
   const sources: Source[] = [
     { id: 'balance', name: 'Clear balance', detail: '$4,820.55', icon: Wallet },
@@ -103,6 +103,7 @@ export default function PayModal({
       type: 'other',
       amount: amt,
       dueLabel: draft.dueLabel.trim() || 'Due soon',
+      dueDay: null,
     });
     setBillId(id);
     setAmountStr(String(amt));
@@ -324,7 +325,11 @@ export default function PayModal({
             <button
               type="button"
               disabled={amount < 1}
-              onClick={() => setStep('status')}
+              onClick={() => {
+                // Pay-now records the payment + accrues equity credits; scheduled payments don't yet.
+                if (when === 'now' && bill) void recordBillPayment(bill, amount);
+                setStep('status');
+              }}
               className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
             >
               {when === 'now' ? `Pay ${fmt(amount)}` : `Schedule ${fmt(amount)}`}

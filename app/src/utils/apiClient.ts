@@ -1897,3 +1897,74 @@ export async function createMemberMembershipCheckout(payload: {
   if (!response.data) return null;
   return response.data;
 }
+
+// ---- Clear Pay (rent/bill → equity-credit ledger) ----
+
+export type PayBillerType = 'rent' | 'utility' | 'card' | 'phone' | 'other';
+
+export interface PayBiller {
+  id: string;
+  name: string;
+  payee: string | null;
+  type: PayBillerType;
+  defaultAmount: number;
+  dueDay: number | null;
+  source: 'manual' | 'plaid';
+  plaidStreamId: string | null;
+}
+
+export interface PaySummary {
+  dueThisMonth: number;
+  paid30: number;
+  totalEquity: number;
+  vestedEquity: number;
+  pendingEquity: number;
+  equityThisMonth: number;
+  streak: number;
+  series: { label: string; rent: number; equity: number }[];
+}
+
+export async function getPaySummary(wallet: string): Promise<PaySummary | null> {
+  const r = await apiRequest<PaySummary>(`/api/pay/${wallet.toLowerCase()}/summary`);
+  return r.error || !r.data ? null : r.data;
+}
+
+export async function getPayBillers(wallet: string): Promise<PayBiller[]> {
+  const r = await apiRequest<{ billers: PayBiller[] }>(`/api/pay/${wallet.toLowerCase()}/billers`);
+  return r.error || !r.data ? [] : r.data.billers;
+}
+
+export async function addPayBiller(
+  wallet: string,
+  b: { name: string; payee?: string; type: PayBillerType; defaultAmount: number; dueDay?: number | null },
+): Promise<PayBiller | null> {
+  const r = await apiRequest<{ biller: PayBiller }>(`/api/pay/${wallet.toLowerCase()}/billers`, { method: 'POST', body: JSON.stringify(b) });
+  return r.error || !r.data ? null : r.data.biller;
+}
+
+export async function deletePayBiller(wallet: string, id: string): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}`, { method: 'DELETE' });
+  return !r.error;
+}
+
+export async function syncPlaidBillers(
+  wallet: string,
+  streams: { streamId: string; name: string; amount: number; dueDay: number; type: PayBillerType }[],
+): Promise<PayBiller[]> {
+  const r = await apiRequest<{ billers: PayBiller[] }>(`/api/pay/${wallet.toLowerCase()}/billers/plaid`, {
+    method: 'POST',
+    body: JSON.stringify({ streams }),
+  });
+  return r.error || !r.data ? [] : r.data.billers;
+}
+
+export async function recordPayment(
+  wallet: string,
+  payment: { billerId?: string | null; name: string; type: PayBillerType; amount: number; dueDate?: string | null; period: string; source?: 'in_app' | 'detected'; txRef?: string | null },
+): Promise<{ creditAwarded: number; onTime: boolean; duplicate: boolean } | null> {
+  const r = await apiRequest<{ creditAwarded: number; onTime: boolean; duplicate: boolean }>(`/api/pay/${wallet.toLowerCase()}/payments`, {
+    method: 'POST',
+    body: JSON.stringify(payment),
+  });
+  return r.error || !r.data ? null : r.data;
+}

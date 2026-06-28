@@ -4,19 +4,18 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { cn } from '@/lib/utils';
 
 const METRICS = ['Equity', 'Rent', 'Total equity'] as const;
-const RANGES = ['1M', '3M', '6M', '12M', 'YTD', 'All'] as const;
+const RANGES = ['3M', '6M', '12M', 'YTD', 'All'] as const;
 type Metric = (typeof METRICS)[number];
 type Range = (typeof RANGES)[number];
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const YTD_MONTHS = Math.max(1, new Date().getMonth() + 1);
-const POINTS: Record<Range, number> = { '1M': 4, '3M': 3, '6M': 6, '12M': 12, YTD: YTD_MONTHS, All: 18 };
-
-/** 1M shows weeks; other ranges show recent months ending at the current month. */
-function labelFor(range: Range, i: number, n: number): string {
-  if (range === '1M') return `W${i + 1}`;
-  return MONTHS[(new Date().getMonth() - (n - 1) + i + 24) % 12];
+export interface RentEquityPoint {
+  label: string;
+  rent: number; // rent paid that month
+  equity: number; // cumulative equity credits through that month
 }
+
+const YTD_MONTHS = Math.max(1, new Date().getMonth() + 1);
+const POINTS: Record<Range, number> = { '3M': 3, '6M': 6, '12M': 12, YTD: YTD_MONTHS, All: 12 };
 
 /** Equity & Total-equity are positive (green); Rent paid is a neutral flow. */
 const METRIC_COLOR: Record<Metric, string> = {
@@ -25,22 +24,20 @@ const METRIC_COLOR: Record<Metric, string> = {
   'Total equity': 'rgb(var(--positive))',
 };
 
-/** Equity/Rent are per-month flows (bars); Total equity is a running level (area). */
-function buildSeries(metric: Metric, range: Range) {
-  const n = POINTS[range];
-  const weekly = range === '1M';
-  const out: { label: string; value: number }[] = [];
-  let cumulative = weekly ? 5950 : 1320; // equity built before this window
-  for (let i = 0; i < n; i++) {
-    const unitEquity = weekly
-      ? Math.round(72 + i * 6 + Math.sin(i) * 9)
-      : Math.round(290 + i * 13 + Math.sin(i * 0.8) * 35);
-    const unitRent = weekly ? Math.round(462 + Math.sin(i) * 12) : Math.round(1850 + Math.sin(i * 0.9 + 1) * 22);
-    cumulative += unitEquity;
-    const value = metric === 'Equity' ? unitEquity : metric === 'Rent' ? unitRent : cumulative;
-    out.push({ label: labelFor(range, i, n), value });
-  }
-  return out;
+/** Equity = per-month earned (delta of cumulative), Rent = per-month paid, Total equity = cumulative. */
+function deriveData(series: RentEquityPoint[], metric: Metric, range: Range) {
+  if (!series.length) return [];
+  const withFlow = series.map((s, i) => ({
+    label: s.label,
+    rent: s.rent,
+    cumEquity: s.equity,
+    flowEquity: i === 0 ? s.equity : Math.max(0, s.equity - series[i - 1].equity),
+  }));
+  const n = Math.min(POINTS[range], withFlow.length);
+  return withFlow.slice(-n).map((d) => ({
+    label: d.label,
+    value: metric === 'Equity' ? d.flowEquity : metric === 'Rent' ? d.rent : d.cumEquity,
+  }));
 }
 
 const fmtMoney = (v: number) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -52,10 +49,10 @@ const MARGIN = { left: 0, right: 8, top: 8, bottom: 0 };
  * per-month flows render as bars, the running Total equity as an area. Hero figure +
  * change, plus a 6M/1Y/All range selector — same treatment as the Accounts chart.
  */
-export default function RentEquityAnalyticsChart({ className }: { className?: string }) {
+export default function RentEquityAnalyticsChart({ className, series = [] }: { className?: string; series?: RentEquityPoint[] }) {
   const [metric, setMetric] = useState<Metric>('Equity');
   const [range, setRange] = useState<Range>('6M');
-  const data = useMemo(() => buildSeries(metric, range), [metric, range]);
+  const data = useMemo(() => deriveData(series, metric, range), [series, metric, range]);
   const config = useMemo(
     () => ({ value: { label: metric, color: METRIC_COLOR[metric] } }) satisfies ChartConfig,
     [metric],

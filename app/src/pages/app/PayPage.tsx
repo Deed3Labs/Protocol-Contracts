@@ -7,11 +7,14 @@ import CardVisual from '@/components/app-ui/CardVisual';
 import { usePay } from '@/context/PayContext';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
 
+const fmtUsd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 /** Pay — Clear Pay's rent/bill core, send/request, card, and rent-to-equity viz. */
 export default function PayPage() {
-  const { bills, openPay } = usePay();
+  const { bills, summary, openPay } = usePay();
   const { openSend, openRequest } = useMoneyActions();
   const timelineBills: TimelineBill[] = bills.map((b) => ({ id: b.id, name: b.name, dateLabel: b.dueLabel, amount: b.amount, icon: b.icon }));
+  const streak = summary?.streak ?? 0;
   return (
     <div className="animate-fade-in space-y-5">
       <header>
@@ -23,10 +26,15 @@ export default function PayPage() {
 
       <StatBar
         stats={[
-          { label: 'Due this month', value: '$2,439.00', icon: Calendar },
-          { label: 'Paid · 30 days', value: '$4,512.00', change: '8% vs last mo', icon: CircleCheck },
-          { label: 'Equity from rent', value: '$2,160', change: '+$490 this mo', icon: TrendingUp },
-          { label: 'On-time streak', value: '6 months', icon: Flame },
+          { label: 'Due this month', value: fmtUsd(summary?.dueThisMonth ?? 0), icon: Calendar },
+          { label: 'Paid · 30 days', value: fmtUsd(summary?.paid30 ?? 0), icon: CircleCheck },
+          {
+            label: 'Equity credits',
+            value: (summary?.totalEquity ?? 0).toLocaleString(),
+            change: summary?.pendingEquity ? `${summary.pendingEquity.toLocaleString()} vesting` : undefined,
+            icon: TrendingUp,
+          },
+          { label: 'On-time streak', value: `${streak} ${streak === 1 ? 'month' : 'months'}`, icon: Flame },
         ]}
       />
 
@@ -44,7 +52,7 @@ export default function PayPage() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <RentEquityAnalyticsChart className="lg:col-span-2" />
+        <RentEquityAnalyticsChart className="lg:col-span-2" series={summary?.series ?? []} />
         <BillTimeline bills={timelineBills} onPay={openPay} />
       </div>
     </div>
