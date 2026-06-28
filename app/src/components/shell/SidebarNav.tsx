@@ -2,6 +2,7 @@ import { Fragment, type ComponentType, type SVGProps } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Wallet, Send, Receipt, Settings, Home, X, CreditCard, Umbrella, type LucideIcon } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { cn } from '@/lib/utils';
 import Wordmark from '@/components/app-ui/Wordmark';
 import { SunIcon, DuskIcon, MoonIcon } from '@/components/app-ui/ThemeIcons';
@@ -59,6 +60,7 @@ export default function SidebarNav({
   onClose?: () => void;
 }) {
   const { theme, setTheme } = useTheme();
+  const profile = useMemberProfile();
 
   return (
     <div className="flex h-full flex-col">
@@ -183,13 +185,13 @@ export default function SidebarNav({
         {/* profile footer — full-width divider above */}
         <div className="border-t border-border p-3">
           <div className={cn('flex items-center rounded-xl py-1.5', collapsed ? 'justify-center' : 'gap-3 px-2')}>
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-xs font-medium text-secondary-foreground">
-              SS
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary text-xs font-medium text-secondary-foreground">
+              {profile.avatarUrl ? <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" /> : profile.initials}
             </div>
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-foreground">Steven Spark</div>
-                <div className="truncate text-xs text-muted-foreground">steven@useclear.org</div>
+                <div className="truncate text-sm font-medium text-foreground">{profile.name}</div>
+                <div className="truncate text-xs text-muted-foreground">{profile.handle}</div>
               </div>
             )}
           </div>

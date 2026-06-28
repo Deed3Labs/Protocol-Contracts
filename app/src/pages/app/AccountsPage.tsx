@@ -6,6 +6,7 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useUpcoming } from '@/hooks/useUpcoming';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
 import QuickActions from '@/components/app-ui/QuickActions';
 import CtaStack from '@/components/app-ui/CtaStack';
 import RecentActivity from '@/components/app-ui/RecentActivity';
@@ -27,6 +28,7 @@ export default function AccountsPage() {
   const ext = useExternalAccounts();
   const { flows } = useClearTransactions();
   const upcoming = useUpcoming();
+  const { firstName } = useMemberProfile();
   const dash = (v: number) => (bal.loading ? '—' : fmtUsd(v));
 
   // This month's outflows grouped by day-of-month (for the spend heatmap).
@@ -44,7 +46,7 @@ export default function AccountsPage() {
   return (
     <div className="animate-fade-in space-y-5">
       <div>
-        <h1 className="font-display text-3xl tracking-tight text-foreground">Good morning, Steven</h1>
+        <h1 className="font-display text-3xl tracking-tight text-foreground">Good morning, {firstName}</h1>
         <p className="mt-1 text-sm text-muted-foreground">Here's where your money stands today.</p>
       </div>
 

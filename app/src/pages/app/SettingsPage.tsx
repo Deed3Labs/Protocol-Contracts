@@ -8,6 +8,7 @@ import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useContacts } from '@/context/ContactsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useKyc } from '@/context/KycContext';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useLogout } from '@/hooks/useLogout';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +31,7 @@ export default function SettingsPage() {
   const [modal, setModal] = useState<SettingsModal>(null);
   const logout = useLogout();
   const { verified, openKyc } = useKyc();
+  const profile = useMemberProfile();
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -41,12 +43,12 @@ export default function SettingsPage() {
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="rounded-xl border border-border bg-card p-5 lg:col-span-2">
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-secondary text-xl font-medium text-secondary-foreground">
-              SS
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary text-xl font-medium text-secondary-foreground">
+              {profile.avatarUrl ? <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" /> : profile.initials}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-lg font-medium text-foreground">Steven Spark</div>
-              <div className="truncate text-sm text-muted-foreground">steven@useclear.org</div>
+              <div className="text-lg font-medium text-foreground">{profile.name}</div>
+              <div className="truncate text-sm text-muted-foreground">{profile.handle}</div>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 <span className="rounded-lg bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">Member</span>
                 {verified ? (

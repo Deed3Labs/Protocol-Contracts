@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Settings, Eye, EyeOff, Snowflake } from 'lucide-react';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { cn } from '@/lib/utils';
 
 const NUMBER = '5231 7252 1769 8152';
@@ -13,6 +14,7 @@ const MASKED = '•••• •••• •••• 8152';
 export default function CardVisual({ className, onManage }: { className?: string; onManage?: () => void }) {
   const [active, setActive] = useState(true);
   const [revealed, setRevealed] = useState(false);
+  const { name } = useMemberProfile();
 
   return (
     <div className={cn('overflow-hidden rounded-xl border border-border bg-card', className)}>
@@ -44,7 +46,7 @@ export default function CardVisual({ className, onManage }: { className?: string
             <div className="flex items-end justify-between gap-2">
               <div className="min-w-0">
                 <div className="text-[10px] uppercase tracking-wider text-background/45">Card holder</div>
-                <div className="truncate text-sm font-medium">Steven Spark</div>
+                <div className="truncate text-sm font-medium uppercase">{name}</div>
               </div>
               <div className="text-right">
                 <div className="text-[10px] uppercase tracking-wider text-background/45">Expires</div>

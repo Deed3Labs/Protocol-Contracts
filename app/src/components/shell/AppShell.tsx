@@ -8,6 +8,7 @@ import { KycProvider } from '@/context/KycContext';
 import { BridgeProvider } from '@/context/BridgeContext';
 import { ClearBalancesProvider } from '@/hooks/useClearBalances';
 import { ClearTransactionsProvider } from '@/hooks/useClearTransactions';
+import { MemberProfileProvider } from '@/hooks/useMemberProfile';
 import { LinkedWalletsProvider } from '@/context/LinkedWalletsContext';
 import { ExternalAccountsProvider } from '@/context/ExternalAccountsContext';
 import { ContactsProvider } from '@/context/ContactsContext';
@@ -47,6 +48,7 @@ export default function AppShell() {
   return (
     <KycProvider>
       <BridgeProvider>
+      <MemberProfileProvider>
       <ClearBalancesProvider>
       <ClearTransactionsProvider>
       <LinkedWalletsProvider>
@@ -77,6 +79,7 @@ export default function AppShell() {
       </LinkedWalletsProvider>
       </ClearTransactionsProvider>
       </ClearBalancesProvider>
+      </MemberProfileProvider>
       </BridgeProvider>
     </KycProvider>
   );

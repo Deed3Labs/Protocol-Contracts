@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  CreditCard, Eye, EyeOff, Fingerprint, KeyRound, LifeBuoy, MessageCircle,
+  CreditCard, Eye, EyeOff, Fingerprint, KeyRound, LifeBuoy, MessageCircle, Loader2,
   Mail, Shield, ShieldCheck, Snowflake, Sparkles, Smartphone, Receipt, Home, TrendingUp, Bell,
   Megaphone, FileText, AlertTriangle, ChevronRight, type LucideIcon,
 } from 'lucide-react';
 import { useKyc } from '@/context/KycContext';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { updateMemberProfile } from '@/utils/apiClient';
 import DepositInstructions from '@/components/app-ui/DepositInstructions';
 import { cn } from '@/lib/utils';
 
@@ -65,6 +67,38 @@ function ToggleList({ rows }: { rows: { id: string; icon: LucideIcon; title: str
 /* ----------------------------------- Account ----------------------------------- */
 export function AccountModal({ open, onOpenChange }: ModalProps) {
   const { verified, openKyc } = useKyc();
+  const profile = useMemberProfile();
+  const [form, setForm] = useState({ fullName: '', email: '', phone: '', avatarUrl: '' });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setForm({
+      fullName: profile.name.startsWith('0x') ? '' : profile.name,
+      email: profile.email,
+      phone: profile.phone,
+      avatarUrl: profile.avatarUrl ?? '',
+    });
+  }, [open, profile.name, profile.email, profile.phone, profile.avatarUrl]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await updateMemberProfile({
+        displayName: form.fullName.trim() || null,
+        email: form.email.trim() || null,
+        phone: form.phone.trim() || null,
+        avatarUrl: form.avatarUrl.trim() || null,
+      });
+      profile.refresh();
+      onOpenChange(false);
+    } catch {
+      /* keep open on failure */
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[460px]">
@@ -73,10 +107,12 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
         </DialogHeader>
 
         <div className="flex items-center gap-3">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-secondary text-base font-medium text-secondary-foreground">SS</span>
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary text-base font-medium text-secondary-foreground">
+            {form.avatarUrl ? <img src={form.avatarUrl} alt="" className="h-full w-full object-cover" /> : profile.initials}
+          </span>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-foreground">Steven Spark</div>
-            <div className="truncate text-xs text-muted-foreground">steven@useclear.org</div>
+            <div className="truncate text-sm font-medium text-foreground">{profile.name}</div>
+            <div className="truncate text-xs text-muted-foreground">{profile.handle}</div>
           </div>
           {verified ? (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-positive/10 px-2 py-0.5 text-[11px] font-medium text-positive">
@@ -96,39 +132,29 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
         <div className="mt-1 space-y-3">
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Full name</span>
-            <input defaultValue="Steven Spark" className={inputCls} />
+            <input value={form.fullName} onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))} placeholder="Your name" className={inputCls} />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Email</span>
-            <input type="email" defaultValue="steven@useclear.org" className={inputCls} />
+            <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="you@email.com" className={inputCls} />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Phone</span>
-            <input type="tel" placeholder="+1 555 000 0000" className={inputCls} />
+            <input type="tel" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+1 555 000 0000" className={inputCls} />
           </label>
-        </div>
-
-        <div className="mt-1 grid grid-cols-3 gap-3 border-t border-border pt-4 text-center">
-          <div>
-            <div className="text-sm font-semibold text-foreground">Mar 2025</div>
-            <div className="text-[11px] text-muted-foreground">Member since</div>
-          </div>
-          <div>
-            <div className="text-sm font-semibold text-foreground">Clear+</div>
-            <div className="text-[11px] text-muted-foreground">Plan</div>
-          </div>
-          <div>
-            <div className="text-sm font-semibold text-foreground">Level 4</div>
-            <div className="text-[11px] text-muted-foreground">Standing</div>
-          </div>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Photo URL</span>
+            <input type="url" value={form.avatarUrl} onChange={(e) => setForm((f) => ({ ...f, avatarUrl: e.target.value }))} placeholder="https://…" className={inputCls} />
+          </label>
         </div>
 
         <button
           type="button"
-          onClick={() => onOpenChange(false)}
-          className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+          onClick={save}
+          disabled={saving}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-60"
         >
-          Save changes
+          {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : 'Save changes'}
         </button>
       </DialogContent>
     </Dialog>

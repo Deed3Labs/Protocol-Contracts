@@ -5,6 +5,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { useTheme } from '@/context/ThemeContext';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useLogout } from '@/hooks/useLogout';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { SunIcon, DuskIcon, MoonIcon } from '@/components/app-ui/ThemeIcons';
 import { cn } from '@/lib/utils';
 
@@ -36,6 +37,7 @@ export default function AccountMenu() {
   const { theme, setTheme } = useTheme();
   const { openManager } = useLinkedWallets();
   const logout = useLogout();
+  const { name, handle, initials, avatarUrl } = useMemberProfile();
   const go = (fn: () => void) => () => {
     setOpen(false);
     fn();
@@ -49,17 +51,17 @@ export default function AccountMenu() {
           aria-label="Account"
           className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-sm font-medium text-secondary-foreground transition-colors hover:bg-muted"
         >
-          SS
+          {initials}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-64 p-2">
         <div className="flex items-center gap-3 px-2 py-2">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary text-sm font-medium text-secondary-foreground">
-            SS
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary text-sm font-medium text-secondary-foreground">
+            {avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" /> : initials}
           </span>
           <div className="min-w-0">
-            <div className="truncate text-sm font-medium text-foreground">Steven Spark</div>
-            <div className="truncate text-xs text-muted-foreground">steven@useclear.org</div>
+            <div className="truncate text-sm font-medium text-foreground">{name}</div>
+            <div className="truncate text-xs text-muted-foreground">{handle}</div>
           </div>
         </div>
 
