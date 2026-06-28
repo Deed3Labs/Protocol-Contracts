@@ -459,6 +459,16 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
             {/* provider — auto best, advanced to change (card / Apple Pay only) */}
             {!isBank && (
             <div className="mt-3">
+              {quotesLoading ? (
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Finding the best rate…
+                </div>
+              ) : quotes.length === 0 ? (
+                <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2 text-[11px] text-muted-foreground">
+                  No providers available right now — check back soon.
+                </div>
+              ) : (
+                <>
               <button
                 type="button"
                 onClick={() => setAdvanced((a) => !a)}
@@ -496,6 +506,8 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                     );
                   })}
                 </div>
+              )}
+                </>
               )}
             </div>
             )}
