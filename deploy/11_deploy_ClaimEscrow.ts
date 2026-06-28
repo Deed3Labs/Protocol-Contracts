@@ -25,12 +25,28 @@ async function main() {
   console.log("USDC:", usdcAddress);
   console.log("Payout treasury:", payoutTreasury);
 
+  // UUPS proxy — the returned address is stable across future upgrades.
   const ClaimEscrow = await hre.ethers.getContractFactory("ClaimEscrow");
-  const claimEscrow = await ClaimEscrow.deploy(usdcAddress, payoutTreasury, deployer.address);
+  const claimEscrow = await hre.upgrades.deployProxy(
+    ClaimEscrow,
+    [usdcAddress, payoutTreasury, deployer.address],
+    { initializer: "initialize", kind: "uups" },
+  );
   await claimEscrow.waitForDeployment();
 
   const claimEscrowAddress = await claimEscrow.getAddress();
-  console.log("ClaimEscrow deployed to:", claimEscrowAddress);
+  console.log("ClaimEscrow (proxy) deployed to:", claimEscrowAddress);
+
+  // Grant SETTLER_ROLE to the relayer that submits gasless creates + claim releases.
+  const relayer = process.env.SEND_RELAYER_ADDRESS;
+  if (relayer && hre.ethers.isAddress(relayer)) {
+    const SETTLER_ROLE = await claimEscrow.SETTLER_ROLE();
+    const tx = await claimEscrow.grantRole(SETTLER_ROLE, relayer);
+    await tx.wait();
+    console.log("Granted SETTLER_ROLE to relayer:", relayer);
+  } else {
+    console.warn("SEND_RELAYER_ADDRESS not set — grant SETTLER_ROLE to the relayer manually.");
+  }
 
   const abi = JSON.parse(claimEscrow.interface.formatJson());
   saveDeployment(network.name, "ClaimEscrow", claimEscrowAddress, abi);
