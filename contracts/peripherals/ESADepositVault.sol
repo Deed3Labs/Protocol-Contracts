@@ -8,6 +8,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/IERC20MetadataUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol";
 import "../core/interfaces/IESADepositVault.sol";
 
 interface IClearUSDMintBurn {
@@ -35,16 +37,21 @@ interface IERC3009 {
 /// @dev UUPS-upgradeable. `deposit` is sender-signed (sender pays gas); `depositWithAuthorization`
 ///      is gasless (depositor signs an EIP-3009 USDC authorization, an OPERATOR_ROLE relayer submits).
 ///      Gasless redeem is added once the CLRUSD permit/approval path is chosen.
-contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpgradeable, UUPSUpgradeable, IESADepositVault {
+contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpgradeable, UUPSUpgradeable, EIP712Upgradeable, IESADepositVault {
     using SafeERC20Upgradeable for IERC20Upgradeable;
+    using ECDSAUpgradeable for bytes32;
 
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 private constant REDEEM_TYPEHASH =
+        keccak256("Redeem(address redeemer,address token,uint256 clrusdAmount,address receiver,uint256 nonce,uint256 deadline)");
 
     address public override clrusd;
     uint8 private clrusdDecimals;
 
     mapping(address => bool) private s_isAcceptedToken;
+    /// @notice Per-redeemer nonce for gasless redeem-intent replay protection.
+    mapping(address => uint256) public redeemNonces;
 
     error ESADepositVaultInvalidAddress();
     error ESADepositVaultInvalidAmount();
@@ -63,6 +70,7 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         __AccessControl_init();
         __Pausable_init();
         __UUPSUpgradeable_init();
+        __EIP712_init("ESADepositVault", "1");
 
         clrusd = clrusd_;
         clrusdDecimals = IERC20MetadataUpgradeable(clrusd_).decimals();
@@ -111,8 +119,33 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         if (_convertFromClrUsd(token, minted) != amount) revert ESADepositVaultNonExactAmount();
     }
 
-    // ── Redeem (sender-signed; gasless variant added with the chosen CLRUSD path) ──
+    // ── Redeem (sender-signed; sender pays gas) ────────────────────────────────
     function redeem(address token, uint256 clrusdAmount, address receiver) external override whenNotPaused returns (uint256 returnedAmount) {
+        returnedAmount = _executeRedeem(msg.sender, token, clrusdAmount, receiver);
+    }
+
+    // ── Redeem (gasless; redeemer signed an EIP-712 intent, OPERATOR_ROLE relayer submits) ──
+    // Requires a one-time CLRUSD approve(vault) from the redeemer (standing allowance for burnFrom);
+    // each redeem is bounded by the signed intent (amount + receiver + nonce + deadline).
+    function redeemWithAuthorization(
+        address redeemer,
+        address token,
+        uint256 clrusdAmount,
+        address receiver,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external whenNotPaused onlyRole(OPERATOR_ROLE) returns (uint256 returnedAmount) {
+        require(block.timestamp <= deadline, "ESADepositVault: intent expired");
+        uint256 nonce = redeemNonces[redeemer]++;
+        bytes32 structHash = keccak256(abi.encode(REDEEM_TYPEHASH, redeemer, token, clrusdAmount, receiver, nonce, deadline));
+        address signer = _hashTypedDataV4(structHash).recover(v, r, s);
+        require(signer != address(0) && signer == redeemer, "ESADepositVault: bad signature");
+        returnedAmount = _executeRedeem(redeemer, token, clrusdAmount, receiver);
+    }
+
+    function _executeRedeem(address redeemer, address token, uint256 clrusdAmount, address receiver) internal returns (uint256 returnedAmount) {
         if (receiver == address(0) || token == address(0)) revert ESADepositVaultInvalidAddress();
         if (!s_isAcceptedToken[token]) revert ESADepositVaultTokenNotAccepted();
         if (clrusdAmount == 0) revert ESADepositVaultInvalidAmount();
@@ -122,9 +155,9 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         if (_convertToClrUsd(token, returnedAmount) != clrusdAmount) revert ESADepositVaultNonExactAmount();
         if (IERC20Upgradeable(token).balanceOf(address(this)) < returnedAmount) revert ESADepositVaultInsufficientLiquidity();
 
-        IClearUSDMintBurn(clrusd).burnFrom(msg.sender, clrusdAmount);
+        IClearUSDMintBurn(clrusd).burnFrom(redeemer, clrusdAmount);
         IERC20Upgradeable(token).safeTransfer(receiver, returnedAmount);
-        emit Redeemed(msg.sender, receiver, token, clrusdAmount, returnedAmount);
+        emit Redeemed(redeemer, receiver, token, clrusdAmount, returnedAmount);
     }
 
     function previewDeposit(address token, uint256 amount) external view override returns (uint256 minted) {
@@ -168,5 +201,5 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     }
 
     /// @dev Reserved storage for future upgrades.
-    uint256[45] private __gap;
+    uint256[44] private __gap;
 }
