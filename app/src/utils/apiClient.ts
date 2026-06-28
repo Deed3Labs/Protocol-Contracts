@@ -1974,3 +1974,64 @@ export async function reconcilePay(wallet: string): Promise<PaySummary | null> {
   const r = await apiRequest<PaySummary>(`/api/pay/${wallet.toLowerCase()}/reconcile`, { method: 'POST' });
   return r.error || !r.data ? null : r.data;
 }
+
+// ---- Contacts + member directory ----
+
+export interface ApiContact {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  wallet: string | null;
+}
+
+export async function getContacts(wallet: string): Promise<ApiContact[]> {
+  const r = await apiRequest<{ contacts: ApiContact[] }>(`/api/contacts/${wallet.toLowerCase()}`);
+  return r.error || !r.data ? [] : r.data.contacts;
+}
+
+export async function addContactApi(
+  wallet: string,
+  c: { name: string; email?: string | null; phone?: string | null; wallet?: string | null },
+): Promise<ApiContact | null> {
+  const r = await apiRequest<{ contact: ApiContact }>(`/api/contacts/${wallet.toLowerCase()}`, { method: 'POST', body: JSON.stringify(c) });
+  return r.error || !r.data ? null : r.data.contact;
+}
+
+export async function updateContactApi(
+  wallet: string,
+  id: string,
+  c: { name?: string; email?: string | null; phone?: string | null; wallet?: string | null },
+): Promise<ApiContact | null> {
+  const r = await apiRequest<{ contact: ApiContact }>(`/api/contacts/${wallet.toLowerCase()}/${id}`, { method: 'PATCH', body: JSON.stringify(c) });
+  return r.error || !r.data ? null : r.data.contact;
+}
+
+export async function deleteContactApi(wallet: string, id: string): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/contacts/${wallet.toLowerCase()}/${id}`, { method: 'DELETE' });
+  return !r.error;
+}
+
+/** Directory lookup: resolve a wallet from a known email/phone (exact match, opt-out aware). */
+export async function lookupDirectory(
+  wallet: string,
+  q: { email?: string; phone?: string },
+): Promise<{ wallet: string | null; matchedOn?: 'email' | 'phone' }> {
+  const params = new URLSearchParams();
+  if (q.email) params.set('email', q.email);
+  if (q.phone) params.set('phone', q.phone);
+  const r = await apiRequest<{ wallet: string | null; matchedOn?: 'email' | 'phone' }>(
+    `/api/contacts/${wallet.toLowerCase()}/lookup?${params.toString()}`,
+  );
+  return r.error || !r.data ? { wallet: null } : r.data;
+}
+
+export async function getDirectoryOptout(wallet: string): Promise<boolean> {
+  const r = await apiRequest<{ optedOut: boolean }>(`/api/contacts/${wallet.toLowerCase()}/optout`);
+  return r.error || !r.data ? false : r.data.optedOut;
+}
+
+export async function setDirectoryOptout(wallet: string, optout: boolean): Promise<boolean> {
+  const r = await apiRequest<{ optedOut: boolean }>(`/api/contacts/${wallet.toLowerCase()}/optout`, { method: 'PUT', body: JSON.stringify({ optout }) });
+  return r.error || !r.data ? optout : r.data.optedOut;
+}

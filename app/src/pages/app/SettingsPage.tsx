@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { Landmark, CreditCard, ShieldCheck, BellRing, CircleHelp, LogOut, Sun, Sunset, Moon, Wallet, Users, type LucideIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Landmark, CreditCard, ShieldCheck, BellRing, CircleHelp, LogOut, Sun, Sunset, Moon, Wallet, Users, UserSearch, type LucideIcon } from 'lucide-react';
+import { useAppKitAccount } from '@reown/appkit/react';
+import { getDirectoryOptout, setDirectoryOptout } from '@/utils/apiClient';
 import SectionCard from '@/components/app-ui/SectionCard';
 import CardVisual from '@/components/app-ui/CardVisual';
 import { AccountModal, CardsModal, SecurityModal, NotificationsModal, SupportModal } from '@/components/app-ui/SettingsModals';
@@ -32,6 +34,20 @@ export default function SettingsPage() {
   const logout = useLogout();
   const { verified, openKyc } = useKyc();
   const profile = useMemberProfile();
+  const { address } = useAppKitAccount();
+
+  // Member-directory discoverability (on by default; toggling off opts out of email/phone lookup).
+  const [discoverable, setDiscoverable] = useState(true);
+  useEffect(() => {
+    if (!address) return;
+    void getDirectoryOptout(address).then((out) => setDiscoverable(!out));
+  }, [address]);
+  const toggleDiscoverable = () => {
+    if (!address) return;
+    const next = !discoverable;
+    setDiscoverable(next); // optimistic
+    void setDirectoryOptout(address, !next).then((out) => setDiscoverable(!out));
+  };
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -113,6 +129,31 @@ export default function SettingsPage() {
           chevron
           onClick={() => openContacts()}
         />
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+            <UserSearch className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-medium text-foreground">Directory discovery</span>
+            <span className="block text-xs text-muted-foreground">
+              {discoverable ? 'Others can find you by email or phone' : "You're hidden from email/phone lookup"}
+            </span>
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={discoverable}
+            aria-label="Directory discovery"
+            onClick={toggleDiscoverable}
+            className={cn(
+              'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
+              discoverable ? 'bg-foreground' : 'bg-secondary',
+            )}
+          >
+            <span className={cn('inline-block h-5 w-5 transform rounded-full bg-card shadow transition-transform', discoverable ? 'translate-x-[22px]' : 'translate-x-0.5')} />
+          </button>
+        </div>
+
         <SectionCard icon={CreditCard} tint="neutral" title="Cards" subtitle="Cards & virtual account" chevron onClick={() => setModal('cards')} />
         <SectionCard icon={ShieldCheck} tint="neutral" title="Security" subtitle="Passcode & biometrics" chevron onClick={() => setModal('security')} />
         <SectionCard icon={BellRing} tint="neutral" title="Notifications" subtitle="Alerts & reminders" chevron onClick={() => setModal('notifications')} />

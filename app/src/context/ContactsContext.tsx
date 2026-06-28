@@ -1,5 +1,14 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useAppKitAccount } from '@reown/appkit/react';
 import ContactsModal from '@/components/app-ui/ContactsModal';
+import {
+  getContacts,
+  addContactApi,
+  updateContactApi,
+  deleteContactApi,
+  lookupDirectory,
+  type ApiContact,
+} from '@/utils/apiClient';
 
 export interface Contact {
   id: string;
@@ -16,6 +25,8 @@ interface ContactsValue {
   addContact: (c: Omit<Contact, 'id'>) => string;
   updateContact: (id: string, patch: Partial<Omit<Contact, 'id'>>) => void;
   removeContact: (id: string) => void;
+  /** Directory autofill: resolve a member's wallet from a known email/phone (exact match, opt-out aware). */
+  lookupWallet: (q: { email?: string; phone?: string }) => Promise<string | null>;
   /** Open the contacts manager; pass { add: true } to jump straight to the add form. */
   openManager: (opts?: { add?: boolean }) => void;
 }
@@ -31,11 +42,6 @@ export const contactInitials = (name: string) =>
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('') || '?';
 
-/**
- * The user's manually-added contacts (name + email required; phone + wallet optional). Source
- * of truth for the Send recipient picker and reusable for messaging (a contact's wallet is the
- * XMTP peer address). Seeded with mock data; wire to the backend contacts store later.
- */
 export function useContacts(): ContactsValue {
   return (
     useContext(Ctx) ?? {
@@ -44,31 +50,83 @@ export function useContacts(): ContactsValue {
       addContact: () => '',
       updateContact: () => {},
       removeContact: () => {},
+      lookupWallet: async () => null,
       openManager: () => {},
     }
   );
 }
 
-const SEED: Contact[] = [
-  { id: 'c1', name: 'Ahmad Sulaiman', email: 'ahmad@example.com', phone: '+1 415 555 0132', wallet: '0x9F2b1C4a3E5d7F8a0B1c2D3e4F5a6B7c8D9e0F1a' },
-  { id: 'c2', name: 'Macellyn Annya', email: 'macellyn@example.com', wallet: '0x3aD17b8E2c5D4f6A1b9C0d8E7f6A5b4C3d2E1f0A' },
-  { id: 'c3', name: 'Maria Garcia', email: 'maria.garcia@example.com', phone: '+1 408 555 0190' },
-  { id: 'c4', name: 'Devon Lane', email: 'devon.lane@example.com' },
-];
+const toContact = (c: ApiContact): Contact => ({
+  id: c.id,
+  name: c.name,
+  email: c.email ?? '',
+  phone: c.phone ?? undefined,
+  wallet: c.wallet ?? undefined,
+});
+const byName = (a: Contact, b: Contact) => a.name.localeCompare(b.name);
 
+/**
+ * The user's contacts (name required; email/phone/wallet optional), stored in the Railway DB and
+ * scoped to the connected wallet. Source of truth for the Send recipient picker / messaging. Also
+ * exposes a directory lookup so the add form can auto-fill a recipient's wallet from their email or
+ * phone when they're a known member. See services/contactsStore.
+ */
 export function ContactsProvider({ children }: { children: ReactNode }) {
-  const [contacts, setContacts] = useState<Contact[]>(SEED);
+  const { address, isConnected } = useAppKitAccount();
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [managerOpen, setManagerOpen] = useState(false);
   const [managerAdd, setManagerAdd] = useState(false);
 
-  const addContact = (c: Omit<Contact, 'id'>) => {
-    const id = `c${Date.now()}`;
-    setContacts((cs) => [...cs, { ...c, id }].sort((a, b) => a.name.localeCompare(b.name)));
-    return id;
-  };
-  const updateContact = (id: string, patch: Partial<Omit<Contact, 'id'>>) =>
-    setContacts((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort((a, b) => a.name.localeCompare(b.name)));
-  const removeContact = (id: string) => setContacts((cs) => cs.filter((c) => c.id !== id));
+  const load = useCallback(async () => {
+    if (!isConnected || !address) {
+      setContacts([]);
+      return;
+    }
+    const list = await getContacts(address);
+    setContacts(list.map(toContact).sort(byName));
+  }, [address, isConnected]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Optimistic add (temp id lets the modal proceed); persists + refreshes in the background.
+  const addContact = useCallback(
+    (c: Omit<Contact, 'id'>) => {
+      const tempId = `c${Date.now()}`;
+      setContacts((cs) => [...cs, { ...c, id: tempId }].sort(byName));
+      if (address) {
+        void addContactApi(address, { name: c.name, email: c.email || null, phone: c.phone || null, wallet: c.wallet || null }).then(() => load());
+      }
+      return tempId;
+    },
+    [address, load],
+  );
+
+  const updateContact = useCallback(
+    (id: string, patch: Partial<Omit<Contact, 'id'>>) => {
+      setContacts((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort(byName));
+      if (address) void updateContactApi(address, id, { name: patch.name, email: patch.email ?? null, phone: patch.phone ?? null, wallet: patch.wallet ?? null }).then(() => load());
+    },
+    [address, load],
+  );
+
+  const removeContact = useCallback(
+    (id: string) => {
+      setContacts((cs) => cs.filter((c) => c.id !== id));
+      if (address) void deleteContactApi(address, id);
+    },
+    [address],
+  );
+
+  const lookupWallet = useCallback(
+    async (q: { email?: string; phone?: string }) => {
+      if (!address) return null;
+      const r = await lookupDirectory(address, q);
+      return r.wallet;
+    },
+    [address],
+  );
 
   const value: ContactsValue = {
     contacts,
@@ -76,6 +134,7 @@ export function ContactsProvider({ children }: { children: ReactNode }) {
     addContact,
     updateContact,
     removeContact,
+    lookupWallet,
     openManager: (opts) => {
       setManagerAdd(Boolean(opts?.add));
       setManagerOpen(true);

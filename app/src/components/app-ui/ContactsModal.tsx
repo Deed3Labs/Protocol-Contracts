@@ -23,18 +23,34 @@ export default function ContactsModal({
   onOpenChange: (o: boolean) => void;
   startInAdd?: boolean;
 }) {
-  const { contacts, addContact, updateContact, removeContact } = useContacts();
+  const { contacts, addContact, updateContact, removeContact, lookupWallet } = useContacts();
   const { openXmtpModal } = useGlobalModals();
   const [view, setView] = useState<'list' | 'form'>('list');
   const [editId, setEditId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(empty);
   const [query, setQuery] = useState('');
   const [touched, setTouched] = useState(false);
+  const [autoFilled, setAutoFilled] = useState(false);
+
+  // When the user enters a known email/phone, auto-fill the wallet from the member directory
+  // (only if they haven't typed one). Triggered on blur of the email/phone fields.
+  const tryAutofill = async () => {
+    if (draft.wallet.trim()) return;
+    const email = draft.email.trim();
+    const phone = draft.phone.trim();
+    if (!email && !phone) return;
+    const found = await lookupWallet({ email: email || undefined, phone: phone || undefined });
+    if (found) {
+      setDraft((d) => (d.wallet.trim() ? d : { ...d, wallet: found }));
+      setAutoFilled(true);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
     setQuery('');
     setTouched(false);
+    setAutoFilled(false);
     if (startInAdd) {
       setView('form');
       setEditId(null);
@@ -48,12 +64,14 @@ export default function ContactsModal({
     setEditId(null);
     setDraft(empty);
     setTouched(false);
+    setAutoFilled(false);
     setView('form');
   };
   const startEdit = (c: Contact) => {
     setEditId(c.id);
     setDraft({ name: c.name, email: c.email, phone: c.phone ?? '', wallet: c.wallet ?? '' });
     setTouched(false);
+    setAutoFilled(false);
     setView('form');
   };
 
@@ -181,6 +199,7 @@ export default function ContactsModal({
                   type="email"
                   value={draft.email}
                   onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+                  onBlur={tryAutofill}
                   placeholder="jordan@email.com"
                   className={cn(inputCls, 'pl-9')}
                 />
@@ -190,14 +209,22 @@ export default function ContactsModal({
                   type="tel"
                   value={draft.phone}
                   onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
+                  onBlur={tryAutofill}
                   placeholder="+1 555 000 0000"
                   className={cn(inputCls, 'pl-9')}
                 />
               </Field>
-              <Field label="Wallet address" icon={Wallet} hint="For instant transfers & messaging">
+              <Field
+                label="Wallet address"
+                icon={Wallet}
+                hint={autoFilled ? '✓ Auto-filled from a Clear member' : 'For instant transfers & messaging'}
+              >
                 <input
                   value={draft.wallet}
-                  onChange={(e) => setDraft((d) => ({ ...d, wallet: e.target.value }))}
+                  onChange={(e) => {
+                    setAutoFilled(false);
+                    setDraft((d) => ({ ...d, wallet: e.target.value }));
+                  }}
                   placeholder="0x… or name.eth"
                   className={cn(inputCls, 'pl-9 font-mono text-[13px]')}
                 />
