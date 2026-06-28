@@ -1,20 +1,11 @@
 {
-  "address": "0x430B7142cd0a6Cfd199B5657920e0c960Ac7742D",
+  "address": "0x7bA87Eb0DC8ADF4a6CbE9f90d05A782De0F740cD",
   "abi": [
     {
       "type": "constructor",
       "stateMutability": "undefined",
       "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "clrusd_"
-        },
-        {
-          "type": "address",
-          "name": "admin"
-        }
-      ]
+      "inputs": []
     },
     {
       "type": "error",
@@ -61,6 +52,35 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "AdminChanged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previousAdmin",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "newAdmin",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BeaconUpgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "beacon",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Deposited",
       "inputs": [
         {
@@ -86,6 +106,24 @@
         {
           "type": "uint256",
           "name": "clrusdMinted",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EIP712DomainChanged",
+      "inputs": []
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Initialized",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "version",
           "indexed": false
         }
       ]
@@ -213,6 +251,18 @@
       ]
     },
     {
+      "type": "event",
+      "anonymous": false,
+      "name": "Upgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "implementation",
+          "indexed": true
+        }
+      ]
+    },
+    {
       "type": "function",
       "name": "DEFAULT_ADMIN_ROLE",
       "constant": true,
@@ -296,6 +346,98 @@
     },
     {
       "type": "function",
+      "name": "depositWithAuthorization",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "depositor"
+        },
+        {
+          "type": "address",
+          "name": "token"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        },
+        {
+          "type": "uint256",
+          "name": "validAfter"
+        },
+        {
+          "type": "uint256",
+          "name": "validBefore"
+        },
+        {
+          "type": "bytes32",
+          "name": "authNonce"
+        },
+        {
+          "type": "uint8",
+          "name": "v"
+        },
+        {
+          "type": "bytes32",
+          "name": "r"
+        },
+        {
+          "type": "bytes32",
+          "name": "s"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "minted"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "eip712Domain",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes1",
+          "name": "fields"
+        },
+        {
+          "type": "string",
+          "name": "name"
+        },
+        {
+          "type": "string",
+          "name": "version"
+        },
+        {
+          "type": "uint256",
+          "name": "chainId"
+        },
+        {
+          "type": "address",
+          "name": "verifyingContract"
+        },
+        {
+          "type": "bytes32",
+          "name": "salt"
+        },
+        {
+          "type": "uint256[]",
+          "name": "extensions"
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "getRoleAdmin",
       "constant": true,
       "stateMutability": "view",
@@ -352,6 +494,23 @@
           "name": ""
         }
       ]
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "clrusd_"
+        },
+        {
+          "type": "address",
+          "name": "admin"
+        }
+      ],
+      "outputs": []
     },
     {
       "type": "function",
@@ -442,6 +601,20 @@
     },
     {
       "type": "function",
+      "name": "proxiableUUID",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "redeem",
       "constant": false,
       "payable": false,
@@ -457,6 +630,71 @@
         {
           "type": "address",
           "name": "receiver"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "returnedAmount"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "redeemNonces",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "redeemWithAuthorization",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "redeemer"
+        },
+        {
+          "type": "address",
+          "name": "token"
+        },
+        {
+          "type": "uint256",
+          "name": "clrusdAmount"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        },
+        {
+          "type": "uint256",
+          "name": "deadline"
+        },
+        {
+          "type": "uint8",
+          "name": "v"
+        },
+        {
+          "type": "bytes32",
+          "name": "r"
+        },
+        {
+          "type": "bytes32",
+          "name": "s"
         }
       ],
       "outputs": [
@@ -542,6 +780,37 @@
       "constant": false,
       "payable": false,
       "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeTo",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeToAndCall",
+      "constant": false,
+      "stateMutability": "payable",
+      "payable": true,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        },
+        {
+          "type": "bytes",
+          "name": "data"
+        }
+      ],
       "outputs": []
     }
   ],
