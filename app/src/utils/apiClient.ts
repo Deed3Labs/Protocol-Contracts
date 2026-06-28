@@ -1655,6 +1655,21 @@ export async function updateMemberProfile(
   return response.data;
 }
 
+/** Upload the member's avatar (compressed data URL). Returns the served avatar URL. */
+export async function uploadMemberAvatar(dataUrl: string): Promise<{ avatarUrl: string } | null> {
+  const response = await apiRequest<{ avatarUrl: string }>('/api/members/me/avatar', {
+    method: 'POST',
+    body: JSON.stringify({ dataUrl }),
+  });
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
+export async function deleteMemberAvatar(): Promise<boolean> {
+  const response = await apiRequest<{ ok: boolean }>('/api/members/me/avatar', { method: 'DELETE' });
+  return !response.error;
+}
+
 export async function updateMemberSecurity(
   payload: Partial<{
     signatureLock: boolean;

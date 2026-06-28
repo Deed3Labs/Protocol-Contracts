@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useKyc } from '@/context/KycContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
-import { updateMemberProfile } from '@/utils/apiClient';
+import { updateMemberProfile, uploadMemberAvatar, deleteMemberAvatar } from '@/utils/apiClient';
 import DepositInstructions from '@/components/app-ui/DepositInstructions';
 import { cn } from '@/lib/utils';
 
@@ -108,9 +108,21 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
     if (!file) return;
     try {
       const url = await fileToAvatarDataUrl(file);
-      profile.setAvatar(url); // stored locally; reflects across the app immediately
+      profile.setAvatar(url); // optimistic: shows instantly + offline fallback
+      const res = await uploadMemberAvatar(url); // persist to backend (cross-device)
+      if (res?.avatarUrl) profile.refresh();
     } catch {
       /* ignore bad image */
+    }
+  };
+
+  const removePhoto = async () => {
+    profile.setAvatar(null);
+    try {
+      await deleteMemberAvatar();
+      profile.refresh();
+    } catch {
+      /* already cleared locally */
     }
   };
 
@@ -197,7 +209,7 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
               {profile.avatarUrl && (
                 <button
                   type="button"
-                  onClick={() => profile.setAvatar(null)}
+                  onClick={removePhoto}
                   className="text-xs font-medium text-muted-foreground transition-colors hover:text-negative"
                 >
                   Remove

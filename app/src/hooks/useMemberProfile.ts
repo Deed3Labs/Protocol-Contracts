@@ -96,8 +96,8 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
     handle: email || (pub?.username ? `@${pub.username}` : '') || short(addr),
     email,
     phone: priv?.phone || '',
-    // Local avatar takes precedence; fall back to a real (http) backend URL if one exists.
-    avatarUrl: localAvatar || (pub?.avatarUrl?.startsWith('http') ? pub.avatarUrl : null),
+    // Prefer the backend (cross-device) avatar URL; local cache is the optimistic/offline fallback.
+    avatarUrl: (pub?.avatarUrl?.startsWith('http') ? pub.avatarUrl : null) || localAvatar,
     username: pub?.username || '',
     address: addr,
     initials: initialsOf(pub?.displayName || pub?.username || '', addr),

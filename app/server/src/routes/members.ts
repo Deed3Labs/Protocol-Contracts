@@ -15,6 +15,7 @@ import {
   type UpsertMemberWalletInput,
 } from '../services/memberStore.js';
 import { memberBillingService } from '../services/memberBillingService.js';
+import { memberAvatarStore } from '../services/memberAvatarStore.js';
 
 const router = Router();
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
@@ -1146,6 +1147,51 @@ router.post('/me/verification/start', async (req: Request, res: Response) => {
       verificationLevel,
     });
     res.json(account);
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+// Upload the member's avatar (compressed data URL) — stored as a Postgres blob, served publicly via
+// /api/avatars/:memberId; the short URL is saved to avatar_url (fits the 2048-char cap).
+router.post('/me/avatar', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  try {
+    const authSubject = await resolveMemberAuthSubject(req);
+    const member = await memberStore.getMemberByAuthSubject(authSubject);
+    if (!member) {
+      res.status(404).json({ error: 'Member not found' });
+      return;
+    }
+    const dataUrl = typeof (req.body as { dataUrl?: unknown })?.dataUrl === 'string' ? (req.body as { dataUrl: string }).dataUrl : '';
+    const match = /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/.exec(dataUrl);
+    if (!match) {
+      res.status(400).json({ error: 'Invalid image' });
+      return;
+    }
+    const buffer = Buffer.from(match[2], 'base64');
+    if (buffer.length === 0 || buffer.length > 600_000) {
+      res.status(413).json({ error: 'Image too large' });
+      return;
+    }
+    await memberAvatarStore.put(member.id, buffer, match[1]);
+    const host = process.env.RAILWAY_PUBLIC_DOMAIN || req.get('host');
+    const avatarUrl = `https://${host}/api/avatars/${member.id}?v=${Date.now()}`;
+    await memberStore.updateProfileByAuthSubject(authSubject, { avatarUrl });
+    res.json({ avatarUrl });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+router.delete('/me/avatar', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  try {
+    const authSubject = await resolveMemberAuthSubject(req);
+    const member = await memberStore.getMemberByAuthSubject(authSubject);
+    if (member) await memberAvatarStore.remove(member.id);
+    await memberStore.updateProfileByAuthSubject(authSubject, { avatarUrl: null });
+    res.json({ ok: true });
   } catch (error) {
     handleMemberRouteError(res, error);
   }
