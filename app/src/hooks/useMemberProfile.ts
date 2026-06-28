@@ -1,6 +1,7 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { getMemberAccountCenter, type MemberProfileViewResponse } from '@/utils/apiClient';
+import { getStoredAvatar, setStoredAvatar } from '@/lib/avatarStore';
 
 /**
  * The connected member's profile (real), shared once for the whole shell. Resolves a display name,
@@ -30,12 +31,14 @@ export interface MemberProfile {
   initials: string;
   loading: boolean;
   refresh: () => void;
+  /** Set/clear the local avatar (data URL); persists per-wallet in localStorage. */
+  setAvatar: (dataUrl: string | null) => void;
   raw: MemberProfileViewResponse | null;
 }
 
 const EMPTY: MemberProfile = {
   name: '', firstName: 'there', handle: '', email: '', phone: '', avatarUrl: null,
-  username: '', address: '', initials: 'CL', loading: false, refresh: () => {}, raw: null,
+  username: '', address: '', initials: 'CL', loading: false, refresh: () => {}, setAvatar: () => {}, raw: null,
 };
 
 const Ctx = createContext<MemberProfile | null>(null);
@@ -48,6 +51,19 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
   const { address, isConnected } = useAppKitAccount();
   const [raw, setRaw] = useState<MemberProfileViewResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [localAvatar, setLocalAvatar] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLocalAvatar(address ? getStoredAvatar(address) : null);
+  }, [address]);
+
+  const setAvatar = useCallback(
+    (dataUrl: string | null) => {
+      setLocalAvatar(dataUrl);
+      if (address) setStoredAvatar(address, dataUrl);
+    },
+    [address],
+  );
 
   const load = useCallback(async () => {
     if (!isConnected) {
@@ -80,12 +96,14 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
     handle: email || (pub?.username ? `@${pub.username}` : '') || short(addr),
     email,
     phone: priv?.phone || '',
-    avatarUrl: pub?.avatarUrl ?? null,
+    // Local avatar takes precedence; fall back to a real (http) backend URL if one exists.
+    avatarUrl: localAvatar || (pub?.avatarUrl?.startsWith('http') ? pub.avatarUrl : null),
     username: pub?.username || '',
     address: addr,
     initials: initialsOf(pub?.displayName || pub?.username || '', addr),
     loading,
     refresh: () => void load(),
+    setAvatar,
     raw,
   };
 

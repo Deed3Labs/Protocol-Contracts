@@ -98,7 +98,7 @@ async function fileToAvatarDataUrl(file: File, max = 256): Promise<string> {
 export function AccountModal({ open, onOpenChange }: ModalProps) {
   const { verified, openKyc } = useKyc();
   const profile = useMemberProfile();
-  const [form, setForm] = useState({ fullName: '', email: '', phone: '', avatarUrl: '' });
+  const [form, setForm] = useState({ fullName: '', email: '', phone: '' });
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -108,7 +108,7 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
     if (!file) return;
     try {
       const url = await fileToAvatarDataUrl(file);
-      setForm((f) => ({ ...f, avatarUrl: url }));
+      profile.setAvatar(url); // stored locally; reflects across the app immediately
     } catch {
       /* ignore bad image */
     }
@@ -120,9 +120,8 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
       fullName: profile.name.startsWith('0x') ? '' : profile.name,
       email: profile.email,
       phone: profile.phone,
-      avatarUrl: profile.avatarUrl ?? '',
     });
-  }, [open, profile.name, profile.email, profile.phone, profile.avatarUrl]);
+  }, [open, profile.name, profile.email, profile.phone]);
 
   const save = async () => {
     setSaving(true);
@@ -131,7 +130,6 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
         displayName: form.fullName.trim() || null,
         email: form.email.trim() || null,
         phone: form.phone.trim() || null,
-        avatarUrl: form.avatarUrl.trim() || null,
       });
       profile.refresh();
       onOpenChange(false);
@@ -151,7 +149,7 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
 
         <div className="flex items-center gap-3">
           <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary text-base font-medium text-secondary-foreground">
-            {form.avatarUrl ? <img src={form.avatarUrl} alt="" className="h-full w-full object-cover" /> : profile.initials}
+            {profile.avatarUrl ? <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" /> : profile.initials}
           </span>
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium text-foreground">{profile.name}</div>
@@ -194,12 +192,12 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
                 onClick={() => fileRef.current?.click()}
                 className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
               >
-                <Camera className="h-4 w-4 text-muted-foreground" /> {form.avatarUrl ? 'Change photo' : 'Upload photo'}
+                <Camera className="h-4 w-4 text-muted-foreground" /> {profile.avatarUrl ? 'Change photo' : 'Upload photo'}
               </button>
-              {form.avatarUrl && (
+              {profile.avatarUrl && (
                 <button
                   type="button"
-                  onClick={() => setForm((f) => ({ ...f, avatarUrl: '' }))}
+                  onClick={() => profile.setAvatar(null)}
                   className="text-xs font-medium text-muted-foreground transition-colors hover:text-negative"
                 >
                   Remove
