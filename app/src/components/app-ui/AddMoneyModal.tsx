@@ -196,7 +196,8 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
               })}
             </div>
 
-            {isBank && (
+            {/* Direct deposit needs a provisioned Bridge virtual account — only surface it then. */}
+            {isBank && virtualAccount.status === 'active' && (
               <div className="mt-3">
                 <button
                   type="button"
