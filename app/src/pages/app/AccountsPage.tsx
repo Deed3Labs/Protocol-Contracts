@@ -1,6 +1,7 @@
 import { Wallet, Banknote, PiggyBank, Landmark, ShieldCheck } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
 import { useKyc } from '@/context/KycContext';
+import { useClearBalances } from '@/hooks/useClearBalances';
 import QuickActions from '@/components/app-ui/QuickActions';
 import CtaStack from '@/components/app-ui/CtaStack';
 import RecentActivity from '@/components/app-ui/RecentActivity';
@@ -36,8 +37,14 @@ const UPCOMING: UpcomingItem[] = [
  * balance-analytics chart, quick actions, recent activity, Clear Deed progress,
  * and the upcoming/spend calendars. Scaffold: placeholder figures.
  */
+const fmtUsd = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// TODO(plaid-slice): replace with Plaid getBankBalances total.
+const EXTERNAL_BALANCE = 4443.8;
+
 export default function AccountsPage() {
   const { verified, openKyc } = useKyc();
+  const bal = useClearBalances();
+  const dash = (v: number) => (bal.loading ? '—' : fmtUsd(v));
   return (
     <div className="animate-fade-in space-y-5">
       <div>
@@ -64,10 +71,10 @@ export default function AccountsPage() {
 
       <StatBar
         stats={[
-          { label: 'Total balance', value: '$41,016.67', change: '2.1% this week', icon: Wallet },
-          { label: 'Cash · USDC', value: '$12,480.20', change: '0.4%', icon: Banknote },
-          { label: 'Savings · CLRUSD', value: '$24,092.67', change: '1.8%', icon: PiggyBank },
-          { label: 'External · Plaid', value: '$4,443.80', change: '0.6%', changePositive: false, icon: Landmark },
+          { label: 'Total balance', value: dash(bal.cash + bal.savings + EXTERNAL_BALANCE), change: '2.1% this week', icon: Wallet },
+          { label: 'Cash · USDC', value: dash(bal.cash), change: '0.4%', icon: Banknote },
+          { label: 'Savings · CLRUSD', value: dash(bal.savings), change: '1.8%', icon: PiggyBank },
+          { label: 'External · Plaid', value: fmtUsd(EXTERNAL_BALANCE), change: '0.6%', changePositive: false, icon: Landmark },
         ]}
       />
 

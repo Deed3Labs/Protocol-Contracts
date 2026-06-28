@@ -3,6 +3,7 @@ import { ArrowDownUp, ArrowLeft, Check, ChevronDown, Landmark, Loader2, PiggyBan
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useKyc } from '@/context/KycContext';
+import { useClearBalances } from '@/hooks/useClearBalances';
 import { cn } from '@/lib/utils';
 
 /*
@@ -26,12 +27,6 @@ interface Acct {
   icon: typeof Wallet;
 }
 
-// Mock internal balances (match the dashboard).
-const INTERNAL: Acct[] = [
-  { id: 'cash', name: 'Cash', detail: 'USDC', scope: 'internal', balance: 12480.2, icon: Wallet },
-  { id: 'savings', name: 'Savings', detail: 'CLRUSD', scope: 'internal', balance: 24092.67, icon: PiggyBank },
-];
-
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const QUICK = [50, 100, 500, 1000];
 const INSTANT_FEE = 0.015;
@@ -39,8 +34,10 @@ const INSTANT_FEE = 0.015;
 export default function TransferModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { accounts: external, openManager } = useExternalAccounts();
   const { verified, openKyc } = useKyc();
+  const bal = useClearBalances();
   const accounts: Acct[] = [
-    ...INTERNAL,
+    { id: 'cash', name: 'Cash', detail: 'USDC', scope: 'internal', balance: bal.cash, icon: Wallet },
+    { id: 'savings', name: 'Savings', detail: 'CLRUSD', scope: 'internal', balance: bal.savings, icon: PiggyBank },
     ...external.map((a) => ({ id: a.id, name: a.name, detail: `${a.type} ••${a.mask}`, scope: 'external' as Scope, icon: Landmark })),
   ];
 
