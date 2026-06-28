@@ -1,4 +1,6 @@
 import { Router, type Request, type Response } from 'express';
+import { requireWalletMatch } from '../middleware/auth.js';
+import { onramperStore } from '../services/onramperStore.js';
 
 /*
  * Onramper (headless) proxy — fiat→USDC on-ramp aggregator for the Add-money flow. Proxied through
@@ -79,6 +81,18 @@ router.post('/checkout', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[onramper/checkout]', error);
     res.status(502).json({ error: 'Checkout failed' });
+  }
+});
+
+// GET /api/onramper/transactions/:wallet → recent on-ramp purchases + their status (from webhooks)
+router.get('/transactions/:wallet', async (req: Request, res: Response) => {
+  const w = String(req.params.wallet || '').toLowerCase();
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  try {
+    res.json({ transactions: await onramperStore.listByWallet(w) });
+  } catch (error) {
+    console.error('[onramper/transactions]', error);
+    res.status(500).json({ error: 'Failed to load transactions' });
   }
 });
 

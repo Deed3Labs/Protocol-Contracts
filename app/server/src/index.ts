@@ -26,6 +26,7 @@ import portfolioRouter from './routes/portfolio.js';
 import payRouter from './routes/pay.js';
 import contactsRouter from './routes/contacts.js';
 import onramperRouter from './routes/onramper.js';
+import onramperWebhookRouter from './routes/onramperWebhook.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
 import { websocketService } from './services/websocketService.js';
@@ -178,6 +179,7 @@ async function startServer() {
     app.use('/api/stripe/webhooks', stripeWebhooksRouter);
     app.use('/api/member-links', memberWalletLinksPublicRouter);
     app.use('/api/avatars', avatarRouter);
+    app.use('/api/webhooks/onramper', onramperWebhookRouter); // public; verified via signature
     app.use('/api/stripe', requireAuth, stripeRouter);
     app.use('/api/members', requireAuth, membersRouter);
     app.use('/api/plaid', requireAuth, requireMemberCapability('canUsePlaid'), plaidRouter);
