@@ -49,9 +49,9 @@ export default function AccountMenu() {
         <button
           type="button"
           aria-label="Account"
-          className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-sm font-medium text-secondary-foreground transition-colors hover:bg-muted"
+          className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-secondary text-sm font-medium text-secondary-foreground transition-colors hover:bg-muted"
         >
-          {initials}
+          {avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" /> : initials}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-64 p-2">
