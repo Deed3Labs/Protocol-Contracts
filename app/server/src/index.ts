@@ -21,7 +21,9 @@ import sendRouter from './routes/send.js';
 import savingsRouter from './routes/savings.js';
 import membersRouter from './routes/members.js';
 import memberWalletLinksPublicRouter from './routes/memberWalletLinksPublic.js';
+import portfolioRouter from './routes/portfolio.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
+import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 
@@ -177,7 +179,8 @@ async function startServer() {
     app.use('/api/bridge', requireAuth, requireMemberCapability('canUseBridge'), bridgeRouter);
     app.use('/api/send', sendRouter);
     app.use('/api/savings', requireAuth, savingsRouter);
-    
+    app.use('/api/portfolio', requireAuth, portfolioRouter);
+
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');
     console.log('  - /api/balances (native token balances)');
@@ -221,6 +224,9 @@ async function startServer() {
     // Start background jobs (non-blocking)
     startPriceUpdater().catch((error) => {
       console.error('⚠️ Background jobs failed to start:', error);
+    });
+    startPortfolioSnapshotter().catch((error) => {
+      console.error('⚠️ Portfolio snapshotter failed to start:', error);
     });
 
     // Start HTTP server (Express + WebSocket)

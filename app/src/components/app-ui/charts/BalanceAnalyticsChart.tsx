@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+import { useClearPortfolioHistory } from '@/hooks/useClearPortfolioHistory';
+import type { PortfolioHistoryPoint } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 const METRICS = ['Balance', 'Income', 'Spending', 'Net'] as const;
@@ -8,8 +10,6 @@ const RANGES = ['1D', '1W', '1M', '3M', '6M', 'YTD', '1Y', 'All'] as const;
 type Metric = (typeof METRICS)[number];
 type Range = (typeof RANGES)[number];
 
-const POINTS: Record<Range, number> = { '1D': 24, '1W': 7, '1M': 30, '3M': 13, '6M': 26, YTD: 24, '1Y': 12, All: 24 };
-const BASE: Record<Metric, number> = { Balance: 41016, Income: 5640, Spending: 3284, Net: 2356 };
 /** Per-metric accent: Balance=blue, Income=green, Spending=red, Net=green (bars recolor by sign). */
 const METRIC_COLOR: Record<Metric, string> = {
   Balance: 'rgb(var(--info))',
@@ -18,46 +18,40 @@ const METRIC_COLOR: Record<Metric, string> = {
   Net: 'rgb(var(--positive))',
 };
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-function labelFor(range: Range, i: number, n: number): string {
-  if (range === '1D') return `${String(Math.round((i / Math.max(1, n - 1)) * 24)).padStart(2, '0')}:00`;
-  if (range === '1W') return DAYS[i] ?? '';
-  if (range === '1Y' || range === 'YTD' || range === 'All') return MONTHS[i % 12] ?? '';
-  return `${i + 1}`;
+const DAY = 86_400_000;
+function cutoffFor(range: Range): number {
+  const now = Date.now();
+  if (range === 'All') return 0;
+  if (range === 'YTD') return Date.UTC(new Date().getUTCFullYear(), 0, 1);
+  const days: Record<string, number> = { '1D': 1, '1W': 7, '1M': 31, '3M': 93, '6M': 186, '1Y': 366 };
+  return now - (days[range] ?? 31) * DAY;
 }
+const dlabel = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-/** Months each range spans — scales per-bucket flow amounts so range totals stay realistic. */
-const RANGE_MONTHS: Record<Range, number> = { '1D': 1 / 30, '1W': 0.25, '1M': 1, '3M': 3, '6M': 6, YTD: 6, '1Y': 12, All: 24 };
-
-/** Balance is a cumulative level (area); Income/Spending/Net are per-period flows (bars). */
-function buildSeries(metric: Metric, range: Range) {
-  const n = POINTS[range];
-  const base = BASE[metric];
-  const out: { label: string; value: number }[] = [];
-
-  if (metric === 'Balance') {
-    for (let i = 0; i < n; i++) {
-      const t = n <= 1 ? 0 : i / (n - 1);
-      const wave = Math.sin(i * 0.8) * 0.035 + Math.sin(i * 0.31 + 1) * 0.025;
-      out.push({ label: labelFor(range, i, n), value: Math.round(base * (0.95 + 0.1 * t + wave)) });
+/**
+ * Real series from backend snapshots (on-chain + bank). Balance = the daily total level;
+ * Income/Spending/Net are derived from day-over-day change. Falls back to a flat line at the real
+ * current total when there's no history yet (pre-backfill / no backend) — never mock data.
+ */
+function buildSeries(metric: Metric, range: Range, points: PortfolioHistoryPoint[], currentTotal: number) {
+  const cutoff = cutoffFor(range);
+  const pts = points.filter((p) => Date.parse(p.date) >= cutoff);
+  if (pts.length === 0) {
+    if (metric === 'Balance') {
+      return [
+        { label: '', value: currentTotal },
+        { label: 'Now', value: currentTotal },
+      ];
     }
-    return out;
+    return [{ label: 'Now', value: 0 }];
   }
-
-  // Flows: scale per bucket so the total over the range ≈ base × months spanned.
-  const perBucket = (base * RANGE_MONTHS[range]) / n;
-  for (let i = 0; i < n; i++) {
-    let value: number;
-    if (metric === 'Net') {
-      const swing = Math.sin(i * 0.9) * 1.0 + Math.sin(i * 0.45 + 2) * 0.7;
-      value = perBucket * (1 + swing); // net flow — can dip negative
-    } else {
-      const seed = metric === 'Spending' ? 1.5 : 0;
-      value = perBucket * (0.6 + 0.8 * (0.5 + 0.5 * Math.sin(i * 0.7 + seed)));
-    }
-    out.push({ label: labelFor(range, i, n), value: Math.round(value) });
+  if (metric === 'Balance') return pts.map((p) => ({ label: dlabel(p.date), value: p.totalUsd }));
+  const out: { label: string; value: number }[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    const prev = i > 0 ? pts[i - 1].totalUsd : pts[i].totalUsd;
+    const delta = pts[i].totalUsd - prev;
+    const value = metric === 'Income' ? Math.max(delta, 0) : metric === 'Spending' ? Math.max(-delta, 0) : delta;
+    out.push({ label: dlabel(pts[i].date), value: Math.round(value * 100) / 100 });
   }
   return out;
 }
@@ -100,7 +94,8 @@ function DivergingBar(props: { x?: number; y?: number; width?: number; height?: 
 export default function BalanceAnalyticsChart({ className }: { className?: string }) {
   const [metric, setMetric] = useState<Metric>('Balance');
   const [range, setRange] = useState<Range>('1M');
-  const data = useMemo(() => buildSeries(metric, range), [metric, range]);
+  const { points, currentTotal } = useClearPortfolioHistory();
+  const data = useMemo(() => buildSeries(metric, range, points, currentTotal), [metric, range, points, currentTotal]);
   const config = useMemo(
     () => ({ value: { label: metric, color: METRIC_COLOR[metric] } }) satisfies ChartConfig,
     [metric],

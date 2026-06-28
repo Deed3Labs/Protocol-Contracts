@@ -999,6 +999,29 @@ export async function getPlaidHistoricalTransactions(
   return { transactions: [], linked: false };
 }
 
+export interface PortfolioHistoryPoint {
+  date: string; // YYYY-MM-DD
+  onchainUsd: number;
+  bankUsd: number;
+  totalUsd: number;
+}
+
+/**
+ * Portfolio value history (daily): on-chain stablecoins + Plaid bank. Auth-protected; backed by
+ * the server's snapshot store (first call backfills from transaction flows).
+ */
+export async function getPortfolioHistory(
+  walletAddress: string,
+  range: string = 'All'
+): Promise<{ points: PortfolioHistoryPoint[]; configured: boolean } | null> {
+  const enc = encodeURIComponent(walletAddress);
+  const response = await apiRequest<{ points: PortfolioHistoryPoint[]; configured: boolean }>(
+    `/api/portfolio/history?walletAddress=${enc}&range=${encodeURIComponent(range)}`
+  );
+  if (response.error || !response.data) return null;
+  return response.data;
+}
+
 /** Spend-by-day: day of month (1–31) -> total outflows for that day */
 export type SpendingByDay = Record<number, number>;
 
