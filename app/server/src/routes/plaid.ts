@@ -184,7 +184,7 @@ async function invalidatePlaidCaches(scope: PlaidScopeContext): Promise<void> {
   );
 }
 
-function getPlaidClient(): PlaidApi | null {
+export function getPlaidClient(): PlaidApi | null {
   const clientId = process.env.PLAID_CLIENT_ID;
   const secret = process.env.PLAID_SECRET;
   const env = process.env.PLAID_ENV || 'sandbox';

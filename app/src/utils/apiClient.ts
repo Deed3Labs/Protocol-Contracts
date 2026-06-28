@@ -1968,3 +1968,9 @@ export async function recordPayment(
   });
   return r.error || !r.data ? null : r.data;
 }
+
+/** Detect on-time recurring-bill payments from Plaid + accrue credits; returns the fresh summary. */
+export async function reconcilePay(wallet: string): Promise<PaySummary | null> {
+  const r = await apiRequest<PaySummary>(`/api/pay/${wallet.toLowerCase()}/reconcile`, { method: 'POST' });
+  return r.error || !r.data ? null : r.data;
+}

@@ -10,6 +10,7 @@ import {
   addPayBiller,
   syncPlaidBillers,
   recordPayment,
+  reconcilePay,
   type PayBiller,
   type PaySummary,
 } from '@/utils/apiClient';
@@ -88,6 +89,8 @@ interface PayValue {
   addBiller: (b: Omit<Bill, 'id' | 'icon'>) => string;
   /** Record an on-time payment + accrue equity credits (called when the Pay flow completes). */
   recordBillPayment: (bill: Bill, paidAmount: number) => Promise<void>;
+  /** Detect on-time recurring-bill payments from Plaid + accrue credits (Plaid call — Pay page only). */
+  reconcile: () => Promise<void>;
   streak: number;
   refresh: () => void;
   /** Open the Pay flow; pass a bill id to go straight to that payment (e.g. "Pay rent"). */
@@ -105,6 +108,7 @@ export function usePay(): PayValue {
       getBill: () => undefined,
       addBiller: () => '',
       recordBillPayment: async () => {},
+      reconcile: async () => {},
       streak: ON_TIME_STREAK,
       refresh: () => {},
       openPay: () => {},
@@ -191,6 +195,13 @@ export function PayProvider({ children }: { children: ReactNode }) {
     [address, load],
   );
 
+  // Plaid-backed detection of on-time recurring payments; refreshes the summary with any new credits.
+  const reconcile = useCallback(async () => {
+    if (!address) return;
+    const s = await reconcilePay(address);
+    if (s) setSummary(s);
+  }, [address]);
+
   const value: PayValue = {
     bills,
     summary,
@@ -198,6 +209,7 @@ export function PayProvider({ children }: { children: ReactNode }) {
     getBill: (id) => bills.find((b) => b.id === id),
     addBiller,
     recordBillPayment,
+    reconcile,
     streak: summary?.streak ?? ON_TIME_STREAK,
     refresh: () => void load(),
     openPay: (billId) =>

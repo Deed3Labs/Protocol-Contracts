@@ -227,12 +227,13 @@ export const payLedgerStore = {
     period: string; // e.g. "2026-06" — billing period for idempotency
     source: EarnSource;
     txRef?: string | null;
+    paidAt?: Date; // actual payment date (detected payments use the bank date); defaults to now
   }): Promise<{ creditAwarded: number; onTime: boolean; duplicate: boolean }> {
     const pool = getPostgresPool();
     if (!pool) throw new Error('Postgres not configured');
     await ensureTables();
 
-    const paidAt = new Date();
+    const paidAt = input.paidAt ?? new Date();
     let onTime = true;
     if (input.dueDate) {
       const due = new Date(input.dueDate);

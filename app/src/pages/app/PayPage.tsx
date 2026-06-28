@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Home, FileText, SendHorizontal, ArrowDownLeft, Calendar, CircleCheck, TrendingUp, Flame } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
 import ActionTile from '@/components/app-ui/ActionTile';
@@ -11,10 +12,15 @@ const fmtUsd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionD
 
 /** Pay — Clear Pay's rent/bill core, send/request, card, and rent-to-equity viz. */
 export default function PayPage() {
-  const { bills, summary, openPay } = usePay();
+  const { bills, summary, openPay, reconcile } = usePay();
   const { openSend, openRequest } = useMoneyActions();
   const timelineBills: TimelineBill[] = bills.map((b) => ({ id: b.id, name: b.name, dateLabel: b.dueLabel, amount: b.amount, icon: b.icon }));
   const streak = summary?.streak ?? 0;
+
+  // Detect on-time recurring payments from Plaid when the Pay page opens (Plaid call kept off other pages).
+  useEffect(() => {
+    void reconcile();
+  }, [reconcile]);
   return (
     <div className="animate-fade-in space-y-5">
       <header>

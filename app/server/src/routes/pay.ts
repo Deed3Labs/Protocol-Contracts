@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { requireWalletMatch } from '../middleware/auth.js';
 import { payLedgerStore, type BillerType, type EarnSource } from '../services/payLedgerStore.js';
+import { getPlaidClient } from './plaid.js';
+import { plaidTokenStore } from '../services/plaidTokenStore.js';
 
 /*
  * Clear Pay endpoints — billers (manual + Plaid-detected), payments, and the equity summary.
@@ -138,6 +140,64 @@ router.post('/:wallet/payments', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[pay/payments]', error);
     res.status(500).json({ error: 'Failed to record payment' });
+  }
+});
+
+// POST /api/pay/:wallet/reconcile
+// Detects on-time recurring-bill payments from Plaid (each stream's last_date) and accrues credits
+// for any not already recorded this period (idempotent per biller+period). Returns the fresh summary.
+router.post('/:wallet/reconcile', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+
+  const client = getPlaidClient();
+  if (!client || !plaidTokenStore.isConfigured()) {
+    res.json(await payLedgerStore.getSummary(w)); // nothing to detect; return current state
+    return;
+  }
+
+  try {
+    const now = new Date();
+    const curY = now.getFullYear();
+    const curM = now.getMonth(); // 0-based
+    const billers = await payLedgerStore.listBillers(w);
+    const byStream = new Map(billers.filter((b) => b.plaidStreamId).map((b) => [b.plaidStreamId as string, b]));
+    if (byStream.size > 0) {
+      const items = await plaidTokenStore.getItems(w);
+      for (const item of items) {
+        let resp;
+        try {
+          resp = await client.transactionsRecurringGet({ access_token: item.access_token });
+        } catch {
+          continue; // skip an item Plaid can't read right now
+        }
+        for (const s of resp.data.outflow_streams ?? []) {
+          if (s.is_active === false || !s.last_date) continue;
+          const [ly, lm, ld] = s.last_date.split('-').map(Number);
+          if (ly !== curY || lm - 1 !== curM) continue; // only the current period
+          const biller = byStream.get(s.stream_id);
+          if (!biller) continue; // need a biller_id for idempotency
+          const dueDay = biller.dueDay ?? ld;
+          const amount = s.last_amount?.amount != null ? Math.abs(Number(s.last_amount.amount)) : biller.defaultAmount;
+          await payLedgerStore.recordPayment({
+            wallet: w,
+            billerId: biller.id,
+            name: s.merchant_name || s.description || biller.name,
+            type: biller.type,
+            amount,
+            dueDate: new Date(ly, lm - 1, dueDay).toISOString().slice(0, 10),
+            period: `${ly}-${String(lm).padStart(2, '0')}`,
+            source: 'detected' as EarnSource,
+            paidAt: new Date(ly, lm - 1, ld),
+          });
+        }
+      }
+    }
+    res.json(await payLedgerStore.getSummary(w));
+  } catch (error) {
+    console.error('[pay/reconcile]', error);
+    res.json(await payLedgerStore.getSummary(w)); // detection is best-effort
   }
 });
 

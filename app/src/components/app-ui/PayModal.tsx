@@ -27,8 +27,14 @@ interface Source {
   icon: typeof Wallet;
 }
 
-type Draft = { name: string; payee: string; amount: string; dueLabel: string };
-const emptyDraft: Draft = { name: '', payee: '', amount: '', dueLabel: '' };
+type Draft = { name: string; payee: string; amount: string; dueDay: string };
+const emptyDraft: Draft = { name: '', payee: '', amount: '', dueDay: '' };
+
+const ordinal = (n: number) => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+};
 
 export default function PayModal({
   open,
@@ -97,13 +103,14 @@ export default function PayModal({
   const saveBiller = () => {
     const amt = Number(draft.amount) || 0;
     if (!draft.name.trim() || amt <= 0) return;
+    const day = Math.min(Math.max(parseInt(draft.dueDay, 10) || 0, 0), 31) || null;
     const id = addBiller({
       name: draft.name.trim(),
       payee: draft.payee.trim() || draft.name.trim(),
       type: 'other',
       amount: amt,
-      dueLabel: draft.dueLabel.trim() || 'Due soon',
-      dueDay: null,
+      dueLabel: day ? `Due on the ${ordinal(day)}` : 'Due soon',
+      dueDay: day,
     });
     setBillId(id);
     setAmountStr(String(amt));
@@ -188,8 +195,14 @@ export default function PayModal({
                     <input inputMode="decimal" value={draft.amount} onChange={(e) => setDraft((d) => ({ ...d, amount: e.target.value.replace(/[^0-9.]/g, '') }))} placeholder="0" className={cn(inputCls, 'pl-7 tabular-nums')} />
                   </div>
                 </Labeled>
-                <Labeled label="Due">
-                  <input value={draft.dueLabel} onChange={(e) => setDraft((d) => ({ ...d, dueLabel: e.target.value }))} placeholder="Jul 15" className={inputCls} />
+                <Labeled label="Due day of month">
+                  <input
+                    inputMode="numeric"
+                    value={draft.dueDay}
+                    onChange={(e) => setDraft((d) => ({ ...d, dueDay: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) }))}
+                    placeholder="1–31"
+                    className={cn(inputCls, 'tabular-nums')}
+                  />
                 </Labeled>
               </div>
             </div>
