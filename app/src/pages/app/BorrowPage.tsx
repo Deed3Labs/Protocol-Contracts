@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { TrendingUp, RefreshCw, Wallet, ArrowUpRight, Minus, Plus, ShieldCheck, Sparkles, ArrowRight, Trash2, X } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
-import { ConstructionGate } from '@/components/app-ui/ComingSoon';
+import { ConstructionGate, PreviewBadge, IS_LIVE_APP } from '@/components/app-ui/ComingSoon';
 import { useCredit, type CreditProduct, type PurposeLine } from '@/context/CreditContext';
 import { cn } from '@/lib/utils';
 
@@ -34,7 +34,10 @@ export default function BorrowPage() {
     >
     <div className="animate-fade-in space-y-5">
       <header>
-        <h1 className="font-display text-3xl tracking-tight text-foreground">Borrow</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-display text-3xl tracking-tight text-foreground">Borrow</h1>
+          {!IS_LIVE_APP && <PreviewBadge />}
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Borrow against your savings — no interest, no fixed due dates. Your limit grows as your savings grow.
         </p>

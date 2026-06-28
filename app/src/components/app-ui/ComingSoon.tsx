@@ -5,6 +5,15 @@ import type { ReactNode } from 'react';
  *  visible on the demo/preview for ongoing work. */
 export const IS_LIVE_APP = typeof window !== 'undefined' && window.location.hostname === 'app.useclear.org';
 
+/** Small "Preview" pill for unfinished pages on the demo/preview (where the WIP page still renders). */
+export function PreviewBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-info/10 px-2 py-0.5 text-[11px] font-medium text-info ring-1 ring-inset ring-info/20">
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-info" /> Preview
+    </span>
+  );
+}
+
 /** Animated "coming soon / under construction" panel: pulsing badge + a sliding progress shimmer. */
 export function ComingSoon({ title, subtitle }: { title: string; subtitle?: string }) {
   return (

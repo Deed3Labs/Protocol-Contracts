@@ -4,7 +4,7 @@ import {
   Sparkles, Zap, ArrowRight, Loader2, type LucideIcon,
 } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
-import { ConstructionGate } from '@/components/app-ui/ComingSoon';
+import { ConstructionGate, PreviewBadge, IS_LIVE_APP } from '@/components/app-ui/ComingSoon';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { CLRUSD_BALANCE } from '@/context/CreditContext';
 import { cn } from '@/lib/utils';
@@ -87,7 +87,10 @@ export default function AssurancePage() {
     >
     <div className="animate-fade-in space-y-5">
       <header>
-        <h1 className="font-display text-3xl tracking-tight text-foreground">Assurance</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-display text-3xl tracking-tight text-foreground">Assurance</h1>
+          {!IS_LIVE_APP && <PreviewBadge />}
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Mutual-benefit protection you build as you grow — never a premium, never paid back.
         </p>
