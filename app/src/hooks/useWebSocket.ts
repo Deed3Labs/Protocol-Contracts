@@ -54,11 +54,13 @@ export function useWebSocket(
       setIsConnected(true);
       isConnectedRef.current = true;
 
-      // Auto-subscribe on connect
+      // Auto-subscribe on connect.
+      // Dropped 'nfts' (unused by the app) + 'prices' (the server's global 15-min price updater
+      // already keeps prices warm) to cut redundant Alchemy compute-unit usage.
       socket.emit('subscribe', {
         address,
         chainIds: [1, 8453, 100, 11155111], // Default chains
-        subscriptions: ['balances', 'nfts', 'transactions', 'prices'],
+        subscriptions: ['balances', 'transactions'],
       });
     });
 
