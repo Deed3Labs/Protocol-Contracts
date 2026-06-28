@@ -33,8 +33,15 @@ router.get('/history', async (req: Request, res: Response) => {
     return;
   }
   try {
-    if (!(await portfolioHistoryStore.hasAny(wallet))) {
+    // Bump VALUATION_VERSION whenever the snapshot valuation logic changes — stale history is then
+    // purged + re-backfilled once with the corrected values (keeps the chart in sync with the cards).
+    const VALUATION_VERSION = 2;
+    const fresh = !(await portfolioHistoryStore.hasAny(wallet));
+    const stale = (await portfolioHistoryStore.getBackfillVersion(wallet)) < VALUATION_VERSION;
+    if (fresh || stale) {
+      if (stale && !fresh) await portfolioHistoryStore.purge(wallet);
       await backfill(wallet);
+      await portfolioHistoryStore.setBackfillVersion(wallet, VALUATION_VERSION);
     } else {
       await snapshotToday(wallet).catch(() => {});
     }

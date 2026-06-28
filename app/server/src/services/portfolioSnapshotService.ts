@@ -19,6 +19,21 @@ const ALL_CHAINS = [1, 10, 8453, 42161, 137, 100, 11155111, 84532];
 const DAY = 86_400_000;
 const BACKFILL_DAYS = 365;
 
+// Canonical mainnet USDC contract addresses (mirror frontend config/tokens.ts). Cash is matched by
+// ADDRESS, not symbol, so bridged variants (e.g. Gnosis USDC.e) are counted and symbol-spoofing
+// spam tokens are excluded — keeping the snapshot total in lockstep with the balance cards.
+const USDC_ADDRESSES: Record<number, string> = {
+  1: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+  10: '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
+  8453: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+  42161: '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+  137: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
+  100: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83',
+};
+const USDC_KEYS = new Set(Object.entries(USDC_ADDRESSES).map(([c, a]) => `${c}:${a}`));
+// USDC symbol variants — used only for tx-flow matching, where the contract address isn't available.
+const USDC_SYMS = new Set(['USDC', 'USDC.E', 'USDBC']);
+
 interface Flow {
   ts: number;
   usd: number; // + inflow, - outflow
@@ -50,8 +65,9 @@ export async function getOnchainStableUsd(wallet: string): Promise<number> {
     let sum = 0;
     for (const [chainId, tokens] of byChain.entries()) {
       for (const t of tokens) {
-        const sym = clean(t.symbol);
-        if ((sym === 'USDC' && MAINNET.includes(chainId)) || sym === 'CLRUSD') sum += Number(t.balance) || 0;
+        const isUSDC = USDC_KEYS.has(`${chainId}:${(t.address || '').toLowerCase()}`); // mainnet USDC by canonical address
+        const isCLRUSD = clean(t.symbol) === 'CLRUSD'; // CLRUSD any chain (own token, no spam risk)
+        if (isUSDC || isCLRUSD) sum += Number(t.balance) || 0;
       }
     }
     return sum;
@@ -95,7 +111,7 @@ async function getOnchainFlows(wallet: string): Promise<Flow[]> {
       const data = (await res.json()) as { transactions?: Array<{ type?: string; assetSymbol?: string; amount?: number; date?: string }> };
       for (const t of data.transactions || []) {
         const sym = clean(t.assetSymbol);
-        if (!((sym === 'USDC' && MAINNET.includes(chain)) || sym === 'CLRUSD')) continue;
+        if (!(USDC_SYMS.has(sym) || sym === 'CLRUSD')) continue; // USDC variants (no contract addr in tx data) + CLRUSD
         const inbound = /deposit|receiv|incoming|claim/i.test(t.type || '');
         const amt = Math.abs(Number(t.amount) || 0);
         flows.push({ ts: Date.parse(t.date || '') || 0, usd: inbound ? amt : -amt });

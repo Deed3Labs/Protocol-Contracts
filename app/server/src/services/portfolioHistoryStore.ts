@@ -8,6 +8,7 @@ import { getPostgresPool } from '../config/postgres.js';
  */
 
 const TABLE = process.env.PORTFOLIO_SNAPSHOT_TABLE || 'portfolio_snapshots';
+const META_TABLE = 'portfolio_backfill_meta';
 let ensured = false;
 
 async function ensureTable(pool: Pool): Promise<void> {
@@ -21,7 +22,12 @@ async function ensureTable(pool: Pool): Promise<void> {
       total_usd NUMERIC NOT NULL DEFAULT 0,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (wallet_address, snapshot_date)
-    )
+    );
+    CREATE TABLE IF NOT EXISTS ${META_TABLE} (
+      wallet_address TEXT PRIMARY KEY,
+      valuation_version INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
   ensured = true;
 }
@@ -75,6 +81,33 @@ export const portfolioHistoryStore = {
     await ensureTable(pool);
     const r = await pool.query(`SELECT 1 FROM ${TABLE} WHERE wallet_address = $1 LIMIT 1`, [wallet.toLowerCase()]);
     return (r.rowCount ?? 0) > 0;
+  },
+
+  /** Wipe a wallet's snapshots so the backfill can regenerate them (used after a valuation change). */
+  async purge(wallet: string): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    await ensureTable(pool);
+    await pool.query(`DELETE FROM ${TABLE} WHERE wallet_address = $1`, [wallet.toLowerCase()]);
+  },
+
+  async getBackfillVersion(wallet: string): Promise<number> {
+    const pool = getPostgresPool();
+    if (!pool) return 0;
+    await ensureTable(pool);
+    const r = await pool.query(`SELECT valuation_version FROM ${META_TABLE} WHERE wallet_address = $1`, [wallet.toLowerCase()]);
+    return r.rows[0] ? Number(r.rows[0].valuation_version) : 0;
+  },
+
+  async setBackfillVersion(wallet: string, version: number): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    await ensureTable(pool);
+    await pool.query(
+      `INSERT INTO ${META_TABLE} (wallet_address, valuation_version) VALUES ($1, $2)
+       ON CONFLICT (wallet_address) DO UPDATE SET valuation_version = EXCLUDED.valuation_version, updated_at = now()`,
+      [wallet.toLowerCase(), version],
+    );
   },
 
   async listWallets(): Promise<string[]> {
