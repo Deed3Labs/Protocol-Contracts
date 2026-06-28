@@ -40,7 +40,9 @@ function buildBalanceSeries(range: Range, points: PortfolioHistoryPoint[], curre
       { label: 'Now', value: currentTotal },
     ];
   }
-  return pts.map((p) => ({ label: dlabel(p.date), value: p.totalUsd }));
+  // Anchor the latest value to the live total (same source as the balance cards) so the chart's
+  // current figure never disagrees with them — historical snapshots provide the trend leading up.
+  return [...pts.map((p) => ({ label: dlabel(p.date), value: p.totalUsd })), { label: 'Now', value: currentTotal }];
 }
 
 /** Income/Spending/Net per bucket from real transaction flows (on-chain + Plaid). */

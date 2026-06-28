@@ -4,6 +4,7 @@ import {
   Sparkles, Zap, ArrowRight, Loader2, type LucideIcon,
 } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
+import { ConstructionGate } from '@/components/app-ui/ComingSoon';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { CLRUSD_BALANCE } from '@/context/CreditContext';
 import { cn } from '@/lib/utils';
@@ -80,6 +81,10 @@ export default function AssurancePage() {
   const activeCount = 1 + unlocked.size;
 
   return (
+    <ConstructionGate
+      title="Assurance is coming soon"
+      subtitle="The Assurance Pool is still being built — smart contracts in progress. It'll open up here soon."
+    >
     <div className="animate-fade-in space-y-5">
       <header>
         <h1 className="font-display text-3xl tracking-tight text-foreground">Assurance</h1>
@@ -232,6 +237,7 @@ export default function AssurancePage() {
       />
       <CoverageModal coverage={coverage} onOpenChange={(o) => !o && setCoverage(null)} />
     </div>
+    </ConstructionGate>
   );
 }
 

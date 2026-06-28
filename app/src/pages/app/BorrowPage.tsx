@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { TrendingUp, RefreshCw, Wallet, ArrowUpRight, Minus, Plus, ShieldCheck, Sparkles, ArrowRight, Trash2, X } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
+import { ConstructionGate } from '@/components/app-ui/ComingSoon';
 import { useCredit, type CreditProduct, type PurposeLine } from '@/context/CreditContext';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +28,10 @@ export default function BorrowPage() {
   };
 
   return (
+    <ConstructionGate
+      title="Borrow is coming soon"
+      subtitle="We're finishing the smart contracts behind borrowing against your equity. It'll light up here soon."
+    >
     <div className="animate-fade-in space-y-5">
       <header>
         <h1 className="font-display text-3xl tracking-tight text-foreground">Borrow</h1>
@@ -216,6 +221,7 @@ export default function BorrowPage() {
         </div>
       </div>
     </div>
+    </ConstructionGate>
   );
 }
 
