@@ -62,6 +62,28 @@ export function getPostgresPool(): Pool | null {
   return postgresPool;
 }
 
+let payPool: Pool | null = null;
+
+/**
+ * Dedicated pool for the Clear Pay equity-credit ledger. Uses PAY_DATABASE_URL (a separate Railway
+ * Postgres) when set so the ledger lives in its own DB; falls back to the shared pool otherwise.
+ */
+export function getPayPool(): Pool | null {
+  const connectionString = process.env.PAY_DATABASE_URL || '';
+  if (!connectionString) return getPostgresPool();
+  if (payPool) return payPool;
+
+  payPool = new Pool({
+    connectionString,
+    max: parseIntEnv('POSTGRES_POOL_MAX', 10),
+    idleTimeoutMillis: parseIntEnv('POSTGRES_IDLE_TIMEOUT_MS', 30_000),
+    connectionTimeoutMillis: parseIntEnv('POSTGRES_CONNECTION_TIMEOUT_MS', 10_000),
+    ssl: shouldUseSsl(connectionString) ? { rejectUnauthorized: false } : undefined,
+  });
+  payPool.on('error', (error: Error) => console.error('Pay Postgres pool error:', error.message));
+  return payPool;
+}
+
 export async function closePostgresPool(): Promise<void> {
   if (!postgresPool) {
     return;

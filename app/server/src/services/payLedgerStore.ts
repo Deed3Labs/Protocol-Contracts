@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { getPostgresPool } from '../config/postgres.js';
+import { getPayPool } from '../config/postgres.js';
 
 /*
  * Clear Pay rent/bill → equity-credit ledger (off-chain, Railway Postgres). Append-only credit rows
@@ -38,7 +38,7 @@ function creditAmount(type: BillerType, streak: number, source: EarnSource): num
 }
 
 async function ensureTables(): Promise<void> {
-  const pool = getPostgresPool();
+  const pool = getPayPool();
   if (!pool || ensured) return;
   await pool.query(`
     CREATE TABLE IF NOT EXISTS pay_billers (
@@ -134,7 +134,7 @@ function rowToBiller(r: Record<string, unknown>): Biller {
 
 /** Consecutive months (ending at the most recent) with an on-time rent payment. */
 async function computeStreak(wallet: string): Promise<number> {
-  const pool = getPostgresPool();
+  const pool = getPayPool();
   if (!pool) return 0;
   const r = await pool.query(
     `SELECT DISTINCT to_char(date_trunc('month', paid_at), 'YYYY-MM') AS m
@@ -159,11 +159,11 @@ async function computeStreak(wallet: string): Promise<number> {
 
 export const payLedgerStore = {
   isConfigured(): boolean {
-    return Boolean(getPostgresPool());
+    return Boolean(getPayPool());
   },
 
   async listBillers(wallet: string): Promise<Biller[]> {
-    const pool = getPostgresPool();
+    const pool = getPayPool();
     if (!pool) return [];
     await ensureTables();
     const r = await pool.query(
@@ -174,7 +174,7 @@ export const payLedgerStore = {
   },
 
   async addBiller(wallet: string, b: Omit<Biller, 'id' | 'source' | 'plaidStreamId'>): Promise<Biller> {
-    const pool = getPostgresPool();
+    const pool = getPayPool();
     if (!pool) throw new Error('Postgres not configured');
     await ensureTables();
     const id = crypto.randomUUID();
@@ -187,7 +187,7 @@ export const payLedgerStore = {
   },
 
   async archiveBiller(wallet: string, id: string): Promise<void> {
-    const pool = getPostgresPool();
+    const pool = getPayPool();
     if (!pool) return;
     await ensureTables();
     await pool.query(`UPDATE pay_billers SET archived_at = now() WHERE wallet = $1 AND id = $2`, [wallet, id]);
@@ -198,7 +198,7 @@ export const payLedgerStore = {
     wallet: string,
     streams: { streamId: string; name: string; amount: number; dueDay: number; type: BillerType }[],
   ): Promise<void> {
-    const pool = getPostgresPool();
+    const pool = getPayPool();
     if (!pool || streams.length === 0) return;
     await ensureTables();
     for (const s of streams) {
@@ -229,7 +229,7 @@ export const payLedgerStore = {
     txRef?: string | null;
     paidAt?: Date; // actual payment date (detected payments use the bank date); defaults to now
   }): Promise<{ creditAwarded: number; onTime: boolean; duplicate: boolean }> {
-    const pool = getPostgresPool();
+    const pool = getPayPool();
     if (!pool) throw new Error('Postgres not configured');
     await ensureTables();
 
@@ -268,7 +268,7 @@ export const payLedgerStore = {
   },
 
   async getSummary(wallet: string): Promise<PaySummary> {
-    const pool = getPostgresPool();
+    const pool = getPayPool();
     if (!pool) {
       return { dueThisMonth: 0, paid30: 0, totalEquity: 0, vestedEquity: 0, pendingEquity: 0, equityThisMonth: 0, streak: 0, series: [] };
     }
