@@ -46,7 +46,7 @@ export function ConstructionGate({ title, subtitle, children }: { title: string;
       <div aria-hidden className="pointer-events-none select-none opacity-30 blur-[6px]">
         {children}
       </div>
-      <div className="absolute inset-0 z-10 flex items-start justify-center">
+      <div className="absolute inset-0 z-10 flex items-center justify-center">
         <ComingSoon title={title} subtitle={subtitle} />
       </div>
     </div>

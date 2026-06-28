@@ -98,8 +98,8 @@ export default function RentEquityAnalyticsChart({ className, series = [] }: { c
         </div>
       </div>
 
-      <div className="mt-3 flex-1">
-        <ChartContainer config={config} height={210}>
+      <div className="mt-3 flex-1 min-h-0">
+        <ChartContainer config={config} height={210} fill>
           {isLevel ? (
             <AreaChart data={data} margin={MARGIN}>
               <defs>

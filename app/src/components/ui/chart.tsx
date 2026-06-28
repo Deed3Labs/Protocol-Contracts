@@ -29,11 +29,15 @@ export function ChartContainer({
   config,
   className,
   height = 240,
+  fill = false,
   children,
   ...props
 }: React.ComponentProps<'div'> & {
   config: ChartConfig;
   height?: number;
+  /** Grow to fill the parent's height (e.g. a flex-1 card area) instead of a fixed px height.
+   *  `height` then acts as a minimum floor so the chart never collapses. */
+  fill?: boolean;
   children: React.ReactElement;
 }) {
   const styleVars = React.useMemo(() => {
@@ -50,12 +54,13 @@ export function ChartContainer({
         data-slot="chart"
         className={cn(
           'w-full touch-pan-y [&_.recharts-surface]:touch-pan-y [&_.recharts-wrapper]:touch-pan-y [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line]:stroke-border/70 [&_.recharts-surface]:outline-none',
+          fill && 'h-full',
           className,
         )}
-        style={{ ...styleVars, height }}
+        style={{ ...styleVars, ...(fill ? { height: '100%', minHeight: height } : { height }) }}
         {...props}
       >
-        <Recharts.ResponsiveContainer width="100%" height={height} minWidth={0}>
+        <Recharts.ResponsiveContainer width="100%" height={fill ? '100%' : height} minHeight={fill ? height : undefined} minWidth={0}>
           {children}
         </Recharts.ResponsiveContainer>
       </div>
