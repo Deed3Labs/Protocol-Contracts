@@ -1,39 +1,22 @@
-import { useState } from 'react';
 import { Landmark, Loader2, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 
-const MOCK_BANKS = ['Bank of America', 'Wells Fargo', 'Capital One', 'Citi', 'SoFi'];
-const rand4 = () => String(Math.floor(1000 + Math.random() * 9000));
+const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /**
- * Manage linked external bank accounts. Connect a new one through Plaid (mocked here as a brief
- * "connecting" state); remove ones you no longer use. The Add money / Withdraw / Pay bank pickers
- * read this list.
- *
- * SEAM — real Plaid Link (already wired in components/portfolio/DepositModal.tsx):
- *   token = await getPlaidLinkToken(walletAddress)
- *   window.Plaid.create({ token, onSuccess: (public_token, meta) => exchangePlaidToken(public_token, …) }).open()
- *   then add each returned account (name/mask/subtype) via addAccount().
+ * Manage Plaid-linked external bank accounts. "Connect a bank" runs real Plaid Link (see
+ * lib/plaidLink.ts); accounts + balances come from the backend (getBankBalances). Disconnect is
+ * per-institution (Plaid item). The Add money / Withdraw / Pay / Transfer bank pickers read this.
  */
 export default function ExternalAccountsModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { accounts, addAccount, removeAccount } = useExternalAccounts();
-  const [connecting, setConnecting] = useState(false);
-
-  const connect = () => {
-    setConnecting(true);
-    setTimeout(() => {
-      const name = MOCK_BANKS[Math.floor(Math.random() * MOCK_BANKS.length)];
-      addAccount(name, rand4(), Math.random() > 0.5 ? 'Checking' : 'Savings');
-      setConnecting(false);
-    }, 1900);
-  };
+  const { accounts, linkBank, removeAccount, linking, loading } = useExternalAccounts();
 
   return (
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        if (!connecting) onOpenChange(o);
+        if (!linking) onOpenChange(o);
       }}
     >
       <DialogContent className="sm:max-w-[440px]">
@@ -41,7 +24,7 @@ export default function ExternalAccountsModal({ open, onOpenChange }: { open: bo
           <DialogTitle>External accounts</DialogTitle>
         </DialogHeader>
 
-        {connecting ? (
+        {linking ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Loader2 className="h-9 w-9 animate-spin text-muted-foreground" />
             <div className="mt-4 text-sm font-medium text-foreground">Connecting securely…</div>
@@ -61,13 +44,15 @@ export default function ExternalAccountsModal({ open, onOpenChange }: { open: bo
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-foreground">{a.name}</div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {a.type} · ••{a.mask}
+                    <div className="truncate text-xs capitalize text-muted-foreground">
+                      {a.type}
+                      {a.mask ? ` · ••${a.mask}` : ''}
                     </div>
                   </div>
+                  {typeof a.balance === 'number' && <div className="shrink-0 text-sm tabular-nums text-foreground">{fmt(a.balance)}</div>}
                   <button
                     type="button"
-                    onClick={() => removeAccount(a.id)}
+                    onClick={() => void removeAccount(a.id)}
                     aria-label={`Remove ${a.name}`}
                     className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-negative/10 hover:text-negative"
                   >
@@ -76,13 +61,21 @@ export default function ExternalAccountsModal({ open, onOpenChange }: { open: bo
                 </div>
               ))}
               {accounts.length === 0 && (
-                <div className="rounded-xl border border-dashed border-border py-8 text-center text-sm text-muted-foreground">No accounts linked yet.</div>
+                <div className="rounded-xl border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
+                  {loading ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading accounts…
+                    </span>
+                  ) : (
+                    'No accounts linked yet.'
+                  )}
+                </div>
               )}
             </div>
 
             <button
               type="button"
-              onClick={connect}
+              onClick={() => void linkBank()}
               className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
             >
               <Plus className="h-4 w-4" /> Connect a bank
