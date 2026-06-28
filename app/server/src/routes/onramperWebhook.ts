@@ -16,24 +16,29 @@ interface RawBodyRequest extends Request {
   rawBody?: Buffer;
 }
 
-function verifySignature(rawBody: string, signature: string, secret: string): boolean {
-  if (!secret) return true; // no secret configured (dev) — accept
-  if (!signature) return false;
-  const computed = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-  // Some providers prefix the scheme (e.g. "sha256="); compare against the hex tail too.
-  const candidate = signature.includes('=') ? signature.split('=').pop()! : signature;
+function safeEq(a: string, b: string): boolean {
   try {
-    return (
-      crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(candidate)) ||
-      crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(signature))
-    );
+    return a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
   } catch {
     return false;
   }
 }
 
+// Verify against ANY configured secret — one backend serves both Onramper environments, so the test
+// and production webhook secrets are both accepted (whichever matches).
+function verifySignature(rawBody: string, signature: string, secrets: string[]): boolean {
+  const active = secrets.filter(Boolean);
+  if (active.length === 0) return true; // none configured (dev) — accept
+  if (!signature) return false;
+  const candidate = signature.includes('=') ? signature.split('=').pop()! : signature;
+  return active.some((secret) => {
+    const computed = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+    return safeEq(computed, candidate) || safeEq(computed, signature);
+  });
+}
+
 router.post('/', async (req: RawBodyRequest, res: Response) => {
-  const secret = process.env.ONRAMPER_WEBHOOK_SECRET?.trim() || '';
+  const secrets = [process.env.ONRAMPER_WEBHOOK_SECRET, process.env.ONRAMPER_WEBHOOK_SECRET_PROD].map((s) => s?.trim() || '');
   const sig = String(
     req.headers['onramper-webhook-signature'] ||
       req.headers['x-onramper-signature'] ||
@@ -43,7 +48,7 @@ router.post('/', async (req: RawBodyRequest, res: Response) => {
   );
   const rawStr = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body ?? {});
 
-  if (!verifySignature(rawStr, sig, secret)) {
+  if (!verifySignature(rawStr, sig, secrets)) {
     console.warn('[onramper/webhook] signature verification failed');
     res.status(401).json({ error: 'invalid signature' });
     return;
