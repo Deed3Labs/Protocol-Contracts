@@ -49,20 +49,32 @@ export function useWebSocket(
 
     socketRef.current = socket;
 
+    // What we subscribe to. Dropped 'nfts' (unused by the app) + 'prices' (the server's global
+    // 15-min price updater already keeps prices warm) to cut redundant Alchemy compute-unit usage.
+    const subPayload = {
+      address,
+      chainIds: [1, 8453, 100, 11155111], // Default chains
+      subscriptions: ['balances', 'transactions'],
+    };
+
     socket.on('connect', () => {
       console.log('[WebSocket] Connected');
       setIsConnected(true);
       isConnectedRef.current = true;
-
-      // Auto-subscribe on connect.
-      // Dropped 'nfts' (unused by the app) + 'prices' (the server's global 15-min price updater
-      // already keeps prices warm) to cut redundant Alchemy compute-unit usage.
-      socket.emit('subscribe', {
-        address,
-        chainIds: [1, 8453, 100, 11155111], // Default chains
-        subscriptions: ['balances', 'transactions'],
-      });
+      // Don't start polling for a tab that's already in the background; visibilitychange resumes it.
+      if (!document.hidden) socket.emit('subscribe', subPayload);
     });
+
+    // Tab-visibility gating: when the tab is hidden, tell the server to stop polling for this
+    // connection (keeps the socket alive but idle); resume + fetch fresh when it's visible again.
+    // Cuts background-tab Alchemy usage to ~zero — important when several tabs are left open.
+    const handleVisibility = () => {
+      const s = socketRef.current;
+      if (!s || !s.connected) return;
+      if (document.hidden) s.emit('unsubscribe');
+      else s.emit('subscribe', subPayload);
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     socket.on('disconnect', () => {
       console.log('[WebSocket] Disconnected');
@@ -75,6 +87,7 @@ export function useWebSocket(
     });
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
       socket.disconnect();
       socketRef.current = null;
       setIsConnected(false);
