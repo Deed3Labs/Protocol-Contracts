@@ -48,9 +48,9 @@ export function KycProvider({ children }: { children: ReactNode }) {
     if (status === 'verified') action();
     else openKyc(action);
   };
-  const handleVerified = () => {
+  const handleVerified = (personaInquiryId?: string) => {
     setStatus('verified');
-    setInquiryId(`inq_${Date.now().toString(36)}`);
+    setInquiryId(personaInquiryId ?? `inq_${Date.now().toString(36)}`);
     setOpen(false);
     const cb = cbRef.current;
     cbRef.current = null;

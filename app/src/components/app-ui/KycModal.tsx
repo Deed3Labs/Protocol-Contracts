@@ -1,15 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ShieldCheck, IdCard, Camera, Check, Loader2, Lock, Sparkles, ScanLine } from 'lucide-react';
+import { PERSONA_CONFIGURED, runPersonaInquiry } from '@/lib/personaInquiry';
 import { cn } from '@/lib/utils';
 
 /*
- * Identity verification gate (KYC). Required before moving money. The "verifying" step is a mocked
- * embedded Persona inquiry.
+ * Identity verification gate (KYC). Required before moving money. When Persona is configured
+ * (VITE_PERSONA_TEMPLATE_ID), the verifying step launches the real embedded Persona inquiry and
+ * returns its inquiry id; otherwise it falls back to a mocked checklist so the prototype works.
  *
- * SEAM: replace the verifying step with the Persona Inquiry SDK (e.g. persona-react <Inquiry>).
- * On complete, hand back the inquiry/account id → onVerified; persist it as the reusable KYC
- * "passport" to provision Bridge / Colossus / etc. without re-verifying.
+ * The completed inquiry id is the reusable KYC "passport" handed to Bridge customer creation
+ * (persona_inquiry_type) / Colossus — see BridgeContext + lib/integrations.
  */
 export default function KycModal({
   open,
@@ -18,20 +19,49 @@ export default function KycModal({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  onVerified: () => void;
+  onVerified: (inquiryId?: string) => void;
 }) {
   const [step, setStep] = useState<'intro' | 'verifying' | 'done'>('intro');
   const [phase, setPhase] = useState(0);
+  const [inquiryId, setInquiryId] = useState<string | undefined>(undefined);
+  const launchedRef = useRef(false);
 
   useEffect(() => {
-    if (open) setStep('intro');
+    if (open) {
+      setStep('intro');
+      setInquiryId(undefined);
+    }
   }, [open]);
 
   useEffect(() => {
     if (step !== 'verifying') {
       setPhase(0);
+      launchedRef.current = false;
       return;
     }
+
+    // Real Persona embedded inquiry.
+    if (PERSONA_CONFIGURED) {
+      if (launchedRef.current) return;
+      launchedRef.current = true;
+      let active = true;
+      runPersonaInquiry()
+        .then((res) => {
+          if (!active) return;
+          if (res) {
+            setInquiryId(res.inquiryId);
+            setStep('done');
+          } else {
+            setStep('intro'); // cancelled
+          }
+        })
+        .catch(() => active && setStep('intro'));
+      return () => {
+        active = false;
+      };
+    }
+
+    // Mock fallback (Persona not configured).
     const t1 = setTimeout(() => setPhase(1), 700);
     const t2 = setTimeout(() => setPhase(2), 1500);
     const t3 = setTimeout(() => setStep('done'), 2400);
@@ -88,13 +118,23 @@ export default function KycModal({
                 <ScanLine className="h-3 w-3" /> Powered by Persona
               </span>
             </div>
-            {/* mocked embedded Persona inquiry */}
-            <div className="space-y-2 rounded-xl border border-border bg-secondary/30 p-3">
-              <Progress icon={IdCard} label="Government ID" done={phase >= 1} active={phase < 1} />
-              <Progress icon={Camera} label="Selfie match" done={phase >= 2} active={phase === 1} />
-              <Progress icon={ShieldCheck} label="Checking records" done={false} active={phase >= 2} />
-            </div>
-            <p className="mt-3 text-center text-[11px] text-muted-foreground">This usually takes a few seconds — hang tight.</p>
+            {PERSONA_CONFIGURED ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Loader2 className="h-9 w-9 animate-spin text-muted-foreground" />
+                <p className="mt-4 text-sm font-medium text-foreground">Opening secure verification…</p>
+                <p className="mt-1 text-xs text-muted-foreground">Complete the steps in the Persona window.</p>
+              </div>
+            ) : (
+              <>
+                {/* mock fallback when Persona isn't configured */}
+                <div className="space-y-2 rounded-xl border border-border bg-secondary/30 p-3">
+                  <Progress icon={IdCard} label="Government ID" done={phase >= 1} active={phase < 1} />
+                  <Progress icon={Camera} label="Selfie match" done={phase >= 2} active={phase === 1} />
+                  <Progress icon={ShieldCheck} label="Checking records" done={false} active={phase >= 2} />
+                </div>
+                <p className="mt-3 text-center text-[11px] text-muted-foreground">This usually takes a few seconds — hang tight.</p>
+              </>
+            )}
           </div>
         )}
 
@@ -111,7 +151,7 @@ export default function KycModal({
             </div>
             <button
               type="button"
-              onClick={onVerified}
+              onClick={() => onVerified(inquiryId)}
               className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
             >
               Continue
