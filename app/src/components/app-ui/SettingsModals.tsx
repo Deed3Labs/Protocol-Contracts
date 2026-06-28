@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  CreditCard, Eye, EyeOff, Fingerprint, KeyRound, LifeBuoy, MessageCircle, Loader2,
+  CreditCard, Eye, EyeOff, Fingerprint, KeyRound, LifeBuoy, MessageCircle, Loader2, Camera,
   Mail, Shield, ShieldCheck, Snowflake, Sparkles, Smartphone, Receipt, Home, TrendingUp, Bell,
   Megaphone, FileText, AlertTriangle, ChevronRight, type LucideIcon,
 } from 'lucide-react';
@@ -64,12 +64,55 @@ function ToggleList({ rows }: { rows: { id: string; icon: LucideIcon; title: str
   );
 }
 
+/**
+ * Read an image file + downscale to a small square-ish JPEG data URL (≤256px, ~20–40KB) so it fits
+ * in the avatarUrl string without needing image storage. Swap for a real upload→URL once storage
+ * exists. (Backend must accept data: URLs in avatarUrl for this to persist.)
+ */
+async function fileToAvatarDataUrl(file: File, max = 256): Promise<string> {
+  const dataUrl = await new Promise<string>((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = () => rej(new Error('read failed'));
+    r.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = () => rej(new Error('image failed'));
+    i.src = dataUrl;
+  });
+  const scale = Math.min(1, max / Math.max(img.width, img.height || 1));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return dataUrl;
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', 0.82);
+}
+
 /* ----------------------------------- Account ----------------------------------- */
 export function AccountModal({ open, onOpenChange }: ModalProps) {
   const { verified, openKyc } = useKyc();
   const profile = useMemberProfile();
   const [form, setForm] = useState({ fullName: '', email: '', phone: '', avatarUrl: '' });
   const [saving, setSaving] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const onPickPhoto = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const url = await fileToAvatarDataUrl(file);
+      setForm((f) => ({ ...f, avatarUrl: url }));
+    } catch {
+      /* ignore bad image */
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -142,10 +185,28 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
             <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Phone</span>
             <input type="tel" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+1 555 000 0000" className={inputCls} />
           </label>
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Photo URL</span>
-            <input type="url" value={form.avatarUrl} onChange={(e) => setForm((f) => ({ ...f, avatarUrl: e.target.value }))} placeholder="https://…" className={inputCls} />
-          </label>
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Profile photo</span>
+            <div className="flex items-center gap-2">
+              <input ref={fileRef} type="file" accept="image/*" onChange={onPickPhoto} className="hidden" />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+              >
+                <Camera className="h-4 w-4 text-muted-foreground" /> {form.avatarUrl ? 'Change photo' : 'Upload photo'}
+              </button>
+              {form.avatarUrl && (
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, avatarUrl: '' }))}
+                  className="text-xs font-medium text-muted-foreground transition-colors hover:text-negative"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         <button
