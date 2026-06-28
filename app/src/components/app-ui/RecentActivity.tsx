@@ -1,18 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Search, SlidersHorizontal, ArrowLeftRight, ArrowDownLeft, Briefcase, Receipt, CreditCard, Repeat, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useClearTransactions, type ActivityStatus as Status } from '@/hooks/useClearTransactions';
 import TransactionFilterModal, { type Category, type AdvFilters, DEFAULT_ADV, advCount } from './TransactionFilterModal';
-
-type Status = 'completed' | 'pending' | 'failed';
-
-interface Activity {
-  id: string;
-  name: string;
-  category: Category;
-  date: string;
-  amount: number; // signed: + in, - out
-  status: Status;
-}
 
 const CATEGORY: Record<Category, { icon: LucideIcon; tint: string }> = {
   Transfer: { icon: ArrowLeftRight, tint: 'bg-info/10 text-info' },
@@ -29,17 +19,6 @@ const statusStyle: Record<Status, string> = {
   failed: 'bg-negative/10 text-negative',
 };
 
-const items: Activity[] = [
-  { id: '1', name: 'Ahmad Sulaiman', category: 'Transfer', date: 'Today', amount: -574, status: 'pending' },
-  { id: '2', name: 'Macellyn Annya', category: 'Deposit', date: 'Today', amount: 349, status: 'completed' },
-  { id: '3', name: 'Samuel Khan', category: 'Transfer', date: 'Yesterday', amount: -134, status: 'failed' },
-  { id: '4', name: 'Payroll — Acme Inc.', category: 'Payroll', date: 'Yesterday', amount: 3200, status: 'completed' },
-  { id: '5', name: 'Rent — Maple Apartments', category: 'Bill', date: 'Jul 1', amount: -1850, status: 'pending' },
-  { id: '6', name: 'Spotify Premium', category: 'Subscription', date: 'Jun 24', amount: -12, status: 'completed' },
-  { id: '7', name: 'Card payment', category: 'Card', date: 'Jun 23', amount: -320, status: 'completed' },
-  { id: '8', name: 'Refund — Amazon', category: 'Deposit', date: 'Jun 22', amount: 64, status: 'completed' },
-];
-
 const FILTERS = ['All', 'Income', 'Spending', 'Transfers', 'Pending'] as const;
 type Filter = (typeof FILTERS)[number];
 
@@ -54,6 +33,7 @@ function money(n: number) {
  * Category icon + tint, signed amount (income green), and a colored status pill.
  */
 export default function RecentActivity({ className }: { className?: string }) {
+  const { items, loading } = useClearTransactions();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('All');
   const [adv, setAdv] = useState<AdvFilters>(DEFAULT_ADV);
@@ -78,7 +58,7 @@ export default function RecentActivity({ className }: { className?: string }) {
       if (abs < adv.amount[0] || abs > adv.amount[1]) return false;
       return true;
     });
-  }, [query, filter, adv]);
+  }, [items, query, filter, adv]);
 
   return (
     <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
@@ -138,7 +118,9 @@ export default function RecentActivity({ className }: { className?: string }) {
 
       {/* list */}
       <div className="mt-1 flex-1 divide-y divide-border">
-        {filtered.length === 0 ? (
+        {loading && items.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading activity…</div>
+        ) : filtered.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">No transactions found.</div>
         ) : (
           filtered.map((it) => {
