@@ -23,6 +23,7 @@ import membersRouter from './routes/members.js';
 import memberWalletLinksPublicRouter from './routes/memberWalletLinksPublic.js';
 import avatarRouter from './routes/avatar.js';
 import portfolioRouter from './routes/portfolio.js';
+import payRouter from './routes/pay.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
 import { websocketService } from './services/websocketService.js';
@@ -182,6 +183,7 @@ async function startServer() {
     app.use('/api/send', sendRouter);
     app.use('/api/savings', requireAuth, savingsRouter);
     app.use('/api/portfolio', requireAuth, portfolioRouter);
+    app.use('/api/pay', requireAuth, payRouter);
 
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');
