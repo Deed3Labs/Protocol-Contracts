@@ -33,6 +33,15 @@ function readAddressEnv(key: string, fallback: string = ZERO_ADDRESS): string {
   return fallback;
 }
 
+/**
+ * Chains we actively fetch balances/transactions for. A subset of SUPPORTED_NETWORKS (which also
+ * governs wallet connect/switch) — kept narrow to cut Alchemy compute-unit usage on chains the user
+ * has no funds on. Dropped Optimism (10), Arbitrum (42161), Polygon (137). Keeps Ethereum (1), Base
+ * (8453), Gnosis (100) + the CLRUSD testnets (Base Sepolia 84532, Ethereum Sepolia 11155111).
+ * Add a chain back here when funds move onto it.
+ */
+export const DATA_CHAIN_IDS: number[] = [1, 8453, 100, 84532, 11155111];
+
 export const SUPPORTED_NETWORKS: NetworkConfig[] = [
   {
     id: 1,

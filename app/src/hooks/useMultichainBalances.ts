@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useState } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
-import { SUPPORTED_NETWORKS, getNetworkByChainId } from '@/config/networks';
+import { SUPPORTED_NETWORKS, DATA_CHAIN_IDS, getNetworkByChainId } from '@/config/networks';
 import { getCommonTokens } from '@/config/tokens';
 import { getBalance, getBalancesBatch, getTokenBalancesBatch, getAllTokenBalances, getTokenPrice as getTokenPriceFromApi, getTokenPricesBatch, getTokensByAddressPortfolio } from '@/utils/apiClient';
 import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';
@@ -635,8 +635,9 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
       // and skip the separate getBalancesBatch call to save RPC/Alchemy usage.
       if (SUPPORTED_NETWORKS.length > 1) {
         try {
-          const chainIds = SUPPORTED_NETWORKS.map(n => n.chainId);
-          
+          // Only query chains we actively track (drops empty chains → fewer Alchemy CUs).
+          const chainIds = SUPPORTED_NETWORKS.map(n => n.chainId).filter(id => DATA_CHAIN_IDS.includes(id));
+
           // Portfolio API limits: max 2 addresses, 5 networks per address
           const maxNetworksPerRequest = 5;
           const batches: number[][] = [];

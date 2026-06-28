@@ -1,7 +1,7 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { getTransactionsBatch, getPlaidRecentTransactions, type PlaidRecentTransaction } from '@/utils/apiClient';
-import { SUPPORTED_NETWORKS } from '@/config/networks';
+import { SUPPORTED_NETWORKS, DATA_CHAIN_IDS } from '@/config/networks';
 import type { Category } from '@/components/app-ui/TransactionFilterModal';
 
 /**
@@ -121,7 +121,10 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
     setLoading(true);
     try {
       // On-chain (linked wallet) + Plaid (external accounts), merged + newest-first.
-      const requests = SUPPORTED_NETWORKS.map((n) => ({ chainId: n.chainId, address, limit: 15 }));
+      // Only the actively-tracked chains (drops empty chains → fewer Alchemy getAssetTransfers calls).
+      const requests = SUPPORTED_NETWORKS
+        .filter((n) => DATA_CHAIN_IDS.includes(n.chainId))
+        .map((n) => ({ chainId: n.chainId, address, limit: 15 }));
       const [chainResults, plaid] = await Promise.all([
         getTransactionsBatch(requests).catch(() => []),
         getPlaidRecentTransactions(address).catch(() => null),

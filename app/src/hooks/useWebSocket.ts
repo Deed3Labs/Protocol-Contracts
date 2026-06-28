@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { DATA_CHAIN_IDS } from '@/config/networks';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
@@ -53,7 +54,7 @@ export function useWebSocket(
     // 15-min price updater already keeps prices warm) to cut redundant Alchemy compute-unit usage.
     const subPayload = {
       address,
-      chainIds: [1, 8453, 100, 11155111], // Default chains
+      chainIds: DATA_CHAIN_IDS, // actively-tracked chains only
       subscriptions: ['balances', 'transactions'],
     };
 
