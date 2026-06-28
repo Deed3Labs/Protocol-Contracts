@@ -18,6 +18,7 @@ export interface ActivityItem {
   name: string;
   category: Category;
   date: string;
+  ts: number; // ms epoch, for range filtering/grouping
   amount: number; // signed: + in, - out
   status: ActivityStatus;
 }
@@ -81,6 +82,7 @@ function toActivity(tx: RawTx): ActivityItem {
     name: `${inbound ? 'Received' : 'Sent'} ${sym}`,
     category: inbound ? 'Deposit' : 'Transfer',
     date: formatDate(tx.date),
+    ts: Date.parse(tx.date || '') || 0,
     amount,
     status,
   };
@@ -101,6 +103,7 @@ function plaidToActivity(t: PlaidRecentTransaction): ActivityItem {
     name: t.merchant_name || t.name || 'Bank transaction',
     category,
     date: formatDate(t.date),
+    ts: Date.parse(t.date || '') || 0,
     amount: inbound ? amt : -amt,
     status: t.pending ? 'pending' : 'completed',
   };
@@ -131,11 +134,11 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
       ]);
       const onchain = (chainResults || [])
         .flatMap((r) => (r.transactions as RawTx[]) || [])
-        .map((t) => ({ ts: Date.parse(t.date || '') || 0, act: toActivity(t) }));
-      const bank = (plaid?.transactions || []).map((t) => ({ ts: Date.parse(t.date || '') || 0, act: plaidToActivity(t) }));
+        .map(toActivity);
+      const bank = (plaid?.transactions || []).map(plaidToActivity);
       const merged = [...onchain, ...bank].sort((a, b) => b.ts - a.ts);
-      setItems(merged.slice(0, 50).map((x) => x.act));
-      setFlows(merged.filter((x) => x.ts > 0).map((x) => ({ ts: x.ts, usd: x.act.amount })));
+      setItems(merged.slice(0, 50));
+      setFlows(merged.filter((x) => x.ts > 0).map((x) => ({ ts: x.ts, usd: x.amount })));
     } catch {
       setItems([]);
       setFlows([]);
