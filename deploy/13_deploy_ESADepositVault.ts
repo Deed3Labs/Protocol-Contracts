@@ -27,12 +27,26 @@ async function main() {
   console.log("CLRUSD:", clearUsdAddress);
   console.log("Vault admin:", admin);
 
+  // UUPS proxy — stable address across future upgrades.
   const ESADepositVault = await hre.ethers.getContractFactory("ESADepositVault");
-  const vault = await ESADepositVault.deploy(clearUsdAddress, admin);
+  const vault = await hre.upgrades.deployProxy(ESADepositVault, [clearUsdAddress, admin], {
+    initializer: "initialize",
+    kind: "uups",
+  });
   await vault.waitForDeployment();
 
   const vaultAddress = await vault.getAddress();
-  console.log("ESADepositVault deployed at:", vaultAddress);
+  console.log("ESADepositVault (proxy) deployed at:", vaultAddress);
+
+  // Grant OPERATOR_ROLE to the savings relayer (submits gasless deposits/redeems).
+  const savingsRelayer = process.env.SAVINGS_RELAYER_ADDRESS?.trim();
+  if (savingsRelayer && hre.ethers.isAddress(savingsRelayer)) {
+    const operatorRole = await vault.OPERATOR_ROLE();
+    await (await vault.grantRole(operatorRole, savingsRelayer)).wait();
+    console.log("Granted OPERATOR_ROLE to savings relayer:", savingsRelayer);
+  } else {
+    console.warn("SAVINGS_RELAYER_ADDRESS not set — grant OPERATOR_ROLE to the relayer manually.");
+  }
 
   const clearUsd = await hre.ethers.getContractAt("ClearUSD", clearUsdAddress);
   const minterRole = await clearUsd.MINTER_ROLE();
