@@ -20,12 +20,14 @@ export interface ClearBalances {
 export function useClearBalances(): ClearBalances {
   const { tokens, tokensLoading } = useMultichainBalances();
   return useMemo(() => {
-    const valueFor = (symbol: string) =>
+    // USDC & CLRUSD are $1-pegged — sum the token UNITS (1 token ≈ $1). We deliberately ignore
+    // balanceUSD: the backend often returns no USD price for USDC, which surfaces here as 0.
+    const amountFor = (symbol: string) =>
       tokens
         .filter((t) => t.symbol?.toUpperCase() === symbol)
-        .reduce((sum, t) => sum + (t.balanceUSD ?? (Number(t.balance ?? 0) || 0)), 0);
-    const cash = valueFor('USDC');
-    const savings = valueFor('CLRUSD');
+        .reduce((sum, t) => sum + (Number(t.balance ?? 0) || 0), 0);
+    const cash = amountFor('USDC');
+    const savings = amountFor('CLRUSD');
     return { cash, savings, total: cash + savings, loading: tokensLoading };
   }, [tokens, tokensLoading]);
 }
