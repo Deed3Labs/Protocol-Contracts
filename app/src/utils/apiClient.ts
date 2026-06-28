@@ -2035,3 +2035,49 @@ export async function setDirectoryOptout(wallet: string, optout: boolean): Promi
   const r = await apiRequest<{ optedOut: boolean }>(`/api/contacts/${wallet.toLowerCase()}/optout`, { method: 'PUT', body: JSON.stringify({ optout }) });
   return r.error || !r.data ? optout : r.data.optedOut;
 }
+
+// ---- Onramper (fiat → USDC on-ramp) ----
+
+export interface OnramperQuote {
+  ramp: string; // provider id
+  payout: number; // USDC received (≈ USD)
+  paymentMethod?: string;
+  networkFee?: number;
+  transactionFee?: number;
+  rate?: number;
+  [k: string]: unknown;
+}
+
+/** Aggregated buy quotes (card/Apple Pay) for a fiat amount → USDC on Base. */
+export async function getOnramperQuotes(p: {
+  amount: number;
+  paymentMethod: string;
+  walletAddress?: string;
+  fiat?: string;
+  crypto?: string;
+  country?: string;
+}): Promise<OnramperQuote[]> {
+  const params = new URLSearchParams({ amount: String(p.amount), paymentMethod: p.paymentMethod, country: p.country || 'us' });
+  if (p.walletAddress) params.set('walletAddress', p.walletAddress);
+  if (p.fiat) params.set('fiat', p.fiat);
+  if (p.crypto) params.set('crypto', p.crypto);
+  const r = await apiRequest<unknown>(`/api/onramper/quotes?${params.toString()}`);
+  const d = r.data as { message?: unknown; quotes?: unknown } | unknown[] | null;
+  const arr = Array.isArray(d) ? d : Array.isArray((d as any)?.message) ? (d as any).message : Array.isArray((d as any)?.quotes) ? (d as any).quotes : [];
+  return arr as OnramperQuote[];
+}
+
+/** Create an Onramper checkout intent → returns the provider checkout URL to redirect to. */
+export async function createOnramperCheckout(p: {
+  onramp: string;
+  amount: number;
+  paymentMethod: string;
+  walletAddress: string;
+  fiat?: string;
+  crypto?: string;
+  network?: string;
+  country?: string;
+}): Promise<{ url: string | null }> {
+  const r = await apiRequest<{ url: string | null }>(`/api/onramper/checkout`, { method: 'POST', body: JSON.stringify(p) });
+  return r.error || !r.data ? { url: null } : r.data;
+}

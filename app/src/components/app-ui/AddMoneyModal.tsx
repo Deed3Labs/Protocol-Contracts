@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, CreditCard, Landmark, Loader2, Smartphone, ShieldCheck, Sparkles, Wallet, Zap, Send, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
@@ -6,6 +6,7 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useBridge } from '@/context/BridgeContext';
 import { useKyc } from '@/context/KycContext';
 import DepositInstructions from '@/components/app-ui/DepositInstructions';
+import { getOnramperQuotes, createOnramperCheckout, type OnramperQuote } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -32,19 +33,24 @@ const METHODS: PayMethod[] = [
   { id: 'bank', name: 'Bank transfer', icon: Landmark, speed: '1–3 business days' },
 ];
 
-interface Provider {
-  id: string;
-  name: string;
-  feeRate: number;
-  fixed: number;
+/** A normalized quote for the UI: provider + USDC payout + total fee vs the entered amount. */
+interface QuoteVM {
+  p: { id: string; name: string };
+  fee: number;
+  payout: number;
 }
-// Mock aggregated providers; replace with the /quotes response array.
-const PROVIDERS: Provider[] = [
-  { id: 'stripe', name: 'Stripe', feeRate: 0.029, fixed: 0.3 },
-  { id: 'coinbase', name: 'Coinbase Pay', feeRate: 0.034, fixed: 0 },
-  { id: 'transak', name: 'Transak', feeRate: 0.039, fixed: 0 },
-  { id: 'moonpay', name: 'MoonPay', feeRate: 0.045, fixed: 0 },
-];
+const prettyRamp = (id: string) => (id ? id.charAt(0).toUpperCase() + id.slice(1) : 'Provider');
+// Map Onramper's /quotes array → the UI shape (USDC ≈ $1, so payout in USDC ≈ USD value).
+function mapQuotes(raw: OnramperQuote[], amount: number): QuoteVM[] {
+  return raw
+    .map((q) => {
+      const payout = Number(q.payout) || 0;
+      return { p: { id: String(q.ramp), name: prettyRamp(String(q.ramp)) }, payout, fee: Math.max(0, amount - payout) };
+    })
+    .filter((q) => q.payout > 0)
+    .sort((a, b) => b.payout - a.payout);
+}
+const onramperPM = (methodId: string) => (methodId === 'applepay' ? 'applepay' : 'creditcard');
 
 /*
  * Bank funding rails. A bank deposit pulls fiat from a Plaid-linked account through the user's
@@ -60,13 +66,6 @@ const RAILS = [
 const QUICK = [50, 100, 250, 500];
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function buildQuotes(amount: number) {
-  return PROVIDERS.map((p) => {
-    const fee = amount > 0 ? amount * p.feeRate + p.fixed : 0;
-    return { p, fee, payout: Math.max(0, amount - fee) };
-  }).sort((a, b) => b.payout - a.payout);
-}
-
 export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const [step, setStep] = useState<'amount' | 'review' | 'status'>('amount');
   const [amountStr, setAmountStr] = useState('');
@@ -80,6 +79,10 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const [railId, setRailId] = useState<string>('ach');
   const [sourceOpen, setSourceOpen] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
+  const [apiQuotes, setApiQuotes] = useState<QuoteVM[]>([]);
+  const [quotesLoading, setQuotesLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const { wallets, primaryId, openManager } = useLinkedWallets();
   const { accounts: banks, openManager: openBankManager } = useExternalAccounts();
   const { virtualAccount } = useBridge();
@@ -88,6 +91,33 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const proceed = () => {
     if (methodId === 'bank' && !verified) openKyc(() => setStep('status'));
     else setStep('status');
+  };
+
+  // Card / Apple Pay: create an Onramper checkout + open the provider's hosted flow. Bank = Bridge.
+  const handleConfirm = async () => {
+    if (isBank) {
+      proceed();
+      return;
+    }
+    if (!wallet.address || !selected.p.id) {
+      setCheckoutError('Pick a linked wallet and provider first.');
+      return;
+    }
+    setCheckoutError(null);
+    setCheckoutLoading(true);
+    const { url } = await createOnramperCheckout({
+      onramp: selected.p.id,
+      amount,
+      paymentMethod: onramperPM(methodId),
+      walletAddress: wallet.address,
+    });
+    setCheckoutLoading(false);
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setStep('status');
+    } else {
+      setCheckoutError('Could not start checkout — try another provider or amount.');
+    }
   };
 
   useEffect(() => {
@@ -103,6 +133,9 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     setRailId('ach');
     setSourceOpen(false);
     setDepositOpen(false);
+    setApiQuotes([]);
+    setCheckoutError(null);
+    setCheckoutLoading(false);
   }, [open]);
 
   useEffect(() => {
@@ -113,13 +146,35 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   }, [step]);
 
   const amount = Number(amountStr) || 0;
-  const quotes = useMemo(() => buildQuotes(amount), [amount]);
-  const best = quotes[0];
-  const selected = (providerId ? quotes.find((q) => q.p.id === providerId) : null) ?? best;
   const method = METHODS.find((m) => m.id === methodId) ?? METHODS[0];
   const wallet = wallets.find((w) => w.id === walletId) ?? wallets[0] ?? { id: '', label: 'No wallet linked', address: '' };
   const amountValid = amount >= 10 && amount <= 10000;
   const isBank = methodId === 'bank';
+  const quotes = isBank ? [] : apiQuotes;
+  const best = quotes[0];
+  const selected =
+    (providerId ? quotes.find((q) => q.p.id === providerId) : null) ??
+    best ?? { p: { id: '', name: '—' }, fee: 0, payout: amount };
+
+  // Live Onramper quotes for card / Apple Pay (debounced); bank uses the Bridge rail instead.
+  useEffect(() => {
+    if (!open || isBank || !amountValid) {
+      setApiQuotes([]);
+      return;
+    }
+    let cancelled = false;
+    setQuotesLoading(true);
+    const t = setTimeout(async () => {
+      const raw = await getOnramperQuotes({ amount, paymentMethod: onramperPM(methodId), walletAddress: wallet.address || undefined });
+      if (cancelled) return;
+      setApiQuotes(mapQuotes(raw, amount));
+      setQuotesLoading(false);
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [open, isBank, amountValid, amount, methodId, wallet.address]);
   const rail = RAILS.find((r) => r.id === railId) ?? RAILS[0];
   const source = banks.find((b) => b.id === sourceId) ?? banks[0];
   // Bridge: wire is ACH-only for Chase & Bank of America.
@@ -447,11 +502,13 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
 
             <button
               type="button"
-              onClick={proceed}
-              className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+              onClick={handleConfirm}
+              disabled={checkoutLoading || (!isBank && (quotesLoading || !selected.p.id || !wallet.address))}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-50"
             >
-              Add {fmt(amount)}
+              {checkoutLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting…</> : `Add ${fmt(amount)}`}
             </button>
+            {checkoutError && <p className="mt-2 text-center text-[11px] text-negative">{checkoutError}</p>}
             <p className="mt-2 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
               <ShieldCheck className="h-3 w-3" />{' '}
               {isBank
