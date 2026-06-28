@@ -1,0 +1,7 @@
+# Protocol-Contracts service builds only app/server (root dir = app/server).
+# Keep `railway up` uploads small: ship just app/server source, never node_modules.
+/*
+!/app
+/app/*
+!/app/server
+node_modules
