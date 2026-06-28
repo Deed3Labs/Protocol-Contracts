@@ -1,37 +1,18 @@
+import { useMemo } from 'react';
 import { Wallet, Banknote, PiggyBank, Landmark, ShieldCheck } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
 import { useKyc } from '@/context/KycContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
+import { useClearTransactions } from '@/hooks/useClearTransactions';
+import { useUpcoming } from '@/hooks/useUpcoming';
 import QuickActions from '@/components/app-ui/QuickActions';
 import CtaStack from '@/components/app-ui/CtaStack';
 import RecentActivity from '@/components/app-ui/RecentActivity';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
-import UpcomingCalendar, { type UpcomingItem } from '@/components/app-ui/UpcomingCalendar';
+import UpcomingCalendar from '@/components/app-ui/UpcomingCalendar';
 import BalanceAnalyticsChart from '@/components/app-ui/charts/BalanceAnalyticsChart';
 import ClearDeedCard from '@/components/app-ui/ClearDeedCard';
-
-const SPEND_BY_DAY: Record<number, number> = {
-  1: 1850, 2: 42, 3: 18, 4: 96, 5: 210, 6: 64, 8: 12, 9: 140, 10: 38,
-  11: 9, 12: 75, 13: 320, 15: 54, 16: 22, 17: 88, 18: 240, 19: 16,
-  20: 130, 21: 47, 22: 8, 23: 162, 24: 31,
-};
-
-const UPCOMING: UpcomingItem[] = [
-  { id: 'rent', name: 'Rent', amount: 1850, day: 1, direction: 'out' },
-  { id: 'gym', name: 'Gym', amount: 45, day: 5, direction: 'out' },
-  { id: 'spotify', name: 'Spotify', amount: 12, day: 12, direction: 'out' },
-  { id: 'payroll', name: 'Payroll', amount: 3200, day: 15, direction: 'in' },
-  { id: 'netflix', name: 'Netflix', amount: 18, day: 15, direction: 'out' },
-  { id: 'icloud', name: 'iCloud', amount: 3, day: 15, direction: 'out' },
-  { id: 'card', name: 'Card', amount: 320, day: 22, direction: 'out' },
-  { id: 'insurance', name: 'Insurance', amount: 140, day: 25, direction: 'out' },
-  { id: 'internet', name: 'Internet', amount: 80, day: 25, direction: 'out' },
-  { id: 'phone', name: 'Phone', amount: 65, day: 25, direction: 'out' },
-  { id: 'water', name: 'Water', amount: 40, day: 25, direction: 'out' },
-  { id: 'electric', name: 'Electric', amount: 124, day: 28, direction: 'out' },
-  { id: 'hoa', name: 'HOA dues', amount: 210, day: 28, direction: 'out' },
-];
 
 /**
  * Accounts — the dashboard. Stat row (Total / Cash / Savings / External), a big
@@ -44,7 +25,22 @@ export default function AccountsPage() {
   const { verified, openKyc } = useKyc();
   const bal = useClearBalances();
   const ext = useExternalAccounts();
+  const { flows } = useClearTransactions();
+  const upcoming = useUpcoming();
   const dash = (v: number) => (bal.loading ? '—' : fmtUsd(v));
+
+  // This month's outflows grouped by day-of-month (for the spend heatmap).
+  const spendByDay = useMemo(() => {
+    const now = new Date();
+    const out: Record<number, number> = {};
+    for (const f of flows) {
+      if (f.usd >= 0) continue;
+      const d = new Date(f.ts);
+      if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) continue;
+      out[d.getDate()] = (out[d.getDate()] || 0) + Math.abs(f.usd);
+    }
+    return out;
+  }, [flows]);
   return (
     <div className="animate-fade-in space-y-5">
       <div>
@@ -87,8 +83,8 @@ export default function AccountsPage() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <UpcomingCalendar items={UPCOMING} />
-        <SpendHeatmap spendingByDay={SPEND_BY_DAY} />
+        <UpcomingCalendar items={upcoming} />
+        <SpendHeatmap spendingByDay={spendByDay} />
         <ClearDeedCard />
       </div>
 

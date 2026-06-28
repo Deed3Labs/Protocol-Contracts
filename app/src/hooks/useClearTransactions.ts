@@ -22,8 +22,14 @@ export interface ActivityItem {
   status: ActivityStatus;
 }
 
+export interface CashFlow {
+  ts: number; // ms
+  usd: number; // signed: + in, - out
+}
+
 interface TxValue {
   items: ActivityItem[];
+  flows: CashFlow[];
   loading: boolean;
   refresh: () => void;
 }
@@ -31,7 +37,7 @@ interface TxValue {
 const Ctx = createContext<TxValue | null>(null);
 
 export function useClearTransactions(): TxValue {
-  return useContext(Ctx) ?? { items: [], loading: false, refresh: () => {} };
+  return useContext(Ctx) ?? { items: [], flows: [], loading: false, refresh: () => {} };
 }
 
 interface RawTx {
@@ -103,11 +109,13 @@ function plaidToActivity(t: PlaidRecentTransaction): ActivityItem {
 export function ClearTransactionsProvider({ children }: { children: ReactNode }) {
   const { address, isConnected } = useAppKitAccount();
   const [items, setItems] = useState<ActivityItem[]>([]);
+  const [flows, setFlows] = useState<CashFlow[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!isConnected || !address) {
       setItems([]);
+      setFlows([]);
       return;
     }
     setLoading(true);
@@ -122,14 +130,12 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
         .flatMap((r) => (r.transactions as RawTx[]) || [])
         .map((t) => ({ ts: Date.parse(t.date || '') || 0, act: toActivity(t) }));
       const bank = (plaid?.transactions || []).map((t) => ({ ts: Date.parse(t.date || '') || 0, act: plaidToActivity(t) }));
-      setItems(
-        [...onchain, ...bank]
-          .sort((a, b) => b.ts - a.ts)
-          .slice(0, 50)
-          .map((x) => x.act),
-      );
+      const merged = [...onchain, ...bank].sort((a, b) => b.ts - a.ts);
+      setItems(merged.slice(0, 50).map((x) => x.act));
+      setFlows(merged.filter((x) => x.ts > 0).map((x) => ({ ts: x.ts, usd: x.act.amount })));
     } catch {
       setItems([]);
+      setFlows([]);
     } finally {
       setLoading(false);
     }
@@ -139,5 +145,5 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
     void load();
   }, [load]);
 
-  return createElement(Ctx.Provider, { value: { items, loading, refresh: () => void load() } }, children);
+  return createElement(Ctx.Provider, { value: { items, flows, loading, refresh: () => void load() } }, children);
 }

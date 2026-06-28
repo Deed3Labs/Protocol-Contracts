@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { useClearPortfolioHistory } from '@/hooks/useClearPortfolioHistory';
+import { useClearTransactions, type CashFlow } from '@/hooks/useClearTransactions';
 import type { PortfolioHistoryPoint } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
@@ -28,32 +29,65 @@ function cutoffFor(range: Range): number {
 }
 const dlabel = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-/**
- * Real series from backend snapshots (on-chain + bank). Balance = the daily total level;
- * Income/Spending/Net are derived from day-over-day change. Falls back to a flat line at the real
- * current total when there's no history yet (pre-backfill / no backend) — never mock data.
- */
-function buildSeries(metric: Metric, range: Range, points: PortfolioHistoryPoint[], currentTotal: number) {
+/** Balance = daily total level from backend snapshots; flat at the real current total when empty. */
+function buildBalanceSeries(range: Range, points: PortfolioHistoryPoint[], currentTotal: number) {
   const cutoff = cutoffFor(range);
   const pts = points.filter((p) => Date.parse(p.date) >= cutoff);
   if (pts.length === 0) {
-    if (metric === 'Balance') {
-      return [
-        { label: '', value: currentTotal },
-        { label: 'Now', value: currentTotal },
-      ];
-    }
-    return [{ label: 'Now', value: 0 }];
+    return [
+      { label: '', value: currentTotal },
+      { label: 'Now', value: currentTotal },
+    ];
   }
-  if (metric === 'Balance') return pts.map((p) => ({ label: dlabel(p.date), value: p.totalUsd }));
-  const out: { label: string; value: number }[] = [];
-  for (let i = 0; i < pts.length; i++) {
-    const prev = i > 0 ? pts[i - 1].totalUsd : pts[i].totalUsd;
-    const delta = pts[i].totalUsd - prev;
-    const value = metric === 'Income' ? Math.max(delta, 0) : metric === 'Spending' ? Math.max(-delta, 0) : delta;
-    out.push({ label: dlabel(pts[i].date), value: Math.round(value * 100) / 100 });
+  return pts.map((p) => ({ label: dlabel(p.date), value: p.totalUsd }));
+}
+
+/** Time buckets per range for the flow metrics. */
+function flowBuckets(range: Range): { start: number; end: number; label: string }[] {
+  const now = new Date();
+  const H = 3_600_000;
+  const out: { start: number; end: number; label: string }[] = [];
+  const dayLabel = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (range === '1D') {
+    for (let i = 23; i >= 0; i--) {
+      const end = Date.now() - i * H;
+      out.push({ start: end - H, end, label: `${String(new Date(end).getHours()).padStart(2, '0')}:00` });
+    }
+  } else if (range === '1W' || range === '1M') {
+    const n = range === '1W' ? 7 : 30;
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setHours(23, 59, 59, 999);
+      d.setDate(d.getDate() - i);
+      out.push({ start: d.getTime() - DAY + 1, end: d.getTime(), label: range === '1W' ? d.toLocaleDateString('en-US', { weekday: 'short' }) : String(d.getDate()) });
+    }
+  } else if (range === '3M' || range === '6M') {
+    const weeks = range === '3M' ? 13 : 26;
+    for (let i = weeks - 1; i >= 0; i--) {
+      const end = Date.now() - i * 7 * DAY;
+      out.push({ start: end - 7 * DAY, end, label: dayLabel(end) });
+    }
+  } else {
+    const months = range === '1Y' ? 12 : range === 'YTD' ? now.getMonth() + 1 : 12;
+    for (let i = months - 1; i >= 0; i--) {
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1).getTime();
+      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59, 999).getTime();
+      out.push({ start, end, label: new Date(start).toLocaleDateString('en-US', { month: 'short' }) });
+    }
   }
   return out;
+}
+
+/** Income/Spending/Net per bucket from real transaction flows (on-chain + Plaid). */
+function buildFlowSeries(metric: Metric, range: Range, flows: CashFlow[]) {
+  return flowBuckets(range).map((b) => {
+    const inB = flows.filter((f) => f.ts >= b.start && f.ts <= b.end);
+    let value: number;
+    if (metric === 'Income') value = inB.filter((f) => f.usd > 0).reduce((s, f) => s + f.usd, 0);
+    else if (metric === 'Spending') value = Math.abs(inB.filter((f) => f.usd < 0).reduce((s, f) => s + f.usd, 0));
+    else value = inB.reduce((s, f) => s + f.usd, 0); // Net
+    return { label: b.label, value: Math.round(value * 100) / 100 };
+  });
 }
 
 const fmtMoney = (v: number) =>
@@ -95,7 +129,11 @@ export default function BalanceAnalyticsChart({ className }: { className?: strin
   const [metric, setMetric] = useState<Metric>('Balance');
   const [range, setRange] = useState<Range>('1M');
   const { points, currentTotal } = useClearPortfolioHistory();
-  const data = useMemo(() => buildSeries(metric, range, points, currentTotal), [metric, range, points, currentTotal]);
+  const { flows } = useClearTransactions();
+  const data = useMemo(
+    () => (metric === 'Balance' ? buildBalanceSeries(range, points, currentTotal) : buildFlowSeries(metric, range, flows)),
+    [metric, range, points, currentTotal, flows],
+  );
   const config = useMemo(
     () => ({ value: { label: metric, color: METRIC_COLOR[metric] } }) satisfies ChartConfig,
     [metric],
