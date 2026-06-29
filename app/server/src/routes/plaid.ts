@@ -288,8 +288,8 @@ router.post('/link-token', async (req: Request, res: Response) => {
       language: 'en',
       country_codes: [CountryCode.Us],
       user: { client_user_id: walletAddress.toLowerCase() },
-      // Keep required product set minimal to maximize institution/account coverage.
-      products: [Products.Transactions],
+      // Transactions (spend insights) + Auth (account/routing for ACH bill pay & bank↔bank transfers).
+      products: [Products.Transactions, Products.Auth],
       // Optional: brokerage/investment + liabilities (credit/loans) when institution supports them
       optional_products: [Products.Investments, Products.Liabilities],
     };
