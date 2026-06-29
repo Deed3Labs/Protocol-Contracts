@@ -2294,3 +2294,37 @@ export async function createOnramperCheckout(p: {
   const r = await apiRequest<{ url: string | null }>(`/api/onramper/checkout`, { method: 'POST', body: JSON.stringify(p) });
   return r.error || !r.data ? { url: null } : r.data;
 }
+
+/** Aggregated SELL (off-ramp) quotes: USDC on Base → fiat, payout to a debit card. */
+export async function getOnramperSellQuotes(p: {
+  amount: number;
+  paymentMethod: string;
+  walletAddress?: string;
+  fiat?: string;
+  crypto?: string;
+  country?: string;
+}): Promise<OnramperQuote[]> {
+  const params = new URLSearchParams({ amount: String(p.amount), paymentMethod: p.paymentMethod, country: p.country || 'us' });
+  if (p.walletAddress) params.set('walletAddress', p.walletAddress);
+  if (p.fiat) params.set('fiat', p.fiat);
+  if (p.crypto) params.set('crypto', p.crypto);
+  const r = await apiRequest<unknown>(`/api/onramper/sell-quotes?${params.toString()}`);
+  const d = r.data as { message?: unknown; quotes?: unknown } | unknown[] | null;
+  const arr = Array.isArray(d) ? d : Array.isArray((d as any)?.message) ? (d as any).message : Array.isArray((d as any)?.quotes) ? (d as any).quotes : [];
+  return arr as OnramperQuote[];
+}
+
+/** Create an Onramper SELL intent → returns the provider URL to complete the cash-out to a debit card. */
+export async function createOnramperSellCheckout(p: {
+  onramp: string;
+  amount: number;
+  paymentMethod: string;
+  walletAddress: string;
+  fiat?: string;
+  crypto?: string;
+  network?: string;
+  country?: string;
+}): Promise<{ url: string | null }> {
+  const r = await apiRequest<{ url: string | null }>(`/api/onramper/sell-checkout`, { method: 'POST', body: JSON.stringify(p) });
+  return r.error || !r.data ? { url: null } : r.data;
+}

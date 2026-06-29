@@ -7,7 +7,7 @@ import { useKyc } from '@/context/KycContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useAccount } from 'wagmi';
-import { withdrawToBank } from '@/utils/apiClient';
+import { withdrawToBank, getOnramperSellQuotes, createOnramperSellCheckout } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -29,12 +29,12 @@ interface PayoutMethod {
   instantFeeRate: number;
   soon?: boolean;
 }
-// `bank`/`bank_sd` settle to a bank via the Bridge off-ramp (ACH) → need KYC.
-// `instant` (debit card) needs a card-payout partner we don't have yet → shown as coming soon.
+// `bank`/`bank_sd` settle to a bank via the Bridge off-ramp (ACH) → need in-app KYC.
+// `instant` (debit card) goes through Onramper's sell flow → Onramper handles KYC + payout.
 const METHODS: PayoutMethod[] = [
   { id: 'bank', name: 'Bank account', icon: Landmark, speed: '1–3 business days', instantFeeRate: 0 },
   { id: 'bank_sd', name: 'Same-day to bank', icon: Zap, speed: 'Today by 6pm ET', instantFeeRate: 0.005 },
-  { id: 'instant', name: 'Instant to debit card', icon: Zap, speed: 'Coming soon', instantFeeRate: 0.015, soon: true },
+  { id: 'instant', name: 'Instant to debit card', icon: Zap, speed: 'Arrives in minutes', instantFeeRate: 0.015 },
 ];
 const BANK_METHODS = new Set(['bank', 'bank_sd']);
 
@@ -107,6 +107,36 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
     (async () => {
       try {
         if (!address) throw new Error('Connect your wallet to withdraw.');
+
+        if (methodId === 'instant') {
+          // Instant-to-debit → Onramper sell: pick the best off-ramp, open its hosted cash-out (it
+          // collects the USDC + pays out to the user's debit card). Onramper handles KYC/payout.
+          const quotes = await getOnramperSellQuotes({
+            amount,
+            paymentMethod: 'creditcard',
+            walletAddress: address,
+            crypto: 'usdc_base',
+            fiat: 'usd',
+          });
+          const onramp = (quotes[0]?.ramp as string) || '';
+          if (!onramp) throw new Error('No instant cash-out provider available right now.');
+          const { url } = await createOnramperSellCheckout({
+            onramp,
+            amount,
+            paymentMethod: 'creditcard',
+            walletAddress: address,
+            crypto: 'usdc_base',
+            fiat: 'usd',
+            network: 'base',
+          });
+          if (cancelled) return;
+          if (!url) throw new Error('Could not start the instant cash-out.');
+          window.open(url, '_blank', 'noopener,noreferrer');
+          setDone(true);
+          return;
+        }
+
+        // Bank / same-day → Bridge ACH off-ramp.
         if (!bankId) throw new Error('Link a bank account to withdraw to.');
         const res = await withdrawToBank(address, { amount, plaidAccountId: bankId, email: email ?? undefined });
         if (cancelled) return;
@@ -203,7 +233,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
               })}
             </div>
 
-            {banks.length === 0 ? (
+            {BANK_METHODS.has(methodId) && banks.length === 0 ? (
               <button
                 type="button"
                 onClick={openAccounts}

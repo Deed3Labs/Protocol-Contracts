@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Home, Zap, Repeat, CreditCard, Smartphone, Receipt, type LucideIcon } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import PayModal from '@/components/app-ui/PayModal';
@@ -227,49 +227,83 @@ export function PayProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshSummary, isConnected, address]);
 
-  // Optimistic add (temp id lets the Pay modal proceed); persists + refreshes in the background.
+  // Just the summary stats (credits / due / timeline) — used after a mutation so the dashboard updates
+  // WITHOUT re-fetching (and clobbering) the optimistic biller list.
+  const refreshSummaryOnly = useCallback(async () => {
+    if (!isConnected || !address) return;
+    try {
+      setSummary(await getPaySummary(address));
+    } catch {
+      /* best-effort */
+    }
+  }, [address, isConnected]);
+
+  // Maps the optimistic temp id → the real server id so an edit/delete/payout done before the next
+  // full reload still targets the right row (and so the open modal can keep using the temp id).
+  const realIdRef = useRef<Map<string, string>>(new Map());
+  const resolveId = useCallback((id: string) => realIdRef.current.get(id) ?? id, []);
+
+  // Optimistic add: show immediately, then reconcile from the SERVER RESPONSE (no full reload — that
+  // re-ran the Plaid sync and could clear the list, which is why adds appeared to need a refresh).
   const addBiller = useCallback(
     (b: BillerDraft) => {
       const tempId = `bill${Date.now()}`;
       setBills((bs) => [...bs, { ...b, id: tempId, icon: ICONS[b.type] ?? Receipt, source: 'manual', payable: false, payoutLast4: null, payoutBank: null }]);
       if (address) {
-        void addPayBiller(address, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay }).then(() => load());
+        void addPayBiller(address, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay })
+          .then((created) => {
+            if (created) {
+              realIdRef.current.set(tempId, created.id); // keep tempId in the UI, target realId server-side
+              setBills((bs) => bs.map((x) => (x.id === tempId ? { ...billerToBill(created), id: tempId } : x)));
+            } else {
+              setBills((bs) => bs.filter((x) => x.id !== tempId)); // add failed → drop the optimistic row
+            }
+            void refreshSummaryOnly();
+          })
+          .catch(() => setBills((bs) => bs.filter((x) => x.id !== tempId)));
       }
       return tempId;
     },
-    [address, load],
+    [address, refreshSummaryOnly],
   );
 
   // Optimistic edit of a manual biller (auto-detected billers are server-guarded as read-only).
   const updateBiller = useCallback(
     (id: string, b: BillerDraft) => {
       setBills((bs) => bs.map((x) => (x.id === id && x.source === 'manual' ? { ...x, ...b, icon: ICONS[b.type] ?? Receipt } : x)));
-      if (address && !id.startsWith('bill')) {
-        void updatePayBiller(address, id, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay }).then(() => load());
+      const realId = resolveId(id);
+      if (address && !realId.startsWith('bill')) {
+        void updatePayBiller(address, realId, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay }).then(
+          () => refreshSummaryOnly(),
+        );
       }
     },
-    [address, load],
+    [address, refreshSummaryOnly, resolveId],
   );
 
   // Optimistic remove; persists the delete (skips temp/local-only billers not yet in the ledger).
   const removeBiller = useCallback(
     (id: string) => {
       setBills((bs) => bs.filter((b) => b.id !== id));
-      if (address && !id.startsWith('bill')) {
-        void deletePayBiller(address, id).then(() => load());
+      const realId = resolveId(id);
+      realIdRef.current.delete(id);
+      if (address && !realId.startsWith('bill')) {
+        void deletePayBiller(address, realId).then(() => refreshSummaryOnly());
       }
     },
-    [address, load],
+    [address, refreshSummaryOnly, resolveId],
   );
 
   const setBillerPayout = useCallback(
     async (id: string, p: { accountNumber: string; routingNumber: string; bankName?: string }) => {
       if (!address) return false;
-      const updated = await setPayBillerPayout(address, id, p);
-      await load();
+      const updated = await setPayBillerPayout(address, resolveId(id), p);
+      // Reflect the new payout on the (temp-or-real) row immediately, keeping its current UI id.
+      if (updated) setBills((bs) => bs.map((x) => (x.id === id ? { ...billerToBill(updated), id } : x)));
+      void refreshSummaryOnly();
       return !!updated;
     },
-    [address, load],
+    [address, refreshSummaryOnly, resolveId],
   );
 
   // Pay a biller from Cash (USDC) → Bridge ACH. Server records the payment + accrues credits on success.
