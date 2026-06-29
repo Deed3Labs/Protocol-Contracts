@@ -11,6 +11,28 @@ const AUTH_TOKEN_STORAGE_KEYS = [
 
 let lastAuthExpiredDispatchAt = 0;
 
+// The currently-connected wallet (lowercased). Set by the auth provider on every account change so we
+// can reject a SIWX token that belongs to a DIFFERENT wallet — Reown's session can desync from the
+// connected wallet on a switch, which otherwise serves the previous account's token-authorized data
+// (e.g. profile / account center).
+let activeWalletAddress: string | null = null;
+export function setActiveWallet(address: string | null | undefined): void {
+  activeWalletAddress = address ? address.toLowerCase() : null;
+}
+
+/** Best-effort: pull the wallet address out of a SIWX JWT payload (handles CAIP "eip155:1:0x.." too). */
+function tokenWalletAddress(token: string): string | null {
+  try {
+    const part = token.split('.')[1];
+    if (!part) return null;
+    const payload = JSON.parse(decodeURIComponent(escape(atob(part.replace(/-/g, '+').replace(/_/g, '/')))));
+    const match = JSON.stringify(payload).toLowerCase().match(/0x[a-f0-9]{40}/);
+    return match ? match[0] : null;
+  } catch {
+    return null;
+  }
+}
+
 export function getSiwxAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
 
@@ -18,6 +40,14 @@ export function getSiwxAuthToken(): string | null {
     for (const key of AUTH_TOKEN_STORAGE_KEYS) {
       const token = window.localStorage.getItem(key);
       if (token && token.trim().length > 0) {
+        // Drop a token that belongs to a different wallet than the one currently connected.
+        if (activeWalletAddress) {
+          const tokenAddr = tokenWalletAddress(token);
+          if (tokenAddr && tokenAddr !== activeWalletAddress) {
+            clearSiwxAuthToken();
+            return null;
+          }
+        }
         return token;
       }
     }

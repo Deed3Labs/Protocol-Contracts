@@ -9,7 +9,7 @@ import {
 import { useAppKitSIWX } from '@reown/appkit-siwx/react';
 import type { ReownAuthentication } from '@reown/appkit-siwx';
 import { BrowserProvider, hexlify, toUtf8Bytes } from 'ethers';
-import { AUTH_EXPIRED_EVENT, clearSiwxAuthToken } from '@/utils/authSession';
+import { AUTH_EXPIRED_EVENT, clearSiwxAuthToken, setActiveWallet } from '@/utils/authSession';
 
 type Eip1193Provider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -262,6 +262,8 @@ export function AppKitAuthProvider({ children }: { children: React.ReactNode }) 
   const prevAddrRef = useRef<string | null>(null);
   useEffect(() => {
     const addr = address ? address.toLowerCase() : null;
+    // Keep apiClient's token guard in sync with the connected wallet (rejects a mismatched token).
+    setActiveWallet(addr);
     if (addr && prevAddrRef.current && prevAddrRef.current !== addr) {
       prevAddrRef.current = addr;
       void (async () => {
