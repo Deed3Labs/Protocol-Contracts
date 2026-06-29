@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { Home, Zap, CreditCard, Smartphone, Receipt, type LucideIcon } from 'lucide-react';
+import { Home, Zap, Repeat, CreditCard, Smartphone, Receipt, type LucideIcon } from 'lucide-react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import PayModal from '@/components/app-ui/PayModal';
 import { useKyc } from '@/context/KycContext';
@@ -8,6 +8,7 @@ import {
   getPayBillers,
   getPaySummary,
   addPayBiller,
+  deletePayBiller,
   syncPlaidBillers,
   recordPayment,
   reconcilePay,
@@ -15,7 +16,17 @@ import {
   type PaySummary,
 } from '@/utils/apiClient';
 
-export type BillType = 'rent' | 'utility' | 'card' | 'phone' | 'other';
+export type BillType = 'rent' | 'utility' | 'subscription' | 'card' | 'phone' | 'other';
+
+/** Selectable biller types with their icons — drives the Add-biller type picker. */
+export const BILL_TYPES: { value: BillType; label: string; icon: LucideIcon }[] = [
+  { value: 'rent', label: 'Rent', icon: Home },
+  { value: 'utility', label: 'Utilities', icon: Zap },
+  { value: 'subscription', label: 'Subscription', icon: Repeat },
+  { value: 'card', label: 'Credit card', icon: CreditCard },
+  { value: 'phone', label: 'Phone', icon: Smartphone },
+  { value: 'other', label: 'Other', icon: Receipt },
+];
 
 export interface Bill {
   id: string;
@@ -44,12 +55,13 @@ export const creditsFor = (bill: Pick<Bill, 'type'>, streak = ON_TIME_STREAK) =>
   return Math.round((base * streakMultiplier(streak)) / 5) * 5;
 };
 
-const ICONS: Record<BillType, LucideIcon> = { rent: Home, utility: Zap, card: CreditCard, phone: Smartphone, other: Receipt };
+const ICONS: Record<BillType, LucideIcon> = { rent: Home, utility: Zap, subscription: Repeat, card: CreditCard, phone: Smartphone, other: Receipt };
 
 function inferType(name: string): BillType {
   const s = name.toLowerCase();
   if (/rent|apartment|property|lease|landlord|housing/.test(s)) return 'rent';
   if (/electric|gas|water|utility|energy|internet|wifi|broadband|coned|pg&e/.test(s)) return 'utility';
+  if (/netflix|spotify|hulu|disney|prime|youtube|subscription|membership|apple\.com\/bill|patreon/.test(s)) return 'subscription';
   if (/\bcard\b|amex|visa|mastercard|discover|credit/.test(s)) return 'card';
   if (/phone|mobile|wireless|verizon|t-mobile|at&t|sprint/.test(s)) return 'phone';
   return 'other';
@@ -87,6 +99,8 @@ interface PayValue {
   loading: boolean;
   getBill: (id: string) => Bill | undefined;
   addBiller: (b: Omit<Bill, 'id' | 'icon'>) => string;
+  /** Remove a biller (optimistic; persists the delete in the background). */
+  removeBiller: (id: string) => void;
   /** Record an on-time payment + accrue equity credits (called when the Pay flow completes). */
   recordBillPayment: (bill: Bill, paidAmount: number) => Promise<void>;
   /** Detect on-time recurring-bill payments from Plaid + accrue credits (Plaid call — Pay page only). */
@@ -107,6 +121,7 @@ export function usePay(): PayValue {
       loading: false,
       getBill: () => undefined,
       addBiller: () => '',
+      removeBiller: () => {},
       recordBillPayment: async () => {},
       reconcile: async () => {},
       streak: ON_TIME_STREAK,
@@ -176,6 +191,17 @@ export function PayProvider({ children }: { children: ReactNode }) {
     [address, load],
   );
 
+  // Optimistic remove; persists the delete (skips temp/local-only billers not yet in the ledger).
+  const removeBiller = useCallback(
+    (id: string) => {
+      setBills((bs) => bs.filter((b) => b.id !== id));
+      if (address && !id.startsWith('bill')) {
+        void deletePayBiller(address, id).then(() => load());
+      }
+    },
+    [address, load],
+  );
+
   const recordBillPayment = useCallback(
     async (bill: Bill, paidAmount: number) => {
       if (!address) return;
@@ -208,6 +234,7 @@ export function PayProvider({ children }: { children: ReactNode }) {
     loading,
     getBill: (id) => bills.find((b) => b.id === id),
     addBiller,
+    removeBiller,
     recordBillPayment,
     reconcile,
     streak: summary?.streak ?? ON_TIME_STREAK,

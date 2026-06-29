@@ -4,7 +4,7 @@
  * needs a one-time CLRUSD approve(vault) (CLRUSD has no permit — decision A3), then one EIP-712 sig.
  * Send locks funds into the escrow via the sender's EIP-3009 signature.
  */
-import { getWalletClient, readContract, writeContract, waitForTransactionReceipt } from '@wagmi/core';
+import { getWalletClient, readContract, writeContract, waitForTransactionReceipt, switchChain } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
 import {
   prepareGaslessSavings,
@@ -40,7 +40,17 @@ const ERC20_ALLOWANCE_ABI = [
   },
 ] as const;
 
+/** Make sure the wallet is on the chain we're transacting on (required before any writeContract). */
+async function ensureChain(chainId: number): Promise<void> {
+  try {
+    await switchChain(wagmiAdapter.wagmiConfig, { chainId });
+  } catch {
+    /* already on it, or the wallet rejected — signing still binds the chainId, so continue */
+  }
+}
+
 async function signTypedData(chainId: number, owner: string, typedData: Eip712TypedData): Promise<string> {
+  await ensureChain(chainId);
   const walletClient = await getWalletClient(wagmiAdapter.wagmiConfig, { chainId });
   if (!walletClient) throw new Error('Wallet not connected');
   // viem's signTypedData is generic over a static type schema; our typed data is built dynamically by
@@ -72,6 +82,7 @@ export async function gaslessRedeem(args: { ownerWallet: string; amount: string;
   const prepared = await prepareGaslessSavings({ action: 'redeem', ...args });
 
   if (prepared.approve) {
+    await ensureChain(prepared.chainId); // approve is a real (user-paid) tx — wallet must be on-chain
     const needed = BigInt(prepared.amountMicros);
     const allowance = (await readContract(wagmiAdapter.wagmiConfig, {
       address: prepared.approve.token as `0x${string}`,

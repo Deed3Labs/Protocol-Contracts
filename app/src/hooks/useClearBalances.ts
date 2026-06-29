@@ -1,31 +1,31 @@
 import { createContext, createElement, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { useMultichainBalances } from '@/hooks/useMultichainBalances';
 import { COMMON_TOKENS } from '@/config/tokens';
+import { includeChainBalance } from '@/lib/clearNetwork';
 
 /**
  * The two balances the app surfaces, abstracted from on-chain tokens:
- *   Cash    = USDC on MAINNET only (real funds)
- *   Savings = CLRUSD on ANY chain (testnet allowed until mainnet launch)
+ *   Cash    = USDC, Savings = CLRUSD
  *
- * Matched by canonical CONTRACT ADDRESS (from config/tokens.ts), NOT by symbol — this excludes
- * spam tokens that spoof the "USDC" symbol and testnet USDC. CLRUSD addresses come from
- * VITE_CLRUSD_<chainId>, so deploying CLRUSD on mainnet (+ setting that env) auto-includes it.
+ * Gated BY DOMAIN: the live app (app.useclear.org) counts MAINNET chains only (real funds); the
+ * demo/preview also counts testnet chains (so test funds show). Matched by canonical CONTRACT ADDRESS
+ * (config/tokens.ts), NOT symbol — excludes spoofed "USDC" spam.
  *
  * useMultichainBalances does NOT auto-fetch — we trigger it once here in a provider and share the
  * derived balances via context (so AccountsPage + TransferModal don't each hit Alchemy). USDC/CLRUSD
  * are $1-pegged, so we sum token UNITS (the backend often returns balanceUSD=0 for USDC).
  */
-const MAINNET_CHAIN_IDS = new Set([1, 10, 8453, 42161, 137, 100]);
 
-// `${chainId}:${address}` keys for canonical tokens.
+// `${chainId}:${address}` keys for canonical tokens (chains gated to the current domain's networks).
 const USDC_KEYS = new Set<string>();
 const CLRUSD_KEYS = new Set<string>();
 for (const [chainIdStr, tokens] of Object.entries(COMMON_TOKENS)) {
   const chainId = Number(chainIdStr);
+  if (!includeChainBalance(chainId)) continue;
   for (const t of tokens) {
     const key = `${chainId}:${t.address.toLowerCase()}`;
-    if (t.symbol === 'USDC' && MAINNET_CHAIN_IDS.has(chainId)) USDC_KEYS.add(key);
-    if (t.symbol === 'CLRUSD') CLRUSD_KEYS.add(key); // any chain (testnet ok for now)
+    if (t.symbol === 'USDC') USDC_KEYS.add(key);
+    if (t.symbol === 'CLRUSD') CLRUSD_KEYS.add(key);
   }
 }
 

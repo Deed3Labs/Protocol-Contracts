@@ -13,13 +13,21 @@ export interface TokenConfig {
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
+// Committed fallbacks so the deployed CLRUSD is recognized even if the VITE_CLRUSD_<chainId> env
+// isn't set on the host (these are public token addresses, not secrets). Env still overrides.
+const CLRUSD_FALLBACK: Record<number, string> = {
+  8453: '0xa7a257f411e4Fe98e1D1FaA36C84B864c3336583', // Base mainnet
+  84532: '0x56195066D4ada8D371254061047f76FA2BBd0Ae3', // Base Sepolia
+  11155111: '0x54Dd3449Eb54adC02C33cD880178BfA718991753', // Ethereum Sepolia
+};
+
 function readClrUsdAddress(chainId: number): string {
   const key = `VITE_CLRUSD_${chainId}`;
   const raw = (import.meta.env as Record<string, string | undefined>)[key];
   if (raw && /^0x[a-fA-F0-9]{40}$/.test(raw) && raw !== ZERO_ADDRESS) {
     return raw;
   }
-  return ZERO_ADDRESS;
+  return CLRUSD_FALLBACK[chainId] ?? ZERO_ADDRESS;
 }
 
 /**

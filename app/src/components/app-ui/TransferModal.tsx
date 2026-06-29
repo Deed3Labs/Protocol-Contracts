@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useAccount, useChainId } from 'wagmi';
+import { useAccount } from 'wagmi';
+import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import { ArrowDownUp, ArrowLeft, Check, ChevronDown, Landmark, Loader2, PiggyBank, ShieldCheck, TriangleAlert, Wallet, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
@@ -38,7 +39,7 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
   const { verified, openKyc } = useKyc();
   const bal = useClearBalances();
   const { address } = useAccount();
-  const chainId = useChainId();
+  const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const accounts: Acct[] = [
     { id: 'cash', name: 'Cash', detail: 'USDC', scope: 'internal', balance: bal.cash, icon: Wallet },
     { id: 'savings', name: 'Savings', detail: 'CLRUSD', scope: 'internal', balance: bal.savings, icon: PiggyBank },

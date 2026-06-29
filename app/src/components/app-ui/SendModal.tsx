@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useAccount, useChainId } from 'wagmi';
+import { useAccount } from 'wagmi';
+import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import {
   ArrowLeft, Check, ChevronDown, Copy, CreditCard, Landmark, Loader2, Mail, Search,
   ShieldCheck, TriangleAlert, UserPlus, Wallet, Zap,
@@ -36,7 +37,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
   const { contacts, getContact, openManager } = useContacts();
   const { accounts } = useExternalAccounts();
   const { address } = useAccount();
-  const chainId = useChainId();
+  const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const bal = useClearBalances();
   const BALANCE = bal.cash;
   const sources: Source[] = [

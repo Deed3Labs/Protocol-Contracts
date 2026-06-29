@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
-  ArrowLeft, Award, Calendar, Check, ChevronDown, CreditCard, Landmark, Loader2, Plus, Sparkles,
-  Wallet, Zap,
+  ArrowLeft, Award, Calendar, Check, ChevronDown, CreditCard, Landmark, Loader2, Lock, Plus, Sparkles,
+  Trash2, Wallet, Zap,
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { usePay, creditsFor, streakMultiplier, type Bill } from '@/context/PayContext';
+import { usePay, creditsFor, streakMultiplier, BILL_TYPES, type Bill, type BillType } from '@/context/PayContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
+import { useClearBalances } from '@/hooks/useClearBalances';
 import { cn } from '@/lib/utils';
 
 /*
@@ -25,10 +26,11 @@ interface Source {
   name: string;
   detail: string;
   icon: typeof Wallet;
+  disabled?: boolean; // e.g. card issuance — coming soon
 }
 
-type Draft = { name: string; payee: string; amount: string; dueDay: string };
-const emptyDraft: Draft = { name: '', payee: '', amount: '', dueDay: '' };
+type Draft = { name: string; payee: string; amount: string; dueDay: string; type: BillType };
+const emptyDraft: Draft = { name: '', payee: '', amount: '', dueDay: '', type: 'other' };
 
 const ordinal = (n: number) => {
   const s = ['th', 'st', 'nd', 'rd'];
@@ -45,12 +47,14 @@ export default function PayModal({
   onOpenChange: (o: boolean) => void;
   initialBillId?: string;
 }) {
-  const { bills, getBill, addBiller, streak, recordBillPayment } = usePay();
+  const { bills, getBill, addBiller, removeBiller, streak, recordBillPayment } = usePay();
   const { accounts } = useExternalAccounts();
+  const bal = useClearBalances();
   const sources: Source[] = [
-    { id: 'balance', name: 'Clear balance', detail: '$4,820.55', icon: Wallet },
-    ...accounts.map((a) => ({ id: a.id, name: `${a.name} ••${a.mask}`, detail: a.type, icon: Landmark })),
-    { id: 'card', name: 'Visa ••7705', detail: 'Debit card', icon: CreditCard },
+    // Cash = USDC balance, exposed as a Bridge virtual account (account/routing) for ACH-style pulls.
+    { id: 'balance', name: 'Cash · USDC', detail: `Virtual account · ${fmt(bal.cash)}`, icon: Wallet },
+    ...accounts.map((a) => ({ id: a.id, name: `${a.name} ••${a.mask}`, detail: `${a.type} · Plaid`, icon: Landmark })),
+    { id: 'card', name: 'Card', detail: 'Coming soon', icon: CreditCard, disabled: true },
   ];
   const [step, setStep] = useState<'choose' | 'addBiller' | 'review' | 'status'>('choose');
   const [billId, setBillId] = useState<string | null>(null);
@@ -107,7 +111,7 @@ export default function PayModal({
     const id = addBiller({
       name: draft.name.trim(),
       payee: draft.payee.trim() || draft.name.trim(),
-      type: 'other',
+      type: draft.type,
       amount: amt,
       dueLabel: day ? `Due on the ${ordinal(day)}` : 'Due soon',
       dueDay: day,
@@ -135,27 +139,32 @@ export default function PayModal({
               {bills.map((b) => {
                 const Icon = b.icon;
                 return (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => selectBill(b)}
-                    className="flex w-full items-center gap-3 rounded-xl border border-border p-2.5 text-left transition-colors hover:bg-secondary/50"
-                  >
-                    <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', b.type === 'rent' ? 'bg-info/10 text-info' : 'bg-secondary text-foreground')}>
-                      <Icon className="h-[18px] w-[18px]" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
-                        <span className="truncate text-sm font-medium text-foreground">{b.name}</span>
-                        {b.type === 'rent' && <span className="shrink-0 rounded bg-info/10 px-1 text-[9px] font-semibold uppercase text-info">Rent</span>}
+                  <div key={b.id} className="flex items-center rounded-xl border border-border pr-1 transition-colors hover:bg-secondary/50">
+                    <button type="button" onClick={() => selectBill(b)} className="flex min-w-0 flex-1 items-center gap-3 p-2.5 text-left">
+                      <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', b.type === 'rent' ? 'bg-info/10 text-info' : 'bg-secondary text-foreground')}>
+                        <Icon className="h-[18px] w-[18px]" />
                       </span>
-                      <span className="block text-xs text-muted-foreground">Due {b.dueLabel}</span>
-                    </span>
-                    <span className="shrink-0 text-right">
-                      <span className="block text-sm font-semibold tabular-nums text-foreground">{fmt(b.amount)}</span>
-                      {creditsBadge(b)}
-                    </span>
-                  </button>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-medium text-foreground">{b.name}</span>
+                          {b.type === 'rent' && <span className="shrink-0 rounded bg-info/10 px-1 text-[9px] font-semibold uppercase text-info">Rent</span>}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">Due {b.dueLabel}</span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="block text-sm font-semibold tabular-nums text-foreground">{fmt(b.amount)}</span>
+                        {creditsBadge(b)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeBiller(b.id)}
+                      aria-label={`Remove ${b.name}`}
+                      className="ml-1 shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-negative/10 hover:text-negative"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -187,6 +196,28 @@ export default function PayModal({
               </Labeled>
               <Labeled label="Account / payee">
                 <input value={draft.payee} onChange={(e) => setDraft((d) => ({ ...d, payee: e.target.value }))} placeholder="City Utilities" className={inputCls} />
+              </Labeled>
+              <Labeled label="Type">
+                <div className="grid grid-cols-3 gap-2">
+                  {BILL_TYPES.map((t) => {
+                    const Icon = t.icon;
+                    const active = draft.type === t.value;
+                    return (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => setDraft((d) => ({ ...d, type: t.value }))}
+                        className={cn(
+                          'flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-[11px] font-medium transition-colors',
+                          active ? 'border-foreground bg-secondary/60 text-foreground' : 'border-border text-muted-foreground hover:bg-secondary/40',
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </Labeled>
               <div className="grid grid-cols-2 gap-3">
                 <Labeled label="Amount" required>
@@ -280,18 +311,24 @@ export default function PayModal({
                     <button
                       key={s.id}
                       type="button"
+                      disabled={s.disabled}
                       onClick={() => {
+                        if (s.disabled) return;
                         setSourceId(s.id);
                         setSourceOpen(false);
                       }}
-                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-secondary"
+                      className={cn('flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm', s.disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-secondary')}
                     >
                       <s.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium text-foreground">{s.name}</span>
                         <span className="block text-xs text-muted-foreground">{s.detail}</span>
                       </span>
-                      {s.id === sourceId && <Check className="h-4 w-4 shrink-0 text-foreground" />}
+                      {s.disabled ? (
+                        <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        s.id === sourceId && <Check className="h-4 w-4 shrink-0 text-foreground" />
+                      )}
                     </button>
                   ))}
                 </div>

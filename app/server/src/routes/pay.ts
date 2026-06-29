@@ -10,7 +10,7 @@ import { plaidTokenStore } from '../services/plaidTokenStore.js';
  */
 const router = Router();
 
-const VALID_TYPES = new Set<BillerType>(['rent', 'utility', 'card', 'phone', 'other']);
+const VALID_TYPES = new Set<BillerType>(['rent', 'utility', 'subscription', 'card', 'phone', 'other']);
 const wallet = (req: Request) => String(req.params.wallet || '').toLowerCase();
 
 function ensureReady(res: Response): boolean {

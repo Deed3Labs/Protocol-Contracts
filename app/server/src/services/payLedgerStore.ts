@@ -10,7 +10,7 @@ import { getPayPool } from '../config/postgres.js';
  * services. See [[clear-product-model]] for the credit semantics.
  */
 
-export type BillerType = 'rent' | 'utility' | 'card' | 'phone' | 'other';
+export type BillerType = 'rent' | 'utility' | 'subscription' | 'card' | 'phone' | 'other';
 export type CreditStatus = 'pending' | 'vested' | 'minted' | 'void';
 export type EarnSource = 'in_app' | 'detected';
 

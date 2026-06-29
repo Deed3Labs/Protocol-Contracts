@@ -1982,7 +1982,7 @@ export async function createMemberMembershipCheckout(payload: {
 
 // ---- Clear Pay (rent/bill → equity-credit ledger) ----
 
-export type PayBillerType = 'rent' | 'utility' | 'card' | 'phone' | 'other';
+export type PayBillerType = 'rent' | 'utility' | 'subscription' | 'card' | 'phone' | 'other';
 
 export interface PayBiller {
   id: string;
