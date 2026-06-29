@@ -27,13 +27,14 @@ interface PayoutMethod {
   icon: LucideIcon;
   speed: string;
   instantFeeRate: number;
+  soon?: boolean;
 }
-// `bank`/`bank_sd` settle to a bank via the Bridge virtual account (ACH) → need KYC.
-// `instant` is a provider off-ramp to a debit card → KYC handled by the off-ramp, none in-app.
+// `bank`/`bank_sd` settle to a bank via the Bridge off-ramp (ACH) → need KYC.
+// `instant` (debit card) needs a card-payout partner we don't have yet → shown as coming soon.
 const METHODS: PayoutMethod[] = [
   { id: 'bank', name: 'Bank account', icon: Landmark, speed: '1–3 business days', instantFeeRate: 0 },
   { id: 'bank_sd', name: 'Same-day to bank', icon: Zap, speed: 'Today by 6pm ET', instantFeeRate: 0.005 },
-  { id: 'instant', name: 'Instant to debit card', icon: Zap, speed: 'Arrives in minutes', instantFeeRate: 0.015 },
+  { id: 'instant', name: 'Instant to debit card', icon: Zap, speed: 'Coming soon', instantFeeRate: 0.015, soon: true },
 ];
 const BANK_METHODS = new Set(['bank', 'bank_sd']);
 
@@ -176,10 +177,15 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => setMethodId(m.id)}
+                    disabled={m.soon}
+                    onClick={() => !m.soon && setMethodId(m.id)}
                     className={cn(
                       'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
-                      active ? 'border-foreground bg-secondary/50' : 'border-border hover:bg-secondary/40',
+                      m.soon
+                        ? 'cursor-not-allowed border-border opacity-50'
+                        : active
+                          ? 'border-foreground bg-secondary/50'
+                          : 'border-border hover:bg-secondary/40',
                     )}
                   >
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
@@ -187,24 +193,34 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium text-foreground">{m.name}</span>
-                      <span className="block text-xs text-muted-foreground">{m.speed}{m.instantFeeRate > 0 ? ` · ${(m.instantFeeRate * 100).toFixed(1)}% fee` : ' · Free'}</span>
+                      <span className="block text-xs text-muted-foreground">{m.speed}{!m.soon && (m.instantFeeRate > 0 ? ` · ${(m.instantFeeRate * 100).toFixed(1)}% fee` : ' · Free')}</span>
                     </span>
-                    <span className={cn('h-4 w-4 shrink-0 rounded-full border-2', active ? 'border-foreground bg-foreground' : 'border-border')}>
-                      {active && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
+                    <span className={cn('h-4 w-4 shrink-0 rounded-full border-2', active && !m.soon ? 'border-foreground bg-foreground' : 'border-border')}>
+                      {active && !m.soon && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
                     </span>
                   </button>
                 );
               })}
             </div>
 
-            <button
-              type="button"
-              disabled={!amountValid}
-              onClick={() => setStep('review')}
-              className="mt-5 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
-            >
-              Review
-            </button>
+            {banks.length === 0 ? (
+              <button
+                type="button"
+                onClick={openAccounts}
+                className="mt-5 w-full rounded-xl border border-border py-3 text-sm font-semibold text-foreground transition-colors hover:bg-secondary"
+              >
+                Link a bank to withdraw
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={!amountValid}
+                onClick={() => setStep('review')}
+                className="mt-5 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
+              >
+                Review
+              </button>
+            )}
             <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Withdraw $10–$10,000'}</p>
           </div>
         )}

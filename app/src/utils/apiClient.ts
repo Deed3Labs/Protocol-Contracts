@@ -2129,6 +2129,19 @@ export async function cancelAutopayRule(wallet: string, id: string): Promise<boo
   return !r.error;
 }
 
+/** Execute one autopay deposit immediately (verification / "run now"). */
+export async function runAutopayRule(
+  wallet: string,
+  id: string,
+): Promise<{ ok: boolean; txHash?: string; message?: string }> {
+  const r = await apiRequest<{ ok: boolean; txHash?: string }>(`/api/autopay/${wallet.toLowerCase()}/${id}/run`, {
+    method: 'POST',
+    timeout: 120000,
+  });
+  if (r.error || !r.data) return { ok: false, message: r.error || 'Run failed.' };
+  return r.data;
+}
+
 /** Withdraw (cash-out): USDC on Base → a Plaid-linked bank via Bridge off-ramp. */
 export async function withdrawToBank(
   wallet: string,

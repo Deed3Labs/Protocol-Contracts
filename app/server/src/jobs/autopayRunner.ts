@@ -1,7 +1,5 @@
 import { autopayStore } from '../services/autopayStore.js';
-import { runSavingsDeposit, isAutopayExecutorConfigured } from '../services/autopayService.js';
-import { savingsGaslessService } from '../services/savingsGaslessService.js';
-import { payLedgerStore, networkFromChainId } from '../services/payLedgerStore.js';
+import { executeAutopayRule, isAutopayExecutorConfigured } from '../services/autopayService.js';
 
 /*
  * Autopay runner — polls for due savings-deposit rules and executes them with their stored ZeroDev
@@ -21,40 +19,9 @@ async function tick(): Promise<void> {
     return;
   }
   for (const rule of due) {
-    try {
-      const txHash = await runSavingsDeposit({
-        chainId: rule.chainId,
-        approval: rule.approval,
-        wallet: rule.wallet,
-        amountUsdc: rule.amountUsdc,
-      });
-      await autopayStore.recordSuccess(rule, txHash);
-      console.log(`[autopay] ran ${rule.id} (${rule.wallet}) → ${txHash}`);
-
-      // Equity-credit match from the verified on-chain deposit amount (best-effort).
-      try {
-        const amt = await savingsGaslessService.verifySavingsTx({
-          chainId: rule.chainId,
-          txHash,
-          action: 'deposit',
-          wallet: rule.wallet,
-        });
-        if (amt != null) {
-          await payLedgerStore.recordDepositMatch({
-            wallet: rule.wallet,
-            amountMicros: amt,
-            txRef: txHash,
-            network: networkFromChainId(rule.chainId),
-          });
-        }
-      } catch (error) {
-        console.warn('[autopay] credit record failed:', error);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Autopay run failed';
-      await autopayStore.recordFailure(rule, message).catch(() => {});
-      console.error(`[autopay] run failed for ${rule.id}:`, message);
-    }
+    const result = await executeAutopayRule(rule);
+    if (result.ok) console.log(`[autopay] ran ${rule.id} (${rule.wallet}) → ${result.txHash}`);
+    else console.error(`[autopay] run failed for ${rule.id}:`, result.error);
   }
 }
 

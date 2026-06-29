@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { requireWalletMatch } from '../middleware/auth.js';
 import { autopayStore, type AutopayCadence } from '../services/autopayStore.js';
+import { executeAutopayRule, isAutopayExecutorConfigured } from '../services/autopayService.js';
 
 /*
  * Autopay rules — recurring gasless savings deposits via a ZeroDev session. Wallet-scoped
@@ -69,6 +70,33 @@ router.post('/:wallet', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[autopay/create]', error);
     res.status(500).json({ error: 'Failed to create autopay rule' });
+  }
+});
+
+// POST /api/autopay/:wallet/:id/run — execute one deposit immediately (verification / "run now").
+router.post('/:wallet/:id/run', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  if (!isAutopayExecutorConfigured()) {
+    res.status(503).json({ error: 'Autopay executor not configured (ZERODEV_PROJECT_ID)' });
+    return;
+  }
+  try {
+    const rule = await autopayStore.getForRun(w, String(req.params.id));
+    if (!rule) {
+      res.status(404).json({ error: 'Autopay rule not found' });
+      return;
+    }
+    const result = await executeAutopayRule(rule);
+    if (!result.ok) {
+      res.status(400).json({ error: result.error || 'Autopay run failed' });
+      return;
+    }
+    res.json({ ok: true, txHash: result.txHash });
+  } catch (error) {
+    console.error('[autopay/run]', error);
+    res.status(500).json({ error: 'Failed to run autopay rule' });
   }
 });
 

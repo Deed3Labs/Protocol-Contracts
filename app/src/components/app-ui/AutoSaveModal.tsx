@@ -5,7 +5,8 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import { isAaEnabled } from '@/lib/aa';
 import { installAutopaySession, type AutopayCadence } from '@/lib/autopay';
-import { listAutopayRules, cancelAutopayRule, type AutopayRule } from '@/utils/apiClient';
+import { listAutopayRules, cancelAutopayRule, runAutopayRule, type AutopayRule } from '@/utils/apiClient';
+import { useClearBalances } from '@/hooks/useClearBalances';
 import { cn } from '@/lib/utils';
 
 /*
@@ -23,6 +24,7 @@ const CADENCES: { id: AutopayCadence; label: string }[] = [
 
 export default function AutoSaveModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { address } = useAccount();
+  const bal = useClearBalances();
   const chainId = ACTIVE_CHAIN_ID;
   const available = isAaEnabled(chainId);
 
@@ -32,6 +34,8 @@ export default function AutoSaveModal({ open, onOpenChange }: { open: boolean; o
   const [rules, setRules] = useState<AutopayRule[]>([]);
   const [step, setStep] = useState<'setup' | 'working' | 'done'>('setup');
   const [error, setError] = useState<string | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [runMsg, setRunMsg] = useState<string | null>(null);
 
   const amount = Number(amountStr) || 0;
   const amountValid = amount >= 1;
@@ -77,6 +81,24 @@ export default function AutoSaveModal({ open, onOpenChange }: { open: boolean; o
     if (!address) return;
     await cancelAutopayRule(address, id);
     await loadRules();
+  };
+
+  const runNow = async (rule: AutopayRule) => {
+    if (!address) return;
+    setRunningId(rule.id);
+    setRunMsg(null);
+    try {
+      const res = await runAutopayRule(address, rule.id);
+      if (res.ok) {
+        bal.applyOptimistic(-rule.amountUsdc, rule.amountUsdc);
+        setRunMsg(`Test deposit sent (${fmt(rule.amountUsdc)}).`);
+      } else {
+        setRunMsg(res.message || 'Test run failed.');
+      }
+      await loadRules();
+    } finally {
+      setRunningId(null);
+    }
   };
 
   return (
@@ -222,17 +244,30 @@ export default function AutoSaveModal({ open, onOpenChange }: { open: boolean; o
                           {r.lastError ? ' · last run failed' : ''}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => remove(r.id)}
-                        aria-label="Cancel Auto-save"
-                        className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => runNow(r)}
+                          disabled={runningId === r.id || r.status !== 'active'}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+                          title="Run one deposit now (test)"
+                        >
+                          {runningId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                          Run now
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => remove(r.id)}
+                          aria-label="Cancel Auto-save"
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
+                {runMsg && <p className="mt-2 text-[11px] text-muted-foreground">{runMsg}</p>}
               </div>
             )}
           </div>

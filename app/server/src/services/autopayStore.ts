@@ -136,6 +136,20 @@ class AutopayStore {
     return (r.rowCount ?? 0) > 0;
   }
 
+  /** One rule by id (with decrypted approval) for an immediate "run now" — only if not cancelled. */
+  async getForRun(wallet: string, id: string): Promise<(AutopayRule & { approval: string }) | null> {
+    await ensureTable();
+    const pool = getPayPool();
+    if (!pool) return null;
+    const r = await pool.query(
+      `SELECT * FROM autopay_rules WHERE id = $1 AND wallet = $2 AND status <> 'cancelled' LIMIT 1`,
+      [id, wallet.toLowerCase()],
+    );
+    if (r.rows.length === 0) return null;
+    const rule = rowToRule(r.rows[0]);
+    return { ...rule, approval: decryptSendContact(String(r.rows[0].approval_enc), `autopay:${rule.wallet}:${rule.id}`) };
+  }
+
   /** Rules whose next_run_at is due. Returns the decrypted approval for execution. */
   async getDue(now: Date = new Date(), limit = 25): Promise<(AutopayRule & { approval: string })[]> {
     await ensureTable();

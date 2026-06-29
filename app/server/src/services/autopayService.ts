@@ -4,6 +4,8 @@ import { createKernelAccountClient, createZeroDevPaymasterClient } from '@zerode
 import { getEntryPoint, KERNEL_V3_3 } from '@zerodev/sdk/constants';
 import { deserializePermissionAccount } from '@zerodev/permissions';
 import { savingsGaslessService } from './savingsGaslessService.js';
+import { autopayStore, type AutopayRule } from './autopayStore.js';
+import { payLedgerStore, networkFromChainId } from './payLedgerStore.js';
 
 /*
  * Autopay executor — runs a due savings-deposit rule using its stored ZeroDev session (permission
@@ -96,5 +98,49 @@ export async function runSavingsDeposit(input: {
     if (!isPaymasterError(e)) throw e;
     console.warn('[autopay] self-funded paymaster failed; using managed paymaster.', e);
     return sendDepositUserOp(input.chainId, input.approval, receiver, input.amountUsdc, true);
+  }
+}
+
+/**
+ * Run one autopay rule end-to-end: execute the sponsored deposit, advance the schedule on success
+ * (or record the error on failure), and award equity credits from the verified on-chain amount.
+ * Shared by the scheduler (jobs/autopayRunner) and the "run now" endpoint. Never throws.
+ */
+export async function executeAutopayRule(
+  rule: AutopayRule & { approval: string },
+): Promise<{ ok: boolean; txHash?: string; error?: string }> {
+  try {
+    const txHash = await runSavingsDeposit({
+      chainId: rule.chainId,
+      approval: rule.approval,
+      wallet: rule.wallet,
+      amountUsdc: rule.amountUsdc,
+    });
+    await autopayStore.recordSuccess(rule, txHash);
+
+    // Equity-credit match from the verified on-chain deposit amount (best-effort).
+    try {
+      const amt = await savingsGaslessService.verifySavingsTx({
+        chainId: rule.chainId,
+        txHash,
+        action: 'deposit',
+        wallet: rule.wallet,
+      });
+      if (amt != null) {
+        await payLedgerStore.recordDepositMatch({
+          wallet: rule.wallet,
+          amountMicros: amt,
+          txRef: txHash,
+          network: networkFromChainId(rule.chainId),
+        });
+      }
+    } catch (error) {
+      console.warn('[autopay] credit record failed:', error);
+    }
+    return { ok: true, txHash };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Autopay run failed';
+    await autopayStore.recordFailure(rule, message).catch(() => {});
+    return { ok: false, error: message };
   }
 }
