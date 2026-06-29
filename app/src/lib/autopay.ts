@@ -2,8 +2,9 @@ import { createPublicClient, http, type Chain } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { base, baseSepolia } from 'viem/chains';
 import { getWalletClient } from '@wagmi/core';
+import { createKernelAccount } from '@zerodev/sdk';
 import { getEntryPoint, KERNEL_V3_3 } from '@zerodev/sdk/constants';
-import { create7702KernelAccount } from '@zerodev/ecdsa-validator';
+import { signerToEcdsaValidator } from '@zerodev/ecdsa-validator';
 import { toPermissionValidator, serializePermissionAccount } from '@zerodev/permissions';
 import { toECDSASigner } from '@zerodev/permissions/signers';
 import { toCallPolicy, toTimestampPolicy, toRateLimitPolicy, CallPolicyVersion } from '@zerodev/permissions/policies';
@@ -90,18 +91,26 @@ export async function installAutopaySession(args: {
     kernelVersion: KERNEL_V3_3,
   });
 
-  // 7702 owner account (the user's EOA delegated to Kernel) with the session installed as the regular
-  // (active) plugin; the 7702 ECDSA root is the sudo. Cast bridges the strict 7702 plugin-manager type.
-  const account = await create7702KernelAccount(publicClient, {
+  // The 7702 ECDSA root (sudo) for the user's EOA. create7702KernelAccount only wires the sudo into the
+  // plugin manager (it ignores a regular plugin), so we use createKernelAccount in 7702 mode with an
+  // explicit { sudo, regular } — that's what puts the session validator IN the manager so it can be
+  // serialized/enabled. The session is the `regular` (active) validator.
+  const sudoValidator = await signerToEcdsaValidator(publicClient, {
     signer: walletClient as never,
     entryPoint,
     kernelVersion: KERNEL_V3_3,
-    plugins: { regular: permissionPlugin } as never,
   });
 
-  // The user signs ONCE here (enabling the session); the session key is embedded in the approval.
-  // Cast bridges a duplicate-viem structural mismatch between the permissions + 7702 packages.
-  const approval = await serializePermissionAccount(account as never, sessionKey);
+  const account = await createKernelAccount(publicClient, {
+    entryPoint,
+    kernelVersion: KERNEL_V3_3,
+    eip7702Account: walletClient as never, // EOA delegated to Kernel at the same address (7702)
+    plugins: { sudo: sudoValidator, regular: permissionPlugin },
+  });
+
+  // The user signs ONCE here (the session enable, + the 7702 authorization); the session key is
+  // embedded in the approval so the backend can execute without it.
+  const approval = await serializePermissionAccount(account, sessionKey);
 
   await createAutopayRule(args.ownerWallet, {
     chainId: args.chainId,
