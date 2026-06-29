@@ -1,7 +1,7 @@
 import { encodeFunctionData, parseUnits } from 'viem';
 import { getCapabilities, sendCalls, waitForCallsStatus } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
-import { clearContracts } from '@/lib/clearNetwork';
+import { clearContracts, isMainnetChain } from '@/lib/clearNetwork';
 import { recordGaslessSavings } from '@/utils/apiClient';
 
 /*
@@ -15,10 +15,13 @@ import { recordGaslessSavings } from '@/utils/apiClient';
 
 const PROJECT_ID = (import.meta.env.VITE_ZERODEV_PROJECT_ID as string | undefined)?.trim();
 const SELF_FUNDED = ((import.meta.env.VITE_ZERODEV_SELF_FUNDED as string | undefined) ?? 'true') !== 'false';
-// ERC-7677 paymaster service URL the wallet calls to sponsor the bundle (ZeroDev v3).
+// ERC-7677 paymaster service URL the wallet calls to sponsor the bundle (ZeroDev v3). Self-funded
+// (no markup) is only used where we've actually funded it (mainnet); testnet uses ZeroDev's MANAGED
+// paymaster (free testnet gas) — the self-funded testnet balance is empty, which left bundles
+// unsponsored (counterfactual smart accounts then never deployed → deposits silently did nothing).
 const paymasterUrl = (chainId: number) => {
   const base = `https://rpc.zerodev.app/api/v3/${PROJECT_ID}/chain/${chainId}`;
-  return SELF_FUNDED ? `${base}?selfFunded=true` : base;
+  return SELF_FUNDED && isMainnetChain(chainId) ? `${base}?selfFunded=true` : base;
 };
 
 const ERC20_ABI = [
@@ -53,23 +56,17 @@ export async function canUseSendCalls(chainId: number): Promise<boolean> {
 
 /** Send a sponsored batch and return the settled tx hash. */
 async function runCalls(chainId: number, calls: Call[]): Promise<string> {
+  if (!PROJECT_ID) throw new Error('Sponsorship is not configured.');
   const config = wagmiAdapter.wagmiConfig;
 
-  // Only attach our (ZeroDev) paymaster when the wallet ADVERTISES external paymaster support.
-  // AppKit email/social smart accounts sponsor gas natively — handing them a foreign paymaster URL
-  // gets the batch accepted at approval but never sponsored/mined (it just hangs). When unsupported,
-  // omit it and let the wallet's own sponsorship cover gas.
-  let capabilities: { paymasterService: { url: string } } | undefined;
-  try {
-    const caps = await getCapabilities(config, { chainId });
-    if (caps?.paymasterService?.supported && PROJECT_ID) {
-      capabilities = { paymasterService: { url: paymasterUrl(chainId) } };
-    }
-  } catch {
-    /* wallet doesn't expose capabilities → rely on its native sponsorship */
-  }
-
-  const { id } = await sendCalls(config, { chainId, calls, ...(capabilities ? { capabilities } : {}) });
+  // Always attach the ZeroDev paymaster — a counterfactual smart account has no ETH to deploy/pay for
+  // itself, so it REQUIRES sponsorship (AppKit doesn't auto-sponsor here). The wallet honors the 5792
+  // paymasterService capability; EOAs only reach this path when they advertise paymasterService too.
+  const { id } = await sendCalls(config, {
+    chainId,
+    calls,
+    capabilities: { paymasterService: { url: paymasterUrl(chainId) } },
+  });
   // Bounded wait so a stuck/unsponsored bundle surfaces an error instead of hanging forever.
   const result = await waitForCallsStatus(config, { id, timeout: 90_000 });
   if (result.status !== 'success') {
