@@ -7,7 +7,8 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useKyc } from '@/context/KycContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { gaslessDeposit, gaslessRedeem } from '@/lib/gaslessMoney';
-import { aaDeposit, aaRedeem, isAaEnabled, isAaUnsupportedError } from '@/lib/aa';
+import { isAaEnabled, isAaUnsupportedError } from '@/lib/aa';
+import { scDeposit, scRedeem, canUseSendCalls } from '@/lib/sendCalls';
 import { cn } from '@/lib/utils';
 
 /*
@@ -89,15 +90,15 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         const isDeposit = fromId === 'cash' && toId === 'savings';
         const isRedeem = fromId === 'savings' && toId === 'cash';
         if (!isDeposit && !isRedeem) throw new Error('Unsupported transfer.');
-        // Prefer the AA path (ZeroDev 7702: batched approve+action, sponsored, one signature) when
-        // configured; fall back to the EIP-3009 relayer for non-EOA wallets (email/social = smart
-        // accounts can't do 7702) or any pre-submission AA failure.
-        const aaRun = isDeposit ? aaDeposit : aaRedeem;
+        // True AA path (EIP-5792 wallet_sendCalls: batched approve+action, paymaster-sponsored, one
+        // signature) when the wallet supports it; otherwise fall back to the EIP-3009 relayer (also
+        // gasless). Works for both EOA (MetaMask) and embedded smart wallets, same address.
+        const scRun = isDeposit ? scDeposit : scRedeem;
         const relayerRun = isDeposit ? gaslessDeposit : gaslessRedeem;
         let hash: string;
-        if (isAaEnabled(chainId)) {
+        if (isAaEnabled(chainId) && (await canUseSendCalls(chainId))) {
           try {
-            hash = await aaRun({ ownerWallet: address, amount: amountStr, chainId });
+            hash = await scRun({ ownerWallet: address, amount: amountStr, chainId });
           } catch (err) {
             if (!isAaUnsupportedError(err)) throw err;
             hash = await relayerRun({ ownerWallet: address, amount: amountStr, chainId });

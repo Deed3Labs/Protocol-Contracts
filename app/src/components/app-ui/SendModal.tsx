@@ -11,7 +11,8 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { prepareSendTransfer, confirmSendTransferLock } from '@/utils/apiClient';
 import { gaslessSendLock } from '@/lib/gaslessMoney';
-import { isAaEnabled, aaSendLock, isAaUnsupportedError } from '@/lib/aa';
+import { isAaEnabled, isAaUnsupportedError } from '@/lib/aa';
+import { scSendLock, canUseSendCalls } from '@/lib/sendCalls';
 import { cn } from '@/lib/utils';
 
 /*
@@ -106,11 +107,11 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
         };
 
         let claim: string | null = null;
-        if (isAaEnabled(chainId)) {
+        if (isAaEnabled(chainId) && (await canUseSendCalls(chainId))) {
           try {
-            // AA: lock USDC in the escrow in one sponsored op (approve + createTransfer), then the
+            // AA: lock USDC in the escrow in one sponsored batch (approve + createTransfer), then the
             // server verifies the on-chain event and issues the claim link.
-            const txHash = await aaSendLock({
+            const txHash = await scSendLock({
               chainId,
               transferId: t.transferId as `0x${string}`,
               principalUsdcMicros: t.principalUsdc,
