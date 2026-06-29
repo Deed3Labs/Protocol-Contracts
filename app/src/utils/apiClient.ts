@@ -2039,6 +2039,18 @@ export async function addPayBiller(
   return r.error || !r.data ? null : r.data.biller;
 }
 
+export async function updatePayBiller(
+  wallet: string,
+  id: string,
+  b: { name: string; payee?: string; type: PayBillerType; defaultAmount: number; dueDay?: number | null },
+): Promise<PayBiller | null> {
+  const r = await apiRequest<{ biller: PayBiller }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(b),
+  });
+  return r.error || !r.data ? null : r.data.biller;
+}
+
 export async function deletePayBiller(wallet: string, id: string): Promise<boolean> {
   const r = await apiRequest<{ ok: boolean }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}`, { method: 'DELETE' });
   return !r.error;

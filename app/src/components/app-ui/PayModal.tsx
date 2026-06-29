@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  ArrowLeft, Award, Calendar, Check, ChevronDown, CreditCard, Landmark, Loader2, Lock, Plus, Sparkles,
+  ArrowLeft, Award, Calendar, Check, ChevronDown, CreditCard, Landmark, Loader2, Lock, Pencil, Plus, Sparkles,
   Trash2, Wallet, Zap,
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -49,7 +49,7 @@ export default function PayModal({
   onOpenChange: (o: boolean) => void;
   initialBillId?: string;
 }) {
-  const { bills, getBill, addBiller, removeBiller, streak, recordBillPayment } = usePay();
+  const { bills, getBill, addBiller, updateBiller, removeBiller, streak, recordBillPayment } = usePay();
   const { accounts } = useExternalAccounts();
   const bal = useClearBalances();
   const { email } = useMemberProfile();
@@ -72,6 +72,7 @@ export default function PayModal({
   const [sourceOpen, setSourceOpen] = useState(false);
   const [when, setWhen] = useState<'now' | 'due'>('now');
   const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
   const selectBill = (b: Bill) => {
@@ -80,12 +81,26 @@ export default function PayModal({
     setStep('review');
   };
 
+  const startAddBiller = () => {
+    setEditingId(null);
+    setDraft(emptyDraft);
+    setStep('addBiller');
+  };
+
+  // Edit an existing (manual-only) biller: prefill the form and remember which one we're editing.
+  const startEditBiller = (b: Bill) => {
+    setEditingId(b.id);
+    setDraft({ name: b.name, payee: b.payee, amount: String(b.amount), dueDay: b.dueDay ? String(b.dueDay) : '', type: b.type });
+    setStep('addBiller');
+  };
+
   useEffect(() => {
     if (!open) return;
     setSourceId('balance');
     setSourceOpen(false);
     setWhen('now');
     setDraft(emptyDraft);
+    setEditingId(null);
     const preset = initialBillId ? getBill(initialBillId) : undefined;
     if (preset) {
       setBillId(preset.id);
@@ -131,14 +146,21 @@ export default function PayModal({
     const amt = Number(draft.amount) || 0;
     if (!draft.name.trim() || amt <= 0) return;
     const day = Math.min(Math.max(parseInt(draft.dueDay, 10) || 0, 0), 31) || null;
-    const id = addBiller({
+    const fields = {
       name: draft.name.trim(),
       payee: draft.payee.trim() || draft.name.trim(),
       type: draft.type,
       amount: amt,
       dueLabel: day ? `Due on the ${ordinal(day)}` : 'Due soon',
       dueDay: day,
-    });
+    };
+    if (editingId) {
+      updateBiller(editingId, fields);
+      setEditingId(null);
+      setStep('choose');
+      return;
+    }
+    const id = addBiller(fields);
     setBillId(id);
     setAmountStr(String(amt));
     setStep('review');
@@ -179,6 +201,16 @@ export default function PayModal({
                         {creditsBadge(b)}
                       </span>
                     </button>
+                    {b.source === 'manual' && (
+                      <button
+                        type="button"
+                        onClick={() => startEditBiller(b)}
+                        aria-label={`Edit ${b.name}`}
+                        className="ml-1 shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => removeBiller(b.id)}
@@ -193,10 +225,7 @@ export default function PayModal({
             </div>
             <button
               type="button"
-              onClick={() => {
-                setDraft(emptyDraft);
-                setStep('addBiller');
-              }}
+              onClick={startAddBiller}
               className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
             >
               <Plus className="h-4 w-4" /> Add a biller
@@ -208,10 +237,10 @@ export default function PayModal({
         {step === 'addBiller' && (
           <div className="p-5">
             <div className="mb-4 flex items-center gap-2">
-              <button type="button" onClick={() => setStep('choose')} aria-label="Back" className="-ml-1 rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
+              <button type="button" onClick={() => { setEditingId(null); setStep('choose'); }} aria-label="Back" className="-ml-1 rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
                 <ArrowLeft className="h-5 w-5" />
               </button>
-              <span className="text-base font-semibold text-foreground">Add a biller</span>
+              <span className="text-base font-semibold text-foreground">{editingId ? 'Edit biller' : 'Add a biller'}</span>
             </div>
             <div className="space-y-3">
               <Labeled label="Biller name" required>
@@ -266,7 +295,7 @@ export default function PayModal({
               disabled={!draft.name.trim() || !(Number(draft.amount) > 0)}
               className="mt-5 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
             >
-              Continue
+              {editingId ? 'Save changes' : 'Continue'}
             </button>
           </div>
         )}

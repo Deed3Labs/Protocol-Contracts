@@ -8,6 +8,7 @@ import {
   getPayBillers,
   getPaySummary,
   addPayBiller,
+  updatePayBiller,
   deletePayBiller,
   syncPlaidBillers,
   recordPayment,
@@ -37,7 +38,11 @@ export interface Bill {
   dueLabel: string; // "Jun 28"
   dueDay: number | null; // 1-31, for due-date math
   icon: LucideIcon;
+  source: 'manual' | 'plaid'; // only manual billers are editable; plaid = auto-detected, read-only
 }
+
+/** Fields a user can set/edit on a biller (id/icon derived; source is server-controlled). */
+export type BillerDraft = Omit<Bill, 'id' | 'icon' | 'source'>;
 
 /** On-time streak fallback when no summary is loaded yet. */
 export const ON_TIME_STREAK = 0;
@@ -90,6 +95,7 @@ function billerToBill(b: PayBiller): Bill {
     dueLabel: dueLabelFromDay(b.dueDay),
     dueDay: b.dueDay,
     icon: ICONS[b.type] ?? Receipt,
+    source: b.source,
   };
 }
 
@@ -98,7 +104,9 @@ interface PayValue {
   summary: PaySummary | null;
   loading: boolean;
   getBill: (id: string) => Bill | undefined;
-  addBiller: (b: Omit<Bill, 'id' | 'icon'>) => string;
+  addBiller: (b: BillerDraft) => string;
+  /** Edit a MANUALLY-added biller (no-op on auto-detected ones; optimistic, persists in background). */
+  updateBiller: (id: string, b: BillerDraft) => void;
   /** Remove a biller (optimistic; persists the delete in the background). */
   removeBiller: (id: string) => void;
   /** Record an on-time payment + accrue equity credits (called when the Pay flow completes). */
@@ -121,6 +129,7 @@ export function usePay(): PayValue {
       loading: false,
       getBill: () => undefined,
       addBiller: () => '',
+      updateBiller: () => {},
       removeBiller: () => {},
       recordBillPayment: async () => {},
       reconcile: async () => {},
@@ -180,13 +189,24 @@ export function PayProvider({ children }: { children: ReactNode }) {
 
   // Optimistic add (temp id lets the Pay modal proceed); persists + refreshes in the background.
   const addBiller = useCallback(
-    (b: Omit<Bill, 'id' | 'icon'>) => {
+    (b: BillerDraft) => {
       const tempId = `bill${Date.now()}`;
-      setBills((bs) => [...bs, { ...b, id: tempId, icon: ICONS[b.type] ?? Receipt }]);
+      setBills((bs) => [...bs, { ...b, id: tempId, icon: ICONS[b.type] ?? Receipt, source: 'manual' }]);
       if (address) {
         void addPayBiller(address, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay }).then(() => load());
       }
       return tempId;
+    },
+    [address, load],
+  );
+
+  // Optimistic edit of a manual biller (auto-detected billers are server-guarded as read-only).
+  const updateBiller = useCallback(
+    (id: string, b: BillerDraft) => {
+      setBills((bs) => bs.map((x) => (x.id === id && x.source === 'manual' ? { ...x, ...b, icon: ICONS[b.type] ?? Receipt } : x)));
+      if (address && !id.startsWith('bill')) {
+        void updatePayBiller(address, id, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay }).then(() => load());
+      }
     },
     [address, load],
   );
@@ -234,6 +254,7 @@ export function PayProvider({ children }: { children: ReactNode }) {
     loading,
     getBill: (id) => bills.find((b) => b.id === id),
     addBiller,
+    updateBiller,
     removeBiller,
     recordBillPayment,
     reconcile,

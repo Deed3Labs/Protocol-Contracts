@@ -72,6 +72,35 @@ router.post('/:wallet/billers', async (req: Request, res: Response) => {
   }
 });
 
+// PUT /api/pay/:wallet/billers/:id  { name, payee?, type, defaultAmount, dueDay }  (manual billers only)
+router.put('/:wallet/billers/:id', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  const b = req.body as { name?: string; payee?: string; type?: string; defaultAmount?: number; dueDay?: number };
+  if (!b?.name || !b?.type || !VALID_TYPES.has(b.type as BillerType)) {
+    res.status(400).json({ error: 'name and valid type are required' });
+    return;
+  }
+  try {
+    const biller = await payLedgerStore.updateBiller(w, String(req.params.id), {
+      name: String(b.name).slice(0, 200),
+      payee: b.payee ? String(b.payee).slice(0, 200) : null,
+      type: b.type as BillerType,
+      defaultAmount: Number(b.defaultAmount) || 0,
+      dueDay: b.dueDay == null ? null : Math.min(Math.max(Math.round(Number(b.dueDay)), 1), 31),
+    });
+    if (!biller) {
+      res.status(404).json({ error: 'Biller not found or not editable (auto-detected billers are read-only)' });
+      return;
+    }
+    res.json({ biller });
+  } catch (error) {
+    console.error('[pay/billers PUT]', error);
+    res.status(500).json({ error: 'Failed to update biller' });
+  }
+});
+
 // DELETE /api/pay/:wallet/billers/:id
 router.delete('/:wallet/billers/:id', async (req: Request, res: Response) => {
   const w = wallet(req);

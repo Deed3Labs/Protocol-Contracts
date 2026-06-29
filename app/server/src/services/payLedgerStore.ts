@@ -190,6 +190,25 @@ export const payLedgerStore = {
     return rowToBiller(r.rows[0]);
   },
 
+  /** Update a MANUALLY-added biller (Plaid-detected billers are read-only). Returns null if not found
+   *  or not manual. */
+  async updateBiller(
+    wallet: string,
+    id: string,
+    b: { name: string; payee: string | null; type: BillerType; defaultAmount: number; dueDay: number | null },
+  ): Promise<Biller | null> {
+    const pool = getPayPool();
+    if (!pool) throw new Error('Postgres not configured');
+    await ensureTables();
+    const r = await pool.query(
+      `UPDATE pay_billers SET name = $3, payee = $4, type = $5, default_amount = $6, due_day = $7
+        WHERE wallet = $1 AND id = $2 AND source = 'manual' AND archived_at IS NULL
+        RETURNING *`,
+      [wallet, id, b.name, b.payee, b.type, b.defaultAmount, b.dueDay],
+    );
+    return r.rows[0] ? rowToBiller(r.rows[0]) : null;
+  },
+
   async archiveBiller(wallet: string, id: string): Promise<void> {
     const pool = getPayPool();
     if (!pool) return;
