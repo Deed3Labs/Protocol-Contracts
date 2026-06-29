@@ -2003,6 +2003,7 @@ export interface PaySummary {
   pendingEquity: number;
   equityThisMonth: number;
   streak: number;
+  sources: { match: number; rent: number; bills: number };
   series: { label: string; rent: number; equity: number }[];
 }
 

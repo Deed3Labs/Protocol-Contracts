@@ -10,7 +10,16 @@ import {
   verifyClaimOtp,
 } from '@/utils/apiClient';
 import type { ClaimPayoutMethod, ClaimPayoutResponse, ClaimSession, VerifyClaimOtpResponse } from '@/types/send';
-import { AlertCircle, CheckCircle2, Loader2, RefreshCcw, Wallet } from 'lucide-react';
+import { AlertCircle, Building2, CheckCircle2, CreditCard, Loader2, RefreshCcw, Wallet } from 'lucide-react';
+import Wordmark from '@/components/app-ui/Wordmark';
+
+/** Display USDC stored as 6-decimal micros (the ledger format) as a dollar amount. */
+function fmtUsd(value: string | number | undefined): string {
+  const n = typeof value === 'string' ? Number(value) : value ?? 0;
+  if (!Number.isFinite(n)) return '$0.00';
+  const dollars = n >= 100000 ? n / 1_000_000 : n; // tolerate both micros and already-dollar values
+  return `$${dollars.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 type ClaimStep = 'connect' | 'loading' | 'otp' | 'method' | 'processing' | 'success' | 'error';
 
@@ -253,264 +262,276 @@ export default function ClaimFunds() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-4 py-10 text-zinc-900 dark:bg-black dark:text-zinc-100">
-      <div className="mx-auto w-full max-w-lg rounded-sm border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-[#0e0e0e]">
-        <h1 className="text-2xl font-light tracking-tight">Claim Funds</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Choose how you want to receive this transfer.</p>
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10 text-foreground">
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <Wordmark className="h-7" />
+          <h1 className="mt-5 font-display text-2xl tracking-tight text-foreground">Claim your money</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Someone sent you money on Clear — choose how to receive it.</p>
+        </div>
 
-        {step === 'loading' && (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
-            <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">Loading claim details...</p>
-          </div>
-        )}
-
-        {step === 'connect' && (
-          <div className="mt-5 space-y-4">
-            <div className="rounded-sm border border-zinc-200 bg-zinc-50 p-3 text-xs dark:border-zinc-800 dark:bg-zinc-900/50">
-              <p className="font-medium text-zinc-900 dark:text-zinc-100">Create account / connect wallet to claim</p>
-              <p className="mt-1 text-zinc-500">
-                To protect claim access, connect with AppKit first. If prompted, complete the sign-in step.
-              </p>
-              <p className="mt-1 text-zinc-500">
-                On iOS Safari, use this button and finish the in-modal flow for email/social embedded wallet login.
-              </p>
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+          {step === 'loading' && (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="mt-3 text-sm text-muted-foreground">Loading your claim…</p>
             </div>
+          )}
 
-            <button
-              type="button"
-              onClick={() => open({ view: isConnected ? 'Account' : 'Connect' })}
-              className="w-full rounded-sm bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-            >
-              {isConnected ? 'Open Account' : 'Connect / Create Account'}
-            </button>
-          </div>
-        )}
-
-        {step === 'otp' && claimSession && (
-          <div className="mt-5 space-y-4">
-            <div className="rounded-sm border border-zinc-200 bg-zinc-50 p-3 text-xs dark:border-zinc-800 dark:bg-zinc-900/50">
-              <p className="text-zinc-500">Amount</p>
-              <p className="mt-1 text-base font-medium text-zinc-900 dark:text-zinc-100">${claimSession.transfer.principalUsdc}</p>
-              <p className="mt-2 text-zinc-500">Recipient</p>
-              <p className="mt-1 text-zinc-900 dark:text-zinc-100">{claimSession.recipientMasked}</p>
+          {step === 'connect' && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-border bg-secondary/40 p-3 text-xs">
+                <p className="font-medium text-foreground">Create an account or connect a wallet</p>
+                <p className="mt-1 text-muted-foreground">
+                  To keep your money safe, sign in first. You can use email, a social login, or a wallet.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => open({ view: isConnected ? 'Account' : 'Connect' })}
+                className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+              >
+                {isConnected ? 'Open account' : 'Get started'}
+              </button>
             </div>
+          )}
 
-            <label className="block space-y-1">
-              <span className="text-sm font-medium">Enter OTP</span>
-              <input
-                value={otp}
-                onChange={(event) => setOtp(event.target.value)}
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="6-digit code"
-                className="w-full rounded-sm border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
+          {step === 'otp' && claimSession && (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-secondary/40 p-4 text-center">
+                <div className="text-xs text-muted-foreground">You're claiming</div>
+                <div className="mt-0.5 font-display text-4xl tracking-tight text-foreground tabular-nums">{fmtUsd(claimSession.transfer.principalUsdc)}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Sent to {claimSession.recipientMasked}</div>
+              </div>
 
-            <div className="flex gap-2">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Enter the 6-digit code we sent you</span>
+                <input
+                  value={otp}
+                  onChange={(event) => setOtp(event.target.value)}
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="• • • • • •"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-3 text-center font-display text-xl tracking-[0.4em] tabular-nums text-foreground placeholder:tracking-normal placeholder:text-muted-foreground/50 focus:border-foreground/30 focus:outline-none"
+                />
+              </label>
+
               <button
                 type="button"
                 onClick={handleVerifyOtp}
-                className="flex-1 rounded-sm bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
               >
-                Verify OTP
+                Verify
               </button>
               <button
                 type="button"
                 onClick={handleResendOtp}
                 disabled={retryAfterSeconds > 0}
-                className="inline-flex items-center gap-2 rounded-sm border border-zinc-200 px-3 py-2 text-sm text-zinc-700 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200"
+                className="flex w-full items-center justify-center gap-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
               >
-                <RefreshCcw className="h-4 w-4" />
-                {retryAfterSeconds > 0 ? `${retryAfterSeconds}s` : 'Resend'}
+                <RefreshCcw className="h-3.5 w-3.5" />
+                {retryAfterSeconds > 0 ? `Resend in ${retryAfterSeconds}s` : 'Resend code'}
               </button>
             </div>
-          </div>
-        )}
+          )}
 
-        {step === 'method' && verifiedClaim && (
-          <div className="mt-5 space-y-4">
-            <div className="rounded-sm border border-zinc-200 bg-zinc-50 p-3 text-xs dark:border-zinc-800 dark:bg-zinc-900/50">
-              <p className="text-zinc-500">Claim Amount</p>
-              <p className="mt-1 text-base font-medium text-zinc-900 dark:text-zinc-100">${verifiedClaim.transfer.principalUsdc}</p>
-              <p className="mt-2 text-zinc-500">Available methods</p>
-              <p className="mt-1 text-zinc-900 dark:text-zinc-100">{verifiedClaim.payoutMethods.join(' • ')}</p>
-            </div>
+          {step === 'method' && verifiedClaim && (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-secondary/40 p-4 text-center">
+                <div className="text-xs text-muted-foreground">Ready to claim</div>
+                <div className="mt-0.5 font-display text-4xl tracking-tight text-foreground tabular-nums">{fmtUsd(verifiedClaim.transfer.principalUsdc)}</div>
+              </div>
 
-            <div className="space-y-2">
-              {verifiedClaim.payoutMethods.includes('DEBIT') && (
-                <button
-                  type="button"
-                  onClick={() => executePayout('DEBIT')}
-                  className="w-full rounded-sm border border-zinc-200 px-3 py-2 text-left text-sm hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-                >
-                  <p className="font-medium">Debit Card</p>
-                  <p className="text-xs text-zinc-500">Instant payout when eligible (bank fallback if not)</p>
-                </button>
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">How do you want it?</div>
+                {verifiedClaim.payoutMethods.includes('DEBIT') && (
+                  <button
+                    type="button"
+                    onClick={() => executePayout('DEBIT')}
+                    className="flex w-full items-center gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-secondary/50"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground"><CreditCard className="h-[18px] w-[18px]" /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-foreground">Debit card</span>
+                      <span className="block text-xs text-muted-foreground">Instant when eligible (bank fallback)</span>
+                    </span>
+                  </button>
+                )}
+
+                {verifiedClaim.payoutMethods.includes('BANK') && (
+                  <button
+                    type="button"
+                    onClick={() => executePayout('BANK')}
+                    className="flex w-full items-center gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-secondary/50"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground"><Building2 className="h-[18px] w-[18px]" /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-foreground">Bank account</span>
+                      <span className="block text-xs text-muted-foreground">ACH transfer · arrives in 1–3 days</span>
+                    </span>
+                  </button>
+                )}
+
+                {verifiedClaim.payoutMethods.includes('WALLET') && (
+                  <div className="rounded-xl border border-border p-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground"><Wallet className="h-[18px] w-[18px]" /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-foreground">Crypto wallet</span>
+                        <span className="block text-xs text-muted-foreground">Connected, embedded, or paste an address</span>
+                      </span>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        value={walletInput}
+                        onChange={(event) => setWalletInput(event.target.value)}
+                        placeholder="0x…"
+                        className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => executePayout('WALLET')}
+                        className="shrink-0 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-transform active:scale-[0.97]"
+                      >
+                        Claim
+                      </button>
+                    </div>
+                    {!isConnected && (
+                      <button
+                        type="button"
+                        onClick={() => open({ view: 'Connect' })}
+                        className="mt-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        Connect a wallet
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {(verifiedClaim.payoutMethods.includes('DEBIT') || verifiedClaim.payoutMethods.includes('BANK')) && (
+                <div className="rounded-xl border border-border p-3">
+                  <p className="text-xs font-medium text-foreground">Payout details</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">Only needed if your bank/card payout requires verification.</p>
+                  <div className="mt-3 grid gap-2">
+                    <input
+                      value={bridgeFullName}
+                      onChange={(event) => setBridgeFullName(event.target.value)}
+                      placeholder="Full legal name"
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
+                    />
+                    <input
+                      value={bridgeEmail}
+                      onChange={(event) => setBridgeEmail(event.target.value)}
+                      type="email"
+                      placeholder="Email"
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
+                    />
+                  </div>
+                </div>
               )}
 
-              {verifiedClaim.payoutMethods.includes('BANK') && (
+              {payoutResult?.status === 'DEBIT_FALLBACK_REQUIRED' && verifiedClaim.payoutMethods.includes('BANK') && (
                 <button
                   type="button"
                   onClick={() => executePayout('BANK')}
-                  className="w-full rounded-sm border border-zinc-200 px-3 py-2 text-left text-sm hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                  className="w-full rounded-xl border border-border py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
                 >
-                  <p className="font-medium">Bank Account</p>
-                  <p className="text-xs text-zinc-500">ACH payout with ETA shown on success</p>
+                  Continue with bank payout
                 </button>
               )}
 
-              {verifiedClaim.payoutMethods.includes('WALLET') && (
-                <div className="rounded-sm border border-zinc-200 p-3 dark:border-zinc-700">
-                  <p className="text-sm font-medium">Crypto Wallet</p>
-                  <p className="mt-1 text-xs text-zinc-500">Use connected wallet, embedded wallet, or paste an external address.</p>
-
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      value={walletInput}
-                      onChange={(event) => setWalletInput(event.target.value)}
-                      placeholder="0x..."
-                      className="flex-1 rounded-sm border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => executePayout('WALLET')}
-                      className="inline-flex items-center gap-1 rounded-sm bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-                    >
-                      <Wallet className="h-3.5 w-3.5" />
-                      Claim
-                    </button>
-                  </div>
-
-                  {!isConnected && (
-                    <button
-                      type="button"
-                      onClick={() => open({ view: 'Connect' })}
-                      className="mt-2 rounded-sm border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                    >
-                      Connect with AppKit
-                    </button>
-                  )}
-                </div>
+              {payoutResult?.status === 'ACTION_REQUIRED' && payoutResult.onboardingUrl && (
+                <a
+                  href={payoutResult.onboardingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block w-full rounded-xl border border-border py-2.5 text-center text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+                >
+                  Continue verification
+                </a>
               )}
             </div>
+          )}
 
-            {(verifiedClaim.payoutMethods.includes('DEBIT') || verifiedClaim.payoutMethods.includes('BANK')) && (
-              <div className="rounded-sm border border-zinc-200 p-3 dark:border-zinc-700">
-                <p className="text-sm font-medium">Fiat Onboarding Details</p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  Required only if your payout provider requests Bridge onboarding.
-                </p>
+          {step === 'processing' && (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="mt-3 text-sm text-muted-foreground">
+                {selectedMethod ? `Processing your ${selectedMethod.toLowerCase()} payout…` : 'Processing…'}
+              </p>
+            </div>
+          )}
 
-                <div className="mt-3 grid gap-2">
-                  <input
-                    value={bridgeFullName}
-                    onChange={(event) => setBridgeFullName(event.target.value)}
-                    placeholder="Full legal name"
-                    className="w-full rounded-sm border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900"
-                  />
-                  <input
-                    value={bridgeEmail}
-                    onChange={(event) => setBridgeEmail(event.target.value)}
-                    type="email"
-                    placeholder="Email for onboarding"
-                    className="w-full rounded-sm border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900"
-                  />
-                </div>
+          {step === 'success' && (
+            <div className="space-y-4 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-positive/10">
+                <CheckCircle2 className="h-7 w-7 text-positive" />
               </div>
-            )}
+              <div>
+                <p className="text-base font-semibold text-foreground">You've got your money</p>
+                <p className="mt-1 text-sm text-muted-foreground">Your claim is complete.</p>
+              </div>
+              <div className="space-y-1.5 rounded-xl bg-secondary/40 p-3 text-left text-xs">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Method</span>
+                  <span className="font-medium text-foreground">{payoutResult?.method || selectedMethod}</span>
+                </div>
+                {payoutResult?.providerReference && (
+                  <div className="flex justify-between gap-4">
+                    <span className="shrink-0 text-muted-foreground">Reference</span>
+                    <span className="truncate text-foreground">{payoutResult.providerReference}</span>
+                  </div>
+                )}
+                {payoutResult?.walletTxHash && (
+                  <div className="flex justify-between gap-4">
+                    <span className="shrink-0 text-muted-foreground">Tx hash</span>
+                    <span className="truncate text-foreground">{payoutResult.walletTxHash}</span>
+                  </div>
+                )}
+                {payoutResult?.eta && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Arrives</span>
+                    <span className="text-foreground">{payoutResult.eta}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
-            {payoutResult?.status === 'DEBIT_FALLBACK_REQUIRED' && verifiedClaim.payoutMethods.includes('BANK') && (
+          {step === 'error' && (
+            <div className="flex flex-col items-center py-6 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-negative/10">
+                <AlertCircle className="h-7 w-7 text-negative" />
+              </div>
+              <p className="mt-4 max-w-[300px] text-sm text-muted-foreground">{error || 'Something went wrong with this claim.'}</p>
               <button
                 type="button"
-                onClick={() => executePayout('BANK')}
-                className="w-full rounded-sm border border-zinc-200 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                onClick={() => {
+                  if (requireAppKitForClaim && !isConnected) {
+                    setStep('connect');
+                    return;
+                  }
+                  bootstrapClaim().catch((err) => {
+                    setError(err instanceof Error ? err.message : 'Failed to restart claim flow');
+                    setStep('error');
+                  });
+                }}
+                className="mt-5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
               >
-                Continue with Bank Payout
+                Try again
               </button>
-            )}
-
-            {payoutResult?.status === 'ACTION_REQUIRED' && payoutResult.onboardingUrl && (
-              <a
-                href={payoutResult.onboardingUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="block w-full rounded-sm border border-zinc-200 px-3 py-2 text-center text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-              >
-                Continue Onboarding
-              </a>
-            )}
-          </div>
-        )}
-
-        {step === 'processing' && (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
-            <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">
-              {selectedMethod ? `Processing ${selectedMethod.toLowerCase()} payout...` : 'Processing...'}
-            </p>
-          </div>
-        )}
-
-        {step === 'success' && (
-          <div className="mt-6 space-y-4 text-center">
-            <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-500" />
-            <p className="text-sm font-medium">Funds claimed successfully.</p>
-            <div className="rounded-sm border border-zinc-200 bg-zinc-50 p-3 text-left text-xs dark:border-zinc-800 dark:bg-zinc-900/50">
-              <p className="text-zinc-500">Method</p>
-              <p className="mt-1 text-zinc-900 dark:text-zinc-100">{payoutResult?.method || selectedMethod}</p>
-              {payoutResult?.providerReference && (
-                <>
-                  <p className="mt-2 text-zinc-500">Reference</p>
-                  <p className="mt-1 break-all text-zinc-900 dark:text-zinc-100">{payoutResult.providerReference}</p>
-                </>
-              )}
-              {payoutResult?.walletTxHash && (
-                <>
-                  <p className="mt-2 text-zinc-500">Tx Hash</p>
-                  <p className="mt-1 break-all text-zinc-900 dark:text-zinc-100">{payoutResult.walletTxHash}</p>
-                </>
-              )}
-              {payoutResult?.eta && (
-                <>
-                  <p className="mt-2 text-zinc-500">ETA</p>
-                  <p className="mt-1 text-zinc-900 dark:text-zinc-100">{payoutResult.eta}</p>
-                </>
-              )}
             </div>
-          </div>
-        )}
+          )}
 
-        {step === 'error' && (
-          <div className="mt-6 flex flex-col items-center text-center">
-            <AlertCircle className="h-8 w-8 text-red-500" />
-            <p className="mt-3 text-sm text-zinc-700 dark:text-zinc-300">{error || 'Claim flow failed.'}</p>
-            <button
-              type="button"
-              onClick={() => {
-                if (requireAppKitForClaim && !isConnected) {
-                  setStep('connect');
-                  return;
-                }
+          {error && step !== 'error' && (
+            <div className="mt-4 rounded-xl border border-negative/30 bg-negative/10 p-2.5 text-xs text-negative">
+              {error}
+            </div>
+          )}
+        </div>
 
-                bootstrapClaim().catch((err) => {
-                  setError(err instanceof Error ? err.message : 'Failed to restart claim flow');
-                  setStep('error');
-                });
-              }}
-              className="mt-3 rounded-sm border border-zinc-200 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-            >
-              Retry Claim
-            </button>
-          </div>
-        )}
-
-        {error && step !== 'error' && (
-          <div className="mt-4 rounded-sm border border-red-200 bg-red-50 p-2.5 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
-            {error}
-          </div>
-        )}
+        <p className="mt-5 text-center text-[11px] text-muted-foreground">Secured by Clear · your money is held safely until you claim it</p>
       </div>
     </div>
   );

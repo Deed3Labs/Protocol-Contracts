@@ -2,7 +2,10 @@ import { Fragment, type ComponentType, type SVGProps } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Wallet, Send, Receipt, Settings, Home, X, CreditCard, Umbrella, type LucideIcon } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { usePay } from '@/context/PayContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
+
+const DEED_GOAL = 25000; // equity-credit milestone, matches ClearDeedCard
 import { cn } from '@/lib/utils';
 import Wordmark from '@/components/app-ui/Wordmark';
 import { SunIcon, DuskIcon, MoonIcon } from '@/components/app-ui/ThemeIcons';
@@ -61,6 +64,9 @@ export default function SidebarNav({
 }) {
   const { theme, setTheme } = useTheme();
   const profile = useMemberProfile();
+  const { summary } = usePay();
+  const deedCredits = Math.round(summary?.totalEquity ?? 0);
+  const deedPct = Math.min(100, Math.round((deedCredits / DEED_GOAL) * 100));
 
   return (
     <div className="flex h-full flex-col">
@@ -152,10 +158,10 @@ export default function SidebarNav({
                 <span className="text-sm font-medium text-foreground">Clear Deed</span>
               </div>
               <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                $6,240 in equity credits · 25% to your milestone.
+                ${deedCredits.toLocaleString()} in equity credits · {deedPct}% to your milestone.
               </p>
               <div className="mb-3 h-1.5 w-full overflow-hidden rounded-lg bg-background">
-                <div className="h-full w-1/4 rounded-lg bg-primary" />
+                <div className="h-full rounded-lg bg-primary transition-[width] duration-500" style={{ width: `${deedPct}%` }} />
               </div>
               <button type="button" className="w-full rounded-xl bg-primary py-2 text-xs font-medium text-primary-foreground">
                 View progress

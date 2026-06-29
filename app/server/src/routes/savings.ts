@@ -4,6 +4,7 @@ import { requireWalletMatch } from '../middleware/auth.js';
 import { savingsIntentService } from '../services/savingsIntentService.js';
 import { savingsRelayerService } from '../services/savingsRelayerService.js';
 import { savingsGaslessService } from '../services/savingsGaslessService.js';
+import { payLedgerStore } from '../services/payLedgerStore.js';
 
 const savingsRouter = Router();
 
@@ -306,6 +307,19 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
         r: sig.r,
         s: sig.s,
       });
+    }
+
+    // Equity-credit ledger (best-effort — never fail the confirmed transfer): a deposit earns a
+    // matched credit (1/$1, capped 1500/mo, 30-day vest); a redeem claws back pending deposit credits.
+    try {
+      const ledgerWallet = ethers.getAddress(owner).toLowerCase();
+      if (action === 'deposit') {
+        await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.amount), txRef: txHash });
+      } else {
+        await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.clrusdAmount) });
+      }
+    } catch (ledgerError) {
+      console.error('[savings/gasless] equity ledger update failed:', ledgerError);
     }
 
     res.json({ success: true, action, chainId: config.chainId, vaultAddress: config.vaultAddress, txHash, status: 'SUBMITTED' });

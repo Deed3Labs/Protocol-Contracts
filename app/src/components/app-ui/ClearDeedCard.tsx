@@ -1,7 +1,7 @@
 import { Home, Zap, Sparkles, Check } from 'lucide-react';
+import { usePay } from '@/context/PayContext';
 import { cn } from '@/lib/utils';
 
-const CREDITS = 6240;
 const GOAL = 25000;
 
 /** Homeownership milestones — equal quarters of the goal, named like a build. */
@@ -12,17 +12,8 @@ const TIERS = [
   { label: 'Keys', value: 25000 },
 ];
 
-/** Where the equity credits came from — sums to CREDITS. */
-// Monochrome ramp of the theme's foreground (black in light, white in dark, dusk
-// brown in dusk) — keeps the breakdown on-theme without adding extra hues.
-const SOURCES = [
-  { label: 'Match', value: 3245, pct: 52, color: 'bg-foreground' },
-  { label: 'Rent', value: 2120, pct: 34, color: 'bg-foreground/55' },
-  { label: 'Bonus', value: 875, pct: 14, color: 'bg-foreground/30' },
-];
-
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
-const abbrev = (n: number) => (n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n}`);
+const abbrev = (n: number) => (n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${Math.round(n)}`);
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
@@ -39,11 +30,27 @@ function MiniStat({ label, value }: { label: string; value: string }) {
  * A tiered "build" meter, a next-milestone nudge, and performance stats.
  */
 export default function ClearDeedCard({ className }: { className?: string }) {
+  const { summary } = usePay();
+  const CREDITS = Math.round(summary?.totalEquity ?? 0);
+  const thisMonth = Math.round(summary?.equityThisMonth ?? 0);
+  const streak = summary?.streak ?? 0;
+
   const pct = (CREDITS / GOAL) * 100;
   const segSize = GOAL / TIERS.length;
   const currentIdx = TIERS.findIndex((t) => CREDITS < t.value);
   const nextTier = TIERS[currentIdx] ?? TIERS[TIERS.length - 1];
   const toNext = Math.max(0, nextTier.value - CREDITS);
+  const toGoal = Math.max(0, GOAL - CREDITS);
+  const monthsToGoal = thisMonth > 0 ? Math.ceil(toGoal / thisMonth) : null;
+
+  // Where the credits came from — savings match, on-time rent, and bills.
+  const src = summary?.sources ?? { match: 0, rent: 0, bills: 0 };
+  const srcTotal = src.match + src.rent + src.bills;
+  const SOURCES = [
+    { label: 'Match', value: src.match, color: 'bg-foreground' },
+    { label: 'Rent', value: src.rent, color: 'bg-foreground/55' },
+    { label: 'Bills', value: src.bills, color: 'bg-foreground/30' },
+  ].map((s) => ({ ...s, pct: srcTotal > 0 ? (s.value / srcTotal) * 100 : 0 }));
 
   return (
     <div className={cn('relative flex flex-col overflow-hidden rounded-xl border border-border bg-card p-5', className)}>
@@ -118,9 +125,9 @@ export default function ClearDeedCard({ className }: { className?: string }) {
 
       {/* performance stats */}
       <div className="mt-5 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
-        <MiniStat label="This month" value="+$520" />
-        <MiniStat label="On-time streak" value="6 mo" />
-        <MiniStat label="To goal" value="~14 mo" />
+        <MiniStat label="This month" value={`+${abbrev(thisMonth)}`} />
+        <MiniStat label="On-time streak" value={`${streak} mo`} />
+        <MiniStat label="To goal" value={monthsToGoal ? `~${monthsToGoal} mo` : '—'} />
       </div>
 
       {/* how you earned it — credit sources */}

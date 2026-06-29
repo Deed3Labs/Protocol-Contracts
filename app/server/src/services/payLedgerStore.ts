@@ -17,6 +17,8 @@ export type EarnSource = 'in_app' | 'detected';
 const GRACE_DAYS = 3; // paid within N days of due_date still counts as on-time
 const VEST_DAYS = 30; // pending → vested clawback/settlement window
 const IN_APP_BONUS = 1.1; // paying through the app earns a 10% bonus
+const DEPOSIT_MATCH_PER_USD = 1; // equity credits matched per $1 deposited into the ESA vault
+const DEPOSIT_MATCH_MONTHLY_CAP = 1500; // max deposit-match credits awarded per calendar month
 
 let ensured = false;
 
@@ -116,6 +118,8 @@ export interface PaySummary {
   pendingEquity: number; // still vesting
   equityThisMonth: number;
   streak: number;
+  /** Non-void credits split by how they were earned (powers the Clear Deed "how you earned it"). */
+  sources: { match: number; rent: number; bills: number };
   series: { label: string; rent: number; equity: number }[]; // last 12 months: rent paid + cumulative equity
 }
 
@@ -267,10 +271,98 @@ export const payLedgerStore = {
     return { creditAwarded: amount, onTime, duplicate: false };
   },
 
+  /**
+   * Award equity-credit MATCH for a savings deposit (USDC → ESA vault): 1 credit per $1, capped at
+   * DEPOSIT_MATCH_MONTHLY_CAP credits per calendar month. Pending for 30 days and clawed back (voided)
+   * if the user redeems within that window — so only deposits that stay in ≥30 days vest. Idempotent
+   * per deposit txRef.
+   */
+  async recordDepositMatch(input: {
+    wallet: string;
+    amountMicros: string | bigint; // USDC (6-decimals) deposited
+    txRef: string; // deposit tx hash
+  }): Promise<{ creditAwarded: number; duplicate: boolean }> {
+    const pool = getPayPool();
+    if (!pool) throw new Error('Postgres not configured');
+    await ensureTables();
+
+    const usd = Math.floor(Number(BigInt(input.amountMicros)) / 1_000_000) * DEPOSIT_MATCH_PER_USD;
+    if (usd <= 0) return { creditAwarded: 0, duplicate: false };
+
+    // Month-to-date deposit-match credits already awarded (excludes voided/clawed-back).
+    const mtd = await pool.query(
+      `SELECT COALESCE(SUM(amount),0) AS s FROM pay_credits
+        WHERE wallet = $1 AND reason = 'deposit_match' AND status <> 'void'
+          AND created_at >= date_trunc('month', now())`,
+      [input.wallet],
+    );
+    const remaining = Math.max(0, DEPOSIT_MATCH_MONTHLY_CAP - num(mtd.rows[0]?.s));
+    const award = Math.min(usd, remaining);
+    if (award <= 0) return { creditAwarded: 0, duplicate: false };
+
+    const vestUntil = new Date();
+    vestUntil.setDate(vestUntil.getDate() + VEST_DAYS);
+    const ins = await pool.query(
+      `INSERT INTO pay_credits (id, wallet, payment_id, amount, reason, source, streak_at_award, status, vest_until)
+       VALUES ($1,$2,$3,$4,'deposit_match','in_app',0,'pending',$5) ON CONFLICT (payment_id) DO NOTHING RETURNING id`,
+      [crypto.randomUUID(), input.wallet, `deposit:${input.txRef}`, award, vestUntil],
+    );
+    if (ins.rowCount === 0) return { creditAwarded: 0, duplicate: true };
+    return { creditAwarded: award, duplicate: false };
+  },
+
+  /**
+   * Claw back pending deposit-match credits when the user redeems within the 30-day window. Voids the
+   * most-recent PENDING deposit credits up to the redeemed USD amount (already-vested credits are
+   * safe); a partial redeem splits the boundary row so the remainder keeps vesting.
+   */
+  async clawbackDepositMatch(input: { wallet: string; amountMicros: string | bigint }): Promise<number> {
+    const pool = getPayPool();
+    if (!pool) return 0;
+    await ensureTables();
+    // Vest matured credits first so we never claw back credits that already cleared the 30-day window.
+    await pool.query(
+      `UPDATE pay_credits SET status = 'vested' WHERE wallet = $1 AND status = 'pending' AND vest_until <= now()`,
+      [input.wallet],
+    );
+
+    let toVoid = Math.floor(Number(BigInt(input.amountMicros)) / 1_000_000);
+    if (toVoid <= 0) return 0;
+
+    const rows = await pool.query(
+      `SELECT id, amount FROM pay_credits
+        WHERE wallet = $1 AND reason = 'deposit_match' AND status = 'pending'
+        ORDER BY created_at DESC`,
+      [input.wallet],
+    );
+
+    let voided = 0;
+    for (const r of rows.rows) {
+      if (toVoid <= 0) break;
+      const amt = num(r.amount);
+      await pool.query(`UPDATE pay_credits SET status = 'void' WHERE id = $1`, [r.id]);
+      if (amt <= toVoid) {
+        voided += amt;
+        toVoid -= amt;
+      } else {
+        // Partial: keep the un-redeemed remainder vesting under a fresh row (same vest window).
+        await pool.query(
+          `INSERT INTO pay_credits (id, wallet, payment_id, amount, reason, source, streak_at_award, status, vest_until)
+           SELECT $1, wallet, $2, $3, reason, source, streak_at_award, 'pending', vest_until
+             FROM pay_credits WHERE id = $4`,
+          [crypto.randomUUID(), `rem:${crypto.randomUUID()}`, amt - toVoid, r.id],
+        );
+        voided += toVoid;
+        toVoid = 0;
+      }
+    }
+    return voided;
+  },
+
   async getSummary(wallet: string): Promise<PaySummary> {
     const pool = getPayPool();
     if (!pool) {
-      return { dueThisMonth: 0, paid30: 0, totalEquity: 0, vestedEquity: 0, pendingEquity: 0, equityThisMonth: 0, streak: 0, series: [] };
+      return { dueThisMonth: 0, paid30: 0, totalEquity: 0, vestedEquity: 0, pendingEquity: 0, equityThisMonth: 0, streak: 0, sources: { match: 0, rent: 0, bills: 0 }, series: [] };
     }
     await ensureTables();
     // Lazily vest matured credits (pending → vested).
@@ -290,7 +382,10 @@ export const payLedgerStore = {
            COALESCE(SUM(amount) FILTER (WHERE status IN ('pending','vested','minted')),0) AS total,
            COALESCE(SUM(amount) FILTER (WHERE status IN ('vested','minted')),0) AS vested,
            COALESCE(SUM(amount) FILTER (WHERE status = 'pending'),0) AS pending,
-           COALESCE(SUM(amount) FILTER (WHERE created_at >= date_trunc('month', now())),0) AS this_month
+           COALESCE(SUM(amount) FILTER (WHERE created_at >= date_trunc('month', now()) AND status <> 'void'),0) AS this_month,
+           COALESCE(SUM(amount) FILTER (WHERE reason = 'deposit_match' AND status <> 'void'),0) AS match_credits,
+           COALESCE(SUM(amount) FILTER (WHERE reason = 'rent_on_time' AND status <> 'void'),0) AS rent_credits,
+           COALESCE(SUM(amount) FILTER (WHERE reason = 'bill_on_time' AND status <> 'void'),0) AS bill_credits
          FROM pay_credits WHERE wallet = $1`,
         [wallet],
       ),
@@ -313,6 +408,11 @@ export const payLedgerStore = {
       pendingEquity: num(credits.rows[0]?.pending),
       equityThisMonth: num(credits.rows[0]?.this_month),
       streak: await computeStreak(wallet),
+      sources: {
+        match: num(credits.rows[0]?.match_credits),
+        rent: num(credits.rows[0]?.rent_credits),
+        bills: num(credits.rows[0]?.bill_credits),
+      },
       series: monthly.rows.map((r) => ({ label: String(r.label), rent: num(r.rent), equity: num(r.equity) })),
     };
   },
