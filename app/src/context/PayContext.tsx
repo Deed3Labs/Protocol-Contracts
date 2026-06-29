@@ -176,7 +176,8 @@ export function PayProvider({ children }: { children: ReactNode }) {
     }
     setLoading(true);
     try {
-      let billers: PayBiller[] = [];
+      // Plaid recurring detection is a best-effort SIDE EFFECT (upsert detected billers); never let it
+      // wipe the list — getPayBillers below is the single source of truth (manual + detected).
       try {
         const rec = await getPlaidRecurringTransactions(address);
         const streams = (rec?.outflowStreams || []).map((s) => ({
@@ -186,10 +187,11 @@ export function PayProvider({ children }: { children: ReactNode }) {
           dueDay: s.day,
           type: inferType(s.name),
         }));
-        billers = streams.length ? await syncPlaidBillers(address, streams) : await getPayBillers(address);
+        if (streams.length) await syncPlaidBillers(address, streams);
       } catch {
-        billers = await getPayBillers(address);
+        /* Plaid optional (no linked item / env mismatch) — ignore */
       }
+      const billers = await getPayBillers(address);
       setBills(billers.map(billerToBill));
       setSummary(await getPaySummary(address));
     } finally {

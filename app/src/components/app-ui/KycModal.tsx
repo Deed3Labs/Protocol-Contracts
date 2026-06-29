@@ -74,7 +74,7 @@ export default function KycModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 p-0 sm:max-w-[420px]">
+      <DialogContent className="gap-0 p-0 sm:max-w-[480px]">
         {step === 'intro' && (
           <div className="p-5">
             <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-info/10 text-info">

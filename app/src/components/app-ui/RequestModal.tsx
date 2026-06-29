@@ -58,7 +58,7 @@ export default function RequestModal({ open, onOpenChange }: { open: boolean; on
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 p-0 sm:max-w-[420px]">
+      <DialogContent className="gap-0 p-0 sm:max-w-[480px]">
         {/* ---- COMPOSE ---- */}
         {step === 'compose' && !picking && (
           <div className="p-5">

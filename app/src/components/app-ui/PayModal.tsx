@@ -77,6 +77,7 @@ export default function PayModal({
   const [payError, setPayError] = useState<string | null>(null);
   const [payoutForm, setPayoutForm] = useState({ account: '', routing: '', bank: '' });
   const [savingPayout, setSavingPayout] = useState(false);
+  const [payoutReturn, setPayoutReturn] = useState<'choose' | 'review'>('review');
 
   const selectBill = (b: Bill) => {
     setBillId(b.id);
@@ -95,6 +96,14 @@ export default function PayModal({
     setEditingId(b.id);
     setDraft({ name: b.name, payee: b.payee, amount: String(b.amount), dueDay: b.dueDay ? String(b.dueDay) : '', type: b.type });
     setStep('addBiller');
+  };
+
+  // Open the payout-details (ACH destination) form for a biller from the list.
+  const startPayout = (b: Bill) => {
+    setBillId(b.id);
+    setPayoutForm({ account: '', routing: '', bank: b.payoutBank || b.payee || '' });
+    setPayoutReturn('choose');
+    setStep('payoutDetails');
   };
 
   useEffect(() => {
@@ -146,7 +155,7 @@ export default function PayModal({
     setSavingPayout(false);
     if (ok) {
       setPayoutForm({ account: '', routing: '', bank: '' });
-      setStep('review');
+      setStep(payoutReturn);
     }
   };
 
@@ -203,7 +212,7 @@ export default function PayModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 p-0 sm:max-w-[420px]">
+      <DialogContent className="gap-0 p-0 sm:max-w-[480px]">
         {/* ---- CHOOSE A BILL ---- */}
         {step === 'choose' && (
           <div className="p-5">
@@ -229,6 +238,18 @@ export default function PayModal({
                         <span className="block text-sm font-semibold tabular-nums text-foreground">{fmt(b.amount)}</span>
                         {creditsBadge(b)}
                       </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startPayout(b)}
+                      aria-label={b.payable ? `Edit payout details for ${b.name}` : `Add payout details for ${b.name}`}
+                      title={b.payable ? `Payout: ••${b.payoutLast4}` : 'Add payout details'}
+                      className={cn(
+                        'ml-1 shrink-0 rounded-lg p-2 transition-colors',
+                        b.payable ? 'text-muted-foreground hover:bg-secondary hover:text-foreground' : 'text-info hover:bg-info/10',
+                      )}
+                    >
+                      <Landmark className="h-4 w-4" />
                     </button>
                     {b.source === 'manual' && (
                       <button
@@ -333,7 +354,7 @@ export default function PayModal({
         {step === 'payoutDetails' && bill && (
           <div className="p-5">
             <div className="mb-4 flex items-center gap-2">
-              <button type="button" onClick={() => setStep('review')} aria-label="Back" className="-ml-1 rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
+              <button type="button" onClick={() => setStep(payoutReturn)} aria-label="Back" className="-ml-1 rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
                 <ArrowLeft className="h-5 w-5" />
               </button>
               <span className="text-base font-semibold text-foreground">Payout details</span>
@@ -498,6 +519,7 @@ export default function PayModal({
                 // A biller needs ACH payout details before it can be paid; otherwise pay it.
                 if (!bill.payable) {
                   setPayoutForm({ account: '', routing: '', bank: bill.payee || '' });
+                  setPayoutReturn('review');
                   setStep('payoutDetails');
                   return;
                 }
