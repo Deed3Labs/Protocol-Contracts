@@ -98,7 +98,10 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         if (cancelled) return;
         setTxHash(hash);
         setDone(true);
-        bal.refresh();
+        // Optimistic: reflect the move immediately, reconcile when the chain indexes.
+        const amt = Number(amountStr) || 0;
+        if (isDeposit) bal.applyOptimistic(-amt, amt);
+        else bal.applyOptimistic(amt, -amt);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Transfer failed.');
       }

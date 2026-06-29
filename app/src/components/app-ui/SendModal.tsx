@@ -126,6 +126,8 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
         if (cancelled) return;
         setClaimUrl(claim);
         setDone(true);
+        // Optimistic: the sent amount leaves Cash now; reconciles when the lock indexes.
+        if (fromBalance) bal.applyOptimistic(-(Number(amountStr) || 0), 0);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Send failed.');
       }

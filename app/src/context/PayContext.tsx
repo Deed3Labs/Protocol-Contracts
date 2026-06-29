@@ -203,6 +203,30 @@ export function PayProvider({ children }: { children: ReactNode }) {
     void load();
   }, [load]);
 
+  // Lightweight refresh (summary + billers, NO Plaid sync) for polling/focus — so equity credits and
+  // bill state update automatically after payments/deposits without a manual reload.
+  const refreshSummary = useCallback(async () => {
+    if (!isConnected || !address) return;
+    try {
+      const [billers, sum] = await Promise.all([getPayBillers(address), getPaySummary(address)]);
+      setBills(billers.map(billerToBill));
+      setSummary(sum);
+    } catch {
+      /* best-effort */
+    }
+  }, [address, isConnected]);
+
+  useEffect(() => {
+    if (!isConnected || !address) return;
+    const id = setInterval(() => void refreshSummary(), 45_000);
+    const onFocus = () => void refreshSummary();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshSummary, isConnected, address]);
+
   // Optimistic add (temp id lets the Pay modal proceed); persists + refreshes in the background.
   const addBiller = useCallback(
     (b: BillerDraft) => {

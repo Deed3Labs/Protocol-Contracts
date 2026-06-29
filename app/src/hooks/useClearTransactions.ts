@@ -151,5 +151,17 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
     void load();
   }, [load]);
 
+  // Auto-refresh the activity feed (poll + on focus) so new transactions appear without a manual reload.
+  useEffect(() => {
+    if (!isConnected || !address) return;
+    const id = setInterval(() => void load(), 45_000);
+    const onFocus = () => void load();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [load, isConnected, address]);
+
   return createElement(Ctx.Provider, { value: { items, flows, loading, refresh: () => void load() } }, children);
 }

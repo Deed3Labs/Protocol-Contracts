@@ -5,6 +5,7 @@ import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useKyc } from '@/context/KycContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { useClearBalances } from '@/hooks/useClearBalances';
 import { useAccount } from 'wagmi';
 import { withdrawToBank } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
@@ -76,6 +77,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const { verified, openKyc } = useKyc();
   const { email } = useMemberProfile();
   const { address } = useAccount();
+  const bal = useClearBalances();
   const proceed = () => {
     if (BANK_METHODS.has(methodId) && !verified) openKyc(() => setStep('status'));
     else setStep('status');
@@ -109,6 +111,8 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
         if (cancelled) return;
         if (!res.success) throw new Error(res.message || 'Withdrawal failed.');
         setDone(true);
+        // Optimistic: USDC leaves Cash now; reconciles when the off-ramp debit indexes.
+        bal.applyOptimistic(-amount, 0);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Withdrawal failed.');
       }
