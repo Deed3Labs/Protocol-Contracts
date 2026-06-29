@@ -2007,6 +2007,10 @@ export interface PayBiller {
   dueDay: number | null;
   source: 'manual' | 'plaid';
   plaidStreamId: string | null;
+  payable: boolean;
+  payoutLast4: string | null;
+  payoutBank: string | null;
+  bridgeExternalAccountId: string | null;
 }
 
 export interface PaySummary {
@@ -2049,6 +2053,30 @@ export async function updatePayBiller(
     body: JSON.stringify(b),
   });
   return r.error || !r.data ? null : r.data.biller;
+}
+
+export async function setPayBillerPayout(
+  wallet: string,
+  id: string,
+  p: { accountNumber: string; routingNumber: string; bankName?: string },
+): Promise<PayBiller | null> {
+  const r = await apiRequest<{ biller: PayBiller }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}/payout`, {
+    method: 'POST',
+    body: JSON.stringify(p),
+  });
+  return r.error || !r.data ? null : r.data.biller;
+}
+
+export async function payBiller(
+  wallet: string,
+  p: { billerId: string; amount: number; source?: 'usdc' | 'bank'; email?: string },
+): Promise<{ success: boolean; providerReference?: string; status?: string; message?: string }> {
+  const r = await apiRequest<{ success: boolean; providerReference?: string; status?: string }>(
+    `/api/pay/${wallet.toLowerCase()}/pay`,
+    { method: 'POST', body: JSON.stringify(p), timeout: 120000 },
+  );
+  if (r.error || !r.data) return { success: false, message: r.error || 'Payment failed.' };
+  return r.data;
 }
 
 export async function deletePayBiller(wallet: string, id: string): Promise<boolean> {

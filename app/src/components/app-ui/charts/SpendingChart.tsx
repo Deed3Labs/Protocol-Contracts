@@ -28,7 +28,7 @@ export default function SpendingChart({
   className?: string;
 }) {
   return (
-    <ChartContainer config={config} height={210} className={className}>
+    <ChartContainer config={config} height={210} fill className={className}>
       <ComposedChart data={data} margin={{ left: 0, right: 10, top: 14, bottom: 0 }}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />

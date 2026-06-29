@@ -65,7 +65,7 @@ export default function ChartCard({
         </div>
         {action}
       </div>
-      <div className="mt-4 flex-1">{children}</div>
+      <div className="mt-4 flex-1 min-h-0">{children}</div>
       {footer && <div className="mt-3 border-t border-border pt-3">{footer}</div>}
     </div>
   );

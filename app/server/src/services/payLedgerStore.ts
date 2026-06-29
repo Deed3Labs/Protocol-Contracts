@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { getPayPool } from '../config/postgres.js';
+import { encryptSendContact, decryptSendContact } from '../utils/sendEncryption.js';
 
 /*
  * Clear Pay rent/bill → equity-credit ledger (off-chain, Railway Postgres). Append-only credit rows
@@ -96,6 +97,16 @@ async function ensureTables(): Promise<void> {
     CREATE INDEX IF NOT EXISTS pay_credits_wallet_idx ON pay_credits (wallet);
     CREATE INDEX IF NOT EXISTS pay_credits_status_idx ON pay_credits (status);
   `);
+  // Biller payout destination (for ACH bill pay). Account number is encrypted at rest; routing +
+  // bank name + last4 are kept clear for display/Bridge. bridge_external_account_id caches the
+  // Bridge external account created from these details.
+  await pool.query(`
+    ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS payout_account_enc TEXT;
+    ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS payout_account_last4 TEXT;
+    ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS payout_routing TEXT;
+    ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS payout_bank_name TEXT;
+    ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS bridge_external_account_id TEXT;
+  `);
   ensured = true;
 }
 
@@ -108,6 +119,11 @@ export interface Biller {
   dueDay: number | null;
   source: 'manual' | 'plaid';
   plaidStreamId: string | null;
+  /** Whether this biller has ACH payout details on file (account number never exposed). */
+  payable: boolean;
+  payoutLast4: string | null;
+  payoutBank: string | null;
+  bridgeExternalAccountId: string | null;
 }
 
 export interface PaySummary {
@@ -133,6 +149,10 @@ function rowToBiller(r: Record<string, unknown>): Biller {
     dueDay: r.due_day == null ? null : Number(r.due_day),
     source: String(r.source) === 'plaid' ? 'plaid' : 'manual',
     plaidStreamId: r.plaid_stream_id ? String(r.plaid_stream_id) : null,
+    payable: !!r.payout_account_enc,
+    payoutLast4: r.payout_account_last4 ? String(r.payout_account_last4) : null,
+    payoutBank: r.payout_bank_name ? String(r.payout_bank_name) : null,
+    bridgeExternalAccountId: r.bridge_external_account_id ? String(r.bridge_external_account_id) : null,
   };
 }
 
@@ -177,7 +197,10 @@ export const payLedgerStore = {
     return r.rows.map(rowToBiller);
   },
 
-  async addBiller(wallet: string, b: Omit<Biller, 'id' | 'source' | 'plaidStreamId'>): Promise<Biller> {
+  async addBiller(
+    wallet: string,
+    b: Pick<Biller, 'name' | 'payee' | 'type' | 'defaultAmount' | 'dueDay'>,
+  ): Promise<Biller> {
     const pool = getPayPool();
     if (!pool) throw new Error('Postgres not configured');
     await ensureTables();
@@ -207,6 +230,63 @@ export const payLedgerStore = {
       [wallet, id, b.name, b.payee, b.type, b.defaultAmount, b.dueDay],
     );
     return r.rows[0] ? rowToBiller(r.rows[0]) : null;
+  },
+
+  /** Set/replace a biller's ACH payout destination (account number encrypted at rest). Works for any
+   *  biller (manual or detected — detected billers become payable once details are added). */
+  async setBillerPayout(
+    wallet: string,
+    id: string,
+    p: { accountNumber: string; routingNumber: string; bankName: string | null },
+  ): Promise<Biller | null> {
+    const pool = getPayPool();
+    if (!pool) throw new Error('Postgres not configured');
+    await ensureTables();
+    const enc = encryptSendContact(p.accountNumber, `${wallet}:${id}`);
+    const last4 = p.accountNumber.replace(/\s/g, '').slice(-4);
+    const r = await pool.query(
+      `UPDATE pay_billers SET payout_account_enc = $3, payout_account_last4 = $4, payout_routing = $5,
+         payout_bank_name = $6, bridge_external_account_id = NULL
+        WHERE wallet = $1 AND id = $2 AND archived_at IS NULL RETURNING *`,
+      [wallet, id, enc, last4, p.routingNumber, p.bankName],
+    );
+    return r.rows[0] ? rowToBiller(r.rows[0]) : null;
+  },
+
+  /** Decrypted payout destination for a biller — server-internal only (for creating the Bridge
+   *  external account). Never return this over the API. */
+  async getBillerPayoutSecret(
+    wallet: string,
+    id: string,
+  ): Promise<{ accountNumber: string; routingNumber: string; bankName: string | null; bridgeExternalAccountId: string | null } | null> {
+    const pool = getPayPool();
+    if (!pool) return null;
+    await ensureTables();
+    const r = await pool.query(
+      `SELECT payout_account_enc, payout_routing, payout_bank_name, bridge_external_account_id
+         FROM pay_billers WHERE wallet = $1 AND id = $2 AND archived_at IS NULL`,
+      [wallet, id],
+    );
+    const row = r.rows[0];
+    if (!row?.payout_account_enc) return null;
+    return {
+      accountNumber: decryptSendContact(String(row.payout_account_enc), `${wallet}:${id}`),
+      routingNumber: String(row.payout_routing ?? ''),
+      bankName: row.payout_bank_name ? String(row.payout_bank_name) : null,
+      bridgeExternalAccountId: row.bridge_external_account_id ? String(row.bridge_external_account_id) : null,
+    };
+  },
+
+  /** Cache the Bridge external account id created for a biller's payout destination. */
+  async setBillerBridgeExternalAccount(wallet: string, id: string, externalAccountId: string): Promise<void> {
+    const pool = getPayPool();
+    if (!pool) return;
+    await ensureTables();
+    await pool.query(`UPDATE pay_billers SET bridge_external_account_id = $3 WHERE wallet = $1 AND id = $2`, [
+      wallet,
+      id,
+      externalAccountId,
+    ]);
   },
 
   async archiveBiller(wallet: string, id: string): Promise<void> {

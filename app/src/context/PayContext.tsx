@@ -10,6 +10,8 @@ import {
   addPayBiller,
   updatePayBiller,
   deletePayBiller,
+  setPayBillerPayout,
+  payBiller,
   syncPlaidBillers,
   recordPayment,
   reconcilePay,
@@ -39,10 +41,13 @@ export interface Bill {
   dueDay: number | null; // 1-31, for due-date math
   icon: LucideIcon;
   source: 'manual' | 'plaid'; // only manual billers are editable; plaid = auto-detected, read-only
+  payable: boolean; // has ACH payout details on file → can be paid in-app
+  payoutLast4: string | null;
+  payoutBank: string | null;
 }
 
-/** Fields a user can set/edit on a biller (id/icon derived; source is server-controlled). */
-export type BillerDraft = Omit<Bill, 'id' | 'icon' | 'source'>;
+/** Fields a user can set/edit on a biller (id/icon derived; source + payout are server-controlled). */
+export type BillerDraft = Omit<Bill, 'id' | 'icon' | 'source' | 'payable' | 'payoutLast4' | 'payoutBank'>;
 
 /** On-time streak fallback when no summary is loaded yet. */
 export const ON_TIME_STREAK = 0;
@@ -96,6 +101,9 @@ function billerToBill(b: PayBiller): Bill {
     dueDay: b.dueDay,
     icon: ICONS[b.type] ?? Receipt,
     source: b.source,
+    payable: b.payable,
+    payoutLast4: b.payoutLast4,
+    payoutBank: b.payoutBank,
   };
 }
 
@@ -109,6 +117,10 @@ interface PayValue {
   updateBiller: (id: string, b: BillerDraft) => void;
   /** Remove a biller (optimistic; persists the delete in the background). */
   removeBiller: (id: string) => void;
+  /** Save a biller's ACH payout destination (account/routing), making it payable. */
+  setBillerPayout: (id: string, p: { accountNumber: string; routingNumber: string; bankName?: string }) => Promise<boolean>;
+  /** Pay a biller from Cash (USDC) via Bridge ACH. Returns success + an optional error message. */
+  payViaUsdc: (billerId: string, amount: number, email: string) => Promise<{ success: boolean; message?: string }>;
   /** Record an on-time payment + accrue equity credits (called when the Pay flow completes). */
   recordBillPayment: (bill: Bill, paidAmount: number) => Promise<void>;
   /** Detect on-time recurring-bill payments from Plaid + accrue credits (Plaid call — Pay page only). */
@@ -131,6 +143,8 @@ export function usePay(): PayValue {
       addBiller: () => '',
       updateBiller: () => {},
       removeBiller: () => {},
+      setBillerPayout: async () => false,
+      payViaUsdc: async () => ({ success: false }),
       recordBillPayment: async () => {},
       reconcile: async () => {},
       streak: ON_TIME_STREAK,
@@ -191,7 +205,7 @@ export function PayProvider({ children }: { children: ReactNode }) {
   const addBiller = useCallback(
     (b: BillerDraft) => {
       const tempId = `bill${Date.now()}`;
-      setBills((bs) => [...bs, { ...b, id: tempId, icon: ICONS[b.type] ?? Receipt, source: 'manual' }]);
+      setBills((bs) => [...bs, { ...b, id: tempId, icon: ICONS[b.type] ?? Receipt, source: 'manual', payable: false, payoutLast4: null, payoutBank: null }]);
       if (address) {
         void addPayBiller(address, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay }).then(() => load());
       }
@@ -218,6 +232,27 @@ export function PayProvider({ children }: { children: ReactNode }) {
       if (address && !id.startsWith('bill')) {
         void deletePayBiller(address, id).then(() => load());
       }
+    },
+    [address, load],
+  );
+
+  const setBillerPayout = useCallback(
+    async (id: string, p: { accountNumber: string; routingNumber: string; bankName?: string }) => {
+      if (!address) return false;
+      const updated = await setPayBillerPayout(address, id, p);
+      await load();
+      return !!updated;
+    },
+    [address, load],
+  );
+
+  // Pay a biller from Cash (USDC) → Bridge ACH. Server records the payment + accrues credits on success.
+  const payViaUsdc = useCallback(
+    async (billerId: string, amount: number, email: string) => {
+      if (!address) return { success: false, message: 'Connect your wallet to pay.' };
+      const res = await payBiller(address, { billerId, amount, source: 'usdc', email });
+      if (res.success) await load();
+      return { success: res.success, message: res.message };
     },
     [address, load],
   );
@@ -256,6 +291,8 @@ export function PayProvider({ children }: { children: ReactNode }) {
     addBiller,
     updateBiller,
     removeBiller,
+    setBillerPayout,
+    payViaUsdc,
     recordBillPayment,
     reconcile,
     streak: summary?.streak ?? ON_TIME_STREAK,

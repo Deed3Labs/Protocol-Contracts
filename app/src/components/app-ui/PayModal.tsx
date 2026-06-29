@@ -49,7 +49,7 @@ export default function PayModal({
   onOpenChange: (o: boolean) => void;
   initialBillId?: string;
 }) {
-  const { bills, getBill, addBiller, updateBiller, removeBiller, streak, recordBillPayment } = usePay();
+  const { bills, getBill, addBiller, updateBiller, removeBiller, setBillerPayout, payViaUsdc, streak, recordBillPayment } = usePay();
   const { accounts } = useExternalAccounts();
   const bal = useClearBalances();
   const { email } = useMemberProfile();
@@ -65,7 +65,7 @@ export default function PayModal({
     ...accounts.map((a) => ({ id: a.id, name: `${a.name} ••${a.mask}`, detail: `${a.type} · Plaid`, icon: Landmark })),
     { id: 'card', name: 'Card', detail: 'Coming soon', icon: CreditCard, disabled: true },
   ];
-  const [step, setStep] = useState<'choose' | 'addBiller' | 'review' | 'status'>('choose');
+  const [step, setStep] = useState<'choose' | 'addBiller' | 'payoutDetails' | 'review' | 'status'>('choose');
   const [billId, setBillId] = useState<string | null>(null);
   const [amountStr, setAmountStr] = useState('');
   const [sourceId, setSourceId] = useState('balance');
@@ -74,6 +74,9 @@ export default function PayModal({
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [payoutForm, setPayoutForm] = useState({ account: '', routing: '', bank: '' });
+  const [savingPayout, setSavingPayout] = useState(false);
 
   const selectBill = (b: Bill) => {
     setBillId(b.id);
@@ -101,6 +104,8 @@ export default function PayModal({
     setWhen('now');
     setDraft(emptyDraft);
     setEditingId(null);
+    setPayError(null);
+    setPayoutForm({ account: '', routing: '', bank: '' });
     const preset = initialBillId ? getBill(initialBillId) : undefined;
     if (preset) {
       setBillId(preset.id);
@@ -114,12 +119,36 @@ export default function PayModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialBillId]);
 
-  useEffect(() => {
-    if (step !== 'status') return;
+  // Execute the payment. Pay-now from Cash·USDC on a payable biller does a real Bridge ACH payout;
+  // scheduled payments (and the not-yet-wired bank source) stay an optimistic record for now.
+  const handlePay = async () => {
+    if (!bill) return;
+    setStep('status');
     setDone(false);
-    const t = setTimeout(() => setDone(true), 1700);
-    return () => clearTimeout(t);
-  }, [step]);
+    setPayError(null);
+    if (when === 'now' && sourceId === 'balance' && bill.payable) {
+      const res = await payViaUsdc(bill.id, amount, email);
+      if (res.success) setDone(true);
+      else setPayError(res.message || 'Payment failed.');
+      return;
+    }
+    if (when === 'now') await recordBillPayment(bill, amount);
+    setTimeout(() => setDone(true), 1200);
+  };
+
+  const savePayoutDetails = async () => {
+    if (!bill) return;
+    const account = payoutForm.account.replace(/\s/g, '');
+    const routing = payoutForm.routing.replace(/\s/g, '');
+    if (!/^\d{4,17}$/.test(account) || !/^\d{9}$/.test(routing)) return;
+    setSavingPayout(true);
+    const ok = await setBillerPayout(bill.id, { accountNumber: account, routingNumber: routing, bankName: payoutForm.bank.trim() || undefined });
+    setSavingPayout(false);
+    if (ok) {
+      setPayoutForm({ account: '', routing: '', bank: '' });
+      setStep('review');
+    }
+  };
 
   // Pull the user's Bridge virtual account (account/routing) to show on the Cash · USDC source.
   useEffect(() => {
@@ -300,6 +329,44 @@ export default function PayModal({
           </div>
         )}
 
+        {/* ---- ADD PAYOUT DETAILS (ACH destination) ---- */}
+        {step === 'payoutDetails' && bill && (
+          <div className="p-5">
+            <div className="mb-4 flex items-center gap-2">
+              <button type="button" onClick={() => setStep('review')} aria-label="Back" className="-ml-1 rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <span className="text-base font-semibold text-foreground">Payout details</span>
+            </div>
+            <p className="mb-4 text-xs text-muted-foreground">
+              Where should <span className="font-medium text-foreground">{bill.payee || bill.name}</span> be paid? We send an ACH transfer to this bank account.
+            </p>
+            <div className="space-y-3">
+              <Labeled label="Bank name">
+                <input value={payoutForm.bank} onChange={(e) => setPayoutForm((f) => ({ ...f, bank: e.target.value }))} placeholder="e.g. Chase" className={inputCls} />
+              </Labeled>
+              <Labeled label="Routing number" required>
+                <input inputMode="numeric" value={payoutForm.routing} onChange={(e) => setPayoutForm((f) => ({ ...f, routing: e.target.value.replace(/[^0-9]/g, '').slice(0, 9) }))} placeholder="9 digits" className={cn(inputCls, 'tabular-nums')} />
+              </Labeled>
+              <Labeled label="Account number" required>
+                <input inputMode="numeric" value={payoutForm.account} onChange={(e) => setPayoutForm((f) => ({ ...f, account: e.target.value.replace(/[^0-9]/g, '').slice(0, 17) }))} placeholder="Account number" className={cn(inputCls, 'tabular-nums')} />
+              </Labeled>
+            </div>
+            <button
+              type="button"
+              onClick={savePayoutDetails}
+              disabled={savingPayout || !/^\d{9}$/.test(payoutForm.routing) || !/^\d{4,17}$/.test(payoutForm.account)}
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
+            >
+              {savingPayout && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save payout details
+            </button>
+            <p className="mt-2 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
+              <Lock className="h-3 w-3" /> Account number is encrypted
+            </p>
+          </div>
+        )}
+
         {/* ---- REVIEW ---- */}
         {step === 'review' && bill && (
           <div className="p-5">
@@ -428,21 +495,43 @@ export default function PayModal({
               type="button"
               disabled={amount < 1}
               onClick={() => {
-                // Pay-now records the payment + accrues equity credits; scheduled payments don't yet.
-                if (when === 'now' && bill) void recordBillPayment(bill, amount);
-                setStep('status');
+                // A biller needs ACH payout details before it can be paid; otherwise pay it.
+                if (!bill.payable) {
+                  setPayoutForm({ account: '', routing: '', bank: bill.payee || '' });
+                  setStep('payoutDetails');
+                  return;
+                }
+                void handlePay();
               }}
               className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
             >
-              {when === 'now' ? `Pay ${fmt(amount)}` : `Schedule ${fmt(amount)}`}
+              {!bill.payable ? 'Add payout details' : when === 'now' ? `Pay ${fmt(amount)}` : `Schedule ${fmt(amount)}`}
             </button>
+            {!bill.payable && (
+              <p className="mt-2 text-center text-[11px] text-muted-foreground">Add the biller's bank account to pay it via ACH.</p>
+            )}
           </div>
         )}
 
         {/* ---- STATUS ---- */}
         {step === 'status' && bill && (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-            {!done ? (
+            {payError ? (
+              <>
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-negative/10">
+                  <Lock className="h-7 w-7 text-negative" />
+                </div>
+                <div className="mt-4 text-base font-semibold text-foreground">Payment failed</div>
+                <div className="mt-1 max-w-[280px] text-sm text-muted-foreground">{payError}</div>
+                <button
+                  type="button"
+                  onClick={() => setStep('review')}
+                  className="mt-6 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+                >
+                  Try again
+                </button>
+              </>
+            ) : !done ? (
               <>
                 <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
                 <div className="mt-4 text-base font-semibold text-foreground">{when === 'now' ? 'Paying…' : 'Scheduling…'}</div>

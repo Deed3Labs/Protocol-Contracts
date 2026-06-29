@@ -3,6 +3,7 @@ import { requireWalletMatch } from '../middleware/auth.js';
 import { payLedgerStore, type BillerType, type EarnSource } from '../services/payLedgerStore.js';
 import { getPlaidClient } from './plaid.js';
 import { plaidTokenStore } from '../services/plaidTokenStore.js';
+import { payBillerViaUsdc } from '../services/billerPayoutService.js';
 
 /*
  * Clear Pay endpoints — billers (manual + Plaid-detected), payments, and the equity summary.
@@ -227,6 +228,89 @@ router.post('/:wallet/reconcile', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[pay/reconcile]', error);
     res.json(await payLedgerStore.getSummary(w)); // detection is best-effort
+  }
+});
+
+// POST /api/pay/:wallet/billers/:id/payout  { accountNumber, routingNumber, bankName? }  (ACH destination)
+router.post('/:wallet/billers/:id/payout', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  const b = req.body as { accountNumber?: string; routingNumber?: string; bankName?: string };
+  const account = String(b?.accountNumber ?? '').replace(/\s/g, '');
+  const routing = String(b?.routingNumber ?? '').replace(/\s/g, '');
+  if (!/^\d{4,17}$/.test(account) || !/^\d{9}$/.test(routing)) {
+    res.status(400).json({ error: 'A valid account number and 9-digit routing number are required' });
+    return;
+  }
+  try {
+    const biller = await payLedgerStore.setBillerPayout(w, String(req.params.id), {
+      accountNumber: account,
+      routingNumber: routing,
+      bankName: b.bankName ? String(b.bankName).slice(0, 120) : null,
+    });
+    if (!biller) {
+      res.status(404).json({ error: 'Biller not found' });
+      return;
+    }
+    res.json({ biller });
+  } catch (error) {
+    console.error('[pay/billers payout]', error);
+    res.status(500).json({ error: 'Failed to save payout details' });
+  }
+});
+
+// POST /api/pay/:wallet/pay  { billerId, amount, source, email }  (real ACH bill pay; USDC funding for now)
+router.post('/:wallet/pay', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  const b = req.body as { billerId?: string; amount?: number; source?: string; email?: string };
+  const amount = Number(b?.amount);
+  if (!b?.billerId || !(amount > 0)) {
+    res.status(400).json({ error: 'billerId and a positive amount are required' });
+    return;
+  }
+  if ((b?.source ?? 'usdc') === 'bank') {
+    res.status(501).json({ error: 'Bank funding coming soon', message: 'Bank-funded bill pay isn’t available yet — pay from Cash (USDC).' });
+    return;
+  }
+  try {
+    const result = await payBillerViaUsdc({
+      wallet: w,
+      email: String(b.email ?? '').trim().toLowerCase(),
+      billerId: String(b.billerId),
+      amountUsd: amount,
+    });
+    if (!result.success) {
+      res.status(400).json({ error: 'Payout failed', message: result.reason });
+      return;
+    }
+    // Record the payment (accrues equity credits) once the payout is initiated.
+    const biller = (await payLedgerStore.listBillers(w)).find((x) => x.id === b.billerId);
+    if (biller) {
+      const now = new Date();
+      await payLedgerStore.recordPayment({
+        wallet: w,
+        billerId: biller.id,
+        name: biller.name,
+        type: biller.type,
+        amount,
+        dueDate: biller.dueDay ? new Date(now.getFullYear(), now.getMonth(), biller.dueDay).toISOString().slice(0, 10) : null,
+        period: now.toISOString().slice(0, 7),
+        source: 'in_app',
+        txRef: result.providerReference ?? null,
+      });
+    }
+    res.json({
+      success: true,
+      providerReference: result.providerReference,
+      status: result.status,
+      sourceDepositInstructions: result.sourceDepositInstructions,
+    });
+  } catch (error) {
+    console.error('[pay/pay]', error);
+    res.status(500).json({ error: 'Failed to execute payout' });
   }
 });
 
