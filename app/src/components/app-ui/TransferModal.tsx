@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import { ArrowDownUp, ArrowLeft, Check, ChevronDown, Landmark, Loader2, PiggyBank, ShieldCheck, TriangleAlert, Wallet, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -43,6 +43,7 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
   const bal = useClearBalances();
   const { address } = useAccount();
   const { embeddedWalletInfo } = useAppKitAccount();
+  const { walletProvider } = useAppKitProvider('eip155');
   const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const accounts: Acct[] = [
@@ -102,7 +103,7 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         const useSc = isSmartAccount;
         if (useSc) {
           try {
-            hash = await scRun({ ownerWallet: address, amount: amountStr, chainId });
+            hash = await scRun({ provider: walletProvider, ownerWallet: address, amount: amountStr, chainId });
           } catch (err) {
             // Smart accounts have no EIP-3009 fallback (1271 can't sign it) — surface the error.
             if (isSmartAccount || !isAaUnsupportedError(err)) throw err;

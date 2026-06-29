@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import {
   ArrowLeft, Check, ChevronDown, Copy, CreditCard, Landmark, Loader2, Mail, Search,
@@ -41,6 +41,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
   const { accounts } = useExternalAccounts();
   const { address } = useAccount();
   const { embeddedWalletInfo } = useAppKitAccount();
+  const { walletProvider } = useAppKitProvider('eip155');
   const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const bal = useClearBalances();
@@ -117,6 +118,8 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
             // AA: lock USDC in the escrow in one sponsored batch (approve + createTransfer), then the
             // server verifies the on-chain event and issues the claim link.
             const txHash = await scSendLock({
+              provider: walletProvider,
+              ownerWallet: address,
               chainId,
               transferId: t.transferId as `0x${string}`,
               principalUsdcMicros: t.principalUsdc,
