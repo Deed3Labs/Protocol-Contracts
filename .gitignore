@@ -45,3 +45,22 @@ webflow/.vite/
 
 # Local Python virtualenvs (generated during one-off tooling)
 .venv-pdf/
+.vercel
+.env*
+
+# Local OP-stack / infra runtime + heavy data (never commit — ~GBs of chaindata, secrets, etc.)
+ops/
+tmp/
+tools/
+*.sst
+**/jwt.txt
+
+# Stray Finder/iCloud "<name> 2" copy artifacts
+* 2.ts
+* 2.tsx
+*\ 2/
+.railwayignore 2
+typechain-types\ 2/
+
+# OpenZeppelin upgrade manifest stale backups (keep the live <network>.json)
+.openzeppelin/*.stale-*.json
