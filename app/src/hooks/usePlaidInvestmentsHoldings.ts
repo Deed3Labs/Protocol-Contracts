@@ -91,8 +91,9 @@ export function usePlaidInvestmentsHoldings(
     }
   }, [isAuthenticated, walletAddress]);
 
+  // Legacy portfolio only (PortfolioContext) — don't auto-fetch in the background; refresh() still works.
   useEffect(() => {
-    fetchHoldings();
+    void fetchHoldings; // referenced, intentionally not called (legacy fetch disabled)
   }, [fetchHoldings]);
 
   const refresh = useCallback(() => fetchHoldings(true), [fetchHoldings]);

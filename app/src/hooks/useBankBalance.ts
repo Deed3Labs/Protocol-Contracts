@@ -147,8 +147,9 @@ export function useBankBalance(walletAddress: string | undefined): UseBankBalanc
     }
   }, [isAuthenticated, walletAddress]);
 
+  // Legacy portfolio only (PortfolioContext) — don't auto-fetch in the background; refresh() still works.
   useEffect(() => {
-    fetchBalances();
+    void fetchBalances; // referenced, intentionally not called (legacy fetch disabled)
   }, [fetchBalances]);
 
   return {

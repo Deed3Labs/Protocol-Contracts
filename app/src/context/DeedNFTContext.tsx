@@ -5,6 +5,10 @@ import { useNetworkValidation } from "@/hooks/useNetworkValidation";
 import { getContractAddressForNetwork, getRpcUrlForNetwork, getAbiPathForNetwork } from '@/config/networks';
 import { EIP5792Utils } from '@/utils/EIP5792Utils';
 
+// Legacy DeedNFT/brokerage views are being removed — don't auto-fetch DeedNFTs (Gnosis contract reads)
+// in the background of the Clear app. Flip to false if those views are revived.
+const DEEDNFT_AUTOFETCH_DISABLED = true;
+
 export interface DeedNFT {
   tokenId: string;
   owner: string;
@@ -608,18 +612,14 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const isWalletConnected = isEmbeddedWalletConnected || isRegularWalletConnected;
 
   useEffect(() => {
-    console.log("DeedNFTContext useEffect triggered:", { 
-      isWalletConnected, 
-      isCorrectNetwork, 
-      address, 
-      chainId,
-      status,
-      isEmbeddedWalletConnected,
-      isRegularWalletConnected
-    });
-    
+    // Legacy DeedNFT views are being removed — don't auto-fetch NFTs (reads on Gnosis) in the
+    // background of the Clear app. fetchDeedNFTs() stays callable for any legacy page that mounts.
+    if (DEEDNFT_AUTOFETCH_DISABLED) {
+      setDeedNFTs([]);
+      setUserDeedNFTs([]);
+      return;
+    }
     if (isCorrectNetwork && isWalletConnected) {
-      console.log("Network is correct and wallet is connected, fetching DeedNFTs...");
       fetchDeedNFTs();
     } else {
       console.log("Network is not correct or wallet is not connected, clearing data...");

@@ -11,6 +11,12 @@ import type { MultichainBalance } from '@/hooks/useMultichainBalances';
 import type { WalletTransaction } from '@/types/transactions';
 import type { BankAccountBalance } from '@/utils/apiClient';
 
+// Clear is the live product; the legacy portfolio/brokerage/NFT views are being removed. Disable all
+// of this context's BACKGROUND fetching (initial refreshAll across every chain incl Gnosis, the 30/60m
+// poll, and the WebSocket-triggered refreshes) so it stops burning Alchemy CUs. refreshAll() stays
+// callable for any legacy page still mounted (e.g. pull-to-refresh) but nothing auto-fetches.
+const LEGACY_PORTFOLIO_FETCH_DISABLED = true;
+
 interface PortfolioContextType {
   // Balances
   balances: MultichainBalance[];
@@ -264,6 +270,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // WebSocket event listeners for real-time updates
   useEffect(() => {
+    if (LEGACY_PORTFOLIO_FETCH_DISABLED) return; // legacy portfolio/NFT views being removed — no background fetch
     if (!socket || !wsConnected) return;
 
     const handleBalances = (data: any) => {
@@ -313,6 +320,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // User Activity Detection: Only poll when tab is visible
   // This is a fallback in case WebSocket is not available
   useEffect(() => {
+    if (LEGACY_PORTFOLIO_FETCH_DISABLED) return; // no auto-refresh/poll of legacy portfolio + NFTs
     if (!isConnected) return;
 
     let intervalId: NodeJS.Timeout | null = null;
