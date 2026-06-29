@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 const CLAIM_ESCROW_ABI = [
   'function claimToWallet(bytes32 transferId, address recipientWallet)',
   'function claimToPayoutTreasury(bytes32 transferId)',
+  'function createTransferWithAuthorization(address sender, bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash, uint256 validAfter, uint256 validBefore, bytes32 authNonce, uint8 v, bytes32 r, bytes32 s)',
 ] as const;
 const CLAIM_ESCROW_INTERFACE = new ethers.Interface(CLAIM_ESCROW_ABI);
 
@@ -12,9 +13,25 @@ export interface RelayerTxResult {
   mode: 'onchain' | 'simulated';
 }
 
+/** Gasless lock: the sender's EIP-3009 authorization to pull (principal + sponsor fee) into the escrow. */
+export interface CreateTransferAuthorizationArgs {
+  sender: string;
+  transferId: string;
+  principalUsdc: bigint;
+  sponsorFeeUsdc: bigint;
+  expiry: bigint;
+  recipientHintHash: string;
+  validAfter: bigint;
+  validBefore: bigint;
+  authNonce: string;
+  v: number;
+  r: string;
+  s: string;
+}
+
 type RelayerMode = 'local_key' | 'managed_webhook' | 'cdp_server_wallet';
 
-type ManagedRelayerAction = 'claimToWallet' | 'claimToPayoutTreasury';
+type ManagedRelayerAction = 'claimToWallet' | 'claimToPayoutTreasury' | 'createTransferWithAuthorization';
 
 interface ManagedRelayerRequest {
   action: ManagedRelayerAction;
@@ -641,6 +658,82 @@ class SendRelayerService {
 
     if (!receipt || receipt.status !== 1) {
       throw new Error('Relayer treasury claim transaction failed');
+    }
+
+    return {
+      txHash: tx.hash,
+      mode: 'onchain',
+    };
+  }
+
+  /** Gasless send: relayer submits the sender's EIP-3009 authorization to lock funds into the escrow. */
+  async createTransferWithAuthorization(
+    args: CreateTransferAuthorizationArgs,
+    chainId?: number,
+  ): Promise<RelayerTxResult> {
+    const escrowAddress = this.resolveEscrowAddress(chainId);
+    if (!escrowAddress || !ethers.isAddress(escrowAddress)) {
+      return this.simulationOrThrow(
+        `auth:${args.transferId}:${Date.now()}`,
+        'SEND_CLAIM_ESCROW_ADDRESS is required and must be a valid address',
+      );
+    }
+    if (!ethers.isAddress(args.sender)) {
+      throw new Error('sender must be a valid address');
+    }
+
+    const params = [
+      ethers.getAddress(args.sender),
+      args.transferId,
+      args.principalUsdc,
+      args.sponsorFeeUsdc,
+      args.expiry,
+      args.recipientHintHash,
+      args.validAfter,
+      args.validBefore,
+      args.authNonce,
+      args.v,
+      args.r,
+      args.s,
+    ];
+
+    if (this.relayerMode() === 'managed_webhook') {
+      const data = CLAIM_ESCROW_INTERFACE.encodeFunctionData('createTransferWithAuthorization', params);
+      return this.callManagedSigner({
+        action: 'createTransferWithAuthorization',
+        transferId: args.transferId,
+        chainId,
+        escrowAddress,
+        rpcUrl: this.resolveRpcUrl(chainId) || undefined,
+        call: { to: escrowAddress, data },
+      });
+    }
+
+    if (this.relayerMode() === 'cdp_server_wallet') {
+      const data = CLAIM_ESCROW_INTERFACE.encodeFunctionData('createTransferWithAuthorization', params);
+      return this.callCdpServerWallet({
+        action: 'createTransferWithAuthorization',
+        transferId: args.transferId,
+        chainId,
+        escrowAddress,
+        call: { to: escrowAddress, data },
+      });
+    }
+
+    const signerContext = this.buildSigner(chainId);
+    if (!signerContext) {
+      return this.simulationOrThrow(
+        `auth:${args.transferId}:${Date.now()}`,
+        'Relayer local key mode requires SEND_RELAYER_RPC_URL and SEND_RELAYER_PRIVATE_KEY',
+      );
+    }
+
+    const contract = new ethers.Contract(signerContext.escrowAddress, CLAIM_ESCROW_ABI, signerContext.signer);
+    const tx = await contract.createTransferWithAuthorization(...params);
+    const receipt = await tx.wait();
+
+    if (!receipt || receipt.status !== 1) {
+      throw new Error('Relayer createTransferWithAuthorization transaction failed');
     }
 
     return {

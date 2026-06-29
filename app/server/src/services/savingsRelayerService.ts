@@ -11,6 +11,35 @@ const ESCROW_ABI = [
   'function status() external view returns (uint8)',
 ] as const;
 
+const VAULT_ABI = [
+  'function depositWithAuthorization(address depositor, address token, uint256 amount, address receiver, uint256 validAfter, uint256 validBefore, bytes32 authNonce, uint8 v, bytes32 r, bytes32 s) external returns (uint256 minted)',
+  'function redeemWithAuthorization(address redeemer, address token, uint256 clrusdAmount, address receiver, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external returns (uint256 returnedAmount)',
+] as const;
+
+export interface DepositAuthorizationArgs {
+  depositor: string;
+  token: string;
+  amount: bigint;
+  receiver: string;
+  validAfter: bigint;
+  validBefore: bigint;
+  authNonce: string;
+  v: number;
+  r: string;
+  s: string;
+}
+
+export interface RedeemAuthorizationArgs {
+  redeemer: string;
+  token: string;
+  clrusdAmount: bigint;
+  receiver: string;
+  deadline: bigint;
+  v: number;
+  r: string;
+  s: string;
+}
+
 type RelayerMode = 'local_key' | 'cdp_server_wallet';
 
 interface CdpEvmClientLike {
@@ -193,8 +222,7 @@ class SavingsRelayerService {
   }
 
   private async waitForReceipt(chainId: number, txHash: string): Promise<void> {
-    const config = savingsIntentService.resolveChainConfig(chainId);
-    const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+    const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId));
     const timeoutMs = this.receiptTimeoutMs();
     const pollMs = this.receiptPollMs();
     const started = Date.now();
@@ -226,29 +254,23 @@ class SavingsRelayerService {
     };
   }
 
-  private async sendViaLocalKey(chainId: number, data: string): Promise<string> {
+  private async sendViaLocalKey(chainId: number, to: string, data: string): Promise<string> {
     const privateKey = this.resolvePrivateKey();
     if (!privateKey) {
       throw new Error('Local relayer mode requires SAVINGS_RELAYER_PRIVATE_KEY or SEND_RELAYER_PRIVATE_KEY.');
     }
 
-    const config = savingsIntentService.resolveChainConfig(chainId);
-    const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+    const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId));
     const signer = new ethers.Wallet(privateKey, provider);
-    const tx = await signer.sendTransaction({
-      to: config.factoryAddress,
-      data,
-      value: 0n,
-    });
+    const tx = await signer.sendTransaction({ to, data, value: 0n });
 
     const txHash = normalizeTxHash(tx.hash);
     await this.waitForReceipt(chainId, txHash);
     return txHash;
   }
 
-  private async sendViaCdp(chainId: number, data: string): Promise<string> {
+  private async sendViaCdp(chainId: number, to: string, data: string): Promise<string> {
     const client = await this.loadCdpClient();
-    const config = savingsIntentService.resolveChainConfig(chainId);
     const address = await this.resolveCdpAddress(chainId);
     const network = this.resolveCdpNetwork(chainId);
     if (!network) {
@@ -258,11 +280,7 @@ class SavingsRelayerService {
     const tx = await client.evm.sendTransaction({
       address,
       network,
-      transaction: {
-        to: config.factoryAddress,
-        data,
-        value: 0n,
-      },
+      transaction: { to, data, value: 0n },
       idempotencyKey: crypto.randomUUID(),
     });
 
@@ -283,26 +301,66 @@ class SavingsRelayerService {
     return Number((await escrow.status()) as bigint);
   }
 
+  private async submit(chainId: number, to: string, data: string): Promise<string> {
+    return this.relayerMode() === 'local_key'
+      ? this.sendViaLocalKey(chainId, to, data)
+      : this.sendViaCdp(chainId, to, data);
+  }
+
   async settleIntent(payload: SavingsIntentPayload): Promise<string> {
+    const config = savingsIntentService.resolveChainConfig(payload.chainId);
     const iface = new ethers.Interface(FACTORY_ABI);
     const data = iface.encodeFunctionData('settleDeterministic', [payload.salt, this.buildConfigTuple(payload)]);
-
-    if (this.relayerMode() === 'local_key') {
-      return this.sendViaLocalKey(payload.chainId, data);
-    }
-
-    return this.sendViaCdp(payload.chainId, data);
+    return this.submit(payload.chainId, config.factoryAddress, data);
   }
 
   async refundIntent(payload: SavingsIntentPayload): Promise<string> {
+    const config = savingsIntentService.resolveChainConfig(payload.chainId);
     const iface = new ethers.Interface(FACTORY_ABI);
     const data = iface.encodeFunctionData('refundDeterministic', [payload.salt, this.buildConfigTuple(payload)]);
+    return this.submit(payload.chainId, config.factoryAddress, data);
+  }
 
-    if (this.relayerMode() === 'local_key') {
-      return this.sendViaLocalKey(payload.chainId, data);
-    }
+  /** Gasless deposit (USDC → CLRUSD): relayer submits the user's EIP-3009 authorization to the vault. */
+  async depositWithAuthorization(
+    chainId: number,
+    vaultAddress: string,
+    args: DepositAuthorizationArgs,
+  ): Promise<string> {
+    const iface = new ethers.Interface(VAULT_ABI);
+    const data = iface.encodeFunctionData('depositWithAuthorization', [
+      args.depositor,
+      args.token,
+      args.amount,
+      args.receiver,
+      args.validAfter,
+      args.validBefore,
+      args.authNonce,
+      args.v,
+      args.r,
+      args.s,
+    ]);
+    return this.submit(chainId, ethers.getAddress(vaultAddress), data);
+  }
 
-    return this.sendViaCdp(payload.chainId, data);
+  /** Gasless redeem (CLRUSD → USDC): relayer submits the user's EIP-712 Redeem intent to the vault. */
+  async redeemWithAuthorization(
+    chainId: number,
+    vaultAddress: string,
+    args: RedeemAuthorizationArgs,
+  ): Promise<string> {
+    const iface = new ethers.Interface(VAULT_ABI);
+    const data = iface.encodeFunctionData('redeemWithAuthorization', [
+      args.redeemer,
+      args.token,
+      args.clrusdAmount,
+      args.receiver,
+      args.deadline,
+      args.v,
+      args.r,
+      args.s,
+    ]);
+    return this.submit(chainId, ethers.getAddress(vaultAddress), data);
   }
 }
 

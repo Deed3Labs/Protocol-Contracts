@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { requireWalletMatch } from '../middleware/auth.js';
 import { savingsIntentService } from '../services/savingsIntentService.js';
 import { savingsRelayerService } from '../services/savingsRelayerService.js';
+import { savingsGaslessService } from '../services/savingsGaslessService.js';
 
 const savingsRouter = Router();
 
@@ -186,6 +187,119 @@ savingsRouter.post('/intents/refund', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({
       error: 'Failed to refund savings intent',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * Fully-gasless deposit/redeem. `prepare` returns the typed data the user signs (USDC EIP-3009 for
+ * deposit, vault EIP-712 Redeem for redeem); `submit` hands the signature to the relayer, which
+ * pays gas and calls depositWithAuthorization / redeemWithAuthorization on the vault.
+ */
+savingsRouter.post('/gasless/prepare', async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { action?: unknown; ownerWallet?: unknown; amount?: unknown; chainId?: unknown };
+
+    const action = parseAction(body.action);
+    if (!action) {
+      res.status(400).json({ error: 'Invalid action', message: 'action must be deposit or redeem' });
+      return;
+    }
+    if (typeof body.ownerWallet !== 'string' || !ethers.isAddress(body.ownerWallet)) {
+      res.status(400).json({ error: 'Invalid ownerWallet', message: 'ownerWallet must be a valid EVM address' });
+      return;
+    }
+    if (!requireWalletMatch(req, res, body.ownerWallet, 'ownerWallet')) return;
+    if (typeof body.amount !== 'string' || body.amount.trim().length === 0) {
+      res.status(400).json({ error: 'Invalid amount', message: 'amount is required' });
+      return;
+    }
+
+    const input = { chainId: parseChainId(body.chainId), ownerWallet: body.ownerWallet, amount: body.amount };
+    const prepared =
+      action === 'deposit'
+        ? await savingsGaslessService.buildDepositTypedData(input)
+        : await savingsGaslessService.buildRedeemTypedData(input);
+
+    res.json(prepared);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to prepare gasless savings transfer',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { action?: unknown; chainId?: unknown; signature?: unknown; submit?: Record<string, unknown> };
+
+    const action = parseAction(body.action);
+    if (!action) {
+      res.status(400).json({ error: 'Invalid action', message: 'action must be deposit or redeem' });
+      return;
+    }
+    if (typeof body.signature !== 'string' || !/^0x[a-fA-F0-9]{130}$/.test(body.signature.trim())) {
+      res.status(400).json({ error: 'Invalid signature', message: 'signature must be a 65-byte hex signature' });
+      return;
+    }
+    const submit = body.submit;
+    if (!submit || typeof submit !== 'object') {
+      res.status(400).json({ error: 'Invalid submit', message: 'submit params are required' });
+      return;
+    }
+
+    const owner = action === 'deposit' ? submit.depositor : submit.redeemer;
+    if (typeof owner !== 'string' || !ethers.isAddress(owner)) {
+      res.status(400).json({ error: 'Invalid owner', message: 'submit.depositor / submit.redeemer must be a valid address' });
+      return;
+    }
+    if (!requireWalletMatch(req, res, owner, 'ownerWallet')) return;
+
+    // Pin the vault + token to server config — never trust the client to target an arbitrary contract.
+    const config = savingsGaslessService.resolveConfig(parseChainId(body.chainId));
+    if (typeof submit.token !== 'string' || ethers.getAddress(submit.token) !== config.usdcAddress) {
+      res.status(400).json({ error: 'Invalid token', message: 'token must be the configured USDC for this chain' });
+      return;
+    }
+    const sig = ethers.Signature.from(body.signature.trim());
+
+    let txHash: string;
+    if (action === 'deposit') {
+      const amount = BigInt(String(submit.amount));
+      if (amount <= 0n) throw new Error('amount must be greater than zero');
+      txHash = await savingsRelayerService.depositWithAuthorization(config.chainId, config.vaultAddress, {
+        depositor: ethers.getAddress(owner),
+        token: config.usdcAddress,
+        amount,
+        receiver: ethers.getAddress(String(submit.receiver ?? owner)),
+        validAfter: BigInt(String(submit.validAfter ?? '0')),
+        validBefore: BigInt(String(submit.validBefore)),
+        authNonce: String(submit.authNonce),
+        v: sig.v,
+        r: sig.r,
+        s: sig.s,
+      });
+    } else {
+      const clrusdAmount = BigInt(String(submit.clrusdAmount));
+      if (clrusdAmount <= 0n) throw new Error('clrusdAmount must be greater than zero');
+      txHash = await savingsRelayerService.redeemWithAuthorization(config.chainId, config.vaultAddress, {
+        redeemer: ethers.getAddress(owner),
+        token: config.usdcAddress,
+        clrusdAmount,
+        receiver: ethers.getAddress(String(submit.receiver ?? owner)),
+        deadline: BigInt(String(submit.deadline)),
+        v: sig.v,
+        r: sig.r,
+        s: sig.s,
+      });
+    }
+
+    res.json({ success: true, action, chainId: config.chainId, vaultAddress: config.vaultAddress, txHash, status: 'SUBMITTED' });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to submit gasless savings transfer',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
