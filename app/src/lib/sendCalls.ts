@@ -1,7 +1,6 @@
 import { encodeFunctionData, parseUnits } from 'viem';
 import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings } from '@/utils/apiClient';
-import { EIP5792Utils } from '@/utils/EIP5792Utils';
 
 /*
  * Smart-account (AppKit email/social) money flows, executed through the RAW AppKit walletProvider via
@@ -25,15 +24,44 @@ const ESCROW_ABI = [
 ] as const;
 
 type Call = { to: string; data: string };
+interface Eip1193 { request: (args: { method: string; params?: unknown[] }) => Promise<any> }
 
-/** Execute one atomic, sponsored batch via the embedded smart account; returns the settled tx hash. */
-async function runBatch(provider: unknown, owner: string, calls: Call[]): Promise<string> {
-  if (!provider) throw new Error('Wallet provider unavailable — reconnect your wallet.');
-  const status = await EIP5792Utils.executeBatchCalls(provider, calls, owner);
-  const receipts = status?.receipts ?? [];
-  const hash = receipts[receipts.length - 1]?.transactionHash;
-  if (!hash) throw new Error('Transaction did not confirm.');
-  return hash;
+/**
+ * Execute a sponsored batch via the embedded smart account's raw wallet_sendCalls. We use
+ * `atomicRequired: false` because Reown's embedded wallet doesn't advertise ATOMIC batching — but it
+ * still runs the calls IN ORDER in one sponsored UserOp (approve before action), which is all we need.
+ * Polls wallet_getCallsStatus and returns the settled tx hash.
+ */
+async function runBatch(providerLike: unknown, owner: string, calls: Call[]): Promise<string> {
+  const provider = providerLike as Eip1193 | undefined;
+  if (!provider?.request) throw new Error('Wallet provider unavailable — reconnect your wallet.');
+
+  const chainId: string = await provider.request({ method: 'eth_chainId' });
+  const response = await provider.request({
+    method: 'wallet_sendCalls',
+    params: [{ version: '1.0', from: owner, chainId, atomicRequired: false, calls }],
+  });
+  const batchId: string = typeof response === 'string' ? response : response?.batchId ?? response?.id;
+  if (!batchId) throw new Error('Wallet did not return a batch id.');
+
+  for (let i = 0; i < 45; i++) {
+    let status: { status?: number | string; receipts?: { transactionHash?: string }[] } | undefined;
+    try {
+      status = await provider.request({ method: 'wallet_getCallsStatus', params: [batchId] });
+    } catch {
+      /* not ready yet */
+    }
+    const s = status?.status;
+    if (s === 200 || s === 'CONFIRMED' || s === 'success') {
+      const receipts = status?.receipts ?? [];
+      return receipts[receipts.length - 1]?.transactionHash ?? batchId;
+    }
+    if (s === 400 || s === 500 || s === 'FAILED' || s === 'reverted') {
+      throw new Error('Transaction failed on-chain.');
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error("Transaction didn't confirm in time. Please try again.");
 }
 
 /** One-time sponsored ERC-20 approve (smart-account autopay allowance — they can't sign EIP-2612). */
