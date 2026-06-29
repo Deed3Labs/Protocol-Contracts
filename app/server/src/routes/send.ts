@@ -1,5 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { isAddress } from 'ethers';
+import { isAddress, Signature } from 'ethers';
 import { requireAuth, requireWalletMatch } from '../middleware/auth.js';
 import {
   sendTransferStore,
@@ -14,6 +14,7 @@ import { sendBridgeWebhookVerifier } from '../services/sendBridgeWebhookVerifier
 import { sendPayoutService } from '../services/sendPayoutService.js';
 import { sendStripePayoutService } from '../services/sendStripePayoutService.js';
 import { sendNotificationService } from '../services/sendNotificationService.js';
+import { sendRelayerService } from '../services/sendRelayerService.js';
 
 const sendRouter = Router();
 
@@ -597,6 +598,161 @@ senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Reques
     console.error('Send confirm-lock error:', error);
     return res.status(500).json({
       error: 'Failed to confirm transfer lock',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * Gasless lock — `lock-authorization` returns the USDC EIP-3009 typed data the sender signs (pulls
+ * principal + sponsor fee into the escrow); `submit-authorization` hands the signature to the relayer,
+ * which pays gas and calls createTransferWithAuthorization, then issues the claim link. Replaces the
+ * sender-pays-gas confirm-lock flow.
+ */
+senderRouter.post('/transfers/:id/lock-authorization', requireAuth, async (req: Request, res: Response) => {
+  if (!(await ensureSendStoreReady(res))) return;
+
+  try {
+    const senderWallet = req.auth?.walletAddress;
+    if (!senderWallet) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'Missing authenticated wallet' });
+    }
+
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid transfer id', message: 'Route parameter :id must be a positive integer' });
+    }
+
+    const existingTransfer = await sendTransferStore.getSenderTransferById(id, senderWallet);
+    if (!existingTransfer) {
+      return res.status(404).json({ error: 'Transfer not found', message: 'No transfer found for this sender and id' });
+    }
+    if (existingTransfer.status !== 'PREPARED') {
+      return res.status(409).json({ error: 'Transfer already finalized', message: `Transfer is already in status ${existingTransfer.status}` });
+    }
+
+    const prepared = await sendCryptoService.buildLockAuthorizationTypedData({
+      senderWallet,
+      chainId: existingTransfer.chainId,
+      totalLockedUsdcMicros: existingTransfer.totalLockedUsdc,
+      transferId: existingTransfer.transferId,
+      expiresAt: existingTransfer.expiresAt,
+    });
+
+    return res.json({
+      transferId: existingTransfer.transferId,
+      chainId: existingTransfer.chainId,
+      escrowAddress: prepared.escrowAddress,
+      typedData: prepared.typedData,
+    });
+  } catch (error) {
+    console.error('Send lock-authorization error:', error);
+    return res.status(500).json({
+      error: 'Failed to prepare lock authorization',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+senderRouter.post('/transfers/:id/submit-authorization', requireAuth, async (req: Request, res: Response) => {
+  if (!(await ensureSendStoreReady(res))) return;
+
+  try {
+    const senderWallet = req.auth?.walletAddress;
+    if (!senderWallet) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'Missing authenticated wallet' });
+    }
+
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid transfer id', message: 'Route parameter :id must be a positive integer' });
+    }
+
+    const body = req.body as { signature?: unknown; senderWallet?: unknown };
+    if (body.senderWallet != null && !requireWalletMatch(req, res, body.senderWallet, 'senderWallet')) {
+      return;
+    }
+    if (typeof body.signature !== 'string' || !/^0x[a-fA-F0-9]{130}$/.test(body.signature.trim())) {
+      return res.status(400).json({ error: 'Invalid signature', message: 'signature must be a 65-byte hex signature' });
+    }
+
+    const existingTransfer = await sendTransferStore.getSenderTransferById(id, senderWallet);
+    if (!existingTransfer) {
+      return res.status(404).json({ error: 'Transfer not found', message: 'No transfer found for this sender and id' });
+    }
+    if (existingTransfer.status !== 'PREPARED') {
+      return res.status(409).json({ error: 'Transfer already finalized', message: `Transfer is already in status ${existingTransfer.status}` });
+    }
+
+    // Re-derive the exact EIP-3009 params from the trusted record (the client only supplied a signature).
+    const prepared = await sendCryptoService.buildLockAuthorizationTypedData({
+      senderWallet,
+      chainId: existingTransfer.chainId,
+      totalLockedUsdcMicros: existingTransfer.totalLockedUsdc,
+      transferId: existingTransfer.transferId,
+      expiresAt: existingTransfer.expiresAt,
+    });
+    const sig = Signature.from(body.signature.trim());
+
+    const relayResult = await sendRelayerService.createTransferWithAuthorization(
+      {
+        sender: senderWallet,
+        transferId: existingTransfer.transferId,
+        principalUsdc: BigInt(existingTransfer.principalUsdc),
+        sponsorFeeUsdc: BigInt(existingTransfer.sponsorFeeUsdc),
+        expiry: prepared.validBefore,
+        recipientHintHash: existingTransfer.recipientHintHash,
+        validAfter: prepared.validAfter,
+        validBefore: prepared.validBefore,
+        authNonce: prepared.authNonce,
+        v: sig.v,
+        r: sig.r,
+        s: sig.s,
+      },
+      existingTransfer.chainId,
+    );
+
+    const claimToken = sendClaimService.generateClaimToken();
+    const claimTokenHash = sendClaimService.hashClaimToken(claimToken);
+    const claimUrl = `${claimAppBaseUrl()}/claim/${encodeURIComponent(claimToken)}`;
+
+    const updatedTransfer = await sendTransferStore.confirmTransferLockAndSetClaimToken({
+      id,
+      senderWallet,
+      transferId: existingTransfer.transferId,
+      escrowTxHash: relayResult.txHash,
+      claimTokenHash,
+    });
+
+    if (!updatedTransfer) {
+      return res.status(409).json({ error: 'Transfer update conflict', message: 'Transfer state changed before submit-authorization completed' });
+    }
+
+    let notificationWarning: string | null = null;
+    try {
+      const recipientContact = sendTransferStore.decryptRecipientContact(updatedTransfer);
+      await sendNotificationService.sendClaimLink({
+        transferRowId: updatedTransfer.id,
+        recipientType: updatedTransfer.recipientType,
+        recipientContact,
+        claimUrl,
+      });
+    } catch (error) {
+      notificationWarning = error instanceof Error ? error.message : 'Failed to dispatch claim notification';
+      console.error('Claim link notification error:', error);
+    }
+
+    return res.json({
+      transfer: publicTransferView(updatedTransfer),
+      claimUrl,
+      relayTxHash: relayResult.txHash,
+      relayMode: relayResult.mode,
+      ...(notificationWarning ? { notificationWarning } : {}),
+    });
+  } catch (error) {
+    console.error('Send submit-authorization error:', error);
+    return res.status(500).json({
+      error: 'Failed to submit lock authorization',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

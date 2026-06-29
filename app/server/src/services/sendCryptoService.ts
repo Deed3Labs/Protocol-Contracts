@@ -53,6 +53,33 @@ function getEscrowAddress(chainId: number): string | null {
   return null;
 }
 
+const DEFAULT_USDC_BY_CHAIN: Record<number, string> = {
+  1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+  8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+  11155111: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+};
+
+function getUsdcAddress(chainId: number): string | null {
+  const override = (process.env[`SEND_USDC_${chainId}` as keyof NodeJS.ProcessEnv] || '').trim();
+  if (override && ethers.isAddress(override)) return ethers.getAddress(override);
+  const fallback = DEFAULT_USDC_BY_CHAIN[chainId];
+  return fallback ? ethers.getAddress(fallback) : null;
+}
+
+function getRpcUrlOrDefault(chainId: number): string {
+  const configured = getRpcUrl(chainId);
+  if (configured) return configured;
+  if (chainId === 8453) return 'https://mainnet.base.org';
+  if (chainId === 84532) return 'https://sepolia.base.org';
+  throw new Error(`No RPC URL configured for send chain ${chainId}.`);
+}
+
+const ERC20_DOMAIN_ABI = [
+  'function name() view returns (string)',
+  'function version() view returns (string)',
+];
+
 const CREATE_TRANSFER_SELECTOR = ethers.id('createTransfer(bytes32,uint256,uint256,uint64,bytes32)').slice(0, 10);
 const CLAIM_ESCROW_INTERFACE = new ethers.Interface([
   'function createTransfer(bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash)',
@@ -102,6 +129,95 @@ class SendCryptoService {
 
   isValidTxHash(txHash: string): boolean {
     return /^0x[a-fA-F0-9]{64}$/.test(txHash.trim());
+  }
+
+  /**
+   * Gasless lock typed data for a prepared transfer. Every EIP-3009 parameter is derived
+   * deterministically from the trusted transfer record (authNonce = transferId, validBefore = expiry,
+   * value = total), so `submit-authorization` can re-derive the exact same params and only needs the
+   * client's signature — nothing the client sends can change what gets pulled or to where.
+   */
+  async buildLockAuthorizationTypedData(input: {
+    senderWallet: string;
+    chainId: number;
+    totalLockedUsdcMicros: string;
+    transferId: string;
+    expiresAt: Date;
+  }): Promise<{
+    escrowAddress: string;
+    usdcAddress: string;
+    value: bigint;
+    validAfter: bigint;
+    validBefore: bigint;
+    authNonce: string;
+    typedData: {
+      domain: { name: string; version: string; chainId: number; verifyingContract: string };
+      primaryType: 'ReceiveWithAuthorization';
+      types: Record<string, { name: string; type: string }[]>;
+      message: Record<string, string>;
+    };
+  }> {
+    const escrow = getEscrowAddress(input.chainId);
+    if (!escrow || !ethers.isAddress(escrow)) {
+      throw new Error(`SEND_CLAIM_ESCROW_ADDRESS is not configured for chain ${input.chainId}.`);
+    }
+    const usdc = getUsdcAddress(input.chainId);
+    if (!usdc) {
+      throw new Error(`USDC is not configured for chain ${input.chainId}.`);
+    }
+
+    const escrowAddress = ethers.getAddress(escrow);
+    const sender = ethers.getAddress(input.senderWallet);
+    const value = BigInt(input.totalLockedUsdcMicros);
+    const validAfter = 0n;
+    const validBefore = BigInt(Math.floor(input.expiresAt.getTime() / 1000));
+    const authNonce = input.transferId; // unique bytes32 per transfer
+
+    const provider = new ethers.JsonRpcProvider(getRpcUrlOrDefault(input.chainId));
+    const erc20 = new ethers.Contract(usdc, ERC20_DOMAIN_ABI, provider);
+    let name = 'USD Coin';
+    let version = '2';
+    try {
+      name = await erc20.name();
+    } catch {
+      /* keep default */
+    }
+    try {
+      version = await erc20.version();
+    } catch {
+      /* keep default */
+    }
+
+    return {
+      escrowAddress,
+      usdcAddress: usdc,
+      value,
+      validAfter,
+      validBefore,
+      authNonce,
+      typedData: {
+        domain: { name, version, chainId: input.chainId, verifyingContract: usdc },
+        primaryType: 'ReceiveWithAuthorization',
+        types: {
+          ReceiveWithAuthorization: [
+            { name: 'from', type: 'address' },
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'validAfter', type: 'uint256' },
+            { name: 'validBefore', type: 'uint256' },
+            { name: 'nonce', type: 'bytes32' },
+          ],
+        },
+        message: {
+          from: sender,
+          to: escrowAddress,
+          value: value.toString(),
+          validAfter: validAfter.toString(),
+          validBefore: validBefore.toString(),
+          nonce: authNonce,
+        },
+      },
+    };
   }
 
   async verifyEscrowLockTransaction(params: VerifyEscrowLockParams): Promise<EscrowVerificationResult> {
