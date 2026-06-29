@@ -83,6 +83,7 @@ const ERC20_DOMAIN_ABI = [
 const CREATE_TRANSFER_SELECTOR = ethers.id('createTransfer(bytes32,uint256,uint256,uint64,bytes32)').slice(0, 10);
 const CLAIM_ESCROW_INTERFACE = new ethers.Interface([
   'function createTransfer(bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash)',
+  'event TransferCreated(bytes32 indexed transferId, address indexed sender, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint256 totalLockedUsdc, uint64 expiry, bytes32 recipientHintHash)',
 ]);
 
 function shouldSkipEscrowTxVerification(): boolean {
@@ -351,6 +352,107 @@ class SendCryptoService {
       return {
         valid: false,
         reason: error instanceof Error ? error.message : 'Escrow transaction verification failed',
+      };
+    }
+  }
+
+  /**
+   * Verify an AA (EIP-7702 UserOp) escrow lock by its on-chain `TransferCreated` event, NOT the outer
+   * tx fields. A UserOp's outer tx is the bundler→EntryPoint call, so tx.from/to/data won't match the
+   * escrow/createTransfer — but the escrow still emits TransferCreated(sender=msg.sender=user). We match
+   * the event's sender + amounts + expiry + hint against the prepared record.
+   */
+  async verifyEscrowLockByEvent(params: VerifyEscrowLockParams): Promise<EscrowVerificationResult> {
+    if (!this.isValidTxHash(params.txHash)) {
+      return { valid: false, reason: 'Invalid transaction hash format' };
+    }
+    if (!this.isValidBytes32(params.expectedTransferId)) {
+      return { valid: false, reason: 'Expected transfer id is invalid' };
+    }
+    if (!this.isValidBytes32(params.expectedRecipientHintHash)) {
+      return { valid: false, reason: 'Expected recipient hint hash is invalid' };
+    }
+
+    let expectedPrincipal: bigint;
+    let expectedSponsorFee: bigint;
+    let expectedTotalLocked: bigint;
+    try {
+      expectedPrincipal = BigInt(params.expectedPrincipalUsdcMicros);
+      expectedSponsorFee = BigInt(params.expectedSponsorFeeUsdcMicros);
+      expectedTotalLocked = BigInt(params.expectedTotalLockedUsdcMicros);
+    } catch {
+      return { valid: false, reason: 'Expected USDC amounts are invalid' };
+    }
+    if (expectedPrincipal <= 0n) {
+      return { valid: false, reason: 'Expected principal must be positive' };
+    }
+    if (expectedPrincipal + expectedSponsorFee !== expectedTotalLocked) {
+      return { valid: false, reason: 'Expected total lock does not match principal + sponsor fee' };
+    }
+
+    const expiryDate = params.expectedExpiry instanceof Date ? params.expectedExpiry : new Date(params.expectedExpiry);
+    if (Number.isNaN(expiryDate.getTime())) {
+      return { valid: false, reason: 'Expected expiry is invalid' };
+    }
+    const expectedExpirySeconds = BigInt(Math.floor(expiryDate.getTime() / 1000));
+
+    if (shouldSkipEscrowTxVerification()) {
+      return { valid: true };
+    }
+
+    const rpcUrl = getRpcUrl(params.chainId);
+    if (!rpcUrl) {
+      return { valid: false, reason: 'No RPC URL configured for chain' };
+    }
+    const expectedEscrow = getEscrowAddress(params.chainId);
+    if (!expectedEscrow) {
+      return { valid: false, reason: 'Escrow address is not configured for chain' };
+    }
+
+    try {
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const receipt = await provider.getTransactionReceipt(params.txHash);
+      if (!receipt || receipt.status !== 1) {
+        return { valid: false, reason: 'Transaction failed or not mined' };
+      }
+
+      for (const log of receipt.logs) {
+        if (normalizeAddress(log.address) !== expectedEscrow) continue;
+        let parsed;
+        try {
+          parsed = CLAIM_ESCROW_INTERFACE.parseLog({ topics: log.topics as string[], data: log.data });
+        } catch {
+          continue;
+        }
+        if (!parsed || parsed.name !== 'TransferCreated') continue;
+
+        if (normalizeAddress(String(parsed.args.transferId)) !== normalizeAddress(params.expectedTransferId)) continue;
+        if (normalizeAddress(String(parsed.args.sender)) !== normalizeAddress(params.expectedSenderWallet)) {
+          return { valid: false, reason: 'Lock sender does not match authenticated wallet' };
+        }
+        if (normalizeAddress(String(parsed.args.recipientHintHash)) !== normalizeAddress(params.expectedRecipientHintHash)) {
+          return { valid: false, reason: 'Recipient hint hash in event does not match expected value' };
+        }
+        if ((parsed.args.principalUsdc as bigint) !== expectedPrincipal) {
+          return { valid: false, reason: 'Principal amount in event does not match expected value' };
+        }
+        if ((parsed.args.sponsorFeeUsdc as bigint) !== expectedSponsorFee) {
+          return { valid: false, reason: 'Sponsor fee in event does not match expected value' };
+        }
+        if ((parsed.args.totalLockedUsdc as bigint) !== expectedTotalLocked) {
+          return { valid: false, reason: 'Total lock amount in event does not match expected value' };
+        }
+        if ((parsed.args.expiry as bigint) !== expectedExpirySeconds) {
+          return { valid: false, reason: 'Expiry in event does not match expected value' };
+        }
+        return { valid: true };
+      }
+
+      return { valid: false, reason: 'No matching TransferCreated event for this transfer id' };
+    } catch (error) {
+      return {
+        valid: false,
+        reason: error instanceof Error ? error.message : 'Escrow event verification failed',
       };
     }
   }

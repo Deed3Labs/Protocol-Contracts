@@ -9,8 +9,9 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useContacts, contactInitials } from '@/context/ContactsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
-import { prepareSendTransfer } from '@/utils/apiClient';
+import { prepareSendTransfer, confirmSendTransferLock } from '@/utils/apiClient';
 import { gaslessSendLock } from '@/lib/gaslessMoney';
+import { isAaEnabled, aaSendLock } from '@/lib/aa';
 import { cn } from '@/lib/utils';
 
 /*
@@ -96,10 +97,34 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
           chainId,
         });
         if (!prepared?.transfer?.id) throw new Error('Could not prepare the transfer.');
+        const t = prepared.transfer;
 
-        const result = await gaslessSendLock({ transferRowId: prepared.transfer.id, ownerWallet: address });
+        let claim: string | null = null;
+        if (isAaEnabled(chainId)) {
+          // AA: lock USDC in the escrow in one sponsored op (approve + createTransfer), then the
+          // server verifies the on-chain event and issues the claim link.
+          const txHash = await aaSendLock({
+            chainId,
+            transferId: t.transferId as `0x${string}`,
+            principalUsdcMicros: t.principalUsdc,
+            sponsorFeeUsdcMicros: t.sponsorFeeUsdc,
+            totalLockedUsdcMicros: t.totalLockedUsdc,
+            recipientHintHash: t.recipientHintHash as `0x${string}`,
+            expiresAt: t.expiresAt,
+          });
+          const confirmed = await confirmSendTransferLock(t.id, {
+            transferId: t.transferId,
+            escrowTxHash: txHash,
+            aa: true,
+          });
+          claim = confirmed?.claimUrl ?? null;
+        } else {
+          // Fallback: EIP-3009 relayer locks funds (sender signs off-chain; relayer pays gas).
+          const result = await gaslessSendLock({ transferRowId: t.id, ownerWallet: address });
+          claim = result.claimUrl ?? null;
+        }
         if (cancelled) return;
-        setClaimUrl(result.claimUrl ?? null);
+        setClaimUrl(claim);
         setDone(true);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Send failed.');

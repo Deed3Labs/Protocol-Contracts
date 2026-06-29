@@ -51,6 +51,8 @@ export interface PrepareSendTransferResponse {
 export interface ConfirmSendTransferLockRequest {
   transferId: string;
   escrowTxHash: string;
+  /** True when the lock was an AA UserOp — server verifies via the on-chain event, not the outer tx. */
+  aa?: boolean;
 }
 
 export interface ConfirmSendTransferLockResponse {

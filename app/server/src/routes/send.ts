@@ -495,7 +495,9 @@ senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Reques
       escrowTxHash?: unknown;
       transferId?: unknown;
       senderWallet?: unknown;
+      aa?: unknown;
     };
+    const isAaLock = body.aa === true;
 
     if (body.senderWallet != null && !requireWalletMatch(req, res, body.senderWallet, 'senderWallet')) {
       return;
@@ -537,7 +539,9 @@ senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Reques
       });
     }
 
-    const verification = await sendCryptoService.verifyEscrowLockTransaction({
+    // AA (7702 UserOp) locks are verified by the on-chain event (outer tx is the bundler→EntryPoint
+    // call, so it won't match createTransfer call data); sender-pays-gas locks verify the outer tx.
+    const verifyParams = {
       txHash: body.escrowTxHash,
       expectedSenderWallet: senderWallet,
       chainId: existingTransfer.chainId,
@@ -547,7 +551,10 @@ senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Reques
       expectedTotalLockedUsdcMicros: existingTransfer.totalLockedUsdc,
       expectedExpiry: existingTransfer.expiresAt,
       expectedRecipientHintHash: existingTransfer.recipientHintHash,
-    });
+    };
+    const verification = isAaLock
+      ? await sendCryptoService.verifyEscrowLockByEvent(verifyParams)
+      : await sendCryptoService.verifyEscrowLockTransaction(verifyParams);
 
     if (!verification.valid) {
       return res.status(400).json({
