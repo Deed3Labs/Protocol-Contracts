@@ -9,7 +9,7 @@ import {
 import { useAppKitSIWX } from '@reown/appkit-siwx/react';
 import type { ReownAuthentication } from '@reown/appkit-siwx';
 import { BrowserProvider, hexlify, toUtf8Bytes } from 'ethers';
-import { AUTH_EXPIRED_EVENT } from '@/utils/authSession';
+import { AUTH_EXPIRED_EVENT, clearSiwxAuthToken } from '@/utils/authSession';
 
 type Eip1193Provider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -255,6 +255,21 @@ export function AppKitAuthProvider({ children }: { children: React.ReactNode }) 
 
     void checkAuthentication();
   }, [isConnected, address, chainId, checkAuthentication]);
+
+  // Reset cleanly when the user SWITCHES to a different account (the staleness fix): every data
+  // context + the cached SIWX auth token is per-wallet, so on a genuine switch we drop the old
+  // session token and hard-reload — guaranteeing the new wallet's data, never the previous account's.
+  const prevAddrRef = useRef<string | null>(null);
+  useEffect(() => {
+    const addr = address ? address.toLowerCase() : null;
+    if (addr && prevAddrRef.current && prevAddrRef.current !== addr) {
+      clearSiwxAuthToken();
+      prevAddrRef.current = addr;
+      if (typeof window !== 'undefined') window.location.reload();
+      return;
+    }
+    if (addr) prevAddrRef.current = addr;
+  }, [address]);
 
   useEffect(() => {
     if (!siwx || typeof siwx.on !== 'function') {
