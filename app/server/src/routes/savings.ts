@@ -360,12 +360,24 @@ savingsRouter.post('/gasless/record', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Invalid amount' });
       return;
     }
-    const network = networkFromChainId(parseChainId(body.chainId) ?? 0);
+    const chainId = parseChainId(body.chainId) ?? 0;
+    const network = networkFromChainId(chainId);
+    // Verify the tx on-chain (parse the vault's Deposited/Redeemed event) so credits can't be claimed
+    // without a genuine deposit/redeem. Mainnet REQUIRES a match + uses the on-chain amount; testnet
+    // falls back to the client amount if the lookup misses (keeps demo testing unblocked).
+    const verified = await savingsGaslessService
+      .verifySavingsTx({ chainId, txHash: body.txHash, action, wallet })
+      .catch(() => null);
+    if (!verified && network === 'mainnet') {
+      res.status(400).json({ error: 'Unverified transaction', message: 'Could not verify the on-chain deposit/redeem for this wallet.' });
+      return;
+    }
+    const amountMicros = (verified ?? BigInt(amount)).toString();
     const ledgerWallet = ethers.getAddress(wallet).toLowerCase();
     if (action === 'deposit') {
-      await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros: amount, txRef: body.txHash, network });
+      await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros, txRef: body.txHash, network });
     } else {
-      await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros: amount, network });
+      await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros, network });
     }
     res.json({ success: true });
   } catch (error) {

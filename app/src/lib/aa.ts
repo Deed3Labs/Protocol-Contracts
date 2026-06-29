@@ -19,11 +19,21 @@ import { recordGaslessSavings } from '@/utils/apiClient';
  */
 
 const PROJECT_ID = (import.meta.env.VITE_ZERODEV_PROJECT_ID as string | undefined)?.trim();
-export const isAaEnabled = (): boolean => !!PROJECT_ID;
+// Mainnet AA stays OFF until the flow is verified + the mainnet paymaster is funded — then set
+// VITE_ZERODEV_MAINNET=true. Testnet (demo) uses AA as soon as a project id is present.
+const MAINNET_AA = ((import.meta.env.VITE_ZERODEV_MAINNET as string | undefined) ?? 'false') === 'true';
 
 const CHAINS: Record<number, Chain> = { 8453: base, 84532: baseSepolia };
+
+/** AA active when a project id is set, the chain is supported, and (for mainnet) explicitly enabled. */
+export const isAaEnabled = (chainId: number): boolean =>
+  !!PROJECT_ID && !!CHAINS[chainId] && (chainId !== 8453 || MAINNET_AA);
+// Self-funded sponsorship paymaster (you deposit gas inventory; no managed-paymaster markup).
+// Set VITE_ZERODEV_SELF_FUNDED=false to use ZeroDev's managed paymaster instead.
+const SELF_FUNDED = ((import.meta.env.VITE_ZERODEV_SELF_FUNDED as string | undefined) ?? 'true') !== 'false';
 // ZeroDev v3 RPC serves both bundler + paymaster for a project on a given chain.
-const zerodevRpc = (chainId: number) => `https://rpc.zerodev.app/api/v3/${PROJECT_ID}/chain/${chainId}`;
+const bundlerRpc = (chainId: number) => `https://rpc.zerodev.app/api/v3/${PROJECT_ID}/chain/${chainId}`;
+const paymasterRpc = (chainId: number) => (SELF_FUNDED ? `${bundlerRpc(chainId)}?selfFunded=true` : bundlerRpc(chainId));
 
 const ERC20_ABI = [
   { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
@@ -52,11 +62,11 @@ async function kernelClient(chainId: number) {
     kernelVersion: KERNEL_V3_3,
   });
 
-  const paymaster = createZeroDevPaymasterClient({ chain, transport: http(zerodevRpc(chainId)) });
+  const paymaster = createZeroDevPaymasterClient({ chain, transport: http(paymasterRpc(chainId)) });
   return create7702KernelAccountClient({
     account,
     chain,
-    bundlerTransport: http(zerodevRpc(chainId)),
+    bundlerTransport: http(bundlerRpc(chainId)),
     paymaster,
     client: publicClient,
   });

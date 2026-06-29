@@ -91,7 +91,7 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         if (!isDeposit && !isRedeem) throw new Error('Unsupported transfer.');
         // Prefer the AA path (ZeroDev 7702: batched approve+action, sponsored, one signature) when
         // configured; otherwise fall back to the EIP-3009 relayer path.
-        const run = isAaEnabled()
+        const run = isAaEnabled(chainId)
           ? isDeposit ? aaDeposit : aaRedeem
           : isDeposit ? gaslessDeposit : gaslessRedeem;
         const hash = await run({ ownerWallet: address, amount: amountStr, chainId });

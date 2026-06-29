@@ -65,6 +65,46 @@ class SavingsGaslessService {
     };
   }
 
+  /**
+   * Verify an AA-submitted savings tx on-chain and return the REAL amount (USDC micros) from the
+   * vault's event — so credits can't be claimed without a genuine deposit/redeem. Returns null if the
+   * tx didn't succeed or has no matching vault event for this wallet.
+   */
+  async verifySavingsTx(input: {
+    chainId: number;
+    txHash: string;
+    action: 'deposit' | 'redeem';
+    wallet: string;
+  }): Promise<bigint | null> {
+    const config = this.resolveConfig(input.chainId);
+    const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+    const receipt = await provider.getTransactionReceipt(input.txHash);
+    if (!receipt || receipt.status !== 1) return null;
+
+    const iface = new ethers.Interface([
+      'event Deposited(address indexed caller, address indexed receiver, address indexed token, uint256 tokenAmount, uint256 clrusdMinted)',
+      'event Redeemed(address indexed caller, address indexed receiver, address indexed token, uint256 clrusdBurned, uint256 tokenAmount)',
+    ]);
+    const wallet = ethers.getAddress(input.wallet);
+    for (const log of receipt.logs) {
+      if (ethers.getAddress(log.address) !== config.vaultAddress) continue;
+      let parsed;
+      try {
+        parsed = iface.parseLog({ topics: log.topics as string[], data: log.data });
+      } catch {
+        continue;
+      }
+      if (!parsed) continue;
+      if (input.action === 'deposit' && parsed.name === 'Deposited' && ethers.getAddress(parsed.args.receiver) === wallet) {
+        return parsed.args.tokenAmount as bigint; // USDC deposited
+      }
+      if (input.action === 'redeem' && parsed.name === 'Redeemed' && ethers.getAddress(parsed.args.receiver) === wallet) {
+        return parsed.args.clrusdBurned as bigint; // CLRUSD redeemed (1:1 USDC)
+      }
+    }
+    return null;
+  }
+
   /** USDC the vault currently holds — a redeem can only return up to this (else it reverts on-chain). */
   async vaultUsdcBalance(config: GaslessConfig): Promise<bigint> {
     const provider = new ethers.JsonRpcProvider(config.rpcUrl);
