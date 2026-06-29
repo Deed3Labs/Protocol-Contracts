@@ -19,6 +19,11 @@ export function setActiveWallet(address: string | null | undefined): void {
   activeWalletAddress = address ? address.toLowerCase() : null;
 }
 
+/** The active wallet address (lowercased), sent as X-Wallet-Address so the backend binds requests to it. */
+export function getActiveWallet(): string | null {
+  return activeWalletAddress;
+}
+
 /** Best-effort: pull the wallet address out of a SIWX JWT payload (handles CAIP "eip155:1:0x.." too). */
 function tokenWalletAddress(token: string): string | null {
   try {

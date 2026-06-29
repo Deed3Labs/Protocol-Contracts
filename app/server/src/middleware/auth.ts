@@ -1,4 +1,12 @@
 import type { NextFunction, Request, Response } from 'express';
+import { PrivyClient } from '@privy-io/server-auth';
+
+/*
+ * Privy JWT auth (replaces the old Reown api.web3modal.org session fetch). The frontend sends the
+ * Privy access token (Authorization: Bearer) + its active wallet in X-Wallet-Address. We verify the
+ * token (local JWT check), resolve the user's linked wallets via getUser (cached to avoid rate limits),
+ * and trust X-Wallet-Address only if it belongs to the verified user. See [[clearpath-privy-migration]].
+ */
 
 type AuthenticatedWallet = {
   walletAddress: string;
@@ -8,36 +16,20 @@ type AuthenticatedWallet = {
   token: string;
 };
 
-type ReownSessionAccount = {
-  address: string;
-  chainId?: string | number;
-  profileUuid?: string;
-  email?: string;
-  exp?: number;
-};
-
-type CachedAuth = {
-  session: AuthenticatedWallet;
-  expiresAt: number;
-};
-
-type JwtPayload = {
-  exp?: number;
-  aud?: string | string[];
-  projectId?: string;
-};
-
-const REOWN_AUTH_BASE_URL = process.env.REOWN_AUTH_BASE_URL || 'https://api.web3modal.org';
-const REOWN_PROJECT_ID_ENV =
-  process.env.REOWN_PROJECT_ID ||
-  process.env.APPKIT_PROJECT_ID ||
-  process.env.VITE_APPKIT_PROJECT_ID ||
-  '';
-const REOWN_SDK_TYPE = process.env.REOWN_SDK_TYPE || 'appkit';
-const REOWN_SDK_VERSION = process.env.REOWN_SDK_VERSION || 'html-wagmi-4.2.2';
+const PRIVY_APP_ID = process.env.PRIVY_APP_ID || process.env.VITE_PRIVY_APP_ID || '';
+const PRIVY_APP_SECRET = process.env.PRIVY_APP_SECRET || '';
 const AUTH_CACHE_TTL_MS = parseInt(process.env.AUTH_CACHE_TTL_MS || '300000', 10); // 5m
 
-const authCache = new Map<string, CachedAuth>();
+let privyClient: PrivyClient | null = null;
+function getPrivy(): PrivyClient | null {
+  if (!PRIVY_APP_ID || !PRIVY_APP_SECRET) return null;
+  if (!privyClient) privyClient = new PrivyClient(PRIVY_APP_ID, PRIVY_APP_SECRET);
+  return privyClient;
+}
+
+// userId(DID) -> resolved wallets. Cached so we don't call getUser on every request (rate-limited).
+type UserWallets = { addresses: Set<string>; smartWallet?: string; email?: string; expiresAt: number };
+const userCache = new Map<string, UserWallets>();
 
 declare global {
   namespace Express {
@@ -50,10 +42,8 @@ declare global {
 function getBearerToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
   if (!authHeader) return null;
-
   const [scheme, token] = authHeader.split(' ');
   if (scheme?.toLowerCase() !== 'bearer' || !token) return null;
-
   return token;
 }
 
@@ -61,129 +51,46 @@ function normalizeAddress(address: string): string {
   return address.trim().toLowerCase();
 }
 
+function readHeaderValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value[0]?.trim() || '';
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 function sendUnauthorized(res: Response, message: string, code: string) {
   const safeMessage = message.replace(/"/g, '');
   res.setHeader(
     'WWW-Authenticate',
-    `Bearer realm="reown", error="invalid_token", error_description="${safeMessage}"`
+    `Bearer realm="privy", error="invalid_token", error_description="${safeMessage}"`,
   );
-  return res.status(401).json({
-    error: 'Unauthorized',
-    code,
-    message,
-  });
+  return res.status(401).json({ error: 'Unauthorized', code, message });
 }
 
-function decodeJwtPayload(token: string): JwtPayload | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payloadPart = parts[1];
-    const base64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as JwtPayload;
-  } catch {
-    return null;
-  }
-}
+async function loadUserWallets(privy: PrivyClient, userId: string): Promise<UserWallets> {
+  const cached = userCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached;
 
-function decodeJwtExpMs(token: string): number | null {
-  const payload = decodeJwtPayload(token);
-  if (typeof payload?.exp !== 'number') return null;
-  return payload.exp * 1000;
-}
+  const user = await privy.getUser(userId);
+  const addresses = new Set<string>();
+  let smartWallet: string | undefined;
+  let email: string | undefined;
 
-function readHeaderValue(value: string | string[] | undefined): string {
-  if (Array.isArray(value)) {
-    return value[0]?.trim() || '';
-  }
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function resolveProjectId(req: Request, token: string): string {
-  const fromHeader =
-    readHeaderValue(req.headers['x-reown-project-id']) ||
-    readHeaderValue(req.headers['x-appkit-project-id']);
-
-  if (REOWN_PROJECT_ID_ENV) {
-    return REOWN_PROJECT_ID_ENV;
-  }
-
-  if (fromHeader) {
-    return fromHeader;
-  }
-
-  const payload = decodeJwtPayload(token);
-  if (typeof payload?.aud === 'string' && payload.aud.trim()) {
-    return payload.aud.trim();
-  }
-
-  if (Array.isArray(payload?.aud)) {
-    const aud = payload.aud.find((value) => typeof value === 'string' && value.trim().length > 0);
-    if (aud) {
-      return aud.trim();
+  for (const account of user.linkedAccounts ?? []) {
+    const acct = account as { type?: string; address?: string; chainType?: string };
+    const isEvmWallet =
+      (acct.type === 'wallet' || acct.type === 'smart_wallet') &&
+      typeof acct.address === 'string' &&
+      (acct.chainType ? acct.chainType === 'ethereum' : true);
+    if (isEvmWallet) {
+      const addr = normalizeAddress(acct.address as string);
+      addresses.add(addr);
+      if (acct.type === 'smart_wallet') smartWallet = addr;
     }
+    if (acct.type === 'email' && typeof acct.address === 'string') email = acct.address;
   }
 
-  if (typeof payload?.projectId === 'string' && payload.projectId.trim()) {
-    return payload.projectId.trim();
-  }
-
-  return '';
-}
-
-async function fetchReownSession(token: string, projectId: string): Promise<AuthenticatedWallet | null> {
-  if (!projectId) {
-    return null;
-  }
-
-  const url = new URL(`${REOWN_AUTH_BASE_URL}/auth/v1/me`);
-  url.searchParams.set('projectId', projectId);
-  url.searchParams.set('st', REOWN_SDK_TYPE);
-  url.searchParams.set('sv', REOWN_SDK_VERSION);
-  url.searchParams.set('includeAppKitAccount', 'true');
-
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const account = (await response.json()) as ReownSessionAccount;
-  if (!account?.address || typeof account.address !== 'string') {
-    return null;
-  }
-
-  return {
-    walletAddress: normalizeAddress(account.address),
-    chainId: account.chainId,
-    profileUuid: account.profileUuid,
-    email: account.email,
-    token,
-  };
-}
-
-async function validateToken(token: string, projectId: string): Promise<AuthenticatedWallet | null> {
-  const cacheKey = `${projectId}:${token}`;
-  const now = Date.now();
-  const cached = authCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) {
-    return cached.session;
-  }
-
-  const session = await fetchReownSession(token, projectId);
-  if (!session) return null;
-
-  const jwtExpMs = decodeJwtExpMs(token);
-  const expiresAt = jwtExpMs ? Math.min(jwtExpMs, now + AUTH_CACHE_TTL_MS) : now + AUTH_CACHE_TTL_MS;
-  authCache.set(cacheKey, { session, expiresAt });
-
-  return session;
+  const entry: UserWallets = { addresses, smartWallet, email, expiresAt: Date.now() + AUTH_CACHE_TTL_MS };
+  userCache.set(userId, entry);
+  return entry;
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -192,25 +99,35 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return sendUnauthorized(res, 'Missing bearer token', 'AUTH_TOKEN_MISSING');
   }
 
-  const projectId = resolveProjectId(req, token);
-  if (!projectId) {
+  const privy = getPrivy();
+  if (!privy) {
     return res.status(500).json({
       error: 'Authentication misconfigured',
-      message: 'REOWN project ID is required (set REOWN_PROJECT_ID or send X-Reown-Project-Id)',
+      message: 'PRIVY_APP_ID and PRIVY_APP_SECRET are required',
     });
   }
 
   try {
-    const session = await validateToken(token, projectId);
-    if (!session) {
-      return sendUnauthorized(res, 'Invalid or expired authentication token', 'AUTH_TOKEN_INVALID');
+    const claims = await privy.verifyAuthToken(token);
+    const userId = claims.userId;
+
+    const { addresses, smartWallet, email } = await loadUserWallets(privy, userId);
+
+    // Trust the frontend's active address only if it belongs to the verified user; else fall back to
+    // the smart wallet (email/social funds) or the first linked wallet.
+    const claimed = normalizeAddress(readHeaderValue(req.headers['x-wallet-address']));
+    const walletAddress =
+      claimed && addresses.has(claimed) ? claimed : (smartWallet ?? [...addresses][0] ?? '');
+
+    if (!walletAddress) {
+      return sendUnauthorized(res, 'No wallet linked to this account', 'AUTH_NO_WALLET');
     }
 
-    req.auth = session;
+    req.auth = { walletAddress, profileUuid: userId, email, token };
     return next();
   } catch (error) {
     console.error('Authentication error:', error);
-    return sendUnauthorized(res, 'Authentication failed', 'AUTH_FAILED');
+    return sendUnauthorized(res, 'Invalid or expired authentication token', 'AUTH_TOKEN_INVALID');
   }
 }
 
@@ -218,27 +135,20 @@ export function requireWalletMatch(
   req: Request,
   res: Response,
   walletAddress: unknown,
-  fieldName: string = 'walletAddress'
+  fieldName: string = 'walletAddress',
 ): walletAddress is string {
   if (typeof walletAddress !== 'string' || walletAddress.trim().length === 0) {
-    res.status(400).json({
-      error: `Invalid ${fieldName}`,
-      message: `${fieldName} must be a non-empty string`,
-    });
+    res.status(400).json({ error: `Invalid ${fieldName}`, message: `${fieldName} must be a non-empty string` });
     return false;
   }
 
   // Compatibility mode for routes that don't enforce requireAuth middleware.
-  // Sensitive routes still mount requireAuth explicitly before handlers.
   if (!req.auth?.walletAddress) {
     return true;
   }
 
   if (normalizeAddress(walletAddress) !== req.auth.walletAddress) {
-    res.status(403).json({
-      error: 'Forbidden',
-      message: `${fieldName} does not match authenticated wallet`,
-    });
+    res.status(403).json({ error: 'Forbidden', message: `${fieldName} does not match authenticated wallet` });
     return false;
   }
 
@@ -249,13 +159,12 @@ export function requireWalletArrayMatch(
   req: Request,
   res: Response,
   walletAddresses: unknown[],
-  fieldName: string
+  fieldName: string,
 ): walletAddresses is string[] {
   for (const walletAddress of walletAddresses) {
     if (!requireWalletMatch(req, res, walletAddress, fieldName)) {
       return false;
     }
   }
-
   return true;
 }
