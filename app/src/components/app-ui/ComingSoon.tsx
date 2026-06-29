@@ -41,9 +41,11 @@ export function ComingSoon({ title, subtitle }: { title: string; subtitle?: stri
  */
 export function ConstructionGate({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   if (!IS_LIVE_APP) return <>{children}</>;
+  // Fixed height + clipped so the (tall) blurred page never grows the page or causes scroll; the
+  // coming-soon CTA stays centered within it.
   return (
-    <div className="relative">
-      <div aria-hidden className="pointer-events-none select-none opacity-30 blur-[6px]">
+    <div className="relative h-[68vh] min-h-[440px] overflow-hidden rounded-xl">
+      <div aria-hidden className="pointer-events-none absolute inset-0 select-none opacity-30 blur-[6px]">
         {children}
       </div>
       <div className="absolute inset-0 z-10 flex items-center justify-center">

@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useAccount, useChainId } from 'wagmi';
 import {
   ArrowLeft, Check, ChevronDown, Copy, CreditCard, Landmark, Loader2, Mail, Search,
-  ShieldCheck, UserPlus, Wallet, Zap,
+  ShieldCheck, TriangleAlert, UserPlus, Wallet, Zap,
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useContacts, contactInitials } from '@/context/ContactsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
+import { useClearBalances } from '@/hooks/useClearBalances';
+import { prepareSendTransfer } from '@/utils/apiClient';
+import { gaslessSendLock } from '@/lib/gaslessMoney';
 import { cn } from '@/lib/utils';
 
 /*
@@ -19,7 +23,6 @@ import { cn } from '@/lib/utils';
  *   funding !== balance → onramp/convert to USDC before sending (card/bank)
  */
 
-const BALANCE = 4820.55;
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const QUICK = [25, 50, 100, 250];
 
@@ -32,6 +35,10 @@ interface Source {
 export default function SendModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { contacts, getContact, openManager } = useContacts();
   const { accounts } = useExternalAccounts();
+  const { address } = useAccount();
+  const chainId = useChainId();
+  const bal = useClearBalances();
+  const BALANCE = bal.cash;
   const sources: Source[] = [
     { id: 'balance', name: 'Clear balance', detail: fmt(BALANCE), icon: Wallet },
     ...accounts.map((a) => ({ id: a.id, name: `${a.name} ••${a.mask}`, detail: a.type, icon: Landmark })),
@@ -47,6 +54,8 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
   const [query, setQuery] = useState('');
   const [done, setDone] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [claimUrl, setClaimUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -59,13 +68,46 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
     setSourceOpen(false);
     setQuery('');
     setCopied(false);
+    setError(null);
+    setClaimUrl(null);
   }, [open]);
 
   useEffect(() => {
     if (step !== 'status') return;
     setDone(false);
-    const t = setTimeout(() => setDone(true), 1600);
-    return () => clearTimeout(t);
+    setError(null);
+    setClaimUrl(null);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!address) throw new Error('Connect your wallet to send.');
+        const rcpt = contactId ? getContact(contactId) : undefined;
+        const recipientId = rcpt?.email || rcpt?.phone || rcpt?.wallet;
+        if (!recipientId) throw new Error('Recipient has no email, phone, or wallet on file.');
+
+        // Create the transfer record, then lock funds gaslessly (sender signs EIP-3009; relayer pays gas).
+        const prepared = await prepareSendTransfer({
+          recipient: recipientId,
+          amount: amountStr,
+          fundingSource: 'WALLET_USDC',
+          memo: note || undefined,
+          chainId,
+        });
+        if (!prepared?.transfer?.id) throw new Error('Could not prepare the transfer.');
+
+        const result = await gaslessSendLock({ transferRowId: prepared.transfer.id, ownerWallet: address });
+        if (cancelled) return;
+        setClaimUrl(result.claimUrl ?? null);
+        setDone(true);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Send failed.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
   const amount = Number(amountStr) || 0;
@@ -342,7 +384,22 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
         {/* ---- STATUS ---- */}
         {step === 'status' && recipient && (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-            {!done ? (
+            {error ? (
+              <>
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-negative/10">
+                  <TriangleAlert className="h-7 w-7 text-negative" />
+                </div>
+                <div className="mt-4 text-base font-semibold text-foreground">Send failed</div>
+                <div className="mt-1 max-w-[280px] text-sm text-muted-foreground">{error}</div>
+                <button
+                  type="button"
+                  onClick={() => setStep('review')}
+                  className="mt-6 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+                >
+                  Try again
+                </button>
+              </>
+            ) : !done ? (
               <>
                 <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
                 <div className="mt-4 text-base font-semibold text-foreground">Sending…</div>
@@ -362,11 +419,11 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
                   )}
                 </div>
 
-                {!instant && (
+                {claimUrl && (
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard?.writeText('https://useclear.org/claim/demo-link').catch(() => {});
+                      navigator.clipboard?.writeText(claimUrl).catch(() => {});
                       setCopied(true);
                     }}
                     className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary"

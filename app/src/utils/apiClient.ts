@@ -1313,6 +1313,88 @@ export async function refundSavingsIntent(
   return response.data;
 }
 
+// --- Fully-gasless savings (Cash USDC ↔ Savings CLRUSD) + gasless Send lock ---
+
+export interface Eip712TypedData {
+  domain: { name: string; version: string; chainId: number; verifyingContract: string };
+  primaryType: string;
+  types: Record<string, { name: string; type: string }[]>;
+  message: Record<string, string>;
+}
+
+export interface PrepareGaslessSavingsResponse {
+  chainId: number;
+  action: 'deposit' | 'redeem';
+  vaultAddress: string;
+  token: string;
+  amountMicros: string;
+  typedData: Eip712TypedData;
+  submit: Record<string, string>;
+  approve?: { token: string; spender: string };
+}
+
+export async function prepareGaslessSavings(payload: {
+  action: 'deposit' | 'redeem';
+  ownerWallet: string;
+  amount: string;
+  chainId?: number;
+}): Promise<PrepareGaslessSavingsResponse> {
+  const response = await apiRequest<PrepareGaslessSavingsResponse>('/api/savings/gasless/prepare', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to prepare transfer.');
+  }
+  return response.data;
+}
+
+export async function submitGaslessSavings(payload: {
+  action: 'deposit' | 'redeem';
+  chainId?: number;
+  signature: string;
+  submit: Record<string, string>;
+}): Promise<{ success: boolean; txHash: string; chainId: number; vaultAddress: string }> {
+  const response = await apiRequest<{ success: boolean; txHash: string; chainId: number; vaultAddress: string }>(
+    '/api/savings/gasless/submit',
+    { method: 'POST', body: JSON.stringify(payload), timeout: 120000 },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to complete transfer.');
+  }
+  return response.data;
+}
+
+export async function prepareSendLockAuthorization(id: number): Promise<{
+  transferId: string;
+  chainId: number;
+  escrowAddress: string;
+  typedData: Eip712TypedData;
+}> {
+  const response = await apiRequest<{ transferId: string; chainId: number; escrowAddress: string; typedData: Eip712TypedData }>(
+    `/api/send/transfers/${id}/lock-authorization`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to prepare send.');
+  }
+  return response.data;
+}
+
+export async function submitSendLockAuthorization(
+  id: number,
+  signature: string,
+): Promise<{ claimUrl?: string; relayTxHash: string; transfer: SendTransferSummary }> {
+  const response = await apiRequest<{ claimUrl?: string; relayTxHash: string; transfer: SendTransferSummary }>(
+    `/api/send/transfers/${id}/submit-authorization`,
+    { method: 'POST', body: JSON.stringify({ signature }), timeout: 120000 },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to complete send.');
+  }
+  return response.data;
+}
+
 /**
  * Check server health (uses cached version to avoid race conditions)
  * @deprecated Use checkServerHealthCached from serverHealth.ts instead

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ArrowDownUp, ArrowLeft, Check, ChevronDown, Landmark, Loader2, PiggyBank, ShieldCheck, Wallet, Zap } from 'lucide-react';
+import { useAccount, useChainId } from 'wagmi';
+import { ArrowDownUp, ArrowLeft, Check, ChevronDown, Landmark, Loader2, PiggyBank, ShieldCheck, TriangleAlert, Wallet, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useKyc } from '@/context/KycContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
+import { gaslessDeposit, gaslessRedeem } from '@/lib/gaslessMoney';
 import { cn } from '@/lib/utils';
 
 /*
@@ -35,6 +37,8 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
   const { accounts: external, openManager } = useExternalAccounts();
   const { verified, openKyc } = useKyc();
   const bal = useClearBalances();
+  const { address } = useAccount();
+  const chainId = useChainId();
   const accounts: Acct[] = [
     { id: 'cash', name: 'Cash', detail: 'USDC', scope: 'internal', balance: bal.cash, icon: Wallet },
     { id: 'savings', name: 'Savings', detail: 'CLRUSD', scope: 'internal', balance: bal.savings, icon: PiggyBank },
@@ -49,6 +53,8 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
   const [fromOpen, setFromOpen] = useState(false);
   const [toOpen, setToOpen] = useState(false);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -64,8 +70,37 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
   useEffect(() => {
     if (step !== 'status') return;
     setDone(false);
-    const t = setTimeout(() => setDone(true), 1600);
-    return () => clearTimeout(t);
+    setError(null);
+    setTxHash(null);
+
+    // External bank↔bank stays a mocked ACH demo (separate rail, not wired yet).
+    if (isExternal) {
+      const t = setTimeout(() => setDone(true), 1600);
+      return () => clearTimeout(t);
+    }
+
+    // Internal Cash↔Savings = real gasless deposit/redeem against the ESA vault.
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!address) throw new Error('Connect your wallet to transfer.');
+        const isDeposit = fromId === 'cash' && toId === 'savings';
+        const isRedeem = fromId === 'savings' && toId === 'cash';
+        if (!isDeposit && !isRedeem) throw new Error('Unsupported transfer.');
+        const run = isDeposit ? gaslessDeposit : gaslessRedeem;
+        const hash = await run({ ownerWallet: address, amount: amountStr, chainId });
+        if (cancelled) return;
+        setTxHash(hash);
+        setDone(true);
+        bal.refresh();
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Transfer failed.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
   const from = accounts.find((a) => a.id === fromId) ?? accounts[0];
@@ -308,7 +343,22 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
 
         {step === 'status' && from && to && (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-            {!done ? (
+            {error ? (
+              <>
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-negative/10">
+                  <TriangleAlert className="h-7 w-7 text-negative" />
+                </div>
+                <div className="mt-4 text-base font-semibold text-foreground">Transfer failed</div>
+                <div className="mt-1 max-w-[280px] text-sm text-muted-foreground">{error}</div>
+                <button
+                  type="button"
+                  onClick={() => setStep('review')}
+                  className="mt-6 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+                >
+                  Try again
+                </button>
+              </>
+            ) : !done ? (
               <>
                 <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
                 <div className="mt-4 text-base font-semibold text-foreground">Transferring…</div>
@@ -323,6 +373,16 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
                 <div className="mt-1 text-sm text-muted-foreground">
                   <span className="font-medium text-foreground">{fmt(amount)}</span> {isExternal && method === 'ach' ? 'is on its way to' : 'moved to'} {to.name}.
                 </div>
+                {txHash && (
+                  <a
+                    href={`${chainId === 84532 ? 'https://sepolia.basescan.org' : 'https://basescan.org'}/tx/${txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    View transaction
+                  </a>
+                )}
                 <button
                   type="button"
                   onClick={() => onOpenChange(false)}
