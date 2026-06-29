@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Home, FileText, SendHorizontal, ArrowDownLeft, Calendar, CircleCheck, TrendingUp, Flame } from 'lucide-react';
+import { Home, FileText, SendHorizontal, ArrowDownLeft, Calendar, CircleCheck, TrendingUp, Flame, Repeat } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
 import ActionTile from '@/components/app-ui/ActionTile';
 import RentEquityAnalyticsChart from '@/components/app-ui/charts/RentEquityAnalyticsChart';
@@ -13,7 +13,7 @@ const fmtUsd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionD
 /** Pay — Clear Pay's rent/bill core, send/request, card, and rent-to-equity viz. */
 export default function PayPage() {
   const { bills, summary, openPay, reconcile } = usePay();
-  const { openSend, openRequest } = useMoneyActions();
+  const { openSend, openRequest, openAutoSave } = useMoneyActions();
   const timelineBills: TimelineBill[] = bills.map((b) => ({ id: b.id, name: b.name, dateLabel: b.dueLabel, amount: b.amount, icon: b.icon }));
   const streak = summary?.streak ?? 0;
 
@@ -52,6 +52,7 @@ export default function PayPage() {
             <ActionTile icon={FileText} label="Pay a bill" hint="Utilities, cards & more" onClick={() => openPay()} />
             <ActionTile icon={SendHorizontal} label="Send" hint="To anyone" onClick={openSend} />
             <ActionTile icon={ArrowDownLeft} label="Request" hint="Get paid" onClick={openRequest} />
+            <ActionTile icon={Repeat} label="Auto-save" hint="Sign once, build equity" onClick={openAutoSave} />
           </div>
         </div>
         <CardVisual />

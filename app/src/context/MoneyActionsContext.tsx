@@ -4,6 +4,7 @@ import WithdrawModal from '@/components/app-ui/WithdrawModal';
 import SendModal from '@/components/app-ui/SendModal';
 import RequestModal from '@/components/app-ui/RequestModal';
 import TransferModal from '@/components/app-ui/TransferModal';
+import AutoSaveModal from '@/components/app-ui/AutoSaveModal';
 
 interface MoneyActionsValue {
   openAddMoney: () => void;
@@ -11,6 +12,7 @@ interface MoneyActionsValue {
   openSend: () => void;
   openRequest: () => void;
   openTransfer: () => void;
+  openAutoSave: () => void;
 }
 const Ctx = createContext<MoneyActionsValue | null>(null);
 
@@ -23,6 +25,7 @@ export function useMoneyActions(): MoneyActionsValue {
       openSend: () => {},
       openRequest: () => {},
       openTransfer: () => {},
+      openAutoSave: () => {},
     }
   );
 }
@@ -33,6 +36,7 @@ export function MoneyActionsProvider({ children }: { children: ReactNode }) {
   const [sendOpen, setSendOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [autoSaveOpen, setAutoSaveOpen] = useState(false);
   return (
     <Ctx.Provider
       value={{
@@ -44,6 +48,7 @@ export function MoneyActionsProvider({ children }: { children: ReactNode }) {
         openSend: () => setSendOpen(true),
         openRequest: () => setRequestOpen(true),
         openTransfer: () => setTransferOpen(true),
+        openAutoSave: () => setAutoSaveOpen(true),
       }}
     >
       {children}
@@ -52,6 +57,7 @@ export function MoneyActionsProvider({ children }: { children: ReactNode }) {
       <SendModal open={sendOpen} onOpenChange={setSendOpen} />
       <RequestModal open={requestOpen} onOpenChange={setRequestOpen} />
       <TransferModal open={transferOpen} onOpenChange={setTransferOpen} />
+      <AutoSaveModal open={autoSaveOpen} onOpenChange={setAutoSaveOpen} />
     </Ctx.Provider>
   );
 }

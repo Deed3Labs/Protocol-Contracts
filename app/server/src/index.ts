@@ -25,11 +25,13 @@ import avatarRouter from './routes/avatar.js';
 import portfolioRouter from './routes/portfolio.js';
 import payRouter from './routes/pay.js';
 import withdrawRouter from './routes/withdraw.js';
+import autopayRouter from './routes/autopay.js';
 import contactsRouter from './routes/contacts.js';
 import onramperRouter from './routes/onramper.js';
 import onramperWebhookRouter from './routes/onramperWebhook.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
+import { startAutopayRunner } from './jobs/autopayRunner.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 
@@ -190,6 +192,7 @@ async function startServer() {
     app.use('/api/portfolio', requireAuth, portfolioRouter);
     app.use('/api/pay', requireAuth, payRouter);
     app.use('/api/withdraw', requireAuth, withdrawRouter);
+    app.use('/api/autopay', requireAuth, autopayRouter);
     app.use('/api/contacts', requireAuth, contactsRouter);
     app.use('/api/onramper', requireAuth, onramperRouter);
 
@@ -239,6 +242,9 @@ async function startServer() {
     });
     startPortfolioSnapshotter().catch((error) => {
       console.error('⚠️ Portfolio snapshotter failed to start:', error);
+    });
+    startAutopayRunner().catch((error) => {
+      console.error('⚠️ Autopay runner failed to start:', error);
     });
 
     // Start HTTP server (Express + WebSocket)

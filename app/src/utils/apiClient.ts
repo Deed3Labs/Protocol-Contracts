@@ -2089,6 +2089,46 @@ export async function payBiller(
   return r.data;
 }
 
+// --- Autopay (recurring gasless Cash→Savings deposits via a ZeroDev session) ---
+
+export interface AutopayRule {
+  id: string;
+  wallet: string;
+  chainId: number;
+  kind: 'savings_deposit';
+  amountUsdc: number;
+  cadence: 'weekly' | 'monthly';
+  nextRunAt: string;
+  runsLeft: number | null;
+  status: 'active' | 'paused' | 'cancelled' | 'exhausted' | 'expired';
+  lastRunAt: string | null;
+  lastTx: string | null;
+  lastError: string | null;
+  createdAt: string;
+}
+
+export async function listAutopayRules(wallet: string): Promise<AutopayRule[]> {
+  const r = await apiRequest<{ rules: AutopayRule[] }>(`/api/autopay/${wallet.toLowerCase()}`);
+  return r.error || !r.data ? [] : r.data.rules;
+}
+
+export async function createAutopayRule(
+  wallet: string,
+  p: { chainId: number; amountUsdc: number; cadence: 'weekly' | 'monthly'; approval: string; runs?: number },
+): Promise<AutopayRule> {
+  const r = await apiRequest<{ rule: AutopayRule }>(`/api/autopay/${wallet.toLowerCase()}`, {
+    method: 'POST',
+    body: JSON.stringify(p),
+  });
+  if (r.error || !r.data) throw new Error(r.error || 'Could not set up Auto-save.');
+  return r.data.rule;
+}
+
+export async function cancelAutopayRule(wallet: string, id: string): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/autopay/${wallet.toLowerCase()}/${id}`, { method: 'DELETE' });
+  return !r.error;
+}
+
 /** Withdraw (cash-out): USDC on Base → a Plaid-linked bank via Bridge off-ramp. */
 export async function withdrawToBank(
   wallet: string,
