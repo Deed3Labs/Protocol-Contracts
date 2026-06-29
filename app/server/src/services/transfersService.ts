@@ -867,68 +867,8 @@ class TransfersService {
       }
 
       const normalizedAddress = address.toLowerCase();
-      const blockTimestampCache = new Map<string, number | null>();
-      const alchemyRestUrl = getAlchemyRestUrl(chainId);
       const isLikelyAddress = (value: string | null | undefined): value is string =>
         typeof value === 'string' && /^0x[a-fA-F0-9]{40}$/.test(value);
-
-      const resolveBlockTimestampMs = async (blockNum: string | undefined): Promise<number | null> => {
-        if (!blockNum || !alchemyRestUrl) return null;
-        if (blockTimestampCache.has(blockNum)) {
-          return blockTimestampCache.get(blockNum) ?? null;
-        }
-
-        try {
-          computeUnitTracker.logApiCall(
-            'eth_getBlockByNumber',
-            'transfers_getTransactions',
-            { chainId, estimatedUnits: 3 }
-          );
-
-          const response = await fetch(alchemyRestUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              id: 1,
-              jsonrpc: '2.0',
-              method: 'eth_getBlockByNumber',
-              params: [blockNum, false],
-            }),
-          });
-
-          if (!response.ok) {
-            blockTimestampCache.set(blockNum, null);
-            return null;
-          }
-
-          const data = await response.json() as {
-            result?: {
-              timestamp?: string;
-            } | null;
-          };
-
-          const tsHex = data.result?.timestamp;
-          if (!tsHex) {
-            blockTimestampCache.set(blockNum, null);
-            return null;
-          }
-
-          const seconds = Number.parseInt(tsHex, 16);
-          if (!Number.isFinite(seconds) || seconds <= 0) {
-            blockTimestampCache.set(blockNum, null);
-            return null;
-          }
-
-          const timestampMs = seconds * 1000;
-          blockTimestampCache.set(blockNum, timestampMs);
-          return timestampMs;
-        } catch {
-          blockTimestampCache.set(blockNum, null);
-          return null;
-        }
-      };
 
       const getPricingAddress = (transfer: TransferData): string | null => {
         if (transfer.category === 'ERC20' && isLikelyAddress(transfer.rawContract?.address)) {
@@ -1018,11 +958,9 @@ class TransfersService {
                   ? absValue * unitPrice
                   : null;
 
-              const metadataTimestamp = resolveTimestampMs(transfer.metadata?.blockTimestamp);
-              const timestamp =
-                metadataTimestamp ??
-                (await resolveBlockTimestampMs(transfer.blockNum)) ??
-                0;
+              // Alchemy getAssetTransfers is fetched withMetadata:true, so blockTimestamp is inline —
+              // no per-block eth_getBlockByNumber needed (that RPC fallback was the top CU cost).
+              const timestamp = resolveTimestampMs(transfer.metadata?.blockTimestamp) ?? 0;
 
               return {
                 id: `${chainId}-${transfer.hash}-${transfer.uniqueId || transfer.blockNum}`,

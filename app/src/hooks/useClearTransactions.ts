@@ -1,7 +1,7 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useAppKitAccount } from '@reown/appkit/react';
 import { getTransactionsBatch, getPlaidRecentTransactions, type PlaidRecentTransaction } from '@/utils/apiClient';
-import { SUPPORTED_NETWORKS, DATA_CHAIN_IDS } from '@/config/networks';
+import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import type { Category } from '@/components/app-ui/TransactionFilterModal';
 
 /**
@@ -123,11 +123,9 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
     }
     setLoading(true);
     try {
-      // On-chain (linked wallet) + Plaid (external accounts), merged + newest-first.
-      // Only the actively-tracked chains (drops empty chains → fewer Alchemy getAssetTransfers calls).
-      const requests = SUPPORTED_NETWORKS
-        .filter((n) => DATA_CHAIN_IDS.includes(n.chainId))
-        .map((n) => ({ chainId: n.chainId, address, limit: 15 }));
+      // On-chain (the Clear chain only — Cash/Savings/Send live on Base / Base Sepolia) + Plaid,
+      // merged newest-first. Scoped to ACTIVE_CHAIN_ID so we don't poll Gnosis/Ethereum (huge CU cut).
+      const requests = [{ chainId: ACTIVE_CHAIN_ID, address, limit: 15 }];
       const [chainResults, plaid] = await Promise.all([
         getTransactionsBatch(requests).catch(() => []),
         getPlaidRecentTransactions(address).catch(() => null),
@@ -154,7 +152,7 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
   // Auto-refresh the activity feed (poll + on focus) so new transactions appear without a manual reload.
   useEffect(() => {
     if (!isConnected || !address) return;
-    const id = setInterval(() => void load(), 45_000);
+    const id = setInterval(() => void load(), 120_000);
     const onFocus = () => void load();
     window.addEventListener('focus', onFocus);
     return () => {

@@ -1,7 +1,11 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMultichainBalances } from '@/hooks/useMultichainBalances';
 import { COMMON_TOKENS } from '@/config/tokens';
-import { includeChainBalance } from '@/lib/clearNetwork';
+import { includeChainBalance, ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
+
+// Clear only holds USDC/CLRUSD on its single domain chain (Base live / Base Sepolia demo). Querying
+// just this chain (not Gnosis/Ethereum) is the big Alchemy-CU saver. Module-level → referentially stable.
+const CLEAR_CHAIN_IDS = [ACTIVE_CHAIN_ID];
 
 /**
  * The two balances the app surfaces, abstracted from on-chain tokens:
@@ -66,7 +70,7 @@ interface Pending {
 }
 
 export function ClearBalancesProvider({ children }: { children: ReactNode }) {
-  const { tokens, tokensLoading, refreshTokens } = useMultichainBalances();
+  const { tokens, tokensLoading, refreshTokens } = useMultichainBalances({ chainIds: CLEAR_CHAIN_IDS });
   const [pending, setPending] = useState<Pending | null>(null);
 
   // Authoritative (on-chain) balances derived from fetched tokens.

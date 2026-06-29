@@ -143,8 +143,11 @@ interface UseMultichainBalancesReturn {
  * - `refreshBalances`: Function to refresh only native balances
  * - `refreshTokens`: Function to refresh only ERC20 tokens
  */
-export function useMultichainBalances(): UseMultichainBalancesReturn {
+export function useMultichainBalances(opts?: { chainIds?: number[] }): UseMultichainBalancesReturn {
   const { address, isConnected } = useAppKitAccount();
+  // Scope the chains queried. Clear passes [ACTIVE_CHAIN_ID] (Base only) → no Gnosis/ETH CU; the
+  // legacy portfolio passes nothing and gets the full DATA_CHAIN_IDS set (until it's removed).
+  const scopedChainIds = opts?.chainIds;
   const [balances, setBalances] = useState<MultichainBalance[]>([]);
   const [tokens, setTokens] = useState<MultichainTokenBalance[]>([]);
   const [balancesLoading, setBalancesLoading] = useState(false);
@@ -635,8 +638,9 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
       // and skip the separate getBalancesBatch call to save RPC/Alchemy usage.
       if (SUPPORTED_NETWORKS.length > 1) {
         try {
-          // Only query chains we actively track (drops empty chains → fewer Alchemy CUs).
-          const chainIds = SUPPORTED_NETWORKS.map(n => n.chainId).filter(id => DATA_CHAIN_IDS.includes(id));
+          // Only query chains we actively track (drops empty chains → fewer Alchemy CUs); when a
+          // caller scopes (Clear → Base only) use exactly those.
+          const chainIds = (scopedChainIds ?? SUPPORTED_NETWORKS.map(n => n.chainId)).filter(id => DATA_CHAIN_IDS.includes(id));
 
           // Portfolio API limits: max 2 addresses, 5 networks per address
           const maxNetworksPerRequest = 5;
@@ -779,7 +783,7 @@ export function useMultichainBalances(): UseMultichainBalancesReturn {
     } finally {
       setTokensLoading(false);
     }
-  }, [isConnected, address, fetchChainTokens, refreshBalances]);
+  }, [isConnected, address, fetchChainTokens, refreshBalances, scopedChainIds]);
 
   /**
    * Refresh a specific chain (both native and ERC20)
