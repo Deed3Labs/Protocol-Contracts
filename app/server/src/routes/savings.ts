@@ -332,4 +332,45 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Record equity credits for an AA-submitted (client-side, ZeroDev) savings deposit/redeem — the
+ * account-abstraction path settles on-chain directly, so it doesn't pass through /submit which normally
+ * accrues credits. Idempotent per txHash. NOTE: trusts the authenticated wallet + amount for now;
+ * mainnet should verify the tx receipt's Deposited/Redeemed event before crediting.
+ */
+savingsRouter.post('/gasless/record', async (req: Request, res: Response) => {
+  try {
+    const wallet = req.auth?.walletAddress;
+    if (!wallet || !ethers.isAddress(wallet)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const body = req.body as { action?: unknown; amount?: unknown; txHash?: unknown; chainId?: unknown };
+    const action = parseAction(body.action);
+    if (!action) {
+      res.status(400).json({ error: 'Invalid action' });
+      return;
+    }
+    if (typeof body.txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(body.txHash)) {
+      res.status(400).json({ error: 'Invalid txHash' });
+      return;
+    }
+    const amount = String(body.amount ?? '');
+    if (!/^\d+$/.test(amount) || BigInt(amount) <= 0n) {
+      res.status(400).json({ error: 'Invalid amount' });
+      return;
+    }
+    const network = networkFromChainId(parseChainId(body.chainId) ?? 0);
+    const ledgerWallet = ethers.getAddress(wallet).toLowerCase();
+    if (action === 'deposit') {
+      await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros: amount, txRef: body.txHash, network });
+    } else {
+      await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros: amount, network });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to record credits', message: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
 export default savingsRouter;

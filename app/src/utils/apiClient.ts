@@ -1379,6 +1379,16 @@ export async function submitGaslessSavings(payload: {
   return response.data;
 }
 
+/** Record equity credits for an AA-submitted (client-side) savings deposit/redeem, by tx hash. */
+export async function recordGaslessSavings(p: {
+  action: 'deposit' | 'redeem';
+  amount: string;
+  txHash: string;
+  chainId: number;
+}): Promise<void> {
+  await apiRequest('/api/savings/gasless/record', { method: 'POST', body: JSON.stringify(p) });
+}
+
 export async function prepareSendLockAuthorization(id: number): Promise<{
   transferId: string;
   chainId: number;
