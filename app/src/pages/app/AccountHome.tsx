@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,

@@ -1,0 +1,97 @@
+import { useEffect, useState } from 'react';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { useAccount, useChainId, useSwitchChain } from 'wagmi';
+
+/*
+ * Privy-backed drop-in replacements for the Reown AppKit React hooks the app used everywhere. Lets the
+ * ~40 call sites keep their exact shape — only the import path changes (from the old Reown AppKit
+ * react entry) to '@/lib/walletCompat'. See [[clearpath-privy-migration]].
+ *
+ * KEY: for email/social (embedded) users, `address` is the SMART WALLET address (where funds live),
+ * not the embedded EOA signer. For external wallets (MetaMask) it's their own EOA address.
+ */
+
+type AccountType = 'smartAccount' | 'eoa';
+
+export function useAppKitAccount() {
+  const { ready, authenticated, user } = usePrivy();
+  const { address: wagmiAddress } = useAccount();
+
+  const isEmbedded = user?.wallet?.walletClientType === 'privy';
+  const smartWalletAddress = (user?.smartWallet?.address ?? undefined) as `0x${string}` | undefined;
+  const eoaAddress = ((wagmiAddress ?? user?.wallet?.address) ?? undefined) as `0x${string}` | undefined;
+
+  // Email/social → smart wallet address; external (MetaMask) → their EOA (7702 keeps the same address).
+  const address = (isEmbedded ? smartWalletAddress : undefined) ?? eoaAddress;
+  const isConnected = !!authenticated && !!address;
+  const accountType: AccountType = isEmbedded && smartWalletAddress ? 'smartAccount' : 'eoa';
+
+  return {
+    address,
+    isConnected,
+    status: (!ready ? 'connecting' : isConnected ? 'connected' : 'disconnected') as
+      | 'connecting'
+      | 'connected'
+      | 'disconnected',
+    // Present only for embedded (Privy) users; external wallets get undefined (matches Reown).
+    embeddedWalletInfo: isEmbedded ? { accountType } : undefined,
+  } as const;
+}
+
+export function useAppKitNetwork() {
+  const chainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
+
+  return {
+    chainId,
+    caipNetwork: chainId ? { id: chainId, caipNetworkId: `eip155:${chainId}` as const } : undefined,
+    caipNetworkId: chainId ? (`eip155:${chainId}` as const) : undefined,
+    switchNetwork: async (network: number | { id?: number; chainId?: number }) => {
+      const id = typeof network === 'number' ? network : (network?.id ?? network?.chainId);
+      if (id) await switchChainAsync({ chainId: id });
+    },
+  } as const;
+}
+
+export function useAppKit() {
+  const { login, logout } = usePrivy();
+  return {
+    open: () => login(),
+    close: () => {},
+    logout,
+  } as const;
+}
+
+/**
+ * Returns the active wallet's EIP-1193 provider (resolved from Privy's async getEthereumProvider into
+ * state, so call sites can read it synchronously like the old AppKit hook). Mainly used by the tier-2
+ * external-wallet money path + XMTP signer; tier-1 (embedded smart wallet) uses useSmartWallets instead.
+ */
+export function useAppKitProvider(_namespace?: string) {
+  const { user } = usePrivy();
+  const { wallets } = useWallets();
+  const [walletProvider, setWalletProvider] = useState<unknown>(undefined);
+
+  const active = wallets?.find((w) => w.address === user?.wallet?.address) ?? wallets?.[0];
+
+  useEffect(() => {
+    let cancelled = false;
+    if (active?.getEthereumProvider) {
+      active
+        .getEthereumProvider()
+        .then((p) => {
+          if (!cancelled) setWalletProvider(p);
+        })
+        .catch(() => {
+          if (!cancelled) setWalletProvider(undefined);
+        });
+    } else {
+      setWalletProvider(undefined);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
+
+  return { walletProvider } as const;
+}

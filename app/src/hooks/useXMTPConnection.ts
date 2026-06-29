@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAccount } from 'wagmi';
-import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider } from '@/lib/walletCompat';
 import { useXMTP } from '@/context/XMTPContext';
 import { AbstractSigner, assert, hexlify, toUtf8Bytes } from 'ethers';
 import type { Provider, Signer, TransactionRequest, TypedDataDomain, TypedDataField } from 'ethers';

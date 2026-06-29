@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { getPortfolioHistory, type PortfolioHistoryPoint } from '@/utils/apiClient';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';

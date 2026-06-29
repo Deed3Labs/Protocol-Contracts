@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS, getRpcUrlForNetwork } from '@/config/networks';
 import { getEthereumProvider } from '@/utils/providerUtils';

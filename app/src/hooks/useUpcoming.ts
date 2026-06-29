@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { getPlaidRecurringTransactions } from '@/utils/apiClient';
 import type { UpcomingItem } from '@/components/app-ui/UpcomingCalendar';
 

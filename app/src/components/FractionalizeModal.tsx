@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAppKitAccount, useAppKitProvider, useAppKitNetwork } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider, useAppKitNetwork } from '@/lib/walletCompat';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useNetworkValidation } from '@/hooks/useNetworkValidation';
 import { isNetworkSupported, isDeedNFTDeployed, getContractAddressForNetwork } from '@/config/networks';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 
 export function NetworkWarning() {
   const { address } = useAppKitAccount();

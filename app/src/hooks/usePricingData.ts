@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useAppKitNetwork } from '@reown/appkit/react';
+import { useAppKitNetwork } from '@/lib/walletCompat';
 import { getTokenPrice } from '@/utils/apiClient';
 import { withTimeout } from './utils/multichainHelpers';
 

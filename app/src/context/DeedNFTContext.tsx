@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
-import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@/lib/walletCompat';
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";
 import { getContractAddressForNetwork, getRpcUrlForNetwork, getAbiPathForNetwork } from '@/config/networks';
 import { EIP5792Utils } from '@/utils/EIP5792Utils';

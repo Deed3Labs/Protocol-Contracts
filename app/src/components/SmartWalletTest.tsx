@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider } from '@/lib/walletCompat';
 import { useCapabilities } from '@/hooks/useCapabilities';
 import { EIP5792Utils } from '@/utils/EIP5792Utils';
 import { ethers } from 'ethers';

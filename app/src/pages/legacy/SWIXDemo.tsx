@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SWIXAuth } from '@/pages/legacy/SWIXAuth';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
-import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitNetwork } from '@/lib/walletCompat';
 import { getContractAddressForNetwork } from '@/config/networks';
 import { useNetworkValidation } from '@/hooks/useNetworkValidation';
 import XMTPMessaging from '@/components/XMTPMessaging';

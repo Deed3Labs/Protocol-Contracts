@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { SUPPORTED_NETWORKS } from '@/config/networks';
 import { 
   fetchWithDeviceOptimization,

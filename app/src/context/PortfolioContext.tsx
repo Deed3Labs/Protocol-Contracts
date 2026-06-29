@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { useMultichainBalances } from '@/hooks/useMultichainBalances';
 import { useMultichainActivity } from '@/hooks/useMultichainActivity';
 import { usePortfolioHoldings } from '@/hooks/usePortfolioHoldings';

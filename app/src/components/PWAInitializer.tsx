@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { usePeriodicSync } from '@/hooks/usePeriodicSync';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 
 /**
  * Component to initialize PWA features

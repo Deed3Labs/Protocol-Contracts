@@ -1,4 +1,4 @@
-import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider } from '@/lib/walletCompat';
 import { useCallback, useState } from 'react';
 
 export function useSmartAccountDeployment() {

@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Wallet, FileText, Settings, TrendingUp, Activity, RefreshCw } from "lucide-react";
-import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitNetwork } from '@/lib/walletCompat';
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { Link } from "react-router-dom";
 import DeedNFTViewer from "@/components/DeedNFTViewer";

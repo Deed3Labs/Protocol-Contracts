@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider } from '@/lib/walletCompat';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import {
   ArrowLeft, Check, ChevronDown, Copy, CreditCard, Landmark, Loader2, Mail, Search,

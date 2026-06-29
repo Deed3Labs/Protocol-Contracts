@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { SUPPORTED_NETWORKS } from '@/config/networks';
 import { getNFTs, getNFTsByAddressPortfolio } from '@/utils/apiClient';
 import { withTimeout, fetchWithDeviceOptimization } from './utils/multichainHelpers';

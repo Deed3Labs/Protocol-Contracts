@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@/lib/walletCompat';
 import type { Eip1193Provider } from 'ethers';
 import { NetworkWarning } from "@/components/NetworkWarning";
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";

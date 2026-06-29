@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useWebSocket } from './useWebSocket';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 
 interface NotificationOptions {
   title: string;

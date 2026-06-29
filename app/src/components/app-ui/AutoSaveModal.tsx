@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider } from '@/lib/walletCompat';
 import { Check, Loader2, Repeat, Sparkles, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';

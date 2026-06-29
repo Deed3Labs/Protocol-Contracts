@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useWebSocket } from './useWebSocket';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 
 /**
  * Hook for managing app badge (unread count indicator)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider } from '@/lib/walletCompat';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import { ArrowDownUp, ArrowLeft, Check, ChevronDown, Landmark, Loader2, PiggyBank, ShieldCheck, TriangleAlert, Wallet, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';

@@ -5,7 +5,7 @@ import {
   useAppKitNetwork,
   useAppKitProvider,
   useDisconnect,
-} from '@reown/appkit/react';
+} from '@/lib/walletCompat';
 import { useAppKitSIWX } from '@reown/appkit-siwx/react';
 import type { ReownAuthentication } from '@reown/appkit-siwx';
 import { BrowserProvider, hexlify, toUtf8Bytes } from 'ethers';
