@@ -263,13 +263,23 @@ export function AppKitAuthProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     const addr = address ? address.toLowerCase() : null;
     if (addr && prevAddrRef.current && prevAddrRef.current !== addr) {
-      clearSiwxAuthToken();
       prevAddrRef.current = addr;
-      if (typeof window !== 'undefined') window.location.reload();
+      void (async () => {
+        // Clear Reown's stored SIWX SESSION (not just the apiClient token key) — otherwise the old
+        // session restores on reload and token-authorized endpoints (e.g. profile / account center)
+        // keep returning the previous account. Then the new wallet signs in fresh.
+        try {
+          await (siwx as unknown as { clearSessions?: () => Promise<void> })?.clearSessions?.();
+        } catch {
+          /* ignore */
+        }
+        clearSiwxAuthToken();
+        if (typeof window !== 'undefined') window.location.reload();
+      })();
       return;
     }
     if (addr) prevAddrRef.current = addr;
-  }, [address]);
+  }, [address, siwx]);
 
   useEffect(() => {
     if (!siwx || typeof siwx.on !== 'function') {
