@@ -20,6 +20,17 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      // Privy statically references optional-feature peers (Farcaster-Solana / Abstract / Stripe-crypto
+      // and their Solana wallet-adapter transitives) that this EVM-only email/social app never uses.
+      // Externalize them so Rollup doesn't descend into their uninstalled deps — they live in lazy Privy
+      // chunks that never load here.
+      external: [
+        /^@solana\//,
+        /^@solana-program\//,
+        /^@farcaster\/mini-app-solana/,
+        /^@abstract-foundation\/agw-client/,
+        /^@stripe\/crypto/,
+      ],
       output: {
         manualChunks: undefined,
       },

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useAppKitAccount, useAppKitProvider } from '@/lib/walletCompat';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import { ArrowDownUp, ArrowLeft, Check, ChevronDown, Landmark, Loader2, PiggyBank, ShieldCheck, TriangleAlert, Wallet, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -8,7 +9,6 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useKyc } from '@/context/KycContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { gaslessDeposit, gaslessRedeem } from '@/lib/gaslessMoney';
-import { isAaUnsupportedError } from '@/lib/aa';
 import { scDeposit, scRedeem } from '@/lib/sendCalls';
 import { cn } from '@/lib/utils';
 
@@ -43,7 +43,7 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
   const bal = useClearBalances();
   const { address } = useAccount();
   const { embeddedWalletInfo } = useAppKitAccount();
-  const { walletProvider } = useAppKitProvider('eip155');
+  const { client: smartWalletClient } = useSmartWallets();
   const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const accounts: Acct[] = [
@@ -99,18 +99,16 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         const scRun = isDeposit ? scDeposit : scRedeem;
         const relayerRun = isDeposit ? gaslessDeposit : gaslessRedeem;
         let hash: string;
-        // Smart accounts (AppKit) → Reown-sponsored writeContract path; EOAs → EIP-3009 relayer (gasless).
-        const useSc = isSmartAccount;
-        if (useSc) {
+        if (isSmartAccount && smartWalletClient) {
+          // Tier 1: Privy smart wallet — sponsored + silent; no relayer fallback (1271 can't sign EIP-3009).
+          hash = await scRun({ smartWalletClient, ownerWallet: address, amount: amountStr, chainId });
+        } else {
+          // External: Tier 2 (EIP-5792 + 7702, sponsored) → Tier 3 (EIP-3009 relayer) graceful fallback.
           try {
-            hash = await scRun({ provider: walletProvider, ownerWallet: address, amount: amountStr, chainId });
-          } catch (err) {
-            // Smart accounts have no EIP-3009 fallback (1271 can't sign it) — surface the error.
-            if (isSmartAccount || !isAaUnsupportedError(err)) throw err;
+            hash = await scRun({ ownerWallet: address, amount: amountStr, chainId });
+          } catch {
             hash = await relayerRun({ ownerWallet: address, amount: amountStr, chainId });
           }
-        } else {
-          hash = await relayerRun({ ownerWallet: address, amount: amountStr, chainId });
         }
         if (cancelled) return;
         setTxHash(hash);

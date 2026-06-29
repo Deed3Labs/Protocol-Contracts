@@ -26,6 +26,12 @@ export function useAppKitAccount() {
   const isConnected = !!authenticated && !!address;
   const accountType: AccountType = isEmbedded && smartWalletAddress ? 'smartAccount' : 'eoa';
 
+  // Best-effort fill of the fields Reown's embeddedWalletInfo carried (read by a few hooks/legacy pages).
+  const u = user as { email?: { address?: string } | string; linkedAccounts?: Array<{ type?: string }> } | null | undefined;
+  const email = typeof u?.email === 'string' ? u.email : u?.email?.address;
+  const oauth = u?.linkedAccounts?.find((a) => typeof a.type === 'string' && a.type.endsWith('_oauth'));
+  const authProvider = oauth ? (oauth.type as string).replace('_oauth', '') : email ? 'email' : undefined;
+
   return {
     address,
     isConnected,
@@ -34,7 +40,15 @@ export function useAppKitAccount() {
       | 'connected'
       | 'disconnected',
     // Present only for embedded (Privy) users; external wallets get undefined (matches Reown).
-    embeddedWalletInfo: isEmbedded ? { accountType } : undefined,
+    embeddedWalletInfo: isEmbedded
+      ? {
+          accountType,
+          // Privy manages smart-wallet deployment (counterfactual; deploys on first tx) — treat as ready.
+          isSmartAccountDeployed: accountType === 'smartAccount',
+          authProvider,
+          user: { email },
+        }
+      : undefined,
   } as const;
 }
 
@@ -56,7 +70,7 @@ export function useAppKitNetwork() {
 export function useAppKit() {
   const { login, logout } = usePrivy();
   return {
-    open: () => login(),
+    open: (_opts?: { view?: 'Account' | 'Connect' | 'Networks' }) => login(),
     close: () => {},
     logout,
   } as const;

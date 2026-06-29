@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useAppKitAccount, useAppKitProvider } from '@/lib/walletCompat';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import {
   ArrowLeft, Check, ChevronDown, Copy, CreditCard, Landmark, Loader2, Mail, Search,
@@ -12,7 +13,6 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { prepareSendTransfer, confirmSendTransferLock } from '@/utils/apiClient';
 import { gaslessSendLock } from '@/lib/gaslessMoney';
-import { isAaUnsupportedError } from '@/lib/aa';
 import { scSendLock } from '@/lib/sendCalls';
 import { cn } from '@/lib/utils';
 
@@ -41,7 +41,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
   const { accounts } = useExternalAccounts();
   const { address } = useAccount();
   const { embeddedWalletInfo } = useAppKitAccount();
-  const { walletProvider } = useAppKitProvider('eip155');
+  const { client: smartWalletClient } = useSmartWallets();
   const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const bal = useClearBalances();
@@ -111,32 +111,33 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
         };
 
         let claim: string | null = null;
-        // Smart accounts (AppKit) → Reown-sponsored writeContract path; EOAs → EIP-3009 relayer.
-        const useSc = isSmartAccount;
-        if (useSc) {
+        // Tier 1/2: lock USDC in the escrow in one sponsored batch (approve + createTransfer), then the
+        // server verifies the on-chain event and issues the claim link.
+        const scLock = async (client?: unknown) => {
+          const txHash = await scSendLock({
+            smartWalletClient: client,
+            ownerWallet: address,
+            chainId,
+            transferId: t.transferId as `0x${string}`,
+            principalUsdcMicros: t.principalUsdc,
+            sponsorFeeUsdcMicros: t.sponsorFeeUsdc,
+            totalLockedUsdcMicros: t.totalLockedUsdc,
+            recipientHintHash: t.recipientHintHash as `0x${string}`,
+            expiresAt: t.expiresAt,
+          });
+          const confirmed = await confirmSendTransferLock(t.id, { transferId: t.transferId, escrowTxHash: txHash, aa: true });
+          return confirmed?.claimUrl ?? null;
+        };
+        if (isSmartAccount && smartWalletClient) {
+          // Tier 1: Privy smart wallet — sponsored + silent; no relayer fallback (1271 can't sign EIP-3009).
+          claim = await scLock(smartWalletClient);
+        } else {
+          // External: Tier 2 (EIP-5792 + 7702, sponsored) → Tier 3 (EIP-3009 relayer) graceful fallback.
           try {
-            // AA: lock USDC in the escrow in one sponsored batch (approve + createTransfer), then the
-            // server verifies the on-chain event and issues the claim link.
-            const txHash = await scSendLock({
-              provider: walletProvider,
-              ownerWallet: address,
-              chainId,
-              transferId: t.transferId as `0x${string}`,
-              principalUsdcMicros: t.principalUsdc,
-              sponsorFeeUsdcMicros: t.sponsorFeeUsdc,
-              totalLockedUsdcMicros: t.totalLockedUsdc,
-              recipientHintHash: t.recipientHintHash as `0x${string}`,
-              expiresAt: t.expiresAt,
-            });
-            const confirmed = await confirmSendTransferLock(t.id, { transferId: t.transferId, escrowTxHash: txHash, aa: true });
-            claim = confirmed?.claimUrl ?? null;
-          } catch (err) {
-            // Smart accounts have no EIP-3009 fallback (1271 can't sign it) — surface the error.
-            if (isSmartAccount || !isAaUnsupportedError(err)) throw err;
+            claim = await scLock();
+          } catch {
             claim = await relayerLock();
           }
-        } else {
-          claim = await relayerLock();
         }
         if (cancelled) return;
         setClaimUrl(claim);

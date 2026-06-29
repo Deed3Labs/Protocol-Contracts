@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useAppKitAccount, useAppKitProvider } from '@/lib/walletCompat';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
 import { Check, Loader2, Repeat, Sparkles, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
@@ -26,7 +27,7 @@ const CADENCES: { id: AutopayCadence; label: string }[] = [
 export default function AutoSaveModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { address } = useAccount();
   const { embeddedWalletInfo } = useAppKitAccount();
-  const { walletProvider } = useAppKitProvider('eip155');
+  const { client: smartWalletClient } = useSmartWallets();
   const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const bal = useClearBalances();
   const chainId = ACTIVE_CHAIN_ID;
@@ -72,7 +73,7 @@ export default function AutoSaveModal({ open, onOpenChange }: { open: boolean; o
     setStep('working');
     setError(null);
     try {
-      await installAutopaySession({ chainId, ownerWallet: address, amountUsdc: amount, cadence, runs, isSmartAccount, provider: walletProvider });
+      await installAutopaySession({ chainId, ownerWallet: address, amountUsdc: amount, cadence, runs, isSmartAccount, smartWalletClient });
       await loadRules();
       setStep('done');
     } catch (e) {

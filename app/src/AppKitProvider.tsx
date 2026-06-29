@@ -2,6 +2,7 @@ import React from 'react';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { SmartWalletsProvider } from '@privy-io/react-auth/smart-wallets';
 import { WagmiProvider, createConfig } from '@privy-io/wagmi';
+import type { Config as WagmiCoreConfig } from '@wagmi/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http } from 'viem';
 import { mainnet, base, sepolia, baseSepolia, arbitrum, optimism, polygon, gnosis } from 'viem/chains';
@@ -33,7 +34,7 @@ const supportedChains = [base, baseSepolia, mainnet, sepolia, arbitrum, optimism
 
 const queryClient = new QueryClient();
 
-export const wagmiConfig = createConfig({
+const wagmiConfigInternal = createConfig({
   chains: [base, baseSepolia, mainnet, sepolia, arbitrum, optimism, polygon, gnosis],
   transports: {
     [base.id]: http(),
@@ -47,6 +48,9 @@ export const wagmiConfig = createConfig({
   },
 });
 
+// @wagmi/core actions in lib/* are typed against a slightly different Config (Privy bundles its own
+// wagmi/viem types); cast to the base Config so they accept this (runtime-identical) instance.
+export const wagmiConfig = wagmiConfigInternal as unknown as WagmiCoreConfig;
 // Back-compat shim: lib/{sendCalls,autopay,aa,gaslessMoney,lifi}.ts read `wagmiAdapter.wagmiConfig`.
 export const wagmiAdapter = { wagmiConfig };
 
@@ -75,7 +79,7 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       <QueryClientProvider client={queryClient}>
-        <WagmiProvider config={wagmiConfig}>
+        <WagmiProvider config={wagmiConfigInternal}>
           <SmartWalletsProvider>
             <AppKitAuthProvider>{children}</AppKitAuthProvider>
           </SmartWalletsProvider>

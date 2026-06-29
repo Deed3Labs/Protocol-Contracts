@@ -4,29 +4,24 @@ import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings } from '@/utils/apiClient';
 
-// The UserOp is sponsored ONLY when the wallet_sendCalls request carries a paymasterService
-// capability (the SA holds no ETH). CRITICAL: Reown's embedded wallet only calls REOWN'S OWN
-// paymaster (paymaster-api.reown.com) and IGNORES foreign URLs (ZeroDev → empty paymasterAndData).
-// Reown's paymaster authorizes the op against a sponsorship POLICY you create in cloud.reown.com;
-// you pass that policy's id in `context.policyId` (per Reown's lab WagmiSendCallsWithPaymasterService).
-// Without a policy/policyId it returns "Unauthorized". URL: paymaster-api.reown.com/<chainId>/rpc.
-const APPKIT_PROJECT_ID = (import.meta.env.VITE_APPKIT_PROJECT_ID as string | undefined)?.trim();
-const REOWN_POLICY_ID = (import.meta.env.VITE_REOWN_POLICY_ID as string | undefined)?.trim();
-const paymasterUrl = (chainId: number) =>
-  `https://paymaster-api.reown.com/${chainId}/rpc?projectId=${APPKIT_PROJECT_ID}`;
-
 /*
- * Smart-account (AppKit email/social) money flows, executed via wagmi's `sendCalls` (EIP-5792) — the
- * EXACT path Reown's lab uses (WagmiSendCallsWithPaymasterServiceTest). Reown's embedded smart account
- * wraps the batch as ONE sponsored ERC-4337 UserOp, deploys itself on the first one, and the ZeroDev
- * self-funded paymaster (paymasterService capability) pays gas. approve + action go in ONE batch (one
- * signature). EOAs use EIP-3009 instead.
+ * 3-TIER gasless money router (see [[clearpath-privy-migration]]).
+ *   Tier 1 — email/social: Privy ERC-4337 smart wallet. Pass the client from useSmartWallets(); one
+ *            sponsored UserOp, gas paid by the paymaster registered in the Privy dashboard. Silent
+ *            (0 signatures). No relayer fallback (a 1271 smart account can't sign EIP-3009).
+ *   Tier 2 — external (MetaMask): EIP-5792 wallet_sendCalls + the ZeroDev self-funded paymaster, so the
+ *            wallet uses 7702 to batch + sponsor at its own address. Throws if unsupported → caller
+ *            falls back to tier 3.
+ *   Tier 3 — graceful fallback: the EIP-3009 relayer (handled by the modals' relayerRun), gasless.
  *
- * NOTE: raw `wallet_sendCalls` against the embedded provider does NOT honor the paymasterService
- * capability (we saw paymasterAndData: 0x → AA21). wagmi's sendCalls formats it correctly, so the
- * wallet actually calls the paymaster. The sc* args still accept `provider` (now unused) so callers
- * don't have to change.
+ * sc* take `smartWalletClient` (Privy client or undefined). Defined → tier 1; undefined → tier 2.
  */
+
+// Tier-2 sponsorship via the ZeroDev self-funded paymaster (the funded one we verified). Tier-1 needs
+// no URL here — Privy applies the dashboard-registered paymaster.
+const ZERODEV_PROJECT_ID = (import.meta.env.VITE_ZERODEV_PROJECT_ID as string | undefined)?.trim();
+const paymasterUrl = (chainId: number) =>
+  `https://rpc.zerodev.app/api/v3/${ZERODEV_PROJECT_ID}/chain/${chainId}?selfFunded=true`;
 
 const ERC20_ABI = [
   { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
@@ -39,34 +34,28 @@ const ESCROW_ABI = [
   { name: 'createTransfer', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'transferId', type: 'bytes32' }, { name: 'principalUsdc', type: 'uint256' }, { name: 'sponsorFeeUsdc', type: 'uint256' }, { name: 'expiry', type: 'uint64' }, { name: 'recipientHintHash', type: 'bytes32' }], outputs: [] },
 ] as const;
 
-type Call = { to: string; data: string };
+type Call = { to: `0x${string}`; data: `0x${string}` };
 
-/**
- * Execute a sponsored batch via wagmi `sendCalls` (EIP-5792). The embedded smart account bundles the
- * calls into ONE sponsored UserOp, deploys itself on first use, and the paymasterService capability
- * (ZeroDev self-funded) covers gas. Waits for settlement and returns the tx hash.
- */
-async function runBatch(owner: string, chainId: number, calls: Call[]): Promise<string> {
+/** Minimal shape of Privy's useSmartWallets().client we use (batched sendTransaction). */
+interface SmartWalletLike {
+  sendTransaction: (input: { calls: { to: `0x${string}`; data: `0x${string}`; value?: bigint }[] }) => Promise<`0x${string}`>;
+}
+
+/** Tier 1: Privy smart wallet — one sponsored UserOp (gas via the dashboard paymaster). */
+async function runSmartWallet(client: SmartWalletLike, calls: Call[]): Promise<string> {
+  return client.sendTransaction({ calls });
+}
+
+/** Tier 2: external wallet via EIP-5792 + ZeroDev paymaster (wallet uses 7702). Throws if unsupported. */
+async function run5792(owner: string, chainId: number, calls: Call[]): Promise<string> {
   const config = wagmiAdapter.wagmiConfig;
   const { id } = await sendCalls(config, {
     account: owner as `0x${string}`,
     chainId: chainId as 8453,
-    calls: calls.map((c) => ({ to: c.to as `0x${string}`, data: c.data as `0x${string}` })),
-    ...(APPKIT_PROJECT_ID
-      ? {
-          capabilities: {
-            paymasterService: {
-              url: paymasterUrl(chainId),
-              ...(REOWN_POLICY_ID ? { context: { policyId: REOWN_POLICY_ID } } : {}),
-            },
-          },
-        }
-      : {}),
+    calls,
+    ...(ZERODEV_PROJECT_ID ? { capabilities: { paymasterService: { url: paymasterUrl(chainId) } } } : {}),
   });
-  console.log('[sendCalls] sendCalls id:', id);
-
   const res = await waitForCallsStatus(config, { id, timeout: 120_000 });
-  console.log('[sendCalls] final status:', res.status, JSON.stringify(res.receipts ?? []));
   if (res.status !== 'success') {
     throw new Error(`Transaction didn't confirm (status: ${res.status ?? 'unknown'}).`);
   }
@@ -76,20 +65,26 @@ async function runBatch(owner: string, chainId: number, calls: Call[]): Promise<
   return (last?.transactionHash as string | undefined) ?? id;
 }
 
+/** Route: tier 1 if a Privy smart wallet client is given, else tier 2 (external EIP-5792). */
+async function runBatch(smartWalletClient: unknown, owner: string, chainId: number, calls: Call[]): Promise<string> {
+  if (smartWalletClient) return runSmartWallet(smartWalletClient as SmartWalletLike, calls);
+  return run5792(owner, chainId, calls);
+}
+
 /** One-time sponsored ERC-20 approve (smart-account autopay allowance — they can't sign EIP-2612). */
-export async function scApprove(args: { provider: unknown; owner: string; token: `0x${string}`; spender: `0x${string}`; amount: bigint; chainId: number }): Promise<string> {
-  return runBatch(args.owner, args.chainId, [
+export async function scApprove(args: { smartWalletClient?: unknown; owner: string; token: `0x${string}`; spender: `0x${string}`; amount: bigint; chainId: number }): Promise<string> {
+  return runBatch(args.smartWalletClient, args.owner, args.chainId, [
     { to: args.token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [args.spender, args.amount] }) },
   ]);
 }
 
 /** Cash (USDC) → Savings (CLRUSD): [approve, deposit] in ONE sponsored batch. */
-export async function scDeposit(args: { provider: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
+export async function scDeposit(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
   const c = clearContracts(args.chainId);
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
   const amt = parseUnits(args.amount, 6);
   const receiver = args.ownerWallet as `0x${string}`;
-  const hash = await runBatch(args.ownerWallet, args.chainId, [
+  const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, amt] }) },
     { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'deposit', args: [c.usdc, amt, receiver] }) },
   ]);
@@ -98,12 +93,12 @@ export async function scDeposit(args: { provider: unknown; ownerWallet: string; 
 }
 
 /** Savings (CLRUSD) → Cash (USDC): [approve, redeem] in ONE sponsored batch. */
-export async function scRedeem(args: { provider: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
+export async function scRedeem(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
   const c = clearContracts(args.chainId);
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
   const amt = parseUnits(args.amount, 6);
   const receiver = args.ownerWallet as `0x${string}`;
-  const hash = await runBatch(args.ownerWallet, args.chainId, [
+  const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
     { to: c.clrusd, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, amt] }) },
     { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'redeem', args: [c.usdc, amt, receiver] }) },
   ]);
@@ -113,7 +108,7 @@ export async function scRedeem(args: { provider: unknown; ownerWallet: string; a
 
 /** Send: [approve(escrow), createTransfer] in ONE sponsored batch. Returns the lock tx hash. */
 export async function scSendLock(args: {
-  provider: unknown;
+  smartWalletClient?: unknown;
   ownerWallet: string;
   chainId: number;
   transferId: `0x${string}`;
@@ -129,7 +124,7 @@ export async function scSendLock(args: {
   const fee = BigInt(args.sponsorFeeUsdcMicros);
   const total = BigInt(args.totalLockedUsdcMicros);
   const expiry = BigInt(Math.floor(new Date(args.expiresAt).getTime() / 1000));
-  return runBatch(args.ownerWallet, args.chainId, [
+  return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.claimEscrow, total] }) },
     { to: c.claimEscrow, data: encodeFunctionData({ abi: ESCROW_ABI, functionName: 'createTransfer', args: [args.transferId, principal, fee, expiry, args.recipientHintHash] }) },
   ]);

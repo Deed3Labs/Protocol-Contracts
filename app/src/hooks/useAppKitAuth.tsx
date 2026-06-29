@@ -32,7 +32,9 @@ interface AppKitAuthContextValue extends AuthState {
   getUser: () => Promise<AuthState['user'] | null>;
   checkAuthentication: () => Promise<boolean>;
   setSessionMetadata: (metadata: object) => Promise<void>;
-  siwx?: undefined;
+  // Reown SIWX is gone; kept loosely-typed only so the soon-to-be-deleted legacy SWIX pages compile.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  siwx?: any;
 }
 
 const AppKitAuthContext = createContext<AppKitAuthContextValue | null>(null);
