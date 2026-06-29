@@ -1,34 +1,25 @@
-import { encodeFunctionData, parseUnits } from 'viem';
-import { getAccount, getCapabilities, readContract, sendCalls, waitForCallsStatus } from '@wagmi/core';
+import { parseUnits } from 'viem';
+import { getAccount, readContract, waitForTransactionReceipt, writeContract } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
-import { clearContracts, isMainnetChain } from '@/lib/clearNetwork';
+import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings } from '@/utils/apiClient';
 
 /*
- * Unified AA via EIP-5792 (`wallet_sendCalls`) + an ERC-7677 paymaster. This is the wallet-NATIVE
- * account-abstraction path that works for BOTH wallet types — MetaMask (EOA; the wallet upgrades via
- * 7702 under the hood) and AppKit email/social (already a 4337 smart account). The wallet batches the
- * calls (approve + action in one) and a paymaster sponsors gas → one signature, no separate approval,
- * gasless, SAME address. Replaces the ZeroDev 7702 path, which couldn't sign on viem ≥2.44 (the version
- * AppKit forces). When a wallet doesn't support batching+sponsorship, callers fall back to EIP-3009.
+ * Smart-account (AppKit email/social) money flows. These run as plain wagmi writeContract calls —
+ * Reown's embedded smart account automatically wraps each one as a sponsored ERC-4337 UserOp, DEPLOYS
+ * the account on the first one, and pays gas via its paymaster. (The EIP-5792 `wallet_sendCalls` path
+ * was unreliable for counterfactual accounts — the op was signed but never mined.) Each action needs a
+ * one-time MAX approve (its own sponsored tx) since approve+action can't be guaranteed atomic.
+ * EOAs do NOT use this path — they use the EIP-3009 relayer (lib/gaslessMoney), which is gasless too.
  */
 
-const PROJECT_ID = (import.meta.env.VITE_ZERODEV_PROJECT_ID as string | undefined)?.trim();
-const SELF_FUNDED = ((import.meta.env.VITE_ZERODEV_SELF_FUNDED as string | undefined) ?? 'true') !== 'false';
-// ERC-7677 paymaster service URL the wallet calls to sponsor the bundle (ZeroDev v3). Self-funded
-// (no markup) is only used where we've actually funded it (mainnet); testnet uses ZeroDev's MANAGED
-// paymaster (free testnet gas) — the self-funded testnet balance is empty, which left bundles
-// unsponsored (counterfactual smart accounts then never deployed → deposits silently did nothing).
-const paymasterUrl = (chainId: number) => {
-  const base = `https://rpc.zerodev.app/api/v3/${PROJECT_ID}/chain/${chainId}`;
-  return SELF_FUNDED && isMainnetChain(chainId) ? `${base}?selfFunded=true` : base;
-};
+const config = wagmiAdapter.wagmiConfig;
+const MAX_UINT256 = (1n << 256n) - 1n;
 
 const ERC20_ABI = [
   { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
   { name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const;
-const MAX_UINT256 = (1n << 256n) - 1n;
 const VAULT_ABI = [
   { name: 'deposit', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'redeem', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'clrusdAmount', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ type: 'uint256' }] },
@@ -37,66 +28,18 @@ const ESCROW_ABI = [
   { name: 'createTransfer', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'transferId', type: 'bytes32' }, { name: 'principalUsdc', type: 'uint256' }, { name: 'sponsorFeeUsdc', type: 'uint256' }, { name: 'expiry', type: 'uint64' }, { name: 'recipientHintHash', type: 'bytes32' }], outputs: [] },
 ] as const;
 
-type Call = { to: `0x${string}`; data: `0x${string}` };
-
-/**
- * Whether the connected wallet can do gasless batched calls on this chain — it must support BOTH
- * atomic batching AND a paymaster service (so the user signs once and pays no gas). If not, callers
- * use the EIP-3009 relayer (also gasless) instead. Best-effort: any failure → treated as unsupported.
- */
-export async function canUseSendCalls(chainId: number): Promise<boolean> {
-  if (!PROJECT_ID) return false;
-  try {
-    const caps = await getCapabilities(wagmiAdapter.wagmiConfig, { chainId });
-    const atomic = caps?.atomic?.status === 'supported' || caps?.atomic?.status === 'ready';
-    const paymaster = Boolean(caps?.paymasterService?.supported);
-    return atomic && paymaster;
-  } catch {
-    return false;
-  }
-}
-
-/** Send a sponsored batch and return the settled tx hash. */
-async function runCalls(chainId: number, calls: Call[]): Promise<string> {
-  if (!PROJECT_ID) throw new Error('Sponsorship is not configured.');
-  const config = wagmiAdapter.wagmiConfig;
-
-  // Always attach the ZeroDev paymaster — a counterfactual smart account has no ETH to deploy/pay for
-  // itself, so it REQUIRES sponsorship (AppKit doesn't auto-sponsor here). The wallet honors the 5792
-  // paymasterService capability; EOAs only reach this path when they advertise paymasterService too.
-  const { id } = await sendCalls(config, {
-    chainId,
-    calls,
-    capabilities: { paymasterService: { url: paymasterUrl(chainId) } },
-  });
-  // Bounded wait so a stuck/unsponsored bundle surfaces an error instead of hanging forever.
-  const result = await waitForCallsStatus(config, { id, timeout: 90_000 });
-  if (result.status !== 'success') {
-    throw new Error(`Transaction didn't confirm (status: ${result.status ?? 'unknown'}). It may not have been sponsored.`);
-  }
-  const hash = result.receipts?.[result.receipts.length - 1]?.transactionHash;
-  if (!hash) throw new Error('Transaction confirmed but returned no hash.');
+/** Submit one writeContract tx (Reown wraps + sponsors + deploys the SA) and wait for it to mine. */
+async function sendTx(chainId: number, params: Parameters<typeof writeContract>[1]): Promise<`0x${string}`> {
+  const hash = await writeContract(config, params);
+  await waitForTransactionReceipt(config, { hash, chainId });
   return hash;
 }
 
-/** One-time sponsored ERC-20 approve (used by smart accounts to grant the vault an autopay allowance,
- *  since they can't sign EIP-2612 permit). Gasless via the wallet's native AA + paymaster. */
-export async function scApprove(args: { token: `0x${string}`; spender: `0x${string}`; amount: bigint; chainId: number }): Promise<string> {
-  return runCalls(args.chainId, [
-    { to: args.token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [args.spender, args.amount] }) },
-  ]);
-}
-
-/**
- * Ensure `owner` has granted `spender` at least `needed` of `token`. Smart-account `sendCalls` doesn't
- * reliably apply an approve before a deposit in the SAME batch (the deposit reverts on 0 allowance and
- * the whole op silently fails). So we approve MAX as its own sponsored op first (one-time per token),
- * then the action runs as a single sponsored call. Subsequent actions skip the approve.
- */
+/** Ensure a standing MAX allowance exists (one-time, sponsored). The first call also deploys the SA. */
 async function ensureAllowance(chainId: number, token: `0x${string}`, spender: `0x${string}`, needed: bigint): Promise<void> {
-  const owner = getAccount(wagmiAdapter.wagmiConfig).address;
+  const owner = getAccount(config).address;
   if (!owner) throw new Error('Wallet not connected.');
-  const current = (await readContract(wagmiAdapter.wagmiConfig, {
+  const current = (await readContract(config, {
     abi: ERC20_ABI,
     address: token,
     functionName: 'allowance',
@@ -104,9 +47,12 @@ async function ensureAllowance(chainId: number, token: `0x${string}`, spender: `
     chainId,
   })) as bigint;
   if (current >= needed) return;
-  await runCalls(chainId, [
-    { to: token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [spender, MAX_UINT256] }) },
-  ]);
+  await sendTx(chainId, { abi: ERC20_ABI, address: token, functionName: 'approve', args: [spender, MAX_UINT256], chainId });
+}
+
+/** One-time sponsored ERC-20 approve (smart-account autopay allowance — they can't sign EIP-2612). */
+export async function scApprove(args: { token: `0x${string}`; spender: `0x${string}`; amount: bigint; chainId: number }): Promise<string> {
+  return sendTx(args.chainId, { abi: ERC20_ABI, address: args.token, functionName: 'approve', args: [args.spender, args.amount], chainId: args.chainId });
 }
 
 /** Cash (USDC) → Savings (CLRUSD): one-time approve (sponsored), then a sponsored deposit. */
@@ -116,11 +62,9 @@ export async function scDeposit(args: { ownerWallet: string; amount: string; cha
   const amt = parseUnits(args.amount, 6);
   const receiver = args.ownerWallet as `0x${string}`;
   await ensureAllowance(args.chainId, c.usdc, c.esaVault, amt);
-  const txHash = await runCalls(args.chainId, [
-    { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'deposit', args: [c.usdc, amt, receiver] }) },
-  ]);
-  await recordGaslessSavings({ action: 'deposit', amount: amt.toString(), txHash, chainId: args.chainId }).catch(() => {});
-  return txHash;
+  const hash = await sendTx(args.chainId, { abi: VAULT_ABI, address: c.esaVault, functionName: 'deposit', args: [c.usdc, amt, receiver], chainId: args.chainId });
+  await recordGaslessSavings({ action: 'deposit', amount: amt.toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
+  return hash;
 }
 
 /** Savings (CLRUSD) → Cash (USDC): one-time approve (sponsored), then a sponsored redeem. */
@@ -130,14 +74,12 @@ export async function scRedeem(args: { ownerWallet: string; amount: string; chai
   const amt = parseUnits(args.amount, 6);
   const receiver = args.ownerWallet as `0x${string}`;
   await ensureAllowance(args.chainId, c.clrusd, c.esaVault, amt);
-  const txHash = await runCalls(args.chainId, [
-    { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'redeem', args: [c.usdc, amt, receiver] }) },
-  ]);
-  await recordGaslessSavings({ action: 'redeem', amount: amt.toString(), txHash, chainId: args.chainId }).catch(() => {});
-  return txHash;
+  const hash = await sendTx(args.chainId, { abi: VAULT_ABI, address: c.esaVault, functionName: 'redeem', args: [c.usdc, amt, receiver], chainId: args.chainId });
+  await recordGaslessSavings({ action: 'redeem', amount: amt.toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
+  return hash;
 }
 
-/** Send: lock USDC in the ClaimEscrow for a prepared transfer in one sponsored batch. Returns the tx hash. */
+/** Send: lock USDC in the ClaimEscrow for a prepared transfer (one-time approve, then createTransfer). */
 export async function scSendLock(args: {
   chainId: number;
   transferId: `0x${string}`;
@@ -154,7 +96,11 @@ export async function scSendLock(args: {
   const total = BigInt(args.totalLockedUsdcMicros);
   const expiry = BigInt(Math.floor(new Date(args.expiresAt).getTime() / 1000));
   await ensureAllowance(args.chainId, c.usdc, c.claimEscrow, total);
-  return runCalls(args.chainId, [
-    { to: c.claimEscrow, data: encodeFunctionData({ abi: ESCROW_ABI, functionName: 'createTransfer', args: [args.transferId, principal, fee, expiry, args.recipientHintHash] }) },
-  ]);
+  return sendTx(args.chainId, {
+    abi: ESCROW_ABI,
+    address: c.claimEscrow,
+    functionName: 'createTransfer',
+    args: [args.transferId, principal, fee, expiry, args.recipientHintHash],
+    chainId: args.chainId,
+  });
 }

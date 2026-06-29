@@ -8,8 +8,8 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useKyc } from '@/context/KycContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { gaslessDeposit, gaslessRedeem } from '@/lib/gaslessMoney';
-import { isAaEnabled, isAaUnsupportedError } from '@/lib/aa';
-import { scDeposit, scRedeem, canUseSendCalls } from '@/lib/sendCalls';
+import { isAaUnsupportedError } from '@/lib/aa';
+import { scDeposit, scRedeem } from '@/lib/sendCalls';
 import { cn } from '@/lib/utils';
 
 /*
@@ -98,7 +98,8 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         const scRun = isDeposit ? scDeposit : scRedeem;
         const relayerRun = isDeposit ? gaslessDeposit : gaslessRedeem;
         let hash: string;
-        const useSc = isAaEnabled(chainId) && (isSmartAccount || (await canUseSendCalls(chainId)));
+        // Smart accounts (AppKit) → Reown-sponsored writeContract path; EOAs → EIP-3009 relayer (gasless).
+        const useSc = isSmartAccount;
         if (useSc) {
           try {
             hash = await scRun({ ownerWallet: address, amount: amountStr, chainId });

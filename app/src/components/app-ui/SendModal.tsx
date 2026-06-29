@@ -12,8 +12,8 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { prepareSendTransfer, confirmSendTransferLock } from '@/utils/apiClient';
 import { gaslessSendLock } from '@/lib/gaslessMoney';
-import { isAaEnabled, isAaUnsupportedError } from '@/lib/aa';
-import { scSendLock, canUseSendCalls } from '@/lib/sendCalls';
+import { isAaUnsupportedError } from '@/lib/aa';
+import { scSendLock } from '@/lib/sendCalls';
 import { cn } from '@/lib/utils';
 
 /*
@@ -110,7 +110,8 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
         };
 
         let claim: string | null = null;
-        const useSc = isAaEnabled(chainId) && (isSmartAccount || (await canUseSendCalls(chainId)));
+        // Smart accounts (AppKit) → Reown-sponsored writeContract path; EOAs → EIP-3009 relayer.
+        const useSc = isSmartAccount;
         if (useSc) {
           try {
             // AA: lock USDC in the escrow in one sponsored batch (approve + createTransfer), then the
