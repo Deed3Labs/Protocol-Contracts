@@ -1,11 +1,10 @@
-import { SafeLocalStorageKeys } from '@reown/appkit-common';
-
 export const AUTH_EXPIRED_EVENT = 'appkit-auth-expired';
 
 const configuredAuthKey = (import.meta.env.VITE_SIWX_AUTH_TOKEN_KEY || '').trim();
+// Legacy SIWX token storage keys (superseded by Privy getAccessToken); kept only so clearSiwxAuthToken
+// can purge any stale token left in localStorage by the old AppKit auth.
 const AUTH_TOKEN_STORAGE_KEYS = [
   configuredAuthKey,
-  SafeLocalStorageKeys.SIWX_AUTH_TOKEN,
   '@appkit/siwx-auth-token',
 ].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
 

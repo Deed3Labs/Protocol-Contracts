@@ -1,21 +1,16 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  useAppKit,
-  useAppKitAccount,
-  useAppKitNetwork,
-  useAppKitProvider,
-  useDisconnect,
-} from '@/lib/walletCompat';
-import { useAppKitSIWX } from '@reown/appkit-siwx/react';
-import type { ReownAuthentication } from '@reown/appkit-siwx';
-import { BrowserProvider, hexlify, toUtf8Bytes } from 'ethers';
-import { AUTH_EXPIRED_EVENT, clearSiwxAuthToken, setActiveWallet } from '@/utils/authSession';
+import React, { createContext, useCallback, useContext, useEffect, useMemo } from 'react';
+import { usePrivy, useSignMessage } from '@privy-io/react-auth';
+import { useChainId } from 'wagmi';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { setActiveWallet } from '@/utils/authSession';
 
-type Eip1193Provider = {
-  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-};
-
-const REAUTH_PROMPT_COOLDOWN_MS = 15_000;
+/*
+ * Privy-backed auth context, keeping the AppKitAuthContextValue shape the ~21 consumers expect
+ * (isAuthenticated, authenticate, openModal, disconnect, signMessage, getUser, ...). Authentication is
+ * Privy's login (issues the JWT the apiClient sends). SIWX/Reown is gone. `siwx` + `setSessionMetadata`
+ * are no-ops here — only the soon-to-be-deleted legacy SWIX pages referenced them. See
+ * [[clearpath-privy-migration]].
+ */
 
 export interface AuthState {
   isConnected: boolean;
@@ -25,10 +20,7 @@ export interface AuthState {
   user?: {
     id: string;
     email?: string;
-    social?: {
-      provider: string;
-      id: string;
-    };
+    social?: { provider: string; id: string };
   };
 }
 
@@ -40,340 +32,106 @@ interface AppKitAuthContextValue extends AuthState {
   getUser: () => Promise<AuthState['user'] | null>;
   checkAuthentication: () => Promise<boolean>;
   setSessionMetadata: (metadata: object) => Promise<void>;
-  siwx?: ReownAuthentication;
+  siwx?: undefined;
 }
 
 const AppKitAuthContext = createContext<AppKitAuthContextValue | null>(null);
 
-function mapSessionAccountToUser(sessionAccount: any): AuthState['user'] | undefined {
-  if (!sessionAccount || typeof sessionAccount !== 'object') {
-    return undefined;
-  }
+type PrivyUserLike = {
+  id?: string;
+  email?: { address?: string } | string;
+  linkedAccounts?: Array<{ type?: string; subject?: string; email?: string }>;
+} | null | undefined;
 
-  const appKitAccount = (sessionAccount as any).appKitAccount;
-  const metadata = appKitAccount?.metadata || {};
-  const social = metadata?.social;
-
-  const id =
-    appKitAccount?.uuid ||
-    (typeof sessionAccount.profileUuid === 'string' ? sessionAccount.profileUuid : undefined) ||
-    (typeof sessionAccount.address === 'string' ? sessionAccount.address : undefined);
-
-  if (!id) {
-    return undefined;
-  }
-
-  return {
-    id,
-    email:
-      (typeof metadata?.email === 'string' && metadata.email.length > 0
-        ? metadata.email
-        : undefined) ||
-      (typeof sessionAccount.email === 'string' && sessionAccount.email.length > 0
-        ? sessionAccount.email
-        : undefined),
-    social:
-      social && typeof social.provider === 'string' && typeof social.id === 'string'
-        ? {
-            provider: social.provider,
-            id: social.id,
-          }
-        : undefined,
-  };
+function mapPrivyUser(user: PrivyUserLike): AuthState['user'] | undefined {
+  if (!user?.id) return undefined;
+  const email = typeof user.email === 'string' ? user.email : user.email?.address;
+  const oauth = user.linkedAccounts?.find((a) => typeof a.type === 'string' && a.type.endsWith('_oauth'));
+  const social = oauth
+    ? { provider: (oauth.type as string).replace('_oauth', ''), id: oauth.subject ?? '' }
+    : undefined;
+  return { id: user.id, email, social };
 }
 
 export function AppKitAuthProvider({ children }: { children: React.ReactNode }) {
-  const {
-    address,
-    isConnected: isAppKitConnected,
-    embeddedWalletInfo,
-    status,
-  } = useAppKitAccount();
-  const { caipNetworkId } = useAppKitNetwork();
-  const { walletProvider } = useAppKitProvider<Eip1193Provider>('eip155');
-  const { open } = useAppKit();
-  const { disconnect: disconnectWallet } = useDisconnect();
-  const siwx = useAppKitSIWX<ReownAuthentication>();
+  const { ready, authenticated, user, login, logout } = usePrivy();
+  const { signMessage: privySignMessage } = useSignMessage();
+  const { address } = useAppKitAccount();
+  const chainId = useChainId();
 
-  const chainId = useMemo(() => {
-    if (!caipNetworkId) return undefined;
-    const [, id] = caipNetworkId.split(':');
-    const parsed = Number(id);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }, [caipNetworkId]);
+  // Keep per-wallet caches keyed to the active address.
+  useEffect(() => {
+    if (address) setActiveWallet(address);
+  }, [address]);
 
-  const isEmbeddedWalletConnected = Boolean(embeddedWalletInfo && status === 'connected');
-  const isRegularWalletConnected = Boolean(isAppKitConnected && address && status === 'connected');
-  const isConnected = isEmbeddedWalletConnected || isRegularWalletConnected;
+  const mappedUser = useMemo(() => mapPrivyUser(user as PrivyUserLike), [user]);
 
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<AuthState['user']>();
-  const authCheckInFlightRef = useRef<Promise<boolean> | null>(null);
-  const lastReauthPromptAtRef = useRef(0);
-  const getUser = useCallback(async () => {
-    if (!siwx || !isConnected) {
-      return null;
-    }
-
-    try {
-      const sessionAccount = await siwx.getSessionAccount();
-      return mapSessionAccountToUser(sessionAccount) || null;
-    } catch {
-      return null;
-    }
-  }, [siwx, isConnected]);
-
-  const checkAuthentication = useCallback(async () => {
-    if (!siwx || !isConnected) {
-      setIsAuthenticated(false);
-      setUser(undefined);
-      return false;
-    }
-
-    if (authCheckInFlightRef.current) {
-      return authCheckInFlightRef.current;
-    }
-
-    const checkPromise = (async () => {
-      try {
-        const sessionAccount = await siwx.getSessionAccount();
-        const hasSession = Boolean(sessionAccount && typeof sessionAccount === 'object');
-
-        if (!hasSession) {
-          setIsAuthenticated(false);
-          setUser(undefined);
-          return false;
-        }
-
-        setIsAuthenticated(true);
-        setUser(mapSessionAccountToUser(sessionAccount));
-        return true;
-      } catch {
-        setIsAuthenticated(false);
-        setUser(undefined);
-        return false;
-      } finally {
-        authCheckInFlightRef.current = null;
-      }
-    })();
-
-    authCheckInFlightRef.current = checkPromise;
-    return checkPromise;
-  }, [siwx, isConnected]);
-
-  const openModal = useCallback(
-    async (view?: 'Account' | 'Connect' | 'Networks') => {
-      await open(view ? { view } : undefined);
-    },
-    [open]
-  );
+  const openModal = useCallback(async () => {
+    if (!authenticated) login();
+  }, [authenticated, login]);
 
   const disconnect = useCallback(async () => {
-    await disconnectWallet();
-    setIsAuthenticated(false);
-    setUser(undefined);
-  }, [disconnectWallet]);
+    await logout();
+  }, [logout]);
 
   const signMessage = useCallback(
     async (message: string) => {
-      if (!address || !isConnected) {
-        throw new Error('Wallet is not connected');
-      }
-
-      if (walletProvider?.request) {
-        const signature = await walletProvider.request({
-          method: 'personal_sign',
-          params: [hexlify(toUtf8Bytes(message)), address.toLowerCase()],
-        });
-        if (typeof signature === 'string' && signature.length > 0) {
-          return signature;
-        }
-      }
-
-      if (typeof window !== 'undefined' && (window as any).ethereum) {
-        const provider = new BrowserProvider((window as any).ethereum as Eip1193Provider);
-        const signer = await provider.getSigner();
-        return signer.signMessage(message);
-      }
-
-      throw new Error('No signing provider available');
+      const res = await privySignMessage({ message });
+      return typeof res === 'string' ? res : (res?.signature ?? '');
     },
-    [address, isConnected, walletProvider]
-  );
-
-  const setSessionMetadata = useCallback(
-    async (metadata: object) => {
-      if (!siwx) {
-        throw new Error('SIWX not available');
-      }
-      await siwx.setSessionAccountMetadata(metadata);
-      await checkAuthentication();
-    },
-    [siwx, checkAuthentication]
+    [privySignMessage],
   );
 
   const authenticate = useCallback(async () => {
-    if (!siwx || !isConnected || !address || !chainId) {
-      return false;
-    }
+    if (!authenticated) login();
+    return authenticated;
+  }, [authenticated, login]);
 
-    try {
-      const existingSession = await checkAuthentication();
-      if (existingSession) {
-        return true;
-      }
-
-      const caipChainId = `eip155:${chainId}` as const;
-      const siwxMessage = await siwx.createMessage({
-        accountAddress: address.toLowerCase(),
-        chainId: caipChainId,
-      });
-      const message = siwxMessage.toString();
-      const signature = await signMessage(message);
-
-      await siwx.addSession({
-        data: siwxMessage,
-        message,
-        signature,
-      });
-
-      return await checkAuthentication();
-    } catch (error) {
-      console.error('Failed to authenticate AppKit session:', error);
-      setIsAuthenticated(false);
-      setUser(undefined);
-      return false;
-    }
-  }, [address, chainId, checkAuthentication, isConnected, siwx, signMessage]);
-
-  useEffect(() => {
-    if (!isConnected) {
-      setIsAuthenticated(false);
-      setUser(undefined);
-      return;
-    }
-
-    void checkAuthentication();
-  }, [isConnected, address, chainId, checkAuthentication]);
-
-  // Reset cleanly when the user SWITCHES to a different account (the staleness fix): every data
-  // context + the cached SIWX auth token is per-wallet, so on a genuine switch we drop the old
-  // session token and hard-reload — guaranteeing the new wallet's data, never the previous account's.
-  const prevAddrRef = useRef<string | null>(null);
-  useEffect(() => {
-    const addr = address ? address.toLowerCase() : null;
-    // Keep apiClient's token guard in sync with the connected wallet (rejects a mismatched token).
-    setActiveWallet(addr);
-    if (addr && prevAddrRef.current && prevAddrRef.current !== addr) {
-      prevAddrRef.current = addr;
-      void (async () => {
-        // Clear Reown's stored SIWX SESSION (not just the apiClient token key) — otherwise the old
-        // session restores on reload and token-authorized endpoints (e.g. profile / account center)
-        // keep returning the previous account. Then the new wallet signs in fresh.
-        try {
-          await (siwx as unknown as { clearSessions?: () => Promise<void> })?.clearSessions?.();
-        } catch {
-          /* ignore */
-        }
-        clearSiwxAuthToken();
-        if (typeof window !== 'undefined') window.location.reload();
-      })();
-      return;
-    }
-    if (addr) prevAddrRef.current = addr;
-  }, [address, siwx]);
-
-  useEffect(() => {
-    if (!siwx || typeof siwx.on !== 'function') {
-      return;
-    }
-
-    const unsubscribe = siwx.on('sessionChanged', () => {
-      void checkAuthentication();
-    });
-
-    return () => {
-      unsubscribe?.();
-    };
-  }, [siwx, checkAuthentication]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const onAuthExpired = () => {
-      setIsAuthenticated(false);
-      setUser(undefined);
-
-      if (!isConnected) {
-        return;
-      }
-
-      void (async () => {
-        const restored = await checkAuthentication();
-        if (restored) {
-          return;
-        }
-
-        const now = Date.now();
-        if (now - lastReauthPromptAtRef.current < REAUTH_PROMPT_COOLDOWN_MS) {
-          return;
-        }
-        lastReauthPromptAtRef.current = now;
-
-        try {
-          await open({ view: 'Connect' });
-        } catch (error) {
-          console.error('Failed to reopen AppKit modal after auth expiration:', error);
-        }
-      })();
-    };
-
-    window.addEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
-    return () => {
-      window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
-    };
-  }, [checkAuthentication, isConnected, open]);
+  const getUser = useCallback(async () => mappedUser ?? null, [mappedUser]);
+  const checkAuthentication = useCallback(async () => authenticated, [authenticated]);
+  const setSessionMetadata = useCallback(async () => {
+    /* no-op: Privy manages the session/JWT itself */
+  }, []);
 
   const value = useMemo<AppKitAuthContextValue>(
     () => ({
-      isConnected,
-      isAuthenticated,
-      address: address || undefined,
-      chainId,
-      user,
-      openModal,
-      disconnect,
-      signMessage,
-      authenticate,
-      getUser,
-      checkAuthentication,
-      setSessionMetadata,
-      siwx,
-    }),
-    [
+      isConnected: !!authenticated && !!address,
+      isAuthenticated: !!ready && !!authenticated,
       address,
       chainId,
-      checkAuthentication,
-      disconnect,
-      getUser,
-      authenticate,
-      isAuthenticated,
-      isConnected,
+      user: mappedUser,
       openModal,
-      setSessionMetadata,
+      disconnect,
       signMessage,
-      siwx,
-      user,
-    ]
+      authenticate,
+      getUser,
+      checkAuthentication,
+      setSessionMetadata,
+      siwx: undefined,
+    }),
+    [
+      ready,
+      authenticated,
+      address,
+      chainId,
+      mappedUser,
+      openModal,
+      disconnect,
+      signMessage,
+      authenticate,
+      getUser,
+      checkAuthentication,
+      setSessionMetadata,
+    ],
   );
 
   return <AppKitAuthContext.Provider value={value}>{children}</AppKitAuthContext.Provider>;
 }
 
 export function useAppKitAuth() {
-  const context = useContext(AppKitAuthContext);
-  if (!context) {
+  const ctx = useContext(AppKitAuthContext);
+  if (!ctx) {
     throw new Error('useAppKitAuth must be used within an AppKitAuthProvider');
   }
-  return context;
+  return ctx;
 }

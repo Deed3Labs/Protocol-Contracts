@@ -20,7 +20,8 @@ import type {
   FinalizeSavingsIntentResponse,
   RefundSavingsIntentResponse,
 } from '@/types/savings';
-import { clearSiwxAuthToken, getSiwxAuthToken, notifyAuthExpired } from './authSession';
+import { getAccessToken } from '@privy-io/react-auth';
+import { clearSiwxAuthToken, notifyAuthExpired } from './authSession';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
@@ -57,13 +58,13 @@ async function apiRequest<T>(
 
   try {
     const { timeout: _, ...fetchOptions } = options; // Remove timeout from fetch options
-    const siwxToken = getSiwxAuthToken();
+    const authToken = await getAccessToken().catch(() => null);
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...fetchOptions,
       signal: timeoutController.signal, // Use timeout signal (user signal will be ignored if provided)
       headers: {
         'Content-Type': 'application/json',
-        ...(siwxToken ? { Authorization: `Bearer ${siwxToken}` } : {}),
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         ...(REOWN_PROJECT_ID
           ? { 'X-Reown-Project-Id': REOWN_PROJECT_ID }
           : {}),

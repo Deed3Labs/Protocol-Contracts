@@ -62,6 +62,11 @@ export function useAppKit() {
   } as const;
 }
 
+export function useDisconnect() {
+  const { logout } = usePrivy();
+  return { disconnect: async () => { await logout(); } } as const;
+}
+
 /**
  * Returns the active wallet's EIP-1193 provider (resolved from Privy's async getEthereumProvider into
  * state, so call sites can read it synchronously like the old AppKit hook). Mainly used by the tier-2

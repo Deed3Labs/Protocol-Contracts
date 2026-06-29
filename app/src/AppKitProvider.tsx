@@ -5,6 +5,7 @@ import { WagmiProvider, createConfig } from '@privy-io/wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http } from 'viem';
 import { mainnet, base, sepolia, baseSepolia, arbitrum, optimism, polygon, gnosis } from 'viem/chains';
+import { AppKitAuthProvider } from '@/hooks/useAppKitAuth';
 
 /*
  * Privy provider stack (replaces Reown AppKit).
@@ -75,7 +76,9 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
     >
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={wagmiConfig}>
-          <SmartWalletsProvider>{children}</SmartWalletsProvider>
+          <SmartWalletsProvider>
+            <AppKitAuthProvider>{children}</AppKitAuthProvider>
+          </SmartWalletsProvider>
         </WagmiProvider>
       </QueryClientProvider>
     </PrivyProvider>
