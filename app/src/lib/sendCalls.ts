@@ -5,14 +5,15 @@ import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings } from '@/utils/apiClient';
 
 // The UserOp is sponsored ONLY when the wallet_sendCalls request carries a paymasterService
-// capability (the SA holds no ETH). Reown's OWN paymaster (paymaster-api.reown.com) returns
-// "Unauthorized" unless the project is in their invite-only sponsorship beta, so we use ZeroDev's
-// SELF-FUNDED paymaster: ZeroDev signs the sponsorship (valid sig) and gas is paid from ETH we
-// deposit into the paymaster in the ZeroDev dashboard. URL exactly as shown there:
-//   https://rpc.zerodev.app/api/v3/<projectId>/chain/<chainId>?selfFunded=true
-const PROJECT_ID = (import.meta.env.VITE_ZERODEV_PROJECT_ID as string | undefined)?.trim();
+// capability (the SA holds no ETH). CRITICAL: Reown's embedded wallet only calls REOWN'S OWN
+// paymaster (paymaster-api.reown.com) and IGNORES foreign URLs (ZeroDev → empty paymasterAndData).
+// Reown's paymaster authorizes the op against a sponsorship POLICY you create in cloud.reown.com;
+// you pass that policy's id in `context.policyId` (per Reown's lab WagmiSendCallsWithPaymasterService).
+// Without a policy/policyId it returns "Unauthorized". URL: paymaster-api.reown.com/<chainId>/rpc.
+const APPKIT_PROJECT_ID = (import.meta.env.VITE_APPKIT_PROJECT_ID as string | undefined)?.trim();
+const REOWN_POLICY_ID = (import.meta.env.VITE_REOWN_POLICY_ID as string | undefined)?.trim();
 const paymasterUrl = (chainId: number) =>
-  `https://rpc.zerodev.app/api/v3/${PROJECT_ID}/chain/${chainId}?selfFunded=true`;
+  `https://paymaster-api.reown.com/${chainId}/rpc?projectId=${APPKIT_PROJECT_ID}`;
 
 /*
  * Smart-account (AppKit email/social) money flows, executed via wagmi's `sendCalls` (EIP-5792) — the
@@ -51,7 +52,16 @@ async function runBatch(owner: string, chainId: number, calls: Call[]): Promise<
     account: owner as `0x${string}`,
     chainId: chainId as 8453,
     calls: calls.map((c) => ({ to: c.to as `0x${string}`, data: c.data as `0x${string}` })),
-    ...(PROJECT_ID ? { capabilities: { paymasterService: { url: paymasterUrl(chainId) } } } : {}),
+    ...(APPKIT_PROJECT_ID
+      ? {
+          capabilities: {
+            paymasterService: {
+              url: paymasterUrl(chainId),
+              ...(REOWN_POLICY_ID ? { context: { policyId: REOWN_POLICY_ID } } : {}),
+            },
+          },
+        }
+      : {}),
   });
   console.log('[sendCalls] sendCalls id:', id);
 
