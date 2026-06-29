@@ -4,7 +4,7 @@ import { requireWalletMatch } from '../middleware/auth.js';
 import { savingsIntentService } from '../services/savingsIntentService.js';
 import { savingsRelayerService } from '../services/savingsRelayerService.js';
 import { savingsGaslessService } from '../services/savingsGaslessService.js';
-import { payLedgerStore } from '../services/payLedgerStore.js';
+import { payLedgerStore, networkFromChainId } from '../services/payLedgerStore.js';
 
 const savingsRouter = Router();
 
@@ -313,10 +313,11 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
     // matched credit (1/$1, capped 1500/mo, 30-day vest); a redeem claws back pending deposit credits.
     try {
       const ledgerWallet = ethers.getAddress(owner).toLowerCase();
+      const network = networkFromChainId(config.chainId);
       if (action === 'deposit') {
-        await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.amount), txRef: txHash });
+        await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.amount), txRef: txHash, network });
       } else {
-        await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.clrusdAmount) });
+        await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.clrusdAmount), network });
       }
     } catch (ledgerError) {
       console.error('[savings/gasless] equity ledger update failed:', ledgerError);

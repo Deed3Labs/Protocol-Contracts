@@ -21,6 +21,13 @@ const IN_APP_BONUS = 1.1; // paying through the app earns a 10% bonus
 const DEPOSIT_MATCH_PER_USD = 1; // equity credits matched per $1 deposited into the ESA vault
 const DEPOSIT_MATCH_MONTHLY_CAP = 1500; // max deposit-match credits awarded per calendar month
 
+export type CreditNetwork = 'mainnet' | 'testnet';
+const MAINNET_CHAIN_IDS = new Set([1, 8453, 10, 42161, 137, 100]);
+/** Map a chain id to the credit environment — mainnet credits count, testnet (demo) are separate. */
+export function networkFromChainId(chainId: number): CreditNetwork {
+  return MAINNET_CHAIN_IDS.has(chainId) ? 'mainnet' : 'testnet';
+}
+
 let ensured = false;
 
 function num(v: unknown): number {
@@ -107,6 +114,9 @@ async function ensureTables(): Promise<void> {
     ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS payout_bank_name TEXT;
     ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS bridge_external_account_id TEXT;
   `);
+  // Tag each credit with the environment it was earned in ('mainnet' = live/real, 'testnet' = demo).
+  // The demo's deposit-match credits (Base Sepolia) stay separate from mainnet credits that count.
+  await pool.query(`ALTER TABLE pay_credits ADD COLUMN IF NOT EXISTS network TEXT NOT NULL DEFAULT 'mainnet';`);
   ensured = true;
 }
 
@@ -331,6 +341,7 @@ export const payLedgerStore = {
     source: EarnSource;
     txRef?: string | null;
     paidAt?: Date; // actual payment date (detected payments use the bank date); defaults to now
+    network?: CreditNetwork; // environment the payment was made in; defaults to mainnet
   }): Promise<{ creditAwarded: number; onTime: boolean; duplicate: boolean }> {
     const pool = getPayPool();
     if (!pool) throw new Error('Postgres not configured');
@@ -363,9 +374,9 @@ export const payLedgerStore = {
     const vestUntil = new Date(paidAt);
     vestUntil.setDate(vestUntil.getDate() + VEST_DAYS);
     await pool.query(
-      `INSERT INTO pay_credits (id, wallet, payment_id, amount, reason, source, streak_at_award, status, vest_until)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8) ON CONFLICT (payment_id) DO NOTHING`,
-      [crypto.randomUUID(), input.wallet, paymentId, amount, input.type === 'rent' ? 'rent_on_time' : 'bill_on_time', input.source, streak, vestUntil],
+      `INSERT INTO pay_credits (id, wallet, payment_id, amount, reason, source, streak_at_award, status, vest_until, network)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9) ON CONFLICT (payment_id) DO NOTHING`,
+      [crypto.randomUUID(), input.wallet, paymentId, amount, input.type === 'rent' ? 'rent_on_time' : 'bill_on_time', input.source, streak, vestUntil, input.network ?? 'mainnet'],
     );
     return { creditAwarded: amount, onTime, duplicate: false };
   },
@@ -380,6 +391,7 @@ export const payLedgerStore = {
     wallet: string;
     amountMicros: string | bigint; // USDC (6-decimals) deposited
     txRef: string; // deposit tx hash
+    network: CreditNetwork; // from the deposit chain (mainnet vs testnet)
   }): Promise<{ creditAwarded: number; duplicate: boolean }> {
     const pool = getPayPool();
     if (!pool) throw new Error('Postgres not configured');
@@ -388,12 +400,12 @@ export const payLedgerStore = {
     const usd = Math.floor(Number(BigInt(input.amountMicros)) / 1_000_000) * DEPOSIT_MATCH_PER_USD;
     if (usd <= 0) return { creditAwarded: 0, duplicate: false };
 
-    // Month-to-date deposit-match credits already awarded (excludes voided/clawed-back).
+    // Month-to-date deposit-match credits already awarded for THIS network (excludes voided).
     const mtd = await pool.query(
       `SELECT COALESCE(SUM(amount),0) AS s FROM pay_credits
-        WHERE wallet = $1 AND reason = 'deposit_match' AND status <> 'void'
+        WHERE wallet = $1 AND reason = 'deposit_match' AND status <> 'void' AND network = $2
           AND created_at >= date_trunc('month', now())`,
-      [input.wallet],
+      [input.wallet, input.network],
     );
     const remaining = Math.max(0, DEPOSIT_MATCH_MONTHLY_CAP - num(mtd.rows[0]?.s));
     const award = Math.min(usd, remaining);
@@ -402,9 +414,9 @@ export const payLedgerStore = {
     const vestUntil = new Date();
     vestUntil.setDate(vestUntil.getDate() + VEST_DAYS);
     const ins = await pool.query(
-      `INSERT INTO pay_credits (id, wallet, payment_id, amount, reason, source, streak_at_award, status, vest_until)
-       VALUES ($1,$2,$3,$4,'deposit_match','in_app',0,'pending',$5) ON CONFLICT (payment_id) DO NOTHING RETURNING id`,
-      [crypto.randomUUID(), input.wallet, `deposit:${input.txRef}`, award, vestUntil],
+      `INSERT INTO pay_credits (id, wallet, payment_id, amount, reason, source, streak_at_award, status, vest_until, network)
+       VALUES ($1,$2,$3,$4,'deposit_match','in_app',0,'pending',$5,$6) ON CONFLICT (payment_id) DO NOTHING RETURNING id`,
+      [crypto.randomUUID(), input.wallet, `deposit:${input.txRef}`, award, vestUntil, input.network],
     );
     if (ins.rowCount === 0) return { creditAwarded: 0, duplicate: true };
     return { creditAwarded: award, duplicate: false };
@@ -415,7 +427,7 @@ export const payLedgerStore = {
    * most-recent PENDING deposit credits up to the redeemed USD amount (already-vested credits are
    * safe); a partial redeem splits the boundary row so the remainder keeps vesting.
    */
-  async clawbackDepositMatch(input: { wallet: string; amountMicros: string | bigint }): Promise<number> {
+  async clawbackDepositMatch(input: { wallet: string; amountMicros: string | bigint; network: CreditNetwork }): Promise<number> {
     const pool = getPayPool();
     if (!pool) return 0;
     await ensureTables();
@@ -430,9 +442,9 @@ export const payLedgerStore = {
 
     const rows = await pool.query(
       `SELECT id, amount FROM pay_credits
-        WHERE wallet = $1 AND reason = 'deposit_match' AND status = 'pending'
+        WHERE wallet = $1 AND reason = 'deposit_match' AND status = 'pending' AND network = $2
         ORDER BY created_at DESC`,
-      [input.wallet],
+      [input.wallet, input.network],
     );
 
     let voided = 0;
@@ -458,7 +470,7 @@ export const payLedgerStore = {
     return voided;
   },
 
-  async getSummary(wallet: string): Promise<PaySummary> {
+  async getSummary(wallet: string, network: CreditNetwork = 'mainnet'): Promise<PaySummary> {
     const pool = getPayPool();
     if (!pool) {
       return { dueThisMonth: 0, paid30: 0, totalEquity: 0, vestedEquity: 0, pendingEquity: 0, equityThisMonth: 0, streak: 0, sources: { match: 0, rent: 0, bills: 0 }, series: [] };
@@ -485,17 +497,17 @@ export const payLedgerStore = {
            COALESCE(SUM(amount) FILTER (WHERE reason = 'deposit_match' AND status <> 'void'),0) AS match_credits,
            COALESCE(SUM(amount) FILTER (WHERE reason = 'rent_on_time' AND status <> 'void'),0) AS rent_credits,
            COALESCE(SUM(amount) FILTER (WHERE reason = 'bill_on_time' AND status <> 'void'),0) AS bill_credits
-         FROM pay_credits WHERE wallet = $1`,
-        [wallet],
+         FROM pay_credits WHERE wallet = $1 AND network = $2`,
+        [wallet, network],
       ),
       pool.query(
         `SELECT to_char(date_trunc('month', m), 'Mon') AS label,
                 COALESCE(rent.s,0) AS rent, COALESCE(cred.s,0) AS equity
            FROM generate_series(date_trunc('month', now()) - interval '11 months', date_trunc('month', now()), interval '1 month') AS m
            LEFT JOIN LATERAL (SELECT SUM(amount) s FROM pay_payments p WHERE p.wallet = $1 AND p.type = 'rent' AND date_trunc('month', p.paid_at) = m) rent ON true
-           LEFT JOIN LATERAL (SELECT SUM(amount) s FROM pay_credits c WHERE c.wallet = $1 AND c.created_at <= m + interval '1 month' - interval '1 second' AND c.status <> 'void') cred ON true
+           LEFT JOIN LATERAL (SELECT SUM(amount) s FROM pay_credits c WHERE c.wallet = $1 AND c.network = $2 AND c.created_at <= m + interval '1 month' - interval '1 second' AND c.status <> 'void') cred ON true
            ORDER BY m`,
-        [wallet],
+        [wallet, network],
       ),
     ]);
 

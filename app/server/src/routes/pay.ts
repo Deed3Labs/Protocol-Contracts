@@ -14,6 +14,10 @@ const router = Router();
 const VALID_TYPES = new Set<BillerType>(['rent', 'utility', 'subscription', 'card', 'phone', 'other']);
 const wallet = (req: Request) => String(req.params.wallet || '').toLowerCase();
 
+/** Credit environment from the request origin: the live app earns mainnet credits, the demo testnet. */
+const networkFromOrigin = (req: Request): 'mainnet' | 'testnet' =>
+  String(req.headers.origin || req.headers.referer || '').includes('app.useclear.org') ? 'mainnet' : 'testnet';
+
 function ensureReady(res: Response): boolean {
   if (!payLedgerStore.isConfigured()) {
     res.status(503).json({ error: 'Ledger not configured' });
@@ -28,7 +32,7 @@ router.get('/:wallet/summary', async (req: Request, res: Response) => {
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
   if (!ensureReady(res)) return;
   try {
-    res.json(await payLedgerStore.getSummary(w));
+    res.json(await payLedgerStore.getSummary(w, networkFromOrigin(req)));
   } catch (error) {
     console.error('[pay/summary]', error);
     res.status(500).json({ error: 'Failed to load summary' });
@@ -165,6 +169,7 @@ router.post('/:wallet/payments', async (req: Request, res: Response) => {
       period: String(p.period).slice(0, 7),
       source: (p.source === 'detected' ? 'detected' : 'in_app') as EarnSource,
       txRef: p.txRef ? String(p.txRef) : null,
+      network: networkFromOrigin(req),
     });
     res.json(result);
   } catch (error) {
@@ -183,7 +188,7 @@ router.post('/:wallet/reconcile', async (req: Request, res: Response) => {
 
   const client = getPlaidClient();
   if (!client || !plaidTokenStore.isConfigured()) {
-    res.json(await payLedgerStore.getSummary(w)); // nothing to detect; return current state
+    res.json(await payLedgerStore.getSummary(w, networkFromOrigin(req))); // nothing to detect; return current state
     return;
   }
 
@@ -220,14 +225,15 @@ router.post('/:wallet/reconcile', async (req: Request, res: Response) => {
             period: `${ly}-${String(lm).padStart(2, '0')}`,
             source: 'detected' as EarnSource,
             paidAt: new Date(ly, lm - 1, ld),
+            network: networkFromOrigin(req),
           });
         }
       }
     }
-    res.json(await payLedgerStore.getSummary(w));
+    res.json(await payLedgerStore.getSummary(w, networkFromOrigin(req)));
   } catch (error) {
     console.error('[pay/reconcile]', error);
-    res.json(await payLedgerStore.getSummary(w)); // detection is best-effort
+    res.json(await payLedgerStore.getSummary(w, networkFromOrigin(req))); // detection is best-effort
   }
 });
 
@@ -301,6 +307,7 @@ router.post('/:wallet/pay', async (req: Request, res: Response) => {
         period: now.toISOString().slice(0, 7),
         source: 'in_app',
         txRef: result.providerReference ?? null,
+        network: networkFromOrigin(req),
       });
     }
     res.json({ success: true, providerReference: result.providerReference, status: result.status });

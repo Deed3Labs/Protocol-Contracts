@@ -39,7 +39,11 @@ export async function runPlaidLink(walletAddress: string): Promise<boolean> {
   if (!window.Plaid) throw new Error('Plaid Link is unavailable');
   return new Promise<boolean>((resolve, reject) => {
     let fired = false;
-    const handler = window.Plaid!.create({
+    let handler: { open: () => void; destroy?: () => void };
+    // Tear down the Plaid iframe/overlay; without this the modal sticks around until a page refresh.
+    // Deferred so it runs after Plaid finishes its own exit transition.
+    const cleanup = () => setTimeout(() => { try { handler?.destroy?.(); } catch { /* noop */ } }, 0);
+    handler = window.Plaid!.create({
       token: res.link_token,
       onSuccess: async (public_token: string) => {
         fired = true;
@@ -48,9 +52,12 @@ export async function runPlaidLink(walletAddress: string): Promise<boolean> {
           resolve(Boolean(exchanged?.success));
         } catch (e) {
           reject(e instanceof Error ? e : new Error('Failed to link bank'));
+        } finally {
+          cleanup();
         }
       },
       onExit: () => {
+        cleanup();
         if (!fired) resolve(false);
       },
     });
