@@ -46,7 +46,7 @@ async function runBatch(providerLike: unknown, owner: string, chainId: number, c
   if (!provider?.request) throw new Error('Wallet provider unavailable — reconnect your wallet.');
 
   const params: Record<string, unknown> = {
-    version: '1.0',
+    version: '2.0.0',
     from: owner,
     chainId: `0x${chainId.toString(16)}`,
     atomicRequired: false,
@@ -56,27 +56,33 @@ async function runBatch(providerLike: unknown, owner: string, chainId: number, c
   if (PROJECT_ID) params.capabilities = { paymasterService: { url: paymasterUrl(chainId) } };
 
   const response = await provider.request({ method: 'wallet_sendCalls', params: [params] });
+  console.log('[sendCalls] wallet_sendCalls response:', response);
   const batchId: string = typeof response === 'string' ? response : response?.batchId ?? response?.id;
-  if (!batchId) throw new Error('Wallet did not return a batch id.');
+  if (!batchId) throw new Error(`Wallet did not return a batch id (got: ${JSON.stringify(response)}).`);
 
+  let lastStatus: unknown;
   for (let i = 0; i < 45; i++) {
-    let status: { status?: number | string; receipts?: { transactionHash?: string }[] } | undefined;
+    let status: { status?: number | string; receipts?: { transactionHash?: string; status?: string | number }[] } | undefined;
     try {
       status = await provider.request({ method: 'wallet_getCallsStatus', params: [batchId] });
-    } catch {
-      /* not ready yet */
+      lastStatus = status;
+      console.log('[sendCalls] getCallsStatus:', JSON.stringify(status));
+    } catch (e) {
+      console.warn('[sendCalls] getCallsStatus not ready:', (e as Error)?.message);
     }
     const s = status?.status;
     if (s === 200 || s === 'CONFIRMED' || s === 'success') {
       const receipts = status?.receipts ?? [];
-      return receipts[receipts.length - 1]?.transactionHash ?? batchId;
+      const r = receipts[receipts.length - 1];
+      if (r && (r.status === '0x0' || r.status === 0)) throw new Error('Transaction reverted on-chain.');
+      return r?.transactionHash ?? batchId;
     }
     if (s === 400 || s === 500 || s === 'FAILED' || s === 'reverted') {
-      throw new Error('Transaction failed on-chain.');
+      throw new Error(`Transaction failed (status ${s}): ${JSON.stringify(status)}`);
     }
     await new Promise((r) => setTimeout(r, 2000));
   }
-  throw new Error("Transaction didn't confirm in time. Please try again.");
+  throw new Error(`Transaction didn't confirm in time. Last status: ${JSON.stringify(lastStatus)}`);
 }
 
 /** One-time sponsored ERC-20 approve (smart-account autopay allowance — they can't sign EIP-2612). */
