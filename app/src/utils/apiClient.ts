@@ -1313,6 +1313,20 @@ export async function refundSavingsIntent(
   return response.data;
 }
 
+export interface BridgeVirtualAccount {
+  available: boolean;
+  bankName?: string | null;
+  accountNumber?: string | null;
+  routingNumber?: string | null;
+  accountLast4?: string | null;
+}
+
+/** The user's Bridge virtual account (USDC funding via ACH account/routing). { available:false } if none. */
+export async function getBridgeVirtualAccount(email: string): Promise<BridgeVirtualAccount> {
+  const r = await apiRequest<BridgeVirtualAccount>(`/api/bridge/virtual-account?email=${encodeURIComponent(email)}`);
+  return r.error || !r.data ? { available: false } : r.data;
+}
+
 // --- Fully-gasless savings (Cash USDC ↔ Savings CLRUSD) + gasless Send lock ---
 
 export interface Eip712TypedData {

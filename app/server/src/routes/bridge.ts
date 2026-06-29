@@ -419,4 +419,73 @@ router.post('/onboarding-url', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/bridge/virtual-account?email=...  → the user's Bridge virtual account (USDC funding via an
+ * ACH account/routing number). Resolves the customer by email, then reads their virtual accounts.
+ * Best-effort: returns { available: false } when Bridge isn't configured / no customer / no VA yet, so
+ * the UI can fall back gracefully. (Field names read defensively against the Bridge v0 shape.)
+ */
+type BridgeVirtualAccount = {
+  id?: string;
+  status?: string;
+  source_deposit_instructions?: {
+    bank_name?: string;
+    bank_account_number?: string;
+    account_number?: string;
+    bank_routing_number?: string;
+    routing_number?: string;
+    currency?: string;
+  };
+};
+
+router.get('/virtual-account', async (req: Request, res: Response) => {
+  try {
+    const email = String(req.query.email ?? '').trim().toLowerCase();
+    if (!EMAIL_REGEX.test(email)) {
+      res.status(400).json({ error: 'A valid email is required' });
+      return;
+    }
+    const bridgeApiKey = (process.env.BRIDGE_API_KEY || '').trim();
+    if (!bridgeApiKey) {
+      res.json({ available: false, reason: 'not_configured' });
+      return;
+    }
+
+    const kyc = await bridgeApiRequest<BridgeListKycLinksResponse>(
+      bridgeApiKey,
+      `/kyc_links?email=${encodeURIComponent(email)}&limit=1`,
+      { method: 'GET' },
+    );
+    const customerId = kyc.ok ? kyc.data.data?.[0]?.customer_id : undefined;
+    if (!customerId) {
+      res.json({ available: false, reason: 'no_customer' });
+      return;
+    }
+
+    const vaResult = await bridgeApiRequest<{ data?: BridgeVirtualAccount[] }>(
+      bridgeApiKey,
+      `/customers/${encodeURIComponent(customerId)}/virtual_accounts`,
+      { method: 'GET' },
+    );
+    const va = vaResult.ok ? vaResult.data.data?.[0] : undefined;
+    const di = va?.source_deposit_instructions;
+    const accountNumber = di?.bank_account_number || di?.account_number || null;
+    const routingNumber = di?.bank_routing_number || di?.routing_number || null;
+    if (!accountNumber || !routingNumber) {
+      res.json({ available: false, reason: 'no_virtual_account' });
+      return;
+    }
+
+    res.json({
+      available: true,
+      bankName: di?.bank_name ?? null,
+      accountNumber,
+      routingNumber,
+      accountLast4: accountNumber.slice(-4),
+    });
+  } catch (error) {
+    res.status(200).json({ available: false, reason: error instanceof Error ? error.message : 'error' });
+  }
+});
+
 export default router;

@@ -7,6 +7,8 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { usePay, creditsFor, streakMultiplier, BILL_TYPES, type Bill, type BillType } from '@/context/PayContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { getBridgeVirtualAccount, type BridgeVirtualAccount } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -50,9 +52,16 @@ export default function PayModal({
   const { bills, getBill, addBiller, removeBiller, streak, recordBillPayment } = usePay();
   const { accounts } = useExternalAccounts();
   const bal = useClearBalances();
+  const { email } = useMemberProfile();
+  const [va, setVa] = useState<BridgeVirtualAccount | null>(null);
   const sources: Source[] = [
     // Cash = USDC balance, exposed as a Bridge virtual account (account/routing) for ACH-style pulls.
-    { id: 'balance', name: 'Cash · USDC', detail: `Virtual account · ${fmt(bal.cash)}`, icon: Wallet },
+    {
+      id: 'balance',
+      name: 'Cash · USDC',
+      detail: va?.available ? `Acct ••${va.accountLast4} · RTN ${va.routingNumber}` : `Virtual account · ${fmt(bal.cash)}`,
+      icon: Wallet,
+    },
     ...accounts.map((a) => ({ id: a.id, name: `${a.name} ••${a.mask}`, detail: `${a.type} · Plaid`, icon: Landmark })),
     { id: 'card', name: 'Card', detail: 'Coming soon', icon: CreditCard, disabled: true },
   ];
@@ -96,6 +105,20 @@ export default function PayModal({
     const t = setTimeout(() => setDone(true), 1700);
     return () => clearTimeout(t);
   }, [step]);
+
+  // Pull the user's Bridge virtual account (account/routing) to show on the Cash · USDC source.
+  useEffect(() => {
+    if (!open || !email) return;
+    let cancelled = false;
+    getBridgeVirtualAccount(email)
+      .then((r) => {
+        if (!cancelled) setVa(r);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [open, email]);
 
   const amount = Number(amountStr) || 0;
   const bill = billId ? getBill(billId) : undefined;
