@@ -1,4 +1,6 @@
 import { encodeFunctionData, parseUnits } from 'viem';
+import { sendCalls, waitForCallsStatus } from '@wagmi/core';
+import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings } from '@/utils/apiClient';
 
@@ -13,13 +15,16 @@ const paymasterUrl = (chainId: number) =>
   `https://rpc.zerodev.app/api/v3/${PROJECT_ID}/chain/${chainId}?selfFunded=true`;
 
 /*
- * Smart-account (AppKit email/social) money flows, executed through the RAW AppKit walletProvider via
- * EIP5792Utils — Reown's embedded smart account wraps the batch as ONE sponsored ERC-4337 UserOp,
- * deploys itself on the first one, and pays gas. We use the raw provider (not wagmi sendCalls/
- * writeContract) because those mishandled the embedded provider's CAIP chain id / never mined the op.
- * approve + action go in ONE atomic batch (bundled, single signature). EOAs use EIP-3009 instead.
+ * Smart-account (AppKit email/social) money flows, executed via wagmi's `sendCalls` (EIP-5792) — the
+ * EXACT path Reown's lab uses (WagmiSendCallsWithPaymasterServiceTest). Reown's embedded smart account
+ * wraps the batch as ONE sponsored ERC-4337 UserOp, deploys itself on the first one, and the ZeroDev
+ * self-funded paymaster (paymasterService capability) pays gas. approve + action go in ONE batch (one
+ * signature). EOAs use EIP-3009 instead.
  *
- * `provider` is the object from useAppKitProvider('eip155') — callers pass it in (hooks can't run here).
+ * NOTE: raw `wallet_sendCalls` against the embedded provider does NOT honor the paymasterService
+ * capability (we saw paymasterAndData: 0x → AA21). wagmi's sendCalls formats it correctly, so the
+ * wallet actually calls the paymaster. The sc* args still accept `provider` (now unused) so callers
+ * don't have to change.
  */
 
 const ERC20_ABI = [
@@ -34,61 +39,36 @@ const ESCROW_ABI = [
 ] as const;
 
 type Call = { to: string; data: string };
-interface Eip1193 { request: (args: { method: string; params?: unknown[] }) => Promise<any> }
 
 /**
- * Execute a sponsored batch via the embedded smart account's raw wallet_sendCalls. We use
- * `atomicRequired: false` because Reown's embedded wallet doesn't advertise ATOMIC batching — but it
- * still runs the calls IN ORDER in one sponsored UserOp (approve before action), which is all we need.
- * Polls wallet_getCallsStatus and returns the settled tx hash.
+ * Execute a sponsored batch via wagmi `sendCalls` (EIP-5792). The embedded smart account bundles the
+ * calls into ONE sponsored UserOp, deploys itself on first use, and the paymasterService capability
+ * (ZeroDev self-funded) covers gas. Waits for settlement and returns the tx hash.
  */
-async function runBatch(providerLike: unknown, owner: string, chainId: number, calls: Call[]): Promise<string> {
-  const provider = providerLike as Eip1193 | undefined;
-  if (!provider?.request) throw new Error('Wallet provider unavailable — reconnect your wallet.');
+async function runBatch(owner: string, chainId: number, calls: Call[]): Promise<string> {
+  const config = wagmiAdapter.wagmiConfig;
+  const { id } = await sendCalls(config, {
+    account: owner as `0x${string}`,
+    chainId: chainId as 8453,
+    calls: calls.map((c) => ({ to: c.to as `0x${string}`, data: c.data as `0x${string}` })),
+    ...(PROJECT_ID ? { capabilities: { paymasterService: { url: paymasterUrl(chainId) } } } : {}),
+  });
+  console.log('[sendCalls] sendCalls id:', id);
 
-  const params: Record<string, unknown> = {
-    version: '2.0.0',
-    from: owner,
-    chainId: `0x${chainId.toString(16)}`,
-    atomicRequired: false,
-    calls,
-  };
-  // The paymasterService capability is what makes Reown sponsor gas (the SA holds no ETH).
-  if (PROJECT_ID) params.capabilities = { paymasterService: { url: paymasterUrl(chainId) } };
-
-  const response = await provider.request({ method: 'wallet_sendCalls', params: [params] });
-  console.log('[sendCalls] wallet_sendCalls response:', response);
-  const batchId: string = typeof response === 'string' ? response : response?.batchId ?? response?.id;
-  if (!batchId) throw new Error(`Wallet did not return a batch id (got: ${JSON.stringify(response)}).`);
-
-  let lastStatus: unknown;
-  for (let i = 0; i < 45; i++) {
-    let status: { status?: number | string; receipts?: { transactionHash?: string; status?: string | number }[] } | undefined;
-    try {
-      status = await provider.request({ method: 'wallet_getCallsStatus', params: [batchId] });
-      lastStatus = status;
-      console.log('[sendCalls] getCallsStatus:', JSON.stringify(status));
-    } catch (e) {
-      console.warn('[sendCalls] getCallsStatus not ready:', (e as Error)?.message);
-    }
-    const s = status?.status;
-    if (s === 200 || s === 'CONFIRMED' || s === 'success') {
-      const receipts = status?.receipts ?? [];
-      const r = receipts[receipts.length - 1];
-      if (r && (r.status === '0x0' || r.status === 0)) throw new Error('Transaction reverted on-chain.');
-      return r?.transactionHash ?? batchId;
-    }
-    if (s === 400 || s === 500 || s === 'FAILED' || s === 'reverted') {
-      throw new Error(`Transaction failed (status ${s}): ${JSON.stringify(status)}`);
-    }
-    await new Promise((r) => setTimeout(r, 2000));
+  const res = await waitForCallsStatus(config, { id, timeout: 120_000 });
+  console.log('[sendCalls] final status:', res.status, JSON.stringify(res.receipts ?? []));
+  if (res.status !== 'success') {
+    throw new Error(`Transaction didn't confirm (status: ${res.status ?? 'unknown'}).`);
   }
-  throw new Error(`Transaction didn't confirm in time. Last status: ${JSON.stringify(lastStatus)}`);
+  const receipts = res.receipts ?? [];
+  const last = receipts[receipts.length - 1];
+  if (last && last.status === 'reverted') throw new Error('Transaction reverted on-chain.');
+  return (last?.transactionHash as string | undefined) ?? id;
 }
 
 /** One-time sponsored ERC-20 approve (smart-account autopay allowance — they can't sign EIP-2612). */
 export async function scApprove(args: { provider: unknown; owner: string; token: `0x${string}`; spender: `0x${string}`; amount: bigint; chainId: number }): Promise<string> {
-  return runBatch(args.provider, args.owner, args.chainId, [
+  return runBatch(args.owner, args.chainId, [
     { to: args.token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [args.spender, args.amount] }) },
   ]);
 }
@@ -99,7 +79,7 @@ export async function scDeposit(args: { provider: unknown; ownerWallet: string; 
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
   const amt = parseUnits(args.amount, 6);
   const receiver = args.ownerWallet as `0x${string}`;
-  const hash = await runBatch(args.provider, args.ownerWallet, args.chainId, [
+  const hash = await runBatch(args.ownerWallet, args.chainId, [
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, amt] }) },
     { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'deposit', args: [c.usdc, amt, receiver] }) },
   ]);
@@ -113,7 +93,7 @@ export async function scRedeem(args: { provider: unknown; ownerWallet: string; a
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
   const amt = parseUnits(args.amount, 6);
   const receiver = args.ownerWallet as `0x${string}`;
-  const hash = await runBatch(args.provider, args.ownerWallet, args.chainId, [
+  const hash = await runBatch(args.ownerWallet, args.chainId, [
     { to: c.clrusd, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, amt] }) },
     { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'redeem', args: [c.usdc, amt, receiver] }) },
   ]);
@@ -139,7 +119,7 @@ export async function scSendLock(args: {
   const fee = BigInt(args.sponsorFeeUsdcMicros);
   const total = BigInt(args.totalLockedUsdcMicros);
   const expiry = BigInt(Math.floor(new Date(args.expiresAt).getTime() / 1000));
-  return runBatch(args.provider, args.ownerWallet, args.chainId, [
+  return runBatch(args.ownerWallet, args.chainId, [
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.claimEscrow, total] }) },
     { to: c.claimEscrow, data: encodeFunctionData({ abi: ESCROW_ABI, functionName: 'createTransfer', args: [args.transferId, principal, fee, expiry, args.recipientHintHash] }) },
   ]);
