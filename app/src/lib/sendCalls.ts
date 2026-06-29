@@ -53,16 +53,30 @@ export async function canUseSendCalls(chainId: number): Promise<boolean> {
 
 /** Send a sponsored batch and return the settled tx hash. */
 async function runCalls(chainId: number, calls: Call[]): Promise<string> {
-  if (!PROJECT_ID) throw new Error('Sponsorship is not configured.');
-  const { id } = await sendCalls(wagmiAdapter.wagmiConfig, {
-    chainId,
-    calls,
-    capabilities: { paymasterService: { url: paymasterUrl(chainId) } },
-  });
-  const result = await waitForCallsStatus(wagmiAdapter.wagmiConfig, { id });
-  if (result.status !== 'success') throw new Error('The batched transaction did not complete.');
+  const config = wagmiAdapter.wagmiConfig;
+
+  // Only attach our (ZeroDev) paymaster when the wallet ADVERTISES external paymaster support.
+  // AppKit email/social smart accounts sponsor gas natively — handing them a foreign paymaster URL
+  // gets the batch accepted at approval but never sponsored/mined (it just hangs). When unsupported,
+  // omit it and let the wallet's own sponsorship cover gas.
+  let capabilities: { paymasterService: { url: string } } | undefined;
+  try {
+    const caps = await getCapabilities(config, { chainId });
+    if (caps?.paymasterService?.supported && PROJECT_ID) {
+      capabilities = { paymasterService: { url: paymasterUrl(chainId) } };
+    }
+  } catch {
+    /* wallet doesn't expose capabilities → rely on its native sponsorship */
+  }
+
+  const { id } = await sendCalls(config, { chainId, calls, ...(capabilities ? { capabilities } : {}) });
+  // Bounded wait so a stuck/unsponsored bundle surfaces an error instead of hanging forever.
+  const result = await waitForCallsStatus(config, { id, timeout: 90_000 });
+  if (result.status !== 'success') {
+    throw new Error(`Transaction didn't confirm (status: ${result.status ?? 'unknown'}). It may not have been sponsored.`);
+  }
   const hash = result.receipts?.[result.receipts.length - 1]?.transactionHash;
-  if (!hash) throw new Error('No transaction hash returned from the batch.');
+  if (!hash) throw new Error('Transaction confirmed but returned no hash.');
   return hash;
 }
 
