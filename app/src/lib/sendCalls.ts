@@ -1,5 +1,5 @@
 import { encodeFunctionData, parseUnits } from 'viem';
-import { getCapabilities, sendCalls, waitForCallsStatus } from '@wagmi/core';
+import { getAccount, getCapabilities, readContract, sendCalls, waitForCallsStatus } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts, isMainnetChain } from '@/lib/clearNetwork';
 import { recordGaslessSavings } from '@/utils/apiClient';
@@ -26,7 +26,9 @@ const paymasterUrl = (chainId: number) => {
 
 const ERC20_ABI = [
   { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
+  { name: 'allowance', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const;
+const MAX_UINT256 = (1n << 256n) - 1n;
 const VAULT_ABI = [
   { name: 'deposit', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'redeem', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'clrusdAmount', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ type: 'uint256' }] },
@@ -85,28 +87,50 @@ export async function scApprove(args: { token: `0x${string}`; spender: `0x${stri
   ]);
 }
 
-/** Cash (USDC) → Savings (CLRUSD): [approve, deposit] in one sponsored batch. */
+/**
+ * Ensure `owner` has granted `spender` at least `needed` of `token`. Smart-account `sendCalls` doesn't
+ * reliably apply an approve before a deposit in the SAME batch (the deposit reverts on 0 allowance and
+ * the whole op silently fails). So we approve MAX as its own sponsored op first (one-time per token),
+ * then the action runs as a single sponsored call. Subsequent actions skip the approve.
+ */
+async function ensureAllowance(chainId: number, token: `0x${string}`, spender: `0x${string}`, needed: bigint): Promise<void> {
+  const owner = getAccount(wagmiAdapter.wagmiConfig).address;
+  if (!owner) throw new Error('Wallet not connected.');
+  const current = (await readContract(wagmiAdapter.wagmiConfig, {
+    abi: ERC20_ABI,
+    address: token,
+    functionName: 'allowance',
+    args: [owner, spender],
+    chainId,
+  })) as bigint;
+  if (current >= needed) return;
+  await runCalls(chainId, [
+    { to: token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [spender, MAX_UINT256] }) },
+  ]);
+}
+
+/** Cash (USDC) → Savings (CLRUSD): one-time approve (sponsored), then a sponsored deposit. */
 export async function scDeposit(args: { ownerWallet: string; amount: string; chainId: number }): Promise<string> {
   const c = clearContracts(args.chainId);
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
   const amt = parseUnits(args.amount, 6);
   const receiver = args.ownerWallet as `0x${string}`;
+  await ensureAllowance(args.chainId, c.usdc, c.esaVault, amt);
   const txHash = await runCalls(args.chainId, [
-    { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, amt] }) },
     { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'deposit', args: [c.usdc, amt, receiver] }) },
   ]);
   await recordGaslessSavings({ action: 'deposit', amount: amt.toString(), txHash, chainId: args.chainId }).catch(() => {});
   return txHash;
 }
 
-/** Savings (CLRUSD) → Cash (USDC): [approve, redeem] in one sponsored batch. */
+/** Savings (CLRUSD) → Cash (USDC): one-time approve (sponsored), then a sponsored redeem. */
 export async function scRedeem(args: { ownerWallet: string; amount: string; chainId: number }): Promise<string> {
   const c = clearContracts(args.chainId);
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
   const amt = parseUnits(args.amount, 6);
   const receiver = args.ownerWallet as `0x${string}`;
+  await ensureAllowance(args.chainId, c.clrusd, c.esaVault, amt);
   const txHash = await runCalls(args.chainId, [
-    { to: c.clrusd, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, amt] }) },
     { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'redeem', args: [c.usdc, amt, receiver] }) },
   ]);
   await recordGaslessSavings({ action: 'redeem', amount: amt.toString(), txHash, chainId: args.chainId }).catch(() => {});
@@ -129,8 +153,8 @@ export async function scSendLock(args: {
   const fee = BigInt(args.sponsorFeeUsdcMicros);
   const total = BigInt(args.totalLockedUsdcMicros);
   const expiry = BigInt(Math.floor(new Date(args.expiresAt).getTime() / 1000));
+  await ensureAllowance(args.chainId, c.usdc, c.claimEscrow, total);
   return runCalls(args.chainId, [
-    { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.claimEscrow, total] }) },
     { to: c.claimEscrow, data: encodeFunctionData({ abi: ESCROW_ABI, functionName: 'createTransfer', args: [args.transferId, principal, fee, expiry, args.recipientHintHash] }) },
   ]);
 }
