@@ -14,7 +14,7 @@ const ESCROW_ABI = [
 const VAULT_ABI = [
   'function depositWithAuthorization(address depositor, address token, uint256 amount, address receiver, uint256 validAfter, uint256 validBefore, bytes32 authNonce, uint8 v, bytes32 r, bytes32 s) external returns (uint256 minted)',
   'function redeemWithAuthorization(address redeemer, address token, uint256 clrusdAmount, address receiver, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external returns (uint256 returnedAmount)',
-  'function executeMandateDeposit(address depositor, address token, uint256 amountPerRun, uint64 interval, uint32 maxRuns, uint256 startAt, uint256 expiry, uint256 nonce, uint8 v, bytes32 r, bytes32 s) external returns (uint256 minted)',
+  'function executeMandateDeposit(address depositor, address token, uint256 amountPerRun, uint64 interval, uint32 maxRuns, uint256 startAt, uint256 expiry, uint256 nonce, bytes signature) external returns (uint256 minted)',
 ] as const;
 
 const PERMIT_ABI = [
@@ -30,9 +30,7 @@ export interface DepositMandateArgs {
   startAt: bigint; // unix seconds
   expiry: bigint; // unix seconds
   nonce: bigint;
-  v: number;
-  r: string;
-  s: string;
+  signature: string; // ECDSA (EOA) or EIP-1271 (smart account) signature bytes
 }
 
 export interface PermitArgs {
@@ -404,9 +402,7 @@ class SavingsRelayerService {
       a.startAt,
       a.expiry,
       a.nonce,
-      a.v,
-      a.r,
-      a.s,
+      a.signature,
     ]);
     return this.submit(chainId, ethers.getAddress(vaultAddress), data);
   }

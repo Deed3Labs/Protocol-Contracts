@@ -66,6 +66,14 @@ async function runCalls(chainId: number, calls: Call[]): Promise<string> {
   return hash;
 }
 
+/** One-time sponsored ERC-20 approve (used by smart accounts to grant the vault an autopay allowance,
+ *  since they can't sign EIP-2612 permit). Gasless via the wallet's native AA + paymaster. */
+export async function scApprove(args: { token: `0x${string}`; spender: `0x${string}`; amount: bigint; chainId: number }): Promise<string> {
+  return runCalls(args.chainId, [
+    { to: args.token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [args.spender, args.amount] }) },
+  ]);
+}
+
 /** Cash (USDC) → Savings (CLRUSD): [approve, deposit] in one sponsored batch. */
 export async function scDeposit(args: { ownerWallet: string; amount: string; chainId: number }): Promise<string> {
   const c = clearContracts(args.chainId);

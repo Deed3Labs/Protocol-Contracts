@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
+import { useAppKitAccount } from '@reown/appkit/react';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import { ArrowDownUp, ArrowLeft, Check, ChevronDown, Landmark, Loader2, PiggyBank, ShieldCheck, TriangleAlert, Wallet, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -41,6 +42,8 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
   const { verified, openKyc } = useKyc();
   const bal = useClearBalances();
   const { address } = useAccount();
+  const { embeddedWalletInfo } = useAppKitAccount();
+  const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const accounts: Acct[] = [
     { id: 'cash', name: 'Cash', detail: 'USDC', scope: 'internal', balance: bal.cash, icon: Wallet },
@@ -90,17 +93,18 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         const isDeposit = fromId === 'cash' && toId === 'savings';
         const isRedeem = fromId === 'savings' && toId === 'cash';
         if (!isDeposit && !isRedeem) throw new Error('Unsupported transfer.');
-        // True AA path (EIP-5792 wallet_sendCalls: batched approve+action, paymaster-sponsored, one
-        // signature) when the wallet supports it; otherwise fall back to the EIP-3009 relayer (also
-        // gasless). Works for both EOA (MetaMask) and embedded smart wallets, same address.
+        // Smart accounts (AppKit email/social) MUST use EIP-5792 — the EIP-3009 relayer can't validate
+        // their EIP-1271 signature. EOAs use EIP-3009 (gasless), or 5792 if their wallet advertises it.
         const scRun = isDeposit ? scDeposit : scRedeem;
         const relayerRun = isDeposit ? gaslessDeposit : gaslessRedeem;
         let hash: string;
-        if (isAaEnabled(chainId) && (await canUseSendCalls(chainId))) {
+        const useSc = isAaEnabled(chainId) && (isSmartAccount || (await canUseSendCalls(chainId)));
+        if (useSc) {
           try {
             hash = await scRun({ ownerWallet: address, amount: amountStr, chainId });
           } catch (err) {
-            if (!isAaUnsupportedError(err)) throw err;
+            // Smart accounts have no EIP-3009 fallback (1271 can't sign it) — surface the error.
+            if (isSmartAccount || !isAaUnsupportedError(err)) throw err;
             hash = await relayerRun({ ownerWallet: address, amount: amountStr, chainId });
           }
         } else {

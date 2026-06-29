@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
+import { useAppKitAccount } from '@reown/appkit/react';
 import { Check, Loader2, Repeat, Sparkles, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
@@ -24,6 +25,8 @@ const CADENCES: { id: AutopayCadence; label: string }[] = [
 
 export default function AutoSaveModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { address } = useAccount();
+  const { embeddedWalletInfo } = useAppKitAccount();
+  const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const bal = useClearBalances();
   const chainId = ACTIVE_CHAIN_ID;
   const available = !!clearContracts(chainId); // vault (with the autopay mandate) deployed on this chain
@@ -68,7 +71,7 @@ export default function AutoSaveModal({ open, onOpenChange }: { open: boolean; o
     setStep('working');
     setError(null);
     try {
-      await installAutopaySession({ chainId, ownerWallet: address, amountUsdc: amount, cadence, runs });
+      await installAutopaySession({ chainId, ownerWallet: address, amountUsdc: amount, cadence, runs, isSmartAccount });
       await loadRules();
       setStep('done');
     } catch (e) {

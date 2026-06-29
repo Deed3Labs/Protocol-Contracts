@@ -67,7 +67,7 @@ router.post('/:wallet', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'cadence must be weekly or monthly' });
     return;
   }
-  if (!mandate || mandate.depositor?.toLowerCase() !== w || !mandate.token || !mandate.v || !mandate.r || !mandate.s) {
+  if (!mandate || mandate.depositor?.toLowerCase() !== w || !mandate.token || !mandate.signature) {
     res.status(400).json({ error: 'A valid signed mandate is required' });
     return;
   }

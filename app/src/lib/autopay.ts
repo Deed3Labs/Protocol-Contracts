@@ -2,6 +2,7 @@ import { parseUnits } from 'viem';
 import { readContract, signTypedData } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
+import { scApprove } from '@/lib/sendCalls';
 import { createAutopayRule } from '@/utils/apiClient';
 
 /*
@@ -41,6 +42,9 @@ export async function installAutopaySession(args: {
   amountUsdc: number;
   cadence: AutopayCadence;
   runs: number;
+  /** True for AppKit email/social smart accounts — they grant the allowance with a sponsored 5792
+   *  approve (can't sign EIP-2612 permit) and sign the mandate via EIP-1271. */
+  isSmartAccount: boolean;
 }): Promise<void> {
   const config = wagmiAdapter.wagmiConfig;
   const c = clearContracts(args.chainId);
@@ -85,15 +89,34 @@ export async function installAutopaySession(args: {
       nonce,
     },
   });
-  const m = splitSig(mandateSig);
+  // The vault verifies via SignatureChecker (ECDSA or EIP-1271), so we pass the raw signature bytes.
+  const mandate = {
+    depositor: owner,
+    token: usdc,
+    amountPerRun: amountPerRun.toString(),
+    interval,
+    maxRuns: runs,
+    startAt,
+    expiry,
+    nonce: nonce.toString(),
+    signature: mandateSig,
+  };
+  const allowanceValue = amountPerRun * BigInt(runs);
 
-  // 2) EIP-2612 USDC permit (one standing allowance covering all runs).
+  // 2) Grant the vault a standing USDC allowance covering all runs.
+  if (args.isSmartAccount) {
+    // Smart accounts can't sign EIP-2612 (ECDSA) — approve once via a sponsored 5792 op (gasless).
+    await scApprove({ token: usdc, spender: vault, amount: allowanceValue, chainId: args.chainId });
+    await createAutopayRule(args.ownerWallet, { chainId: args.chainId, amountUsdc: args.amountUsdc, cadence: args.cadence, runs, mandate });
+    return;
+  }
+
+  // EOA: gasless EIP-2612 permit; the relayer submits it.
   const [tokenName, tokenVersion, permitNonce] = await Promise.all([
     readContract(config, { abi: ERC20_PERMIT_ABI, address: usdc, functionName: 'name', chainId: args.chainId }).catch(() => 'USD Coin'),
     readContract(config, { abi: ERC20_PERMIT_ABI, address: usdc, functionName: 'version', chainId: args.chainId }).catch(() => '2'),
     readContract(config, { abi: ERC20_PERMIT_ABI, address: usdc, functionName: 'nonces', args: [owner], chainId: args.chainId }) as Promise<bigint>,
   ]);
-  const permitValue = amountPerRun * BigInt(runs);
   const permitSig = await signTypedData(config, {
     account: owner,
     domain: { name: tokenName as string, version: tokenVersion as string, chainId: args.chainId, verifyingContract: usdc },
@@ -107,7 +130,7 @@ export async function installAutopaySession(args: {
       ],
     },
     primaryType: 'Permit',
-    message: { owner, spender: vault, value: permitValue, nonce: permitNonce, deadline: BigInt(expiry) },
+    message: { owner, spender: vault, value: allowanceValue, nonce: permitNonce, deadline: BigInt(expiry) },
   });
   const p = splitSig(permitSig);
 
@@ -116,19 +139,7 @@ export async function installAutopaySession(args: {
     amountUsdc: args.amountUsdc,
     cadence: args.cadence,
     runs,
-    mandate: {
-      depositor: owner,
-      token: usdc,
-      amountPerRun: amountPerRun.toString(),
-      interval,
-      maxRuns: runs,
-      startAt,
-      expiry,
-      nonce: nonce.toString(),
-      v: m.v,
-      r: m.r,
-      s: m.s,
-    },
-    permit: { value: permitValue.toString(), deadline: expiry, v: p.v, r: p.r, s: p.s },
+    mandate,
+    permit: { value: allowanceValue.toString(), deadline: expiry, v: p.v, r: p.r, s: p.s },
   });
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAccount } from 'wagmi';
+import { useAppKitAccount } from '@reown/appkit/react';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import {
   ArrowLeft, Check, ChevronDown, Copy, CreditCard, Landmark, Loader2, Mail, Search,
@@ -39,6 +40,8 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
   const { contacts, getContact, openManager } = useContacts();
   const { accounts } = useExternalAccounts();
   const { address } = useAccount();
+  const { embeddedWalletInfo } = useAppKitAccount();
+  const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const bal = useClearBalances();
   const BALANCE = bal.cash;
@@ -107,7 +110,8 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
         };
 
         let claim: string | null = null;
-        if (isAaEnabled(chainId) && (await canUseSendCalls(chainId))) {
+        const useSc = isAaEnabled(chainId) && (isSmartAccount || (await canUseSendCalls(chainId)));
+        if (useSc) {
           try {
             // AA: lock USDC in the escrow in one sponsored batch (approve + createTransfer), then the
             // server verifies the on-chain event and issues the claim link.
@@ -123,8 +127,8 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
             const confirmed = await confirmSendTransferLock(t.id, { transferId: t.transferId, escrowTxHash: txHash, aa: true });
             claim = confirmed?.claimUrl ?? null;
           } catch (err) {
-            // Non-EOA wallet (smart account can't do 7702) or pre-submission AA failure → relayer.
-            if (!isAaUnsupportedError(err)) throw err;
+            // Smart accounts have no EIP-3009 fallback (1271 can't sign it) — surface the error.
+            if (isSmartAccount || !isAaUnsupportedError(err)) throw err;
             claim = await relayerLock();
           }
         } else {

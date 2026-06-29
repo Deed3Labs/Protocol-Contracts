@@ -10,6 +10,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/IERC20MetadataUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/cryptography/ECDSAUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/cryptography/SignatureCheckerUpgradeable.sol";
 import "../core/interfaces/IESADepositVault.sol";
 
 interface IClearUSDMintBurn {
@@ -190,13 +191,12 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         uint256 startAt,
         uint256 expiry,
         uint256 nonce,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
+        bytes calldata signature
     ) external whenNotPaused onlyRole(OPERATOR_ROLE) returns (uint256 minted) {
         bytes32 digest = _mandateDigest(depositor, token, amountPerRun, interval, maxRuns, startAt, expiry, nonce);
-        address signer = digest.recover(v, r, s);
-        if (signer == address(0) || signer != depositor) revert ESADepositVaultMandateInvalid();
+        // Accepts an ECDSA signature (EOA) OR an EIP-1271 signature (smart-contract wallet, e.g. AppKit
+        // email/social), so autopay works for both account types.
+        if (!SignatureCheckerUpgradeable.isValidSignatureNow(depositor, digest, signature)) revert ESADepositVaultMandateInvalid();
         if (block.timestamp > expiry || block.timestamp < startAt) revert ESADepositVaultMandateInvalid();
 
         DepositMandateState storage st = depositMandates[digest];

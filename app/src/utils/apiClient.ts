@@ -2121,9 +2121,7 @@ export interface AutopayMandate {
   startAt: number;
   expiry: number;
   nonce: string;
-  v: number;
-  r: string;
-  s: string;
+  signature: string;
 }
 
 export async function createAutopayRule(

@@ -20,9 +20,7 @@ export interface DepositMandate {
   startAt: number; // unix seconds
   expiry: number; // unix seconds
   nonce: string; // uint256
-  v: number;
-  r: string;
-  s: string;
+  signature: string; // ECDSA (EOA) or EIP-1271 (smart account) signature bytes
 }
 
 export function isAutopayExecutorConfigured(): boolean {
@@ -33,7 +31,7 @@ export function isAutopayExecutorConfigured(): boolean {
 
 function parseMandate(raw: string): DepositMandate {
   const m = JSON.parse(raw) as DepositMandate;
-  if (!m.depositor || !m.token || !m.amountPerRun || !m.v || !m.r || !m.s) {
+  if (!m.depositor || !m.token || !m.amountPerRun || !m.signature) {
     throw new Error('Autopay mandate is malformed.');
   }
   return m;
@@ -60,9 +58,7 @@ export async function executeAutopayRule(
       startAt: BigInt(m.startAt),
       expiry: BigInt(m.expiry),
       nonce: BigInt(m.nonce),
-      v: m.v,
-      r: m.r,
-      s: m.s,
+      signature: m.signature,
     });
 
     await autopayStore.recordSuccess(rule, txHash);
