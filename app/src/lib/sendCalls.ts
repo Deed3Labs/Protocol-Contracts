@@ -1,15 +1,13 @@
 import { encodeFunctionData, parseUnits } from 'viem';
-import { clearContracts, isMainnetChain } from '@/lib/clearNetwork';
+import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings } from '@/utils/apiClient';
 
 // Reown sponsors the UserOp ONLY when the wallet_sendCalls request carries a paymasterService
-// capability — without it the (0-ETH) smart account is asked to pay gas ("insufficient balance").
-const PROJECT_ID = (import.meta.env.VITE_ZERODEV_PROJECT_ID as string | undefined)?.trim();
-const SELF_FUNDED = ((import.meta.env.VITE_ZERODEV_SELF_FUNDED as string | undefined) ?? 'true') !== 'false';
-const paymasterUrl = (chainId: number) => {
-  const base = `https://rpc.zerodev.app/api/v3/${PROJECT_ID}/chain/${chainId}`;
-  return SELF_FUNDED && isMainnetChain(chainId) ? `${base}?selfFunded=true` : base; // testnet → managed (free)
-};
+// capability — and it must point at REOWN'S OWN paymaster (a foreign one, e.g. ZeroDev, produces an
+// invalid paymaster signature in the embedded-wallet flow). URL per Reown's lab example:
+//   https://paymaster-api.reown.com/<chainId>/rpc?projectId=<appkit projectId>
+const APPKIT_PROJECT_ID = (import.meta.env.VITE_APPKIT_PROJECT_ID as string | undefined)?.trim();
+const paymasterUrl = (chainId: number) => `https://paymaster-api.reown.com/${chainId}/rpc?projectId=${APPKIT_PROJECT_ID}`;
 
 /*
  * Smart-account (AppKit email/social) money flows, executed through the RAW AppKit walletProvider via
@@ -53,7 +51,7 @@ async function runBatch(providerLike: unknown, owner: string, chainId: number, c
     calls,
   };
   // The paymasterService capability is what makes Reown sponsor gas (the SA holds no ETH).
-  if (PROJECT_ID) params.capabilities = { paymasterService: { url: paymasterUrl(chainId) } };
+  if (APPKIT_PROJECT_ID) params.capabilities = { paymasterService: { url: paymasterUrl(chainId) } };
 
   const response = await provider.request({ method: 'wallet_sendCalls', params: [params] });
   console.log('[sendCalls] wallet_sendCalls response:', response);
