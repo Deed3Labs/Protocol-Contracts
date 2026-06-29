@@ -65,6 +65,17 @@ class SavingsGaslessService {
     };
   }
 
+  /** USDC the vault currently holds — a redeem can only return up to this (else it reverts on-chain). */
+  async vaultUsdcBalance(config: GaslessConfig): Promise<bigint> {
+    const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+    const usdc = new ethers.Contract(
+      config.usdcAddress,
+      ['function balanceOf(address) view returns (uint256)'],
+      provider,
+    );
+    return (await usdc.balanceOf(config.vaultAddress)) as bigint;
+  }
+
   private ttlSeconds(): number {
     const raw = process.env.SAVINGS_GASLESS_TTL_SECONDS;
     const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;

@@ -284,6 +284,18 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
     } else {
       const clrusdAmount = BigInt(String(submit.clrusdAmount));
       if (clrusdAmount <= 0n) throw new Error('clrusdAmount must be greater than zero');
+
+      // Pre-check liquidity so the user gets a clear message instead of a relayer gas-estimation
+      // failure (redeem returns USDC 1:1, both 6-decimals, so it needs >= clrusdAmount in the vault).
+      const vaultUsdc = await savingsGaslessService.vaultUsdcBalance(config);
+      if (vaultUsdc < clrusdAmount) {
+        res.status(409).json({
+          error: 'Insufficient vault liquidity',
+          message: "The savings vault doesn't have enough USDC to redeem that amount right now. Try a smaller amount.",
+        });
+        return;
+      }
+
       txHash = await savingsRelayerService.redeemWithAuthorization(config.chainId, config.vaultAddress, {
         redeemer: ethers.getAddress(owner),
         token: config.usdcAddress,
