@@ -45,6 +45,12 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 private constant REDEEM_TYPEHASH =
         keccak256("Redeem(address redeemer,address token,uint256 clrusdAmount,address receiver,uint256 nonce,uint256 deadline)");
+    /// @dev Autopay: a depositor signs ONE mandate authorizing recurring deposits of a fixed amount on
+    ///      a fixed cadence; an OPERATOR relayer executes each due run gaslessly. USDC is pulled via a
+    ///      standing allowance the user grants once with EIP-2612 `permit` (also gasless).
+    bytes32 private constant DEPOSIT_MANDATE_TYPEHASH = keccak256(
+        "DepositMandate(address depositor,address token,uint256 amountPerRun,uint64 interval,uint32 maxRuns,uint256 startAt,uint256 expiry,uint256 nonce)"
+    );
 
     address public override clrusd;
     uint8 private clrusdDecimals;
@@ -53,11 +59,24 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @notice Per-redeemer nonce for gasless redeem-intent replay protection.
     mapping(address => uint256) public redeemNonces;
 
+    /// @notice Execution state for an autopay deposit mandate, keyed by its EIP-712 digest.
+    struct DepositMandateState {
+        uint32 runsDone;
+        uint64 lastRunAt;
+        bool cancelled;
+    }
+    mapping(bytes32 => DepositMandateState) public depositMandates;
+
     error ESADepositVaultInvalidAddress();
     error ESADepositVaultInvalidAmount();
     error ESADepositVaultTokenNotAccepted();
     error ESADepositVaultNonExactAmount();
     error ESADepositVaultInsufficientLiquidity();
+    error ESADepositVaultMandateInvalid();
+
+    /// @notice Emitted on each executed autopay run.
+    event MandateDeposit(bytes32 indexed mandate, address indexed depositor, uint32 runIndex, uint256 amount, uint256 minted);
+    event MandateCancelled(bytes32 indexed mandate);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -160,6 +179,77 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         emit Redeemed(redeemer, receiver, token, clrusdAmount, returnedAmount);
     }
 
+    // ── Autopay (recurring deposit mandate; depositor signed once, OPERATOR relayer executes each run) ──
+    /// @dev USDC is pulled via the depositor's standing allowance (granted once via EIP-2612 permit).
+    function executeMandateDeposit(
+        address depositor,
+        address token,
+        uint256 amountPerRun,
+        uint64 interval,
+        uint32 maxRuns,
+        uint256 startAt,
+        uint256 expiry,
+        uint256 nonce,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external whenNotPaused onlyRole(OPERATOR_ROLE) returns (uint256 minted) {
+        bytes32 digest = _mandateDigest(depositor, token, amountPerRun, interval, maxRuns, startAt, expiry, nonce);
+        address signer = digest.recover(v, r, s);
+        if (signer == address(0) || signer != depositor) revert ESADepositVaultMandateInvalid();
+        if (block.timestamp > expiry || block.timestamp < startAt) revert ESADepositVaultMandateInvalid();
+
+        DepositMandateState storage st = depositMandates[digest];
+        if (st.cancelled || st.runsDone >= maxRuns) revert ESADepositVaultMandateInvalid();
+        // Each run must respect the cadence: run i is allowed at/after startAt + interval*i.
+        if (block.timestamp < startAt + uint256(interval) * st.runsDone) revert ESADepositVaultMandateInvalid();
+
+        st.runsDone += 1;
+        st.lastRunAt = uint64(block.timestamp);
+
+        minted = _validateDeposit(token, amountPerRun, depositor);
+        IERC20Upgradeable(token).safeTransferFrom(depositor, address(this), amountPerRun);
+        IClearUSDMintBurn(clrusd).mint(depositor, minted);
+        emit Deposited(depositor, depositor, token, amountPerRun, minted);
+        emit MandateDeposit(digest, depositor, st.runsDone, amountPerRun, minted);
+    }
+
+    /// @notice Stop a mandate. OPERATOR-gated (the relayer cancels on the user's authenticated request);
+    ///         the user can also fully revoke by removing the USDC allowance.
+    function cancelMandate(bytes32 digest) external onlyRole(OPERATOR_ROLE) {
+        depositMandates[digest].cancelled = true;
+        emit MandateCancelled(digest);
+    }
+
+    /// @notice EIP-712 digest for a deposit mandate (so off-chain signers/relayers can key state).
+    function hashDepositMandate(
+        address depositor,
+        address token,
+        uint256 amountPerRun,
+        uint64 interval,
+        uint32 maxRuns,
+        uint256 startAt,
+        uint256 expiry,
+        uint256 nonce
+    ) external view returns (bytes32) {
+        return _mandateDigest(depositor, token, amountPerRun, interval, maxRuns, startAt, expiry, nonce);
+    }
+
+    function _mandateDigest(
+        address depositor,
+        address token,
+        uint256 amountPerRun,
+        uint64 interval,
+        uint32 maxRuns,
+        uint256 startAt,
+        uint256 expiry,
+        uint256 nonce
+    ) internal view returns (bytes32) {
+        return _hashTypedDataV4(
+            keccak256(abi.encode(DEPOSIT_MANDATE_TYPEHASH, depositor, token, amountPerRun, interval, maxRuns, startAt, expiry, nonce))
+        );
+    }
+
     function previewDeposit(address token, uint256 amount) external view override returns (uint256 minted) {
         return _convertToClrUsd(token, amount);
     }
@@ -200,6 +290,6 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         return clrusdAmount / (10 ** (clrusdDecimals - tokenDecimals));
     }
 
-    /// @dev Reserved storage for future upgrades.
-    uint256[44] private __gap;
+    /// @dev Reserved storage for future upgrades. Reduced by 1 (depositMandates mapping added).
+    uint256[43] private __gap;
 }
