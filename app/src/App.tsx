@@ -6,7 +6,7 @@ import Footer from "@/components/Footer";
 import Home from "@/pages/legacy/Home"; // Keeping for reference or fallback
 import BrokerageHome from "@/pages/app/BrokerageHome";
 import BorrowHome from "@/pages/app/BorrowHome";
-import SavingsHome from "@/pages/app/SavingsHome";
+import SavingsHome from "@/pages/legacy/SavingsHome"; // legacy — superseded by the TransferModal gasless savings flow
 import UnifiedWealthHome from "@/pages/app/UnifiedWealthHome";
 import MarketsHome from "@/pages/app/MarketsHome";
 import TransactionsHome from "@/pages/app/TransactionsHome";
