@@ -5,8 +5,8 @@ import { payLedgerStore } from './payLedgerStore.js';
  * Biller payout via Bridge (Phase 1: USDC funding source). Flow:
  *   1. Resolve the user's Bridge customer (by email).
  *   2. Ensure the biller has a Bridge external account (created from its account/routing, cached).
- *   3. Create a Bridge transfer: source = the user's USDC, destination = the biller's bank (ACH).
- *      Bridge returns deposit instructions (where to send the USDC); the gasless relayer funds it.
+ *   3. Create a Bridge transfer: source = the user's USDC wallet (from_address), destination = the
+ *      biller's bank (ACH). Bridge pulls the USDC from the user's wallet — no separate funding step.
  *
  * UNVERIFIED against live Bridge — request shapes follow Bridge's v0 docs and must be confirmed on a
  * sandbox before real money. The bank (Plaid) funding leg is a separate phase (2-hop via treasury).
@@ -89,13 +89,11 @@ async function ensureExternalAccount(
 export interface BillerPayoutResult {
   success: boolean;
   providerReference?: string;
-  /** Where the user's USDC must be sent for Bridge to offramp to the biller (gasless relayer funds this). */
-  sourceDepositInstructions?: unknown;
   status?: string;
   reason?: string;
 }
 
-/** Initiate a USDC→biller ACH payout via Bridge. Returns deposit instructions to fund the transfer. */
+/** Pay a biller via Bridge: USDC pulled from the user's wallet → ACH to the biller's bank. */
 export async function payBillerViaUsdc(input: {
   wallet: string;
   email: string;
@@ -112,13 +110,14 @@ export async function payBillerViaUsdc(input: {
   if ('error' in ext) return { success: false, reason: ext.error };
 
   const amount = input.amountUsd.toFixed(2);
-  const transfer = await bridge<{ id?: string; state?: string; source_deposit_instructions?: unknown }>('/transfers', {
+  const transfer = await bridge<{ id?: string; state?: string }>('/transfers', {
     method: 'POST',
     headers: { 'Idempotency-Key': randomUUID() },
     body: JSON.stringify({
       amount,
       on_behalf_of: customerId,
-      source: { payment_rail: BRIDGE_USDC_CHAIN, currency: 'usdc' },
+      // Source = the user's USDC wallet; Bridge pulls from it (their virtual account is USDC-backed).
+      source: { payment_rail: BRIDGE_USDC_CHAIN, currency: 'usdc', from_address: input.wallet },
       destination: { payment_rail: 'ach', currency: 'usd', external_account_id: ext.externalAccountId },
     }),
   });
@@ -126,10 +125,5 @@ export async function payBillerViaUsdc(input: {
     return { success: false, reason: transfer.message || 'Bridge could not create the payout transfer.' };
   }
 
-  return {
-    success: true,
-    providerReference: transfer.data.id,
-    status: transfer.data.state,
-    sourceDepositInstructions: transfer.data.source_deposit_instructions,
-  };
+  return { success: true, providerReference: transfer.data.id, status: transfer.data.state };
 }

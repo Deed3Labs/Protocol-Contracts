@@ -286,7 +286,8 @@ router.post('/:wallet/pay', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Payout failed', message: result.reason });
       return;
     }
-    // Record the payment (accrues equity credits) once the payout is initiated.
+    // Bridge pulls the USDC on transfer creation, so record the payment now (equity credits use the
+    // 30-day vesting window as the settlement buffer).
     const biller = (await payLedgerStore.listBillers(w)).find((x) => x.id === b.billerId);
     if (biller) {
       const now = new Date();
@@ -302,12 +303,7 @@ router.post('/:wallet/pay', async (req: Request, res: Response) => {
         txRef: result.providerReference ?? null,
       });
     }
-    res.json({
-      success: true,
-      providerReference: result.providerReference,
-      status: result.status,
-      sourceDepositInstructions: result.sourceDepositInstructions,
-    });
+    res.json({ success: true, providerReference: result.providerReference, status: result.status });
   } catch (error) {
     console.error('[pay/pay]', error);
     res.status(500).json({ error: 'Failed to execute payout' });
