@@ -30,7 +30,7 @@ interface BridgeResult<T> {
   message?: string;
 }
 
-async function bridge<T>(path: string, init: RequestInit = {}): Promise<BridgeResult<T>> {
+export async function bridge<T>(path: string, init: RequestInit = {}): Promise<BridgeResult<T>> {
   const key = bridgeApiKey();
   if (!key) return { ok: false, status: 503, message: 'Bridge is not configured (BRIDGE_API_KEY).' };
   try {
@@ -52,7 +52,7 @@ async function bridge<T>(path: string, init: RequestInit = {}): Promise<BridgeRe
   }
 }
 
-async function resolveCustomerId(email: string): Promise<string | null> {
+export async function resolveCustomerId(email: string): Promise<string | null> {
   const r = await bridge<{ data?: { customer_id?: string }[] }>(
     `/kyc_links?email=${encodeURIComponent(email)}&limit=1`,
   );

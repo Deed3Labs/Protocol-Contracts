@@ -24,6 +24,7 @@ import memberWalletLinksPublicRouter from './routes/memberWalletLinksPublic.js';
 import avatarRouter from './routes/avatar.js';
 import portfolioRouter from './routes/portfolio.js';
 import payRouter from './routes/pay.js';
+import withdrawRouter from './routes/withdraw.js';
 import contactsRouter from './routes/contacts.js';
 import onramperRouter from './routes/onramper.js';
 import onramperWebhookRouter from './routes/onramperWebhook.js';
@@ -188,6 +189,7 @@ async function startServer() {
     app.use('/api/savings', requireAuth, savingsRouter);
     app.use('/api/portfolio', requireAuth, portfolioRouter);
     app.use('/api/pay', requireAuth, payRouter);
+    app.use('/api/withdraw', requireAuth, withdrawRouter);
     app.use('/api/contacts', requireAuth, contactsRouter);
     app.use('/api/onramper', requireAuth, onramperRouter);
 

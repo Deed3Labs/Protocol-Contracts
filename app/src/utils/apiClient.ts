@@ -2089,6 +2089,19 @@ export async function payBiller(
   return r.data;
 }
 
+/** Withdraw (cash-out): USDC on Base → a Plaid-linked bank via Bridge off-ramp. */
+export async function withdrawToBank(
+  wallet: string,
+  p: { amount: number; plaidAccountId: string; email?: string },
+): Promise<{ success: boolean; providerReference?: string; status?: string; message?: string }> {
+  const r = await apiRequest<{ success: boolean; providerReference?: string; status?: string }>(
+    `/api/withdraw/${wallet.toLowerCase()}`,
+    { method: 'POST', body: JSON.stringify(p), timeout: 120000 },
+  );
+  if (r.error || !r.data) return { success: false, message: r.error || 'Withdrawal failed.' };
+  return r.data;
+}
+
 export async function deletePayBiller(wallet: string, id: string): Promise<boolean> {
   const r = await apiRequest<{ ok: boolean }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}`, { method: 'DELETE' });
   return !r.error;

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, ChevronDown, Landmark, Loader2, ShieldCheck, Sparkles, Wallet, Zap, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Landmark, Loader2, ShieldCheck, Sparkles, TriangleAlert, Wallet, Zap, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useKyc } from '@/context/KycContext';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { useAccount } from 'wagmi';
+import { withdrawToBank } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -66,10 +69,13 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const [walletOpen, setWalletOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { wallets, primaryId, openManager } = useLinkedWallets();
   const { accounts, openManager: openAccounts } = useExternalAccounts();
   const banks = accounts.map((a) => ({ id: a.id, label: `${a.name} ••${a.mask}` }));
   const { verified, openKyc } = useKyc();
+  const { email } = useMemberProfile();
+  const { address } = useAccount();
   const proceed = () => {
     if (BANK_METHODS.has(methodId) && !verified) openKyc(() => setStep('status'));
     else setStep('status');
@@ -81,18 +87,36 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
     setAmountStr('');
     setMethodId('bank');
     setWalletId(primaryId);
-    setBankId('b1');
+    setBankId(accounts[0]?.id ?? '');
     setProviderId(null);
     setAdvanced(false);
     setWalletOpen(false);
     setBankOpen(false);
+    setError(null);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (step !== 'status') return;
     setDone(false);
-    const t = setTimeout(() => setDone(true), 1700);
-    return () => clearTimeout(t);
+    setError(null);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!address) throw new Error('Connect your wallet to withdraw.');
+        if (!bankId) throw new Error('Link a bank account to withdraw to.');
+        const res = await withdrawToBank(address, { amount, plaidAccountId: bankId, email: email ?? undefined });
+        if (cancelled) return;
+        if (!res.success) throw new Error(res.message || 'Withdrawal failed.');
+        setDone(true);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Withdrawal failed.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
   const amount = Number(amountStr) || 0;
@@ -360,7 +384,22 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
 
         {step === 'status' && (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-            {!done ? (
+            {error ? (
+              <>
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+                  <TriangleAlert className="h-7 w-7 text-destructive" />
+                </div>
+                <div className="mt-4 text-base font-semibold text-foreground">Withdrawal not completed</div>
+                <div className="mt-1 text-sm text-muted-foreground">{error}</div>
+                <button
+                  type="button"
+                  onClick={() => setStep('review')}
+                  className="mt-6 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+                >
+                  Back
+                </button>
+              </>
+            ) : !done ? (
               <>
                 <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
                 <div className="mt-4 text-base font-semibold text-foreground">Sending your withdrawal…</div>

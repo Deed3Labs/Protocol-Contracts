@@ -19,9 +19,9 @@ import { recordGaslessSavings } from '@/utils/apiClient';
  */
 
 const PROJECT_ID = (import.meta.env.VITE_ZERODEV_PROJECT_ID as string | undefined)?.trim();
-// Mainnet AA stays OFF until the flow is verified + the mainnet paymaster is funded — then set
-// VITE_ZERODEV_MAINNET=true. Testnet (demo) uses AA as soon as a project id is present.
-const MAINNET_AA = ((import.meta.env.VITE_ZERODEV_MAINNET as string | undefined) ?? 'false') === 'true';
+// Mainnet AA is ON by default now that the flow is verified + the mainnet paymaster is funded.
+// Kill-switch: set VITE_ZERODEV_MAINNET=false to force live mainnet back onto the EIP-3009 relayer.
+const MAINNET_AA = ((import.meta.env.VITE_ZERODEV_MAINNET as string | undefined) ?? 'true') !== 'false';
 
 const CHAINS: Record<number, Chain> = { 8453: base, 84532: baseSepolia };
 
