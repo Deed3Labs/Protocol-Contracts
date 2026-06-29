@@ -108,7 +108,7 @@ export async function installAutopaySession(args: {
   // 2) Grant the vault a standing USDC allowance covering all runs.
   if (args.isSmartAccount) {
     // Smart accounts can't sign EIP-2612 (ECDSA) — approve once via a sponsored batch (gasless).
-    await scApprove({ provider: args.provider, owner, token: usdc, spender: vault, amount: allowanceValue });
+    await scApprove({ provider: args.provider, owner, token: usdc, spender: vault, amount: allowanceValue, chainId: args.chainId });
     await createAutopayRule(args.ownerWallet, { chainId: args.chainId, amountUsdc: args.amountUsdc, cadence: args.cadence, runs, mandate });
     return;
   }

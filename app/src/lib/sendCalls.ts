@@ -1,6 +1,15 @@
 import { encodeFunctionData, parseUnits } from 'viem';
-import { clearContracts } from '@/lib/clearNetwork';
+import { clearContracts, isMainnetChain } from '@/lib/clearNetwork';
 import { recordGaslessSavings } from '@/utils/apiClient';
+
+// Reown sponsors the UserOp ONLY when the wallet_sendCalls request carries a paymasterService
+// capability — without it the (0-ETH) smart account is asked to pay gas ("insufficient balance").
+const PROJECT_ID = (import.meta.env.VITE_ZERODEV_PROJECT_ID as string | undefined)?.trim();
+const SELF_FUNDED = ((import.meta.env.VITE_ZERODEV_SELF_FUNDED as string | undefined) ?? 'true') !== 'false';
+const paymasterUrl = (chainId: number) => {
+  const base = `https://rpc.zerodev.app/api/v3/${PROJECT_ID}/chain/${chainId}`;
+  return SELF_FUNDED && isMainnetChain(chainId) ? `${base}?selfFunded=true` : base; // testnet → managed (free)
+};
 
 /*
  * Smart-account (AppKit email/social) money flows, executed through the RAW AppKit walletProvider via
@@ -32,15 +41,21 @@ interface Eip1193 { request: (args: { method: string; params?: unknown[] }) => P
  * still runs the calls IN ORDER in one sponsored UserOp (approve before action), which is all we need.
  * Polls wallet_getCallsStatus and returns the settled tx hash.
  */
-async function runBatch(providerLike: unknown, owner: string, calls: Call[]): Promise<string> {
+async function runBatch(providerLike: unknown, owner: string, chainId: number, calls: Call[]): Promise<string> {
   const provider = providerLike as Eip1193 | undefined;
   if (!provider?.request) throw new Error('Wallet provider unavailable — reconnect your wallet.');
 
-  const chainId: string = await provider.request({ method: 'eth_chainId' });
-  const response = await provider.request({
-    method: 'wallet_sendCalls',
-    params: [{ version: '1.0', from: owner, chainId, atomicRequired: false, calls }],
-  });
+  const params: Record<string, unknown> = {
+    version: '1.0',
+    from: owner,
+    chainId: `0x${chainId.toString(16)}`,
+    atomicRequired: false,
+    calls,
+  };
+  // The paymasterService capability is what makes Reown sponsor gas (the SA holds no ETH).
+  if (PROJECT_ID) params.capabilities = { paymasterService: { url: paymasterUrl(chainId) } };
+
+  const response = await provider.request({ method: 'wallet_sendCalls', params: [params] });
   const batchId: string = typeof response === 'string' ? response : response?.batchId ?? response?.id;
   if (!batchId) throw new Error('Wallet did not return a batch id.');
 
@@ -65,8 +80,8 @@ async function runBatch(providerLike: unknown, owner: string, calls: Call[]): Pr
 }
 
 /** One-time sponsored ERC-20 approve (smart-account autopay allowance — they can't sign EIP-2612). */
-export async function scApprove(args: { provider: unknown; owner: string; token: `0x${string}`; spender: `0x${string}`; amount: bigint }): Promise<string> {
-  return runBatch(args.provider, args.owner, [
+export async function scApprove(args: { provider: unknown; owner: string; token: `0x${string}`; spender: `0x${string}`; amount: bigint; chainId: number }): Promise<string> {
+  return runBatch(args.provider, args.owner, args.chainId, [
     { to: args.token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [args.spender, args.amount] }) },
   ]);
 }
@@ -77,7 +92,7 @@ export async function scDeposit(args: { provider: unknown; ownerWallet: string; 
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
   const amt = parseUnits(args.amount, 6);
   const receiver = args.ownerWallet as `0x${string}`;
-  const hash = await runBatch(args.provider, args.ownerWallet, [
+  const hash = await runBatch(args.provider, args.ownerWallet, args.chainId, [
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, amt] }) },
     { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'deposit', args: [c.usdc, amt, receiver] }) },
   ]);
@@ -91,7 +106,7 @@ export async function scRedeem(args: { provider: unknown; ownerWallet: string; a
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
   const amt = parseUnits(args.amount, 6);
   const receiver = args.ownerWallet as `0x${string}`;
-  const hash = await runBatch(args.provider, args.ownerWallet, [
+  const hash = await runBatch(args.provider, args.ownerWallet, args.chainId, [
     { to: c.clrusd, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, amt] }) },
     { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'redeem', args: [c.usdc, amt, receiver] }) },
   ]);
@@ -117,7 +132,7 @@ export async function scSendLock(args: {
   const fee = BigInt(args.sponsorFeeUsdcMicros);
   const total = BigInt(args.totalLockedUsdcMicros);
   const expiry = BigInt(Math.floor(new Date(args.expiresAt).getTime() / 1000));
-  return runBatch(args.provider, args.ownerWallet, [
+  return runBatch(args.provider, args.ownerWallet, args.chainId, [
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.claimEscrow, total] }) },
     { to: c.claimEscrow, data: encodeFunctionData({ abi: ESCROW_ABI, functionName: 'createTransfer', args: [args.transferId, principal, fee, expiry, args.recipientHintHash] }) },
   ]);
