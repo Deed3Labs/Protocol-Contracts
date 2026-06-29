@@ -1,45 +1,39 @@
-import { createPublicClient, http, type Chain } from 'viem';
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { base, baseSepolia } from 'viem/chains';
-import { getWalletClient } from '@wagmi/core';
-import { createKernelAccount } from '@zerodev/sdk';
-import { getEntryPoint, KERNEL_V3_3 } from '@zerodev/sdk/constants';
-import { signerToEcdsaValidator } from '@zerodev/ecdsa-validator';
-import { toPermissionValidator, serializePermissionAccount } from '@zerodev/permissions';
-import { toECDSASigner } from '@zerodev/permissions/signers';
-import { toCallPolicy, toTimestampPolicy, toRateLimitPolicy, CallPolicyVersion } from '@zerodev/permissions/policies';
+import { parseUnits } from 'viem';
+import { readContract, signTypedData } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
 import { createAutopayRule } from '@/utils/apiClient';
 
 /*
- * Autopay install (rent → ownership, "sign once"). Creates a ZeroDev SESSION KEY scoped to only
- * USDC.approve + ESA vault.deposit, time-boxed and rate-limited, then serializes the permission
- * account (embedding the session key) and hands it to the backend. The autopay runner then executes
- * recurring sponsored deposits with that session — the user never signs again.
- *
- * Same gating as the AA layer (VITE_ZERODEV_PROJECT_ID). UNVERIFIED on-chain (7702 + smart-sessions) —
- * verify on the demo before relying on it. The session can ONLY approve+deposit into the user's OWN
- * savings, capped by the on-chain rate-limit + expiry policies.
+ * Autopay install — "sign once, then recurring gasless deposits." The user signs TWO EIP-712 messages
+ * once (no gas): (1) an EIP-2612 USDC `permit` granting the vault a standing allowance, and (2) the
+ * vault's `DepositMandate` (amount, cadence, run-count, expiry). The backend relayer submits the permit
+ * and then runs each due deposit via `executeMandateDeposit` — schedule enforced on-chain. Works for any
+ * EOA (incl. embedded EOAs); no 7702/session-key/wallet-feature dependency.
  */
-
-const PROJECT_ID = (import.meta.env.VITE_ZERODEV_PROJECT_ID as string | undefined)?.trim();
-const CHAINS: Record<number, Chain> = { 8453: base, 84532: baseSepolia };
 
 export type AutopayCadence = 'weekly' | 'monthly';
 
-const ERC20_ABI = [
-  { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
-] as const;
-const VAULT_ABI = [
-  { name: 'deposit', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ type: 'uint256' }] },
+const cadenceSeconds = (c: AutopayCadence) => (c === 'weekly' ? 7 * 24 * 3600 : 30 * 24 * 3600);
+
+const ERC20_PERMIT_ABI = [
+  { name: 'name', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
+  { name: 'version', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
+  { name: 'nonces', type: 'function', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const;
 
-const cadenceSeconds = (c: AutopayCadence) => (c === 'weekly' ? 7 * 24 * 3600 : 31 * 24 * 3600);
+/** Split a 65-byte hex signature into { v, r, s }. */
+function splitSig(sig: string): { v: number; r: string; s: string } {
+  const r = `0x${sig.slice(2, 66)}`;
+  const s = `0x${sig.slice(66, 130)}`;
+  let v = parseInt(sig.slice(130, 132), 16);
+  if (v < 27) v += 27;
+  return { v, r, s };
+}
 
 /**
- * Set up recurring gasless Cash→Savings deposits. The user signs ONCE (the session enable); returns
- * the created rule. `runs` bounds the session (count + expiry) so it can't outlive the schedule.
+ * Set up recurring gasless Cash→Savings deposits. The user signs the USDC permit + the vault mandate
+ * once; returns nothing (the backend stores + schedules). Throws on rejection / unsupported wallet.
  */
 export async function installAutopaySession(args: {
   chainId: number;
@@ -48,75 +42,93 @@ export async function installAutopaySession(args: {
   cadence: AutopayCadence;
   runs: number;
 }): Promise<void> {
-  if (!PROJECT_ID) throw new Error('Autopay is not available yet.');
-  const chain = CHAINS[args.chainId];
-  if (!chain) throw new Error(`No autopay config for chain ${args.chainId}.`);
+  const config = wagmiAdapter.wagmiConfig;
   const c = clearContracts(args.chainId);
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
-
-  const walletClient = await getWalletClient(wagmiAdapter.wagmiConfig, { chainId: args.chainId });
-  if (!walletClient) throw new Error('Connect your wallet to set up Auto-save.');
-
-  const publicClient = createPublicClient({ chain, transport: http() });
-  const entryPoint = getEntryPoint('0.7');
-
-  // Session key (the agent key the backend executes with) — embedded in the serialized approval.
-  const sessionKey = generatePrivateKey();
-  const sessionSigner = await toECDSASigner({ signer: privateKeyToAccount(sessionKey) });
+  const owner = args.ownerWallet as `0x${string}`;
+  const vault = c.esaVault;
+  const usdc = c.usdc;
 
   const runs = Math.max(1, Math.floor(args.runs));
+  const amountPerRun = parseUnits(String(args.amountUsdc), 6); // USDC micros
   const interval = cadenceSeconds(args.cadence);
-  // Expiry: cover all runs + one cadence of slack.
-  const validUntil = Math.floor(Date.now() / 1000) + interval * (runs + 1);
+  const now = Math.floor(Date.now() / 1000);
+  const startAt = now; // first run allowed immediately
+  const expiry = now + interval * (runs + 1); // cover all runs + slack
+  const nonce = BigInt(`0x${crypto.getRandomValues(new Uint8Array(16)).reduce((a, b) => a + b.toString(16).padStart(2, '0'), '')}`);
 
-  const policies = [
-    toCallPolicy({
-      policyVersion: CallPolicyVersion.V0_0_4,
-      // Two different ABIs/targets in one policy fights the per-call generic typing; the runtime shape
-      // (target + abi + functionName per entry) is what toCallPolicy consumes.
-      permissions: [
-        { target: c.usdc, abi: ERC20_ABI, functionName: 'approve' },
-        { target: c.esaVault, abi: VAULT_ABI, functionName: 'deposit' },
-      ] as never,
-    }),
-    // Bound total runs (one approve+deposit batch counts once) and the lifetime of the session.
-    toRateLimitPolicy({ interval, count: runs }),
-    toTimestampPolicy({ validUntil }),
-  ];
-
-  const permissionPlugin = await toPermissionValidator(publicClient, {
-    signer: sessionSigner,
-    policies,
-    entryPoint,
-    kernelVersion: KERNEL_V3_3,
+  // 1) Vault DepositMandate (the recurring schedule).
+  const mandateSig = await signTypedData(config, {
+    account: owner,
+    domain: { name: 'ESADepositVault', version: '1', chainId: args.chainId, verifyingContract: vault },
+    types: {
+      DepositMandate: [
+        { name: 'depositor', type: 'address' },
+        { name: 'token', type: 'address' },
+        { name: 'amountPerRun', type: 'uint256' },
+        { name: 'interval', type: 'uint64' },
+        { name: 'maxRuns', type: 'uint32' },
+        { name: 'startAt', type: 'uint256' },
+        { name: 'expiry', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+      ],
+    },
+    primaryType: 'DepositMandate',
+    message: {
+      depositor: owner,
+      token: usdc,
+      amountPerRun,
+      interval: BigInt(interval),
+      maxRuns: runs,
+      startAt: BigInt(startAt),
+      expiry: BigInt(expiry),
+      nonce,
+    },
   });
+  const m = splitSig(mandateSig);
 
-  // The 7702 ECDSA root (sudo) for the user's EOA. create7702KernelAccount only wires the sudo into the
-  // plugin manager (it ignores a regular plugin), so we use createKernelAccount in 7702 mode with an
-  // explicit { sudo, regular } — that's what puts the session validator IN the manager so it can be
-  // serialized/enabled. The session is the `regular` (active) validator.
-  const sudoValidator = await signerToEcdsaValidator(publicClient, {
-    signer: walletClient as never,
-    entryPoint,
-    kernelVersion: KERNEL_V3_3,
+  // 2) EIP-2612 USDC permit (one standing allowance covering all runs).
+  const [tokenName, tokenVersion, permitNonce] = await Promise.all([
+    readContract(config, { abi: ERC20_PERMIT_ABI, address: usdc, functionName: 'name', chainId: args.chainId }).catch(() => 'USD Coin'),
+    readContract(config, { abi: ERC20_PERMIT_ABI, address: usdc, functionName: 'version', chainId: args.chainId }).catch(() => '2'),
+    readContract(config, { abi: ERC20_PERMIT_ABI, address: usdc, functionName: 'nonces', args: [owner], chainId: args.chainId }) as Promise<bigint>,
+  ]);
+  const permitValue = amountPerRun * BigInt(runs);
+  const permitSig = await signTypedData(config, {
+    account: owner,
+    domain: { name: tokenName as string, version: tokenVersion as string, chainId: args.chainId, verifyingContract: usdc },
+    types: {
+      Permit: [
+        { name: 'owner', type: 'address' },
+        { name: 'spender', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+      ],
+    },
+    primaryType: 'Permit',
+    message: { owner, spender: vault, value: permitValue, nonce: permitNonce, deadline: BigInt(expiry) },
   });
-
-  const account = await createKernelAccount(publicClient, {
-    entryPoint,
-    kernelVersion: KERNEL_V3_3,
-    eip7702Account: walletClient as never, // EOA delegated to Kernel at the same address (7702)
-    plugins: { sudo: sudoValidator, regular: permissionPlugin },
-  });
-
-  // The user signs ONCE here (the session enable, + the 7702 authorization); the session key is
-  // embedded in the approval so the backend can execute without it.
-  const approval = await serializePermissionAccount(account, sessionKey);
+  const p = splitSig(permitSig);
 
   await createAutopayRule(args.ownerWallet, {
     chainId: args.chainId,
     amountUsdc: args.amountUsdc,
     cadence: args.cadence,
-    approval,
     runs,
+    mandate: {
+      depositor: owner,
+      token: usdc,
+      amountPerRun: amountPerRun.toString(),
+      interval,
+      maxRuns: runs,
+      startAt,
+      expiry,
+      nonce: nonce.toString(),
+      v: m.v,
+      r: m.r,
+      s: m.s,
+    },
+    permit: { value: permitValue.toString(), deadline: expiry, v: p.v, r: p.r, s: p.s },
   });
 }

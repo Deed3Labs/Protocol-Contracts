@@ -2112,9 +2112,30 @@ export async function listAutopayRules(wallet: string): Promise<AutopayRule[]> {
   return r.error || !r.data ? [] : r.data.rules;
 }
 
+export interface AutopayMandate {
+  depositor: string;
+  token: string;
+  amountPerRun: string;
+  interval: number;
+  maxRuns: number;
+  startAt: number;
+  expiry: number;
+  nonce: string;
+  v: number;
+  r: string;
+  s: string;
+}
+
 export async function createAutopayRule(
   wallet: string,
-  p: { chainId: number; amountUsdc: number; cadence: 'weekly' | 'monthly'; approval: string; runs?: number },
+  p: {
+    chainId: number;
+    amountUsdc: number;
+    cadence: 'weekly' | 'monthly';
+    runs?: number;
+    mandate: AutopayMandate;
+    permit?: { value: string; deadline: number; v: number; r: string; s: string };
+  },
 ): Promise<AutopayRule> {
   const r = await apiRequest<{ rule: AutopayRule }>(`/api/autopay/${wallet.toLowerCase()}`, {
     method: 'POST',

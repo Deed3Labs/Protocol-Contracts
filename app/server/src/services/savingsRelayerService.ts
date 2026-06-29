@@ -14,7 +14,36 @@ const ESCROW_ABI = [
 const VAULT_ABI = [
   'function depositWithAuthorization(address depositor, address token, uint256 amount, address receiver, uint256 validAfter, uint256 validBefore, bytes32 authNonce, uint8 v, bytes32 r, bytes32 s) external returns (uint256 minted)',
   'function redeemWithAuthorization(address redeemer, address token, uint256 clrusdAmount, address receiver, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external returns (uint256 returnedAmount)',
+  'function executeMandateDeposit(address depositor, address token, uint256 amountPerRun, uint64 interval, uint32 maxRuns, uint256 startAt, uint256 expiry, uint256 nonce, uint8 v, bytes32 r, bytes32 s) external returns (uint256 minted)',
 ] as const;
+
+const PERMIT_ABI = [
+  'function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external',
+] as const;
+
+export interface DepositMandateArgs {
+  depositor: string;
+  token: string;
+  amountPerRun: bigint;
+  interval: number; // seconds
+  maxRuns: number;
+  startAt: bigint; // unix seconds
+  expiry: bigint; // unix seconds
+  nonce: bigint;
+  v: number;
+  r: string;
+  s: string;
+}
+
+export interface PermitArgs {
+  owner: string;
+  spender: string;
+  value: bigint;
+  deadline: bigint;
+  v: number;
+  r: string;
+  s: string;
+}
 
 export interface DepositAuthorizationArgs {
   depositor: string;
@@ -361,6 +390,32 @@ class SavingsRelayerService {
       args.s,
     ]);
     return this.submit(chainId, ethers.getAddress(vaultAddress), data);
+  }
+
+  /** Autopay: execute one recurring-deposit run from the user's signed mandate (relayer = OPERATOR). */
+  async executeMandateDeposit(chainId: number, vaultAddress: string, a: DepositMandateArgs): Promise<string> {
+    const iface = new ethers.Interface(VAULT_ABI);
+    const data = iface.encodeFunctionData('executeMandateDeposit', [
+      a.depositor,
+      a.token,
+      a.amountPerRun,
+      a.interval,
+      a.maxRuns,
+      a.startAt,
+      a.expiry,
+      a.nonce,
+      a.v,
+      a.r,
+      a.s,
+    ]);
+    return this.submit(chainId, ethers.getAddress(vaultAddress), data);
+  }
+
+  /** Submit a user-signed EIP-2612 permit (relayer pays gas) so the vault gets a standing allowance. */
+  async submitPermit(chainId: number, tokenAddress: string, a: PermitArgs): Promise<string> {
+    const iface = new ethers.Interface(PERMIT_ABI);
+    const data = iface.encodeFunctionData('permit', [a.owner, a.spender, a.value, a.deadline, a.v, a.r, a.s]);
+    return this.submit(chainId, ethers.getAddress(tokenAddress), data);
   }
 }
 

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
 import { Check, Loader2, Repeat, Sparkles, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
-import { isAaEnabled, isAaUnsupportedError } from '@/lib/aa';
+import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
+import { isAaUnsupportedError } from '@/lib/aa';
 import { installAutopaySession, type AutopayCadence } from '@/lib/autopay';
 import { listAutopayRules, cancelAutopayRule, runAutopayRule, type AutopayRule } from '@/utils/apiClient';
 import { useClearBalances } from '@/hooks/useClearBalances';
@@ -26,7 +26,7 @@ export default function AutoSaveModal({ open, onOpenChange }: { open: boolean; o
   const { address } = useAccount();
   const bal = useClearBalances();
   const chainId = ACTIVE_CHAIN_ID;
-  const available = isAaEnabled(chainId);
+  const available = !!clearContracts(chainId); // vault (with the autopay mandate) deployed on this chain
 
   const [amountStr, setAmountStr] = useState('');
   const [cadence, setCadence] = useState<AutopayCadence>('monthly');
