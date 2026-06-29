@@ -28,6 +28,26 @@ const CHAINS: Record<number, Chain> = { 8453: base, 84532: baseSepolia };
 /** AA active when a project id is set, the chain is supported, and (for mainnet) explicitly enabled. */
 export const isAaEnabled = (chainId: number): boolean =>
   !!PROJECT_ID && !!CHAINS[chainId] && (chainId !== 8453 || MAINNET_AA);
+
+/**
+ * True when an error means the connected wallet can't do EIP-7702 — i.e. it's a smart-contract account
+ * (AppKit email/social login), not an EOA. 7702 sets code on an EOA, so contract accounts can't sign
+ * the authorization. Callers use this to fall back to the EIP-3009 relayer (which works for any wallet).
+ * The failure is raised BEFORE any on-chain submission, so falling back can't double-spend.
+ */
+export function isAaUnsupportedError(e: unknown): boolean {
+  const m = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return (
+    m.includes('signauthorization') ||
+    m.includes('json-rpc account') ||
+    m.includes('json-rpc accounts') ||
+    m.includes('7702') ||
+    m.includes('verifying contract') ||
+    m.includes('internal accounts') ||
+    m.includes('eip-5792') ||
+    m.includes('does not support')
+  );
+}
 // Self-funded sponsorship paymaster (you deposit gas inventory; no managed-paymaster markup).
 // Set VITE_ZERODEV_SELF_FUNDED=false to use ZeroDev's managed paymaster directly.
 const SELF_FUNDED = ((import.meta.env.VITE_ZERODEV_SELF_FUNDED as string | undefined) ?? 'true') !== 'false';

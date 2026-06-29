@@ -7,7 +7,7 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useKyc } from '@/context/KycContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { gaslessDeposit, gaslessRedeem } from '@/lib/gaslessMoney';
-import { aaDeposit, aaRedeem, isAaEnabled } from '@/lib/aa';
+import { aaDeposit, aaRedeem, isAaEnabled, isAaUnsupportedError } from '@/lib/aa';
 import { cn } from '@/lib/utils';
 
 /*
@@ -90,11 +90,21 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         const isRedeem = fromId === 'savings' && toId === 'cash';
         if (!isDeposit && !isRedeem) throw new Error('Unsupported transfer.');
         // Prefer the AA path (ZeroDev 7702: batched approve+action, sponsored, one signature) when
-        // configured; otherwise fall back to the EIP-3009 relayer path.
-        const run = isAaEnabled(chainId)
-          ? isDeposit ? aaDeposit : aaRedeem
-          : isDeposit ? gaslessDeposit : gaslessRedeem;
-        const hash = await run({ ownerWallet: address, amount: amountStr, chainId });
+        // configured; fall back to the EIP-3009 relayer for non-EOA wallets (email/social = smart
+        // accounts can't do 7702) or any pre-submission AA failure.
+        const aaRun = isDeposit ? aaDeposit : aaRedeem;
+        const relayerRun = isDeposit ? gaslessDeposit : gaslessRedeem;
+        let hash: string;
+        if (isAaEnabled(chainId)) {
+          try {
+            hash = await aaRun({ ownerWallet: address, amount: amountStr, chainId });
+          } catch (err) {
+            if (!isAaUnsupportedError(err)) throw err;
+            hash = await relayerRun({ ownerWallet: address, amount: amountStr, chainId });
+          }
+        } else {
+          hash = await relayerRun({ ownerWallet: address, amount: amountStr, chainId });
+        }
         if (cancelled) return;
         setTxHash(hash);
         setDone(true);

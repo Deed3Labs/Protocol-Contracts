@@ -3,7 +3,7 @@ import { useAccount } from 'wagmi';
 import { Check, Loader2, Repeat, Sparkles, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
-import { isAaEnabled } from '@/lib/aa';
+import { isAaEnabled, isAaUnsupportedError } from '@/lib/aa';
 import { installAutopaySession, type AutopayCadence } from '@/lib/autopay';
 import { listAutopayRules, cancelAutopayRule, runAutopayRule, type AutopayRule } from '@/utils/apiClient';
 import { useClearBalances } from '@/hooks/useClearBalances';
@@ -72,7 +72,15 @@ export default function AutoSaveModal({ open, onOpenChange }: { open: boolean; o
       await loadRules();
       setStep('done');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not set up Auto-save.');
+      // 7702 sessions need wallet-side authorization signing that the current wallet/library combo
+      // doesn't support — surface a plain message instead of the raw viem error.
+      setError(
+        isAaUnsupportedError(e)
+          ? "Auto-save isn't available on your wallet yet. We're enabling it — your one-time deposits still work."
+          : e instanceof Error
+            ? e.message
+            : 'Could not set up Auto-save.',
+      );
       setStep('setup');
     }
   };
