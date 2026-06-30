@@ -12,6 +12,7 @@ import { useKyc } from '@/context/KycContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useLinkedWalletBalances } from '@/hooks/useLinkedWalletBalances';
 import { gaslessDeposit, gaslessRedeem, gaslessWalletTransfer } from '@/lib/gaslessMoney';
+import { linkedWalletTokenTransfer } from '@/lib/linkedWalletTransfer';
 import { scDeposit, scRedeem, scTransferToken } from '@/lib/sendCalls';
 import type { Eip712TypedData } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
@@ -80,6 +81,13 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
     } as Parameters<typeof walletClient.signTypedData>[0]);
   };
 
+  // The linked wallet's raw EIP-1193 provider (for the CLRUSD path, which submits from that wallet).
+  const getLinkedProvider = async (fromAddr: string): Promise<unknown> => {
+    const w = connectedWallets.find((x) => x.address.toLowerCase() === fromAddr.toLowerCase());
+    if (!w) throw new Error('Open and reconnect that wallet in your browser to move funds from it.');
+    return w.getEthereumProvider();
+  };
+
   const [step, setStep] = useState<'compose' | 'review' | 'status'>('compose');
   const [fromId, setFromId] = useState('cash');
   const [toId, setToId] = useState('savings');
@@ -123,10 +131,11 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         const isDeposit = fromId === 'cash' && toId === 'savings';
         const isRedeem = fromId === 'savings' && toId === 'cash';
         const isOnchainOut = (fromId === 'cash' || fromId === 'savings') && to?.scope === 'wallet';
-        const isOnchainIn = from?.scope === 'wallet' && toId === 'cash';
-        if (!isDeposit && !isRedeem && !isOnchainOut && !isOnchainIn) throw new Error('Unsupported transfer.');
+        const isOnchainInCash = from?.scope === 'wallet' && toId === 'cash';
+        const isOnchainInSavings = from?.scope === 'wallet' && toId === 'savings';
+        if (!isDeposit && !isRedeem && !isOnchainOut && !isOnchainInCash && !isOnchainInSavings) throw new Error('Unsupported transfer.');
         let hash: string;
-        if (isOnchainIn) {
+        if (isOnchainInCash) {
           // Linked wallet → Cash: gasless EIP-3009 USDC move to the smart wallet. The LINKED wallet signs
           // an off-chain authorization (no gas, no ETH needed); the relayer submits it + pays gas.
           if (!from?.address) throw new Error('Select a linked wallet.');
@@ -135,6 +144,21 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
             amount: amountStr,
             chainId,
             signTypedData: (td) => signWithLinkedWallet(from.address as string, td),
+          });
+        } else if (isOnchainInSavings) {
+          // Linked wallet → Savings: move CLRUSD to the smart wallet. CLRUSD has no EIP-3009 (A3), so the
+          // linked wallet submits it — gasless via 7702/paymaster when supported, else it pays its own gas.
+          if (!from?.address) throw new Error('Select a linked wallet.');
+          const c = clearContracts(chainId);
+          if (!c) throw new Error('On-chain transfers are unavailable on this network.');
+          const provider = await getLinkedProvider(from.address);
+          hash = await linkedWalletTokenTransfer({
+            provider,
+            from: from.address as `0x${string}`,
+            token: c.clrusd,
+            to: address as `0x${string}`,
+            amount: amountStr,
+            chainId,
           });
         } else {
           // Bind the smart-wallet client to THIS chain (default client sits on Privy's defaultChain, not
@@ -170,7 +194,8 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         if (isDeposit) bal.applyOptimistic(-amt, amt);
         else if (isRedeem) bal.applyOptimistic(amt, -amt);
         else if (isOnchainOut) bal.applyOptimistic(fromId === 'cash' ? -amt : 0, fromId === 'savings' ? -amt : 0);
-        else if (isOnchainIn) bal.applyOptimistic(amt, 0); // linked → Cash: Cash up
+        else if (isOnchainInCash) bal.applyOptimistic(amt, 0); // linked → Cash: Cash up
+        else if (isOnchainInSavings) bal.applyOptimistic(0, amt); // linked → Savings: Savings up
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Transfer failed.');
       }
@@ -182,8 +207,9 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
   }, [step]);
 
   const from = accounts.find((a) => a.id === fromId) ?? accounts[0];
-  // From a linked wallet the only destination is Cash (gasless USDC move IN); otherwise use scope rules.
-  const allowedTo = (a: Acct) => (from?.scope === 'wallet' ? a.id === 'cash' : toScopesFor(from?.scope).includes(a.scope));
+  // From a linked wallet you can move into Cash (USDC, gasless via 3009) or Savings (CLRUSD, 7702/plain);
+  // otherwise use the scope rules.
+  const allowedTo = (a: Acct) => (from?.scope === 'wallet' ? a.id === 'cash' || a.id === 'savings' : toScopesFor(from?.scope).includes(a.scope));
   const toOptions = accounts.filter((a) => allowedTo(a) && a.id !== fromId);
   const to = accounts.find((a) => a.id === toId && allowedTo(a)) ?? toOptions[0];
   const isExternal = from?.scope === 'external';
@@ -199,7 +225,9 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
 
   const amount = Number(amountStr) || 0;
   const fee = isExternal && method === 'instant' ? amount * INSTANT_FEE : 0;
-  const overBalance = from?.balance != null && amount > from.balance;
+  // No balance guard for a linked source: its single balance is USDC, but it can also send CLRUSD — the
+  // on-chain move fails clearly if the wallet is short. Internal/bank sources keep the guard.
+  const overBalance = from?.scope !== 'wallet' && from?.balance != null && amount > from.balance;
   const valid = amount >= 1 && !!to && !overBalance;
   const timing = !isExternal ? 'Instant' : method === 'instant' ? 'In minutes' : '1–3 business days';
 
