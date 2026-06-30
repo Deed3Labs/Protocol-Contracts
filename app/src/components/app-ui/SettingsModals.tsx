@@ -5,6 +5,7 @@ import {
   Mail, Shield, ShieldCheck, Snowflake, Sparkles, Smartphone, Receipt, Home, TrendingUp, Bell,
   Megaphone, FileText, AlertTriangle, ChevronRight, type LucideIcon,
 } from 'lucide-react';
+import { usePrivy } from '@privy-io/react-auth';
 import { useKyc } from '@/context/KycContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { updateMemberProfile, uploadMemberAvatar, deleteMemberAvatar } from '@/utils/apiClient';
@@ -97,7 +98,12 @@ async function fileToAvatarDataUrl(file: File, max = 256): Promise<string> {
 /* ----------------------------------- Account ----------------------------------- */
 export function AccountModal({ open, onOpenChange }: ModalProps) {
   const { verified, openKyc } = useKyc();
+  const { user } = usePrivy();
   const profile = useMemberProfile();
+  // Account identity = how you sign in (Privy). Read-only here; managed by your login. Distinct from
+  // the editable CONTACT email/phone below (where we reach you). See [[clearpath-privy-migration]].
+  const accountEmail = user?.email?.address ?? '';
+  const accountPhone = user?.phone?.number ?? '';
   const [form, setForm] = useState({ fullName: '', email: '', phone: '' });
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -183,16 +189,41 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
         </div>
 
         <div className="mt-1 space-y-3">
+          {(accountEmail || accountPhone) && (
+            <div className="rounded-xl border border-border bg-secondary/30 p-3">
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Shield className="h-3.5 w-3.5" /> Login
+              </div>
+              <div className="space-y-1.5">
+                {accountEmail && (
+                  <div className="flex items-center gap-2 text-sm text-foreground">
+                    <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{accountEmail}</span>
+                  </div>
+                )}
+                {accountPhone && (
+                  <div className="flex items-center gap-2 text-sm text-foreground">
+                    <Smartphone className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{accountPhone}</span>
+                  </div>
+                )}
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">How you sign in — managed by your login, can't be changed here.</p>
+            </div>
+          )}
+
+          <div className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Contact</div>
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Full name</span>
             <input value={form.fullName} onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))} placeholder="Your name" className={inputCls} />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Email</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Contact email</span>
             <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="you@email.com" className={inputCls} />
+            {accountEmail && <span className="mt-1 block text-[11px] text-muted-foreground">Where we reach you — separate from your login email.</span>}
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Phone</span>
+            <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Contact phone</span>
             <input type="tel" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+1 555 000 0000" className={inputCls} />
           </label>
           <div>
