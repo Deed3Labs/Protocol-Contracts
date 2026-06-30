@@ -1,5 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo } from 'react';
-import { usePrivy, useSignMessage } from '@privy-io/react-auth';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
+import { usePrivy, useSignMessage, useCreateWallet } from '@privy-io/react-auth';
 import { useChainId } from 'wagmi';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { setActiveWallet } from '@/utils/authSession';
@@ -58,6 +58,7 @@ function mapPrivyUser(user: PrivyUserLike): AuthState['user'] | undefined {
 export function AppKitAuthProvider({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, user, login, logout } = usePrivy();
   const { signMessage: privySignMessage } = useSignMessage();
+  const { createWallet } = useCreateWallet();
   const { address } = useAppKitAccount();
   const chainId = useChainId();
 
@@ -65,6 +66,22 @@ export function AppKitAuthProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (address) setActiveWallet(address);
   }, [address]);
+
+  // Email/social users need an embedded EOA — the signer behind their smart wallet. `createOnLogin`
+  // doesn't always fire (existing wallet-less users, or a prior failed smart-wallet mint), so ensure
+  // one exists. Once the embedded wallet is there, SmartWalletsProvider mints the smart wallet on top.
+  const hasEmbeddedWallet = !!user?.wallet?.address;
+  const ensureWalletTriedRef = useRef(false);
+  useEffect(() => {
+    if (!authenticated) {
+      ensureWalletTriedRef.current = false;
+      return;
+    }
+    if (ready && !hasEmbeddedWallet && !ensureWalletTriedRef.current) {
+      ensureWalletTriedRef.current = true;
+      createWallet().catch((e) => console.warn('[privy] ensure embedded wallet failed:', e));
+    }
+  }, [ready, authenticated, hasEmbeddedWallet, createWallet]);
 
   const mappedUser = useMemo(() => mapPrivyUser(user as PrivyUserLike), [user]);
 
