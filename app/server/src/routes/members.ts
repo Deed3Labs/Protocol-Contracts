@@ -268,8 +268,10 @@ router.put('/me/bootstrap', async (req: Request, res: Response) => {
 
   try {
     const account = await memberStore.bootstrapMember({
+      // The Privy smart wallet is the CANONICAL primary (where funds live). Prefer it so a member who
+      // first joined via an external wallet (pre-migration) self-heals to the smart wallet as primary.
       authSubject: resolveRawAuthSubject(req),
-      primaryWallet: resolveWallet(req),
+      primaryWallet: req.auth?.smartWallet ?? resolveWallet(req),
       reownProfileUuid: req.auth?.profileUuid ?? null,
       email: req.auth?.email ?? null,
     });
