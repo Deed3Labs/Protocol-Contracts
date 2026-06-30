@@ -10,6 +10,7 @@ import { useMemberProfile } from '@/hooks/useMemberProfile';
 import QuickActions from '@/components/app-ui/QuickActions';
 import CtaStack from '@/components/app-ui/CtaStack';
 import RecentActivity from '@/components/app-ui/RecentActivity';
+import LinkedWalletsCard from '@/components/app-ui/LinkedWalletsCard';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
 import UpcomingCalendar from '@/components/app-ui/UpcomingCalendar';
 import BalanceAnalyticsChart from '@/components/app-ui/charts/BalanceAnalyticsChart';
@@ -83,6 +84,8 @@ export default function AccountsPage() {
           <QuickActions />
         </div>
       </div>
+
+      <LinkedWalletsCard />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <UpcomingCalendar items={upcoming} />

@@ -1,5 +1,6 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useAppKitAccount } from '@/lib/walletCompat';
+import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { getTransactionsBatch, getPlaidRecentTransactions, type PlaidRecentTransaction } from '@/utils/apiClient';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import type { Category } from '@/components/app-ui/TransactionFilterModal';
@@ -21,6 +22,7 @@ export interface ActivityItem {
   ts: number; // ms epoch, for range filtering/grouping
   amount: number; // signed: + in, - out
   status: ActivityStatus;
+  source: string; // lowercased wallet address (primary or a linked wallet), or 'bank'
 }
 
 export interface CashFlow {
@@ -67,7 +69,7 @@ function formatDate(iso?: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function toActivity(tx: RawTx): ActivityItem {
+function toActivity(tx: RawTx, source: string): ActivityItem {
   const inbound = /deposit|receiv|incoming|claim/i.test(tx.type || '');
   const usd = typeof tx.amountUsd === 'number' && tx.amountUsd > 0 ? tx.amountUsd : Number(tx.amount) || 0;
   const amount = inbound ? Math.abs(usd) : -Math.abs(usd);
@@ -78,13 +80,14 @@ function toActivity(tx: RawTx): ActivityItem {
       : 'completed';
   const sym = cleanSymbol(tx.assetSymbol) || 'tokens';
   return {
-    id: tx.id,
+    id: `${source}:${tx.id}`,
     name: `${inbound ? 'Received' : 'Sent'} ${sym}`,
     category: inbound ? 'Deposit' : 'Transfer',
     date: formatDate(tx.date),
     ts: Date.parse(tx.date || '') || 0,
     amount,
     status,
+    source,
   };
 }
 
@@ -106,11 +109,15 @@ function plaidToActivity(t: PlaidRecentTransaction): ActivityItem {
     ts: Date.parse(t.date || '') || 0,
     amount: inbound ? amt : -amt,
     status: t.pending ? 'pending' : 'completed',
+    source: 'bank',
   };
 }
 
 export function ClearTransactionsProvider({ children }: { children: ReactNode }) {
   const { address, isConnected } = useAppKitAccount();
+  const { externalWallets } = useLinkedWallets();
+  // Stable string key of linked addresses so the fetch re-runs when wallets are linked/unlinked.
+  const linkedKey = externalWallets.map((w) => w.address.toLowerCase()).sort().join(',');
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [flows, setFlows] = useState<CashFlow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -123,27 +130,35 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
     }
     setLoading(true);
     try {
-      // On-chain (the Clear chain only — Cash/Savings/Send live on Base / Base Sepolia) + Plaid,
-      // merged newest-first. Scoped to ACTIVE_CHAIN_ID so we don't poll Gnosis/Ethereum (huge CU cut).
-      const requests = [{ chainId: ACTIVE_CHAIN_ID, address, limit: 15 }];
+      // On-chain activity for the PRIMARY (smart) wallet + every LINKED wallet (one batched request,
+      // scoped to ACTIVE_CHAIN_ID so we don't poll Gnosis/Ethereum), plus Plaid bank — merged newest-first
+      // and tagged by source so the Transactions filter can narrow to a specific wallet or bank.
+      const primaryLower = address.toLowerCase();
+      const linked = linkedKey ? linkedKey.split(',').filter((a) => a && a !== primaryLower) : [];
+      const requests = [address, ...linked].map((a) => ({ chainId: ACTIVE_CHAIN_ID, address: a, limit: 15 }));
       const [chainResults, plaid] = await Promise.all([
         getTransactionsBatch(requests).catch(() => []),
         getPlaidRecentTransactions(address).catch(() => null),
       ]);
-      const onchain = (chainResults || [])
-        .flatMap((r) => (r.transactions as RawTx[]) || [])
-        .map(toActivity);
+      const onchain = (chainResults || []).flatMap((r) =>
+        ((r.transactions as RawTx[]) || []).map((tx) => toActivity(tx, (r.address || '').toLowerCase())),
+      );
       const bank = (plaid?.transactions || []).map(plaidToActivity);
       const merged = [...onchain, ...bank].sort((a, b) => b.ts - a.ts);
-      setItems(merged.slice(0, 50));
-      setFlows(merged.filter((x) => x.ts > 0).map((x) => ({ ts: x.ts, usd: x.amount })));
+      setItems(merged.slice(0, 80));
+      // Charts reflect the user's CLEAR cashflow (primary wallet + bank), not linked external wallets.
+      setFlows(
+        merged
+          .filter((x) => x.ts > 0 && (x.source === primaryLower || x.source === 'bank'))
+          .map((x) => ({ ts: x.ts, usd: x.amount })),
+      );
     } catch {
       setItems([]);
       setFlows([]);
     } finally {
       setLoading(false);
     }
-  }, [address, isConnected]);
+  }, [address, isConnected, linkedKey]);
 
   useEffect(() => {
     void load();
