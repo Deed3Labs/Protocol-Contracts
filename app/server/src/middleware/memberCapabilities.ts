@@ -17,7 +17,9 @@ async function resolveMemberAuthSubject(req: Request): Promise<string> {
     authSubject: rawAuthSubject,
     profileUuid: req.auth?.profileUuid ?? null,
     walletAddress: req.auth?.walletAddress ?? null,
+    walletAddresses: req.auth?.addresses ?? null,
     email: req.auth?.email ?? null,
+    phone: req.auth?.phone ?? null,
   });
   return canonicalAuthSubject ?? rawAuthSubject;
 }
