@@ -15,14 +15,26 @@ type AccountType = 'smartAccount' | 'eoa';
 
 export function useAppKitAccount() {
   const { ready, authenticated, user } = usePrivy();
+  const { wallets } = useWallets();
   const { address: wagmiAddress } = useAccount();
 
-  const isEmbedded = user?.wallet?.walletClientType === 'privy';
   const smartWalletAddress = (user?.smartWallet?.address ?? undefined) as `0x${string}` | undefined;
-  const eoaAddress = ((wagmiAddress ?? user?.wallet?.address) ?? undefined) as `0x${string}` | undefined;
 
-  // Email/social → smart wallet address; external (MetaMask) → their EOA (7702 keeps the same address).
-  const address = (isEmbedded ? smartWalletAddress : undefined) ?? eoaAddress;
+  // An EXTERNAL wallet (MetaMask etc.) is any connected wallet that ISN'T Privy's embedded one. Privy may
+  // ALSO mint an embedded wallet for an external login, so we tell them apart via the wallet LIST, not
+  // user.wallet (which can point at the embedded/smart wallet and leave `address` undefined → the login
+  // screen never advances and the backend can't reclaim the member by the real MetaMask address).
+  const externalWallet = wallets?.find((w) => w.walletClientType !== 'privy');
+  const embeddedWallet = wallets?.find((w) => w.walletClientType === 'privy');
+  const isEmbedded = !externalWallet;
+
+  // External login → that wallet's OWN address (same across providers → reclaims the member, tier-2/3).
+  // Email/social → the smart wallet address (tier 1, where funds live).
+  const address = (
+    isEmbedded
+      ? (smartWalletAddress ?? embeddedWallet?.address ?? wagmiAddress ?? user?.wallet?.address)
+      : (externalWallet?.address ?? wagmiAddress)
+  ) as `0x${string}` | undefined;
   const isConnected = !!authenticated && !!address;
   const accountType: AccountType = isEmbedded && smartWalletAddress ? 'smartAccount' : 'eoa';
 
