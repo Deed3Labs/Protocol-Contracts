@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { ArrowRight, Loader2, Mail, Wallet } from 'lucide-react';
-import { useConnectWallet, useLoginWithEmail, useLoginWithOAuth } from '@privy-io/react-auth';
+import { useLoginWithEmail, useLoginWithOAuth, useLoginWithSiwe } from '@privy-io/react-auth';
 
 /*
  * Fully custom (headless) Privy login — no third-party modal. Email is a 2-step OTP (send code → verify),
- * social providers redirect via initOAuth, and external wallets go through Privy's connect (the wallet's
- * own extension popup is unavoidable). On success Privy flips `authenticated` → LoginPage navigates on.
+ * social providers redirect via initOAuth, and external wallets use the SIWE flow (generateSiweMessage →
+ * the wallet signs → loginWithSiwe) — NOT connectWallet, which only CONNECTS and never authenticates (no
+ * session, no signing prompt). On success Privy flips `authenticated` → LoginPage navigates on.
  * See [[clearpath-privy-migration]].
  */
 
@@ -21,7 +22,7 @@ const SOCIALS: { id: OAuthProvider; label: string }[] = [
 export default function PrivyLoginControls() {
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { initOAuth } = useLoginWithOAuth();
-  const { connectWallet } = useConnectWallet();
+  const { generateSiweMessage, loginWithSiwe } = useLoginWithSiwe();
 
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
@@ -66,6 +67,30 @@ export default function PrivyLoginControls() {
       await initOAuth({ provider }); // redirects to the provider, returns authenticated
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sign-in failed.');
+      setBusy(null);
+    }
+  };
+
+  const loginWithWallet = async () => {
+    setBusy('wallet');
+    setError(null);
+    try {
+      const eth = (window as unknown as {
+        ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
+      }).ethereum;
+      if (!eth?.request) throw new Error('No browser wallet found — install MetaMask, or use email / social.');
+      const accounts = (await eth.request({ method: 'eth_requestAccounts' })) as string[];
+      const address = accounts?.[0];
+      if (!address) throw new Error('No wallet account selected.');
+      const chainHex = (await eth.request({ method: 'eth_chainId' })) as string;
+      const chainId = `eip155:${parseInt(chainHex, 16)}` as `eip155:${number}`;
+      const message = await generateSiweMessage({ address, chainId });
+      const signature = (await eth.request({ method: 'personal_sign', params: [message, address] })) as string;
+      await loginWithSiwe({ message, signature, walletClientType: 'metamask', connectorType: 'injected' });
+      // On success Privy authenticates + links the wallet; LoginPage's effect navigates onward.
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Wallet sign-in failed.');
+    } finally {
       setBusy(null);
     }
   };
@@ -169,10 +194,11 @@ export default function PrivyLoginControls() {
       {/* Wallet */}
       <button
         type="button"
-        onClick={() => connectWallet()}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+        disabled={busy === 'wallet'}
+        onClick={loginWithWallet}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-50"
       >
-        <Wallet className="h-4 w-4" /> Connect a wallet
+        {busy === 'wallet' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />} Connect a wallet
       </button>
     </div>
   );
