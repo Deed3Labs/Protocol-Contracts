@@ -11,6 +11,8 @@ import {
   submitGaslessSavings,
   prepareSendLockAuthorization,
   submitSendLockAuthorization,
+  prepareWalletTransfer,
+  submitWalletTransfer,
   type Eip712TypedData,
 } from '@/utils/apiClient';
 import type { SendTransferSummary } from '@/types/send';
@@ -111,6 +113,24 @@ export async function gaslessRedeem(args: { ownerWallet: string; amount: string;
     signature,
     submit: prepared.submit,
   });
+  return result.txHash;
+}
+
+/**
+ * Move USDC FROM a linked external wallet → the Clear smart wallet, gasless. The LINKED wallet signs an
+ * EIP-3009 TransferWithAuthorization (via `signTypedData`, which must use that wallet's own provider —
+ * not the active one), and the relayer submits it + pays gas. Returns the tx hash. CLRUSD isn't supported
+ * here (no permit/3009 by A3) — that path needs a plain transfer (pay gas) or 7702.
+ */
+export async function gaslessWalletTransfer(args: {
+  fromWallet: string;
+  amount: string;
+  chainId: number;
+  signTypedData: (typedData: Eip712TypedData) => Promise<string>;
+}): Promise<string> {
+  const prepared = await prepareWalletTransfer({ fromWallet: args.fromWallet, amount: args.amount, chainId: args.chainId });
+  const signature = await args.signTypedData(prepared.typedData);
+  const result = await submitWalletTransfer({ chainId: prepared.chainId, signature, submit: prepared.submit });
   return result.txHash;
 }
 
