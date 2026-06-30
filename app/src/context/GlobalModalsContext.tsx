@@ -75,7 +75,8 @@ function formatShortAddress(address: string): string {
 
 function formatMembershipPlan(plan: MemberAccountCenterResponse['member']['membershipPlan']): string | null {
   if (!plan) return null;
-  return plan === 'LIFETIME' ? 'Lifetime' : 'Yearly';
+  // Display tiers: base (YEARLY) → Standard, premium (LIFETIME) → Accelerated. Stored enum unchanged.
+  return plan === 'LIFETIME' ? 'Accelerated' : 'Standard';
 }
 
 function buildMembershipLabel(
