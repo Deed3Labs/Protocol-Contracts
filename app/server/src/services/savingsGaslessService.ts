@@ -193,6 +193,57 @@ class SavingsGaslessService {
     };
   }
 
+  /**
+   * Move USDC FROM a linked external wallet TO the user's Clear smart wallet. EIP-3009
+   * TransferWithAuthorization (anyone may submit, so the relayer pays gas) — the linked EOA only signs.
+   * `from` = the linked wallet (validated as a verified address by the route); `to` = the smart wallet
+   * (server-pinned). Used for the reverse transfer + gasless move-then-withdraw.
+   */
+  async buildWalletTransferTypedData(input: { chainId?: number; fromWallet: string; toWallet: string; amount: string }) {
+    const config = this.resolveConfig(input.chainId);
+    const from = ethers.getAddress(input.fromWallet);
+    const to = ethers.getAddress(input.toWallet);
+    const amount = savingsIntentService.parseAmountToMicros(input.amount);
+    const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+
+    const now = Math.floor(Date.now() / 1000);
+    const validAfter = '0';
+    const validBefore = String(now + this.ttlSeconds());
+    const authNonce = `0x${crypto.randomBytes(32).toString('hex')}`;
+    const domain = await this.resolveTokenDomain(provider, config.usdcAddress, config.chainId);
+
+    return {
+      chainId: config.chainId,
+      action: 'wallet-transfer' as const,
+      token: config.usdcAddress,
+      amountMicros: amount.toString(),
+      typedData: {
+        domain,
+        primaryType: 'TransferWithAuthorization',
+        types: {
+          TransferWithAuthorization: [
+            { name: 'from', type: 'address' },
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'validAfter', type: 'uint256' },
+            { name: 'validBefore', type: 'uint256' },
+            { name: 'nonce', type: 'bytes32' },
+          ],
+        },
+        message: { from, to, value: amount.toString(), validAfter, validBefore, nonce: authNonce },
+      },
+      submit: {
+        from,
+        to,
+        token: config.usdcAddress,
+        value: amount.toString(),
+        validAfter,
+        validBefore,
+        authNonce,
+      },
+    };
+  }
+
   /** Redeem: CLRUSD → USDC. Returns the vault EIP-712 `Redeem` typed data + the one-time approve target. */
   async buildRedeemTypedData(input: { chainId?: number; ownerWallet: string; amount: string }) {
     const config = this.resolveConfig(input.chainId);

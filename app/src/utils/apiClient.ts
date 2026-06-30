@@ -1382,6 +1382,38 @@ export async function submitGaslessSavings(payload: {
   return response.data;
 }
 
+/** Move USDC from a linked external wallet → the Clear smart wallet (gasless, EIP-3009). Prepare the
+ *  TransferWithAuthorization the linked wallet signs; the relayer submits it. */
+export async function prepareWalletTransfer(payload: {
+  fromWallet: string;
+  amount: string;
+  chainId?: number;
+}): Promise<{ chainId: number; token: string; amountMicros: string; typedData: Eip712TypedData; submit: Record<string, string> }> {
+  const response = await apiRequest<{ chainId: number; token: string; amountMicros: string; typedData: Eip712TypedData; submit: Record<string, string> }>(
+    '/api/savings/gasless/wallet-transfer/prepare',
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to prepare wallet transfer.');
+  }
+  return response.data;
+}
+
+export async function submitWalletTransfer(payload: {
+  chainId?: number;
+  signature: string;
+  submit: Record<string, string>;
+}): Promise<{ success: boolean; txHash: string; chainId: number }> {
+  const response = await apiRequest<{ success: boolean; txHash: string; chainId: number }>(
+    '/api/savings/gasless/wallet-transfer/submit',
+    { method: 'POST', body: JSON.stringify(payload), timeout: 120000 },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to complete wallet transfer.');
+  }
+  return response.data;
+}
+
 /** Record equity credits for an AA-submitted (client-side) savings deposit/redeem, by tx hash. */
 export async function recordGaslessSavings(p: {
   action: 'deposit' | 'redeem';

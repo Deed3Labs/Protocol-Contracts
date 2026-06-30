@@ -14,6 +14,7 @@ type AuthenticatedWallet = {
   profileUuid?: string;
   email?: string;
   smartWallet?: string; // the Privy smart wallet — the CANONICAL primary (where funds live)
+  addresses?: string[]; // ALL verified addresses for this user (primary + smart + linked), normalized
   token: string;
 };
 
@@ -165,7 +166,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return sendUnauthorized(res, 'No wallet linked to this account', 'AUTH_NO_WALLET');
     }
 
-    req.auth = { walletAddress, profileUuid: userId, email, smartWallet, token };
+    req.auth = { walletAddress, profileUuid: userId, email, smartWallet, addresses: [...addresses], token };
     return next();
   } catch (error) {
     console.error('Authentication error:', error);
@@ -191,6 +192,42 @@ export function requireWalletMatch(
 
   if (normalizeAddress(walletAddress) !== req.auth.walletAddress) {
     res.status(403).json({ error: 'Forbidden', message: `${fieldName} does not match authenticated wallet` });
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Like requireWalletMatch, but accepts ANY of the user's VERIFIED addresses (primary smart wallet OR a
+ * linked external wallet from Privy linkedAccounts) — not only the primary. Use for actions that operate
+ * on a specific wallet the user owns (e.g. moving USDC FROM a linked wallet). Still strictly scoped to
+ * the authenticated user's own addresses, so a relayer can never be steered at a stranger's wallet.
+ */
+export function requireVerifiedWallet(
+  req: Request,
+  res: Response,
+  walletAddress: unknown,
+  fieldName: string = 'walletAddress',
+): walletAddress is string {
+  if (typeof walletAddress !== 'string' || walletAddress.trim().length === 0) {
+    res.status(400).json({ error: `Invalid ${fieldName}`, message: `${fieldName} must be a non-empty string` });
+    return false;
+  }
+
+  // Compatibility mode for routes that don't enforce requireAuth middleware.
+  if (!req.auth?.walletAddress) {
+    return true;
+  }
+
+  const addr = normalizeAddress(walletAddress);
+  const verified = new Set<string>([
+    req.auth.walletAddress,
+    ...(req.auth.smartWallet ? [normalizeAddress(req.auth.smartWallet)] : []),
+    ...((req.auth.addresses ?? []).map((a) => normalizeAddress(a))),
+  ]);
+  if (!verified.has(addr)) {
+    res.status(403).json({ error: 'Forbidden', message: `${fieldName} is not a verified wallet on this account` });
     return false;
   }
 
