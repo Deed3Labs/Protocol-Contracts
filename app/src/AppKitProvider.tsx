@@ -68,7 +68,9 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
     <PrivyProvider
       appId={appId ?? ''}
       config={{
-        loginMethods: ['email', 'wallet', 'google', 'apple', 'twitter', 'github', 'discord', 'farcaster'],
+        // Login = identity only (email / phone / social). External wallets are NOT a login — users link
+        // them in-app (Privy linked accounts). The Privy smart wallet is the user's primary wallet.
+        loginMethods: ['email', 'sms', 'google', 'apple', 'twitter', 'github', 'discord', 'farcaster'],
         // Email/social users get an embedded EOA; Smart Wallets (dashboard) layer a Kernel SA on top.
         // showWalletUIs:false → the embedded signer signs SILENTLY (no Privy confirm/approve popups).
         // Our own Review screen is the confirmation; smart-wallet sendTransaction defaults to this flag.
