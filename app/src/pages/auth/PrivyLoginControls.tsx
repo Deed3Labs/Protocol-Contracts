@@ -1,17 +1,16 @@
 import { useState } from 'react';
-import { ArrowRight, Loader2, Mail, Wallet } from 'lucide-react';
-import { useLoginWithEmail, useLoginWithOAuth, usePrivy } from '@privy-io/react-auth';
+import { ArrowRight, Loader2, Mail, Phone } from 'lucide-react';
+import { useLoginWithEmail, useLoginWithOAuth, useLoginWithSms } from '@privy-io/react-auth';
 
 /*
- * Custom Privy login. Email is a 2-step OTP (send code → verify) and socials redirect via initOAuth —
- * both fully our UI. External wallets use Privy's own wallet login `login({ loginMethods: ['wallet'] })`,
- * which handles connect + SIWE message + signature + session INTERNALLY (a manual generateSiweMessage +
- * personal_sign produced signatures Privy's /siwe/authenticate rejected as invalid). It opens a small
- * wallet-only Privy sheet; external wallets need their own extension popup anyway. On success Privy flips
- * `authenticated` → LoginPage navigates on. See [[clearpath-privy-migration]].
+ * Custom Privy login — identity only (email / phone / social). No wallet login: external wallets are
+ * LINKED in-app (Privy linked accounts), and the Privy smart wallet is the user's primary wallet.
+ * Email & phone are 2-step OTPs (send code → verify); socials redirect via initOAuth. All our own UI.
+ * On success Privy flips `authenticated` → LoginPage navigates onward. See [[clearpath-privy-migration]].
  */
 
 type OAuthProvider = 'google' | 'apple' | 'twitter' | 'discord' | 'github';
+type Method = 'email' | 'phone';
 
 const SOCIALS: { id: OAuthProvider; label: string }[] = [
   { id: 'apple', label: 'Apple' },
@@ -20,26 +19,39 @@ const SOCIALS: { id: OAuthProvider; label: string }[] = [
   { id: 'github', label: 'GitHub' },
 ];
 
-export default function PrivyLoginControls() {
-  const { sendCode, loginWithCode } = useLoginWithEmail();
-  const { initOAuth } = useLoginWithOAuth();
-  const { login } = usePrivy();
+// Privy wants E.164 (+15551234567). Strip spaces/dashes/parens; keep a single leading +.
+const normalizePhone = (raw: string) => '+' + raw.replace(/[^\d]/g, '');
+const isValidPhone = (raw: string) => /^\+[1-9]\d{6,14}$/.test(normalizePhone(raw));
 
-  const [step, setStep] = useState<'email' | 'code'>('email');
+export default function PrivyLoginControls() {
+  const { sendCode: sendEmailCode, loginWithCode: loginWithEmailCode } = useLoginWithEmail();
+  const { sendCode: sendSmsCode, loginWithCode: loginWithSmsCode } = useLoginWithSms();
+  const { initOAuth } = useLoginWithOAuth();
+
+  const [method, setMethod] = useState<Method>('email');
+  const [step, setStep] = useState<'enter' | 'code'>('enter');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const sendEmail = async () => {
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
+  const destination = method === 'email' ? email : normalizePhone(phone);
+
+  const send = async () => {
+    if (method === 'email' && !/^\S+@\S+\.\S+$/.test(email)) {
       setError('Enter a valid email address.');
       return;
     }
-    setBusy('email');
+    if (method === 'phone' && !isValidPhone(phone)) {
+      setError('Enter a valid phone number (e.g. +1 555 123 4567).');
+      return;
+    }
+    setBusy('send');
     setError(null);
     try {
-      await sendCode({ email });
+      if (method === 'email') await sendEmailCode({ email });
+      else await sendSmsCode({ phoneNumber: normalizePhone(phone) });
       setStep('code');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not send the code.');
@@ -52,7 +64,8 @@ export default function PrivyLoginControls() {
     setBusy('code');
     setError(null);
     try {
-      await loginWithCode({ code });
+      if (method === 'email') await loginWithEmailCode({ code });
+      else await loginWithSmsCode({ code });
       // On success Privy authenticates; LoginPage's effect navigates onward.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Invalid or expired code.');
@@ -72,12 +85,6 @@ export default function PrivyLoginControls() {
     }
   };
 
-  const loginWithWallet = () => {
-    setError(null);
-    // Privy handles connect + SIWE + signature + session; on success `authenticated` flips → navigate.
-    login({ loginMethods: ['wallet'] });
-  };
-
   const inputCls =
     'w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-foreground/30 focus:outline-none';
   const socialBtn =
@@ -87,7 +94,7 @@ export default function PrivyLoginControls() {
     return (
       <div className="mt-6 space-y-3">
         <p className="text-sm text-muted-foreground">
-          Enter the 6-digit code we sent to <span className="font-medium text-foreground">{email}</span>.
+          Enter the 6-digit code we sent to <span className="font-medium text-foreground">{destination}</span>.
         </p>
         <input
           autoFocus
@@ -110,13 +117,13 @@ export default function PrivyLoginControls() {
         <button
           type="button"
           onClick={() => {
-            setStep('email');
+            setStep('enter');
             setCode('');
             setError(null);
           }}
           className="w-full text-center text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
-          ← Use a different email
+          ← Use a different {method === 'email' ? 'email' : 'phone number'}
         </button>
       </div>
     );
@@ -124,27 +131,65 @@ export default function PrivyLoginControls() {
 
   return (
     <div className="mt-6 space-y-3">
-      {/* Email */}
+      {/* Email / Phone toggle */}
+      <div className="flex gap-1 rounded-xl bg-secondary/50 p-1">
+        {([
+          { id: 'email' as const, label: 'Email', icon: Mail },
+          { id: 'phone' as const, label: 'Phone', icon: Phone },
+        ]).map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => {
+              setMethod(m.id);
+              setError(null);
+            }}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition-colors ${
+              method === m.id ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <m.icon className="h-3.5 w-3.5" /> {m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Email or phone input */}
       <div className="flex gap-2">
         <div className="relative flex-1">
-          <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && sendEmail()}
-            placeholder="you@email.com"
-            className={`${inputCls} pl-9`}
-          />
+          {method === 'email' ? (
+            <>
+              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && send()}
+                placeholder="you@email.com"
+                className={`${inputCls} pl-9`}
+              />
+            </>
+          ) : (
+            <>
+              <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && send()}
+                placeholder="+1 555 123 4567"
+                className={`${inputCls} pl-9`}
+              />
+            </>
+          )}
         </div>
         <button
           type="button"
-          disabled={busy === 'email'}
-          onClick={sendEmail}
-          aria-label="Continue with email"
+          disabled={busy === 'send'}
+          onClick={send}
+          aria-label={`Continue with ${method}`}
           className="flex w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-transform active:scale-[0.97] disabled:opacity-40"
         >
-          {busy === 'email' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+          {busy === 'send' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
         </button>
       </div>
 
@@ -173,15 +218,6 @@ export default function PrivyLoginControls() {
           </button>
         ))}
       </div>
-
-      {/* Wallet */}
-      <button
-        type="button"
-        onClick={loginWithWallet}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
-      >
-        <Wallet className="h-4 w-4" /> Connect a wallet
-      </button>
     </div>
   );
 }
