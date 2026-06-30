@@ -1,6 +1,6 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useAppKitAccount } from '@/lib/walletCompat';
-import { getMemberAccountCenter, type MemberProfileViewResponse } from '@/utils/apiClient';
+import { getMemberAccountCenter, bootstrapMemberAccount, type MemberProfileViewResponse } from '@/utils/apiClient';
 import { getStoredAvatar, setStoredAvatar } from '@/lib/avatarStore';
 
 /**
@@ -72,6 +72,10 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
     }
     setLoading(true);
     try {
+      // Ensure a member record exists for this Privy DID (idempotent upsert) BEFORE reading it, so
+      // capability-gated features (Plaid, Bridge) work for users who came straight in without the
+      // onboarding flow. Without this, the capability check finds no member and 403s.
+      await bootstrapMemberAccount().catch(() => {});
       const r = await getMemberAccountCenter();
       setRaw(r?.profile ?? null);
     } catch {
