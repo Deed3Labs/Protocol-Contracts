@@ -26,14 +26,26 @@ export function useAppKitAccount() {
   // screen never advances and the backend can't reclaim the member by the real MetaMask address).
   const externalWallet = wallets?.find((w) => w.walletClientType !== 'privy');
   const embeddedWallet = wallets?.find((w) => w.walletClientType === 'privy');
-  const isEmbedded = !externalWallet;
+  // A SIWE login links the wallet to user.linkedAccounts even when it isn't in the live useWallets list,
+  // so fall back to that so `address` resolves right after login (→ nav + member reclaim).
+  const linkedExternal = (
+    user?.linkedAccounts as
+      | Array<{ type?: string; address?: string; walletClientType?: string; chainType?: string }>
+      | undefined
+  )?.find(
+    (a) => a.type === 'wallet' && a.walletClientType !== 'privy' && (a.chainType ? a.chainType === 'ethereum' : true),
+  );
+  const externalAddress = (externalWallet?.address ?? linkedExternal?.address ?? undefined) as
+    | `0x${string}`
+    | undefined;
+  const isEmbedded = !externalAddress;
 
   // External login → that wallet's OWN address (same across providers → reclaims the member, tier-2/3).
   // Email/social → the smart wallet address (tier 1, where funds live).
   const address = (
     isEmbedded
       ? (smartWalletAddress ?? embeddedWallet?.address ?? wagmiAddress ?? user?.wallet?.address)
-      : (externalWallet?.address ?? wagmiAddress)
+      : (externalAddress ?? wagmiAddress)
   ) as `0x${string}` | undefined;
   const isConnected = !!authenticated && !!address;
   const accountType: AccountType = isEmbedded && smartWalletAddress ? 'smartAccount' : 'eoa';
