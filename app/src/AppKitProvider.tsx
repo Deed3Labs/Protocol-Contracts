@@ -70,7 +70,9 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
       config={{
         loginMethods: ['email', 'wallet', 'google', 'apple', 'twitter', 'github', 'discord', 'farcaster'],
         // Email/social users get an embedded EOA; Smart Wallets (dashboard) layer a Kernel SA on top.
-        embeddedWallets: { ethereum: { createOnLogin: 'users-without-wallets' }, showWalletUIs: true },
+        // showWalletUIs:false → the embedded signer signs SILENTLY (no Privy confirm/approve popups).
+        // Our own Review screen is the confirmation; smart-wallet sendTransaction defaults to this flag.
+        embeddedWallets: { ethereum: { createOnLogin: 'users-without-wallets' }, showWalletUIs: false },
         defaultChain: base,
         supportedChains: [...supportedChains],
         appearance: {
