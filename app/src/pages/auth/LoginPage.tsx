@@ -4,14 +4,17 @@ import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import LoginView from './LoginView';
 
 export default function LoginPage() {
-  const { isConnected, isAuthenticated } = useAppKitAuth();
+  // Navigate as soon as the user is AUTHENTICATED — don't also wait for `isConnected` (an address).
+  // For email/social users the address is the smart wallet, which Privy mints asynchronously AFTER
+  // login, so requiring it left them authenticated-but-stuck on this screen. The address resolves on
+  // its own once the app is loaded.
+  const { isAuthenticated } = useAppKitAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [hasNavigated, setHasNavigated] = useState(false);
 
   useEffect(() => {
-    // If already connected, route on through (splash handled by App.tsx).
-    if (isConnected && isAuthenticated && !hasNavigated) {
+    if (isAuthenticated && !hasNavigated) {
       setHasNavigated(true);
       const fromState = location.state as
         | { from?: { pathname?: string; search?: string; hash?: string } }
@@ -25,10 +28,10 @@ export default function LoginPage() {
       setTimeout(() => {
         navigate(nextRoute, { replace: true });
       }, 100);
-    } else if (!isConnected || !isAuthenticated) {
+    } else if (!isAuthenticated) {
       setHasNavigated(false);
     }
-  }, [isAuthenticated, isConnected, location.state, navigate, hasNavigated]);
+  }, [isAuthenticated, location.state, navigate, hasNavigated]);
 
   return (
     <LoginView
