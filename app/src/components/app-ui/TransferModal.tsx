@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useAccount } from 'wagmi';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
@@ -41,9 +40,8 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
   const { accounts: external, openManager } = useExternalAccounts();
   const { verified, openKyc } = useKyc();
   const bal = useClearBalances();
-  const { address } = useAccount();
-  const { embeddedWalletInfo } = useAppKitAccount();
-  const { client: smartWalletClient } = useSmartWallets();
+  const { address, embeddedWalletInfo } = useAppKitAccount();
+  const { getClientForChain } = useSmartWallets();
   const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const accounts: Acct[] = [
@@ -99,9 +97,13 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         const scRun = isDeposit ? scDeposit : scRedeem;
         const relayerRun = isDeposit ? gaslessDeposit : gaslessRedeem;
         let hash: string;
-        if (isSmartAccount && smartWalletClient) {
+        // Bind the smart-wallet client to THIS chain. The default client sits on Privy's defaultChain
+        // (Base mainnet); ACTIVE_CHAIN_ID is Base Sepolia on the demo — without this the UserOp lands on
+        // the wrong chain (or nowhere), which is why it "succeeded" with no on-chain tx where you looked.
+        const chainClient = isSmartAccount ? await getClientForChain({ id: chainId }) : undefined;
+        if (isSmartAccount && chainClient) {
           // Tier 1: Privy smart wallet — sponsored + silent; no relayer fallback (1271 can't sign EIP-3009).
-          hash = await scRun({ smartWalletClient, ownerWallet: address, amount: amountStr, chainId });
+          hash = await scRun({ smartWalletClient: chainClient, ownerWallet: address, amount: amountStr, chainId });
         } else {
           // External: Tier 2 (EIP-5792 + 7702, sponsored) → Tier 3 (EIP-3009 relayer) graceful fallback.
           try {

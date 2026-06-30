@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useAccount } from 'wagmi';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
@@ -39,9 +38,8 @@ interface Source {
 export default function SendModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { contacts, getContact, openManager } = useContacts();
   const { accounts } = useExternalAccounts();
-  const { address } = useAccount();
-  const { embeddedWalletInfo } = useAppKitAccount();
-  const { client: smartWalletClient } = useSmartWallets();
+  const { address, embeddedWalletInfo } = useAppKitAccount();
+  const { getClientForChain } = useSmartWallets();
   const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const bal = useClearBalances();
@@ -128,9 +126,12 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
           const confirmed = await confirmSendTransferLock(t.id, { transferId: t.transferId, escrowTxHash: txHash, aa: true });
           return confirmed?.claimUrl ?? null;
         };
-        if (isSmartAccount && smartWalletClient) {
+        // Bind the smart-wallet client to THIS chain (default client is on Privy's defaultChain, not
+        // necessarily ACTIVE_CHAIN_ID) so the lock UserOp lands on the right chain.
+        const chainClient = isSmartAccount ? await getClientForChain({ id: chainId }) : undefined;
+        if (isSmartAccount && chainClient) {
           // Tier 1: Privy smart wallet — sponsored + silent; no relayer fallback (1271 can't sign EIP-3009).
-          claim = await scLock(smartWalletClient);
+          claim = await scLock(chainClient);
         } else {
           // External: Tier 2 (EIP-5792 + 7702, sponsored) → Tier 3 (EIP-3009 relayer) graceful fallback.
           try {
