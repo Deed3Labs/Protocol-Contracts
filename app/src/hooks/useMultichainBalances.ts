@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useState } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { SUPPORTED_NETWORKS, DATA_CHAIN_IDS, getNetworkByChainId } from '@/config/networks';
 import { getCommonTokens } from '@/config/tokens';
 import { getBalance, getBalancesBatch, getTokenBalancesBatch, getAllTokenBalances, getTokenPrice as getTokenPriceFromApi, getTokenPricesBatch, getTokensByAddressPortfolio } from '@/utils/apiClient';

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Home, Plus, Search, BarChart3, ShieldCheck, DollarSign } from "lucide-react";
-import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@/lib/walletCompat';
 import { ethers } from "ethers";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";
 import UserMenu from "@/components/UserMenu";

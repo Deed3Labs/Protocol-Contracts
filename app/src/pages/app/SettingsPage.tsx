@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Landmark, CreditCard, ShieldCheck, BellRing, CircleHelp, LogOut, Sun, Sunset, Moon, Wallet, Users, UserSearch, type LucideIcon } from 'lucide-react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { getDirectoryOptout, setDirectoryOptout } from '@/utils/apiClient';
 import SectionCard from '@/components/app-ui/SectionCard';
 import CardVisual from '@/components/app-ui/CardVisual';

@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 
 
 import { useNotifications } from '@/context/NotificationContext';
@@ -159,9 +159,6 @@ const UserMenu: React.FC<UserMenuProps> = ({ hasAdminRole }) => {
                     <DialogHeader className="px-6 pb-0">
             <div className="flex items-center justify-between">
                              <DialogTitle className="text-left text-xl font-semibold">Notifications</DialogTitle>
-              <div className="scale-75 origin-right rounded-full">
-                <appkit-button />
-              </div>
             </div>
           </DialogHeader>
 

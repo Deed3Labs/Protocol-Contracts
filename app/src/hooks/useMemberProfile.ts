@@ -1,5 +1,5 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { getMemberAccountCenter, type MemberProfileViewResponse } from '@/utils/apiClient';
 import { getStoredAvatar, setStoredAvatar } from '@/lib/avatarStore';
 

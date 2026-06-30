@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, ArrowLeft, Check, ChevronRight, Copy, Loader2, Wallet } from 'lucide-react';
 import { ethers } from 'ethers';
-import { useAppKit, useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { useAppKit, useAppKitAccount, useAppKitProvider } from '@/lib/walletCompat';
 import { useAccount } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';

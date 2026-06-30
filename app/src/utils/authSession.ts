@@ -1,11 +1,10 @@
-import { SafeLocalStorageKeys } from '@reown/appkit-common';
-
 export const AUTH_EXPIRED_EVENT = 'appkit-auth-expired';
 
 const configuredAuthKey = (import.meta.env.VITE_SIWX_AUTH_TOKEN_KEY || '').trim();
+// Legacy SIWX token storage keys (superseded by Privy getAccessToken); kept only so clearSiwxAuthToken
+// can purge any stale token left in localStorage by the old AppKit auth.
 const AUTH_TOKEN_STORAGE_KEYS = [
   configuredAuthKey,
-  SafeLocalStorageKeys.SIWX_AUTH_TOKEN,
   '@appkit/siwx-auth-token',
 ].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
 
@@ -18,6 +17,11 @@ let lastAuthExpiredDispatchAt = 0;
 let activeWalletAddress: string | null = null;
 export function setActiveWallet(address: string | null | undefined): void {
   activeWalletAddress = address ? address.toLowerCase() : null;
+}
+
+/** The active wallet address (lowercased), sent as X-Wallet-Address so the backend binds requests to it. */
+export function getActiveWallet(): string | null {
+  return activeWalletAddress;
 }
 
 /** Best-effort: pull the wallet address out of a SIWX JWT payload (handles CAIP "eip155:1:0x.." too). */

@@ -33,7 +33,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import SideMenu from '@/components/portfolio/SideMenu';
 import HeaderNav from '@/components/portfolio/HeaderNav';
 import MobileNav from '@/components/portfolio/MobileNav';

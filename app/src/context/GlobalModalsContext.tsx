@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { getMemberAccountCenter, type MemberAccountCenterResponse } from '@/utils/apiClient';
 import { usePortfolio } from '@/context/PortfolioContext';

@@ -1,5 +1,5 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { getTransactionsBatch, getPlaidRecentTransactions, type PlaidRecentTransaction } from '@/utils/apiClient';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import type { Category } from '@/components/app-ui/TransactionFilterModal';

@@ -31,7 +31,7 @@ import MobileNav from '@/components/portfolio/MobileNav';
 import DepositModal from '@/components/portfolio/DepositModal';
 import WithdrawModal from '@/components/portfolio/WithdrawModal';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { LargePriceWheel } from '@/components/PriceWheel';
 import { Button } from '@/components/ui/button';

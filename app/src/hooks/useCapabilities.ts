@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAppKitProvider } from '@reown/appkit/react';
+import { useAppKitProvider } from '@/lib/walletCompat';
 import { EIP5792Utils } from '@/utils/EIP5792Utils';
 import type { WalletCapabilities } from '@/utils/EIP5792Utils';
 

@@ -4,7 +4,7 @@ import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import LoginView from './LoginView';
 
 export default function LoginPage() {
-  const { isConnected, isAuthenticated, openModal } = useAppKitAuth();
+  const { isConnected, isAuthenticated } = useAppKitAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [hasNavigated, setHasNavigated] = useState(false);
@@ -32,7 +32,6 @@ export default function LoginPage() {
 
   return (
     <LoginView
-      onGetStarted={() => openModal('Connect')}
       onPreviewOnboarding={() => navigate('/onboarding')}
     />
   );

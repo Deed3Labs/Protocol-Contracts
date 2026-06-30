@@ -45,8 +45,8 @@ export async function installAutopaySession(args: {
   /** True for AppKit email/social smart accounts — they grant the allowance with a sponsored
    *  approve (can't sign EIP-2612 permit) and sign the mandate via EIP-1271. */
   isSmartAccount: boolean;
-  /** AppKit walletProvider (useAppKitProvider('eip155')) — required for the smart-account approve. */
-  provider?: unknown;
+  /** Privy smart wallet client (useSmartWallets().client) — required for the smart-account approve. */
+  smartWalletClient?: unknown;
 }): Promise<void> {
   const config = wagmiAdapter.wagmiConfig;
   const c = clearContracts(args.chainId);
@@ -108,7 +108,7 @@ export async function installAutopaySession(args: {
   // 2) Grant the vault a standing USDC allowance covering all runs.
   if (args.isSmartAccount) {
     // Smart accounts can't sign EIP-2612 (ECDSA) — approve once via a sponsored batch (gasless).
-    await scApprove({ provider: args.provider, owner, token: usdc, spender: vault, amount: allowanceValue, chainId: args.chainId });
+    await scApprove({ smartWalletClient: args.smartWalletClient, owner, token: usdc, spender: vault, amount: allowanceValue, chainId: args.chainId });
     await createAutopayRule(args.ownerWallet, { chainId: args.chainId, amountUsdc: args.amountUsdc, cadence: args.cadence, runs, mandate });
     return;
   }

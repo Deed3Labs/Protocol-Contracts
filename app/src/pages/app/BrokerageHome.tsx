@@ -14,7 +14,7 @@ import CTAStack from '@/components/portfolio/CTAStack';
 import { SpendTracker } from '@/components/portfolio/SpendTracker';
 import { UpcomingTransactions } from '@/components/portfolio/UpcomingTransactions';
 import { BudgetTracker } from '@/components/portfolio/BudgetTracker';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { useDeedName } from '@/hooks/useDeedName';
 import { usePortfolioHistory } from '@/hooks/usePortfolioHistory';
 import { getNetworkByChainId } from '@/config/networks';

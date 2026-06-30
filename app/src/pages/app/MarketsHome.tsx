@@ -9,7 +9,7 @@ import WithdrawModal from '@/components/portfolio/WithdrawModal';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import SearchResults from '@/components/portfolio/SearchResults';
 import SearchBar from '@/components/portfolio/SearchBar';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { LargePriceWheel } from '@/components/PriceWheel';
 import { isStablecoin } from '@/utils/tokenUtils';

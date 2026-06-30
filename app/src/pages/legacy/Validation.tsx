@@ -19,7 +19,7 @@ import {
   AlertCircle,
   RefreshCw
 } from "lucide-react";
-import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from "@reown/appkit/react";
+import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from "@/lib/walletCompat";
 import { ethers } from "ethers";
 import { useDeedNFTData } from "@/hooks/useDeedNFTData";
 import { getContractAddressForNetwork, getAbiPathForNetwork } from "@/config/networks";

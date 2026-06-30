@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Building2, CreditCard, ArrowDownLeft, ChevronRight, Loader2, ArrowLeft, AlertCircle, ArrowLeftRight } from 'lucide-react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { createStripeOnrampSession, getPlaidLinkToken, exchangePlaidToken, getBridgeOnboardingUrl } from '@/utils/apiClient';
 import { usePortfolio } from '@/context/PortfolioContext';
 
