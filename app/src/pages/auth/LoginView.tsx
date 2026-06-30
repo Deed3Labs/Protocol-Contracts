@@ -1,6 +1,7 @@
-import { Sparkles, Home, PiggyBank, ArrowRight, ShieldCheck, type LucideIcon } from 'lucide-react';
+import { Sparkles, Home, PiggyBank, type LucideIcon } from 'lucide-react';
 import ClearPathLogo from '@/assets/ClearPath-Logo.png';
 import Wordmark from '@/components/app-ui/Wordmark';
+import PrivyLoginControls from './PrivyLoginControls';
 
 interface Benefit {
   icon: LucideIcon;
@@ -15,15 +16,13 @@ const BENEFITS: Benefit[] = [
 ];
 
 /**
- * Login / sign-up — brand + value prop + the primary action. Auth itself runs through AppKit
- * (LoginPage wires `onGetStarted` → openModal('Connect'), which offers email / Google / Apple /
- * wallet). All theme tokens, so it adapts to light/dusk/dark.
+ * Login / sign-up — brand + value prop + the inline auth controls. Auth runs through Privy headlessly
+ * (PrivyLoginControls: email OTP / Google+socials / wallet) — no third-party modal. All theme tokens,
+ * so it adapts to light/dusk/dark.
  */
 export default function LoginView({
-  onGetStarted,
   onPreviewOnboarding,
 }: {
-  onGetStarted: () => void;
   onPreviewOnboarding: () => void;
 }) {
   return (
@@ -65,24 +64,7 @@ export default function LoginView({
             })}
           </div>
 
-          <button
-            type="button"
-            onClick={onGetStarted}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
-          >
-            Get started <ArrowRight className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={onGetStarted}
-            className="mt-2 w-full rounded-xl border border-border py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
-          >
-            I already have an account
-          </button>
-
-          <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
-            <ShieldCheck className="h-3 w-3" /> Continue with email, Google, Apple, or a wallet
-          </div>
+          <PrivyLoginControls />
         </div>
 
         <p className="mt-4 text-center text-[11px] leading-relaxed text-muted-foreground">
