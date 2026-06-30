@@ -1000,12 +1000,15 @@ export class MemberStore {
             auth_subject = $2,
             reown_profile_uuid = COALESCE($3, reown_profile_uuid),
             reown_email_hash = COALESCE($4, reown_email_hash),
+            -- Re-align the primary to the canonical (smart) wallet so members who joined via an external
+            -- wallet pre-migration self-heal. syncPrimaryWallet then demotes the old primary in member_wallets.
+            primary_wallet = COALESCE($5, primary_wallet),
             last_authenticated_at = NOW(),
             updated_at = NOW()
           WHERE id = $1
           RETURNING *
           `,
-          [existingMember.id, nextAuthSubject, reownProfileUuid, reownEmailHash]
+          [existingMember.id, nextAuthSubject, reownProfileUuid, reownEmailHash, primaryWallet]
         );
       });
 

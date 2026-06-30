@@ -13,6 +13,7 @@ type AuthenticatedWallet = {
   chainId?: string | number;
   profileUuid?: string;
   email?: string;
+  smartWallet?: string; // the Privy smart wallet — the CANONICAL primary (where funds live)
   token: string;
 };
 
@@ -164,7 +165,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return sendUnauthorized(res, 'No wallet linked to this account', 'AUTH_NO_WALLET');
     }
 
-    req.auth = { walletAddress, profileUuid: userId, email, token };
+    req.auth = { walletAddress, profileUuid: userId, email, smartWallet, token };
     return next();
   } catch (error) {
     console.error('Authentication error:', error);

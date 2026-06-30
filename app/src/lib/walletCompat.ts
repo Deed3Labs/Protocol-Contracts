@@ -38,10 +38,13 @@ export function useAppKitAccount() {
   const externalAddress = (externalWallet?.address ?? linkedExternal?.address ?? undefined) as
     | `0x${string}`
     | undefined;
-  const isEmbedded = !externalAddress;
+  // The Privy SMART WALLET is ALWAYS the primary account (where funds live), even when an external
+  // wallet (MetaMask) is LINKED — linked wallets are for viewing/transfers, not the active account, so a
+  // linked EOA must never hijack `address`. Only a user with genuinely NO smart wallet (legacy external
+  // login) falls through to the EOA path. Login is identity-only now + the server guarantees a smart
+  // wallet, so email/social users always resolve to their smart wallet here.
+  const isEmbedded = !!smartWalletAddress || !externalAddress;
 
-  // External login → that wallet's OWN address (same across providers → reclaims the member, tier-2/3).
-  // Email/social → the smart wallet address (tier 1, where funds live).
   const address = (
     isEmbedded
       ? (smartWalletAddress ?? embeddedWallet?.address ?? wagmiAddress ?? user?.wallet?.address)
