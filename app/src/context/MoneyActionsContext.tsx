@@ -5,9 +5,11 @@ import SendModal from '@/components/app-ui/SendModal';
 import RequestModal from '@/components/app-ui/RequestModal';
 import TransferModal from '@/components/app-ui/TransferModal';
 import AutoSaveModal from '@/components/app-ui/AutoSaveModal';
+import ReceiveModal from '@/components/app-ui/ReceiveModal';
 
 interface MoneyActionsValue {
   openAddMoney: () => void;
+  openReceive: () => void;
   openWithdraw: () => void;
   openSend: () => void;
   openRequest: () => void;
@@ -21,6 +23,7 @@ export function useMoneyActions(): MoneyActionsValue {
   return (
     useContext(Ctx) ?? {
       openAddMoney: () => {},
+      openReceive: () => {},
       openWithdraw: () => {},
       openSend: () => {},
       openRequest: () => {},
@@ -32,6 +35,7 @@ export function useMoneyActions(): MoneyActionsValue {
 
 export function MoneyActionsProvider({ children }: { children: ReactNode }) {
   const [addOpen, setAddOpen] = useState(false);
+  const [receiveOpen, setReceiveOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -44,6 +48,7 @@ export function MoneyActionsProvider({ children }: { children: ReactNode }) {
         // not at open — provider off-ramps/on-ramps (instant debit, card) KYC their own users and
         // on-chain moves need none. AddMoney, Withdraw and Transfer each gate their bank path.
         openAddMoney: () => setAddOpen(true),
+        openReceive: () => setReceiveOpen(true),
         openWithdraw: () => setWithdrawOpen(true),
         openSend: () => setSendOpen(true),
         openRequest: () => setRequestOpen(true),
@@ -53,6 +58,7 @@ export function MoneyActionsProvider({ children }: { children: ReactNode }) {
     >
       {children}
       <AddMoneyModal open={addOpen} onOpenChange={setAddOpen} />
+      <ReceiveModal open={receiveOpen} onOpenChange={setReceiveOpen} />
       <WithdrawModal open={withdrawOpen} onOpenChange={setWithdrawOpen} />
       <SendModal open={sendOpen} onOpenChange={setSendOpen} />
       <RequestModal open={requestOpen} onOpenChange={setRequestOpen} />
