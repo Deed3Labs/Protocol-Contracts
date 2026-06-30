@@ -72,7 +72,11 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const [bankOpen, setBankOpen] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { wallets, primaryId, openManager } = useLinkedWallets();
+  const { wallets: allWallets, primaryId, openManager } = useLinkedWallets();
+  // Withdrawals off-ramp the Clear (smart) wallet via Bridge. Linked external wallets can't be withdrawn
+  // from yet — that needs the external wallet to sign / move funds first (like the linked→smart transfer,
+  // tier-2 EIP-5792/7702 territory), so the source is the Clear account only for now.
+  const wallets = allWallets.filter((w) => w.id === primaryId);
   const { accounts, openManager: openAccounts } = useExternalAccounts();
   const banks = accounts.map((a) => ({ id: a.id, label: `${a.name} ••${a.mask}` }));
   const { verified, openKyc } = useKyc();
