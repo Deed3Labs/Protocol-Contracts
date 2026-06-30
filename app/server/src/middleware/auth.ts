@@ -65,17 +65,23 @@ function sendUnauthorized(res: Response, message: string, code: string) {
   return res.status(401).json({ error: 'Unauthorized', code, message });
 }
 
-async function loadUserWallets(privy: PrivyClient, userId: string): Promise<UserWallets> {
-  const cached = userCache.get(userId);
-  if (cached && cached.expiresAt > Date.now()) return cached;
+type CollectedWallets = {
+  addresses: Set<string>;
+  smartWallet?: string;
+  email?: string;
+  hasEmbeddedEoa: boolean;
+  hasExternalWallet: boolean;
+};
 
-  const user = await privy.getUser(userId);
+function collectWallets(user: { linkedAccounts?: unknown[] }): CollectedWallets {
   const addresses = new Set<string>();
   let smartWallet: string | undefined;
   let email: string | undefined;
+  let hasEmbeddedEoa = false;
+  let hasExternalWallet = false;
 
   for (const account of user.linkedAccounts ?? []) {
-    const acct = account as { type?: string; address?: string; chainType?: string };
+    const acct = account as { type?: string; address?: string; chainType?: string; walletClientType?: string };
     const isEvmWallet =
       (acct.type === 'wallet' || acct.type === 'smart_wallet') &&
       typeof acct.address === 'string' &&
@@ -84,11 +90,46 @@ async function loadUserWallets(privy: PrivyClient, userId: string): Promise<User
       const addr = normalizeAddress(acct.address as string);
       addresses.add(addr);
       if (acct.type === 'smart_wallet') smartWallet = addr;
+      if (acct.type === 'wallet') {
+        if (acct.walletClientType === 'privy') hasEmbeddedEoa = true;
+        else hasExternalWallet = true;
+      }
     }
     if (acct.type === 'email' && typeof acct.address === 'string') email = acct.address;
   }
 
-  const entry: UserWallets = { addresses, smartWallet, email, expiresAt: Date.now() + AUTH_CACHE_TTL_MS };
+  return { addresses, smartWallet, email, hasEmbeddedEoa, hasExternalWallet };
+}
+
+async function loadUserWallets(privy: PrivyClient, userId: string): Promise<UserWallets> {
+  const cached = userCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached;
+
+  let user = await privy.getUser(userId);
+  let c = collectWallets(user);
+
+  // GUARANTEE a smart wallet for embedded (email/social) users. The client-side mint can silently
+  // fail/skip, leaving them with no wallet at all — so create the embedded EOA + smart wallet
+  // server-side via the Privy API. External (MetaMask) users are left alone (they bring their own).
+  if (!c.hasExternalWallet && !c.smartWallet) {
+    try {
+      user = await privy.createWallets({
+        userId,
+        createEthereumWallet: !c.hasEmbeddedEoa,
+        createEthereumSmartWallet: true,
+      });
+      c = collectWallets(user);
+    } catch (error) {
+      console.warn('[privy] createWallets failed for', userId, (error as Error)?.message);
+    }
+  }
+
+  const entry: UserWallets = {
+    addresses: c.addresses,
+    smartWallet: c.smartWallet,
+    email: c.email,
+    expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
+  };
   userCache.set(userId, entry);
   return entry;
 }
