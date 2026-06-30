@@ -25,6 +25,7 @@ const paymasterUrl = (chainId: number) =>
 
 const ERC20_ABI = [
   { name: 'approve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
+  { name: 'transfer', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
 ] as const;
 const VAULT_ABI = [
   { name: 'deposit', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ type: 'uint256' }] },
@@ -127,5 +128,24 @@ export async function scSendLock(args: {
   return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.claimEscrow, total] }) },
     { to: c.claimEscrow, data: encodeFunctionData({ abi: ESCROW_ABI, functionName: 'createTransfer', args: [args.transferId, principal, fee, expiry, args.recipientHintHash] }) },
+  ]);
+}
+
+/**
+ * Cash/Savings → a linked external wallet: ONE sponsored ERC-20 transfer from the smart wallet.
+ * `token` is the canonical USDC (Cash) or CLRUSD (Savings) address; both are 6-decimals. Gasless via
+ * the smart-wallet client. The reverse (linked → smart) can't be sponsored — the external EOA signs it.
+ */
+export async function scTransferToken(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  token: `0x${string}`;
+  to: `0x${string}`;
+  amount: string;
+  chainId: number;
+}): Promise<string> {
+  const amt = parseUnits(args.amount, 6);
+  return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    { to: args.token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [args.to, amt] }) },
   ]);
 }
