@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, Copy, Loader2, Mail, Search, ShieldCheck, UserPlus, Zap } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useContacts, contactInitials } from '@/context/ContactsContext';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { cn } from '@/lib/utils';
 
 /*
@@ -18,6 +20,8 @@ const QUICK = [25, 50, 100, 250];
 
 export default function RequestModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { contacts, getContact, openManager } = useContacts();
+  const { address } = useAppKitAccount();
+  const [tab, setTab] = useState<'request' | 'receive'>('request');
   const [step, setStep] = useState<'compose' | 'review' | 'status'>('compose');
   const [picking, setPicking] = useState(false);
   const [contactId, setContactId] = useState<string | null>(null);
@@ -26,9 +30,11 @@ export default function RequestModal({ open, onOpenChange }: { open: boolean; on
   const [query, setQuery] = useState('');
   const [done, setDone] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [addrCopied, setAddrCopied] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setTab('request');
     setStep('compose');
     setPicking(false);
     setContactId(null);
@@ -36,7 +42,19 @@ export default function RequestModal({ open, onOpenChange }: { open: boolean; on
     setNote('');
     setQuery('');
     setCopied(false);
+    setAddrCopied(false);
   }, [open]);
+
+  const copyAddress = async () => {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      setAddrCopied(true);
+      setTimeout(() => setAddrCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
 
   useEffect(() => {
     if (step !== 'status') return;
@@ -62,8 +80,64 @@ export default function RequestModal({ open, onOpenChange }: { open: boolean; on
         {/* ---- COMPOSE ---- */}
         {step === 'compose' && !picking && (
           <div className="p-5">
-            <div className="mb-5 text-base font-semibold text-foreground">Request money</div>
+            <div className="mb-4 text-base font-semibold text-foreground">Get paid</div>
 
+            <div className="mb-5 grid grid-cols-2 gap-1 rounded-xl bg-secondary/50 p-1">
+              <button
+                type="button"
+                onClick={() => setTab('request')}
+                className={cn('rounded-lg py-1.5 text-sm font-medium transition-colors', tab === 'request' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+              >
+                Request
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('receive')}
+                className={cn('rounded-lg py-1.5 text-sm font-medium transition-colors', tab === 'receive' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+              >
+                Receive
+              </button>
+            </div>
+
+            {tab === 'receive' ? (
+              address ? (
+                <div>
+                  <p className="mb-4 text-xs text-muted-foreground">
+                    Send <span className="font-medium text-foreground">USDC on Base</span> to this address — it lands in your account.
+                  </p>
+                  <div className="mx-auto mb-4 w-fit rounded-2xl bg-white p-3 shadow-sm">
+                    <QRCodeSVG value={address} size={176} bgColor="#ffffff" fgColor="#000000" level="M" />
+                  </div>
+                  <div className="rounded-xl border border-border bg-secondary/40 p-3">
+                    <div className="mb-1 text-[11px] font-medium text-muted-foreground">Your deposit address</div>
+                    <div className="break-all font-mono text-xs leading-relaxed text-foreground">{address}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copyAddress}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+                  >
+                    {addrCopied ? (
+                      <>
+                        <Check className="h-4 w-4" /> Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4" /> Copy address
+                      </>
+                    )}
+                  </button>
+                  <p className="mt-3 text-center text-[11px] text-muted-foreground">
+                    Only send assets on <span className="font-medium text-foreground">Base</span> to this address.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border bg-secondary/40 p-4 text-center text-sm text-muted-foreground">
+                  Setting up your wallet… check back in a moment.
+                </div>
+              )
+            ) : (
+              <>
             <label className="mb-2 block text-xs font-medium text-muted-foreground">From</label>
             <button
               type="button"
@@ -136,6 +210,8 @@ export default function RequestModal({ open, onOpenChange }: { open: boolean; on
             >
               Review
             </button>
+              </>
+            )}
           </div>
         )}
 
