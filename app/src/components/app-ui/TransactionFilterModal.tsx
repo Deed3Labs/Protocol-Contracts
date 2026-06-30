@@ -10,11 +10,17 @@ export type Category = 'Transfer' | 'Deposit' | 'Payroll' | 'Bill' | 'Card' | 'S
 export type StatusFilter = 'all' | 'completed' | 'pending' | 'failed';
 export type DirectionFilter = 'all' | 'in' | 'out';
 
+export interface SourceOption {
+  value: string; // '' = all, a lowercased wallet address, or 'bank'
+  label: string;
+}
+
 export interface AdvFilters {
   categories: Record<Category, boolean>;
   status: StatusFilter;
   direction: DirectionFilter;
   amount: [number, number];
+  source: string; // '' = all sources
 }
 
 export const ALL_CATEGORIES: Category[] = ['Transfer', 'Deposit', 'Payroll', 'Bill', 'Card', 'Subscription'];
@@ -26,6 +32,7 @@ export const DEFAULT_ADV: AdvFilters = {
   status: 'all',
   direction: 'all',
   amount: [AMOUNT_MIN, AMOUNT_MAX],
+  source: '',
 };
 
 /** How many advanced filter groups differ from the defaults (for the button badge). */
@@ -35,6 +42,7 @@ export function advCount(a: AdvFilters): number {
   if (a.status !== 'all') n++;
   if (a.direction !== 'all') n++;
   if (a.amount[0] !== AMOUNT_MIN || a.amount[1] !== AMOUNT_MAX) n++;
+  if (a.source) n++;
   return n;
 }
 
@@ -56,11 +64,13 @@ export default function TransactionFilterModal({
   onOpenChange,
   value,
   onApply,
+  sources = [],
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   value: AdvFilters;
   onApply: (v: AdvFilters) => void;
+  sources?: SourceOption[];
 }) {
   const [draft, setDraft] = useState<AdvFilters>(value);
   useEffect(() => {
@@ -77,6 +87,25 @@ export default function TransactionFilterModal({
         </DialogHeader>
 
         <div className="space-y-5 py-1">
+          {/* source — Clear account, a linked wallet, or external bank */}
+          {sources.length > 1 && (
+            <div>
+              <div className="mb-2 text-xs font-medium text-muted-foreground">Source</div>
+              <Select value={draft.source || 'all'} onValueChange={(v) => setDraft((s) => ({ ...s, source: v === 'all' ? '' : v }))}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {sources.map((o) => (
+                    <SelectItem key={o.value || 'all'} value={o.value || 'all'}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* direction */}
           <div>
             <div className="mb-2 text-xs font-medium text-muted-foreground">Direction</div>
