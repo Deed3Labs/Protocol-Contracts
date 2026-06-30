@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react';
-import { useAccount } from 'wagmi';
-import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
-import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
+import { useWallets } from '@privy-io/react-auth';
+import { createWalletClient, custom } from 'viem';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
+import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import { ArrowDownUp, ArrowLeft, Check, ChevronDown, Landmark, Loader2, PiggyBank, ShieldCheck, TriangleAlert, Wallet, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
+import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useKyc } from '@/context/KycContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
-import { gaslessDeposit, gaslessRedeem } from '@/lib/gaslessMoney';
-import { isAaUnsupportedError } from '@/lib/aa';
-import { scDeposit, scRedeem } from '@/lib/sendCalls';
+import { useLinkedWalletBalances } from '@/hooks/useLinkedWalletBalances';
+import { gaslessDeposit, gaslessRedeem, gaslessWalletTransfer } from '@/lib/gaslessMoney';
+import { linkedWalletTokenTransfer } from '@/lib/linkedWalletTransfer';
+import { scDeposit, scRedeem, scTransferToken } from '@/lib/sendCalls';
+import type { Eip712TypedData } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -23,34 +28,65 @@ import { cn } from '@/lib/utils';
  * needs a SEPARATE ACH processor (e.g. Plaid Transfer / Dwolla / processor token); KYC-gated.
  */
 
-type Scope = 'internal' | 'external';
+type Scope = 'internal' | 'external' | 'wallet';
 interface Acct {
   id: string;
   name: string;
   detail: string;
   scope: Scope;
   balance?: number;
+  address?: string; // linked-wallet on-chain destination
   icon: typeof Wallet;
 }
 
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const shorten = (a: string) => (a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
+// Allowed "To" scopes for a given "From": internal can go internal (deposit/redeem) or to a linked
+// wallet (on-chain send); external stays bank↔bank. (Linked wallets aren't a "From" yet — see #3b.)
+const toScopesFor = (s?: Scope): Scope[] => (s === 'internal' ? ['internal', 'wallet'] : s === 'external' ? ['external'] : ['internal']);
 const QUICK = [50, 100, 500, 1000];
 const INSTANT_FEE = 0.015;
 
 export default function TransferModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { accounts: external, openManager } = useExternalAccounts();
+  const { externalWallets } = useLinkedWallets();
+  const { wallets: connectedWallets } = useWallets();
   const { verified, openKyc } = useKyc();
   const bal = useClearBalances();
-  const { address } = useAccount();
-  const { embeddedWalletInfo } = useAppKitAccount();
-  const { walletProvider } = useAppKitProvider('eip155');
+  const { balances: linkedBal } = useLinkedWalletBalances(externalWallets.map((w) => w.address), open);
+  const { address, embeddedWalletInfo } = useAppKitAccount();
+  const { getClientForChain } = useSmartWallets();
   const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const accounts: Acct[] = [
     { id: 'cash', name: 'Cash', detail: 'USDC', scope: 'internal', balance: bal.cash, icon: Wallet },
     { id: 'savings', name: 'Savings', detail: 'CLRUSD', scope: 'internal', balance: bal.savings, icon: PiggyBank },
     ...external.map((a) => ({ id: a.id, name: a.name, detail: `${a.type} ••${a.mask}`, scope: 'external' as Scope, icon: Landmark })),
+    ...externalWallets.map((w) => ({ id: w.id, name: w.label, detail: shorten(w.address), scope: 'wallet' as Scope, address: w.address, balance: linkedBal[w.address.toLowerCase()]?.usdc, icon: Wallet })),
   ];
+
+  // Sign an EIP-3009 authorization with a SPECIFIC linked wallet's own provider (not the active wallet),
+  // so the relayer can move that wallet's USDC. The wallet must be connected in the browser.
+  const signWithLinkedWallet = async (fromAddr: string, typedData: Eip712TypedData): Promise<string> => {
+    const w = connectedWallets.find((x) => x.address.toLowerCase() === fromAddr.toLowerCase());
+    if (!w) throw new Error('Open and reconnect that wallet in your browser to move funds from it.');
+    const provider = await w.getEthereumProvider();
+    const walletClient = createWalletClient({ account: fromAddr as `0x${string}`, transport: custom(provider as Parameters<typeof custom>[0]) });
+    return walletClient.signTypedData({
+      account: fromAddr as `0x${string}`,
+      domain: typedData.domain,
+      types: typedData.types,
+      primaryType: typedData.primaryType,
+      message: typedData.message,
+    } as Parameters<typeof walletClient.signTypedData>[0]);
+  };
+
+  // The linked wallet's raw EIP-1193 provider (for the CLRUSD path, which submits from that wallet).
+  const getLinkedProvider = async (fromAddr: string): Promise<unknown> => {
+    const w = connectedWallets.find((x) => x.address.toLowerCase() === fromAddr.toLowerCase());
+    if (!w) throw new Error('Open and reconnect that wallet in your browser to move funds from it.');
+    return w.getEthereumProvider();
+  };
 
   const [step, setStep] = useState<'compose' | 'review' | 'status'>('compose');
   const [fromId, setFromId] = useState('cash');
@@ -86,31 +122,69 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
       return () => clearTimeout(t);
     }
 
-    // Internal Cash↔Savings = real gasless deposit/redeem against the ESA vault.
+    // Internal Cash↔Savings (ESA mint/redeem) and Cash/Savings → linked wallet (ERC-20 transfer) —
+    // all real, gasless, on-chain via the smart wallet.
     let cancelled = false;
     (async () => {
       try {
         if (!address) throw new Error('Connect your wallet to transfer.');
         const isDeposit = fromId === 'cash' && toId === 'savings';
         const isRedeem = fromId === 'savings' && toId === 'cash';
-        if (!isDeposit && !isRedeem) throw new Error('Unsupported transfer.');
-        // Smart accounts (AppKit email/social) MUST use EIP-5792 — the EIP-3009 relayer can't validate
-        // their EIP-1271 signature. EOAs use EIP-3009 (gasless), or 5792 if their wallet advertises it.
-        const scRun = isDeposit ? scDeposit : scRedeem;
-        const relayerRun = isDeposit ? gaslessDeposit : gaslessRedeem;
+        const isOnchainOut = (fromId === 'cash' || fromId === 'savings') && to?.scope === 'wallet';
+        const isOnchainInCash = from?.scope === 'wallet' && toId === 'cash';
+        const isOnchainInSavings = from?.scope === 'wallet' && toId === 'savings';
+        if (!isDeposit && !isRedeem && !isOnchainOut && !isOnchainInCash && !isOnchainInSavings) throw new Error('Unsupported transfer.');
         let hash: string;
-        // Smart accounts (AppKit) → Reown-sponsored writeContract path; EOAs → EIP-3009 relayer (gasless).
-        const useSc = isSmartAccount;
-        if (useSc) {
-          try {
-            hash = await scRun({ provider: walletProvider, ownerWallet: address, amount: amountStr, chainId });
-          } catch (err) {
-            // Smart accounts have no EIP-3009 fallback (1271 can't sign it) — surface the error.
-            if (isSmartAccount || !isAaUnsupportedError(err)) throw err;
-            hash = await relayerRun({ ownerWallet: address, amount: amountStr, chainId });
-          }
+        if (isOnchainInCash) {
+          // Linked wallet → Cash: gasless EIP-3009 USDC move to the smart wallet. The LINKED wallet signs
+          // an off-chain authorization (no gas, no ETH needed); the relayer submits it + pays gas.
+          if (!from?.address) throw new Error('Select a linked wallet.');
+          hash = await gaslessWalletTransfer({
+            fromWallet: from.address,
+            amount: amountStr,
+            chainId,
+            signTypedData: (td) => signWithLinkedWallet(from.address as string, td),
+          });
+        } else if (isOnchainInSavings) {
+          // Linked wallet → Savings: move CLRUSD to the smart wallet. CLRUSD has no EIP-3009 (A3), so the
+          // linked wallet submits it — gasless via 7702/paymaster when supported, else it pays its own gas.
+          if (!from?.address) throw new Error('Select a linked wallet.');
+          const c = clearContracts(chainId);
+          if (!c) throw new Error('On-chain transfers are unavailable on this network.');
+          const provider = await getLinkedProvider(from.address);
+          hash = await linkedWalletTokenTransfer({
+            provider,
+            from: from.address as `0x${string}`,
+            token: c.clrusd,
+            to: address as `0x${string}`,
+            amount: amountStr,
+            chainId,
+          });
         } else {
-          hash = await relayerRun({ ownerWallet: address, amount: amountStr, chainId });
+          // Bind the smart-wallet client to THIS chain (default client sits on Privy's defaultChain, not
+          // necessarily ACTIVE_CHAIN_ID) so the UserOp lands on-chain.
+          const chainClient = isSmartAccount ? await getClientForChain({ id: chainId }) : undefined;
+          if (isOnchainOut) {
+            // Cash (USDC) or Savings (CLRUSD) → linked external wallet: one sponsored ERC-20 transfer.
+            if (!chainClient) throw new Error('Your wallet is still setting up — try again in a moment.');
+            const c = clearContracts(chainId);
+            if (!c) throw new Error('On-chain transfers are unavailable on this network.');
+            const token = fromId === 'cash' ? c.usdc : c.clrusd;
+            hash = await scTransferToken({ smartWalletClient: chainClient, ownerWallet: address, token, to: to!.address as `0x${string}`, amount: amountStr, chainId });
+          } else {
+            // Smart accounts use the sponsored UserOp; EOAs use the EIP-3009 relayer (gasless) as fallback.
+            const scRun = isDeposit ? scDeposit : scRedeem;
+            const relayerRun = isDeposit ? gaslessDeposit : gaslessRedeem;
+            if (isSmartAccount && chainClient) {
+              hash = await scRun({ smartWalletClient: chainClient, ownerWallet: address, amount: amountStr, chainId });
+            } else {
+              try {
+                hash = await scRun({ ownerWallet: address, amount: amountStr, chainId });
+              } catch {
+                hash = await relayerRun({ ownerWallet: address, amount: amountStr, chainId });
+              }
+            }
+          }
         }
         if (cancelled) return;
         setTxHash(hash);
@@ -118,7 +192,10 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
         // Optimistic: reflect the move immediately, reconcile when the chain indexes.
         const amt = Number(amountStr) || 0;
         if (isDeposit) bal.applyOptimistic(-amt, amt);
-        else bal.applyOptimistic(amt, -amt);
+        else if (isRedeem) bal.applyOptimistic(amt, -amt);
+        else if (isOnchainOut) bal.applyOptimistic(fromId === 'cash' ? -amt : 0, fromId === 'savings' ? -amt : 0);
+        else if (isOnchainInCash) bal.applyOptimistic(amt, 0); // linked → Cash: Cash up
+        else if (isOnchainInSavings) bal.applyOptimistic(0, amt); // linked → Savings: Savings up
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Transfer failed.');
       }
@@ -130,14 +207,17 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
   }, [step]);
 
   const from = accounts.find((a) => a.id === fromId) ?? accounts[0];
-  const toOptions = accounts.filter((a) => a.scope === from?.scope && a.id !== fromId);
-  const to = accounts.find((a) => a.id === toId && a.scope === from?.scope) ?? toOptions[0];
+  // From a linked wallet you can move into Cash (USDC, gasless via 3009) or Savings (CLRUSD, 7702/plain);
+  // otherwise use the scope rules.
+  const allowedTo = (a: Acct) => (from?.scope === 'wallet' ? a.id === 'cash' || a.id === 'savings' : toScopesFor(from?.scope).includes(a.scope));
+  const toOptions = accounts.filter((a) => allowedTo(a) && a.id !== fromId);
+  const to = accounts.find((a) => a.id === toId && allowedTo(a)) ?? toOptions[0];
   const isExternal = from?.scope === 'external';
 
   // keep `to` valid when `from` (and thus scope) changes
   useEffect(() => {
-    if (!to || to.id === fromId) {
-      const next = accounts.find((a) => a.scope === from?.scope && a.id !== fromId);
+    if (!to || to.id === fromId || !allowedTo(to)) {
+      const next = toOptions[0];
       if (next) setToId(next.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,7 +225,9 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
 
   const amount = Number(amountStr) || 0;
   const fee = isExternal && method === 'instant' ? amount * INSTANT_FEE : 0;
-  const overBalance = from?.balance != null && amount > from.balance;
+  // No balance guard for a linked source: its single balance is USDC, but it can also send CLRUSD — the
+  // on-chain move fails clearly if the wallet is short. Internal/bank sources keep the guard.
+  const overBalance = from?.scope !== 'wallet' && from?.balance != null && amount > from.balance;
   const valid = amount >= 1 && !!to && !overBalance;
   const timing = !isExternal ? 'Instant' : method === 'instant' ? 'In minutes' : '1–3 business days';
 
@@ -362,7 +444,7 @@ export default function TransferModal({ open, onOpenChange }: { open: boolean; o
               Transfer {fmt(amount)}
             </button>
             <p className="mt-2 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
-              <ShieldCheck className="h-3 w-3" /> {isExternal ? 'Securely via your bank' : 'Stays within your Clear accounts'}
+              <ShieldCheck className="h-3 w-3" /> {isExternal ? 'Securely via your bank' : to?.scope === 'wallet' ? 'On-chain to your linked wallet · gasless' : 'Stays within your Clear accounts'}
             </p>
           </div>
         )}

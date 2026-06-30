@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { SUPPORTED_NETWORKS, getNetworkByChainId, getNetworkInfo } from '@/config/networks';
 import type { WalletTransaction } from '@/types/transactions';
 import { getTransactions } from '@/utils/apiClient';

@@ -196,13 +196,17 @@ export interface BootstrapMemberInput {
   primaryWallet: string;
   reownProfileUuid?: string | null;
   email?: string | null;
+  phone?: string | null; // account phone (login identity), for identity matching
+  walletAddresses?: (string | null | undefined)[] | null; // ALL verified addresses, for identity matching
 }
 
 export interface ResolveMemberAuthInput {
   authSubject?: string | null;
   profileUuid?: string | null;
   walletAddress?: string | null;
+  walletAddresses?: (string | null | undefined)[] | null; // ALL verified addresses (smart + linked)
   email?: string | null;
+  phone?: string | null; // account phone (login identity)
 }
 
 export interface UpdateOnboardingInput {
@@ -982,12 +986,18 @@ export class MemberStore {
     const reownProfileUuid = normalizeOptionalString(input.reownProfileUuid ?? null, 255) ?? null;
     const email = normalizeOptionalEmail(input.email ?? null) ?? null;
     const reownEmailHash = email ? sha256Hex(email) : null;
+    const phone = normalizeOptionalPhone(input.phone ?? null) ?? null;
+    const reownPhoneHash = phone ? sha256Hex(phone) : null;
 
+    // Match an existing member by ANY verified identity (DID, any wallet, email, phone) so a pre-migration
+    // account is claimed instead of duplicated.
     const existingMember = await this.resolveMemberByAuthInput({
       authSubject,
       profileUuid: reownProfileUuid,
       walletAddress: primaryWallet,
+      walletAddresses: input.walletAddresses,
       email,
+      phone,
     });
 
     if (existingMember) {
@@ -1000,12 +1010,16 @@ export class MemberStore {
             auth_subject = $2,
             reown_profile_uuid = COALESCE($3, reown_profile_uuid),
             reown_email_hash = COALESCE($4, reown_email_hash),
+            reown_phone_hash = COALESCE($6, reown_phone_hash),
+            -- Re-align the primary to the canonical (smart) wallet so members who joined via an external
+            -- wallet pre-migration self-heal. syncPrimaryWallet then demotes the old primary in member_wallets.
+            primary_wallet = COALESCE($5, primary_wallet),
             last_authenticated_at = NOW(),
             updated_at = NOW()
           WHERE id = $1
           RETURNING *
           `,
-          [existingMember.id, nextAuthSubject, reownProfileUuid, reownEmailHash]
+          [existingMember.id, nextAuthSubject, reownProfileUuid, reownEmailHash, primaryWallet, reownPhoneHash]
         );
       });
 
@@ -1026,21 +1040,23 @@ export class MemberStore {
           primary_wallet,
           reown_profile_uuid,
           reown_email_hash,
+          reown_phone_hash,
           status,
           verification_status,
           membership_status,
           last_authenticated_at
-        ) VALUES ($1, $2, $3, $4, 'ONBOARDING', 'NOT_STARTED', 'NONE', NOW())
+        ) VALUES ($1, $2, $3, $4, $5, 'ONBOARDING', 'NOT_STARTED', 'NONE', NOW())
         ON CONFLICT (auth_subject)
         DO UPDATE SET
           primary_wallet = EXCLUDED.primary_wallet,
           reown_profile_uuid = COALESCE(EXCLUDED.reown_profile_uuid, ${TABLE_MEMBERS}.reown_profile_uuid),
           reown_email_hash = COALESCE(EXCLUDED.reown_email_hash, ${TABLE_MEMBERS}.reown_email_hash),
+          reown_phone_hash = COALESCE(EXCLUDED.reown_phone_hash, ${TABLE_MEMBERS}.reown_phone_hash),
           last_authenticated_at = NOW(),
           updated_at = NOW()
         RETURNING *
         `,
-        [authSubject, primaryWallet, reownProfileUuid, reownEmailHash]
+        [authSubject, primaryWallet, reownProfileUuid, reownEmailHash, reownPhoneHash]
       );
     });
 
@@ -2256,6 +2272,22 @@ export class MemberStore {
     return result.rows[0] ? mapMember(result.rows[0]) : null;
   }
 
+  private async loadMemberByReownPhone(phone: string): Promise<MemberRecord | null> {
+    const normalizedPhone = normalizeOptionalPhone(phone);
+    if (!normalizedPhone) {
+      return null;
+    }
+
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<MemberDbRow>(
+        `SELECT * FROM ${TABLE_MEMBERS} WHERE reown_phone_hash = $1 LIMIT 1`,
+        [sha256Hex(normalizedPhone)]
+      );
+    });
+    return result.rows[0] ? mapMember(result.rows[0]) : null;
+  }
+
   private async resolveMemberByAuthInput(input: ResolveMemberAuthInput): Promise<MemberRecord | null> {
     const authSubject = normalizeOptionalString(input.authSubject ?? null, 255) ?? null;
     if (authSubject) {
@@ -2273,14 +2305,21 @@ export class MemberStore {
       }
     }
 
-    const walletAddress = input.walletAddress ? normalizeWalletAddress(input.walletAddress) : null;
-    if (walletAddress) {
-      const byPrimaryWallet = await this.loadMemberByPrimaryWallet(walletAddress);
+    // Match against EVERY verified address (the primary smart wallet + any linked external wallet), so a
+    // pre-migration account keyed by a now-linked wallet is found instead of duplicated. Deterministic:
+    // the DID/auth_subject checks above always win first, so this only fires when there's no DID match.
+    const candidateWallets = [
+      input.walletAddress,
+      ...(input.walletAddresses ?? []),
+    ]
+      .filter((a): a is string => typeof a === 'string' && a.trim().length > 0)
+      .map((a) => normalizeWalletAddress(a));
+    for (const addr of new Set(candidateWallets)) {
+      const byPrimaryWallet = await this.loadMemberByPrimaryWallet(addr);
       if (byPrimaryWallet) {
         return byPrimaryWallet;
       }
-
-      const byLinkedWallet = await this.loadMemberByLinkedWallet(walletAddress);
+      const byLinkedWallet = await this.loadMemberByLinkedWallet(addr);
       if (byLinkedWallet) {
         return byLinkedWallet;
       }
@@ -2291,6 +2330,14 @@ export class MemberStore {
       const byEmail = await this.loadMemberByReownEmail(email);
       if (byEmail) {
         return byEmail;
+      }
+    }
+
+    const phone = normalizeOptionalPhone(input.phone ?? null) ?? null;
+    if (phone) {
+      const byPhone = await this.loadMemberByReownPhone(phone);
+      if (byPhone) {
+        return byPhone;
       }
     }
 
@@ -2888,6 +2935,7 @@ export class MemberStore {
           primary_wallet TEXT NOT NULL UNIQUE,
           reown_profile_uuid TEXT,
           reown_email_hash TEXT,
+          reown_phone_hash TEXT,
           status TEXT NOT NULL DEFAULT 'ONBOARDING',
           verification_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
           membership_plan TEXT,
@@ -2904,6 +2952,9 @@ export class MemberStore {
           last_authenticated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `);
+
+      // Account-phone hash for identity matching (older tables predate this column).
+      await pool.query(`ALTER TABLE ${TABLE_MEMBERS} ADD COLUMN IF NOT EXISTS reown_phone_hash TEXT;`);
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS ${TABLE_PROFILE_PUBLIC} (

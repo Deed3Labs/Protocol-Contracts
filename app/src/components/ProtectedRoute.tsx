@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isConnected, isAuthenticated } = useAppKitAuth();
+  const { isAuthenticated } = useAppKitAuth();
   const location = useLocation();
   const [isChecking, setIsChecking] = useState(true);
   const [hasCheckedOnce, setHasCheckedOnce] = useState(false);
@@ -29,22 +29,19 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     if (hasCheckedOnce) {
       setIsChecking(false);
     }
-  }, [isConnected, hasCheckedOnce]);
+  }, [isAuthenticated, hasCheckedOnce]);
 
   // While checking initially, show nothing (prevent flash)
   if (isChecking && !hasCheckedOnce) {
     return null;
   }
 
-  // If not connected, redirect to login
-  if (!isConnected) {
+  // Gate on AUTHENTICATION (the Privy session), not on having an address. The wallet address (the smart
+  // wallet for email/social) is minted asynchronously AFTER login, so requiring it here would bounce a
+  // freshly-authenticated user straight back to /login. The address resolves on its own once inside.
+  if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (location.pathname.startsWith('/account') && !isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  // If connected, show the protected content
   return <>{children}</>;
 }

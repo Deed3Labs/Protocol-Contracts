@@ -4,6 +4,8 @@ import StatBar from '@/components/app-ui/StatBar';
 import { useKyc } from '@/context/KycContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
+import { useLinkedWallets } from '@/context/LinkedWalletsContext';
+import { useLinkedWalletBalances } from '@/hooks/useLinkedWalletBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useUpcoming } from '@/hooks/useUpcoming';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
@@ -26,10 +28,33 @@ export default function AccountsPage() {
   const { verified, openKyc } = useKyc();
   const bal = useClearBalances();
   const ext = useExternalAccounts();
+  const { externalWallets } = useLinkedWallets();
+  const { balances: linkedBalances } = useLinkedWalletBalances(
+    externalWallets.map((w) => w.address),
+    externalWallets.length > 0,
+  );
   const { flows } = useClearTransactions();
   const upcoming = useUpcoming();
   const { firstName } = useMemberProfile();
   const dash = (v: number) => (bal.loading ? '—' : fmtUsd(v));
+
+  // Cash/Savings = the Clear (smart) wallet PLUS every linked wallet, aggregated. (This is a holdings
+  // view; movable Cash in the Transfer/Send flows stays the smart wallet only — linked funds need their
+  // own wallet to sign.)
+  const linkedTotals = useMemo(() => {
+    let usdc = 0;
+    let clrusd = 0;
+    for (const w of externalWallets) {
+      const b = linkedBalances[w.address.toLowerCase()];
+      if (b) {
+        usdc += b.usdc;
+        clrusd += b.clrusd;
+      }
+    }
+    return { usdc, clrusd };
+  }, [externalWallets, linkedBalances]);
+  const cash = bal.cash + linkedTotals.usdc;
+  const savings = bal.savings + linkedTotals.clrusd;
 
   // This month's outflows grouped by day-of-month (for the spend heatmap).
   const spendByDay = useMemo(() => {
@@ -69,9 +94,9 @@ export default function AccountsPage() {
 
       <StatBar
         stats={[
-          { label: 'Total balance', value: dash(bal.cash + bal.savings + ext.totalBalance), change: '2.1% this week', icon: Wallet },
-          { label: 'Cash · USDC', value: dash(bal.cash), change: '0.4%', icon: Banknote },
-          { label: 'Savings · CLRUSD', value: dash(bal.savings), change: '1.8%', icon: PiggyBank },
+          { label: 'Total balance', value: dash(cash + savings + ext.totalBalance), change: '2.1% this week', icon: Wallet },
+          { label: 'Cash · USDC', value: dash(cash), change: '0.4%', icon: Banknote },
+          { label: 'Savings · CLRUSD', value: dash(savings), change: '1.8%', icon: PiggyBank },
           { label: 'External · Plaid', value: fmtUsd(ext.totalBalance), change: '0.6%', changePositive: false, icon: Landmark },
         ]}
       />

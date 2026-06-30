@@ -9,7 +9,7 @@ import {
   Clock, 
   DollarSign
 } from 'lucide-react';
-import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitNetwork } from '@/lib/walletCompat';
 import { getContractAddressForNetwork } from '@/config/networks';
 import { useNetworkValidation } from '@/hooks/useNetworkValidation';
 import BondDepositForm from '@/components/BondDepositForm';

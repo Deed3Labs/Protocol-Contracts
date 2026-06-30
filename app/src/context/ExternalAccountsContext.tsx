@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { getBankBalances, disconnectPlaid } from '@/utils/apiClient';
 import { runPlaidLink } from '@/lib/plaidLink';
 import ExternalAccountsModal from '@/components/app-ui/ExternalAccountsModal';

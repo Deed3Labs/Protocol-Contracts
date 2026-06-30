@@ -20,7 +20,8 @@ import type {
   FinalizeSavingsIntentResponse,
   RefundSavingsIntentResponse,
 } from '@/types/savings';
-import { clearSiwxAuthToken, getSiwxAuthToken, notifyAuthExpired } from './authSession';
+import { getAccessToken } from '@privy-io/react-auth';
+import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
@@ -57,13 +58,15 @@ async function apiRequest<T>(
 
   try {
     const { timeout: _, ...fetchOptions } = options; // Remove timeout from fetch options
-    const siwxToken = getSiwxAuthToken();
+    const authToken = await getAccessToken().catch(() => null);
+    const activeWallet = getActiveWallet();
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...fetchOptions,
       signal: timeoutController.signal, // Use timeout signal (user signal will be ignored if provided)
       headers: {
         'Content-Type': 'application/json',
-        ...(siwxToken ? { Authorization: `Bearer ${siwxToken}` } : {}),
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        ...(activeWallet ? { 'X-Wallet-Address': activeWallet } : {}),
         ...(REOWN_PROJECT_ID
           ? { 'X-Reown-Project-Id': REOWN_PROJECT_ID }
           : {}),
@@ -1375,6 +1378,38 @@ export async function submitGaslessSavings(payload: {
   );
   if (response.error || !response.data) {
     throw new Error(response.error || 'Failed to complete transfer.');
+  }
+  return response.data;
+}
+
+/** Move USDC from a linked external wallet → the Clear smart wallet (gasless, EIP-3009). Prepare the
+ *  TransferWithAuthorization the linked wallet signs; the relayer submits it. */
+export async function prepareWalletTransfer(payload: {
+  fromWallet: string;
+  amount: string;
+  chainId?: number;
+}): Promise<{ chainId: number; token: string; amountMicros: string; typedData: Eip712TypedData; submit: Record<string, string> }> {
+  const response = await apiRequest<{ chainId: number; token: string; amountMicros: string; typedData: Eip712TypedData; submit: Record<string, string> }>(
+    '/api/savings/gasless/wallet-transfer/prepare',
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to prepare wallet transfer.');
+  }
+  return response.data;
+}
+
+export async function submitWalletTransfer(payload: {
+  chainId?: number;
+  signature: string;
+  submit: Record<string, string>;
+}): Promise<{ success: boolean; txHash: string; chainId: number }> {
+  const response = await apiRequest<{ success: boolean; txHash: string; chainId: number }>(
+    '/api/savings/gasless/wallet-transfer/submit',
+    { method: 'POST', body: JSON.stringify(payload), timeout: 120000 },
+  );
+  if (response.error || !response.data) {
+    throw new Error(response.error || 'Failed to complete wallet transfer.');
   }
   return response.data;
 }

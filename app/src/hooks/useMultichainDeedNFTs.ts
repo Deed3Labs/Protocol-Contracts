@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { SUPPORTED_NETWORKS, getContractAddressForNetwork } from '@/config/networks';
 import type { DeedNFT } from '@/context/DeedNFTContext';
 import { getNFTs, getNFTsByAddressPortfolio } from '@/utils/apiClient';

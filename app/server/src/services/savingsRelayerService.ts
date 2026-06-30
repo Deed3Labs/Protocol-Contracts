@@ -413,6 +413,42 @@ class SavingsRelayerService {
     const data = iface.encodeFunctionData('permit', [a.owner, a.spender, a.value, a.deadline, a.v, a.r, a.s]);
     return this.submit(chainId, ethers.getAddress(tokenAddress), data);
   }
+
+  /**
+   * Move USDC linked→smart: relayer submits the linked EOA's EIP-3009 TransferWithAuthorization directly
+   * on the USDC token (relayer pays gas). USDC goes from→to with no allowance/approval needed.
+   */
+  async transferWithAuthorization(
+    chainId: number,
+    tokenAddress: string,
+    a: {
+      from: string;
+      to: string;
+      value: bigint;
+      validAfter: bigint;
+      validBefore: bigint;
+      nonce: string;
+      v: number;
+      r: string;
+      s: string;
+    },
+  ): Promise<string> {
+    const iface = new ethers.Interface([
+      'function transferWithAuthorization(address from, address to, uint256 value, uint256 validAfter, uint256 validBefore, bytes32 nonce, uint8 v, bytes32 r, bytes32 s)',
+    ]);
+    const data = iface.encodeFunctionData('transferWithAuthorization', [
+      a.from,
+      a.to,
+      a.value,
+      a.validAfter,
+      a.validBefore,
+      a.nonce,
+      a.v,
+      a.r,
+      a.s,
+    ]);
+    return this.submit(chainId, ethers.getAddress(tokenAddress), data);
+  }
 }
 
 export const savingsRelayerService = new SavingsRelayerService();

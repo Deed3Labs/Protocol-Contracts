@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { useDeedNFTData } from '@/hooks/useDeedNFTData';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useAppBadge } from '@/hooks/useAppBadge';

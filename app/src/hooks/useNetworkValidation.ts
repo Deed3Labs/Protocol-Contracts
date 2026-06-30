@@ -1,4 +1,4 @@
-import { useAppKitAccount, useAppKitNetwork } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitNetwork } from '@/lib/walletCompat';
 import { useCallback, useEffect, useState } from 'react';
 import { 
   getNetworkByChainId, 

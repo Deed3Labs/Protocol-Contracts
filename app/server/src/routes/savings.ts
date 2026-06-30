@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { ethers } from 'ethers';
-import { requireWalletMatch } from '../middleware/auth.js';
+import { requireWalletMatch, requireVerifiedWallet } from '../middleware/auth.js';
 import { savingsIntentService } from '../services/savingsIntentService.js';
 import { savingsRelayerService } from '../services/savingsRelayerService.js';
 import { savingsGaslessService } from '../services/savingsGaslessService.js';
@@ -327,6 +327,105 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({
       error: 'Failed to submit gasless savings transfer',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * Gasless move of USDC FROM a linked external wallet → the user's Clear smart wallet (the reverse of a
+ * Cash→linked transfer, and the first leg of gasless move-then-withdraw). The linked EOA signs an EIP-3009
+ * TransferWithAuthorization; the relayer submits it + pays gas. Source must be a VERIFIED wallet of the
+ * user (linked), destination is server-pinned to their smart wallet, token pinned to USDC.
+ */
+savingsRouter.post('/gasless/wallet-transfer/prepare', async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { fromWallet?: unknown; amount?: unknown; chainId?: unknown };
+    if (typeof body.fromWallet !== 'string' || !ethers.isAddress(body.fromWallet)) {
+      res.status(400).json({ error: 'Invalid fromWallet', message: 'fromWallet must be a valid EVM address' });
+      return;
+    }
+    // The source must be one of THIS user's verified wallets (a linked external wallet).
+    if (!requireVerifiedWallet(req, res, body.fromWallet, 'fromWallet')) return;
+    // Destination is ALWAYS the user's own smart wallet — server-pinned, never client-chosen.
+    const toWallet = req.auth?.smartWallet;
+    if (!toWallet || !ethers.isAddress(toWallet)) {
+      res.status(400).json({ error: 'No smart wallet', message: 'Your Clear account is still setting up. Try again shortly.' });
+      return;
+    }
+    if (ethers.getAddress(body.fromWallet) === ethers.getAddress(toWallet)) {
+      res.status(400).json({ error: 'Same wallet', message: 'Source and destination are the same wallet.' });
+      return;
+    }
+    if (typeof body.amount !== 'string' || body.amount.trim().length === 0) {
+      res.status(400).json({ error: 'Invalid amount', message: 'amount is required' });
+      return;
+    }
+    const prepared = await savingsGaslessService.buildWalletTransferTypedData({
+      chainId: parseChainId(body.chainId),
+      fromWallet: body.fromWallet,
+      toWallet,
+      amount: body.amount,
+    });
+    res.json(prepared);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to prepare wallet transfer',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+savingsRouter.post('/gasless/wallet-transfer/submit', async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { chainId?: unknown; signature?: unknown; submit?: Record<string, unknown> };
+    if (typeof body.signature !== 'string' || !/^0x[a-fA-F0-9]{130}$/.test(body.signature.trim())) {
+      res.status(400).json({ error: 'Invalid signature', message: 'signature must be a 65-byte hex signature' });
+      return;
+    }
+    const submit = body.submit;
+    if (!submit || typeof submit !== 'object') {
+      res.status(400).json({ error: 'Invalid submit', message: 'submit params are required' });
+      return;
+    }
+    const from = submit.from;
+    if (typeof from !== 'string' || !ethers.isAddress(from)) {
+      res.status(400).json({ error: 'Invalid from', message: 'submit.from must be a valid address' });
+      return;
+    }
+    if (!requireVerifiedWallet(req, res, from, 'from')) return;
+
+    // Pin destination to the user's smart wallet + token to the configured USDC — never trust the client.
+    const config = savingsGaslessService.resolveConfig(parseChainId(body.chainId));
+    const toWallet = req.auth?.smartWallet;
+    if (!toWallet || typeof submit.to !== 'string' || ethers.getAddress(String(submit.to)) !== ethers.getAddress(toWallet)) {
+      res.status(400).json({ error: 'Invalid to', message: 'Destination must be your Clear account.' });
+      return;
+    }
+    if (typeof submit.token !== 'string' || ethers.getAddress(submit.token) !== config.usdcAddress) {
+      res.status(400).json({ error: 'Invalid token', message: 'token must be the configured USDC for this chain' });
+      return;
+    }
+    const value = BigInt(String(submit.value));
+    if (value <= 0n) throw new Error('value must be greater than zero');
+    const sig = ethers.Signature.from(body.signature.trim());
+
+    const txHash = await savingsRelayerService.transferWithAuthorization(config.chainId, config.usdcAddress, {
+      from: ethers.getAddress(from),
+      to: ethers.getAddress(toWallet),
+      value,
+      validAfter: BigInt(String(submit.validAfter ?? '0')),
+      validBefore: BigInt(String(submit.validBefore)),
+      nonce: String(submit.authNonce),
+      v: sig.v,
+      r: sig.r,
+      s: sig.s,
+    });
+
+    res.json({ success: true, action: 'wallet-transfer', chainId: config.chainId, txHash, status: 'SUBMITTED' });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to submit wallet transfer',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

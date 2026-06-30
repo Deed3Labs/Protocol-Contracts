@@ -50,8 +50,8 @@ export default function AppShell() {
       <BridgeProvider>
       <MemberProfileProvider>
       <ClearBalancesProvider>
-      <ClearTransactionsProvider>
       <LinkedWalletsProvider>
+      <ClearTransactionsProvider>
       <ExternalAccountsProvider>
       <ContactsProvider>
       <PayProvider>
@@ -76,8 +76,8 @@ export default function AppShell() {
       </PayProvider>
       </ContactsProvider>
       </ExternalAccountsProvider>
-      </LinkedWalletsProvider>
       </ClearTransactionsProvider>
+      </LinkedWalletsProvider>
       </ClearBalancesProvider>
       </MemberProfileProvider>
       </BridgeProvider>

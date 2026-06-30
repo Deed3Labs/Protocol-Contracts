@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useAppKitAccount } from '@reown/appkit/react';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { getPortfolioHistory, type PortfolioHistoryPoint } from '@/utils/apiClient';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
+import { useLinkedWallets } from '@/context/LinkedWalletsContext';
+import { useLinkedWalletBalances } from '@/hooks/useLinkedWalletBalances';
 
 /**
  * Portfolio value history from the backend snapshot store (on-chain stablecoins + Plaid bank).
@@ -20,8 +22,16 @@ export function useClearPortfolioHistory(): ClearPortfolioHistory {
   const { address, isConnected } = useAppKitAccount();
   const { cash, savings } = useClearBalances();
   const { totalBalance } = useExternalAccounts();
+  const { externalWallets } = useLinkedWallets();
+  const { balances: linkedBalances } = useLinkedWalletBalances(externalWallets.map((w) => w.address), externalWallets.length > 0);
   const [points, setPoints] = useState<PortfolioHistoryPoint[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Linked wallets count toward the headline total too (matches the consolidated Cash/Savings cards).
+  const linkedTotal = externalWallets.reduce((sum, w) => {
+    const b = linkedBalances[w.address.toLowerCase()];
+    return sum + (b ? b.usdc + b.clrusd : 0);
+  }, 0);
 
   useEffect(() => {
     if (!isConnected || !address) {
@@ -45,5 +55,5 @@ export function useClearPortfolioHistory(): ClearPortfolioHistory {
     };
   }, [address, isConnected]);
 
-  return { points, currentTotal: cash + savings + totalBalance, loading };
+  return { points, currentTotal: cash + savings + totalBalance + linkedTotal, loading };
 }

@@ -6,8 +6,12 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useKyc } from '@/context/KycContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useClearBalances } from '@/hooks/useClearBalances';
-import { useAccount } from 'wagmi';
-import { withdrawToBank, getOnramperSellQuotes, createOnramperSellCheckout } from '@/utils/apiClient';
+import { useWallets } from '@privy-io/react-auth';
+import { createWalletClient, custom } from 'viem';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
+import { gaslessWalletTransfer } from '@/lib/gaslessMoney';
+import { withdrawToBank, getOnramperSellQuotes, createOnramperSellCheckout, type Eip712TypedData } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -72,13 +76,31 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const [bankOpen, setBankOpen] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Source can be the Clear account OR a linked wallet. Withdrawing from a linked wallet first moves its
+  // USDC into the smart wallet (gasless, EIP-3009), then Bridge off-ramps the smart wallet (below).
   const { wallets, primaryId, openManager } = useLinkedWallets();
+  const { wallets: connectedWallets } = useWallets();
   const { accounts, openManager: openAccounts } = useExternalAccounts();
   const banks = accounts.map((a) => ({ id: a.id, label: `${a.name} ••${a.mask}` }));
   const { verified, openKyc } = useKyc();
   const { email } = useMemberProfile();
-  const { address } = useAccount();
+  const { address } = useAppKitAccount();
   const bal = useClearBalances();
+
+  // Sign an EIP-3009 authorization with a SPECIFIC linked wallet's own provider (for move-then-withdraw).
+  const signWithLinkedWallet = async (fromAddr: string, typedData: Eip712TypedData): Promise<string> => {
+    const w = connectedWallets.find((x) => x.address.toLowerCase() === fromAddr.toLowerCase());
+    if (!w) throw new Error('Open and reconnect that wallet in your browser to withdraw from it.');
+    const provider = await w.getEthereumProvider();
+    const walletClient = createWalletClient({ account: fromAddr as `0x${string}`, transport: custom(provider as Parameters<typeof custom>[0]) });
+    return walletClient.signTypedData({
+      account: fromAddr as `0x${string}`,
+      domain: typedData.domain,
+      types: typedData.types,
+      primaryType: typedData.primaryType,
+      message: typedData.message,
+    } as Parameters<typeof walletClient.signTypedData>[0]);
+  };
   const proceed = () => {
     if (BANK_METHODS.has(methodId) && !verified) openKyc(() => setStep('status'));
     else setStep('status');
@@ -107,6 +129,19 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
     (async () => {
       try {
         if (!address) throw new Error('Connect your wallet to withdraw.');
+
+        // Withdrawing FROM a linked wallet? First move its USDC into the Clear smart wallet (gasless,
+        // EIP-3009 — the linked wallet signs, relayer pays), then off-ramp from the smart wallet below.
+        const sourceWallet = wallets.find((w) => w.id === walletId);
+        if (sourceWallet?.external && sourceWallet.address) {
+          await gaslessWalletTransfer({
+            fromWallet: sourceWallet.address,
+            amount: amountStr,
+            chainId: ACTIVE_CHAIN_ID,
+            signTypedData: (td) => signWithLinkedWallet(sourceWallet.address as string, td),
+          });
+          if (cancelled) return;
+        }
 
         if (methodId === 'instant') {
           // Instant-to-debit → Onramper sell: pick the best off-ramp, open its hosted cash-out (it
@@ -142,8 +177,9 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
         if (cancelled) return;
         if (!res.success) throw new Error(res.message || 'Withdrawal failed.');
         setDone(true);
-        // Optimistic: USDC leaves Cash now; reconciles when the off-ramp debit indexes.
-        bal.applyOptimistic(-amount, 0);
+        // Optimistic: USDC leaves Cash now; reconciles when the off-ramp debit indexes. A linked-wallet
+        // withdraw just passed THROUGH Cash (move in, off-ramp out ≈ net 0), so skip the overlay there.
+        if (!sourceWallet?.external) bal.applyOptimistic(-amount, 0);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Withdrawal failed.');
       }

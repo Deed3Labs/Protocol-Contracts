@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Search, SlidersHorizontal, ArrowLeftRight, ArrowDownLeft, Briefcase, Receipt, CreditCard, Repeat, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClearTransactions, type ActivityStatus as Status } from '@/hooks/useClearTransactions';
-import TransactionFilterModal, { type Category, type AdvFilters, DEFAULT_ADV, advCount } from './TransactionFilterModal';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { useLinkedWallets } from '@/context/LinkedWalletsContext';
+import TransactionFilterModal, { type Category, type AdvFilters, type SourceOption, DEFAULT_ADV, advCount } from './TransactionFilterModal';
 
 const CATEGORY: Record<Category, { icon: LucideIcon; tint: string }> = {
   Transfer: { icon: ArrowLeftRight, tint: 'bg-info/10 text-info' },
@@ -35,6 +37,8 @@ function money(n: number) {
  */
 export default function RecentActivity({ className, limit }: { className?: string; limit?: number }) {
   const { items, loading } = useClearTransactions();
+  const { address } = useAppKitAccount();
+  const { externalWallets } = useLinkedWallets();
   const navigate = useNavigate();
   const compact = typeof limit === 'number';
   const [query, setQuery] = useState('');
@@ -42,6 +46,14 @@ export default function RecentActivity({ className, limit }: { className?: strin
   const [adv, setAdv] = useState<AdvFilters>(DEFAULT_ADV);
   const [modalOpen, setModalOpen] = useState(false);
   const activeAdv = advCount(adv);
+
+  // Source filter options: All, Clear account (primary smart wallet), each linked wallet, external bank.
+  const sources: SourceOption[] = [
+    { value: '', label: 'All sources' },
+    { value: (address ?? '').toLowerCase(), label: 'Clear account' },
+    ...externalWallets.map((w) => ({ value: w.address.toLowerCase(), label: w.label })),
+    { value: 'bank', label: 'External bank' },
+  ];
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -53,6 +65,7 @@ export default function RecentActivity({ className, limit }: { className?: strin
       if (filter === 'Transfers' && it.category !== 'Transfer') return false;
       if (filter === 'Pending' && it.status !== 'pending') return false;
       // advanced
+      if (adv.source && it.source !== adv.source) return false;
       if (!adv.categories[it.category]) return false;
       if (adv.status !== 'all' && it.status !== adv.status) return false;
       if (adv.direction === 'in' && it.amount <= 0) return false;
@@ -175,7 +188,7 @@ export default function RecentActivity({ className, limit }: { className?: strin
         )}
       </div>
 
-      <TransactionFilterModal open={modalOpen} onOpenChange={setModalOpen} value={adv} onApply={setAdv} />
+      <TransactionFilterModal open={modalOpen} onOpenChange={setModalOpen} value={adv} onApply={setAdv} sources={sources} />
     </div>
   );
 }
