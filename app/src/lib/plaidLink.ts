@@ -40,11 +40,29 @@ export async function runPlaidLink(walletAddress: string): Promise<boolean> {
   return new Promise<boolean>((resolve, reject) => {
     let fired = false;
     let handler: { open: () => void; destroy?: () => void };
+
+    // Radix (and similar modal libs) set `pointer-events: none` on <body> while a dialog is open.
+    // Plaid Link appends its iframe to <body>, so when launched from inside a dialog (e.g. the External
+    // Accounts modal) it inherits that and renders visible-but-unclickable. Force the body interactive
+    // while Plaid is open, and restore the prior value on teardown so the dialog's modal lock resumes.
+    const prevBodyPE = document.body.style.getPropertyValue('pointer-events');
+    const prevBodyPEPriority = document.body.style.getPropertyPriority('pointer-events');
+    const makeBodyInteractive = () => document.body.style.setProperty('pointer-events', 'auto', 'important');
+    const restoreBody = () => {
+      if (prevBodyPE) document.body.style.setProperty('pointer-events', prevBodyPE, prevBodyPEPriority);
+      else document.body.style.removeProperty('pointer-events');
+    };
+
     // Tear down the Plaid iframe/overlay; without this the modal sticks around until a page refresh.
     // Deferred so it runs after Plaid finishes its own exit transition.
-    const cleanup = () => setTimeout(() => { try { handler?.destroy?.(); } catch { /* noop */ } }, 0);
+    const cleanup = () => setTimeout(() => {
+      restoreBody();
+      try { handler?.destroy?.(); } catch { /* noop */ }
+    }, 0);
     handler = window.Plaid!.create({
       token: res.link_token,
+      // Re-assert once Plaid's UI is mounted, in case the modal lib set the lock after we did.
+      onLoad: () => makeBodyInteractive(),
       onSuccess: async (public_token: string) => {
         fired = true;
         try {
@@ -62,5 +80,6 @@ export async function runPlaidLink(walletAddress: string): Promise<boolean> {
       },
     });
     handler.open();
+    makeBodyInteractive();
   });
 }

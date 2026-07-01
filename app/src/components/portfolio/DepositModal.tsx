@@ -13,9 +13,10 @@ declare global {
       create: (config: {
         token: string;
         receivedRedirectUri?: string;
+        onLoad?: () => void;
         onSuccess: (public_token: string, metadata?: unknown) => void;
         onExit?: (err: unknown, metadata: unknown) => void;
-      }) => { open: () => void };
+      }) => { open: () => void; destroy?: () => void };
     };
   }
 }
@@ -467,10 +468,22 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
 
       await loadPlaidScript();
       if (!window.Plaid) throw new Error('Plaid Link is not available');
+      // Radix/modal libs put `pointer-events: none` on <body> while a dialog is open; the Plaid iframe
+      // (appended to <body>) inherits it and renders visible-but-unclickable. Force the body interactive
+      // while Plaid is open, restore on close.
+      const prevBodyPE = document.body.style.getPropertyValue('pointer-events');
+      const prevBodyPEPriority = document.body.style.getPropertyPriority('pointer-events');
+      const makeBodyInteractive = () => document.body.style.setProperty('pointer-events', 'auto', 'important');
+      const restoreBody = () => {
+        if (prevBodyPE) document.body.style.setProperty('pointer-events', prevBodyPE, prevBodyPEPriority);
+        else document.body.style.removeProperty('pointer-events');
+      };
       const handler = window.Plaid.create({
         token: linkToken,
         ...(useReceivedRedirectUri ? { receivedRedirectUri: window.location.href } : {}),
+        onLoad: () => makeBodyInteractive(),
         onSuccess: async (public_token: string) => {
+          restoreBody();
           plaidSuccessFiredRef.current = true;
           clearPlaidOAuthSession();
           const exchanged = await exchangePlaidToken(address, public_token);
@@ -489,6 +502,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
           }
         },
         onExit: (err) => {
+          restoreBody();
           if (plaidSuccessFiredRef.current) return;
           if (useReceivedRedirectUri) {
             clearPlaidOAuthSession();
@@ -521,6 +535,7 @@ const DepositModal = ({ isOpen, onClose, initialOption = null }: DepositModalPro
         },
       });
       handler.open();
+      makeBodyInteractive();
     } catch (e) {
       setBankError(e instanceof Error ? e.message : 'Failed to open Plaid Link');
     } finally {
