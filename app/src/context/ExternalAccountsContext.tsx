@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { getBankBalances, disconnectPlaid } from '@/utils/apiClient';
 import { runPlaidLink } from '@/lib/plaidLink';
@@ -53,6 +54,7 @@ export function useExternalAccounts(): ExternalAccountsValue {
 
 export function ExternalAccountsProvider({ children }: { children: ReactNode }) {
   const { address, isConnected } = useAppKitAccount();
+  const queryClient = useQueryClient();
   const [accounts, setAccounts] = useState<ExternalAccount[]>([]);
   const [totalBalance, setTotalBalance] = useState(0);
   const [linked, setLinked] = useState(false);
@@ -95,6 +97,16 @@ export function ExternalAccountsProvider({ children }: { children: ReactNode }) 
     void refresh();
   }, [refresh]);
 
+  // The server busts its Plaid caches on link/unlink, but transaction/spend/investment data lives in
+  // React Query (keyed `plaid-*`). Invalidate those so they refetch instead of showing stale results
+  // until a full app refresh.
+  const invalidatePlaidQueries = useCallback(() => {
+    void queryClient.invalidateQueries({
+      predicate: (q) =>
+        typeof q.queryKey?.[0] === 'string' && (q.queryKey[0] as string).startsWith('plaid-'),
+    });
+  }, [queryClient]);
+
   const linkBank = useCallback(async () => {
     if (!address) return;
     setLinking(true);
@@ -103,11 +115,12 @@ export function ExternalAccountsProvider({ children }: { children: ReactNode }) 
       if (ok) {
         await new Promise((r) => setTimeout(r, 800)); // let the server persist the item
         await refresh();
+        invalidatePlaidQueries();
       }
     } finally {
       setLinking(false);
     }
-  }, [address, refresh]);
+  }, [address, refresh, invalidatePlaidQueries]);
 
   const removeAccount = useCallback(
     async (id: string) => {
@@ -115,8 +128,9 @@ export function ExternalAccountsProvider({ children }: { children: ReactNode }) 
       const acct = accounts.find((a) => a.id === id);
       await disconnectPlaid(address, acct?.itemId);
       await refresh();
+      invalidatePlaidQueries();
     },
-    [accounts, address, refresh],
+    [accounts, address, refresh, invalidatePlaidQueries],
   );
 
   return (
