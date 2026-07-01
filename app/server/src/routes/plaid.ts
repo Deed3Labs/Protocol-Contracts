@@ -283,14 +283,14 @@ router.post('/link-token', async (req: Request, res: Response) => {
     if (!plaidScope) return;
 
     const redirectUri = process.env.PLAID_REDIRECT_URI?.trim();
-    // In Plaid production, EVERY product listed (required or optional) must be enabled on the account
-    // — an unenabled one fails the whole Link with INVALID_PRODUCT. Investments requires separate Plaid
-    // approval, so gate it behind a flag (default off) and flip PLAID_ENABLE_INVESTMENTS=true once
-    // approved. Sandbox enables all products, so the demo can set the flag on. Liabilities stays on
-    // unless explicitly disabled.
+    // The live UI only uses Transactions (+ recurring/spend, which derive from it) and Auth. Investments
+    // and Liabilities are approved on the Plaid account but currently surfaced only in the legacy
+    // brokerage view (/legacy/brokerage), so we don't request them by default — it just adds scopes to
+    // the Link consent screen and pulls data nothing shows. Flip PLAID_ENABLE_INVESTMENTS=true /
+    // PLAID_ENABLE_LIABILITIES=true the day the new UI surfaces that data.
     const optionalProducts: Products[] = [];
     if (process.env.PLAID_ENABLE_INVESTMENTS === 'true') optionalProducts.push(Products.Investments);
-    if (process.env.PLAID_ENABLE_LIABILITIES !== 'false') optionalProducts.push(Products.Liabilities);
+    if (process.env.PLAID_ENABLE_LIABILITIES === 'true') optionalProducts.push(Products.Liabilities);
     const baseRequest: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
       language: 'en',
