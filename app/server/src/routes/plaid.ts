@@ -283,6 +283,14 @@ router.post('/link-token', async (req: Request, res: Response) => {
     if (!plaidScope) return;
 
     const redirectUri = process.env.PLAID_REDIRECT_URI?.trim();
+    // In Plaid production, EVERY product listed (required or optional) must be enabled on the account
+    // — an unenabled one fails the whole Link with INVALID_PRODUCT. Investments requires separate Plaid
+    // approval, so gate it behind a flag (default off) and flip PLAID_ENABLE_INVESTMENTS=true once
+    // approved. Sandbox enables all products, so the demo can set the flag on. Liabilities stays on
+    // unless explicitly disabled.
+    const optionalProducts: Products[] = [];
+    if (process.env.PLAID_ENABLE_INVESTMENTS === 'true') optionalProducts.push(Products.Investments);
+    if (process.env.PLAID_ENABLE_LIABILITIES !== 'false') optionalProducts.push(Products.Liabilities);
     const baseRequest: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
       language: 'en',
@@ -290,8 +298,8 @@ router.post('/link-token', async (req: Request, res: Response) => {
       user: { client_user_id: walletAddress.toLowerCase() },
       // Transactions (spend insights) + Auth (account/routing for ACH bill pay & bank↔bank transfers).
       products: [Products.Transactions, Products.Auth],
-      // Optional: brokerage/investment + liabilities (credit/loans) when institution supports them
-      optional_products: [Products.Investments, Products.Liabilities],
+      // Optional: brokerage/investment + liabilities (credit/loans) when institution + account support them
+      ...(optionalProducts.length ? { optional_products: optionalProducts } : {}),
     };
     const requestWithRedirect: LinkTokenCreateRequest = redirectUri
       ? { ...baseRequest, redirect_uri: redirectUri }
