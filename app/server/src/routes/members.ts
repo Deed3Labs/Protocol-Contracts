@@ -309,6 +309,39 @@ router.get('/me', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/members/me/xmtp-address  { xmtpAddress }  → save my XMTP messaging address (embedded EOA),
+// so other members can resolve it from my wallet address when starting a conversation.
+router.post('/me/xmtp-address', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  try {
+    const { xmtpAddress } = req.body as { xmtpAddress?: unknown };
+    if (typeof xmtpAddress !== 'string' || !/^0x[a-fA-F0-9]{40}$/.test(xmtpAddress)) {
+      return res.status(400).json({ error: 'Invalid xmtpAddress', message: 'xmtpAddress must be a valid EVM address' });
+    }
+    const authSubject = await resolveMemberAuthSubject(req);
+    await memberStore.setXmtpAddress(authSubject, xmtpAddress);
+    res.json({ ok: true });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
+// GET /api/members/xmtp-address/:address  → resolve a member's XMTP messaging address from any of their
+// verified wallets (so a contact stored by wallet can be messaged at their embedded-EOA inbox).
+router.get('/xmtp-address/:address', async (req: Request, res: Response) => {
+  if (!(await ensureMemberStoreReady(res))) return;
+  try {
+    const address = req.params.address;
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+      return res.status(400).json({ error: 'Invalid address' });
+    }
+    const xmtpAddress = await memberStore.getXmtpAddressForWallet(address);
+    res.json({ xmtpAddress });
+  } catch (error) {
+    handleMemberRouteError(res, error);
+  }
+});
+
 router.get('/me/account-center', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 

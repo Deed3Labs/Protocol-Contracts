@@ -1717,6 +1717,21 @@ export async function bootstrapMemberAccount(): Promise<{
   return response.data;
 }
 
+/** Save my XMTP messaging address (the embedded EOA) so peers can resolve it from my wallet. */
+export async function saveMyXmtpAddress(xmtpAddress: string): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>('/api/members/me/xmtp-address', {
+    method: 'POST',
+    body: JSON.stringify({ xmtpAddress }),
+  });
+  return !r.error;
+}
+
+/** Resolve a member's XMTP messaging address (embedded EOA) from a wallet address, for starting a DM. */
+export async function resolveXmtpAddress(walletAddress: string): Promise<string | null> {
+  const r = await apiRequest<{ xmtpAddress: string | null }>(`/api/members/xmtp-address/${walletAddress.toLowerCase()}`);
+  return r.error || !r.data ? null : r.data.xmtpAddress;
+}
+
 export async function getMemberAccountCenter(): Promise<MemberAccountCenterResponse | null> {
   const response = await apiRequest<MemberAccountCenterResponse>('/api/members/me/account-center');
   if (response.error || !response.data) return null;

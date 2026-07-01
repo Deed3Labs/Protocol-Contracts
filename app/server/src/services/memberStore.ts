@@ -2288,6 +2288,34 @@ export class MemberStore {
     return result.rows[0] ? mapMember(result.rows[0]) : null;
   }
 
+  /** Save this member's XMTP messaging address (their embedded EOA). */
+  async setXmtpAddress(authSubject: string, xmtpAddress: string): Promise<void> {
+    await this.ensureReady();
+    const member = await this.mustMember(authSubject.trim());
+    const addr = normalizeWalletAddress(xmtpAddress);
+    const pool = this.mustPool();
+    await withRetry(async () => {
+      await pool.query(`UPDATE ${TABLE_MEMBERS} SET xmtp_address = $2, updated_at = NOW() WHERE id = $1`, [member.id, addr]);
+    });
+  }
+
+  /** Resolve a member's XMTP messaging address (embedded EOA) from any of their verified wallets. */
+  async getXmtpAddressForWallet(walletAddress: string): Promise<string | null> {
+    await this.ensureReady();
+    const addr = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<{ xmtp_address: string | null }>(
+        `SELECT xmtp_address FROM ${TABLE_MEMBERS}
+           WHERE primary_wallet = $1
+              OR id = (SELECT member_id FROM ${TABLE_WALLETS} WHERE wallet_address = $1 AND status = 'ACTIVE' LIMIT 1)
+           LIMIT 1`,
+        [addr],
+      );
+    });
+    return result.rows[0]?.xmtp_address ?? null;
+  }
+
   private async resolveMemberByAuthInput(input: ResolveMemberAuthInput): Promise<MemberRecord | null> {
     const authSubject = normalizeOptionalString(input.authSubject ?? null, 255) ?? null;
     if (authSubject) {
@@ -2936,6 +2964,7 @@ export class MemberStore {
           reown_profile_uuid TEXT,
           reown_email_hash TEXT,
           reown_phone_hash TEXT,
+          xmtp_address TEXT,
           status TEXT NOT NULL DEFAULT 'ONBOARDING',
           verification_status TEXT NOT NULL DEFAULT 'NOT_STARTED',
           membership_plan TEXT,
@@ -2955,6 +2984,9 @@ export class MemberStore {
 
       // Account-phone hash for identity matching (older tables predate this column).
       await pool.query(`ALTER TABLE ${TABLE_MEMBERS} ADD COLUMN IF NOT EXISTS reown_phone_hash TEXT;`);
+      // XMTP messaging address (the embedded EOA used for XMTP), so peers can resolve it from a wallet.
+      await pool.query(`ALTER TABLE ${TABLE_MEMBERS} ADD COLUMN IF NOT EXISTS xmtp_address TEXT;`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS members_xmtp_address_idx ON ${TABLE_MEMBERS} (xmtp_address);`);
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS ${TABLE_PROFILE_PUBLIC} (
