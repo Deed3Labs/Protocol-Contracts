@@ -34,6 +34,7 @@ interface XMTPContextType {
   loadMessages: (conversationId: string) => Promise<void>;
   createConversation: (walletAddress: string) => Promise<Conversation>;
   createGroupConversation: (name: string, members: string[]) => Promise<Conversation>;
+  updateGroupName: (conversationId: string, name: string) => Promise<void>;
   manualSync: () => Promise<void>;
   syncConversationMessages: (conversationId: string) => Promise<void>;
   syncAllMessages: () => Promise<void>;
@@ -962,6 +963,30 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     });
   };
 
+  // Rename a group. XMTP persists the group name to every member, and any member is allowed to
+  // change it — so a custom chat name set by one person shows up for everyone.
+  const updateGroupName = async (conversationId: string, name: string): Promise<void> => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const conversation = conversations.find((c) => c.id === conversationId) as any;
+    if (conversation && conversation.constructor?.name === 'Group' && typeof conversation.updateName === 'function') {
+      await conversation.updateName(trimmed);
+    }
+    // Mirror into the local metadata store (also covers optimistic groups not yet on-network).
+    try {
+      const groups = JSON.parse(localStorage.getItem('xmtp-groups') || '[]');
+      const idx = groups.findIndex((g: any) => g.id === conversationId);
+      if (idx >= 0) {
+        groups[idx].name = trimmed;
+        localStorage.setItem('xmtp-groups', JSON.stringify(groups));
+      }
+    } catch {
+      /* ignore metadata mirror failures */
+    }
+    // Force a re-render so the list/header pick up the new name.
+    setConversations((prev) => [...prev]);
+  };
+
   // Conversation states are managed by XMTP network and history sync
 
   const value: XMTPContextType = {
@@ -985,6 +1010,7 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     loadMessages,
     createConversation,
     createGroupConversation,
+    updateGroupName,
     manualSync,
     syncConversationMessages,
     syncAllMessages,

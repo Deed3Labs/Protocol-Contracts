@@ -24,10 +24,15 @@ import {
   EyeOff,
   Archive,
   Users,
-  Check
+  Check,
+  Copy,
+  Share2,
+  Pencil,
+  UserPlus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useContacts, contactInitials } from '@/context/ContactsContext';
+import { lookupDirectory } from '@/utils/apiClient';
 
 interface XMTPMessagingProps {
   ownerAddress?: string;
@@ -59,11 +64,12 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     loadConversations,
     createConversation,
     createGroupConversation,
+    updateGroupName,
     syncOptimisticGroups,
     manualSync,
     canMessage,
     getCurrentInboxId,
-    isConnected 
+    isConnected
   } = useXMTP();
   
   const { handleConnect, isConnecting, isEmbeddedWallet, address } = useXMTPConnection();
@@ -89,6 +95,22 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   const [groupName, setGroupName] = useState('');
   const [groupMembers, setGroupMembers] = useState<string[]>(['']);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  // When a recipient email/phone isn't a Clear member yet, we surface an invite instead of failing.
+  const [inviteRecipient, setInviteRecipient] = useState<string | null>(null);
+  // When a recipient IS a member but hasn't turned on messaging, we nudge instead of failing.
+  const [notReachableName, setNotReachableName] = useState<string | null>(null);
+  // Friendly names for conversations, keyed by conversation id (XMTP ids are opaque hashes).
+  const [conversationNames, setConversationNames] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('xmtp_conversation_names') || '{}');
+    } catch {
+      return {};
+    }
+  });
+  // Inline group-rename dialog (any member can rename a group).
+  const [renameGroupId, setRenameGroupId] = useState<string | null>(null);
+  const [renameGroupValue, setRenameGroupValue] = useState('');
+  const [isRenamingGroup, setIsRenamingGroup] = useState(false);
   const [currentUserInboxId, setCurrentUserInboxId] = useState<string | null>(null);
   const [isConversationListCollapsed, setIsConversationListCollapsed] = useState(false);
   const [hiddenConversations, setHiddenConversations] = useState<Set<string>>(new Set());
@@ -306,37 +328,45 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   // Handle creating new group
   const handleCreateGroup = async () => {
     if (!groupName.trim() || groupMembers.length === 0) return;
-    
-    // Filter out empty addresses and validate
-    const validMembers = groupMembers.filter(member => member.trim().startsWith('0x') && member.trim().length === 42);
-    
-    if (validMembers.length === 0) {
-      alert('Please add at least one valid Ethereum address');
-      return;
-    }
-    
+
     setIsCreatingGroup(true);
     try {
-      console.log('XMTP: Creating new group:', { name: groupName, members: validMembers });
-      
-      // Use the real createGroupConversation function
-      const conversation = await createGroupConversation(groupName, validMembers);
+      // Members can be entered as email, phone, or wallet — resolve each to a wallet address.
+      const entries = groupMembers.map((m) => m.trim()).filter(Boolean);
+      const wallets: string[] = [];
+      const unresolved: string[] = [];
+      for (const entry of entries) {
+        const resolved = await resolveRecipient(entry);
+        if (resolved && 'wallet' in resolved) wallets.push(resolved.wallet);
+        else unresolved.push(entry);
+      }
+
+      if (wallets.length === 0) {
+        alert('Add at least one member by email, phone, or wallet address.');
+        return;
+      }
+      if (unresolved.length > 0) {
+        const proceed = confirm(
+          `These aren't Clear members yet and will be skipped:\n${unresolved.join('\n')}\n\nCreate the group with the others?`,
+        );
+        if (!proceed) return;
+      }
+
+      console.log('XMTP: Creating new group:', { name: groupName, members: wallets });
+      const conversation = await createGroupConversation(groupName, wallets);
       console.log('XMTP: Created group conversation:', conversation.id);
-      
-      // Reload conversations to include the new one
+      rememberConversationName(conversation.id, groupName.trim());
+
       await loadConversations();
-      
-      // Select the new conversation
       setSelectedConversation(conversation.id);
       await loadMessages(conversation.id);
-      
-      // Close dialog and reset
+
       setShowNewConversationDialog(false);
       setGroupName('');
       setGroupMembers(['']);
     } catch (err) {
       console.error('XMTP: Failed to create new group:', err);
-      alert(err instanceof Error ? err.message : 'Failed to create group. Please check the addresses and try again.');
+      alert(err instanceof Error ? err.message : 'Failed to create group. Please check the members and try again.');
     } finally {
       setIsCreatingGroup(false);
     }
@@ -362,43 +392,142 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     setGroupMembers(newMembers);
   };
 
+  // Persist a friendly name for a conversation so the list/header never show a raw hash or address.
+  const rememberConversationName = useCallback((conversationId: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setConversationNames((prev) => {
+      const next = { ...prev, [conversationId]: trimmed };
+      try { localStorage.setItem('xmtp_conversation_names', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  const normalizePhone = (v?: string | null) => (v || '').replace(/[^0-9]/g, '');
+
+  const detectRecipientType = (v: string): 'address' | 'email' | 'phone' | 'unknown' => {
+    const s = v.trim();
+    if (/^0x[a-fA-F0-9]{40}$/.test(s)) return 'address';
+    if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s)) return 'email';
+    if (/^\+?[0-9][0-9\s\-().]{6,}$/.test(s)) return 'phone';
+    return 'unknown';
+  };
+
+  // Resolve a human-friendly recipient (email / phone / wallet) to a wallet address + display name.
+  // Checks local contacts first (instant, offline), then the member directory. Returns { notMember }
+  // when an email/phone maps to no Clear member, so the caller can offer an invite instead of failing.
+  const resolveRecipient = async (
+    raw: string,
+  ): Promise<{ wallet: string; name?: string } | { notMember: true } | null> => {
+    const s = raw.trim();
+    const kind = detectRecipientType(s);
+    if (kind === 'unknown') return null;
+    if (kind === 'address') {
+      const c = contacts.find((c) => c.wallet?.toLowerCase() === s.toLowerCase());
+      return { wallet: s, name: c?.name };
+    }
+    const contact = contacts.find((c) =>
+      kind === 'email'
+        ? c.email?.toLowerCase() === s.toLowerCase()
+        : normalizePhone(c.phone) === normalizePhone(s),
+    );
+    if (contact?.wallet) return { wallet: contact.wallet, name: contact.name };
+    const res = await lookupDirectory(address || '', kind === 'email' ? { email: s } : { phone: s });
+    if (res.wallet) return { wallet: res.wallet, name: contact?.name };
+    return { notMember: true };
+  };
+
+  // Invite (for non-members): a shareable link + prefilled message they can copy or share natively.
+  const inviteLink = typeof window !== 'undefined' ? window.location.origin : 'https://app.useclear.org';
+  const inviteMessage = `Join me on Clear so we can message securely and move money: ${inviteLink}`;
+  const copyInvite = async () => {
+    try { await navigator.clipboard.writeText(inviteMessage); } catch { /* ignore */ }
+  };
+  const shareInvite = async () => {
+    if (typeof navigator !== 'undefined' && (navigator as any).share) {
+      try {
+        await (navigator as any).share({ title: 'Join me on Clear', text: inviteMessage, url: inviteLink });
+        return;
+      } catch { /* user cancelled or unsupported — fall back to copy */ }
+    }
+    copyInvite();
+  };
+
+  // A single source of truth for what a conversation is called. Groups prefer their (editable) XMTP
+  // name; DMs prefer the contact/looked-up name captured when the chat was started.
+  const getConversationTitle = (conv: any): string => {
+    const id = typeof conv === 'string' ? conv : conv?.id;
+    if (!id) return 'Conversation';
+    if (isGroupConversation(id)) {
+      const convObj = typeof conv === 'object' && conv ? conv : conversations.find((c) => c.id === id);
+      const native = convObj && typeof (convObj as any).name === 'string' ? (convObj as any).name.trim() : '';
+      return native || conversationNames[id] || getGroupMetadata(id)?.name || 'Group Chat';
+    }
+    return conversationNames[id] || formatAddress(id);
+  };
+
+  const openRenameGroup = (conversationId: string) => {
+    setRenameGroupId(conversationId);
+    setRenameGroupValue(getConversationTitle(conversationId));
+  };
+  const submitRenameGroup = async () => {
+    if (!renameGroupId || !renameGroupValue.trim()) return;
+    setIsRenamingGroup(true);
+    try {
+      await updateGroupName(renameGroupId, renameGroupValue.trim());
+      rememberConversationName(renameGroupId, renameGroupValue.trim());
+      setRenameGroupId(null);
+    } catch (err) {
+      console.error('XMTP: Failed to rename group:', err);
+      alert('Could not rename the group. Please try again.');
+    } finally {
+      setIsRenamingGroup(false);
+    }
+  };
+
   // Handle creating new DM
   const handleCreateNewDm = async () => {
-    if (!newDmAddress.trim()) return;
-    
-    const address = newDmAddress.trim();
-    
-    // Basic address validation
-    if (!address.startsWith('0x') || address.length !== 42) {
-      alert('Please enter a valid Ethereum address (0x followed by 40 characters)');
-      return;
-    }
-    
+    const raw = newDmAddress.trim();
+    if (!raw) return;
+
+    setInviteRecipient(null);
+    setNotReachableName(null);
     setIsCreatingDm(true);
     try {
-      console.log('XMTP: Creating new DM with address:', address);
-      
-      // Check if wallet is reachable first
-      console.log('XMTP: Checking if wallet is reachable before creating conversation...');
-      const isReachable = await canMessage(address);
-      console.log('XMTP: Wallet reachability check:', { address, isReachable });
-      
-      const conversation = await createConversation(address);
+      const resolved = await resolveRecipient(raw);
+      if (!resolved) {
+        alert('Enter an email, phone number, or wallet address.');
+        return;
+      }
+      // Not a Clear member yet → offer an invite instead of a dead end.
+      if ('notMember' in resolved) {
+        setInviteRecipient(raw);
+        return;
+      }
+
+      const { wallet, name } = resolved;
+      console.log('XMTP: Creating new DM with wallet:', wallet, 'name:', name);
+
+      // Member exists but hasn't enabled messaging → nudge, don't fail silently.
+      const isReachable = await canMessage(wallet);
+      if (!isReachable) {
+        setNotReachableName(name || raw);
+        return;
+      }
+
+      const conversation = await createConversation(wallet);
       console.log('XMTP: Created new DM:', conversation.id);
-      
-      // Reload conversations to include the new one
+      if (name) rememberConversationName(conversation.id, name);
+
       await loadConversations();
-      
-      // Select the new conversation
       setSelectedConversation(conversation.id);
       await loadMessages(conversation.id);
-      
-      // Close dialog and reset
+
       setShowNewConversationDialog(false);
       setNewDmAddress('');
     } catch (err) {
       console.error('XMTP: Failed to create new DM:', err);
-      alert('Failed to create conversation. The wallet might not have XMTP installed.');
+      alert('Failed to start the conversation. Please try again.');
     } finally {
       setIsCreatingDm(false);
     }
@@ -734,18 +863,56 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                           )}
                           <div>
                             <label className="block text-sm font-medium text-foreground mb-2">
-                              Wallet Address
+                              Email, phone, or wallet address
                             </label>
                             <Input
-                              placeholder="0x..."
+                              placeholder="name@email.com, +1 555 000 1234, or 0x…"
                               value={newDmAddress}
-                              onChange={(e) => setNewDmAddress(e.target.value)}
-                              className="font-mono text-sm bg-background"
+                              onChange={(e) => {
+                                setNewDmAddress(e.target.value);
+                                if (inviteRecipient) setInviteRecipient(null);
+                                if (notReachableName) setNotReachableName(null);
+                              }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleCreateNewDm(); }}
+                              className="text-sm bg-background"
                             />
                             <p className="text-xs text-muted-foreground mt-1">
-                              Enter the Ethereum address of the person you want to message
+                              We’ll find them by email or phone — no wallet address needed.
                             </p>
                           </div>
+
+                          {inviteRecipient && (
+                            <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-2">
+                              <div className="flex items-start gap-2">
+                                <UserPlus className="w-4 h-4 mt-0.5 text-info shrink-0" />
+                                <p className="text-sm text-foreground">
+                                  <span className="font-medium break-all">{inviteRecipient}</span> isn’t on Clear yet. Send them an invite to start the conversation.
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button variant="outline" size="sm" onClick={copyInvite} className="flex-1 bg-background border-border">
+                                  <Copy className="w-4 h-4 mr-1" /> Copy invite
+                                </Button>
+                                <Button size="sm" onClick={shareInvite} className="flex-1 bg-primary text-primary-foreground hover:opacity-90 border border-primary">
+                                  <Share2 className="w-4 h-4 mr-1" /> Share
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {notReachableName && (
+                            <div className="rounded-lg border border-border bg-secondary/40 p-3 space-y-2">
+                              <div className="flex items-start gap-2">
+                                <AlertCircle className="w-4 h-4 mt-0.5 text-info shrink-0" />
+                                <p className="text-sm text-foreground">
+                                  <span className="font-medium break-all">{notReachableName}</span> is on Clear but hasn’t turned on secure messaging yet. Ask them to open Messages once, then try again.
+                                </p>
+                              </div>
+                              <Button variant="outline" size="sm" onClick={shareInvite} className="w-full bg-background border-border">
+                                <Share2 className="w-4 h-4 mr-1" /> Send them a nudge
+                              </Button>
+                            </div>
+                          )}
                           <div className="flex justify-end space-x-2">
                             <Button
                               variant="outline"
@@ -801,10 +968,10 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                               {groupMembers.map((member, index) => (
                                 <div key={index} className="flex items-center space-x-2">
                                   <Input
-                                    placeholder="0x..."
+                                    placeholder="Email, phone, or 0x…"
                                     value={member}
                                     onChange={(e) => updateGroupMember(index, e.target.value)}
-                                    className="font-mono text-sm flex-1 bg-background"
+                                    className="text-sm flex-1 bg-background"
                                   />
                                   {groupMembers.length > 1 && (
                                     <Button
@@ -829,7 +996,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                               </Button>
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
-                              Add Ethereum addresses of group members
+                              Add members by email, phone, or wallet address
                             </p>
                           </div>
                           <div className="flex justify-end space-x-2">
@@ -998,10 +1165,10 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium text-foreground truncate">
-                                    {formatAddress(conversation.id)}
+                                    {getConversationTitle(conversation)}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    Direct Message
+                                    {isGroupConversation(conversation.id) ? 'Group Chat' : 'Direct Message'}
                                   </p>
                                 </div>
                               </div>
@@ -1048,11 +1215,18 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 <div className="p-4 border-b border-border">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-sm font-medium text-foreground">
-                        {isGroupConversation(selectedConversation || '') 
-                          ? (getGroupMetadata(selectedConversation || '')?.name || 'Group Chat')
-                          : formatAddress(selectedConversation || '')
-                        }
+                      <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                        {getConversationTitle(selectedConversation || '')}
+                        {isGroupConversation(selectedConversation || '') && (
+                          <button
+                            type="button"
+                            onClick={() => openRenameGroup(selectedConversation || '')}
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                            title="Rename group"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </h3>
                       <p className="text-xs text-muted-foreground">
                         {getConversationType(selectedConversation || '') === 'Real XMTP Group' || getConversationType(selectedConversation || '') === 'Optimistic Group'
@@ -1294,10 +1468,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                             {!isConversationListCollapsed && (
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-foreground truncate">
-                                  {isGroupConversation(conversation.id) 
-                                    ? (getGroupMetadata(conversation.id)?.name || 'Group Chat')
-                                    : formatAddress(conversation.id)
-                                  }
+                                  {getConversationTitle(conversation)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                   {getConversationType(conversation.id) === 'Real XMTP Group' || getConversationType(conversation.id) === 'Optimistic Group'
@@ -1346,11 +1517,18 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 <div className="p-4 border-b border-border">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-sm font-medium text-foreground">
-                        {isGroupConversation(selectedConversation || '') 
-                          ? (getGroupMetadata(selectedConversation || '')?.name || 'Group Chat')
-                          : formatAddress(selectedConversation || '')
-                        }
+                      <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                        {getConversationTitle(selectedConversation || '')}
+                        {isGroupConversation(selectedConversation || '') && (
+                          <button
+                            type="button"
+                            onClick={() => openRenameGroup(selectedConversation || '')}
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                            title="Rename group"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </h3>
                       <p className="text-xs text-muted-foreground">
                         {getConversationType(selectedConversation || '') === 'Real XMTP Group' || getConversationType(selectedConversation || '') === 'Optimistic Group'
@@ -1510,6 +1688,38 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
         )}
         </div>
       </div>
+
+      {/* Rename group — any member can set a custom name that everyone sees */}
+      <Dialog open={!!renameGroupId} onOpenChange={(open) => { if (!open) setRenameGroupId(null); }}>
+        <DialogContent overlayClassName="z-[110]" className="z-[120] w-[calc(100vw-2rem)] max-w-sm mx-auto rounded-sm border-border">
+          <DialogHeader>
+            <DialogTitle>Rename group</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Input
+              autoFocus
+              placeholder="Group name"
+              value={renameGroupValue}
+              onChange={(e) => setRenameGroupValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitRenameGroup(); }}
+              className="text-sm bg-background"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRenameGroupId(null)} className="border-border bg-background">
+                Cancel
+              </Button>
+              <Button
+                onClick={submitRenameGroup}
+                disabled={!renameGroupValue.trim() || isRenamingGroup}
+                className="bg-primary hover:opacity-90 text-primary-foreground border border-primary"
+              >
+                {isRenamingGroup ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Check className="w-4 h-4 mr-1" />}
+                Save
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
