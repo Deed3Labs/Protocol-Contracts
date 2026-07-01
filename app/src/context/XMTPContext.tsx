@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Client } from '@xmtp/browser-sdk';
 import type { Conversation, DecodedMessage, Signer } from '@xmtp/browser-sdk';
+import { saveMyXmtpAddress, resolveXmtpAddress } from '@/utils/apiClient';
 
 // Conversation state types
 export type ConversationState = 'active' | 'hidden' | 'archived';
@@ -146,6 +147,9 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       setClient(xmtpClient);
       setIsConnected(true);
 
+      // Register my XMTP messaging address (this EOA) so peers can resolve it from my wallet address.
+      saveMyXmtpAddress(walletAddress).catch(() => {});
+
       // Surface the singular identity + how many installations the inbox has accumulated.
       try {
         const state = await xmtpClient.preferences.inboxState(true);
@@ -237,20 +241,33 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
   };
 
   // Create conversation following XMTP V4 patterns
+  // A Clear member's XMTP inbox lives at their embedded EOA (XMTP can't validate smart-wallet 1271
+  // signatures on testnet), but the app addresses peers by their wallet — so resolve wallet → the
+  // member's XMTP (EOA) address before messaging. Falls back to the given address if there's no mapping.
+  const resolvePeerAddress = async (address: string): Promise<string> => {
+    try {
+      const xmtp = await resolveXmtpAddress(address);
+      return xmtp || address;
+    } catch {
+      return address;
+    }
+  };
+
   const createConversation = async (walletAddress: string): Promise<Conversation> => {
     if (!client) {
       throw new Error('XMTP client not connected.');
     }
 
     try {
-      console.log('XMTP: Creating conversation with wallet:', walletAddress);
-      
+      const target = await resolvePeerAddress(walletAddress);
+      console.log('XMTP: Creating conversation with wallet:', walletAddress, '→ xmtp:', target);
+
       // Check if wallet can receive messages
       const canMessageResult = await Client.canMessage([{
-        identifier: walletAddress,
+        identifier: target,
         identifierKind: "Ethereum"
       }]);
-      const isReachable = canMessageResult.get(walletAddress);
+      const isReachable = canMessageResult.get(target);
       
       console.log('XMTP: Can message check result:', {
         walletAddress,
@@ -261,12 +278,13 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
         console.warn('XMTP: Wallet is not reachable, but proceeding with conversation creation...');
       }
       
-      // Create DM conversation using the wallet address as inbox ID
-      const conversation = await client.conversations.newDm(walletAddress);
-      
+      // Create DM conversation using the resolved XMTP (EOA) address as the peer identifier.
+      const conversation = await client.conversations.newDm(target);
+
       console.log('XMTP: Created conversation:', {
         conversationId: conversation.id,
-        walletAddress
+        walletAddress,
+        target
       });
       
       // Add the new conversation to our list
@@ -769,14 +787,16 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       return false;
     }
     try {
-      console.log('XMTP: Checking if wallet is reachable:', walletAddress);
+      const target = await resolvePeerAddress(walletAddress);
+      console.log('XMTP: Checking if wallet is reachable:', walletAddress, '→ xmtp:', target);
       const response = await Client.canMessage([{
-        identifier: walletAddress,
+        identifier: target,
         identifierKind: "Ethereum"
       }]);
-      const isReachable = response.get(walletAddress);
+      const isReachable = response.get(target);
       console.log('XMTP: Can message check result:', {
         walletAddress,
+        target,
         isReachable
       });
       return isReachable || false;
