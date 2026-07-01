@@ -1,192 +1,59 @@
-import { useState, useEffect, useRef } from 'react';
-import { useAccount } from 'wagmi';
-import { useAppKitAccount, useAppKitProvider } from '@/lib/walletCompat';
+import { useEffect, useRef, useState } from 'react';
+import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
+import { hexToBytes } from 'viem';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import { useXMTP } from '@/context/XMTPContext';
-import { AbstractSigner, assert, hexlify, toUtf8Bytes } from 'ethers';
-import type { Provider, Signer, TransactionRequest, TypedDataDomain, TypedDataField } from 'ethers';
-
-/** EIP-1193 provider that can request personal_sign (e.g. WalletConnect, embedded wallet). */
-type Eip1193Provider = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
+import type { Signer } from '@xmtp/browser-sdk';
 
 /**
- * Signer that uses a known address and only calls personal_sign on the provider.
- * Used when the provider (e.g. WalletConnect RPC) has deprecated eth_accounts
- * so BrowserProvider.getSigner() would fail. We get the address from AppKit state instead.
+ * Builds an XMTP signer from the Privy SMART WALLET and connects. Identity = the Clear smart-wallet
+ * address (the app's canonical address), so peers reach you at the same address the app shows. The
+ * smart wallet signs via the Privy smart-wallet client, producing an EIP-1271 signature XMTP validates
+ * on-chain — hence a `type: 'SCW'` signer with `getChainId`.
+ *
+ * NOTE: XMTP validates the SCW signature on-chain, so the smart wallet must be DEPLOYED on
+ * ACTIVE_CHAIN_ID. Privy deploys it on the first sponsored tx (deposit/transfer), so a brand-new
+ * account that hasn't transacted yet can't register until it does. See [[clearpath-privy-migration]].
  */
-class WalletConnectCompatibleSigner extends AbstractSigner {
-  readonly address: string;
-  private readonly eip1193Provider: Eip1193Provider;
-
-  constructor(address: string, eip1193Provider: Eip1193Provider, provider?: Provider | null) {
-    super(provider ?? null);
-    this.address = address;
-    this.eip1193Provider = eip1193Provider;
-  }
-
-  async getAddress(): Promise<string> {
-    return this.address;
-  }
-
-  connect(provider: Provider | null): Signer {
-    return new WalletConnectCompatibleSigner(this.address, this.eip1193Provider, provider);
-  }
-
-  async signMessage(message: string | Uint8Array): Promise<string> {
-    const bytes = typeof message === 'string' ? toUtf8Bytes(message) : message;
-    const result = await this.eip1193Provider.request({
-      method: 'personal_sign',
-      params: [hexlify(bytes), this.address.toLowerCase()],
-    });
-    return result as string;
-  }
-
-  async signTransaction(_tx: TransactionRequest): Promise<string> {
-    assert(false, 'WalletConnectCompatibleSigner cannot sign transactions', 'UNSUPPORTED_OPERATION', {
-      operation: 'signTransaction',
-    });
-  }
-
-  async signTypedData(
-    _domain: TypedDataDomain,
-    _types: Record<string, TypedDataField[]>,
-    _value: Record<string, unknown>,
-  ): Promise<string> {
-    assert(false, 'WalletConnectCompatibleSigner cannot sign typed data', 'UNSUPPORTED_OPERATION', {
-      operation: 'signTypedData',
-    });
-  }
-}
-
 export const useXMTPConnection = () => {
   const { connect, isConnected, disconnect } = useXMTP();
-  const { address, isConnected: isWalletConnected, connector } = useAccount();
-  const { address: appkitAddress, isConnected: isAppKitConnected, embeddedWalletInfo } = useAppKitAccount();
-  const { walletProvider } = useAppKitProvider("eip155");
+  const { address, isConnected: isWalletConnected, embeddedWalletInfo } = useAppKitAccount();
+  const { getClientForChain } = useSmartWallets();
   const [isConnecting, setIsConnecting] = useState(false);
-  const connectionAttempted = useRef(false);
+  const prevAddressRef = useRef<string | undefined>(address);
 
-  // Determine which wallet is active
-  const activeAddress = appkitAddress || address;
-  const isActiveWalletConnected = isAppKitConnected || isWalletConnected;
-
-  // Track previous address to detect changes
-  const prevAddressRef = useRef<string | undefined>(activeAddress);
-
-  // Reset connection attempt when wallet disconnects or address changes
+  // Reset the XMTP session if the wallet changes (different user) or disconnects.
   useEffect(() => {
-    const prevAddress = prevAddressRef.current;
-    const currentAddress = activeAddress;
-
-    // If address changed and we were connected, reset the connection
-    if (prevAddress && currentAddress && prevAddress !== currentAddress && isConnected) {
-      console.log('XMTP Connection Hook: Address changed, resetting XMTP connection', {
-        prevAddress,
-        currentAddress
-      });
-      connectionAttempted.current = false;
+    const prev = prevAddressRef.current;
+    if (isConnected && ((prev && address && prev !== address) || !isWalletConnected)) {
       disconnect().catch(console.error);
     }
-
-    // If wallet disconnected, reset connection
-    if (!isActiveWalletConnected && isConnected) {
-      console.log('XMTP Connection Hook: Wallet disconnected, resetting XMTP connection');
-      connectionAttempted.current = false;
-      disconnect().catch(console.error);
-    }
-
-    // If wallet is not connected and we're not connected to XMTP, don't do anything
-    if (!isActiveWalletConnected && !isConnected) {
-      console.log('XMTP Connection Hook: Wallet not connected and XMTP not connected, skipping');
-      return;
-    }
-
-    // Update the previous address reference
-    prevAddressRef.current = currentAddress;
-  }, [isActiveWalletConnected, activeAddress, isConnected]); // Removed disconnect from dependencies
+    prevAddressRef.current = address;
+  }, [address, isWalletConnected, isConnected, disconnect]);
 
   const handleConnect = async () => {
-    console.log('XMTP Connection Hook: Starting connection...', {
-      activeAddress,
-      isActiveWalletConnected,
-      isConnected,
-      isConnecting,
-      embeddedWalletInfo: !!embeddedWalletInfo,
-      hasWalletProvider: !!walletProvider,
-      hasConnector: !!connector
-    });
-    
-    if (!activeAddress || !isActiveWalletConnected || isConnected || isConnecting) {
-      console.log('XMTP Connection Hook: Connection conditions not met, skipping');
-      return;
-    }
-    
-    // Note: XMTP installation reuse is now handled in the XMTP context
-    // The connect function will ALWAYS check for existing installations across browsers
-    // and sync them to ensure users have access to all their past messages
-    
+    if (!address || !isWalletConnected || isConnected || isConnecting) return;
     setIsConnecting(true);
     try {
-      let signer: Signer;
-      const { BrowserProvider } = await import('ethers');
-
-      // 1. Prefer AppKit walletProvider when available (covers embedded wallets AND WalletConnect on mobile Safari).
-      // When we have a known address from AppKit, use WalletConnectCompatibleSigner so we never call eth_accounts
-      // (WalletConnect RPC has deprecated eth_accounts; BrowserProvider.getSigner() would fail for email/WC users).
-      if (walletProvider && activeAddress) {
-        const hasGetSigner = typeof (walletProvider as { getSigner?: () => unknown }).getSigner === 'function';
-        if (hasGetSigner) {
-          try {
-            console.log('XMTP Connection Hook: Using AppKit wallet provider (getSigner)');
-            signer = await (walletProvider as { getSigner(): Promise<Signer> }).getSigner();
-          } catch (getSignerErr) {
-            // getSigner() may fail when provider uses deprecated eth_accounts (e.g. WalletConnect)
-            const msg = getSignerErr instanceof Error ? getSignerErr.message : String(getSignerErr);
-            if (msg.includes('eth_accounts') || msg.includes('deprecated')) {
-              console.log('XMTP Connection Hook: getSigner failed (eth_accounts deprecated), using address-only signer');
-              signer = new WalletConnectCompatibleSigner(activeAddress, walletProvider as Eip1193Provider);
-            } else {
-              throw getSignerErr;
-            }
-          }
-        } else {
-          console.log('XMTP Connection Hook: Using address-only signer (avoids eth_accounts)');
-          signer = new WalletConnectCompatibleSigner(activeAddress, walletProvider as Eip1193Provider);
-        }
-        console.log('XMTP Connection Hook: AppKit signer created');
-      } else if (typeof window !== 'undefined' && (window as { ethereum?: unknown }).ethereum) {
-        // 2. Browser extension (MetaMask, etc.) when not using WalletConnect
-        console.log('XMTP Connection Hook: Using window.ethereum');
-        await new Promise(resolve => setTimeout(resolve, 100));
-        if (!(window as { ethereum?: unknown }).ethereum) {
-          throw new Error('Ethereum provider not available after initialization delay');
-        }
-        const provider = new BrowserProvider((window as { ethereum: unknown }).ethereum as import('ethers').Eip1193Provider);
-        signer = await provider.getSigner();
-        console.log('XMTP Connection Hook: Regular wallet signer created');
-      } else if (connector) {
-        // 3. Fallback: wagmi connector (e.g. after mobile deeplink return when walletProvider may not be hydrated yet)
-        console.log('XMTP Connection Hook: Using wagmi connector provider');
-        const provider = await connector.getProvider();
-        if (!provider) {
-          throw new Error('No provider available from wallet connector. Try reconnecting or opening the app in your wallet browser.');
-        }
-        const ethersProvider = new BrowserProvider(provider as import('ethers').Eip1193Provider);
-        signer = await ethersProvider.getSigner();
-        console.log('XMTP Connection Hook: Connector signer created');
-      } else {
-        throw new Error('No Ethereum provider available. On mobile Safari, connect your wallet first and ensure you return to this tab after approving.');
-      }
-      
-      console.log('XMTP Connection Hook: Calling XMTP connect...');
+      const smartWalletAddress = (address as string).toLowerCase();
+      const signer: Signer = {
+        type: 'SCW',
+        getIdentifier: () => ({ identifier: smartWalletAddress, identifierKind: 'Ethereum' }),
+        signMessage: async (message: string): Promise<Uint8Array> => {
+          const client = await getClientForChain({ id: ACTIVE_CHAIN_ID });
+          if (!client) throw new Error('Your Clear wallet is still setting up — try again in a moment.');
+          const signature = await client.signMessage({ message });
+          return hexToBytes(signature as `0x${string}`);
+        },
+        getChainId: () => BigInt(ACTIVE_CHAIN_ID),
+      };
       await connect(signer);
-      console.log('XMTP Connection Hook: Connection successful');
     } catch (err) {
-      console.error('XMTP Connection Hook: Failed to connect to XMTP:', err);
-      connectionAttempted.current = false; // Allow retry on error
+      console.error('XMTP: failed to connect', err);
       throw err;
     } finally {
       setIsConnecting(false);
-      console.log('XMTP Connection Hook: Connection attempt finished');
     }
   };
 
@@ -194,8 +61,8 @@ export const useXMTPConnection = () => {
     handleConnect,
     isConnecting,
     isConnected,
-    isWalletConnected: isActiveWalletConnected,
-    address: activeAddress,
-    isEmbeddedWallet: !!embeddedWalletInfo
+    isWalletConnected,
+    address,
+    isEmbeddedWallet: !!embeddedWalletInfo,
   };
-}; 
+};

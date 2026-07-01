@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Client } from '@xmtp/browser-sdk';
 import type { Conversation, DecodedMessage, Signer } from '@xmtp/browser-sdk';
-import { ethers } from 'ethers';
 
 // Conversation state types
 export type ConversationState = 'active' | 'hidden' | 'archived';
@@ -20,7 +19,7 @@ interface XMTPContextType {
   conversationStates: { [conversationId: string]: ConversationMetadata };
   isLoading: boolean;
   error: string | null;
-  connect: (signer: ethers.Signer) => Promise<void>;
+  connect: (signer: Signer) => Promise<void>;
   disconnect: () => Promise<void>;
   sendMessage: (conversationId: string, content: string) => Promise<void>;
   deleteMessage: (conversationId: string, messageId: string) => Promise<void>;
@@ -68,29 +67,8 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  // Create XMTP signer from ethers signer with smart account support
-  const createXMTPSigner = (ethersSigner: ethers.Signer): Signer => {
-    return {
-      type: "EOA", // XMTP V4 treats all signers as EOA for now
-      getIdentifier: async () => {
-        const address = await ethersSigner.getAddress();
-        return {
-          identifier: address,
-          identifierKind: "Ethereum"
-        };
-      },
-      signMessage: async (message: string): Promise<Uint8Array> => {
-        try {
-          const signature = await ethersSigner.signMessage(message);
-          // Convert hex string to Uint8Array
-          return new Uint8Array(Buffer.from(signature.slice(2), 'hex'));
-        } catch (error) {
-          console.error('XMTP: Failed to sign message:', error);
-          throw new Error('Failed to sign message. Please ensure your wallet is properly connected.');
-        }
-      }
-    };
-  };
+  // The XMTP Signer is now built by the caller (useXMTPConnection) from the Privy smart wallet
+  // (an EIP-1271 'SCW' signer), so the XMTP identity = the Clear smart-wallet address. No ethers here.
 
   // No need to check network separately - Client.create() with history sync handles this automatically
 
@@ -132,14 +110,13 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
   };
 
   // Create XMTP client, reusing this browser's existing installation when there is one.
-  const connect = async (ethersSigner: ethers.Signer) => {
+  const connect = async (xmtpSigner: Signer) => {
     try {
       console.log('XMTP: Starting connection...');
       setIsLoading(true);
       setError(null);
 
-      const xmtpSigner = createXMTPSigner(ethersSigner);
-      const walletAddress = await ethersSigner.getAddress();
+      const walletAddress = (await xmtpSigner.getIdentifier()).identifier;
       const dbEncryptionKey = getOrCreateDbEncryptionKey(walletAddress);
       const dbPath = dbPathFor(walletAddress);
       console.log('XMTP: Wallet address:', walletAddress);
