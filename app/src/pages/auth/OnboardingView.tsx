@@ -45,17 +45,7 @@ const GOALS: { id: string; icon: LucideIcon; label: string; body: string }[] = [
   { id: 'rent', icon: Receipt, label: 'Make rent count', body: 'On-time rent builds ownership.' },
 ];
 
-function StepDots({ current }: { current: number }) {
-  return (
-    <div className="flex items-center justify-center gap-1.5">
-      {STEPS.map((s, i) => (
-        <div key={s.id} className={cn('h-1.5 rounded-full transition-all duration-300', i === current ? 'w-6 bg-foreground' : i < current ? 'w-1.5 bg-positive' : 'w-1.5 bg-border')} />
-      ))}
-    </div>
-  );
-}
-
-/** Redesigned onboarding funnel — presentational; the wrapper maps the result to the submit contract. */
+/** Redesigned onboarding funnel — full-screen; the wrapper maps the result to the submit contract. */
 export default function OnboardingView({
   onComplete,
   onExit,
@@ -100,41 +90,45 @@ export default function OnboardingView({
       termsAccepted: true,
     });
 
+  const progress = ((stepIdx + 1) / STEPS.length) * 100;
+
   return (
-    <div className="relative grid min-h-screen place-items-center overflow-hidden bg-background px-5 py-10 text-foreground">
+    <div className="relative flex min-h-[100dvh] flex-col overflow-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0" aria-hidden>
-        <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-info/[0.07] blur-3xl" />
-        <div className="absolute -bottom-40 -right-24 h-96 w-96 rounded-full bg-positive/[0.07] blur-3xl" />
+        <div className="absolute -left-24 -top-28 h-[26rem] w-[26rem] rounded-full bg-info/[0.08] blur-[110px]" />
+        <div className="absolute -bottom-28 right-[-4rem] h-[24rem] w-[24rem] rounded-full bg-positive/[0.08] blur-[110px]" />
       </div>
 
-      <div className="relative w-full max-w-[440px]">
-        {/* top bar */}
-        <div className="mb-4 flex items-center justify-between">
+      <div className="relative mx-auto flex w-full max-w-[520px] flex-1 flex-col px-6">
+        {/* header: back/logo + progress + exit */}
+        <header className="flex items-center gap-3 pt-[max(1.5rem,env(safe-area-inset-top))]">
           {stepIdx > 0 && step !== 'finish' ? (
-            <button type="button" onClick={back} aria-label="Back" className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
+            <button type="button" onClick={back} aria-label="Back" className="-ml-1.5 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
               <ArrowLeft className="h-5 w-5" />
             </button>
           ) : (
-            <div className="flex items-center gap-2.5">
-              <img src={ClearPathLogo} alt="Clear" className="h-8 w-8 rounded-md border border-border object-cover" />
-              <Wordmark className="text-lg" />
+            <div className="flex items-center gap-2">
+              <img src={ClearPathLogo} alt="Clear" className="h-7 w-7 rounded-md border border-border object-cover" />
+              <Wordmark className="text-base" />
             </div>
           )}
-          <button type="button" onClick={onExit} aria-label="Exit setup" className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
+          <div className="h-1 flex-1 overflow-hidden rounded-full bg-border">
+            <motion.div className="h-full rounded-full bg-foreground" animate={{ width: `${progress}%` }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }} />
+          </div>
+          <button type="button" onClick={onExit} aria-label="Exit setup" className="-mr-1.5 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
             <X className="h-5 w-5" />
           </button>
-        </div>
+        </header>
 
-        <StepDots current={stepIdx} />
-
-        <div className="mt-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
+        {/* step content — fills the space */}
+        <main className="flex flex-1 flex-col justify-center py-8">
           <AnimatePresence mode="wait">
-            <motion.div key={step} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.2 }}>
+            <motion.div key={step} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}>
               {step === 'welcome' && (
                 <div>
-                  <h1 className="font-display text-2xl leading-tight tracking-tight text-foreground">Welcome to Clear</h1>
-                  <p className="mt-1.5 text-sm text-muted-foreground">Let's set up your account — it takes about a minute.</p>
-                  <div className="mt-5 space-y-3">
+                  <h1 className="font-display text-[2.25rem] leading-[1.05] tracking-tight text-foreground">Welcome to Clear</h1>
+                  <p className="mt-2 text-[15px] text-muted-foreground">Let's set up your account — it takes about a minute.</p>
+                  <div className="mt-8 space-y-3">
                     <Step n={1} icon={Landmark} title="Link your bank" body="Add money in seconds, when you're ready." />
                     <Step n={2} icon={Sparkles} title="Set your goal" body="We'll tailor your path to ownership." />
                     <Step n={3} icon={Home} title="Start building equity" body="Every payment moves you forward." />
@@ -144,38 +138,39 @@ export default function OnboardingView({
 
               {step === 'fund' && (
                 <div>
-                  <h1 className="font-display text-2xl leading-tight tracking-tight text-foreground">Link your bank</h1>
-                  <p className="mt-1.5 text-sm text-muted-foreground">Connect a bank so you can add money and pay rent the moment you're set up.</p>
+                  <h1 className="font-display text-[2.25rem] leading-[1.05] tracking-tight text-foreground">Link your bank</h1>
+                  <p className="mt-2 text-[15px] text-muted-foreground">Connect a bank so you can add money and pay rent the moment you're set up.</p>
 
                   <button
                     type="button"
                     onClick={linkBank}
                     disabled={linking || linked}
                     className={cn(
-                      'mt-5 flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-colors',
-                      linked ? 'border-positive/40 bg-positive/5' : 'border-border hover:bg-secondary/40',
+                      'mt-8 flex w-full items-center gap-3 rounded-2xl border p-4 text-left transition-colors',
+                      linked ? 'border-positive/40 bg-positive/5' : 'border-border bg-card/60 hover:bg-secondary/50',
                     )}
                   >
-                    <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', linked ? 'bg-positive/15 text-positive' : 'bg-secondary text-foreground')}>
+                    <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', linked ? 'bg-positive/15 text-positive' : 'bg-secondary text-foreground')}>
                       {linking ? <Loader2 className="h-5 w-5 animate-spin" /> : linked ? <Check className="h-5 w-5" strokeWidth={3} /> : <Landmark className="h-5 w-5" />}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium text-foreground">{linking ? 'Connecting…' : linked ? 'Bank linked' : 'Link a bank'}</span>
                       <span className="block text-xs text-muted-foreground">{linked ? 'You can manage this anytime in Settings.' : 'Securely via Plaid'}</span>
                     </span>
+                    {!linked && !linking && <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
                   </button>
 
-                  <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <ShieldCheck className="h-3 w-3" /> Read-only & bank-grade encrypted. You can also do this later.
+                  <p className="mt-4 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <ShieldCheck className="h-3 w-3" /> Read-only &amp; bank-grade encrypted. You can also do this later.
                   </p>
                 </div>
               )}
 
               {step === 'goal' && (
                 <div>
-                  <h1 className="font-display text-2xl leading-tight tracking-tight text-foreground">What's your goal?</h1>
-                  <p className="mt-1.5 text-sm text-muted-foreground">Pick what matters most — you can change it anytime.</p>
-                  <div className="mt-5 grid grid-cols-2 gap-2.5">
+                  <h1 className="font-display text-[2.25rem] leading-[1.05] tracking-tight text-foreground">What's your goal?</h1>
+                  <p className="mt-2 text-[15px] text-muted-foreground">Pick what matters most — you can change it anytime.</p>
+                  <div className="mt-8 grid grid-cols-2 gap-3">
                     {GOALS.map((g) => {
                       const Icon = g.icon;
                       const on = goalId === g.id;
@@ -184,12 +179,12 @@ export default function OnboardingView({
                           key={g.id}
                           type="button"
                           onClick={() => setGoalId(g.id)}
-                          className={cn('flex flex-col rounded-xl border p-3 text-left transition-colors', on ? 'border-foreground bg-secondary/50' : 'border-border hover:bg-secondary/40')}
+                          className={cn('flex flex-col rounded-2xl border p-4 text-left transition-all', on ? 'border-foreground bg-secondary/60 shadow-sm' : 'border-border bg-card/50 hover:bg-secondary/40')}
                         >
-                          <span className={cn('flex h-9 w-9 items-center justify-center rounded-lg', on ? 'bg-foreground text-background' : 'bg-secondary text-foreground')}>
-                            <Icon className="h-[18px] w-[18px]" />
+                          <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl transition-colors', on ? 'bg-foreground text-background' : 'bg-secondary text-foreground')}>
+                            <Icon className="h-5 w-5" />
                           </span>
-                          <span className="mt-2 text-sm font-medium text-foreground">{g.label}</span>
+                          <span className="mt-3 text-sm font-medium text-foreground">{g.label}</span>
                           <span className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{g.body}</span>
                         </button>
                       );
@@ -199,13 +194,18 @@ export default function OnboardingView({
               )}
 
               {step === 'finish' && (
-                <div className="py-2 text-center">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-positive/10">
-                    <Check className="h-7 w-7 text-positive" strokeWidth={3} />
-                  </div>
-                  <h1 className="mt-4 font-display text-2xl tracking-tight text-foreground">You're all set</h1>
-                  <p className="mt-1.5 text-sm text-muted-foreground">Your account is ready. Verify your identity later to move money.</p>
-                  <div className="mt-5 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+                <div className="text-center">
+                  <motion.div
+                    initial={{ scale: 0.6, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', damping: 14, stiffness: 220 }}
+                    className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-positive/10"
+                  >
+                    <Check className="h-8 w-8 text-positive" strokeWidth={3} />
+                  </motion.div>
+                  <h1 className="mt-5 font-display text-[2.25rem] leading-[1.05] tracking-tight text-foreground">You're all set</h1>
+                  <p className="mt-2 text-[15px] text-muted-foreground">Your account is ready. Verify your identity later to move money.</p>
+                  <div className="mt-6 flex items-center justify-center gap-5 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5"><Wallet className="h-3.5 w-3.5" /> Account</span>
                     <span className="inline-flex items-center gap-1.5"><Landmark className="h-3.5 w-3.5" /> {linked ? 'Bank linked' : 'Bank later'}</span>
                     <span className="inline-flex items-center gap-1.5"><Send className="h-3.5 w-3.5" /> {goalId ? 'Goal set' : 'Explore'}</span>
@@ -215,35 +215,37 @@ export default function OnboardingView({
             </motion.div>
           </AnimatePresence>
 
-          {error && <p className="mt-4 rounded-lg bg-negative/10 px-3 py-2 text-xs text-negative">{error}</p>}
+          {error && <p className="mt-6 rounded-lg bg-negative/10 px-3 py-2 text-xs text-negative">{error}</p>}
+        </main>
 
-          {/* nav */}
+        {/* nav — thumb zone */}
+        <footer className="pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           {step !== 'finish' ? (
-            <div className="mt-6">
+            <>
               <button
                 type="button"
                 onClick={next}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-4 text-base font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
               >
                 {step === 'welcome' ? 'Get started' : 'Continue'} <ArrowRight className="h-4 w-4" />
               </button>
               {(step === 'fund' || step === 'goal') && (
-                <button type="button" onClick={next} className="mt-2 w-full rounded-xl py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                <button type="button" onClick={next} className="mt-2 w-full rounded-xl py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
                   Skip for now
                 </button>
               )}
-            </div>
+            </>
           ) : (
             <button
               type="button"
               onClick={finish}
               disabled={submitting}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-4 text-base font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-60"
             >
               {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Setting up…</> : <>Go to dashboard <ArrowRight className="h-4 w-4" /></>}
             </button>
           )}
-        </div>
+        </footer>
       </div>
     </div>
   );
@@ -251,9 +253,9 @@ export default function OnboardingView({
 
 function Step({ n, icon: Icon, title, body }: { n: number; icon: LucideIcon; title: string; body: string }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
-        <Icon className="h-[18px] w-[18px]" />
+    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card/50 p-3.5">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-foreground">
+        <Icon className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-foreground">{title}</div>
