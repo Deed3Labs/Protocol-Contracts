@@ -25,7 +25,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   Bills: '#a855f7',
   Health: '#ef4444',
   Services: '#0ea5e9',
-  Misc: '#94a3b8',
 };
 
 const config = {} satisfies ChartConfig;
@@ -52,6 +51,7 @@ export default function CategoryRadial({ className }: { className?: string }) {
     for (const it of items) {
       if (it.amount < 0 && !it.internal && it.ts > 0 && it.ts >= cutoff) {
         const cat = it.spendCategory || 'Misc';
+        if (cat === 'Misc') continue; // uncategorized outflows (e.g. on-chain sends) get no donut slice
         byCat.set(cat, (byCat.get(cat) ?? 0) + Math.abs(it.amount));
       }
     }
