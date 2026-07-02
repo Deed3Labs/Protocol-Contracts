@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Cell, Label, Pie, PieChart, type PieLabelRenderProps } from 'recharts';
+import { Cell, Label, Pie, PieChart } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import type { Category } from '@/components/app-ui/TransactionFilterModal';
@@ -27,22 +27,11 @@ const CATEGORY_COLORS: Record<Category, string> = {
 const config = {} satisfies ChartConfig;
 const fmtTotal = (n: number) => (n >= 10000 ? `$${(n / 1000).toFixed(1)}k` : `$${Math.round(n).toLocaleString()}`);
 
-/** Elbow leader-line geometry: slice edge → short radial leg → horizontal leg to the label. */
-function elbow(cx: number, cy: number, midAngle: number, outerRadius: number) {
-  const RADIAN = Math.PI / 180;
-  const cos = Math.cos(-midAngle * RADIAN);
-  const sin = Math.sin(-midAngle * RADIAN);
-  const dir = cos >= 0 ? 1 : -1;
-  const edge = { x: cx + outerRadius * cos, y: cy + outerRadius * sin };
-  const bend = { x: cx + (outerRadius + 14) * cos, y: cy + (outerRadius + 14) * sin };
-  const end = { x: bend.x + dir * 20, y: bend.y };
-  return { edge, bend, end, dir };
-}
-
 /**
  * Spending-by-category donut from real transaction history (useClearTransactions). Sums outflows by
- * category over the selected window, with the period total in the middle and leader-line labels
- * (name + %) pointing from each slice. Week/Month/Year switcher in the footer.
+ * category over the selected window, with the period total in the middle and a legend below (color +
+ * category + %) — a legend keeps the labels readable and never clips in this narrow card, unlike
+ * leader lines. Week/Month/Year switcher in the footer. Hover a slice for its dollar amount.
  */
 export default function CategoryRadial({ className }: { className?: string }) {
   const [range, setRange] = useState<Range>('month');
@@ -71,9 +60,8 @@ export default function CategoryRadial({ className }: { className?: string }) {
       <h3 className="text-xs font-medium text-muted-foreground">Spending by category</h3>
 
       <div className="flex flex-1 items-center justify-center">
-        {/* Generous left/right margins reserve room for the leader labels so they don't clip. */}
-        <ChartContainer config={config} height={340} className="mx-auto w-full max-w-[540px]">
-          <PieChart margin={{ top: 12, right: 78, bottom: 12, left: 78 }}>
+        <ChartContainer config={config} height={280} className="mx-auto w-full max-w-[320px]">
+          <PieChart>
             {!isEmpty && (
               <ChartTooltip content={<ChartTooltipContent hideLabel formatter={(v) => `$${Number(v).toLocaleString()}`} />} />
             )}
@@ -81,47 +69,12 @@ export default function CategoryRadial({ className }: { className?: string }) {
               data={chartData}
               dataKey="value"
               nameKey="name"
-              innerRadius="52%"
-              outerRadius="72%"
+              innerRadius="62%"
+              outerRadius="88%"
               paddingAngle={isEmpty ? 0 : 2}
               strokeWidth={2}
               stroke="rgb(var(--card))"
               isAnimationActive={!isEmpty}
-              labelLine={
-                isEmpty
-                  ? false
-                  : (p) => {
-                      const { edge, bend, end } = elbow(Number(p.cx ?? 0), Number(p.cy ?? 0), Number(p.midAngle ?? 0), Number(p.outerRadius ?? 0));
-                      return (
-                        <polyline
-                          points={`${edge.x},${edge.y} ${bend.x},${bend.y} ${end.x},${end.y}`}
-                          stroke="rgb(var(--border))"
-                          strokeWidth={1}
-                          fill="none"
-                        />
-                      );
-                    }
-              }
-              label={
-                isEmpty
-                  ? false
-                  : (p: PieLabelRenderProps) => {
-                      const { end, dir } = elbow(Number(p.cx ?? 0), Number(p.cy ?? 0), Number(p.midAngle ?? 0), Number(p.outerRadius ?? 0));
-                      return (
-                        <text
-                          x={end.x + dir * 4}
-                          y={end.y}
-                          textAnchor={dir >= 0 ? 'start' : 'end'}
-                          dominantBaseline="central"
-                          className="fill-foreground"
-                          fontSize={11}
-                          fontWeight={500}
-                        >
-                          {`${p.payload?.name ?? ''} ${Math.round((p.percent ?? 0) * 100)}%`}
-                        </text>
-                      );
-                    }
-              }
             >
               {chartData.map((d) => (
                 <Cell key={d.name} fill={d.fill} />
@@ -149,7 +102,19 @@ export default function CategoryRadial({ className }: { className?: string }) {
         </ChartContainer>
       </div>
 
-      {isEmpty && <p className="-mt-1 text-center text-xs text-muted-foreground">No spending {SUB[range]}.</p>}
+      {isEmpty ? (
+        <p className="-mt-1 text-center text-xs text-muted-foreground">No spending {SUB[range]}.</p>
+      ) : (
+        <div className="mt-1 flex flex-wrap justify-center gap-x-4 gap-y-2">
+          {data.map((d) => (
+            <span key={d.name} className="flex items-center gap-1.5 text-xs">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: d.fill }} />
+              <span className="font-medium text-foreground">{d.name}</span>
+              <span className="text-muted-foreground tabular-nums">{Math.round((d.value / total) * 100)}%</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* range footer */}
       <div className="mt-3 flex flex-wrap gap-1 border-t border-border pt-3">
