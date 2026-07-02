@@ -1,15 +1,17 @@
-import { Bar, CartesianGrid, Cell, ComposedChart, Line, ReferenceLine, XAxis, YAxis } from 'recharts';
+import { Area, Bar, CartesianGrid, Cell, ComposedChart, Line, ReferenceLine, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 
 const config = {
   spending: { label: 'This period', color: 'rgb(var(--positive))' },
   previous: { label: 'Last period', color: 'var(--chart-4)' },
+  transfers: { label: 'Transfers', color: 'rgb(var(--info))' },
 } satisfies ChartConfig;
 
 interface Bucket {
   label: string;
   spending: number;
   previous: number;
+  transfers: number;
 }
 
 const tick = (v: number) => (v >= 1000 ? `$${v / 1000}k` : `$${v}`);
@@ -34,6 +36,18 @@ export default function SpendingChart({
         <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />
         <YAxis tickLine={false} axisLine={false} width={48} fontSize={11} tickMargin={6} tickFormatter={tick} />
         <ChartTooltip content={<ChartTooltipContent />} />
+        {/* Internal transfers — faded area behind the bars (not spending, shown for context). */}
+        <Area
+          dataKey="transfers"
+          type="monotone"
+          stroke="rgb(var(--info))"
+          strokeOpacity={0.35}
+          strokeWidth={1}
+          fill="rgb(var(--info))"
+          fillOpacity={0.1}
+          dot={false}
+          activeDot={false}
+        />
         <ReferenceLine
           y={budget}
           stroke="rgb(var(--info))"

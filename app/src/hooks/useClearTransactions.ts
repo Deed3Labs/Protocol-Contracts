@@ -23,6 +23,9 @@ export interface ActivityItem {
   amount: number; // signed: + in, - out
   status: ActivityStatus;
   source: string; // lowercased wallet address (primary or a linked wallet), or 'bank'
+  /** True when this is a move between the user's OWN accounts (Clear ↔ linked wallet / bank) — not
+   *  real income or spending, so it's excluded from those charts and shown as a transfer instead. */
+  internal: boolean;
 }
 
 export interface CashFlow {
@@ -32,7 +35,8 @@ export interface CashFlow {
 
 interface TxValue {
   items: ActivityItem[];
-  flows: CashFlow[];
+  flows: CashFlow[]; // real income/spending (internal transfers excluded)
+  transfers: CashFlow[]; // internal moves between the user's own accounts (for the transfer overlay)
   loading: boolean;
   refresh: () => void;
 }
@@ -40,7 +44,7 @@ interface TxValue {
 const Ctx = createContext<TxValue | null>(null);
 
 export function useClearTransactions(): TxValue {
-  return useContext(Ctx) ?? { items: [], flows: [], loading: false, refresh: () => {} };
+  return useContext(Ctx) ?? { items: [], flows: [], transfers: [], loading: false, refresh: () => {} };
 }
 
 interface RawTx {
@@ -52,6 +56,8 @@ interface RawTx {
   date?: string;
   timestamp?: number;
   status?: string;
+  from?: string;
+  to?: string;
 }
 
 const cleanSymbol = (s?: string) => (s || '').replace(/[^\x20-\x7E]/g, '').trim();
@@ -69,7 +75,7 @@ function formatDate(iso?: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function toActivity(tx: RawTx, source: string): ActivityItem {
+function toActivity(tx: RawTx, source: string, own: Set<string>): ActivityItem {
   const inbound = /deposit|receiv|incoming|claim/i.test(tx.type || '');
   const usd = typeof tx.amountUsd === 'number' && tx.amountUsd > 0 ? tx.amountUsd : Number(tx.amount) || 0;
   const amount = inbound ? Math.abs(usd) : -Math.abs(usd);
@@ -79,15 +85,20 @@ function toActivity(tx: RawTx, source: string): ActivityItem {
       ? 'failed'
       : 'completed';
   const sym = cleanSymbol(tx.assetSymbol) || 'tokens';
+  // The counterparty is the other side of the transfer. If it's one of the user's own wallets, this is
+  // an internal move (Clear ↔ linked wallet) — a transfer, not income/spending.
+  const counterparty = (inbound ? tx.from : tx.to)?.toLowerCase() || '';
+  const internal = counterparty !== '' && own.has(counterparty);
   return {
     id: `${source}:${tx.id}`,
-    name: `${inbound ? 'Received' : 'Sent'} ${sym}`,
-    category: inbound ? 'Deposit' : 'Transfer',
+    name: internal ? `Transfer ${sym}` : `${inbound ? 'Received' : 'Sent'} ${sym}`,
+    category: inbound && !internal ? 'Deposit' : 'Transfer',
     date: formatDate(tx.date),
     ts: Date.parse(tx.date || '') || 0,
     amount,
     status,
     source,
+    internal,
   };
 }
 
@@ -95,8 +106,12 @@ function plaidToActivity(t: PlaidRecentTransaction): ActivityItem {
   const inbound = t.direction === 'inflow';
   const amt = Math.abs(t.amount || 0);
   const cat = (t.category_primary || '').toLowerCase();
+  // Plaid TRANSFER_IN/TRANSFER_OUT = money moving between accounts (incl. Clear ↔ this bank) — treat as
+  // an internal transfer, not income/spending.
+  const internal = /transfer/.test(cat);
   let category: Category = inbound ? 'Deposit' : 'Card';
-  if (!inbound) {
+  if (internal) category = 'Transfer';
+  else if (!inbound) {
     if (/rent|util|bill|loan|mortgage|insurance/.test(cat)) category = 'Bill';
     else if (/subscription|recurring/.test(cat)) category = 'Subscription';
     else if (/income|payroll|deposit/.test(cat)) category = 'Payroll';
@@ -110,6 +125,7 @@ function plaidToActivity(t: PlaidRecentTransaction): ActivityItem {
     amount: inbound ? amt : -amt,
     status: t.pending ? 'pending' : 'completed',
     source: 'bank',
+    internal,
   };
 }
 
@@ -120,12 +136,14 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
   const linkedKey = externalWallets.map((w) => w.address.toLowerCase()).sort().join(',');
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [flows, setFlows] = useState<CashFlow[]>([]);
+  const [transfers, setTransfers] = useState<CashFlow[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!isConnected || !address) {
       setItems([]);
       setFlows([]);
+      setTransfers([]);
       return;
     }
     setLoading(true);
@@ -135,26 +153,28 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
       // and tagged by source so the Transactions filter can narrow to a specific wallet or bank.
       const primaryLower = address.toLowerCase();
       const linked = linkedKey ? linkedKey.split(',').filter((a) => a && a !== primaryLower) : [];
+      // The user's own wallets — a transfer whose counterparty is one of these is an internal move.
+      const own = new Set([primaryLower, ...linked]);
       const requests = [address, ...linked].map((a) => ({ chainId: ACTIVE_CHAIN_ID, address: a, limit: 15 }));
       const [chainResults, plaid] = await Promise.all([
         getTransactionsBatch(requests).catch(() => []),
         getPlaidRecentTransactions(address).catch(() => null),
       ]);
       const onchain = (chainResults || []).flatMap((r) =>
-        ((r.transactions as RawTx[]) || []).map((tx) => toActivity(tx, (r.address || '').toLowerCase())),
+        ((r.transactions as RawTx[]) || []).map((tx) => toActivity(tx, (r.address || '').toLowerCase(), own)),
       );
       const bank = (plaid?.transactions || []).map(plaidToActivity);
       const merged = [...onchain, ...bank].sort((a, b) => b.ts - a.ts);
       setItems(merged.slice(0, 80));
       // Charts reflect the user's CLEAR cashflow (primary wallet + bank), not linked external wallets.
-      setFlows(
-        merged
-          .filter((x) => x.ts > 0 && (x.source === primaryLower || x.source === 'bank'))
-          .map((x) => ({ ts: x.ts, usd: x.amount })),
-      );
+      // Internal transfers are excluded from income/spending; they feed the separate transfer overlay.
+      const clearSide = merged.filter((x) => x.ts > 0 && (x.source === primaryLower || x.source === 'bank'));
+      setFlows(clearSide.filter((x) => !x.internal).map((x) => ({ ts: x.ts, usd: x.amount })));
+      setTransfers(clearSide.filter((x) => x.internal).map((x) => ({ ts: x.ts, usd: x.amount })));
     } catch {
       setItems([]);
       setFlows([]);
+      setTransfers([]);
     } finally {
       setLoading(false);
     }
@@ -184,5 +204,5 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
     };
   }, [load, isConnected, address]);
 
-  return createElement(Ctx.Provider, { value: { items, flows, loading, refresh: () => void load() } }, children);
+  return createElement(Ctx.Provider, { value: { items, flows, transfers, loading, refresh: () => void load() } }, children);
 }

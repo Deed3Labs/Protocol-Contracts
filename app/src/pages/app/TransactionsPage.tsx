@@ -18,14 +18,18 @@ type Range = (typeof RANGES)[number];
 
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-/** Real spending trend (current vs prior equal-length period) from transaction flows. */
-function buildSpend(range: Range, flows: CashFlow[]) {
+/** Real spending trend (current vs prior equal-length period) from transaction flows, plus internal
+ *  transfer volume per bucket (for the faded overlay — transfers aren't spending). */
+function buildSpend(range: Range, flows: CashFlow[], transfers: CashFlow[]) {
   const buckets = flowBuckets(range as FlowRange);
   const span = buckets.length ? buckets[buckets.length - 1].end - buckets[0].start : 0;
+  const volIn = (series: CashFlow[], b: { start: number; end: number }) =>
+    series.reduce((s, t) => (t.ts >= b.start && t.ts < b.end ? s + Math.abs(t.usd) : s), 0);
   const data = buckets.map((b) => ({
     label: b.label,
     spending: Math.round(spendingIn(flows, b)),
     previous: Math.round(spendingIn(flows, { start: b.start - span, end: b.end - span, label: '' })),
+    transfers: Math.round(volIn(transfers, b)),
   }));
   const total = data.reduce((s, b) => s + b.spending, 0);
   const prev = data.reduce((s, b) => s + b.previous, 0);
@@ -44,10 +48,10 @@ function buildSpend(range: Range, flows: CashFlow[]) {
 /** Transactions — visual-first dashboard: stat row, spending chart, category donut, activity, heatmap. */
 export default function TransactionsPage() {
   const [range, setRange] = useState<Range>('1M');
-  const { flows, items } = useClearTransactions();
+  const { flows, transfers, items } = useClearTransactions();
   const upcoming = useUpcoming();
 
-  const s = useMemo(() => buildSpend(range, flows), [range, flows]);
+  const s = useMemo(() => buildSpend(range, flows, transfers), [range, flows, transfers]);
 
   const stats = useMemo(() => {
     const now = new Date();
