@@ -6,24 +6,10 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   archiveNotificationApi,
-  savePushSubscription,
   sendTestNotification,
   type ApiNotification,
 } from '@/utils/apiClient';
-
-// Public VAPID key (safe to expose). Overridable via env; falls back to the app's key.
-const VAPID_PUBLIC_KEY =
-  (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) ||
-  'BMu0BQLWQctkLTZlOD2me1X-vOBVcfAZxU0kxXOKb_3eWMwBcJPSMrPightFAAz_exbQm-EYxoJOdJPNr74HWck';
-
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = atob(base64);
-  const arr = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i += 1) arr[i] = raw.charCodeAt(i);
-  return arr;
-}
+import { usePushRegistration } from '@/hooks/usePushRegistration';
 
 /**
  * Persistent in-app notifications from the backend (wallet-scoped). Fetches on mount + focus, receives
@@ -32,6 +18,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 export function useNotifications() {
   const { address, isConnected } = useAppKitAccount();
   const { socket } = useWebSocket(address, isConnected);
+  const { enablePush } = usePushRegistration();
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -56,29 +43,11 @@ export function useNotifications() {
     return () => window.removeEventListener('focus', onFocus);
   }, [refresh]);
 
-  // Request notification permission (iOS needs this from a user gesture) and register/refresh this
-  // device's push subscription so important notifications arrive when the app is closed.
-  const ensurePush = useCallback(async () => {
-    if (!address) return;
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') return;
-    let perm = Notification.permission;
-    if (perm === 'default') perm = await Notification.requestPermission();
-    if (perm !== 'granted') return;
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      const sub =
-        (await reg.pushManager.getSubscription()) ||
-        (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) }));
-      await savePushSubscription(address, sub.toJSON());
-    } catch {
-      /* push is optional */
-    }
-  }, [address]);
-
-  // If permission is already granted, subscribe silently on mount (no gesture needed).
+  // If permission is already granted, subscribe silently on mount (no gesture needed). The gesture path
+  // (first-time grant) is the "Enable notifications" prime and the demo "Send test" button.
   useEffect(() => {
-    if (address && isConnected && typeof Notification !== 'undefined' && Notification.permission === 'granted') void ensurePush();
-  }, [address, isConnected, ensurePush]);
+    if (address && isConnected && typeof Notification !== 'undefined' && Notification.permission === 'granted') void enablePush();
+  }, [address, isConnected, enablePush]);
 
   // Reflect the unread count on the app-icon badge while the app is open (installed PWA).
   useEffect(() => {
@@ -134,10 +103,10 @@ export function useNotifications() {
   // notification permission + register the push subscription, then it fires a test.
   const sendTest = useCallback(async () => {
     if (!address) return;
-    await ensurePush();
+    await enablePush();
     await sendTestNotification(address).catch(() => {});
     await refresh();
-  }, [address, ensurePush, refresh]);
+  }, [address, enablePush, refresh]);
 
   return { notifications, unreadCount, refresh, markRead, markAllRead, dismiss, sendTest };
 }
