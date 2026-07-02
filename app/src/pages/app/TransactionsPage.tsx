@@ -54,19 +54,22 @@ export default function TransactionsPage() {
   const s = useMemo(() => buildSpend(range, flows, transfers), [range, flows, transfers]);
 
   const stats = useMemo(() => {
+    // Spent / Income / Net over a TRAILING 30-day window — this matches the "1M" spend chart and the
+    // spending donut, which both label the same window "this month". (A strict calendar month reads ~$0
+    // early in the month, which looked like a bug even though the spend was sitting in the prior weeks.)
+    const cutoff = Date.now() - 30 * 86_400_000;
+    const win = flows.filter((f) => f.ts >= cutoff);
+    const spent = Math.abs(win.filter((f) => f.usd < 0).reduce((a, f) => a + f.usd, 0));
+    const income = win.filter((f) => f.usd > 0).reduce((a, f) => a + f.usd, 0);
+    // The heatmap below is a calendar grid keyed by day-of-month, so its buckets stay scoped to the
+    // current calendar month (otherwise June 15 + July 15 would collide on cell "15").
     const now = new Date();
-    const inMonth = (ts: number) => {
-      const d = new Date(ts);
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    };
-    const month = flows.filter((f) => inMonth(f.ts));
-    const spent = Math.abs(month.filter((f) => f.usd < 0).reduce((a, f) => a + f.usd, 0));
-    const income = month.filter((f) => f.usd > 0).reduce((a, f) => a + f.usd, 0);
     const byDay: Record<number, number> = {};
-    for (const f of month) {
+    for (const f of flows) {
       if (f.usd >= 0) continue;
-      const day = new Date(f.ts).getDate();
-      byDay[day] = (byDay[day] || 0) + Math.abs(f.usd);
+      const d = new Date(f.ts);
+      if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) continue;
+      byDay[d.getDate()] = (byDay[d.getDate()] || 0) + Math.abs(f.usd);
     }
     return { spent, income, net: income - spent, byDay };
   }, [flows]);

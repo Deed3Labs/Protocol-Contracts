@@ -82,7 +82,11 @@ function formatDate(iso?: string): string {
 function plaidSpendCategory(primary: string, detailed: string): string {
   const p = primary.toUpperCase();
   const d = detailed.toUpperCase();
-  if (d.includes('SUBSCRIPTION') || p.includes('ENTERTAINMENT')) return 'Subscriptions';
+  // Plaid has no dedicated "subscription" category — recurring detection is a separate signal — so only
+  // an explicit *_SUBSCRIPTION detailed tag counts as Subscriptions. Everything else Plaid files under
+  // ENTERTAINMENT (streaming, games, events, music) is its own bucket.
+  if (d.includes('SUBSCRIPTION')) return 'Subscriptions';
+  if (p.includes('ENTERTAINMENT')) return 'Entertainment';
   if (p.includes('FOOD')) return 'Food & Drink';
   if (p.includes('GENERAL_MERCHANDISE')) return 'Retail';
   if (p.includes('RENT_AND_UTILITIES')) return d.includes('RENT') ? 'Rent' : 'Utilities';

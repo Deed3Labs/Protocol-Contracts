@@ -20,6 +20,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Food & Drink': '#f59e0b',
   Retail: 'rgb(var(--info))',
   Subscriptions: '#ec4899',
+  Entertainment: '#d946ef',
   Transport: '#14b8a6',
   Bills: '#a855f7',
   Health: '#ef4444',
