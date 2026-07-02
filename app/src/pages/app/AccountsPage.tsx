@@ -17,7 +17,6 @@ import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
 import UpcomingCalendar from '@/components/app-ui/UpcomingCalendar';
 import BalanceAnalyticsChart from '@/components/app-ui/charts/BalanceAnalyticsChart';
 import ClearDeedCard from '@/components/app-ui/ClearDeedCard';
-import NotificationPrime from '@/components/app-ui/NotificationPrime';
 
 /**
  * Accounts — the dashboard. Stat row (Total / Cash / Savings / External), a big
@@ -124,8 +123,6 @@ export default function AccountsPage() {
         <h1 className="font-display text-3xl tracking-tight text-foreground">Good morning, {firstName}</h1>
         <p className="mt-1 text-sm text-muted-foreground">Here's where your money stands today.</p>
       </div>
-
-      <NotificationPrime />
 
 
       {!verified && (
