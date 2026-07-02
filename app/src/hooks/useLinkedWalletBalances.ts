@@ -17,7 +17,20 @@ export interface LinkedBalance {
 export function useLinkedWalletBalances(addresses: string[], enabled: boolean) {
   const [balances, setBalances] = useState<Record<string, LinkedBalance>>({});
   const [loading, setLoading] = useState(false);
+  const [nonce, setNonce] = useState(0);
   const key = enabled ? addresses.map((a) => a.toLowerCase()).sort().join(',') : '';
+
+  // Refetch after a money action — a transfer FROM a linked wallet drops its balance, which otherwise
+  // stayed stale (only refetched when the address list changed). Refetch now + again after the indexer
+  // catches up.
+  useEffect(() => {
+    const onActivity = () => {
+      setNonce((n) => n + 1);
+      setTimeout(() => setNonce((n) => n + 1), 4000);
+    };
+    window.addEventListener('clear:activity', onActivity);
+    return () => window.removeEventListener('clear:activity', onActivity);
+  }, []);
 
   useEffect(() => {
     if (!enabled || addresses.length === 0) {
@@ -63,7 +76,7 @@ export function useLinkedWalletBalances(addresses: string[], enabled: boolean) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, enabled]);
+  }, [key, enabled, nonce]);
 
   return { balances, loading };
 }
