@@ -32,7 +32,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useContacts, contactInitials } from '@/context/ContactsContext';
-import { lookupDirectory } from '@/utils/apiClient';
 
 interface XMTPMessagingProps {
   ownerAddress?: string;
@@ -73,7 +72,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   } = useXMTP();
   
   const { handleConnect, isConnecting, isEmbeddedWallet, address } = useXMTPConnection();
-  const { contacts } = useContacts();
+  const { contacts, lookupWallet } = useContacts();
   const contactsWithWallet = contacts.filter((c) => c.wallet);
 
   const [selectedConversation, setSelectedConversation] = useState<string | null>(initialConversationId || null);
@@ -432,8 +431,10 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
         : normalizePhone(c.phone) === normalizePhone(s),
     );
     if (contact?.wallet) return { wallet: contact.wallet, name: contact.name };
-    const res = await lookupDirectory(address || '', kind === 'email' ? { email: s } : { phone: s });
-    if (res.wallet) return { wallet: res.wallet, name: contact?.name };
+    // Use the contacts hook's lookup (scoped to the authed SMART wallet) — not the XMTP EOA, which the
+    // backend's requireWalletMatch would reject ("wallet does not match authenticated wallet").
+    const found = await lookupWallet(kind === 'email' ? { email: s } : { phone: s });
+    if (found) return { wallet: found, name: contact?.name };
     return { notMember: true };
   };
 
