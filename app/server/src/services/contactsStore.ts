@@ -128,11 +128,14 @@ export const contactsStore = {
     // Match either the saved profile contact (member_profile_public.email_hash/phone_hash) OR the
     // login identity the member signed up with (members.reown_email_hash/reown_phone_hash). LEFT JOIN
     // so members who never saved a profile contact are still discoverable by their login email/phone.
+    // The contact hashes live on member_profile_private (email_hash/phone_hash), set when a member saves
+    // a profile contact; the login identity lives on members (reown_email_hash/reown_phone_hash). Match
+    // either, LEFT JOIN so members without a private profile still resolve by their login email/phone.
     const r = await pool.query(
       `SELECT m.primary_wallet AS wallet,
               (p.email_hash = ANY($1) OR m.reown_email_hash = ANY($1)) AS by_email
          FROM members m
-         LEFT JOIN member_profile_public p ON p.member_id = m.id
+         LEFT JOIN member_profile_private p ON p.member_id = m.id
         WHERE (p.email_hash = ANY($1) OR p.phone_hash = ANY($2)
                OR m.reown_email_hash = ANY($1) OR m.reown_phone_hash = ANY($2))
           AND m.primary_wallet IS NOT NULL
