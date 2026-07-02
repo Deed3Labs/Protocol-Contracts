@@ -6,6 +6,7 @@ import {
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useXMTP } from '@/context/XMTPContext';
+import { IS_LIVE_APP } from '@/lib/clearNetwork';
 import { cn } from '@/lib/utils';
 
 // kind → icon + tint (matches the notification kinds emitted by the backend producers).
@@ -166,13 +167,15 @@ export default function NotificationsMenu({ onOpenConversation }: { onOpenConver
               >
                 Mark all read
               </button>
-              <button
-                type="button"
-                onClick={() => void sendTest()}
-                className="font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Send test
-              </button>
+              {!IS_LIVE_APP && (
+                <button
+                  type="button"
+                  onClick={() => void sendTest()}
+                  className="font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Send test
+                </button>
+              )}
             </div>
           </>
         ) : (
