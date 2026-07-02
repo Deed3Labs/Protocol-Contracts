@@ -295,6 +295,13 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
+// A rejected promise in a request handler (e.g. an async route that throws) must NOT take the whole
+// server down — otherwise one bad request 502s every user until Railway restarts. Log and keep serving;
+// the failing request still returns an error to its own caller.
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ Unhandled promise rejection (server kept alive):', reason);
+});
+
 // Start server with error handling
 startServer().catch((error) => {
   console.error('❌ Failed to start server:', error);
