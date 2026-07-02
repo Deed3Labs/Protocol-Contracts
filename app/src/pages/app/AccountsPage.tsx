@@ -65,7 +65,7 @@ export default function AccountsPage() {
     const cutoff = Date.now() - 7 * 86_400_000;
     let net = 0;
     for (const it of items) {
-      if (it.ts < cutoff) continue;
+      if (it.ts < cutoff || it.internal) continue; // internal transfers aren't income/spending
       const isBank = it.source === 'bank';
       const include = field === 'totalUsd' ? true : field === 'bankUsd' ? isBank : !isBank;
       if (include) net += it.amount;
@@ -101,7 +101,7 @@ export default function AccountsPage() {
     const totals: Record<number, number> = {};
     const byCat: Record<number, Record<string, number>> = {};
     for (const it of items) {
-      if (it.amount >= 0) continue;
+      if (it.amount >= 0 || it.internal) continue; // exclude internal transfers from spend
       const d = new Date(it.ts);
       if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) continue;
       const day = d.getDate();

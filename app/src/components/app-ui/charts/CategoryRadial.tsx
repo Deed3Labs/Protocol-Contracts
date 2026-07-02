@@ -46,7 +46,7 @@ export default function CategoryRadial({ className }: { className?: string }) {
     const cutoff = Date.now() - WINDOW_DAYS[range] * 86_400_000;
     const byCat = new Map<Category, number>();
     for (const it of items) {
-      if (it.amount < 0 && it.ts > 0 && it.ts >= cutoff) {
+      if (it.amount < 0 && !it.internal && it.ts > 0 && it.ts >= cutoff) {
         byCat.set(it.category, (byCat.get(it.category) ?? 0) + Math.abs(it.amount));
       }
     }
