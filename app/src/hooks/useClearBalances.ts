@@ -1,4 +1,4 @@
-import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMultichainBalances } from '@/hooks/useMultichainBalances';
 import { COMMON_TOKENS } from '@/config/tokens';
 import { includeChainBalance, ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
@@ -73,6 +73,17 @@ export function ClearBalancesProvider({ children }: { children: ReactNode }) {
   const { tokens, tokensLoading, refreshTokens } = useMultichainBalances({ chainIds: CLEAR_CHAIN_IDS });
   const [pending, setPending] = useState<Pending | null>(null);
 
+  // `tokensLoading` flips true on every background poll, but `tokens` (and the derived balance) are
+  // retained across polls — so treating every poll as "loading" made consumers blank the value to a
+  // dash and flicker. Track whether the FIRST fetch has completed and only report `loading` until
+  // then; after that, background refreshes update the value in place with no loading flash.
+  const [everLoaded, setEverLoaded] = useState(false);
+  const prevLoadingRef = useRef(false);
+  useEffect(() => {
+    if (prevLoadingRef.current && !tokensLoading) setEverLoaded(true);
+    prevLoadingRef.current = tokensLoading;
+  }, [tokensLoading]);
+
   // Authoritative (on-chain) balances derived from fetched tokens.
   const fetched = useMemo(() => {
     const sumByKeys = (keys: Set<string>) =>
@@ -139,11 +150,11 @@ export function ClearBalancesProvider({ children }: { children: ReactNode }) {
       cash,
       savings,
       total: cash + savings,
-      loading: tokensLoading,
+      loading: tokensLoading && !everLoaded,
       refresh: () => void refreshTokens(true),
       applyOptimistic,
     };
-  }, [pending, fetched, tokensLoading, refreshTokens, applyOptimistic]);
+  }, [pending, fetched, tokensLoading, everLoaded, refreshTokens, applyOptimistic]);
 
   return createElement(Ctx.Provider, { value }, children);
 }

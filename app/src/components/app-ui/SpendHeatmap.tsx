@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { TrendingDown, Calendar, Sparkles, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -8,19 +9,29 @@ const formatAmount = (amount: number): string => {
   if (amount >= 1000) return `$${(amount / 1000).toFixed(1)}k`;
   return amount > 0 ? `$${Math.round(amount)}` : '-';
 };
+const fmtMoney = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const getIntensity = (amount: number, max: number) => (amount <= 0 || max <= 0 ? 0 : Math.min(amount / max, 1));
+
+export interface SpendDetail {
+  category: string;
+  amount: number;
+}
 
 /**
  * Spend-intensity calendar — the old portfolio SpendTracker layout (day + amount
- * per cell, Less/More legend), reskinned to neutral / Space Grotesk. Presentational.
+ * per cell, Less/More legend), reskinned to neutral / Space Grotesk. Hover or tap a
+ * day to see that day's spend broken down by category.
  */
 export default function SpendHeatmap({
   spendingByDay,
+  detailByDay,
   className,
 }: {
   spendingByDay: Record<number, number>;
+  detailByDay?: Record<number, SpendDetail[]>;
   className?: string;
 }) {
+  const [activeDay, setActiveDay] = useState<number | null>(null);
   const today = new Date();
   const year = today.getFullYear();
   const month = today.getMonth();
@@ -69,13 +80,24 @@ export default function SpendHeatmap({
           const isToday = day === currentDay;
           const intensity = getIntensity(amount, maxDaySpend);
           const inverted = isPast && intensity > 0.5;
+          const hasSpend = amount > 0;
+          const detail = detailByDay?.[day] ?? [];
+          const isActive = activeDay === day && hasSpend;
           return (
             <div
               key={day}
+              role={hasSpend ? 'button' : undefined}
+              tabIndex={hasSpend ? 0 : undefined}
+              onMouseEnter={() => hasSpend && setActiveDay(day)}
+              onMouseLeave={() => setActiveDay((d) => (d === day ? null : d))}
+              onFocus={() => hasSpend && setActiveDay(day)}
+              onBlur={() => setActiveDay((d) => (d === day ? null : d))}
+              onClick={() => hasSpend && setActiveDay((d) => (d === day ? null : day))}
               className={cn(
-                'relative flex min-h-14 min-w-0 flex-col items-start justify-between rounded-[6px] border p-1.5',
+                'relative flex min-h-14 min-w-0 flex-col items-start justify-between rounded-[6px] border p-1.5 outline-none',
                 isPast ? 'border-border' : 'border-border/50',
                 isToday && 'ring-1 ring-foreground/40',
+                hasSpend && 'cursor-pointer focus-visible:ring-1 focus-visible:ring-foreground/60',
               )}
             >
               <div className="pointer-events-none absolute inset-0 rounded-[6px] bg-foreground" style={{ opacity: isPast ? intensity : 0 }} aria-hidden />
@@ -83,6 +105,30 @@ export default function SpendHeatmap({
               <span className={cn('relative z-10 w-full truncate text-[10px] font-medium', inverted ? 'text-background/90' : 'text-muted-foreground')}>
                 {isPast ? formatAmount(amount) : '-'}
               </span>
+
+              {isActive && (
+                <div
+                  className="absolute bottom-full left-1/2 z-30 mb-1.5 w-44 -translate-x-1/2 rounded-lg border border-border bg-card p-2.5 text-left shadow-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="mb-1.5 flex items-center justify-between gap-2 border-b border-border pb-1.5">
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{monthName} {day}</span>
+                    <span className="text-[11px] font-semibold tabular-nums text-foreground">{fmtMoney(amount)}</span>
+                  </div>
+                  {detail.length > 0 ? (
+                    <div className="space-y-1">
+                      {detail.map((c) => (
+                        <div key={c.category} className="flex items-center justify-between gap-3">
+                          <span className="truncate text-[11px] text-muted-foreground">{c.category}</span>
+                          <span className="shrink-0 text-[11px] tabular-nums text-foreground">{fmtMoney(c.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-muted-foreground">Spent {fmtMoney(amount)}</div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
