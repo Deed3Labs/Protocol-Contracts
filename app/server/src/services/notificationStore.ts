@@ -39,6 +39,11 @@ interface DbRow {
 }
 
 const normalizeWallet = (w: string) => w.trim().toLowerCase();
+// A user can hold several wallets (smart wallet, EOA, linked). Notifications are scoped by a single
+// owner wallet, but the reader should see them across ALL their verified wallets so a scoping mismatch
+// (e.g. notification on primary_wallet vs the smart wallet the client fetches with) never hides them.
+const normalizeWallets = (w: string | string[]): string[] =>
+  [...new Set((Array.isArray(w) ? w : [w]).filter(Boolean).map(normalizeWallet))];
 
 async function ensureTables(): Promise<void> {
   const pool = getPostgresPool();
@@ -151,44 +156,45 @@ export const notificationStore = {
     );
   },
 
-  async list(wallet: string, limit = 40): Promise<{ notifications: NotificationRow[]; unreadCount: number }> {
+  async list(wallet: string | string[], limit = 40): Promise<{ notifications: NotificationRow[]; unreadCount: number }> {
     const pool = getPostgresPool();
     if (!pool) return { notifications: [], unreadCount: 0 };
     await ensureTables();
-    const w = normalizeWallet(wallet);
+    const ws = normalizeWallets(wallet);
+    if (ws.length === 0) return { notifications: [], unreadCount: 0 };
     const [rows, counts] = await Promise.all([
       pool.query<DbRow>(
         `SELECT id, kind, title, body, data, read_at, created_at FROM ${TABLE}
-           WHERE owner_wallet = $1 AND archived_at IS NULL
+           WHERE owner_wallet = ANY($1::text[]) AND archived_at IS NULL
            ORDER BY created_at DESC LIMIT $2`,
-        [w, Math.min(Math.max(limit, 1), 100)],
+        [ws, Math.min(Math.max(limit, 1), 100)],
       ),
       pool.query<{ count: string }>(
-        `SELECT COUNT(*)::text AS count FROM ${TABLE} WHERE owner_wallet = $1 AND archived_at IS NULL AND read_at IS NULL`,
-        [w],
+        `SELECT COUNT(*)::text AS count FROM ${TABLE} WHERE owner_wallet = ANY($1::text[]) AND archived_at IS NULL AND read_at IS NULL`,
+        [ws],
       ),
     ]);
     return { notifications: rows.rows.map(toRow), unreadCount: Number(counts.rows[0]?.count ?? 0) };
   },
 
-  async markRead(wallet: string, id: string): Promise<void> {
+  async markRead(wallet: string | string[], id: string): Promise<void> {
     const pool = getPostgresPool();
     if (!pool) return;
     await ensureTables();
-    await pool.query(`UPDATE ${TABLE} SET read_at = now() WHERE owner_wallet = $1 AND id = $2 AND read_at IS NULL`, [normalizeWallet(wallet), id]);
+    await pool.query(`UPDATE ${TABLE} SET read_at = now() WHERE owner_wallet = ANY($1::text[]) AND id = $2 AND read_at IS NULL`, [normalizeWallets(wallet), id]);
   },
 
-  async markAllRead(wallet: string): Promise<void> {
+  async markAllRead(wallet: string | string[]): Promise<void> {
     const pool = getPostgresPool();
     if (!pool) return;
     await ensureTables();
-    await pool.query(`UPDATE ${TABLE} SET read_at = now() WHERE owner_wallet = $1 AND read_at IS NULL`, [normalizeWallet(wallet)]);
+    await pool.query(`UPDATE ${TABLE} SET read_at = now() WHERE owner_wallet = ANY($1::text[]) AND read_at IS NULL`, [normalizeWallets(wallet)]);
   },
 
-  async archive(wallet: string, id: string): Promise<void> {
+  async archive(wallet: string | string[], id: string): Promise<void> {
     const pool = getPostgresPool();
     if (!pool) return;
     await ensureTables();
-    await pool.query(`UPDATE ${TABLE} SET archived_at = now() WHERE owner_wallet = $1 AND id = $2`, [normalizeWallet(wallet), id]);
+    await pool.query(`UPDATE ${TABLE} SET archived_at = now() WHERE owner_wallet = ANY($1::text[]) AND id = $2`, [normalizeWallets(wallet), id]);
   },
 };
