@@ -125,12 +125,16 @@ export const contactsStore = {
     const eHashes = email ? emailHashes(email) : [];
     const pHashes = phone ? phoneHashes(phone) : [];
     if (eHashes.length === 0 && pHashes.length === 0) return null;
+    // Match either the saved profile contact (member_profile_public.email_hash/phone_hash) OR the
+    // login identity the member signed up with (members.reown_email_hash/reown_phone_hash). LEFT JOIN
+    // so members who never saved a profile contact are still discoverable by their login email/phone.
     const r = await pool.query(
       `SELECT m.primary_wallet AS wallet,
-              (p.email_hash = ANY($1)) AS by_email
-         FROM member_profile_public p
-         JOIN members m ON m.id = p.member_id
-        WHERE (p.email_hash = ANY($1) OR p.phone_hash = ANY($2))
+              (p.email_hash = ANY($1) OR m.reown_email_hash = ANY($1)) AS by_email
+         FROM members m
+         LEFT JOIN member_profile_public p ON p.member_id = m.id
+        WHERE (p.email_hash = ANY($1) OR p.phone_hash = ANY($2)
+               OR m.reown_email_hash = ANY($1) OR m.reown_phone_hash = ANY($2))
           AND m.primary_wallet IS NOT NULL
           AND lower(m.primary_wallet) NOT IN (SELECT wallet FROM ${OPTOUT})
         LIMIT 1`,
