@@ -17,7 +17,7 @@ import OnboardingView, { type OnboardingResult } from './OnboardingView';
  * flow doesn't collect use the previous valid defaults.
  */
 export default function UserOnboarding() {
-  const { isConnected, isAuthenticated, openModal, checkAuthentication, authenticate } = useAppKitAuth();
+  const { isAuthenticated } = useAppKitAuth();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,14 +26,12 @@ export default function UserOnboarding() {
     setSubmitting(true);
     setError(null);
     try {
-      // Ensure the wallet/account is connected and the SIWX message is signed.
-      if (!isConnected || !isAuthenticated) {
-        await openModal('Connect');
-      }
-      let authed = await checkAuthentication();
-      if (!authed) authed = await authenticate();
-      if (!authed) {
-        throw new Error('Connect your account and approve the sign-in message to finish onboarding.');
+      // The user reaches onboarding already signed in (routed here by the onboarding gate) — no wallet
+      // re-connect / re-sign needed. If they somehow got here unauthenticated (e.g. the pre-auth
+      // "See how it works" preview), send them to sign in first.
+      if (!isAuthenticated) {
+        navigate('/login');
+        return;
       }
 
       const bootstrapped = await bootstrapMemberAccount();

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { type ReactNode } from 'react';
+import { Outlet, Navigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import SideMenu from './SideMenu';
@@ -8,7 +9,7 @@ import { KycProvider } from '@/context/KycContext';
 import { BridgeProvider } from '@/context/BridgeContext';
 import { ClearBalancesProvider } from '@/hooks/useClearBalances';
 import { ClearTransactionsProvider } from '@/hooks/useClearTransactions';
-import { MemberProfileProvider } from '@/hooks/useMemberProfile';
+import { MemberProfileProvider, useMemberProfile } from '@/hooks/useMemberProfile';
 import { LinkedWalletsProvider } from '@/context/LinkedWalletsContext';
 import { ExternalAccountsProvider } from '@/context/ExternalAccountsContext';
 import { ContactsProvider } from '@/context/ContactsContext';
@@ -37,6 +38,17 @@ function XmtpModalHost() {
  * column offset by its width and scrolling via the window (no sticky/flex sidebar).
  * Mobile uses the SideMenu drawer + floating TabBar. Collapse state is persisted.
  */
+/**
+ * Sends brand-new members (status ONBOARDING) to the onboarding flow. Only redirects once we've
+ * positively determined that status — while loading / on error / unknown it renders the app, so an
+ * existing member is never trapped. Onboarding lives outside AppShell, so there's no redirect loop.
+ */
+function OnboardingGate({ children }: { children: ReactNode }) {
+  const { memberStatus } = useMemberProfile();
+  if (memberStatus === 'ONBOARDING') return <Navigate to="/onboarding" replace />;
+  return <>{children}</>;
+}
+
 export default function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === '1');
@@ -49,6 +61,7 @@ export default function AppShell() {
     <KycProvider>
       <BridgeProvider>
       <MemberProfileProvider>
+      <OnboardingGate>
       <ClearBalancesProvider>
       <LinkedWalletsProvider>
       <ClearTransactionsProvider>
@@ -79,6 +92,7 @@ export default function AppShell() {
       </ClearTransactionsProvider>
       </LinkedWalletsProvider>
       </ClearBalancesProvider>
+      </OnboardingGate>
       </MemberProfileProvider>
       </BridgeProvider>
     </KycProvider>
