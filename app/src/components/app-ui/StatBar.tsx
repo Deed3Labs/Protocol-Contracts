@@ -1,10 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, ArrowDownRight, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PriceWheel } from '@/components/PriceWheel';
 
 export interface Stat {
-  /** Number → rolls/animates (green/red on change); string → rendered as-is (already formatted). */
+  /** Number → shows exact value, rolls/flashes only on a real change; string → rendered as-is. */
   value: number | string;
   label: string;
   change?: string;
@@ -13,25 +12,64 @@ export interface Stat {
 }
 
 const fmtUsd = (v: number) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const CHANGE_EPS = 0.01; // ignore sub-cent poll jitter
+
+// Last value shown per stat, kept at module scope so it survives unmount/remount. This is why
+// navigating away and back does NOT re-animate: on remount the value already matches what's stored.
+const lastShown = new Map<string, number>();
 
 /**
- * A single stat value that rolls smoothly to its new figure (and briefly flashes green/red on the
- * direction of change) instead of snapping — the old brokerage "price wheel", reused. Tracking the
- * previous value here means background balance polls animate rather than flicker.
+ * Shows the exact balance, and only PLAYS the rolling/flash animation when the value actually changes
+ * by a meaningful amount (a deposit/withdraw/transfer, or a poll detecting a real balance change) —
+ * not on every re-render, navigation, or sub-cent jitter. It always settles on the precise figure.
  */
-function AnimatedStatValue({ value }: { value: number }) {
-  const prevRef = useRef(value);
+function AnimatedStatValue({ value, statKey }: { value: number; statKey: string }) {
+  const [display, setDisplay] = useState(value);
+  const [flash, setFlash] = useState<'up' | 'down' | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    prevRef.current = value;
-  }, [value]);
+    const prev = lastShown.has(statKey) ? (lastShown.get(statKey) as number) : value;
+    lastShown.set(statKey, value);
+    const delta = value - prev;
+
+    // No meaningful change (first mount, navigation to the same value, or micro-jitter) → snap.
+    if (Math.abs(delta) < CHANGE_EPS) {
+      setDisplay(value);
+      return;
+    }
+
+    // Real change → roll from the previous value to the new one and flash the direction.
+    setFlash(delta > 0 ? 'up' : 'down');
+    const from = prev;
+    const to = value;
+    const start = performance.now();
+    const duration = 600;
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setDisplay(from + (to - from) * eased);
+      if (p < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        setDisplay(to); // settle on the exact figure
+        if (flashTimer.current) clearTimeout(flashTimer.current);
+        flashTimer.current = setTimeout(() => setFlash(null), 1500);
+      }
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [value, statKey]);
+
+  useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
+
   return (
-    <PriceWheel
-      value={value}
-      previousValue={prevRef.current}
-      formatter={fmtUsd}
-      duration={600}
-      className="font-display text-2xl tracking-tight text-foreground tabular-nums"
-    />
+    <span className={cn('transition-colors duration-300', flash === 'up' && 'text-emerald-500', flash === 'down' && 'text-rose-500')}>
+      {fmtUsd(display)}
+    </span>
   );
 }
 
@@ -56,7 +94,7 @@ export default function StatBar({ stats, loading, className }: { stats: Stat[]; 
                 {loading ? (
                   <span className="text-muted-foreground">—</span>
                 ) : typeof s.value === 'number' ? (
-                  <AnimatedStatValue value={s.value} />
+                  <AnimatedStatValue value={s.value} statKey={s.label} />
                 ) : (
                   s.value
                 )}
