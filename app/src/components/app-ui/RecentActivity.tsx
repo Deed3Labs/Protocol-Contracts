@@ -1,11 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, ArrowLeftRight, ArrowDownLeft, Briefcase, Receipt, CreditCard, Repeat, type LucideIcon } from 'lucide-react';
+import { Search, SlidersHorizontal, ArrowLeftRight, ArrowDownLeft, Briefcase, Receipt, CreditCard, Repeat, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClearTransactions, type ActivityStatus as Status } from '@/hooks/useClearTransactions';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import TransactionFilterModal, { type Category, type AdvFilters, type SourceOption, DEFAULT_ADV, advCount } from './TransactionFilterModal';
+
+/** Compact page list with ellipses, e.g. 1 … 4 5 6 … 12. */
+function pageWindow(current: number, total: number): (number | 'gap')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out: (number | 'gap')[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) out.push('gap');
+  for (let i = start; i <= end; i++) out.push(i);
+  if (end < total - 1) out.push('gap');
+  out.push(total);
+  return out;
+}
 
 const CATEGORY: Record<Category, { icon: LucideIcon; tint: string }> = {
   Transfer: { icon: ArrowLeftRight, tint: 'bg-info/10 text-info' },
@@ -46,9 +59,9 @@ export default function RecentActivity({ className, limit }: { className?: strin
   const [adv, setAdv] = useState<AdvFilters>(DEFAULT_ADV);
   const [modalOpen, setModalOpen] = useState(false);
   const activeAdv = advCount(adv);
-  // Full list can be hundreds of rows — render in pages of PAGE and grow on demand.
-  const PAGE = 30;
-  const [shown, setShown] = useState(PAGE);
+  // Full list can be hundreds of rows — paginate it (compact mode just shows the first `limit`).
+  const PAGE_SIZE = 15;
+  const [page, setPage] = useState(1);
 
   // Source filter options: All, Clear account (primary smart wallet), each linked wallet, external bank.
   const sources: SourceOption[] = [
@@ -79,10 +92,13 @@ export default function RecentActivity({ className, limit }: { className?: strin
     });
   }, [items, query, filter, adv]);
 
-  // Reset the page size whenever the filters/search narrow the list.
-  useEffect(() => setShown(PAGE), [query, filter, adv]);
-  const visible = compact ? filtered.slice(0, limit) : filtered.slice(0, shown);
-  const hasMore = !compact && filtered.length > visible.length;
+  // Jump back to page 1 whenever the filters/search change the result set.
+  useEffect(() => setPage(1), [query, filter, adv]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const curPage = Math.min(page, totalPages);
+  const visible = compact
+    ? filtered.slice(0, limit)
+    : filtered.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
 
   return (
     <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
@@ -194,14 +210,56 @@ export default function RecentActivity({ className, limit }: { className?: strin
         )}
       </div>
 
-      {hasMore && (
-        <button
-          type="button"
-          onClick={() => setShown((n) => n + PAGE)}
-          className="mt-3 w-full rounded-lg border border-border py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-        >
-          Show more ({filtered.length - visible.length})
-        </button>
+      {!compact && filtered.length > 0 && (
+        <div className="mt-1 flex flex-col items-center justify-between gap-3 border-t border-border pt-4 sm:flex-row">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {(curPage - 1) * PAGE_SIZE + 1}–{Math.min(curPage * PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Previous page"
+                disabled={curPage === 1}
+                onClick={() => setPage(curPage - 1)}
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              {pageWindow(curPage, totalPages).map((p, i) =>
+                p === 'gap' ? (
+                  <span key={`gap-${i}`} className="px-1 text-sm text-muted-foreground">
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={p}
+                    type="button"
+                    aria-current={p === curPage}
+                    onClick={() => setPage(p)}
+                    className={cn(
+                      'h-8 min-w-8 rounded-md px-2 text-sm font-medium tabular-nums transition-colors',
+                      p === curPage
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                    )}
+                  >
+                    {p}
+                  </button>
+                ),
+              )}
+              <button
+                type="button"
+                aria-label="Next page"
+                disabled={curPage === totalPages}
+                onClick={() => setPage(curPage + 1)}
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       <TransactionFilterModal open={modalOpen} onOpenChange={setModalOpen} value={adv} onApply={setAdv} sources={sources} />
