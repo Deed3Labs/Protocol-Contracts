@@ -119,10 +119,23 @@ export const notificationStore = {
       /* realtime is best-effort */
     }
     // Web Push for important kinds (or when explicitly forced) so it lands even when the app is closed.
+    // Include the current unread count so the service worker can set the app-icon badge (native feel).
     if (input.push ?? PUSH_KINDS.has(notif.kind)) {
-      void pushService.sendToWallet(wallet, { title: notif.title, body: notif.body, data: notif.data, tag: notif.id }).catch(() => {});
+      const badge = await this.countUnread(wallet).catch(() => undefined);
+      void pushService.sendToWallet(wallet, { title: notif.title, body: notif.body, data: notif.data, tag: notif.id, badge }).catch(() => {});
     }
     return notif;
+  },
+
+  async countUnread(wallet: string): Promise<number> {
+    const pool = getPostgresPool();
+    if (!pool) return 0;
+    await ensureTables();
+    const r = await pool.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM ${TABLE} WHERE owner_wallet = $1 AND archived_at IS NULL AND read_at IS NULL`,
+      [normalizeWallet(wallet)],
+    );
+    return Number(r.rows[0]?.c ?? 0);
   },
 
   /** Register/refresh a Web Push subscription for a wallet (keyed by endpoint). */

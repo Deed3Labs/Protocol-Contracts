@@ -333,6 +333,13 @@ self.addEventListener('push', (event) => {
     timestamp: Date.now(),
   };
   
+  // Set the app-icon badge (native feel) from the unread count in the payload — works even while the
+  // app is closed since the push wakes the service worker.
+  if (typeof data.badgeCount === 'number' && self.navigator && 'setAppBadge' in self.navigator) {
+    if (data.badgeCount > 0) self.navigator.setAppBadge(data.badgeCount).catch(() => {});
+    else self.navigator.clearAppBadge?.().catch(() => {});
+  }
+
   event.waitUntil(
     self.registration.showNotification(options.title, options)
   );

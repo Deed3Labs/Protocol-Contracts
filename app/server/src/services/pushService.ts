@@ -26,7 +26,7 @@ export const pushService = {
   isConfigured: () => configured,
 
   /** Send a push to every registered subscription for a wallet; prune dead endpoints (404/410). */
-  async sendToWallet(wallet: string, payload: { title: string; body: string; data?: Record<string, unknown> | null; tag?: string }): Promise<void> {
+  async sendToWallet(wallet: string, payload: { title: string; body: string; data?: Record<string, unknown> | null; tag?: string; badge?: number }): Promise<void> {
     const pool = getPostgresPool();
     if (!pool || !configured) return;
     const w = wallet.trim().toLowerCase();
@@ -40,7 +40,7 @@ export const pushService = {
     } catch {
       return;
     }
-    const body = JSON.stringify({ title: payload.title, body: payload.body, data: payload.data ?? {}, tag: payload.tag });
+    const body = JSON.stringify({ title: payload.title, body: payload.body, data: payload.data ?? {}, tag: payload.tag, badgeCount: payload.badge });
     await Promise.all(
       rows.map(async (r) => {
         try {
