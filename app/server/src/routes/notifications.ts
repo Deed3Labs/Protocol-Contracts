@@ -36,6 +36,20 @@ router.post('/:wallet/:id/read', requireWalletMatch, async (req, res) => {
   res.json({ ok: true });
 });
 
+// POST /api/notifications/:wallet/test — send yourself a test notification (verifies in-app + push)
+router.post('/:wallet/test', requireWalletMatch, async (req, res) => {
+  await notificationStore.emit({
+    wallet: wallet(req),
+    kind: 'system',
+    title: 'Test notification 🎉',
+    body: 'If you can see this, your notifications are working.',
+    data: { href: '/' },
+    dedupeKey: `test:${Date.now()}`,
+    push: true,
+  });
+  res.json({ ok: true });
+});
+
 // POST /api/notifications/:wallet/subscribe — register a Web Push subscription
 router.post('/:wallet/subscribe', requireWalletMatch, async (req, res) => {
   const { subscription } = (req.body ?? {}) as { subscription?: { endpoint?: string } & Record<string, unknown> };

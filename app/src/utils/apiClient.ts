@@ -2321,9 +2321,14 @@ export async function savePushSubscription(wallet: string, subscription: unknown
   await apiRequest(`/api/notifications/${wallet.toLowerCase()}/subscribe`, { method: 'POST', body: JSON.stringify({ subscription }) });
 }
 
-/** Request money from a Clear member — notifies them ("X requested $Y"). */
-export async function createPaymentRequest(input: { toWallet: string; amount: number; note?: string; fromName?: string }): Promise<boolean> {
+/** Request money from a Clear member — server resolves them by email/phone and notifies them. */
+export async function createPaymentRequest(input: { recipientEmail?: string; recipientPhone?: string; amount: number; note?: string }): Promise<boolean> {
   const r = await apiRequest<{ ok: boolean }>('/api/requests', { method: 'POST', body: JSON.stringify(input) });
+  return !r.error;
+}
+/** Send yourself a test notification (verifies the in-app + push pipeline). */
+export async function sendTestNotification(wallet: string): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/notifications/${wallet.toLowerCase()}/test`, { method: 'POST' });
   return !r.error;
 }
 

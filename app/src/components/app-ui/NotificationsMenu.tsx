@@ -72,7 +72,7 @@ function SwipeRow({ onDelete, children }: { onDelete: () => void; children: Reac
 export default function NotificationsMenu({ onOpenConversation }: { onOpenConversation?: (conversationId?: string) => void }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<'notifications' | 'messages'>('notifications');
-  const { notifications, unreadCount, markRead, markAllRead, dismiss } = useNotifications();
+  const { notifications, unreadCount, markRead, markAllRead, dismiss, sendTest } = useNotifications();
   const { conversations } = useXMTP();
 
   // Real XMTP conversations → threads (names from the conversation-name map we persist on message).
@@ -165,6 +165,13 @@ export default function NotificationsMenu({ onOpenConversation }: { onOpenConver
                 className="font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
               >
                 Mark all read
+              </button>
+              <button
+                type="button"
+                onClick={() => void sendTest()}
+                className="font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Send test
               </button>
             </div>
           </>

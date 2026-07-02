@@ -7,6 +7,7 @@ import {
   markAllNotificationsRead,
   archiveNotificationApi,
   savePushSubscription,
+  sendTestNotification,
   type ApiNotification,
 } from '@/utils/apiClient';
 
@@ -121,5 +122,11 @@ export function useNotifications() {
     [address],
   );
 
-  return { notifications, unreadCount, refresh, markRead, markAllRead, dismiss };
+  const sendTest = useCallback(async () => {
+    if (!address) return;
+    await sendTestNotification(address).catch(() => {});
+    await refresh();
+  }, [address, refresh]);
+
+  return { notifications, unreadCount, refresh, markRead, markAllRead, dismiss, sendTest };
 }

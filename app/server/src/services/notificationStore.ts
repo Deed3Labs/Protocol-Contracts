@@ -87,6 +87,8 @@ export interface EmitInput {
   data?: Record<string, unknown> | null;
   /** Stable key so the same event never duplicates (e.g. `tx:0xabc`, `credit:2026-06`). */
   dedupeKey: string;
+  /** Force (or suppress) Web Push regardless of kind. Defaults to whether the kind is push-worthy. */
+  push?: boolean;
 }
 
 export const notificationStore = {
@@ -116,8 +118,8 @@ export const notificationStore = {
     } catch {
       /* realtime is best-effort */
     }
-    // Web Push for important kinds so it lands even when the app is closed (best-effort).
-    if (PUSH_KINDS.has(notif.kind)) {
+    // Web Push for important kinds (or when explicitly forced) so it lands even when the app is closed.
+    if (input.push ?? PUSH_KINDS.has(notif.kind)) {
       void pushService.sendToWallet(wallet, { title: notif.title, body: notif.body, data: notif.data, tag: notif.id }).catch(() => {});
     }
     return notif;
