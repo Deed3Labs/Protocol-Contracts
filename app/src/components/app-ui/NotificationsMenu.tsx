@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { motion, AnimatePresence, type PanInfo } from 'framer-motion';
 import {
-  Bell, ArrowDownLeft, ArrowUpRight, Receipt, Sparkles, CreditCard, Clock, Trash2, ShieldCheck, type LucideIcon,
+  Bell, ArrowDownLeft, ArrowUpRight, Receipt, Sparkles, CreditCard, Clock, HandCoins, Trash2, ShieldCheck, type LucideIcon,
 } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -17,6 +17,7 @@ const KIND_STYLE: Record<string, { icon: LucideIcon; tint: string }> = {
   credit: { icon: Sparkles, tint: 'bg-info/10 text-info' },
   milestone: { icon: Sparkles, tint: 'bg-info/10 text-info' },
   due: { icon: Receipt, tint: 'bg-negative/10 text-negative' },
+  request: { icon: HandCoins, tint: 'bg-amber-500/10 text-amber-500' },
   kyc: { icon: ShieldCheck, tint: 'bg-info/10 text-info' },
   system: { icon: Bell, tint: 'bg-secondary text-foreground' },
 };

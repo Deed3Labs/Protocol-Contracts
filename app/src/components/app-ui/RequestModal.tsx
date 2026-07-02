@@ -4,6 +4,8 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useContacts, contactInitials } from '@/context/ContactsContext';
 import { useAppKitAccount } from '@/lib/walletCompat';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { createPaymentRequest } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -21,6 +23,7 @@ const QUICK = [25, 50, 100, 250];
 export default function RequestModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { contacts, getContact, openManager } = useContacts();
   const { address } = useAppKitAccount();
+  const { firstName } = useMemberProfile();
   const [tab, setTab] = useState<'request' | 'receive'>('request');
   const [step, setStep] = useState<'compose' | 'review' | 'status'>('compose');
   const [picking, setPicking] = useState(false);
@@ -310,7 +313,14 @@ export default function RequestModal({ open, onOpenChange }: { open: boolean; on
 
             <button
               type="button"
-              onClick={() => setStep('status')}
+              onClick={() => {
+                // In-app request (recipient has a wallet) → persist + notify them. Link sends (email/
+                // phone-only) still show the copy-link flow below until the pay-link backend lands.
+                if (instant && recipient?.wallet) {
+                  void createPaymentRequest({ toWallet: recipient.wallet, amount, note: note || undefined, fromName: firstName });
+                }
+                setStep('status');
+              }}
               className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
             >
               Request {fmt(amount)}
