@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, SlidersHorizontal, ArrowLeftRight, ArrowDownLeft, Briefcase, Receipt, CreditCard, Repeat, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -46,6 +46,9 @@ export default function RecentActivity({ className, limit }: { className?: strin
   const [adv, setAdv] = useState<AdvFilters>(DEFAULT_ADV);
   const [modalOpen, setModalOpen] = useState(false);
   const activeAdv = advCount(adv);
+  // Full list can be hundreds of rows — render in pages of PAGE and grow on demand.
+  const PAGE = 30;
+  const [shown, setShown] = useState(PAGE);
 
   // Source filter options: All, Clear account (primary smart wallet), each linked wallet, external bank.
   const sources: SourceOption[] = [
@@ -76,7 +79,10 @@ export default function RecentActivity({ className, limit }: { className?: strin
     });
   }, [items, query, filter, adv]);
 
-  const visible = compact ? filtered.slice(0, limit) : filtered;
+  // Reset the page size whenever the filters/search narrow the list.
+  useEffect(() => setShown(PAGE), [query, filter, adv]);
+  const visible = compact ? filtered.slice(0, limit) : filtered.slice(0, shown);
+  const hasMore = !compact && filtered.length > visible.length;
 
   return (
     <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
@@ -187,6 +193,16 @@ export default function RecentActivity({ className, limit }: { className?: strin
           })
         )}
       </div>
+
+      {hasMore && (
+        <button
+          type="button"
+          onClick={() => setShown((n) => n + PAGE)}
+          className="mt-3 w-full rounded-lg border border-border py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          Show more ({filtered.length - visible.length})
+        </button>
+      )}
 
       <TransactionFilterModal open={modalOpen} onOpenChange={setModalOpen} value={adv} onApply={setAdv} sources={sources} />
     </div>
