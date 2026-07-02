@@ -1,5 +1,6 @@
 import { getAlchemyRestUrl, getAlchemyApiKey } from '../utils/rpc.js';
 import { websocketService } from './websocketService.js';
+import { notificationStore } from './notificationStore.js';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { computeUnitTracker } from '../utils/computeUnitTracker.js';
 import { getAlchemyPricesBatch } from './priceService.js';
@@ -727,6 +728,9 @@ class TransfersService {
     const isIncoming = toLower === normalizedAddress;
     const isOutgoing = fromLower === normalizedAddress;
 
+    const t = transfer as { value?: string | number; asset?: string; hash?: string };
+    const amountLabel = t.value != null ? `${t.value} ${t.asset ?? ''}`.trim() : (t.asset ?? 'funds');
+
     if (isIncoming && transfer.to) {
       await websocketService.broadcastToAddress(transfer.to, 'transfer_received', {
         chainId,
@@ -734,6 +738,14 @@ class TransfersService {
         type: 'incoming',
         timestamp: Date.now(),
       });
+      void notificationStore.emit({
+        wallet: transfer.to,
+        kind: 'received',
+        title: 'Money received',
+        body: `You received ${amountLabel}`,
+        data: { txHash: t.hash ?? null, chainId, href: '/transactions' },
+        dedupeKey: `tx:${t.hash ?? `${transfer.to}-${Date.now()}`}:in`,
+      }).catch(() => {});
     }
 
     if (isOutgoing && transfer.from) {
@@ -743,6 +755,14 @@ class TransfersService {
         type: 'outgoing',
         timestamp: Date.now(),
       });
+      void notificationStore.emit({
+        wallet: transfer.from,
+        kind: 'sent',
+        title: 'Payment sent',
+        body: `You sent ${amountLabel}`,
+        data: { txHash: t.hash ?? null, chainId, href: '/transactions' },
+        dedupeKey: `tx:${t.hash ?? `${transfer.from}-${Date.now()}`}:out`,
+      }).catch(() => {});
     }
 
     // Also send a general balance update
