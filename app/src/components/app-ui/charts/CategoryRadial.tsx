@@ -27,16 +27,33 @@ const CATEGORY_COLORS: Record<Category, string> = {
 const config = {} satisfies ChartConfig;
 const fmtTotal = (n: number) => (n >= 10000 ? `$${(n / 1000).toFixed(1)}k` : `$${Math.round(n).toLocaleString()}`);
 
-/** Elbow leader-line geometry: slice edge → short radial leg → horizontal leg to the label. */
-function elbow(cx: number, cy: number, midAngle: number, outerRadius: number) {
+const LABEL_GUTTER = 6; // px inset from the chart's horizontal edge
+
+/**
+ * Leader-line geometry that keeps labels on-chart: slice edge → short radial leg → a diagonal knee →
+ * a horizontal run to a fixed side gutter (up to 3 angled segments). The label is then anchored at the
+ * gutter and grows INWARD (textAnchor end on the right, start on the left), so the words can never run
+ * off the edge regardless of length. `cx*2 ≈ chart width` because the PieChart margins are symmetric.
+ */
+function leader(cx: number, cy: number, midAngle: number, outerRadius: number) {
   const RADIAN = Math.PI / 180;
   const cos = Math.cos(-midAngle * RADIAN);
   const sin = Math.sin(-midAngle * RADIAN);
   const dir = cos >= 0 ? 1 : -1;
   const edge = { x: cx + outerRadius * cos, y: cy + outerRadius * sin };
-  const bend = { x: cx + (outerRadius + 12) * cos, y: cy + (outerRadius + 12) * sin };
-  const end = { x: bend.x + dir * 18, y: bend.y };
-  return { edge, bend, end, dir };
+  const bend = { x: cx + (outerRadius + 14) * cos, y: cy + (outerRadius + 14) * sin };
+  const knee = { x: bend.x + dir * 14, y: bend.y }; // short diagonal step before the horizontal run
+  const gutterX = dir > 0 ? cx * 2 - LABEL_GUTTER : LABEL_GUTTER;
+  const end = { x: gutterX, y: bend.y };
+  return {
+    edge,
+    bend,
+    knee,
+    end,
+    dir,
+    textX: gutterX + (dir > 0 ? -2 : 2),
+    anchor: (dir > 0 ? 'end' : 'start') as 'end' | 'start',
+  };
 }
 
 /**
@@ -80,8 +97,8 @@ export default function CategoryRadial({ className }: { className?: string }) {
               data={chartData}
               dataKey="value"
               nameKey="name"
-              innerRadius="52%"
-              outerRadius="74%"
+              innerRadius="46%"
+              outerRadius="64%"
               paddingAngle={isEmpty ? 0 : 2}
               strokeWidth={2}
               stroke="rgb(var(--card))"
@@ -90,10 +107,10 @@ export default function CategoryRadial({ className }: { className?: string }) {
                 isEmpty
                   ? false
                   : (p) => {
-                      const { edge, bend, end } = elbow(Number(p.cx ?? 0), Number(p.cy ?? 0), Number(p.midAngle ?? 0), Number(p.outerRadius ?? 0));
+                      const { edge, bend, knee, end } = leader(Number(p.cx ?? 0), Number(p.cy ?? 0), Number(p.midAngle ?? 0), Number(p.outerRadius ?? 0));
                       return (
                         <polyline
-                          points={`${edge.x},${edge.y} ${bend.x},${bend.y} ${end.x},${end.y}`}
+                          points={`${edge.x},${edge.y} ${bend.x},${bend.y} ${knee.x},${knee.y} ${end.x},${end.y}`}
                           stroke="rgb(var(--border))"
                           strokeWidth={1}
                           fill="none"
@@ -105,12 +122,12 @@ export default function CategoryRadial({ className }: { className?: string }) {
                 isEmpty
                   ? false
                   : (p: PieLabelRenderProps) => {
-                      const { end, dir } = elbow(Number(p.cx ?? 0), Number(p.cy ?? 0), Number(p.midAngle ?? 0), Number(p.outerRadius ?? 0));
+                      const { textX, end, anchor } = leader(Number(p.cx ?? 0), Number(p.cy ?? 0), Number(p.midAngle ?? 0), Number(p.outerRadius ?? 0));
                       return (
                         <text
-                          x={end.x + dir * 4}
+                          x={textX}
                           y={end.y}
-                          textAnchor={dir >= 0 ? 'start' : 'end'}
+                          textAnchor={anchor}
                           dominantBaseline="central"
                           className="fill-foreground"
                           fontSize={11}
