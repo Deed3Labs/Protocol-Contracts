@@ -139,6 +139,9 @@ export function ClearBalancesProvider({ children }: { children: ReactNode }) {
         };
       });
       void refreshTokens(true);
+      // Every money action goes through here, so it's the one place to nudge the other live views
+      // (linked-wallet balances + the transactions feed) to refetch after a transfer/send/deposit.
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('clear:activity'));
     },
     [fetched, refreshTokens],
   );

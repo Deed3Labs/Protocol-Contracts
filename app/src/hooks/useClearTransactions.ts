@@ -169,10 +169,18 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
     if (!isConnected || !address) return;
     const id = setInterval(() => void load(), 120_000);
     const onFocus = () => void load();
+    // Right after a money action (transfer/send/deposit) — refetch now and again shortly, since the
+    // on-chain event can lag the indexer by a few seconds.
+    const onActivity = () => {
+      void load();
+      setTimeout(() => void load(), 4000);
+    };
     window.addEventListener('focus', onFocus);
+    window.addEventListener('clear:activity', onActivity);
     return () => {
       clearInterval(id);
       window.removeEventListener('focus', onFocus);
+      window.removeEventListener('clear:activity', onActivity);
     };
   }, [load, isConnected, address]);
 
