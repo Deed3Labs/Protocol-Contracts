@@ -11,9 +11,9 @@ const CHECK_MS = 30 * 60 * 1000; // every 30 minutes
 const TZ = process.env.APP_TZ || 'America/New_York';
 
 function greetingForHour(hour: number): { period: string; title: string; body: string } | null {
-  if (hour === 8) return { period: 'morning', title: 'Good morning ☀️', body: 'Here’s where your money stands today.' };
-  if (hour === 13) return { period: 'afternoon', title: 'Good afternoon 👋', body: 'A quick check-in on your accounts and upcoming bills.' };
-  if (hour === 18) return { period: 'evening', title: 'Good evening 🌙', body: 'Review today’s spending and your Clear Deed progress.' };
+  if (hour === 9) return { period: 'morning', title: 'Good morning ☀️', body: 'Here’s where your money stands today.' };
+  if (hour === 15) return { period: 'afternoon', title: 'Good afternoon 👋', body: 'A quick check-in on your accounts and upcoming bills.' };
+  if (hour === 21) return { period: 'evening', title: 'Good evening 🌙', body: 'Review today’s spending and your Clear Deed progress.' };
   return null;
 }
 
