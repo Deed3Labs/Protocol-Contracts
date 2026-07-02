@@ -10,6 +10,35 @@ import {
 import { sendCryptoService } from '../services/sendCryptoService.js';
 import { sendClaimService } from '../services/sendClaimService.js';
 import { mapBridgeStateToDispatchStatus } from '../services/sendBridgePayoutService.js';
+import { contactsStore } from '../services/contactsStore.js';
+import { notificationStore } from '../services/notificationStore.js';
+
+/** Notify the recipient in-app if they're a Clear member (offline-safe; resolved via the directory). */
+async function notifyRecipientOfSend(updatedTransfer: {
+  id: number;
+  recipientType: 'email' | 'phone';
+  principalUsdc: string;
+}): Promise<void> {
+  try {
+    const contact = sendTransferStore.decryptRecipientContact(updatedTransfer as never);
+    const match = await contactsStore.lookupWallet(
+      updatedTransfer.recipientType === 'email' ? contact : undefined,
+      updatedTransfer.recipientType === 'phone' ? contact : undefined,
+    );
+    if (!match?.wallet) return;
+    const usd = Number(updatedTransfer.principalUsdc) / 1_000_000;
+    await notificationStore.emit({
+      wallet: match.wallet,
+      kind: 'received',
+      title: 'Money received',
+      body: `You received $${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      data: { transferId: updatedTransfer.id, href: '/transactions' },
+      dedupeKey: `send:${updatedTransfer.id}`,
+    });
+  } catch (error) {
+    console.error('Recipient in-app notification error:', error);
+  }
+}
 import { sendBridgeWebhookVerifier } from '../services/sendBridgeWebhookVerifier.js';
 import { sendPayoutService } from '../services/sendPayoutService.js';
 import { sendStripePayoutService } from '../services/sendStripePayoutService.js';
@@ -596,6 +625,9 @@ senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Reques
       console.error('Claim link notification error:', error);
     }
 
+    // Our own send event → notify the recipient in-app (offline-safe, no watcher dependency).
+    await notifyRecipientOfSend(updatedTransfer);
+
     return res.json({
       transfer: publicTransferView(updatedTransfer),
       claimUrl,
@@ -748,6 +780,9 @@ senderRouter.post('/transfers/:id/submit-authorization', requireAuth, async (req
       notificationWarning = error instanceof Error ? error.message : 'Failed to dispatch claim notification';
       console.error('Claim link notification error:', error);
     }
+
+    // Our own send event → notify the recipient in-app (offline-safe, no watcher dependency).
+    await notifyRecipientOfSend(updatedTransfer);
 
     return res.json({
       transfer: publicTransferView(updatedTransfer),
