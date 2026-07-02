@@ -1,6 +1,10 @@
 import crypto from 'crypto';
 import { getPostgresPool } from '../config/postgres.js';
 import { websocketService } from './websocketService.js';
+import { pushService } from './pushService.js';
+
+// Kinds worth a Web Push (arrive when the app is closed); noisy/low-value ones stay in-app only.
+const PUSH_KINDS = new Set<NotificationKind>(['received', 'credit', 'milestone', 'due', 'kyc']);
 
 /*
  * Persistent in-app notifications, scoped by owner wallet (same scoping as contacts / pay_credits, and
@@ -54,6 +58,13 @@ async function ensureTables(): Promise<void> {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS notifications_dedupe_idx ON ${TABLE} (owner_wallet, dedupe_key);
     CREATE INDEX IF NOT EXISTS notifications_owner_created_idx ON ${TABLE} (owner_wallet, created_at DESC);
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      endpoint TEXT PRIMARY KEY,
+      owner_wallet TEXT NOT NULL,
+      subscription JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS push_subs_wallet_idx ON push_subscriptions (owner_wallet);
   `);
   ensured = true;
 }
@@ -105,7 +116,24 @@ export const notificationStore = {
     } catch {
       /* realtime is best-effort */
     }
+    // Web Push for important kinds so it lands even when the app is closed (best-effort).
+    if (PUSH_KINDS.has(notif.kind)) {
+      void pushService.sendToWallet(wallet, { title: notif.title, body: notif.body, data: notif.data, tag: notif.id }).catch(() => {});
+    }
     return notif;
+  },
+
+  /** Register/refresh a Web Push subscription for a wallet (keyed by endpoint). */
+  async saveSubscription(wallet: string, subscription: { endpoint?: string } & Record<string, unknown>): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool || !subscription?.endpoint) return;
+    await ensureTables();
+    await pool.query(
+      `INSERT INTO push_subscriptions (endpoint, owner_wallet, subscription)
+         VALUES ($1, $2, $3)
+       ON CONFLICT (endpoint) DO UPDATE SET owner_wallet = EXCLUDED.owner_wallet, subscription = EXCLUDED.subscription`,
+      [subscription.endpoint, normalizeWallet(wallet), subscription],
+    );
   },
 
   async list(wallet: string, limit = 40): Promise<{ notifications: NotificationRow[]; unreadCount: number }> {

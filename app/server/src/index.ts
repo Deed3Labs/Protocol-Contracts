@@ -33,6 +33,7 @@ import onramperWebhookRouter from './routes/onramperWebhook.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
 import { startAutopayRunner } from './jobs/autopayRunner.js';
+import { startDueBillNotifier } from './jobs/dueBillNotifier.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 
@@ -247,6 +248,9 @@ async function startServer() {
     });
     startAutopayRunner().catch((error) => {
       console.error('⚠️ Autopay runner failed to start:', error);
+    });
+    startDueBillNotifier().catch((error) => {
+      console.error('⚠️ Due-bill notifier failed to start:', error);
     });
 
     // Start HTTP server (Express + WebSocket)

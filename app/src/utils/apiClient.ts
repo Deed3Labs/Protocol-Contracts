@@ -2317,6 +2317,9 @@ export async function markAllNotificationsRead(wallet: string): Promise<void> {
 export async function archiveNotificationApi(wallet: string, id: string): Promise<void> {
   await apiRequest(`/api/notifications/${wallet.toLowerCase()}/${id}/archive`, { method: 'POST' });
 }
+export async function savePushSubscription(wallet: string, subscription: unknown): Promise<void> {
+  await apiRequest(`/api/notifications/${wallet.toLowerCase()}/subscribe`, { method: 'POST', body: JSON.stringify({ subscription }) });
+}
 
 /** Directory lookup: resolve a wallet from a known email/phone (exact match, opt-out aware). */
 export async function lookupDirectory(

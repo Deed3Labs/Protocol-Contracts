@@ -36,6 +36,17 @@ router.post('/:wallet/:id/read', requireWalletMatch, async (req, res) => {
   res.json({ ok: true });
 });
 
+// POST /api/notifications/:wallet/subscribe — register a Web Push subscription
+router.post('/:wallet/subscribe', requireWalletMatch, async (req, res) => {
+  const { subscription } = (req.body ?? {}) as { subscription?: { endpoint?: string } & Record<string, unknown> };
+  if (!subscription?.endpoint) {
+    res.status(400).json({ error: 'Missing subscription' });
+    return;
+  }
+  await notificationStore.saveSubscription(wallet(req), subscription);
+  res.json({ ok: true });
+});
+
 // POST /api/notifications/:wallet/:id/archive
 router.post('/:wallet/:id/archive', requireWalletMatch, async (req, res) => {
   await notificationStore.archive(wallet(req), String(req.params.id));
