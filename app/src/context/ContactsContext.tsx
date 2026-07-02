@@ -90,33 +90,50 @@ export function ContactsProvider({ children }: { children: ReactNode }) {
     void load();
   }, [load]);
 
-  // Optimistic add (temp id lets the modal proceed); persists + refreshes in the background.
+  // Optimistic add: show a temp contact immediately, then reconcile it in place with the server's real
+  // record (using the POST response — NOT a re-fetch, which can read stale before the write is visible
+  // and make the new contact vanish until a refresh). Roll back the temp row if the save fails.
   const addContact = useCallback(
     (c: Omit<Contact, 'id'>) => {
       const tempId = `c${Date.now()}`;
       setContacts((cs) => [...cs, { ...c, id: tempId }].sort(byName));
       if (address) {
-        void addContactApi(address, { name: c.name, email: c.email || null, phone: c.phone || null, wallet: c.wallet || null }).then(() => load());
+        void addContactApi(address, { name: c.name, email: c.email || null, phone: c.phone || null, wallet: c.wallet || null })
+          .then((created) => {
+            setContacts((cs) =>
+              created ? cs.map((x) => (x.id === tempId ? toContact(created) : x)).sort(byName) : cs.filter((x) => x.id !== tempId),
+            );
+          })
+          .catch(() => setContacts((cs) => cs.filter((x) => x.id !== tempId)));
       }
       return tempId;
     },
-    [address, load],
+    [address],
   );
 
+  // Optimistic edit: apply the patch now, reconcile with the server record, reload only on failure.
   const updateContact = useCallback(
     (id: string, patch: Partial<Omit<Contact, 'id'>>) => {
       setContacts((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)).sort(byName));
-      if (address) void updateContactApi(address, id, { name: patch.name, email: patch.email ?? null, phone: patch.phone ?? null, wallet: patch.wallet ?? null }).then(() => load());
+      if (address) {
+        void updateContactApi(address, id, { name: patch.name, email: patch.email ?? null, phone: patch.phone ?? null, wallet: patch.wallet ?? null })
+          .then((updated) => {
+            if (updated) setContacts((cs) => cs.map((c) => (c.id === id ? toContact(updated) : c)).sort(byName));
+            else void load();
+          })
+          .catch(() => void load());
+      }
     },
     [address, load],
   );
 
+  // Optimistic remove: drop it now, restore (reload) only if the delete fails.
   const removeContact = useCallback(
     (id: string) => {
       setContacts((cs) => cs.filter((c) => c.id !== id));
-      if (address) void deleteContactApi(address, id);
+      if (address) void deleteContactApi(address, id).then((ok) => { if (!ok) void load(); }).catch(() => void load());
     },
-    [address],
+    [address, load],
   );
 
   const lookupWallet = useCallback(
