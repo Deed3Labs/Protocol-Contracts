@@ -177,7 +177,7 @@ export default function PayModal({
   const bill = billId ? getBill(billId) : undefined;
   const source = sources.find((s) => s.id === sourceId) ?? sources[0];
   const isRent = bill?.type === 'rent';
-  const credits = bill ? creditsFor(bill, streak) : 0;
+  const credits = bill ? creditsFor(bill, streak, amount) : 0;
   const mult = streakMultiplier(streak);
 
   const saveBiller = () => {
