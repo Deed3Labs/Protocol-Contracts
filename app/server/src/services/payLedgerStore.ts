@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { getPayPool } from '../config/postgres.js';
 import { encryptSendContact, decryptSendContact } from '../utils/sendEncryption.js';
+import { notificationStore } from './notificationStore.js';
 
 /*
  * Clear Pay rent/bill → equity-credit ledger (off-chain, Railway Postgres). Append-only credit rows
@@ -378,6 +379,16 @@ export const payLedgerStore = {
        VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9) ON CONFLICT (payment_id) DO NOTHING`,
       [crypto.randomUUID(), input.wallet, paymentId, amount, input.type === 'rent' ? 'rent_on_time' : 'bill_on_time', input.source, streak, vestUntil, input.network ?? 'mainnet'],
     );
+    if (amount > 0) {
+      void notificationStore.emit({
+        wallet: input.wallet,
+        kind: 'credit',
+        title: 'Equity credits earned',
+        body: `+${amount} credits for on-time ${input.type === 'rent' ? 'rent' : input.name}`,
+        data: { amount, reason: input.type, href: '/' },
+        dedupeKey: `credit:${paymentId}`,
+      }).catch(() => {});
+    }
     return { creditAwarded: amount, onTime, duplicate: false };
   },
 
@@ -419,6 +430,14 @@ export const payLedgerStore = {
       [crypto.randomUUID(), input.wallet, `deposit:${input.txRef}`, award, vestUntil, input.network],
     );
     if (ins.rowCount === 0) return { creditAwarded: 0, duplicate: true };
+    void notificationStore.emit({
+      wallet: input.wallet,
+      kind: 'credit',
+      title: '1:1 match applied',
+      body: `+${award} equity credits matched on your savings deposit`,
+      data: { amount: award, reason: 'deposit_match', href: '/' },
+      dedupeKey: `credit:deposit:${input.txRef}`,
+    }).catch(() => {});
     return { creditAwarded: award, duplicate: false };
   },
 

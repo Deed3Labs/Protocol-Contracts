@@ -2294,6 +2294,30 @@ export async function deleteContactApi(wallet: string, id: string): Promise<bool
   return !r.error;
 }
 
+// ---- In-app notifications (persistent, wallet-scoped) ----
+export interface ApiNotification {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown> | null;
+  read: boolean;
+  createdAt: string;
+}
+export async function getNotifications(wallet: string): Promise<{ notifications: ApiNotification[]; unreadCount: number }> {
+  const r = await apiRequest<{ notifications: ApiNotification[]; unreadCount: number }>(`/api/notifications/${wallet.toLowerCase()}`);
+  return r.error || !r.data ? { notifications: [], unreadCount: 0 } : r.data;
+}
+export async function markNotificationRead(wallet: string, id: string): Promise<void> {
+  await apiRequest(`/api/notifications/${wallet.toLowerCase()}/${id}/read`, { method: 'POST' });
+}
+export async function markAllNotificationsRead(wallet: string): Promise<void> {
+  await apiRequest(`/api/notifications/${wallet.toLowerCase()}/read-all`, { method: 'POST' });
+}
+export async function archiveNotificationApi(wallet: string, id: string): Promise<void> {
+  await apiRequest(`/api/notifications/${wallet.toLowerCase()}/${id}/archive`, { method: 'POST' });
+}
+
 /** Directory lookup: resolve a wallet from a known email/phone (exact match, opt-out aware). */
 export async function lookupDirectory(
   wallet: string,
