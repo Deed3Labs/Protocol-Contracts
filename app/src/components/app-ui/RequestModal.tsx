@@ -312,9 +312,10 @@ export default function RequestModal({ open, onOpenChange }: { open: boolean; on
             <button
               type="button"
               onClick={() => {
-                // In-app request (recipient is a member) → server resolves them by email/phone + notifies.
-                // Link sends (non-members) still show the copy-link flow below until the pay-link backend lands.
-                if (instant && (recipient?.email || recipient?.phone)) {
+                // Always attempt a real request when we have an email/phone — the server resolves the
+                // recipient to a member and notifies them (even if we don't have their wallet locally).
+                // If they're not a member, it no-ops and the copy-link flow below is the fallback.
+                if (recipient?.email || recipient?.phone) {
                   void createPaymentRequest({ recipientEmail: recipient.email || undefined, recipientPhone: recipient.phone || undefined, amount, note: note || undefined });
                 }
                 setStep('status');
