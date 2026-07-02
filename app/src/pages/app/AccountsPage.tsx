@@ -7,6 +7,7 @@ import { useClearBalances } from '@/hooks/useClearBalances';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useLinkedWalletBalances } from '@/hooks/useLinkedWalletBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
+import { useClearPortfolioHistory } from '@/hooks/useClearPortfolioHistory';
 import { useUpcoming } from '@/hooks/useUpcoming';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import QuickActions from '@/components/app-ui/QuickActions';
@@ -20,10 +21,8 @@ import ClearDeedCard from '@/components/app-ui/ClearDeedCard';
 /**
  * Accounts — the dashboard. Stat row (Total / Cash / Savings / External), a big
  * balance-analytics chart, quick actions, recent activity, Clear Deed progress,
- * and the upcoming/spend calendars. Scaffold: placeholder figures.
+ * and the upcoming/spend calendars.
  */
-const fmtUsd = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 export default function AccountsPage() {
   const { verified, openKyc } = useKyc();
   const bal = useClearBalances();
@@ -33,10 +32,30 @@ export default function AccountsPage() {
     externalWallets.map((w) => w.address),
     externalWallets.length > 0,
   );
-  const { flows } = useClearTransactions();
+  const { items } = useClearTransactions();
+  const history = useClearPortfolioHistory();
   const upcoming = useUpcoming();
   const { firstName } = useMemberProfile();
-  const dash = (v: number) => (bal.loading ? '—' : fmtUsd(v));
+
+  // Real trailing-7-day change for a metric, from the backend balance-history series (returns nothing
+  // until there's enough history to compare). Cash/Savings share the on-chain series — we snapshot the
+  // combined on-chain total, not each token, so both reflect the same on-chain trend.
+  const weekChange = (field: 'totalUsd' | 'onchainUsd' | 'bankUsd'): { change?: string; changePositive?: boolean } => {
+    const pts = history.points;
+    if (pts.length < 2) return {};
+    const last = pts[pts.length - 1];
+    const target = new Date(last.date);
+    target.setDate(target.getDate() - 7);
+    let past = pts[0][field];
+    for (const p of pts) {
+      if (new Date(p.date).getTime() <= target.getTime()) past = p[field];
+      else break;
+    }
+    if (!past) return {};
+    const pct = ((last[field] - past) / Math.abs(past)) * 100;
+    if (!Number.isFinite(pct) || Math.abs(pct) < 0.05) return {};
+    return { change: `${Math.abs(pct).toFixed(1)}% this week`, changePositive: pct >= 0 };
+  };
 
   // Cash/Savings = the Clear (smart) wallet PLUS every linked wallet, aggregated. (This is a holdings
   // view; movable Cash in the Transfer/Send flows stays the smart wallet only — linked funds need their
@@ -56,18 +75,29 @@ export default function AccountsPage() {
   const cash = bal.cash + linkedTotals.usdc;
   const savings = bal.savings + linkedTotals.clrusd;
 
-  // This month's outflows grouped by day-of-month (for the spend heatmap).
-  const spendByDay = useMemo(() => {
+  // This month's outflows grouped by day-of-month — total per day (heatmap intensity) plus a
+  // by-category breakdown per day (for the hover/press tooltip).
+  const { spendByDay, spendDetailByDay } = useMemo(() => {
     const now = new Date();
-    const out: Record<number, number> = {};
-    for (const f of flows) {
-      if (f.usd >= 0) continue;
-      const d = new Date(f.ts);
+    const totals: Record<number, number> = {};
+    const byCat: Record<number, Record<string, number>> = {};
+    for (const it of items) {
+      if (it.amount >= 0) continue;
+      const d = new Date(it.ts);
       if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) continue;
-      out[d.getDate()] = (out[d.getDate()] || 0) + Math.abs(f.usd);
+      const day = d.getDate();
+      const amt = Math.abs(it.amount);
+      totals[day] = (totals[day] || 0) + amt;
+      (byCat[day] ||= {})[it.category] = (byCat[day][it.category] || 0) + amt;
     }
-    return out;
-  }, [flows]);
+    const detail: Record<number, { category: string; amount: number }[]> = {};
+    for (const [day, cats] of Object.entries(byCat)) {
+      detail[Number(day)] = Object.entries(cats)
+        .map(([category, amount]) => ({ category, amount }))
+        .sort((a, b) => b.amount - a.amount);
+    }
+    return { spendByDay: totals, spendDetailByDay: detail };
+  }, [items]);
   return (
     <div className="animate-fade-in space-y-5">
       <div>
@@ -93,11 +123,12 @@ export default function AccountsPage() {
       )}
 
       <StatBar
+        loading={bal.loading}
         stats={[
-          { label: 'Total balance', value: dash(cash + savings + ext.totalBalance), change: '2.1% this week', icon: Wallet },
-          { label: 'Cash · USDC', value: dash(cash), change: '0.4%', icon: Banknote },
-          { label: 'Savings · CLRUSD', value: dash(savings), change: '1.8%', icon: PiggyBank },
-          { label: 'External · Plaid', value: fmtUsd(ext.totalBalance), change: '0.6%', changePositive: false, icon: Landmark },
+          { label: 'Total balance', value: cash + savings + ext.totalBalance, icon: Wallet, ...weekChange('totalUsd') },
+          { label: 'Cash · USDC', value: cash, icon: Banknote, ...weekChange('onchainUsd') },
+          { label: 'Savings · CLRUSD', value: savings, icon: PiggyBank, ...weekChange('onchainUsd') },
+          { label: 'External · Plaid', value: ext.totalBalance, icon: Landmark, ...weekChange('bankUsd') },
         ]}
       />
 
@@ -111,7 +142,7 @@ export default function AccountsPage() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         <UpcomingCalendar items={upcoming} />
-        <SpendHeatmap spendingByDay={spendByDay} />
+        <SpendHeatmap spendingByDay={spendByDay} detailByDay={spendDetailByDay} />
         <ClearDeedCard />
       </div>
 
