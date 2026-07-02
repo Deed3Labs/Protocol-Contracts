@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { TrendingUp, Calendar, Bell, DollarSign, Plus, type LucideIcon } from 'lucide-react';
+import {
+  TrendingUp, Calendar, Bell, DollarSign, Plus, Home, Zap, CreditCard, Music, Clapperboard,
+  Smartphone, Dumbbell, ShieldCheck, Receipt, type LucideIcon,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface UpcomingItem {
@@ -14,6 +17,37 @@ const weekDays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const headerIcons: LucideIcon[] = [TrendingUp, Calendar, Bell];
 const formatAmount = (a: number) => (a >= 1000 ? `$${(a / 1000).toFixed(1)}k` : `$${Math.round(a)}`);
 const fmtMoney = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// Each upcoming item gets a colored icon by kind. Classes are written out in full so Tailwind keeps them.
+type UpcomingKind = 'income' | 'rent' | 'utility' | 'phone' | 'video' | 'music' | 'card' | 'insurance' | 'fitness' | 'bill';
+const KIND_STYLE: Record<UpcomingKind, { icon: LucideIcon; bg: string; fg: string; label: string }> = {
+  income:    { icon: DollarSign,   bg: 'bg-emerald-500/15', fg: 'text-emerald-500', label: 'Income' },
+  rent:      { icon: Home,         bg: 'bg-amber-500/15',   fg: 'text-amber-500',   label: 'Rent' },
+  utility:   { icon: Zap,          bg: 'bg-sky-500/15',     fg: 'text-sky-500',     label: 'Utilities' },
+  phone:     { icon: Smartphone,   bg: 'bg-cyan-500/15',    fg: 'text-cyan-500',    label: 'Phone' },
+  video:     { icon: Clapperboard, bg: 'bg-violet-500/15',  fg: 'text-violet-500',  label: 'Streaming' },
+  music:     { icon: Music,        bg: 'bg-pink-500/15',    fg: 'text-pink-500',    label: 'Music' },
+  card:      { icon: CreditCard,   bg: 'bg-rose-500/15',    fg: 'text-rose-500',    label: 'Card / loan' },
+  insurance: { icon: ShieldCheck,  bg: 'bg-teal-500/15',    fg: 'text-teal-500',    label: 'Insurance' },
+  fitness:   { icon: Dumbbell,     bg: 'bg-orange-500/15',  fg: 'text-orange-500',  label: 'Fitness' },
+  bill:      { icon: Receipt,      bg: 'bg-secondary',      fg: 'text-muted-foreground', label: 'Bill' },
+};
+
+/** Classify an upcoming item into a kind (for its icon/color) from its direction + merchant name. */
+function classifyUpcoming(item: UpcomingItem): UpcomingKind {
+  if (item.direction === 'in') return 'income';
+  const n = item.name.toLowerCase();
+  const has = (...keys: string[]) => keys.some((k) => n.includes(k));
+  if (has('netflix', 'hulu', 'disney', 'hbo', ' max', 'youtube', 'prime video', 'paramount', 'peacock', 'apple tv', 'sling', 'fubo')) return 'video';
+  if (has('spotify', 'apple music', 'tidal', 'pandora', 'soundcloud', 'amazon music', 'deezer', 'audible')) return 'music';
+  if (has('rent', 'apartment', 'landlord', 'mortgage', 'lease', 'realty', 'property')) return 'rent';
+  if (has('verizon', 'at&t', 't-mobile', 'mint mobile', 'sprint', 'cricket', 'boost mobile')) return 'phone';
+  if (has('electric', 'water', 'energy', 'utility', 'pg&e', 'con ed', 'duke', 'sewer', 'waste', 'internet', 'comcast', 'xfinity', 'spectrum', 'fiber', 'broadband')) return 'utility';
+  if (has('insurance', 'geico', 'allstate', 'state farm', 'progressive', 'nationwide', 'liberty mutual')) return 'insurance';
+  if (has('credit card', 'card payment', 'visa', 'mastercard', 'amex', 'american express', 'loan', 'financing', 'affirm', 'klarna', 'afterpay', 'synchrony', 'capital one', 'discover')) return 'card';
+  if (has('gym', 'fitness', 'peloton', 'crunch', 'equinox', 'anytime')) return 'fitness';
+  return 'bill';
+}
 
 /**
  * Upcoming recurring bills/income calendar — the old portfolio UpcomingTransactions
@@ -101,17 +135,15 @@ export default function UpcomingCalendar({
               </span>
               {hasItems ? (
                 <div className="flex items-center -space-x-1">
-                  {shown.map((it) => (
-                    <span
-                      key={it.id}
-                      className={cn(
-                        'flex h-4 w-4 items-center justify-center rounded-lg border border-card',
-                        it.direction === 'in' ? 'bg-background ring-1 ring-foreground/50' : 'bg-foreground',
-                      )}
-                    >
-                      {it.direction === 'in' && <DollarSign className="h-2 w-2 text-foreground" />}
-                    </span>
-                  ))}
+                  {shown.map((it) => {
+                    const st = KIND_STYLE[classifyUpcoming(it)];
+                    const Icon = st.icon;
+                    return (
+                      <span key={it.id} className={cn('flex h-4 w-4 items-center justify-center rounded-lg border border-card', st.bg)}>
+                        <Icon className={cn('h-2.5 w-2.5', st.fg)} />
+                      </span>
+                    );
+                  })}
                   {overflow && (
                     <span className="flex h-4 w-4 items-center justify-center rounded-lg border border-card bg-secondary text-secondary-foreground">
                       <Plus className="h-2 w-2" />
@@ -131,15 +163,24 @@ export default function UpcomingCalendar({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{monthName} {day}</div>
-                  <div className="space-y-1">
-                    {dayItems.map((it) => (
-                      <div key={it.id} className="flex items-center justify-between gap-3">
-                        <span className="truncate text-[11px] text-muted-foreground">{it.name}</span>
-                        <span className={cn('shrink-0 text-[11px] font-medium tabular-nums', it.direction === 'in' ? 'text-positive' : 'text-foreground')}>
-                          {it.direction === 'in' ? '+' : '−'}{fmtMoney(it.amount)}
-                        </span>
-                      </div>
-                    ))}
+                  <div className="space-y-1.5">
+                    {dayItems.map((it) => {
+                      const st = KIND_STYLE[classifyUpcoming(it)];
+                      const Icon = st.icon;
+                      return (
+                        <div key={it.id} className="flex items-center justify-between gap-3">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded-lg', st.bg)}>
+                              <Icon className={cn('h-2.5 w-2.5', st.fg)} />
+                            </span>
+                            <span className="truncate text-[11px] text-muted-foreground">{it.name}</span>
+                          </span>
+                          <span className={cn('shrink-0 text-[11px] font-medium tabular-nums', it.direction === 'in' ? 'text-positive' : 'text-foreground')}>
+                            {it.direction === 'in' ? '+' : '−'}{fmtMoney(it.amount)}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -37,24 +37,43 @@ export default function AccountsPage() {
   const upcoming = useUpcoming();
   const { firstName } = useMemberProfile();
 
-  // Real trailing-7-day change for a metric, from the backend balance-history series (returns nothing
-  // until there's enough history to compare). Cash/Savings share the on-chain series — we snapshot the
-  // combined on-chain total, not each token, so both reflect the same on-chain trend.
-  const weekChange = (field: 'totalUsd' | 'onchainUsd' | 'bankUsd'): { change?: string; changePositive?: boolean } => {
+  // Real trailing-7-day change for a metric. Prefers the backend balance-history series (exact, and
+  // it includes external); falls back to net 7-day transaction flow when history isn't backfilled yet
+  // — for stablecoins there's no price movement, so net flow == the balance change. Cash/Savings share
+  // the on-chain figure (we snapshot the combined on-chain total, not each token).
+  const fmtPct = (pct: number) => ({ change: `${Math.abs(pct).toFixed(1)}% this week`, changePositive: pct >= 0 });
+  const weekChange = (
+    field: 'totalUsd' | 'onchainUsd' | 'bankUsd',
+    current: number,
+  ): { change?: string; changePositive?: boolean } => {
     const pts = history.points;
-    if (pts.length < 2) return {};
-    const last = pts[pts.length - 1];
-    const target = new Date(last.date);
-    target.setDate(target.getDate() - 7);
-    let past = pts[0][field];
-    for (const p of pts) {
-      if (new Date(p.date).getTime() <= target.getTime()) past = p[field];
-      else break;
+    if (pts.length >= 2) {
+      const last = pts[pts.length - 1];
+      const target = new Date(last.date);
+      target.setDate(target.getDate() - 7);
+      let past = pts[0][field];
+      for (const p of pts) {
+        if (new Date(p.date).getTime() <= target.getTime()) past = p[field];
+        else break;
+      }
+      if (Math.abs(past) >= 0.01) {
+        const pct = ((last[field] - past) / Math.abs(past)) * 100;
+        if (Number.isFinite(pct)) return fmtPct(pct);
+      }
     }
-    if (!past) return {};
-    const pct = ((last[field] - past) / Math.abs(past)) * 100;
-    if (!Number.isFinite(pct) || Math.abs(pct) < 0.05) return {};
-    return { change: `${Math.abs(pct).toFixed(1)}% this week`, changePositive: pct >= 0 };
+    // Fallback: net signed flow over the last 7 days, scoped to the metric's accounts.
+    const cutoff = Date.now() - 7 * 86_400_000;
+    let net = 0;
+    for (const it of items) {
+      if (it.ts < cutoff) continue;
+      const isBank = it.source === 'bank';
+      const include = field === 'totalUsd' ? true : field === 'bankUsd' ? isBank : !isBank;
+      if (include) net += it.amount;
+    }
+    const past = current - net;
+    if (Math.abs(past) < 0.01) return {};
+    const pct = (net / Math.abs(past)) * 100;
+    return Number.isFinite(pct) ? fmtPct(pct) : {};
   };
 
   // Cash/Savings = the Clear (smart) wallet PLUS every linked wallet, aggregated. (This is a holdings
@@ -125,10 +144,10 @@ export default function AccountsPage() {
       <StatBar
         loading={bal.loading}
         stats={[
-          { label: 'Total balance', value: cash + savings + ext.totalBalance, icon: Wallet, ...weekChange('totalUsd') },
-          { label: 'Cash · USDC', value: cash, icon: Banknote, ...weekChange('onchainUsd') },
-          { label: 'Savings · CLRUSD', value: savings, icon: PiggyBank, ...weekChange('onchainUsd') },
-          { label: 'External · Plaid', value: ext.totalBalance, icon: Landmark, ...weekChange('bankUsd') },
+          { label: 'Total balance', value: cash + savings + ext.totalBalance, icon: Wallet, ...weekChange('totalUsd', cash + savings + ext.totalBalance) },
+          { label: 'Cash · USDC', value: cash, icon: Banknote, ...weekChange('onchainUsd', cash + savings) },
+          { label: 'Savings · CLRUSD', value: savings, icon: PiggyBank, ...weekChange('onchainUsd', cash + savings) },
+          { label: 'External · Plaid', value: ext.totalBalance, icon: Landmark, ...weekChange('bankUsd', ext.totalBalance) },
         ]}
       />
 
