@@ -9,6 +9,13 @@ import { notificationStore } from '../services/notificationStore.js';
  */
 const router = Router();
 const wallet = (req: Request) => String(req.params.wallet || '').toLowerCase();
+// All wallets this user controls (the :wallet param + every verified address on the session), so a
+// notification scoped to any of them (primary vs smart vs linked) is still read/marked/archived here.
+const wallets = (req: Request) => {
+  const set = new Set<string>([wallet(req)]);
+  for (const a of req.auth?.addresses ?? []) if (a) set.add(a.toLowerCase());
+  return [...set].filter(Boolean);
+};
 
 // GET /api/notifications/:wallet → { notifications, unreadCount }
 router.get('/:wallet', async (req: Request, res: Response) => {
@@ -18,14 +25,14 @@ router.get('/:wallet', async (req: Request, res: Response) => {
     res.json({ notifications: [], unreadCount: 0 });
     return;
   }
-  res.json(await notificationStore.list(w));
+  res.json(await notificationStore.list(wallets(req)));
 });
 
 // POST /api/notifications/:wallet/read-all
 router.post('/:wallet/read-all', async (req: Request, res: Response) => {
   const w = wallet(req);
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
-  await notificationStore.markAllRead(w);
+  await notificationStore.markAllRead(wallets(req));
   res.json({ ok: true });
 });
 
@@ -62,7 +69,7 @@ router.post('/:wallet/subscribe', async (req: Request, res: Response) => {
 router.post('/:wallet/:id/read', async (req: Request, res: Response) => {
   const w = wallet(req);
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
-  await notificationStore.markRead(w, String(req.params.id));
+  await notificationStore.markRead(wallets(req), String(req.params.id));
   res.json({ ok: true });
 });
 
@@ -70,7 +77,7 @@ router.post('/:wallet/:id/read', async (req: Request, res: Response) => {
 router.post('/:wallet/:id/archive', async (req: Request, res: Response) => {
   const w = wallet(req);
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
-  await notificationStore.archive(w, String(req.params.id));
+  await notificationStore.archive(wallets(req), String(req.params.id));
   res.json({ ok: true });
 });
 
