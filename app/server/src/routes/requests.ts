@@ -52,38 +52,43 @@ router.post('/', async (req: Request, res: Response) => {
     return;
   }
 
-  // Resolve the recipient to a Clear member — the caller can't target an arbitrary wallet.
-  const match = await contactsStore.lookupWallet(recipientEmail || undefined, recipientPhone || undefined);
-  if (!match?.wallet) {
-    res.status(404).json({ error: 'Recipient not found', message: "That person isn't a Clear member (or isn't discoverable)." });
-    return;
+  try {
+    // Resolve the recipient to a Clear member — the caller can't target an arbitrary wallet.
+    const match = await contactsStore.lookupWallet(recipientEmail || undefined, recipientPhone || undefined);
+    if (!match?.wallet) {
+      res.status(404).json({ error: 'Recipient not found', message: "That person isn't a Clear member (or isn't discoverable)." });
+      return;
+    }
+    if (match.wallet.toLowerCase() === fromWallet) {
+      res.status(400).json({ error: 'Invalid recipient', message: "You can't request money from yourself." });
+      return;
+    }
+
+    const fromName = await senderDisplayName(req);
+    const created = await requestStore.create({
+      fromWallet,
+      fromName,
+      toWallet: match.wallet,
+      amountUsd: amt,
+      note: note?.trim() || null,
+    });
+
+    await notificationStore
+      .emit({
+        wallet: match.wallet,
+        kind: 'request',
+        title: 'Payment request',
+        body: `${fromName} requested ${fmt(amt)}${note?.trim() ? ` · ${note.trim()}` : ''}`,
+        data: { requestId: created?.id ?? null, amount: amt, from: fromWallet, href: '/pay' },
+        dedupeKey: `request:${created?.id ?? `${fromWallet}-${Date.now()}`}`,
+      })
+      .catch(() => {});
+
+    res.json({ ok: true, id: created?.id ?? null });
+  } catch (err) {
+    console.error('[requests] create failed:', err);
+    res.status(500).json({ error: 'Request failed', message: err instanceof Error ? err.message : 'Unknown error' });
   }
-  if (match.wallet.toLowerCase() === fromWallet) {
-    res.status(400).json({ error: 'Invalid recipient', message: "You can't request money from yourself." });
-    return;
-  }
-
-  const fromName = await senderDisplayName(req);
-  const created = await requestStore.create({
-    fromWallet,
-    fromName,
-    toWallet: match.wallet,
-    amountUsd: amt,
-    note: note?.trim() || null,
-  });
-
-  await notificationStore
-    .emit({
-      wallet: match.wallet,
-      kind: 'request',
-      title: 'Payment request',
-      body: `${fromName} requested ${fmt(amt)}${note?.trim() ? ` · ${note.trim()}` : ''}`,
-      data: { requestId: created?.id ?? null, amount: amt, from: fromWallet, href: '/pay' },
-      dedupeKey: `request:${created?.id ?? `${fromWallet}-${Date.now()}`}`,
-    })
-    .catch(() => {});
-
-  res.json({ ok: true, id: created?.id ?? null });
 });
 
 export default router;
