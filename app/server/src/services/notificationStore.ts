@@ -4,7 +4,7 @@ import { websocketService } from './websocketService.js';
 import { pushService } from './pushService.js';
 
 // Kinds worth a Web Push (arrive when the app is closed); noisy/low-value ones stay in-app only.
-const PUSH_KINDS = new Set<NotificationKind>(['received', 'credit', 'milestone', 'due', 'kyc']);
+const PUSH_KINDS = new Set<NotificationKind>(['received', 'credit', 'milestone', 'due', 'kyc', 'request']);
 
 /*
  * Persistent in-app notifications, scoped by owner wallet (same scoping as contacts / pay_credits, and
@@ -16,7 +16,7 @@ const TABLE = 'notifications';
 let ensured = false;
 
 export type NotificationKind =
-  | 'received' | 'sent' | 'card' | 'pending' | 'credit' | 'milestone' | 'due' | 'kyc' | 'system';
+  | 'received' | 'sent' | 'card' | 'pending' | 'credit' | 'milestone' | 'due' | 'kyc' | 'request' | 'system';
 
 export interface NotificationRow {
   id: string;

@@ -2321,6 +2321,12 @@ export async function savePushSubscription(wallet: string, subscription: unknown
   await apiRequest(`/api/notifications/${wallet.toLowerCase()}/subscribe`, { method: 'POST', body: JSON.stringify({ subscription }) });
 }
 
+/** Request money from a Clear member — notifies them ("X requested $Y"). */
+export async function createPaymentRequest(input: { toWallet: string; amount: number; note?: string; fromName?: string }): Promise<boolean> {
+  const r = await apiRequest<{ ok: boolean }>('/api/requests', { method: 'POST', body: JSON.stringify(input) });
+  return !r.error;
+}
+
 /** Directory lookup: resolve a wallet from a known email/phone (exact match, opt-out aware). */
 export async function lookupDirectory(
   wallet: string,
