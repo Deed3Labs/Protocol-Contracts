@@ -55,14 +55,23 @@ export const ON_TIME_STREAK = 0;
 /** Streak multiplier: +5% per on-time month, capped at 12 months (1.0×–1.6×). */
 export const streakMultiplier = (streak = ON_TIME_STREAK) => 1 + Math.min(Math.max(streak, 0), 12) * 0.05;
 
+/** Non-rent bills earn 1 equity credit per $2 paid, with the base capped here (before multipliers). */
+export const BILL_CREDIT_RATE = 0.5;
+export const BILL_CREDIT_CAP = 500;
+
 /**
- * Clear Pay equity credits for paying a bill ON TIME (preview of what the backend awards). Flat base
- * by type (rent rewards most) × the on-time streak multiplier, rounded to 5. NON-redeemable — credits
- * only count toward the Clear Deed milestone. Never interest/APY.
+ * Clear Pay equity credits for paying a bill ON TIME (preview of what the backend awards). Rent is a
+ * flat 300 base; non-rent bills earn 1 credit per $2 paid (base capped at 500) — so a small dollar
+ * payment no longer earns the old flat 50. Then × the on-time streak multiplier. NON-redeemable —
+ * credits only count toward the Clear Deed milestone. Never interest/APY. Pass `amount` to price the
+ * exact payment; otherwise the biller's default amount is used.
  */
-export const creditsFor = (bill: Pick<Bill, 'type'>, streak = ON_TIME_STREAK) => {
-  const base = bill.type === 'rent' ? 300 : 50;
-  return Math.round((base * streakMultiplier(streak)) / 5) * 5;
+export const creditsFor = (bill: Pick<Bill, 'type' | 'amount'>, streak = ON_TIME_STREAK, amount = 0) => {
+  const mult = streakMultiplier(streak);
+  if (bill.type === 'rent') return Math.round((300 * mult) / 5) * 5;
+  const paid = amount > 0 ? amount : bill.amount || 0;
+  const base = Math.min(paid * BILL_CREDIT_RATE, BILL_CREDIT_CAP);
+  return Math.round(base * mult);
 };
 
 const ICONS: Record<BillType, LucideIcon> = { rent: Home, utility: Zap, subscription: Repeat, card: CreditCard, phone: Smartphone, other: Receipt };
