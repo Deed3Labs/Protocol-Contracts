@@ -35,6 +35,7 @@ import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
 import { startAutopayRunner } from './jobs/autopayRunner.js';
 import { startDueBillNotifier } from './jobs/dueBillNotifier.js';
+import { startGreetingNotifier } from './jobs/greetingNotifier.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 
@@ -253,6 +254,9 @@ async function startServer() {
     });
     startDueBillNotifier().catch((error) => {
       console.error('⚠️ Due-bill notifier failed to start:', error);
+    });
+    startGreetingNotifier().catch((error) => {
+      console.error('⚠️ Greeting notifier failed to start:', error);
     });
 
     // Start HTTP server (Express + WebSocket)
