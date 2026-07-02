@@ -25,7 +25,12 @@ const CATEGORY_COLORS: Record<Category, string> = {
 };
 
 const config = {} satisfies ChartConfig;
-const fmtTotal = (n: number) => (n >= 10000 ? `$${(n / 1000).toFixed(1)}k` : `$${Math.round(n).toLocaleString()}`);
+// Full dollars-and-cents under $10k; abbreviated (K/M, 2 decimals) above so it always fits the hole.
+const fmtCenter = (n: number) => {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 10_000) return `$${(n / 1_000).toFixed(2)}K`;
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 
 /**
  * Spending-by-category donut from real transaction history (useClearTransactions). Sums outflows by
@@ -85,8 +90,8 @@ export default function CategoryRadial({ className }: { className?: string }) {
                     const { cx, cy } = viewBox;
                     return (
                       <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central">
-                        <tspan x={cx} y={cy - 10} className="fill-foreground font-display" style={{ fontSize: 30, fontWeight: 600 }}>
-                          {fmtTotal(isEmpty ? 0 : total)}
+                        <tspan x={cx} y={cy - 10} className="fill-foreground font-display tracking-tight tabular-nums" style={{ fontSize: 28 }}>
+                          {fmtCenter(isEmpty ? 0 : total)}
                         </tspan>
                         <tspan x={cx} y={cy + 17} className="fill-muted-foreground" style={{ fontSize: 12 }}>
                           {loading && isEmpty ? 'loading…' : `spent ${SUB[range]}`}
