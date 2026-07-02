@@ -189,7 +189,10 @@ export function ClearTransactionsProvider({ children }: { children: ReactNode })
       );
       const bank = (plaid?.transactions || []).map(plaidToActivity);
       const merged = [...onchain, ...bank].sort((a, b) => b.ts - a.ts);
-      setItems(merged.slice(0, 80));
+      // Keep the FULL list — the charts (donut, heatmap) and the "Transactions" count all derive from
+      // `items`, so truncating here silently drops in-window spend (the backend returns up to ~500 bank
+      // txs over 90 days). The activity LIST paginates its own rendering, so this stays cheap.
+      setItems(merged);
       // Charts reflect the user's CLEAR cashflow (primary wallet + bank), not linked external wallets.
       // Internal transfers are excluded from income/spending; they feed the separate transfer overlay.
       const clearSide = merged.filter((x) => x.ts > 0 && (x.source === primaryLower || x.source === 'bank'));
