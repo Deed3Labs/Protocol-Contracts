@@ -1,6 +1,6 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useAppKitAccount } from '@/lib/walletCompat';
-import { getMemberAccountCenter, bootstrapMemberAccount, type MemberProfileViewResponse } from '@/utils/apiClient';
+import { getMemberAccountCenter, bootstrapMemberAccount, type MemberProfileViewResponse, type MemberStatus } from '@/utils/apiClient';
 import { getStoredAvatar, setStoredAvatar } from '@/lib/avatarStore';
 
 /**
@@ -30,6 +30,8 @@ export interface MemberProfile {
   address: string;
   initials: string;
   loading: boolean;
+  /** Member lifecycle status; 'ONBOARDING' = brand-new, hasn't completed onboarding. null until loaded. */
+  memberStatus: MemberStatus | null;
   refresh: () => void;
   /** Set/clear the local avatar (data URL); persists per-wallet in localStorage. */
   setAvatar: (dataUrl: string | null) => void;
@@ -38,7 +40,7 @@ export interface MemberProfile {
 
 const EMPTY: MemberProfile = {
   name: '', firstName: 'there', handle: '', email: '', phone: '', avatarUrl: null,
-  username: '', address: '', initials: 'CL', loading: false, refresh: () => {}, setAvatar: () => {}, raw: null,
+  username: '', address: '', initials: 'CL', loading: false, memberStatus: null, refresh: () => {}, setAvatar: () => {}, raw: null,
 };
 
 const Ctx = createContext<MemberProfile | null>(null);
@@ -50,6 +52,7 @@ export function useMemberProfile(): MemberProfile {
 export function MemberProfileProvider({ children }: { children: ReactNode }) {
   const { address, isConnected } = useAppKitAccount();
   const [raw, setRaw] = useState<MemberProfileViewResponse | null>(null);
+  const [memberStatus, setMemberStatus] = useState<MemberStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [localAvatar, setLocalAvatar] = useState<string | null>(null);
 
@@ -68,6 +71,7 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
   const load = useCallback(async () => {
     if (!isConnected) {
       setRaw(null);
+      setMemberStatus(null);
       return;
     }
     setLoading(true);
@@ -78,8 +82,10 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
       await bootstrapMemberAccount().catch(() => {});
       const r = await getMemberAccountCenter();
       setRaw(r?.profile ?? null);
+      setMemberStatus(r?.member?.status ?? null);
     } catch {
       setRaw(null);
+      setMemberStatus(null);
     } finally {
       setLoading(false);
     }
@@ -106,6 +112,7 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
     address: addr,
     initials: initialsOf(pub?.displayName || pub?.username || '', addr),
     loading,
+    memberStatus,
     refresh: () => void load(),
     setAvatar,
     raw,
