@@ -56,28 +56,36 @@ export function useNotifications() {
     return () => window.removeEventListener('focus', onFocus);
   }, [refresh]);
 
-  // Web Push: once permission is granted (requested elsewhere on connect), register/refresh this
+  // Request notification permission (iOS needs this from a user gesture) and register/refresh this
   // device's push subscription so important notifications arrive when the app is closed.
+  const ensurePush = useCallback(async () => {
+    if (!address) return;
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') return;
+    let perm = Notification.permission;
+    if (perm === 'default') perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub =
+        (await reg.pushManager.getSubscription()) ||
+        (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) }));
+      await savePushSubscription(address, sub.toJSON());
+    } catch {
+      /* push is optional */
+    }
+  }, [address]);
+
+  // If permission is already granted, subscribe silently on mount (no gesture needed).
   useEffect(() => {
-    if (!address || !isConnected) return;
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        const sub =
-          (await reg.pushManager.getSubscription()) ||
-          (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) }));
-        if (!cancelled) await savePushSubscription(address, sub.toJSON());
-      } catch {
-        /* push is optional */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [address, isConnected]);
+    if (address && isConnected && typeof Notification !== 'undefined' && Notification.permission === 'granted') void ensurePush();
+  }, [address, isConnected, ensurePush]);
+
+  // Reflect the unread count on the app-icon badge while the app is open (installed PWA).
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('setAppBadge' in navigator)) return;
+    if (unreadCount > 0) void navigator.setAppBadge?.(unreadCount).catch(() => {});
+    else void navigator.clearAppBadge?.().catch(() => {});
+  }, [unreadCount]);
 
   // Live: prepend notifications pushed by producers.
   useEffect(() => {
@@ -122,11 +130,14 @@ export function useNotifications() {
     [address],
   );
 
+  // The bell's "Send test" doubles as the enable path: the tap is the user gesture iOS needs to grant
+  // notification permission + register the push subscription, then it fires a test.
   const sendTest = useCallback(async () => {
     if (!address) return;
+    await ensurePush();
     await sendTestNotification(address).catch(() => {});
     await refresh();
-  }, [address, refresh]);
+  }, [address, ensurePush, refresh]);
 
   return { notifications, unreadCount, refresh, markRead, markAllRead, dismiss, sendTest };
 }
