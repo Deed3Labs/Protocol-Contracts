@@ -79,6 +79,15 @@ export default function UpcomingCalendar({
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
 
+  // Anchor the day tooltip to the cell edge for the outer columns so it never overflows the card
+  // (a centered tooltip on the leftmost column slid under the fixed sidebar).
+  const tipPos = (day: number) => {
+    const col = (startDow + day - 1) % 7;
+    if (col <= 1) return 'left-0';
+    if (col >= 5) return 'right-0';
+    return 'left-1/2 -translate-x-1/2';
+  };
+
   return (
     <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
       <div className="mb-4 flex items-center justify-between">
@@ -159,7 +168,7 @@ export default function UpcomingCalendar({
 
               {isActive && (
                 <div
-                  className="absolute bottom-full left-1/2 z-30 mb-1.5 w-48 -translate-x-1/2 rounded-lg border border-border bg-card p-2.5 text-left shadow-xl"
+                  className={cn('absolute bottom-full z-50 mb-1.5 w-48 rounded-lg border border-border bg-card p-2.5 text-left shadow-xl', tipPos(day))}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{monthName} {day}</div>
