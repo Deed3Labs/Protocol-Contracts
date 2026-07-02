@@ -3,43 +3,38 @@ import { requireWalletMatch } from '../middleware/auth.js';
 import { notificationStore } from '../services/notificationStore.js';
 
 /*
- * In-app notifications, wallet-scoped (requireWalletMatch) under requireAuth. Read model only — rows are
- * created server-side by producers (transfers, equity credits, cron). See services/notificationStore.ts.
+ * In-app notifications, wallet-scoped (requireWalletMatch checks the :wallet param against the authed
+ * session) under requireAuth. Rows are created server-side by producers (transfers, credits, requests,
+ * cron). See services/notificationStore.ts.
  */
 const router = Router();
 const wallet = (req: Request) => String(req.params.wallet || '').toLowerCase();
 
-function ensureReady(res: Response): boolean {
+// GET /api/notifications/:wallet → { notifications, unreadCount }
+router.get('/:wallet', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
   if (!notificationStore.isConfigured()) {
     res.json({ notifications: [], unreadCount: 0 });
-    return false;
+    return;
   }
-  return true;
-}
-
-// GET /api/notifications/:wallet → { notifications, unreadCount }
-router.get('/:wallet', requireWalletMatch, async (req, res) => {
-  if (!ensureReady(res)) return;
-  const data = await notificationStore.list(wallet(req));
-  res.json(data);
+  res.json(await notificationStore.list(w));
 });
 
 // POST /api/notifications/:wallet/read-all
-router.post('/:wallet/read-all', requireWalletMatch, async (req, res) => {
-  await notificationStore.markAllRead(wallet(req));
-  res.json({ ok: true });
-});
-
-// POST /api/notifications/:wallet/:id/read
-router.post('/:wallet/:id/read', requireWalletMatch, async (req, res) => {
-  await notificationStore.markRead(wallet(req), String(req.params.id));
+router.post('/:wallet/read-all', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  await notificationStore.markAllRead(w);
   res.json({ ok: true });
 });
 
 // POST /api/notifications/:wallet/test — send yourself a test notification (verifies in-app + push)
-router.post('/:wallet/test', requireWalletMatch, async (req, res) => {
+router.post('/:wallet/test', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
   await notificationStore.emit({
-    wallet: wallet(req),
+    wallet: w,
     kind: 'system',
     title: 'Test notification 🎉',
     body: 'If you can see this, your notifications are working.',
@@ -51,19 +46,31 @@ router.post('/:wallet/test', requireWalletMatch, async (req, res) => {
 });
 
 // POST /api/notifications/:wallet/subscribe — register a Web Push subscription
-router.post('/:wallet/subscribe', requireWalletMatch, async (req, res) => {
+router.post('/:wallet/subscribe', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
   const { subscription } = (req.body ?? {}) as { subscription?: { endpoint?: string } & Record<string, unknown> };
   if (!subscription?.endpoint) {
     res.status(400).json({ error: 'Missing subscription' });
     return;
   }
-  await notificationStore.saveSubscription(wallet(req), subscription);
+  await notificationStore.saveSubscription(w, subscription);
+  res.json({ ok: true });
+});
+
+// POST /api/notifications/:wallet/:id/read
+router.post('/:wallet/:id/read', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  await notificationStore.markRead(w, String(req.params.id));
   res.json({ ok: true });
 });
 
 // POST /api/notifications/:wallet/:id/archive
-router.post('/:wallet/:id/archive', requireWalletMatch, async (req, res) => {
-  await notificationStore.archive(wallet(req), String(req.params.id));
+router.post('/:wallet/:id/archive', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  await notificationStore.archive(w, String(req.params.id));
   res.json({ ok: true });
 });
 
