@@ -26,6 +26,9 @@ export interface ActivityItem {
   /** True when this is a move between the user's OWN accounts (Clear ↔ linked wallet / bank) — not
    *  real income or spending, so it's excluded from those charts and shown as a transfer instead. */
   internal: boolean;
+  /** Granular spend bucket for the category donut (Rent, Utilities, Food & Drink, Retail, …). Derived
+   *  from Plaid's personal-finance category for bank txs; on-chain sends are 'Misc'. */
+  spendCategory: string;
 }
 
 export interface CashFlow {
@@ -75,6 +78,21 @@ function formatDate(iso?: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+/** Map Plaid's personal-finance category (primary + detailed) to a friendly spend bucket for the donut. */
+function plaidSpendCategory(primary: string, detailed: string): string {
+  const p = primary.toUpperCase();
+  const d = detailed.toUpperCase();
+  if (d.includes('SUBSCRIPTION') || p.includes('ENTERTAINMENT')) return 'Subscriptions';
+  if (p.includes('FOOD')) return 'Food & Drink';
+  if (p.includes('GENERAL_MERCHANDISE')) return 'Retail';
+  if (p.includes('RENT_AND_UTILITIES')) return d.includes('RENT') ? 'Rent' : 'Utilities';
+  if (p.includes('TRANSPORTATION') || p.includes('TRAVEL')) return 'Transport';
+  if (p.includes('LOAN') || p.includes('BANK_FEES') || p.includes('GOVERNMENT')) return 'Bills';
+  if (p.includes('MEDICAL') || p.includes('PERSONAL_CARE')) return 'Health';
+  if (p.includes('GENERAL_SERVICES') || p.includes('HOME_IMPROVEMENT')) return 'Services';
+  return 'Misc';
+}
+
 function toActivity(tx: RawTx, source: string, own: Set<string>): ActivityItem {
   const inbound = /deposit|receiv|incoming|claim/i.test(tx.type || '');
   const usd = typeof tx.amountUsd === 'number' && tx.amountUsd > 0 ? tx.amountUsd : Number(tx.amount) || 0;
@@ -99,6 +117,7 @@ function toActivity(tx: RawTx, source: string, own: Set<string>): ActivityItem {
     status,
     source,
     internal,
+    spendCategory: internal ? 'Transfer' : inbound ? 'Income' : 'Misc',
   };
 }
 
@@ -126,6 +145,7 @@ function plaidToActivity(t: PlaidRecentTransaction): ActivityItem {
     status: t.pending ? 'pending' : 'completed',
     source: 'bank',
     internal,
+    spendCategory: internal ? 'Transfer' : inbound ? 'Income' : plaidSpendCategory(t.category_primary || '', t.category_detailed || ''),
   };
 }
 

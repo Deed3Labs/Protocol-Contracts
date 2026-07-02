@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Cell, Label, Pie, PieChart } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
-import type { Category } from '@/components/app-ui/TransactionFilterModal';
 import { cn } from '@/lib/utils';
 
 type Range = 'week' | 'month' | 'year';
@@ -14,14 +13,18 @@ const RANGES: { value: Range; label: string }[] = [
 const WINDOW_DAYS: Record<Range, number> = { week: 7, month: 30, year: 365 };
 const SUB: Record<Range, string> = { week: 'this week', month: 'this month', year: 'this year' };
 
-// Per-category slice colors (spending categories are the outflow ones).
-const CATEGORY_COLORS: Record<Category, string> = {
-  Card: 'rgb(var(--info))',
-  Bill: '#8b5cf6',
-  Subscription: '#06b6d4',
-  Transfer: '#f59e0b',
-  Deposit: '#10b981',
-  Payroll: '#22c55e',
+// Per-spend-category slice colors. Unknown buckets fall back to a neutral grey.
+const CATEGORY_COLORS: Record<string, string> = {
+  Rent: '#8b5cf6',
+  Utilities: '#06b6d4',
+  'Food & Drink': '#f59e0b',
+  Retail: 'rgb(var(--info))',
+  Subscriptions: '#ec4899',
+  Transport: '#14b8a6',
+  Bills: '#a855f7',
+  Health: '#ef4444',
+  Services: '#0ea5e9',
+  Misc: '#94a3b8',
 };
 
 const config = {} satisfies ChartConfig;
@@ -44,10 +47,11 @@ export default function CategoryRadial({ className }: { className?: string }) {
 
   const data = useMemo(() => {
     const cutoff = Date.now() - WINDOW_DAYS[range] * 86_400_000;
-    const byCat = new Map<Category, number>();
+    const byCat = new Map<string, number>();
     for (const it of items) {
       if (it.amount < 0 && !it.internal && it.ts > 0 && it.ts >= cutoff) {
-        byCat.set(it.category, (byCat.get(it.category) ?? 0) + Math.abs(it.amount));
+        const cat = it.spendCategory || 'Misc';
+        byCat.set(cat, (byCat.get(cat) ?? 0) + Math.abs(it.amount));
       }
     }
     return [...byCat.entries()]

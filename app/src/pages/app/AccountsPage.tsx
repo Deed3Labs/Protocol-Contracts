@@ -107,7 +107,8 @@ export default function AccountsPage() {
       const day = d.getDate();
       const amt = Math.abs(it.amount);
       totals[day] = (totals[day] || 0) + amt;
-      (byCat[day] ||= {})[it.category] = (byCat[day][it.category] || 0) + amt;
+      const cat = it.spendCategory || 'Misc';
+      (byCat[day] ||= {})[cat] = (byCat[day][cat] || 0) + amt;
     }
     const detail: Record<number, { category: string; amount: number }[]> = {};
     for (const [day, cats] of Object.entries(byCat)) {
