@@ -279,8 +279,13 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
         console.warn('XMTP: Wallet is not reachable, but proceeding with conversation creation...');
       }
       
-      // Create DM conversation using the resolved XMTP (EOA) address as the peer identifier.
-      const conversation = await client.conversations.newDm(target);
+      // Create the DM by ETHEREUM IDENTIFIER (address). newDm() takes an INBOX ID, not an address —
+      // passing an address makes the backend try to decode "0x…" as a hex inbox id and it fails with
+      // `invalid hexadecimal digit "x"`. newDmWithIdentifier resolves the address → inbox id for us.
+      const conversation = await client.conversations.newDmWithIdentifier({
+        identifier: target,
+        identifierKind: 'Ethereum',
+      });
 
       console.log('XMTP: Created conversation:', {
         conversationId: conversation.id,
@@ -390,11 +395,15 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
         return conversation;
       }
 
-      // Create a real XMTP group conversation with reachable members
-      const conversation = await client.conversations.newGroup(reachableMembers, {
-        name: name,
-        description: `Group created by ${await client.accountIdentifier}`
-      });
+      // Create a real XMTP group with the reachable members. newGroup() takes INBOX IDs; our members
+      // are Ethereum addresses, so use newGroupWithIdentifiers (same "0x…" hex-decode failure otherwise).
+      const conversation = await client.conversations.newGroupWithIdentifiers(
+        reachableMembers.map((address) => ({ identifier: address, identifierKind: 'Ethereum' as const })),
+        {
+          name: name,
+          description: `Group created by ${await client.accountIdentifier}`,
+        },
+      );
       console.log('XMTP: Created real group conversation:', conversation.id);
       
       // Store group metadata in localStorage for persistence
@@ -883,8 +892,11 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
           const conversation = conversations.find(c => c.id === group.id);
           if (conversation && conversation.constructor.name === 'Group') {
             try {
-              // Add members to the group
-              await (conversation as any).addMembers(reachableMembers);
+              // Add members by ETHEREUM IDENTIFIER — addMembers() takes INBOX IDs, and our members are
+              // addresses (same "0x…" hex-decode failure otherwise).
+              await (conversation as any).addMembersByIdentifiers(
+                reachableMembers.map((address: string) => ({ identifier: address, identifierKind: 'Ethereum' as const })),
+              );
               
               // Publish any prepared messages to the network
               await (conversation as any).publishMessages();
