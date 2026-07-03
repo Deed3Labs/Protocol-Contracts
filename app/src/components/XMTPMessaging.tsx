@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { 
   MessageCircle, 
@@ -13,7 +12,6 @@ import {
   User, 
   Loader2, 
   AlertCircle,
-  CheckCircle,
   X,
   Search,
   RefreshCw,
@@ -175,6 +173,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   const [deletedConversations, setDeletedConversations] = useState<Set<string>>(new Set());
   const [showHiddenConversations, setShowHiddenConversations] = useState(false);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   // Resolved peer wallet per DM conversation id — lets us title a DM by the contact's name even when
   // it was loaded from the network (not created this session, so no cached name).
   const [peerAddresses, setPeerAddresses] = useState<Record<string, string>>({});
@@ -657,11 +656,12 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   };
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || isSending) return;
 
+    setIsSending(true);
     try {
       console.log('XMTP: handleSendMessage called with selectedConversation:', selectedConversation);
-      
+
       // If no conversation is selected but we have an owner address, create one
       if (!selectedConversation && ownerAddress) {
         console.log('XMTP: No conversation selected, creating one with owner:', ownerAddress);
@@ -697,6 +697,8 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
       setNewMessage('');
     } catch (err) {
       console.error('Failed to send message:', err);
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -816,6 +818,14 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     return 'Direct Message';
   };
 
+  // Friendly one-liner under a conversation title. DMs are just "Direct message" (no member count —
+  // it was always "1 members"); groups show a correctly-pluralised member count.
+  const conversationSubtitle = (conversationId: string) => {
+    if (getConversationType(conversationId) === 'Direct Message') return 'Direct message';
+    const n = getConversationMembersCount(conversationId);
+    return `Group · ${n} member${n === 1 ? '' : 's'}`;
+  };
+
   const formatTimestamp = (timestamp: Date) => {
     const now = new Date();
     const diffInHours = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
@@ -861,52 +871,41 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
       {/* Modal Content */}
       <div className="fixed inset-0 z-[101] flex items-center justify-center p-0 sm:p-4">
         <div className="bg-card rounded-none sm:rounded-sm shadow-xl w-full h-full sm:max-w-6xl sm:h-[95vh] sm:max-h-[95vh] flex flex-col">
-        {/* Main Header */}
+        {/* Header — title + connection status on the left, actions on the right (single row) */}
         <div className="p-4 border-b border-border">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <MessageCircle className="w-6 h-6 text-info" />
-              <div>
-                <h2 className="font-display text-lg font-semibold text-foreground">
-                  {ownerAddress ? 'XMTP Messaging' : 'XMTP Inbox'}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center space-x-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-info/10 text-info">
+                <MessageCircle className="w-[18px] h-[18px]" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="font-display text-lg font-semibold leading-tight text-foreground">
+                  {ownerAddress ? 'Messaging' : 'Messages'}
                 </h2>
-                {ownerAddress ? (
-                  <p className="text-sm text-muted-foreground">
-                    {assetType} #{tokenId} • {formatAddress(ownerAddress)}
-                  </p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Your conversations and messages
-                  </p>
-                )}
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground truncate">
+                  {ownerAddress ? (
+                    <>{assetType} #{tokenId} • {formatAddress(ownerAddress)}</>
+                  ) : isConnected ? (
+                    <>
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-positive" />
+                      {isEmbeddedWallet ? 'Connected · Smart Account' : 'Connected'}
+                    </>
+                  ) : isConnecting ? (
+                    <>
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                      Connecting…
+                    </>
+                  ) : (
+                    <>
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
+                      Not connected
+                    </>
+                  )}
+                </p>
               </div>
             </div>
-            
-            {/* Status Badge */}
-            {isConnected ? (
-              <Badge variant="secondary" className="bg-green-100 dark:border-green-800 border-green-200 text-green-800 dark:bg-green-900 dark:text-green-200">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                <span className="hidden sm:inline">{isEmbeddedWallet ? "XMTP (Smart Account)" : "XMTP Connected"}</span>
-                <span className="sm:hidden">Connected</span>
-              </Badge>
-            ) : isConnecting ? (
-              <Badge variant="secondary" className="bg-yellow-100 border-yellow-200 text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                Connecting...
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="bg-secondary border-border text-secondary-foreground">
-                <AlertCircle className="w-3 h-3 mr-1" />
-                Not Connected
-              </Badge>
-            )}
-          </div>
-        </div>
 
-        {/* Action Buttons Subheader */}
-        <div className="p-3 border-b border-border">
-          <div className="flex items-center justify-between mx-0.75">
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2 shrink-0">
               {/* New Conversation Button */}
               {isConnected && (
                 <Dialog open={showNewConversationDialog} onOpenChange={setShowNewConversationDialog}>
@@ -1200,12 +1199,11 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                   )}
                 </Button>
               )}
-            </div>
-            
-            {/* Close Button */}
+            {/* Close */}
             <Button variant="outline" size="sm" onClick={onClose} className="px-3 bg-background">
               <X className="w-4 h-4" />
             </Button>
+            </div>
           </div>
         </div>
 
@@ -1362,25 +1360,10 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                         )}
                       </h3>
                       <p className="text-xs text-muted-foreground">
-                        {getConversationType(selectedConversation || '') === 'Real XMTP Group' || getConversationType(selectedConversation || '') === 'Optimistic Group'
-                          ? `Group Chat • ${getConversationMembersCount(selectedConversation || '')} members`
-                          : `Direct Message • ${getConversationMembersCount(selectedConversation || '')} members`
-                        }
+                        {conversationSubtitle(selectedConversation || '')}
                       </p>
                     </div>
                     <div className="flex items-center space-x-3">
-                      {isConnected && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={manualSync}
-                          disabled={isLoading || isAutoSyncing}
-                          title="Sync messages"
-                          className="px-3 bg-background"
-                        >
-                          <RefreshCw className={cn("w-4 h-4", (isAutoSyncing || isLoading) && "animate-spin")} />
-                        </Button>
-                      )}
                       <Button
                         variant="outline"
                         size="sm"
@@ -1467,10 +1450,10 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                     />
                     <Button 
                       onClick={handleSendMessage}
-                      disabled={!newMessage.trim() || isLoading}
+                      disabled={!newMessage.trim() || isSending}
                       className="flex-shrink-0 w-[44px] h-[44px] p-0 flex items-center justify-center bg-primary"
                     >
-                      {isLoading ? (
+                      {isSending ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <Send className="w-4 h-4 text-primary-foreground" />
@@ -1609,10 +1592,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                   {getConversationTitle(conversation)}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {getConversationType(conversation.id) === 'Real XMTP Group' || getConversationType(conversation.id) === 'Optimistic Group'
-                                    ? `Group Chat • ${getConversationMembersCount(conversation.id)} members`
-                                    : `Direct Message • ${getConversationMembersCount(conversation.id)} members`
-                                  }
+                                  {conversationSubtitle(conversation.id)}
                                 </p>
                               </div>
                             )}
@@ -1670,29 +1650,12 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                         )}
                       </h3>
                       <p className="text-xs text-muted-foreground">
-                        {getConversationType(selectedConversation || '') === 'Real XMTP Group' || getConversationType(selectedConversation || '') === 'Optimistic Group'
-                          ? `Group Chat • ${getConversationMembersCount(selectedConversation || '')} members`
-                          : `Direct Message • ${getConversationMembersCount(selectedConversation || '')} members`
-                        }
+                        {conversationSubtitle(selectedConversation || '')}
                       </p>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      {isConnected && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={handleManualSync}
-                          disabled={isLoading || isAutoSyncing}
-                          title="Sync messages"
-                          className="px-3 bg-background"
-                        >
-                          <RefreshCw className={cn("w-4 h-4", (isAutoSyncing || isLoading) && "animate-spin")} />
-                        </Button>
-                      )}
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Messages */}
                 <div ref={msgScrollDesktopRef} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
                   {currentMessages.map((message, index) => {
@@ -1766,10 +1729,10 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                     />
                     <Button 
                       onClick={handleSendMessage}
-                      disabled={!newMessage.trim() || isLoading}
+                      disabled={!newMessage.trim() || isSending}
                       className="flex-shrink-0 w-[44px] h-[44px] p-0 flex items-center justify-center bg-primary"
                     >
-                      {isLoading ? (
+                      {isSending ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <Send className="w-4 h-4 text-primary-foreground" />
