@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { getRpcUrl, getAlchemyRestUrl } from '../utils/rpc.js';
+import { getRpcUrl, getRpcUrls, getAlchemyRestUrl } from '../utils/rpc.js';
 import { computeUnitTracker } from '../utils/computeUnitTracker.js';
 import { withRetry, createRetryProvider } from '../utils/rpcRetry.js';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
@@ -97,17 +97,12 @@ export async function getBalance(
 /**
  * Get ERC20 token balance for an address
  */
-export async function getTokenBalance(
+async function readTokenBalanceOnce(
+  rpcUrl: string,
   chainId: number,
   tokenAddress: string,
   userAddress: string
 ): Promise<TokenBalanceData | null> {
-  try {
-    const rpcUrl = getRpcUrl(chainId);
-    if (!rpcUrl) {
-      return null;
-    }
-
     // Use retry provider to handle rate limits and network issues
     const provider = createRetryProvider(rpcUrl, chainId);
     
@@ -182,13 +177,34 @@ export async function getTokenBalance(
       balance: ethers.formatUnits(balance, decimals),
       balanceRaw: balance.toString(),
     };
-  } catch (error) {
-    // Only log non-BAD_DATA errors to avoid spam
-    if (error && typeof error === 'object' && 'code' in error && error.code !== 'BAD_DATA') {
-      console.error(`Error fetching token balance for ${tokenAddress} on chain ${chainId}:`, error);
+}
+
+/**
+ * Read an ERC20 balance, failing over across RPC endpoints (custom → Alchemy → public node). During an
+ * Alchemy outage / regional maintenance the primary read throws, and we retry on the public Base RPC —
+ * so USDC/CLRUSD balances keep loading. A deterministic "not an ERC20" (BAD_DATA) returns null without
+ * trying others.
+ */
+export async function getTokenBalance(
+  chainId: number,
+  tokenAddress: string,
+  userAddress: string
+): Promise<TokenBalanceData | null> {
+  const urls = getRpcUrls(chainId);
+  if (urls.length === 0) return null;
+  for (let i = 0; i < urls.length; i++) {
+    try {
+      return await readTokenBalanceOnce(urls[i], chainId, tokenAddress, userAddress);
+    } catch (error: any) {
+      if (error?.code === 'BAD_DATA' || error?.shortMessage?.includes('could not decode')) return null;
+      if (i === urls.length - 1) {
+        console.error(`Error fetching token balance for ${tokenAddress} on chain ${chainId} (all RPCs failed):`, error?.message || error);
+        return null;
+      }
+      // RPC/network failure on this endpoint — try the next (e.g. Alchemy down → public node).
     }
-    return null;
   }
+  return null;
 }
 
 /**
