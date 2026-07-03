@@ -20,11 +20,24 @@ const PAY_URL = 'https://pay.coinbase.com';
 const DEFAULT_NETWORK = 'base';
 const DEFAULT_ASSET = 'USDC';
 
+// Resolve the CDP API key the same way the relayer does (SEND_CDP_* is what's set on Railway), with an
+// optional CDP_ONRAMP_* override — the same Secret API key works for all CDP APIs once Onramp is enabled.
 function keyId(): string | null {
-  return (process.env.CDP_ONRAMP_API_KEY_ID || process.env.CDP_API_KEY_ID || process.env.CDP_API_KEY_NAME || '').trim() || null;
+  return (
+    process.env.CDP_ONRAMP_API_KEY_ID ||
+    process.env.SEND_CDP_API_KEY_ID ||
+    process.env.CDP_API_KEY_ID ||
+    process.env.CDP_API_KEY_NAME ||
+    ''
+  ).trim() || null;
 }
 function keySecret(): string | null {
-  return (process.env.CDP_ONRAMP_API_KEY_SECRET || process.env.CDP_API_KEY_SECRET || '').trim() || null;
+  return (
+    process.env.CDP_ONRAMP_API_KEY_SECRET ||
+    process.env.SEND_CDP_API_KEY_SECRET ||
+    process.env.CDP_API_KEY_SECRET ||
+    ''
+  ).trim() || null;
 }
 
 /** Map the UI's payment-method id to Coinbase's enum. Guest checkout (no Coinbase login) is offered by
