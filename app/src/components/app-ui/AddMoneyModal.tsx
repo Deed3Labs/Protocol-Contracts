@@ -146,7 +146,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     }
   };
 
-  // Fire a "Deposit canceled" notification if the user backs out of an in-flight buy before it completes.
+  // Explicit cancel (Apple Pay iframe cancel / back button) — definitive, so notify immediately.
   const cancelDeposit = () => {
     const p = pendingBuyRef.current;
     if (!p) return;
@@ -154,10 +154,27 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     void rampEvent({ type: 'buy', status: 'canceled', amount: p.amount, walletAddress: p.wallet, ref: p.ref });
   };
 
-  // Backing out (closing the modal) before a started deposit completes → notify it was canceled.
+  // Closing the modal is ambiguous (they may have paid on Coinbase's page and it's still processing), so
+  // do one final status check first: SUCCESS → "Money added"; NO transaction at all → truly abandoned →
+  // "canceled"; anything in-flight → leave it for the poll/webhook.
+  const finalizePendingBuyOnClose = () => {
+    const p = pendingBuyRef.current;
+    if (!p) return;
+    pendingBuyRef.current = null;
+    void (async () => {
+      const s = await getRampBuyStatus(p.wallet).catch(() => ({ status: null as string | null, id: undefined }));
+      const st = String(s.status || '');
+      if (/SUCCESS/i.test(st)) {
+        void rampEvent({ type: 'buy', status: 'completed', amount: p.amount, walletAddress: p.wallet, ref: s.id || p.ref });
+      } else if (!st) {
+        void rampEvent({ type: 'buy', status: 'canceled', amount: p.amount, walletAddress: p.wallet, ref: p.ref });
+      }
+    })();
+  };
+
   useEffect(() => {
     if (open) return;
-    cancelDeposit();
+    finalizePendingBuyOnClose();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
