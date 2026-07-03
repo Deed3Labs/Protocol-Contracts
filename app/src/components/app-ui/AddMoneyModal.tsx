@@ -232,7 +232,21 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
       } else if (eventName === 'onramp_api.cancel') {
         setPayUrl(null);
         setStep('review');
-      } else if (eventName === 'onramp_api.commit_error' || eventName === 'onramp_api.load_error' || eventName === 'onramp_api.polling_error') {
+      } else if (eventName === 'onramp_api.load_error') {
+        // The iframe couldn't initialize (commonly: domain not yet verified with Coinbase) → fall back to
+        // the hosted Coinbase checkout so the user isn't stuck on a blank Apple Pay sheet.
+        setPayUrl(null);
+        void (async () => {
+          const { url } = await createRampBuySession({ amount, paymentMethod: rampPM(methodId), walletAddress: wallet.address, quoteId });
+          if (url) {
+            window.open(url, '_blank', 'noopener,noreferrer');
+            setStep('status');
+          } else {
+            setCheckoutError('Couldn’t start checkout — try another amount or method.');
+            setStep('review');
+          }
+        })();
+      } else if (eventName === 'onramp_api.commit_error' || eventName === 'onramp_api.polling_error') {
         setPayUrl(null);
         setCheckoutError('Payment couldn’t be completed — try again or use another method.');
         setStep('review');
