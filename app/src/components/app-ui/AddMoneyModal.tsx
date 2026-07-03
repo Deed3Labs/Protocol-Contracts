@@ -214,16 +214,29 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const amountValid = amount >= 5 && amount <= 10000;
   const isBank = methodId === 'bank';
 
-  // Coinbase's Apple Pay iframe posts transaction-status events; treat a success/completion as done.
+  // Coinbase's headless onramp iframe posts `onramp_api.*` events ({ eventName, data }). Once the user
+  // commits the payment we move to the status step, which polls Coinbase for the real on-chain completion
+  // (and fires the "Money added" notification + balance refresh). Cancel/error return to review.
   useEffect(() => {
     if (step !== 'pay') return;
     const onMsg = (e: MessageEvent) => {
-      if (!/\.coinbase\.com$/.test((() => { try { return new URL(e.origin).hostname; } catch { return ''; } })())) return;
-      const d = e.data;
-      const s = typeof d === 'string' ? d : JSON.stringify(d ?? '');
-      // The iframe reports the Apple Pay press succeeded → move to the status step, which polls Coinbase
-      // for the real on-chain completion (and fires the "Money added" notification + balance refresh).
-      if (/success|completed|complete|finished|TRANSACTION_STATUS_SUCCESS/i.test(s)) setStep('status');
+      const host = (() => { try { return new URL(e.origin).hostname; } catch { return ''; } })();
+      if (!/\.coinbase\.com$/.test(host)) return;
+      let eventName = '';
+      try {
+        const obj = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        eventName = String(obj?.eventName || obj?.event || '');
+      } catch { /* non-JSON message — ignore */ }
+      if (eventName === 'onramp_api.commit_success' || eventName === 'onramp_api.polling_success') {
+        setStep('status');
+      } else if (eventName === 'onramp_api.cancel') {
+        setPayUrl(null);
+        setStep('review');
+      } else if (eventName === 'onramp_api.commit_error' || eventName === 'onramp_api.load_error' || eventName === 'onramp_api.polling_error') {
+        setPayUrl(null);
+        setCheckoutError('Payment couldn’t be completed — try again or use another method.');
+        setStep('review');
+      }
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
@@ -624,6 +637,8 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
               title="Coinbase Pay"
               src={payUrl}
               allow="payment"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              referrerPolicy="no-referrer"
               className="h-[420px] w-full rounded-xl border border-border bg-background"
             />
             <button

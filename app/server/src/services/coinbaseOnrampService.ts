@@ -40,6 +40,16 @@ function keySecret(): string | null {
   ).trim() || null;
 }
 
+/** Sandbox mode (RAMP_SANDBOX=true, set on dev/preview): transactions always succeed and the card is
+ *  never charged. Enabled by a `sandbox-` partnerUserRef prefix + a useApplePaySandbox=true URL param. */
+export function isRampSandbox(): boolean {
+  return /^(true|1|yes)$/i.test((process.env.RAMP_SANDBOX || '').trim());
+}
+/** Prefix a ref for sandbox so the order, the status poll and the webhook all agree on the same id. */
+export function sandboxRef(ref: string): string {
+  return isRampSandbox() && !ref.startsWith('sandbox-') ? `sandbox-${ref}` : ref;
+}
+
 /** Map the UI's payment-method id to Coinbase's enum. Guest checkout (no Coinbase login) is offered by
  *  the widget automatically when eligible, so we pass the plain method and let Coinbase pick the lane. */
 export function toCoinbasePaymentMethod(methodId?: string): string {
@@ -185,15 +195,16 @@ export const coinbaseOnrampService = {
       // The user is verified via Privy at login; we attest the verification time (no separate SMS step).
       phoneNumberVerifiedAt: now,
       agreementAcceptedAt: now,
-      partnerUserRef: params.partnerUserRef,
+      partnerUserRef: sandboxRef(params.partnerUserRef),
       domain: params.domain,
     });
-    const url = data?.paymentLink?.url || data?.payment_link?.url;
+    let url = data?.paymentLink?.url || data?.payment_link?.url;
     if (!url) {
       const err = new Error('Coinbase order payment link missing') as Error & { raw?: unknown };
       err.raw = data;
       throw err;
     }
+    if (isRampSandbox()) url = `${url}${String(url).includes('?') ? '&' : '?'}useApplePaySandbox=true`;
     return {
       paymentLinkUrl: String(url),
       paymentLinkType: data?.paymentLink?.paymentLinkType || data?.payment_link?.paymentLinkType,
@@ -234,7 +245,7 @@ export const coinbaseOnrampService = {
    * notify + refresh the balance) for both the hosted-redirect and the Apple Pay iframe flows.
    */
   async getBuyStatus(partnerUserRef: string): Promise<OnrampBuyStatus | null> {
-    const path = `/onramp/v1/buy/user/${encodeURIComponent(partnerUserRef)}/transactions?page_size=1`;
+    const path = `/onramp/v1/buy/user/${encodeURIComponent(sandboxRef(partnerUserRef))}/transactions?page_size=1`;
     const data = await this.apiFetch('GET', path);
     const tx = Array.isArray(data?.transactions) ? data.transactions[0] : undefined;
     if (!tx) return null;
