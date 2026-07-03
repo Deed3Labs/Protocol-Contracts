@@ -65,7 +65,10 @@ router.post('/', async (req: RawBodyRequest, res: Response) => {
     const type: RampType = eventType.startsWith('offramp') ? 'sell' : 'buy';
     // Wallet: guest-checkout uses walletAddress; the headless order uses destinationAddress; both carry
     // partnerUserRef (which we set to the lowercased wallet).
-    const wallet = String(e.walletAddress || e.destinationAddress || e.partnerUserRef || '').toLowerCase();
+    // partnerUserRef may carry a `sandbox-` prefix (test mode); the wallet is what's after it.
+    const wallet = String(e.walletAddress || e.destinationAddress || e.partnerUserRef || '')
+      .replace(/^sandbox-/i, '')
+      .toLowerCase();
     // Amount: guest payload is an object { value }, the headless order is a plain string.
     const rawAmt = e.purchaseAmount ?? e.sellAmount ?? e.amount;
     const amount = Number(typeof rawAmt === 'object' && rawAmt ? rawAmt.value : rawAmt) || 0;
