@@ -31,6 +31,7 @@ import notificationsRouter from './routes/notifications.js';
 import requestsRouter from './routes/requests.js';
 import onramperRouter from './routes/onramper.js';
 import onramperWebhookRouter from './routes/onramperWebhook.js';
+import rampRouter from './routes/ramp.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
 import { startAutopayRunner } from './jobs/autopayRunner.js';
@@ -201,6 +202,7 @@ async function startServer() {
     app.use('/api/notifications', requireAuth, notificationsRouter);
     app.use('/api/requests', requireAuth, requestsRouter);
     app.use('/api/onramper', requireAuth, onramperRouter);
+    app.use('/api/ramp', requireAuth, rampRouter);
 
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');

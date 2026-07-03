@@ -6,7 +6,7 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useBridge } from '@/context/BridgeContext';
 import { useKyc } from '@/context/KycContext';
 import DepositInstructions from '@/components/app-ui/DepositInstructions';
-import { getOnramperQuotes, createOnramperCheckout, type OnramperQuote } from '@/utils/apiClient';
+import { getRampBuyQuote, createRampBuySession, type RampQuote } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -40,17 +40,14 @@ interface QuoteVM {
   payout: number;
 }
 const prettyRamp = (id: string) => (id ? id.charAt(0).toUpperCase() + id.slice(1) : 'Provider');
-// Map Onramper's /quotes array → the UI shape (USDC ≈ $1, so payout in USDC ≈ USD value).
-function mapQuotes(raw: OnramperQuote[], amount: number): QuoteVM[] {
-  return raw
-    .map((q) => {
-      const payout = Number(q.payout) || 0;
-      return { p: { id: String(q.ramp), name: prettyRamp(String(q.ramp)) }, payout, fee: Math.max(0, amount - payout) };
-    })
-    .filter((q) => q.payout > 0)
-    .sort((a, b) => b.payout - a.payout);
+// Normalize the unified ramp quote → the UI shape (USDC ≈ $1). The provider (Coinbase / Onramper) is
+// picked server-side, so there's one best quote; `fee` is the summed provider + network fee.
+function toQuoteVM(q: RampQuote, amount: number): QuoteVM {
+  const fees = (q.coinbaseFee ?? 0) + (q.networkFee ?? 0);
+  const fee = fees > 0 ? fees : Math.max(0, amount - (q.cryptoAmount ?? amount));
+  return { p: { id: q.provider, name: prettyRamp(q.provider) }, fee, payout: Math.max(0, amount - fee) };
 }
-const onramperPM = (methodId: string) => (methodId === 'applepay' ? 'applepay' : 'creditcard');
+const rampPM = (methodId: string) => (methodId === 'applepay' ? 'applepay' : 'creditcard');
 
 /*
  * Bank funding rails. A bank deposit pulls fiat from a Plaid-linked account through the user's
@@ -80,6 +77,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const [sourceOpen, setSourceOpen] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [apiQuotes, setApiQuotes] = useState<QuoteVM[]>([]);
+  const [quoteId, setQuoteId] = useState<string | undefined>(undefined); // locked-quote id for checkout
   const [quotesLoading, setQuotesLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -105,11 +103,11 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     }
     setCheckoutError(null);
     setCheckoutLoading(true);
-    const { url } = await createOnramperCheckout({
-      onramp: selected.p.id,
+    const { url } = await createRampBuySession({
       amount,
-      paymentMethod: onramperPM(methodId),
+      paymentMethod: rampPM(methodId),
       walletAddress: wallet.address,
+      quoteId,
     });
     setCheckoutLoading(false);
     if (url) {
@@ -134,6 +132,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     setSourceOpen(false);
     setDepositOpen(false);
     setApiQuotes([]);
+    setQuoteId(undefined);
     setCheckoutError(null);
     setCheckoutLoading(false);
   }, [open]);
@@ -156,18 +155,20 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     (providerId ? quotes.find((q) => q.p.id === providerId) : null) ??
     best ?? { p: { id: '', name: '—' }, fee: 0, payout: amount };
 
-  // Live Onramper quotes for card / Apple Pay (debounced); bank uses the Bridge rail instead.
+  // Live ramp quote for card / Apple Pay (debounced); bank uses the Bridge rail instead.
   useEffect(() => {
     if (!open || isBank || !amountValid) {
       setApiQuotes([]);
+      setQuoteId(undefined);
       return;
     }
     let cancelled = false;
     setQuotesLoading(true);
     const t = setTimeout(async () => {
-      const raw = await getOnramperQuotes({ amount, paymentMethod: onramperPM(methodId), walletAddress: wallet.address || undefined });
+      const q = await getRampBuyQuote({ amount, paymentMethod: rampPM(methodId), walletAddress: wallet.address || undefined });
       if (cancelled) return;
-      setApiQuotes(mapQuotes(raw, amount));
+      setApiQuotes(q ? [toQuoteVM(q, amount)] : []);
+      setQuoteId(q?.quoteId);
       setQuotesLoading(false);
     }, 350);
     return () => {
