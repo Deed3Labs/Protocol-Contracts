@@ -6,7 +6,7 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useBridge } from '@/context/BridgeContext';
 import { useKyc } from '@/context/KycContext';
 import DepositInstructions from '@/components/app-ui/DepositInstructions';
-import { getRampBuyQuote, createRampBuySession, type RampQuote } from '@/utils/apiClient';
+import { getRampBuyQuote, createRampBuySession, getRampConfig, type RampQuote } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -78,6 +78,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const [depositOpen, setDepositOpen] = useState(false);
   const [apiQuotes, setApiQuotes] = useState<QuoteVM[]>([]);
   const [quoteId, setQuoteId] = useState<string | undefined>(undefined); // locked-quote id for checkout
+  const [rampConfigured, setRampConfigured] = useState<boolean | null>(null); // null = unknown yet
   const [quotesLoading, setQuotesLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -135,6 +136,15 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     setQuoteId(undefined);
     setCheckoutError(null);
     setCheckoutLoading(false);
+  }, [open]);
+
+  // Whether the ramp provider is actually configured — lets us explain an empty quote (setup pending
+  // vs no coverage) instead of a vague "no providers".
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    getRampConfig().then((c) => { if (!cancelled) setRampConfigured(c.configured); }).catch(() => { if (!cancelled) setRampConfigured(false); });
+    return () => { cancelled = true; };
   }, [open]);
 
   useEffect(() => {
@@ -466,7 +476,9 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                 </div>
               ) : quotes.length === 0 ? (
                 <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2 text-[11px] text-muted-foreground">
-                  No providers available right now — check back soon.
+                  {rampConfigured === false
+                    ? 'Card & Apple Pay top-ups are being set up — use a bank transfer for now.'
+                    : 'No quote available for this amount right now — try a different amount or method.'}
                 </div>
               ) : (
                 <>
