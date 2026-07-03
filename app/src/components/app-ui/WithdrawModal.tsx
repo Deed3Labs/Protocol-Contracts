@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, Landmark, Loader2, ShieldCheck, Sparkles, TriangleAlert, Wallet, Zap, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
@@ -96,6 +96,9 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offrampStage, setOfframpStage] = useState<'idle' | 'waiting' | 'sending'>('idle');
+  // Set while an off-ramp is awaiting the user's Coinbase confirmation; if they back out first, fire a
+  // "Cash-out canceled" notification from this.
+  const pendingSellRef = useRef<{ amount: number; wallet: string } | null>(null);
   // Source can be the Clear account OR a linked wallet. Withdrawing from a linked wallet first moves its
   // USDC into the smart wallet (gasless, EIP-3009), then Bridge off-ramps the smart wallet (below).
   const { wallets, primaryId, openManager } = useLinkedWallets();
@@ -107,6 +110,21 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const { address, embeddedWalletInfo } = useAppKitAccount();
   const { getClientForChain } = useSmartWallets();
   const bal = useClearBalances();
+
+  // Fire a "Cash-out canceled" notification if the user backs out of an off-ramp before confirming it.
+  const cancelWithdraw = () => {
+    const p = pendingSellRef.current;
+    if (!p) return;
+    pendingSellRef.current = null;
+    void rampEvent({ type: 'sell', status: 'canceled', amount: p.amount, walletAddress: p.wallet, ref: crypto.randomUUID() });
+  };
+
+  // Closing the modal mid-cash-out (before the Coinbase confirmation) → notify it was canceled.
+  useEffect(() => {
+    if (open) return;
+    cancelWithdraw();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Sign an EIP-3009 authorization with a SPECIFIC linked wallet's own provider (for move-then-withdraw).
   const signWithLinkedWallet = async (fromAddr: string, typedData: Eip712TypedData): Promise<string> => {
@@ -177,11 +195,17 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
             setDone(true);
             return;
           }
-          // Wait for the user to confirm in Coinbase, then send the exact USDC they cashed out.
+          // Wait for the user to confirm in Coinbase, then send the exact USDC they cashed out. Track it
+          // as pending so backing out before confirming fires a "Cash-out canceled" notification.
           setOfframpStage('waiting');
+          pendingSellRef.current = { amount, wallet: address };
           const started = await pollForOfframpSend(partnerUserRef, () => cancelled);
           if (cancelled) return;
-          if (!started) throw new Error('Timed out waiting for your Coinbase cash-out. Reopen Withdraw to try again.');
+          if (!started) {
+            cancelWithdraw();
+            throw new Error('Timed out waiting for your Coinbase cash-out. Reopen Withdraw to try again.');
+          }
+          pendingSellRef.current = null; // confirmed → send it (not a cancel)
           setOfframpStage('sending');
           const c = clearContracts(ACTIVE_CHAIN_ID);
           if (!c) throw new Error('Instant cash-out is unavailable on this network.');

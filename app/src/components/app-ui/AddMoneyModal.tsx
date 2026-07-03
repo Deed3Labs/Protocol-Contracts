@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, CreditCard, Landmark, Loader2, Smartphone, ShieldCheck, Sparkles, Wallet, Zap, Send, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
@@ -69,6 +69,9 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const [step, setStep] = useState<'amount' | 'review' | 'status' | 'pay'>('amount');
   const [payUrl, setPayUrl] = useState<string | null>(null); // Coinbase Apple Pay iframe (headless)
   const [rampRef, setRampRef] = useState(''); // unique id per checkout attempt, for status notifications
+  // Snapshot of an in-flight buy; set when checkout starts, cleared on completion. If the user backs out
+  // before it completes, we fire a "Deposit canceled" notification from this.
+  const pendingBuyRef = useRef<{ ref: string; amount: number; wallet: string } | null>(null);
   const [amountStr, setAmountStr] = useState('');
   const [methodId, setMethodId] = useState('card');
   const [walletId, setWalletId] = useState('');
@@ -114,6 +117,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     setCheckoutLoading(true);
     const ref = crypto.randomUUID();
     setRampRef(ref);
+    pendingBuyRef.current = { ref, amount, wallet: wallet.address };
     void rampEvent({ type: 'buy', status: 'submitted', amount, walletAddress: wallet.address, ref });
     // Apple Pay on Coinbase → headless order rendered in an in-app iframe (needs verified email + phone).
     if (methodId === 'applepay' && selected.p.id === 'coinbase' && buyerEmail && buyerPhone) {
@@ -141,6 +145,21 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
       setCheckoutError('Could not start checkout — try another amount or method.');
     }
   };
+
+  // Fire a "Deposit canceled" notification if the user backs out of an in-flight buy before it completes.
+  const cancelDeposit = () => {
+    const p = pendingBuyRef.current;
+    if (!p) return;
+    pendingBuyRef.current = null;
+    void rampEvent({ type: 'buy', status: 'canceled', amount: p.amount, walletAddress: p.wallet, ref: p.ref });
+  };
+
+  // Backing out (closing the modal) before a started deposit completes → notify it was canceled.
+  useEffect(() => {
+    if (open) return;
+    cancelDeposit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -189,12 +208,14 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
         // Use Coinbase's tx id as the ref so this dedupes with the webhook's notification.
         const ref = s.id || rampRef || `${wallet.address}-buy`;
         if (s.status === 'TRANSACTION_STATUS_SUCCESS') {
+          pendingBuyRef.current = null; // completed → don't fire a cancel on close
           void rampEvent({ type: 'buy', status: 'completed', amount, walletAddress: wallet.address, ref });
           bal.refresh(); // USDC has landed on-chain → pull the real balance
           setDone(true);
           return;
         }
         if (s.status === 'TRANSACTION_STATUS_FAILED') {
+          pendingBuyRef.current = null;
           void rampEvent({ type: 'buy', status: 'failed', amount, walletAddress: wallet.address, ref });
           setCheckoutError('Your deposit didn’t go through — you weren’t charged.');
           return;
@@ -230,6 +251,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
       if (eventName === 'onramp_api.commit_success' || eventName === 'onramp_api.polling_success') {
         setStep('status');
       } else if (eventName === 'onramp_api.cancel') {
+        cancelDeposit();
         setPayUrl(null);
         setStep('review');
       } else if (eventName === 'onramp_api.load_error') {
@@ -642,7 +664,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
         {step === 'pay' && payUrl && (
           <div className="flex flex-col px-4 pb-4 pt-2">
             <div className="mb-3 flex items-center gap-2 px-2">
-              <button type="button" onClick={() => setStep('review')} className="text-muted-foreground transition-colors hover:text-foreground">
+              <button type="button" onClick={() => { cancelDeposit(); setStep('review'); }} className="text-muted-foreground transition-colors hover:text-foreground">
                 <ArrowLeft className="h-4 w-4" />
               </button>
               <div className="text-sm font-semibold text-foreground">Pay {fmt(amount)} with Apple Pay</div>
