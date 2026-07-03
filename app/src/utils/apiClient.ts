@@ -2512,10 +2512,21 @@ export async function createRampBuyOrder(p: {
   email: string;
   phone: string;
   paymentMethod?: 'GUEST_CHECKOUT_APPLE_PAY' | 'GUEST_CHECKOUT_CARD';
-}): Promise<{ paymentLinkUrl: string | null; error?: string; code?: string }> {
-  const r = await apiRequest<{ paymentLinkUrl: string | null }>(`/api/ramp/buy/order`, { method: 'POST', body: JSON.stringify(p) });
+}): Promise<{ paymentLinkUrl: string | null; orderId?: string; error?: string; code?: string }> {
+  const r = await apiRequest<{ paymentLinkUrl: string | null; orderId?: string }>(`/api/ramp/buy/order`, { method: 'POST', body: JSON.stringify(p) });
   if (r.error || !r.data) return { paymentLinkUrl: null, error: r.error || 'Order failed' };
-  return { paymentLinkUrl: r.data.paymentLinkUrl };
+  return { paymentLinkUrl: r.data.paymentLinkUrl, orderId: r.data.orderId };
+}
+
+/** Record a ramp order's status + fire a notification (deposit started/complete, cash-out sent, …). */
+export async function rampEvent(p: {
+  type: 'buy' | 'sell';
+  status: 'submitted' | 'completed' | 'failed';
+  amount: number;
+  walletAddress: string;
+  ref: string;
+}): Promise<void> {
+  await apiRequest(`/api/ramp/event`, { method: 'POST', body: JSON.stringify(p) }).catch(() => {});
 }
 
 /** Create a buy session → hosted checkout URL to redirect the user to. */

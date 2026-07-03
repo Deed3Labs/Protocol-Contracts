@@ -13,7 +13,7 @@ import { useAppKitAccount } from '@/lib/walletCompat';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import { gaslessWalletTransfer } from '@/lib/gaslessMoney';
 import { scTransferToken } from '@/lib/sendCalls';
-import { withdrawToBank, createRampSellSession, getRampSellStatus, type RampSellStatus, type Eip712TypedData } from '@/utils/apiClient';
+import { withdrawToBank, createRampSellSession, getRampSellStatus, rampEvent, type RampSellStatus, type Eip712TypedData } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -196,6 +196,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
             chainId: ACTIVE_CHAIN_ID,
           });
           if (cancelled) return;
+          void rampEvent({ type: 'sell', status: 'submitted', amount: Number(started.amount), walletAddress: address, ref: crypto.randomUUID() });
           setDone(true);
           if (!sourceWallet?.external) bal.applyOptimistic(-Number(started.amount), 0);
           return;
@@ -227,7 +228,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const selected = (providerId ? quotes.find((q) => q.p.id === providerId) : null) ?? best;
   const wallet = wallets.find((w) => w.id === walletId) ?? wallets[0] ?? { id: '', label: 'No wallet linked', address: '' };
   const bank = banks.find((b) => b.id === bankId) ?? banks[0] ?? { id: '', label: 'No bank linked' };
-  const amountValid = amount >= 10 && amount <= 10000;
+  const amountValid = amount >= 1 && amount <= 10000;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -317,7 +318,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
                 Review
               </button>
             )}
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Withdraw $10–$10,000'}</p>
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Withdraw $1–$10,000'}</p>
           </div>
         )}
 
