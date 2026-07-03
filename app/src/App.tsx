@@ -12,6 +12,7 @@ import { ModalProvider } from "@/context/ModalContext";
 import { PortfolioProvider } from "@/context/PortfolioContext";
 import { GlobalModalsProvider } from "@/context/GlobalModalsContext";
 import ScrollToTop from "@/components/ScrollToTop";
+import PwaInstallTakeover from "@/components/PwaInstallTakeover";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { ShareTarget } from "@/pages/auth/ShareTarget";
 import ClaimFunds from "@/pages/auth/ClaimFunds";
@@ -82,6 +83,7 @@ function App() {
                   
                   <OfflineIndicator />
                   <PWAInitializer />
+                  <PwaInstallTakeover />
                   
                   <Routes>
                     {/* Login Page - Public */}
