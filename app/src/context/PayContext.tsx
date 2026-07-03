@@ -52,25 +52,28 @@ export type BillerDraft = Omit<Bill, 'id' | 'icon' | 'source' | 'payable' | 'pay
 /** On-time streak fallback when no summary is loaded yet. */
 export const ON_TIME_STREAK = 0;
 
-/** Streak multiplier: +5% per on-time month, capped at 12 months (1.0×–1.6×). */
-export const streakMultiplier = (streak = ON_TIME_STREAK) => 1 + Math.min(Math.max(streak, 0), 12) * 0.05;
-
-/** Non-rent bills earn 1 equity credit per $2 paid, with the base capped here (before multipliers). */
-export const BILL_CREDIT_RATE = 0.5;
+/** Non-rent bills earn 10% of the payment as base credits (capped); rent earns a flat base. */
+export const BILL_CREDIT_RATE = 0.1;
 export const BILL_CREDIT_CAP = 500;
+export const RENT_BASE_CREDITS = 200;
+export const MAX_MULTIPLIER = 1.5;
 
 /**
- * Clear Pay equity credits for paying a bill ON TIME (preview of what the backend awards). Rent is a
- * flat 300 base; non-rent bills earn 1 credit per $2 paid (base capped at 500) — so a small dollar
- * payment no longer earns the old flat 50. Then × the on-time streak multiplier. NON-redeemable —
- * credits only count toward the Clear Deed milestone. Never interest/APY. Pass `amount` to price the
- * exact payment; otherwise the biller's default amount is used.
+ * Reward multiplier: Accelerated-track members get the full 1.5×; standard members ramp toward it with
+ * their on-time streak (+0.25× every 6 on-time months, capped at 1.5×). Mirrors the backend.
  */
-export const creditsFor = (bill: Pick<Bill, 'type' | 'amount'>, streak = ON_TIME_STREAK, amount = 0) => {
-  const mult = streakMultiplier(streak);
-  if (bill.type === 'rent') return Math.round((300 * mult) / 5) * 5;
-  const paid = amount > 0 ? amount : bill.amount || 0;
-  const base = Math.min(paid * BILL_CREDIT_RATE, BILL_CREDIT_CAP);
+export const rewardMultiplier = (streak = ON_TIME_STREAK, accelerated = false) =>
+  accelerated ? MAX_MULTIPLIER : Math.min(1 + Math.floor(Math.max(streak, 0) / 6) * 0.25, MAX_MULTIPLIER);
+
+/**
+ * Clear Pay equity credits for paying a bill ON TIME (preview of what the backend awards). Rent: flat
+ * 200 base. Non-rent bills: 10% of the payment (base capped at 500). Both × the reward multiplier
+ * (1.0–1.5, from the on-time streak or Accelerated track). NON-redeemable — credits only count toward
+ * the Clear Deed milestone. Never interest/APY. Pass `amount` for the exact payment; else the default.
+ */
+export const creditsFor = (bill: Pick<Bill, 'type' | 'amount'>, streak = ON_TIME_STREAK, amount = 0, accelerated = false) => {
+  const mult = rewardMultiplier(streak, accelerated);
+  const base = bill.type === 'rent' ? RENT_BASE_CREDITS : Math.min((amount > 0 ? amount : bill.amount || 0) * BILL_CREDIT_RATE, BILL_CREDIT_CAP);
   return Math.round(base * mult);
 };
 

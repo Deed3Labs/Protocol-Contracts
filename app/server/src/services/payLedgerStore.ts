@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { getPayPool } from '../config/postgres.js';
 import { encryptSendContact, decryptSendContact } from '../utils/sendEncryption.js';
 import { notificationStore } from './notificationStore.js';
+import { memberStore } from './memberStore.js';
 
 /*
  * Clear Pay rent/bill → equity-credit ledger (off-chain, Railway Postgres). Append-only credit rows
@@ -18,9 +19,10 @@ export type EarnSource = 'in_app' | 'detected';
 
 const GRACE_DAYS = 3; // paid within N days of due_date still counts as on-time
 const VEST_DAYS = 30; // pending → vested clawback/settlement window
-const IN_APP_BONUS = 1.1; // paying through the app earns a 10% bonus
-const BILL_CREDIT_RATE = 0.5; // non-rent bills earn 1 equity credit per $2 paid
-const BILL_CREDIT_CAP = 500; // max BASE credits from a single non-rent bill (before streak/in-app bonus)
+const BILL_CREDIT_RATE = 0.1; // non-rent bills earn 10% of the payment as BASE credits
+const BILL_CREDIT_CAP = 500; // max BASE credits from a single non-rent bill (before the multiplier)
+const RENT_BASE_CREDITS = 200; // rent earns a flat base per on-time payment
+const MAX_MULTIPLIER = 1.5; // Accelerated-plan members + top on-time streaks
 const DEPOSIT_MATCH_PER_USD = 1; // equity credits matched per $1 deposited into the ESA vault
 const DEPOSIT_MATCH_MONTHLY_CAP = 1500; // max deposit-match credits awarded per calendar month
 
@@ -38,22 +40,24 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** +5% per on-time month, capped at 12 (1.0×–1.6×). Mirrors the frontend streakMultiplier. */
-function streakMultiplier(streak: number): number {
-  return 1 + Math.min(Math.max(streak, 0), 12) * 0.05;
+/**
+ * Reward multiplier on the base credits. Accelerated-plan members (membershipPlan LIFETIME) get the full
+ * 1.5×; standard members ramp toward it with their on-time streak (+0.25× every 6 on-time months, capped
+ * at 1.5×). Mirrors the frontend rewardMultiplier.
+ */
+function rewardMultiplier(streak: number, accelerated: boolean): number {
+  if (accelerated) return MAX_MULTIPLIER;
+  return Math.min(1 + Math.floor(Math.max(streak, 0) / 6) * 0.25, MAX_MULTIPLIER);
 }
 
 /**
- * Equity credits for an on-time payment.
- *  - Rent: a flat 300 base × streak × in-app bonus, rounded to 5.
- *  - Non-rent bills: 1 credit per $2 paid, the BASE capped at 500, then × streak × in-app bonus
- *    (so a small dollar payment no longer earns the old flat 50). Rounded to the nearest credit.
+ * Equity credits for an on-time payment, rounded to the nearest credit:
+ *  - Rent: a flat 200 base (× multiplier → 300 for Accelerated / 12-month streaks).
+ *  - Non-rent bills: 10% of the payment, base capped at 500, × the multiplier.
  */
-function creditAmount(type: BillerType, streak: number, source: EarnSource, paidAmount: number): number {
-  const bonus = source === 'in_app' ? IN_APP_BONUS : 1;
-  const mult = streakMultiplier(streak) * bonus;
-  if (type === 'rent') return Math.round((300 * mult) / 5) * 5;
-  const base = Math.min(Math.max(paidAmount, 0) * BILL_CREDIT_RATE, BILL_CREDIT_CAP);
+function creditAmount(type: BillerType, streak: number, accelerated: boolean, paidAmount: number): number {
+  const mult = rewardMultiplier(streak, accelerated);
+  const base = type === 'rent' ? RENT_BASE_CREDITS : Math.min(Math.max(paidAmount, 0) * BILL_CREDIT_RATE, BILL_CREDIT_CAP);
   return Math.round(base * mult);
 }
 
@@ -176,14 +180,15 @@ function rowToBiller(r: Record<string, unknown>): Biller {
   };
 }
 
-/** Consecutive months (ending at the most recent) with an on-time rent payment. */
+/** Consecutive months (ending at the most recent) with an on-time payment of any kind (drives the reward
+ *  multiplier ramp). */
 async function computeStreak(wallet: string): Promise<number> {
   const pool = getPayPool();
   if (!pool) return 0;
   const r = await pool.query(
     `SELECT DISTINCT to_char(date_trunc('month', paid_at), 'YYYY-MM') AS m
        FROM pay_payments
-      WHERE wallet = $1 AND type = 'rent' AND on_time = true
+      WHERE wallet = $1 AND on_time = true
       ORDER BY m DESC`,
     [wallet],
   );
@@ -380,7 +385,8 @@ export const payLedgerStore = {
     if (!onTime) return { creditAwarded: 0, onTime, duplicate: false };
 
     const streak = await computeStreak(input.wallet);
-    const amount = creditAmount(input.type, streak, input.source, input.amount);
+    const accelerated = (await memberStore.getMembershipPlanByWallet(input.wallet).catch(() => null)) === 'LIFETIME';
+    const amount = creditAmount(input.type, streak, accelerated, input.amount);
     const vestUntil = new Date(paidAt);
     vestUntil.setDate(vestUntil.getDate() + VEST_DAYS);
     await pool.query(

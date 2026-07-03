@@ -32,6 +32,8 @@ export interface MemberProfile {
   loading: boolean;
   /** Member lifecycle status; 'ONBOARDING' = brand-new, hasn't completed onboarding. null until loaded. */
   memberStatus: MemberStatus | null;
+  /** On the Accelerated track (membershipPlan LIFETIME) — earns the full 1.5× equity-credit multiplier. */
+  accelerated: boolean;
   refresh: () => void;
   /** Set/clear the local avatar (data URL); persists per-wallet in localStorage. */
   setAvatar: (dataUrl: string | null) => void;
@@ -40,7 +42,7 @@ export interface MemberProfile {
 
 const EMPTY: MemberProfile = {
   name: '', firstName: 'there', handle: '', email: '', phone: '', avatarUrl: null,
-  username: '', address: '', initials: 'CL', loading: false, memberStatus: null, refresh: () => {}, setAvatar: () => {}, raw: null,
+  username: '', address: '', initials: 'CL', loading: false, memberStatus: null, accelerated: false, refresh: () => {}, setAvatar: () => {}, raw: null,
 };
 
 const Ctx = createContext<MemberProfile | null>(null);
@@ -53,6 +55,7 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
   const { address, isConnected } = useAppKitAccount();
   const [raw, setRaw] = useState<MemberProfileViewResponse | null>(null);
   const [memberStatus, setMemberStatus] = useState<MemberStatus | null>(null);
+  const [accelerated, setAccelerated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [localAvatar, setLocalAvatar] = useState<string | null>(null);
 
@@ -72,6 +75,7 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
     if (!isConnected) {
       setRaw(null);
       setMemberStatus(null);
+      setAccelerated(false);
       return;
     }
     setLoading(true);
@@ -83,9 +87,11 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
       const r = await getMemberAccountCenter();
       setRaw(r?.profile ?? null);
       setMemberStatus(r?.member?.status ?? null);
+      setAccelerated(r?.member?.membershipPlan === 'LIFETIME');
     } catch {
       setRaw(null);
       setMemberStatus(null);
+      setAccelerated(false);
     } finally {
       setLoading(false);
     }
@@ -113,6 +119,7 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
     initials: initialsOf(pub?.displayName || pub?.username || '', addr),
     loading,
     memberStatus,
+    accelerated,
     refresh: () => void load(),
     setAvatar,
     raw,
