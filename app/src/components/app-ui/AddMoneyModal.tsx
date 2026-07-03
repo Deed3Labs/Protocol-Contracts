@@ -7,7 +7,7 @@ import { useBridge } from '@/context/BridgeContext';
 import { useKyc } from '@/context/KycContext';
 import DepositInstructions from '@/components/app-ui/DepositInstructions';
 import { usePrivy } from '@privy-io/react-auth';
-import { getRampBuyQuote, createRampBuySession, createRampBuyOrder, getRampConfig, type RampQuote } from '@/utils/apiClient';
+import { getRampBuyQuote, createRampBuySession, createRampBuyOrder, getRampConfig, rampEvent, type RampQuote } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -67,6 +67,7 @@ const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits
 export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const [step, setStep] = useState<'amount' | 'review' | 'status' | 'pay'>('amount');
   const [payUrl, setPayUrl] = useState<string | null>(null); // Coinbase Apple Pay iframe (headless)
+  const [rampRef, setRampRef] = useState(''); // unique id per checkout attempt, for status notifications
   const [amountStr, setAmountStr] = useState('');
   const [methodId, setMethodId] = useState('card');
   const [walletId, setWalletId] = useState('');
@@ -109,6 +110,9 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     }
     setCheckoutError(null);
     setCheckoutLoading(true);
+    const ref = crypto.randomUUID();
+    setRampRef(ref);
+    void rampEvent({ type: 'buy', status: 'submitted', amount, walletAddress: wallet.address, ref });
     // Apple Pay on Coinbase → headless order rendered in an in-app iframe (needs verified email + phone).
     if (methodId === 'applepay' && selected.p.id === 'coinbase' && buyerEmail && buyerPhone) {
       const { paymentLinkUrl } = await createRampBuyOrder({ amount, walletAddress: wallet.address, email: buyerEmail, phone: buyerPhone });
@@ -156,19 +160,6 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     setCheckoutLoading(false);
   }, [open]);
 
-  // Coinbase's Apple Pay iframe posts transaction-status events; treat a success/completion as done.
-  useEffect(() => {
-    if (step !== 'pay') return;
-    const onMsg = (e: MessageEvent) => {
-      if (!/\.coinbase\.com$/.test((() => { try { return new URL(e.origin).hostname; } catch { return ''; } })())) return;
-      const d = e.data;
-      const s = typeof d === 'string' ? d : JSON.stringify(d ?? '');
-      if (/success|completed|complete|finished|TRANSACTION_STATUS_SUCCESS/i.test(s)) setStep('status');
-    };
-    window.addEventListener('message', onMsg);
-    return () => window.removeEventListener('message', onMsg);
-  }, [step]);
-
   // Whether the ramp provider is actually configured — lets us explain an empty quote (setup pending
   // vs no coverage) instead of a vague "no providers".
   useEffect(() => {
@@ -188,8 +179,24 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const amount = Number(amountStr) || 0;
   const method = METHODS.find((m) => m.id === methodId) ?? METHODS[0];
   const wallet = wallets.find((w) => w.id === walletId) ?? wallets[0] ?? { id: '', label: 'No wallet linked', address: '' };
-  const amountValid = amount >= 10 && amount <= 10000;
+  const amountValid = amount >= 1 && amount <= 10000;
   const isBank = methodId === 'bank';
+
+  // Coinbase's Apple Pay iframe posts transaction-status events; treat a success/completion as done.
+  useEffect(() => {
+    if (step !== 'pay') return;
+    const onMsg = (e: MessageEvent) => {
+      if (!/\.coinbase\.com$/.test((() => { try { return new URL(e.origin).hostname; } catch { return ''; } })())) return;
+      const d = e.data;
+      const s = typeof d === 'string' ? d : JSON.stringify(d ?? '');
+      if (/success|completed|complete|finished|TRANSACTION_STATUS_SUCCESS/i.test(s)) {
+        if (rampRef && wallet.address) void rampEvent({ type: 'buy', status: 'completed', amount, walletAddress: wallet.address, ref: rampRef });
+        setStep('status');
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [step, rampRef, amount, wallet.address]);
   const quotes = isBank ? [] : apiQuotes;
   const best = quotes[0];
   const selected =
@@ -322,7 +329,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
             >
               Review
             </button>
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Add $10–$10,000'}</p>
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Add $1–$10,000'}</p>
           </div>
         )}
 

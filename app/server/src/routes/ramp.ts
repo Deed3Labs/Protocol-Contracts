@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { requireWalletMatch } from '../middleware/auth.js';
 import { coinbaseOnrampService, type NormalizedRampQuote } from '../services/coinbaseOnrampService.js';
 import { onramperStore } from '../services/onramperStore.js';
+import { notificationStore, type NotificationKind } from '../services/notificationStore.js';
 
 /*
  * Unified fiat↔crypto ramp API. One set of endpoints the frontend calls; the actual provider is chosen
@@ -260,6 +261,51 @@ router.get('/sell/status', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[ramp/sell/status]', error?.message || error);
     res.status(502).json({ error: 'Status check failed' });
+  }
+});
+
+// POST /api/ramp/event { type: 'buy'|'sell', status, amount, walletAddress, ref }
+//   Record a ramp order's status + fire a notification. Called by the client at the points it observes
+//   (checkout started, Apple Pay completed, cash-out sent). SEAM: a Coinbase webhook can call the same
+//   path later for provider-confirmed completed/failed even when the app is closed.
+const RAMP_NOTIFS: Record<string, { kind: NotificationKind; title: string; body: (amt: string) => string }> = {
+  'buy:submitted': { kind: 'pending', title: 'Deposit started', body: (a) => `Your ${a} top-up is processing.` },
+  'buy:completed': { kind: 'received', title: 'Money added', body: (a) => `${a} landed in your balance.` },
+  'buy:failed': { kind: 'system', title: 'Deposit didn’t go through', body: (a) => `Your ${a} top-up didn’t complete.` },
+  'sell:submitted': { kind: 'sent', title: 'Cash-out on its way', body: (a) => `${a} is being sent to your card.` },
+  'sell:completed': { kind: 'sent', title: 'Cash-out complete', body: (a) => `${a} has been paid out to your card.` },
+  'sell:failed': { kind: 'system', title: 'Cash-out failed', body: (a) => `Your ${a} cash-out didn’t complete.` },
+};
+router.post('/event', async (req: Request, res: Response) => {
+  const b = (req.body || {}) as Record<string, unknown>;
+  const type = String(b.type || '');
+  const status = String(b.status || '');
+  const amount = Number(b.amount);
+  const walletAddress = String(b.walletAddress || '').toLowerCase();
+  const ref = String(b.ref || '').trim();
+  const spec = RAMP_NOTIFS[`${type}:${status}`];
+  if (!spec || !ref || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+    res.status(400).json({ error: 'type/status, ref and walletAddress are required' });
+    return;
+  }
+  if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+  const amt = amount > 0 ? `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Your';
+  try {
+    await onramperStore
+      .upsert({ id: `cb:${ref}`, wallet: walletAddress, status, provider: 'coinbase', fiatAmount: amount || null, cryptoAmount: null, raw: { type, ref } })
+      .catch(() => {});
+    await notificationStore.emit({
+      wallet: walletAddress,
+      kind: spec.kind,
+      title: spec.title,
+      body: spec.body(amt),
+      data: { type, status, amount: amount || null, href: type === 'sell' ? '/transactions' : '/' },
+      dedupeKey: `ramp:${ref}:${status}`,
+    }).catch(() => {});
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[ramp/event]', error);
+    res.json({ ok: false });
   }
 });
 
