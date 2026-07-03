@@ -6,7 +6,8 @@ import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useBridge } from '@/context/BridgeContext';
 import { useKyc } from '@/context/KycContext';
 import DepositInstructions from '@/components/app-ui/DepositInstructions';
-import { getRampBuyQuote, createRampBuySession, getRampConfig, type RampQuote } from '@/utils/apiClient';
+import { usePrivy } from '@privy-io/react-auth';
+import { getRampBuyQuote, createRampBuySession, createRampBuyOrder, getRampConfig, type RampQuote } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -64,7 +65,8 @@ const QUICK = [50, 100, 250, 500];
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const [step, setStep] = useState<'amount' | 'review' | 'status'>('amount');
+  const [step, setStep] = useState<'amount' | 'review' | 'status' | 'pay'>('amount');
+  const [payUrl, setPayUrl] = useState<string | null>(null); // Coinbase Apple Pay iframe (headless)
   const [amountStr, setAmountStr] = useState('');
   const [methodId, setMethodId] = useState('card');
   const [walletId, setWalletId] = useState('');
@@ -86,6 +88,9 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const { accounts: banks, openManager: openBankManager } = useExternalAccounts();
   const { virtualAccount } = useBridge();
   const { verified, openKyc } = useKyc();
+  const { user } = usePrivy();
+  const buyerEmail = user?.email?.address || '';
+  const buyerPhone = user?.phone?.number || '';
   // Card / Apple Pay on-ramps KYC at the provider; a bank/ACH deposit needs our KYC.
   const proceed = () => {
     if (methodId === 'bank' && !verified) openKyc(() => setStep('status'));
@@ -104,6 +109,18 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     }
     setCheckoutError(null);
     setCheckoutLoading(true);
+    // Apple Pay on Coinbase → headless order rendered in an in-app iframe (needs verified email + phone).
+    if (methodId === 'applepay' && selected.p.id === 'coinbase' && buyerEmail && buyerPhone) {
+      const { paymentLinkUrl } = await createRampBuyOrder({ amount, walletAddress: wallet.address, email: buyerEmail, phone: buyerPhone });
+      if (paymentLinkUrl) {
+        setPayUrl(paymentLinkUrl);
+        setStep('pay');
+        setCheckoutLoading(false);
+        return;
+      }
+      // else fall through to the hosted checkout below
+    }
+    // Card (or Apple Pay fallback): open the hosted Coinbase / provider checkout in a new tab.
     const { url } = await createRampBuySession({
       amount,
       paymentMethod: rampPM(methodId),
@@ -115,7 +132,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
       window.open(url, '_blank', 'noopener,noreferrer');
       setStep('status');
     } else {
-      setCheckoutError('Could not start checkout — try another provider or amount.');
+      setCheckoutError('Could not start checkout — try another amount or method.');
     }
   };
 
@@ -134,9 +151,23 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     setDepositOpen(false);
     setApiQuotes([]);
     setQuoteId(undefined);
+    setPayUrl(null);
     setCheckoutError(null);
     setCheckoutLoading(false);
   }, [open]);
+
+  // Coinbase's Apple Pay iframe posts transaction-status events; treat a success/completion as done.
+  useEffect(() => {
+    if (step !== 'pay') return;
+    const onMsg = (e: MessageEvent) => {
+      if (!/\.coinbase\.com$/.test((() => { try { return new URL(e.origin).hostname; } catch { return ''; } })())) return;
+      const d = e.data;
+      const s = typeof d === 'string' ? d : JSON.stringify(d ?? '');
+      if (/success|completed|complete|finished|TRANSACTION_STATUS_SUCCESS/i.test(s)) setStep('status');
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [step]);
 
   // Whether the ramp provider is actually configured — lets us explain an empty quote (setup pending
   // vs no coverage) instead of a vague "no providers".
@@ -539,6 +570,33 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
               {isBank
                 ? `Via your Clear USD account${virtualAccount.bankName ? ` (${virtualAccount.bankName})` : ''} · held as USDC on Base`
                 : 'Held as USDC, a regulated digital dollar, on Base'}
+            </p>
+          </div>
+        )}
+
+        {step === 'pay' && payUrl && (
+          <div className="flex flex-col px-4 pb-4 pt-2">
+            <div className="mb-3 flex items-center gap-2 px-2">
+              <button type="button" onClick={() => setStep('review')} className="text-muted-foreground transition-colors hover:text-foreground">
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <div className="text-sm font-semibold text-foreground">Pay {fmt(amount)} with Apple Pay</div>
+            </div>
+            <iframe
+              title="Coinbase Pay"
+              src={payUrl}
+              allow="payment"
+              className="h-[420px] w-full rounded-xl border border-border bg-background"
+            />
+            <button
+              type="button"
+              onClick={() => setStep('status')}
+              className="mt-3 w-full rounded-xl border border-border py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              I've completed payment
+            </button>
+            <p className="mt-2 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
+              <ShieldCheck className="h-3 w-3" /> Secured by Coinbase · held as USDC on Base
             </p>
           </div>
         )}

@@ -154,6 +154,54 @@ export const coinbaseOnrampService = {
     };
   },
 
+  /**
+   * HEADLESS on-ramp (Guest Checkout) — create an order and get back a payment link (an Apple Pay
+   * button URL) we embed in an iframe, so the buy happens inside our own UI. US only, Apple Pay on web.
+   * Requires the user's verified email + phone (we source these from the authed Privy session). Docs:
+   * https://docs.cdp.coinbase.com/onramp/headless-onramp/overview
+   */
+  async createOnrampOrder(params: {
+    amount: number;
+    email: string;
+    phoneNumber: string; // E.164
+    destinationAddress: string;
+    domain: string; // where the iframe is embedded — must be allowlisted in the CDP portal
+    partnerUserRef: string;
+    fiat?: string;
+    asset?: string;
+    network?: string;
+    paymentMethod?: 'GUEST_CHECKOUT_APPLE_PAY' | 'GUEST_CHECKOUT_CARD';
+  }): Promise<{ paymentLinkUrl: string; paymentLinkType?: string; orderId?: string; raw: any }> {
+    const now = new Date().toISOString();
+    const data = await this.apiFetch('POST', '/v2/onramp/orders', {
+      paymentCurrency: (params.fiat ?? 'USD').toUpperCase(),
+      purchaseCurrency: params.asset ?? DEFAULT_ASSET,
+      destinationNetwork: params.network ?? DEFAULT_NETWORK,
+      destinationAddress: params.destinationAddress,
+      paymentMethod: params.paymentMethod ?? 'GUEST_CHECKOUT_APPLE_PAY',
+      paymentAmount: params.amount.toFixed(2), // fiat, inclusive of fees
+      email: params.email,
+      phoneNumber: params.phoneNumber,
+      // The user is verified via Privy at login; we attest the verification time (no separate SMS step).
+      phoneNumberVerifiedAt: now,
+      agreementAcceptedAt: now,
+      partnerUserRef: params.partnerUserRef,
+      domain: params.domain,
+    });
+    const url = data?.paymentLink?.url || data?.payment_link?.url;
+    if (!url) {
+      const err = new Error('Coinbase order payment link missing') as Error & { raw?: unknown };
+      err.raw = data;
+      throw err;
+    }
+    return {
+      paymentLinkUrl: String(url),
+      paymentLinkType: data?.paymentLink?.paymentLinkType || data?.payment_link?.paymentLinkType,
+      orderId: data?.order?.orderId ? String(data.order.orderId) : undefined,
+      raw: data,
+    };
+  },
+
   /** Build the hosted onramp URL to redirect the user to (session token carries the appId + wallet). */
   buildBuyUrl(params: {
     token: string;

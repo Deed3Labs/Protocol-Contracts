@@ -160,6 +160,54 @@ router.post('/buy/session', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/ramp/buy/order { amount, walletAddress, email, phone, paymentMethod? }
+//   HEADLESS on-ramp: returns { paymentLinkUrl } — an Apple Pay button to embed in an iframe, so the
+//   buy happens inside our own UI (Coinbase only; the Onramper fallback has no equivalent).
+router.post('/buy/order', async (req: Request, res: Response) => {
+  if (provider() !== 'coinbase') {
+    res.status(400).json({ error: 'Headless order is only supported on the Coinbase provider' });
+    return;
+  }
+  if (!coinbaseOnrampService.isConfigured()) {
+    res.status(503).json({ error: 'Coinbase Onramp not configured' });
+    return;
+  }
+  const b = (req.body || {}) as Record<string, unknown>;
+  const amount = Number(b.amount);
+  const walletAddress = String(b.walletAddress || '');
+  const email = String(b.email || '').trim();
+  const phone = String(b.phone || '').trim();
+  if (!(amount > 0) || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+    res.status(400).json({ error: 'amount and a valid walletAddress are required' });
+    return;
+  }
+  if (!email || !phone) {
+    res.status(422).json({ error: 'verified email and phone are required for guest checkout', code: 'NEEDS_CONTACT' });
+    return;
+  }
+  if (!requireWalletMatch(req, res, walletAddress.toLowerCase(), 'walletAddress')) return;
+  // The iframe is embedded on the page that made the request — that host must be allowlisted in CDP.
+  const origin = req.get('origin') || '';
+  let domain = process.env.RAMP_IFRAME_DOMAIN || '';
+  try { if (!domain && origin) domain = new URL(origin).hostname; } catch { /* ignore */ }
+  if (!domain) domain = 'app.useclear.org';
+  try {
+    const order = await coinbaseOnrampService.createOnrampOrder({
+      amount,
+      email,
+      phoneNumber: phone,
+      destinationAddress: walletAddress,
+      domain,
+      partnerUserRef: walletAddress.toLowerCase(),
+      paymentMethod: String(b.paymentMethod || '').toUpperCase() === 'GUEST_CHECKOUT_CARD' ? 'GUEST_CHECKOUT_CARD' : 'GUEST_CHECKOUT_APPLE_PAY',
+    });
+    res.json({ paymentLinkUrl: order.paymentLinkUrl, paymentLinkType: order.paymentLinkType, orderId: order.orderId });
+  } catch (error: any) {
+    console.error('[ramp/buy/order]', error?.status, error?.message || error, error?.raw ?? '');
+    res.status(error?.status && error.status < 500 ? 400 : 502).json({ error: error?.message || 'Order failed' });
+  }
+});
+
 // GET /api/ramp/transactions/:wallet → recent ramp orders + status (from webhooks / status polling)
 router.get('/transactions/:wallet', async (req: Request, res: Response) => {
   const w = String(req.params.wallet || '').toLowerCase();

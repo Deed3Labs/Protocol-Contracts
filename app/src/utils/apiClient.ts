@@ -2484,6 +2484,19 @@ export async function getRampConfig(): Promise<{ provider: string; configured: b
   return r.error || !r.data ? { provider: 'coinbase', configured: false } : r.data;
 }
 
+/** Headless buy order (Coinbase Guest Checkout) → an Apple Pay payment-link URL to embed in an iframe. */
+export async function createRampBuyOrder(p: {
+  amount: number;
+  walletAddress: string;
+  email: string;
+  phone: string;
+  paymentMethod?: 'GUEST_CHECKOUT_APPLE_PAY' | 'GUEST_CHECKOUT_CARD';
+}): Promise<{ paymentLinkUrl: string | null; error?: string; code?: string }> {
+  const r = await apiRequest<{ paymentLinkUrl: string | null }>(`/api/ramp/buy/order`, { method: 'POST', body: JSON.stringify(p) });
+  if (r.error || !r.data) return { paymentLinkUrl: null, error: r.error || 'Order failed' };
+  return { paymentLinkUrl: r.data.paymentLinkUrl };
+}
+
 /** Create a buy session → hosted checkout URL to redirect the user to. */
 export async function createRampBuySession(p: {
   amount: number;
