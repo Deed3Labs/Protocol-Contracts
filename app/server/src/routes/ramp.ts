@@ -296,7 +296,7 @@ router.post('/event', async (req: Request, res: Response) => {
   const status = String(b.status || '') as RampStatus;
   const walletAddress = String(b.walletAddress || '').toLowerCase();
   const ref = String(b.ref || '').trim();
-  if (!['buy', 'sell'].includes(type) || !['submitted', 'completed', 'failed'].includes(status) || !ref || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+  if (!['buy', 'sell'].includes(type) || !['submitted', 'completed', 'failed', 'canceled'].includes(status) || !ref || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
     res.status(400).json({ error: 'type/status, ref and walletAddress are required' });
     return;
   }

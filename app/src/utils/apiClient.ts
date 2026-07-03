@@ -2535,7 +2535,7 @@ export async function createRampBuyOrder(p: {
 /** Record a ramp order's status + fire a notification (deposit started/complete, cash-out sent, …). */
 export async function rampEvent(p: {
   type: 'buy' | 'sell';
-  status: 'submitted' | 'completed' | 'failed';
+  status: 'submitted' | 'completed' | 'failed' | 'canceled';
   amount: number;
   walletAddress: string;
   ref: string;

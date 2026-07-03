@@ -8,15 +8,17 @@ import { onramperStore } from './onramperStore.js';
  * same Coinbase transaction id as the ref, only one notification is created.
  */
 export type RampType = 'buy' | 'sell';
-export type RampStatus = 'submitted' | 'completed' | 'failed';
+export type RampStatus = 'submitted' | 'completed' | 'failed' | 'canceled';
 
 const RAMP_NOTIFS: Record<string, { kind: NotificationKind; title: string; body: (amt: string) => string }> = {
   'buy:submitted': { kind: 'pending', title: 'Deposit started', body: (a) => `Your ${a} top-up is processing.` },
   'buy:completed': { kind: 'received', title: 'Money added', body: (a) => `${a} landed in your balance.` },
   'buy:failed': { kind: 'system', title: 'Deposit didn’t go through', body: (a) => `Your ${a} top-up didn’t complete.` },
+  'buy:canceled': { kind: 'system', title: 'Deposit canceled', body: (a) => `Your ${a} deposit was canceled.` },
   'sell:submitted': { kind: 'sent', title: 'Cash-out on its way', body: (a) => `${a} is being sent to your card.` },
   'sell:completed': { kind: 'sent', title: 'Cash-out complete', body: (a) => `${a} has been paid out to your card.` },
   'sell:failed': { kind: 'system', title: 'Cash-out failed', body: (a) => `Your ${a} cash-out didn’t complete.` },
+  'sell:canceled': { kind: 'system', title: 'Cash-out canceled', body: (a) => `Your ${a} cash-out was canceled.` },
 };
 
 /** Record a ramp order's status + emit the matching notification (idempotent by ref+status). */
