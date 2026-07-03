@@ -91,6 +91,39 @@ export function getRpcUrl(chainId: number): string {
 }
 
 /**
+ * All RPC URLs for a chain in failover order (custom → Alchemy → public fallback), deduped. Reads can
+ * try these in sequence so an Alchemy outage/region-maintenance falls back to the public node instead of
+ * failing. `getRpcUrl` (single) stays the default for writes; this is for resilient read paths.
+ */
+export function getRpcUrls(chainId: number): string[] {
+  const alchemyApiKey = process.env.ALCHEMY_API_KEY;
+  const custom: Record<number, string | undefined> = {
+    1: process.env.ETHEREUM_RPC_URL,
+    10: process.env.OPTIMISM_RPC_URL,
+    8453: process.env.BASE_RPC_URL,
+    100: process.env.GNOSIS_RPC_URL,
+    137: process.env.POLYGON_RPC_URL,
+    42161: process.env.ARBITRUM_RPC_URL,
+    11155111: process.env.SEPOLIA_RPC_URL,
+    84532: process.env.BASE_SEPOLIA_RPC_URL,
+    80001: process.env.MUMBAI_RPC_URL,
+  };
+  const publicFallback: Record<number, string> = {
+    1: 'https://eth.llamarpc.com',
+    10: 'https://mainnet.optimism.io',
+    8453: 'https://mainnet.base.org',
+    100: 'https://rpc.gnosischain.com',
+    137: 'https://polygon-rpc.com',
+    42161: 'https://arb1.arbitrum.io/rpc',
+    11155111: 'https://rpc.sepolia.org',
+    84532: 'https://sepolia.base.org',
+    80001: 'https://rpc-mumbai.maticvigil.com',
+  };
+  const alchemy = alchemyApiKey ? getAlchemyUrl(chainId, alchemyApiKey) : undefined;
+  return [...new Set([custom[chainId], alchemy, publicFallback[chainId]].filter(Boolean) as string[])];
+}
+
+/**
  * Check if RPC URL is available for a chain
  */
 export function hasRpcUrl(chainId: number): boolean {
