@@ -228,7 +228,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const selected = (providerId ? quotes.find((q) => q.p.id === providerId) : null) ?? best;
   const wallet = wallets.find((w) => w.id === walletId) ?? wallets[0] ?? { id: '', label: 'No wallet linked', address: '' };
   const bank = banks.find((b) => b.id === bankId) ?? banks[0] ?? { id: '', label: 'No bank linked' };
-  const amountValid = amount >= 1 && amount <= 10000;
+  const amountValid = amount >= 5 && amount <= 10000;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -318,7 +318,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
                 Review
               </button>
             )}
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Withdraw $1–$10,000'}</p>
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Withdraw $5–$10,000'}</p>
           </div>
         )}
 

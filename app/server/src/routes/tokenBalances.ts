@@ -143,6 +143,30 @@ router.get('/:chainId/:userAddress/:tokenAddress', async (req: Request, res: Res
 
 
 /**
+ * POST /api/token-balances/batch
+ * Per-token balance lookups for many { chainId, tokenAddress, userAddress } in one request. This is the
+ * fallback the client uses when Alchemy's "all tokens" discovery returns nothing — so USDC/CLRUSD still
+ * load via direct balanceOf. (The route was missing, so that fallback 404'd and balances went blank.)
+ * Body: { requests: [{ chainId, tokenAddress, userAddress }] } → { results: [...] }
+ */
+router.post('/batch', async (req: Request, res: Response) => {
+  try {
+    const { requests } = req.body as {
+      requests: Array<{ chainId: number; tokenAddress: string; userAddress: string }>;
+    };
+    if (!Array.isArray(requests) || requests.length === 0) {
+      return res.status(400).json({ error: 'Invalid request', message: 'requests must be a non-empty array' });
+    }
+    if (!requireWalletArrayMatch(req, res, requests.map((r) => r.userAddress), 'requests[].userAddress')) return;
+    const batch = await getTokenBalancesBatch(requests);
+    res.json({ results: batch.map((r) => ({ ...r, cached: false })) });
+  } catch (error) {
+    console.error('Token balances batch error:', error);
+    res.status(500).json({ error: 'Internal server error', message: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
+/**
  * POST /api/token-balances/all/batch
  * Get ALL token balances for multiple chains in one request
  * Body: { requests: [{ chainId, userAddress }] }
