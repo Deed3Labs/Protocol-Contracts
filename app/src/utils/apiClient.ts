@@ -2446,3 +2446,46 @@ export async function createOnramperSellCheckout(p: {
   const r = await apiRequest<{ url: string | null }>(`/api/onramper/sell-checkout`, { method: 'POST', body: JSON.stringify(p) });
   return r.error || !r.data ? { url: null } : r.data;
 }
+
+// ---- Unified ramp (Coinbase Onramp by default; Onramper as an env-selected fallback) ----
+// The backend picks the provider (RAMP_PROVIDER); the client just calls /api/ramp/* and gets a
+// normalized quote + a hosted checkout URL, so switching providers is a server-side env flip.
+
+export interface RampQuote {
+  provider: string;
+  fiatAmount: number; // total the user pays (buy) incl. fees
+  fiatSubtotal: number;
+  cryptoAmount?: number; // USDC received
+  coinbaseFee?: number;
+  networkFee?: number;
+  quoteId?: string;
+  asset: string;
+  network: string;
+}
+
+/** Normalized buy quote (card / Apple Pay → USDC on Base). */
+export async function getRampBuyQuote(p: {
+  amount: number;
+  paymentMethod: string;
+  walletAddress?: string;
+  country?: string;
+  subdivision?: string;
+}): Promise<RampQuote | null> {
+  const params = new URLSearchParams({ amount: String(p.amount), paymentMethod: p.paymentMethod, country: p.country || 'us' });
+  if (p.walletAddress) params.set('walletAddress', p.walletAddress);
+  if (p.subdivision) params.set('subdivision', p.subdivision);
+  const r = await apiRequest<{ quote: RampQuote | null }>(`/api/ramp/buy/quote?${params.toString()}`);
+  return r.error || !r.data ? null : r.data.quote;
+}
+
+/** Create a buy session → hosted checkout URL to redirect the user to. */
+export async function createRampBuySession(p: {
+  amount: number;
+  paymentMethod: string;
+  walletAddress: string;
+  quoteId?: string;
+  redirectUrl?: string;
+}): Promise<{ url: string | null }> {
+  const r = await apiRequest<{ url: string | null }>(`/api/ramp/buy/session`, { method: 'POST', body: JSON.stringify(p) });
+  return r.error || !r.data ? { url: null } : r.data;
+}
