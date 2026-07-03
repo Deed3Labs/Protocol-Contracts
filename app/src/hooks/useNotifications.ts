@@ -62,6 +62,8 @@ export function useNotifications() {
     const onNew = (n: ApiNotification) => {
       setNotifications((prev) => (prev.some((x) => x.id === n.id) ? prev : [n, ...prev].slice(0, 40)));
       setUnreadCount((c) => c + 1);
+      // Money moved (deposit landed / cash-out sent) → refresh balances + activity right away.
+      if (n.kind === 'received' || n.kind === 'sent') window.dispatchEvent(new Event('clear:activity'));
     };
     socket.on('notification:new', onNew);
     return () => {
