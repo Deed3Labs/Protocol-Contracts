@@ -260,14 +260,14 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
     }
 
     try {
-      const target = await resolvePeerAddress(walletAddress);
+      const target = (await resolvePeerAddress(walletAddress)).toLowerCase();
       console.log('XMTP: Creating conversation with wallet:', walletAddress, '→ xmtp:', target);
 
       // Check if wallet can receive messages
       const canMessageResult = await Client.canMessage([{
         identifier: target,
         identifierKind: "Ethereum"
-      }]);
+      }], XMTP_ENV);
       const isReachable = canMessageResult.get(target);
       
       console.log('XMTP: Can message check result:', {
@@ -331,8 +331,8 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
             const result = await Client.canMessage([{
               identifier: member,
               identifierKind: "Ethereum"
-            }]);
-            return { member, canMessage: result.get(member) };
+            }], XMTP_ENV);
+            return { member, canMessage: result.get(member.toLowerCase()) };
           } catch (err) {
             console.warn('XMTP: Could not check message capability for:', member, err);
             return { member, canMessage: false };
@@ -788,12 +788,13 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
       return false;
     }
     try {
-      const target = await resolvePeerAddress(walletAddress);
+      // canMessage keys its result map by identifier.toLowerCase(), so normalize before the .get() lookup.
+      const target = (await resolvePeerAddress(walletAddress)).toLowerCase();
       console.log('XMTP: Checking if wallet is reachable:', walletAddress, '→ xmtp:', target);
       const response = await Client.canMessage([{
         identifier: target,
         identifierKind: "Ethereum"
-      }]);
+      }], XMTP_ENV);
       const isReachable = response.get(target);
       console.log('XMTP: Can message check result:', {
         walletAddress,
@@ -863,8 +864,8 @@ export const XMTPProvider: React.FC<XMTPProviderProps> = ({ children }) => {
               const result = await Client.canMessage([{
                 identifier: member,
                 identifierKind: "Ethereum"
-              }]);
-              return { member, canMessage: result.get(member) };
+              }], XMTP_ENV);
+              return { member, canMessage: result.get(member.toLowerCase()) };
             } catch (err) {
               return { member, canMessage: false };
             }
