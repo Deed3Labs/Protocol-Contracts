@@ -209,6 +209,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
       try {
         const convo = await createConversation(initialComposeAddress);
         if (cancelled) return;
+        restoreConversation(convo.id); // un-delete/un-hide if this DM was previously removed
         await loadConversations();
         setSelectedConversation(convo.id);
         await loadMessages(convo.id);
@@ -457,6 +458,26 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     void deleteConversation(conversationId);
   };
 
+  // Re-engaging a previously deleted/hidden conversation. XMTP DMs are deterministic — messaging the
+  // same peer returns the SAME conversation id — so starting a "new" chat must clear it from the
+  // deleted/hidden sets, otherwise it opens on the right but stays filtered out of the left list.
+  const restoreConversation = (conversationId: string) => {
+    if (deletedConversations.has(conversationId)) {
+      const next = new Set(deletedConversations);
+      next.delete(conversationId);
+      setDeletedConversations(next);
+      try {
+        localStorage.setItem('xmtp-deleted-conversations', JSON.stringify([...next]));
+      } catch { /* ignore */ }
+    }
+    if (hiddenConversations.has(conversationId)) {
+      const next = new Set(hiddenConversations);
+      next.delete(conversationId);
+      setHiddenConversations(next);
+      saveHiddenConversations(next);
+    }
+  };
+
   // Handle creating new group
   const handleCreateGroup = async () => {
     if (!groupName.trim() || groupMembers.length === 0) return;
@@ -659,6 +680,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
       const conversation = await createConversation(wallet);
       console.log('XMTP: Created new DM:', conversation.id);
       if (name) rememberConversationName(conversation.id, name);
+      restoreConversation(conversation.id); // un-delete/un-hide if we'd previously removed this DM
 
       await loadConversations();
       setSelectedConversation(conversation.id);
