@@ -7,11 +7,13 @@ import { useKyc } from '@/context/KycContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useWallets } from '@privy-io/react-auth';
+import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
 import { createWalletClient, custom } from 'viem';
 import { useAppKitAccount } from '@/lib/walletCompat';
-import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
+import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import { gaslessWalletTransfer } from '@/lib/gaslessMoney';
-import { withdrawToBank, getOnramperSellQuotes, createOnramperSellCheckout, type Eip712TypedData } from '@/utils/apiClient';
+import { scTransferToken } from '@/lib/sendCalls';
+import { withdrawToBank, createRampSellSession, getRampSellStatus, type RampSellStatus, type Eip712TypedData } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
@@ -64,6 +66,23 @@ function buildQuotes(amount: number, instantFeeRate: number) {
   }).sort((a, b) => b.payout - a.payout);
 }
 
+/**
+ * Poll the off-ramp status until Coinbase returns the send instruction (STARTED, with the address +
+ * amount of USDC to send). Gives the user ~5 min to finish the Coinbase cash-out form. Returns null on
+ * timeout / failure / cancel.
+ */
+async function pollForOfframpSend(ref: string, isCancelled: () => boolean): Promise<{ toAddress: string; amount: string } | null> {
+  const deadline = Date.now() + 5 * 60_000;
+  while (Date.now() < deadline) {
+    if (isCancelled()) return null;
+    const s: RampSellStatus = await getRampSellStatus(ref).catch(() => ({ status: null }));
+    if (s.status === 'TRANSACTION_STATUS_STARTED' && s.toAddress && s.amount) return { toAddress: s.toAddress, amount: s.amount };
+    if (s.status === 'TRANSACTION_STATUS_FAILED') return null;
+    await new Promise((r) => setTimeout(r, 4000));
+  }
+  return null;
+}
+
 export default function WithdrawModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const [step, setStep] = useState<'amount' | 'review' | 'status'>('amount');
   const [amountStr, setAmountStr] = useState('');
@@ -76,6 +95,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const [bankOpen, setBankOpen] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [offrampStage, setOfframpStage] = useState<'idle' | 'waiting' | 'sending'>('idle');
   // Source can be the Clear account OR a linked wallet. Withdrawing from a linked wallet first moves its
   // USDC into the smart wallet (gasless, EIP-3009), then Bridge off-ramps the smart wallet (below).
   const { wallets, primaryId, openManager } = useLinkedWallets();
@@ -84,7 +104,8 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const banks = accounts.map((a) => ({ id: a.id, label: `${a.name} ••${a.mask}` }));
   const { verified, openKyc } = useKyc();
   const { email } = useMemberProfile();
-  const { address } = useAppKitAccount();
+  const { address, embeddedWalletInfo } = useAppKitAccount();
+  const { getClientForChain } = useSmartWallets();
   const bal = useClearBalances();
 
   // Sign an EIP-3009 authorization with a SPECIFIC linked wallet's own provider (for move-then-withdraw).
@@ -123,6 +144,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   useEffect(() => {
     if (step !== 'status') return;
     setDone(false);
+    setOfframpStage('idle');
     setError(null);
 
     let cancelled = false;
@@ -144,30 +166,38 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
         }
 
         if (methodId === 'instant') {
-          // Instant-to-debit → Onramper sell: pick the best off-ramp, open its hosted cash-out (it
-          // collects the USDC + pays out to the user's debit card). Onramper handles KYC/payout.
-          const quotes = await getOnramperSellQuotes({
-            amount,
-            paymentMethod: 'creditcard',
-            walletAddress: address,
-            crypto: 'usdc_base',
-            fiat: 'usd',
-          });
-          const onramp = (quotes[0]?.ramp as string) || '';
-          if (!onramp) throw new Error('No instant cash-out provider available right now.');
-          const { url } = await createOnramperSellCheckout({
-            onramp,
-            amount,
-            paymentMethod: 'creditcard',
-            walletAddress: address,
-            crypto: 'usdc_base',
-            fiat: 'usd',
-            network: 'base',
-          });
+          // Instant-to-debit → off-ramp. Open the provider's hosted cash-out; the user picks their
+          // debit-card payout there. On Coinbase we then poll for the send instruction and auto-send the
+          // USDC from the smart wallet to Coinbase's address (Onramper is a pure redirect — nothing to send).
+          const { url, partnerUserRef } = await createRampSellSession({ walletAddress: address });
           if (cancelled) return;
           if (!url) throw new Error('Could not start the instant cash-out.');
           window.open(url, '_blank', 'noopener,noreferrer');
+          if (!partnerUserRef) {
+            setDone(true);
+            return;
+          }
+          // Wait for the user to confirm in Coinbase, then send the exact USDC they cashed out.
+          setOfframpStage('waiting');
+          const started = await pollForOfframpSend(partnerUserRef, () => cancelled);
+          if (cancelled) return;
+          if (!started) throw new Error('Timed out waiting for your Coinbase cash-out. Reopen Withdraw to try again.');
+          setOfframpStage('sending');
+          const c = clearContracts(ACTIVE_CHAIN_ID);
+          if (!c) throw new Error('Instant cash-out is unavailable on this network.');
+          const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
+          const chainClient = isSmartAccount ? await getClientForChain({ id: ACTIVE_CHAIN_ID }) : undefined;
+          await scTransferToken({
+            smartWalletClient: chainClient,
+            ownerWallet: address,
+            token: c.usdc,
+            to: started.toAddress as `0x${string}`,
+            amount: started.amount,
+            chainId: ACTIVE_CHAIN_ID,
+          });
+          if (cancelled) return;
           setDone(true);
+          if (!sourceWallet?.external) bal.applyOptimistic(-Number(started.amount), 0);
           return;
         }
 
@@ -488,8 +518,16 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
             ) : !done ? (
               <>
                 <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-                <div className="mt-4 text-base font-semibold text-foreground">Sending your withdrawal…</div>
-                <div className="mt-1 text-sm text-muted-foreground">Processing with {selected.p.name}.</div>
+                <div className="mt-4 text-base font-semibold text-foreground">
+                  {offrampStage === 'waiting' ? 'Confirm your cash-out in Coinbase…' : offrampStage === 'sending' ? 'Sending your funds…' : 'Sending your withdrawal…'}
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {offrampStage === 'waiting'
+                    ? 'Finish the cash-out in the Coinbase tab — we’ll send your USDC automatically.'
+                    : offrampStage === 'sending'
+                      ? 'Transferring to Coinbase to pay out to your card.'
+                      : `Processing with ${selected.p.name}.`}
+                </div>
               </>
             ) : (
               <>
