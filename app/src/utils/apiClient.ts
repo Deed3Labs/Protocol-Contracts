@@ -2500,6 +2500,7 @@ export async function getRampSellStatus(partnerUserRef: string): Promise<RampSel
 }
 
 export interface RampBuyStatus {
+  id?: string; // Coinbase transaction id — used as the notification dedupe ref (matches the webhook)
   status: string | null; // TRANSACTION_STATUS_STARTED | _SUCCESS | _FAILED
   purchaseAmount?: string | null;
   currency?: string | null;
