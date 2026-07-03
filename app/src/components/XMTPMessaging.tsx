@@ -52,7 +52,7 @@ function SwipeableRow({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative overflow-hidden">
+    <div className="relative overflow-hidden border-b border-border">
       {/* action panel revealed behind the row */}
       <div className="absolute inset-y-0 right-0 flex">
         <button
@@ -898,7 +898,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 <MessageCircle className="w-[18px] h-[18px]" />
               </span>
               <div className="min-w-0">
-                <h2 className="font-display text-lg font-semibold leading-tight text-foreground">
+                <h2 className="font-display text-base sm:text-lg font-semibold leading-tight text-foreground truncate">
                   {ownerAddress ? 'Messaging' : 'Messages'}
                 </h2>
                 <p className="flex items-center gap-1.5 text-sm text-muted-foreground truncate">
@@ -924,15 +924,14 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              {/* New Conversation Button */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* New Conversation Button — icon-only on mobile */}
               {isConnected && (
                 <Dialog open={showNewConversationDialog} onOpenChange={setShowNewConversationDialog}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="px-3 bg-background">
-                      <Plus className="w-4 h-4 mr-0" />
-                      <span className="hidden sm:inline">New Conversation</span>
-                      <span className="sm:hidden">New</span>
+                    <Button variant="outline" size="sm" className="h-9 w-9 p-0 sm:w-auto sm:px-3 bg-background">
+                      <Plus className="w-4 h-4" />
+                      <span className="hidden sm:inline sm:ml-1.5">New</span>
                     </Button>
                   </DialogTrigger>
                   <DialogContent overlayClassName="z-[110]" className="z-[120] w-[calc(100vw-2rem)] max-w-lg mx-auto rounded-sm border-border">
@@ -1181,45 +1180,36 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 </Dialog>
               )}
               
-              {/* Sync Button */}
+              {/* Sync Button — icon-only on mobile */}
               {isConnected && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleManualSync}
                   disabled={isLoading || isAutoSyncing}
                   title="Sync messages"
-                  className="px-3 bg-background w-11 md:w-auto"
+                  className="h-9 w-9 p-0 md:w-auto md:px-3 bg-background"
                 >
-                  <RefreshCw className={cn("w-4 h-4 md:mr-0", (isAutoSyncing || isLoading) && "animate-spin")} />
-                  <span className="hidden md:inline">Sync</span>
+                  <RefreshCw className={cn("w-4 h-4", (isAutoSyncing || isLoading) && "animate-spin")} />
+                  <span className="hidden md:inline md:ml-1.5">Sync</span>
                 </Button>
               )}
 
-              {/* Hidden Conversations Toggle */}
+              {/* Hidden Conversations Toggle — icon-only on mobile */}
               {isConnected && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setShowHiddenConversations(!showHiddenConversations)}
-                  className="px-3 bg-background"
+                  className="h-9 w-9 p-0 sm:w-auto sm:px-3 bg-background"
                   title={showHiddenConversations ? "Show active conversations" : "Show hidden conversations"}
                 >
-                  {showHiddenConversations ? (
-                    <>
-                      <Eye className="w-4 h-4 mr-0" />
-                      <span>Active</span>
-                    </>
-                  ) : (
-                    <>
-                      <Archive className="w-4 h-4 mr-0" />
-                      <span>Hidden</span>
-                    </>
-                  )}
+                  {showHiddenConversations ? <Eye className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                  <span className="hidden sm:inline sm:ml-1.5">{showHiddenConversations ? 'Active' : 'Hidden'}</span>
                 </Button>
               )}
             {/* Close */}
-            <Button variant="outline" size="sm" onClick={onClose} className="px-3 bg-background">
+            <Button variant="outline" size="sm" onClick={onClose} className="h-9 w-9 p-0 sm:w-auto sm:px-3 bg-background">
               <X className="w-4 h-4" />
             </Button>
             </div>
@@ -1295,7 +1285,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                         >
                         <div
                           className={cn(
-                            "p-3 transition-colors border-b border-border last:border-b-0",
+                            "p-3 transition-colors",
                             selectedConversation === conversation.id
                               ? "bg-info/10 border-l-4 border-l-blue-500 dark:border-l-blue-400"
                               : "hover:bg-secondary"
@@ -1581,7 +1571,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                                                   "transition-colors group",
                           isConversationListCollapsed
                             ? "p-3 flex justify-center h-16"
-                            : "p-3 h-16 content-center border-b border-border last:border-b-0",
+                            : "p-3 h-16 content-center",
                         selectedConversation === conversation.id
                           ? "bg-info/10 border-l-4 border-l-blue-500 dark:border-l-blue-400"
                           : "hover:bg-secondary"

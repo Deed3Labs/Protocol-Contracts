@@ -43,6 +43,18 @@ function loadConvNames(): Record<string, string> {
   }
 }
 
+/** Conversation ids the user has hidden or deleted in the messaging modal — kept out of the bell menu too. */
+function loadExcludedConvIds(): Set<string> {
+  const excluded = new Set<string>();
+  for (const key of ['xmtp-hidden-conversations', 'xmtp-deleted-conversations']) {
+    try {
+      const arr = JSON.parse(localStorage.getItem(key) || '[]');
+      if (Array.isArray(arr)) for (const id of arr) excluded.add(String(id));
+    } catch { /* ignore */ }
+  }
+  return excluded;
+}
+
 /** Swipe-left-to-delete row (Apple-style): a red delete bg is revealed as the row drags left. */
 function SwipeRow({ onDelete, children }: { onDelete: () => void; children: ReactNode }) {
   return (
@@ -77,14 +89,18 @@ export default function NotificationsMenu({ onOpenConversation }: { onOpenConver
   const { conversations } = useXMTP();
 
   // Real XMTP conversations → threads (names from the conversation-name map we persist on message).
+  // Skip conversations the user hid or deleted in the messaging modal so they don't reappear here.
   const convNames = useMemo(() => (open ? loadConvNames() : {}), [open]);
+  const excludedConvIds = useMemo(() => (open ? loadExcludedConvIds() : new Set<string>()), [open]);
   const threads = useMemo(
     () =>
-      conversations.map((c) => {
-        const name = convNames[c.id] || 'Conversation';
-        return { id: c.id, name, avatar: initials(name) };
-      }),
-    [conversations, convNames],
+      conversations
+        .filter((c) => !excludedConvIds.has(c.id))
+        .map((c) => {
+          const name = convNames[c.id] || 'Conversation';
+          return { id: c.id, name, avatar: initials(name) };
+        }),
+    [conversations, convNames, excludedConvIds],
   );
 
   const openConversation = (id?: string) => {
