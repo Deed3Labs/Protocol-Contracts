@@ -7,6 +7,7 @@ import {
   updateContactApi,
   deleteContactApi,
   lookupDirectory,
+  lookupDirectoryNames,
   type ApiContact,
 } from '@/utils/apiClient';
 
@@ -27,6 +28,8 @@ interface ContactsValue {
   removeContact: (id: string) => void;
   /** Directory autofill: resolve a member's wallet from a known email/phone (exact match, opt-out aware). */
   lookupWallet: (q: { email?: string; phone?: string }) => Promise<string | null>;
+  /** Directory reverse-lookup: wallet addresses → member display names ({ lowercasedWallet: name }). */
+  lookupNames: (wallets: string[]) => Promise<Record<string, string>>;
   /** Open the contacts manager; pass { add: true } to jump straight to the add form. */
   openManager: (opts?: { add?: boolean }) => void;
 }
@@ -51,6 +54,7 @@ export function useContacts(): ContactsValue {
       updateContact: () => {},
       removeContact: () => {},
       lookupWallet: async () => null,
+      lookupNames: async () => ({}),
       openManager: () => {},
     }
   );
@@ -145,6 +149,14 @@ export function ContactsProvider({ children }: { children: ReactNode }) {
     [address],
   );
 
+  const lookupNames = useCallback(
+    async (wallets: string[]) => {
+      if (!address) return {};
+      return lookupDirectoryNames(address, wallets);
+    },
+    [address],
+  );
+
   const value: ContactsValue = {
     contacts,
     getContact: (id) => contacts.find((c) => c.id === id),
@@ -152,6 +164,7 @@ export function ContactsProvider({ children }: { children: ReactNode }) {
     updateContact,
     removeContact,
     lookupWallet,
+    lookupNames,
     openManager: (opts) => {
       setManagerAdd(Boolean(opts?.add));
       setManagerOpen(true);

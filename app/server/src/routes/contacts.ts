@@ -123,6 +123,26 @@ router.get('/:wallet/lookup', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/contacts/:wallet/names?wallets=0x..,0x..  → { names: { <wallet>: <displayName> } }
+// Directory reverse-lookup so a conversation/peer known only by wallet can be shown by member name.
+router.get('/:wallet/names', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  if (rateLimited(w)) {
+    res.status(429).json({ error: 'Too many lookups' });
+    return;
+  }
+  const raw = typeof req.query.wallets === 'string' ? req.query.wallets : '';
+  const wallets = raw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 50);
+  try {
+    res.json({ names: await contactsStore.lookupNames(wallets) });
+  } catch (error) {
+    console.error('[contacts/names]', error);
+    res.json({ names: {} });
+  }
+});
+
 // GET/PUT /api/contacts/:wallet/optout  → directory discoverability toggle
 router.get('/:wallet/optout', async (req: Request, res: Response) => {
   const w = wallet(req);

@@ -148,6 +148,39 @@ export const contactsStore = {
     return { wallet: String(row.wallet), matchedOn: row.by_email ? 'email' : 'phone' };
   },
 
+  /**
+   * Directory REVERSE-lookup: wallet addresses → each member's public display name (display_name, then
+   * username). Matches any of a member's verified wallets (member_wallets) or their primary wallet, and
+   * respects the directory opt-out. Returns a { lowercasedWallet: name } map for wallets that resolved.
+   */
+  async lookupNames(wallets: string[]): Promise<Record<string, string>> {
+    const pool = getPostgresPool();
+    if (!pool) return {};
+    await ensureTables();
+    const addrs = [...new Set(wallets.map((w) => String(w || '').toLowerCase()).filter((w) => /^0x[0-9a-f]{40}$/.test(w)))];
+    if (addrs.length === 0) return {};
+    const r = await pool.query(
+      `SELECT w.addr AS wallet, pub.display_name, pub.username
+         FROM (
+           SELECT member_id, lower(wallet_address) AS addr FROM member_wallets
+            WHERE lower(wallet_address) = ANY($1) AND status = 'ACTIVE'
+           UNION
+           SELECT id AS member_id, lower(primary_wallet) AS addr FROM members
+            WHERE lower(primary_wallet) = ANY($1)
+         ) w
+         JOIN members m ON m.id = w.member_id
+         LEFT JOIN member_profile_public pub ON pub.member_id = m.id
+        WHERE lower(m.primary_wallet) NOT IN (SELECT wallet FROM ${OPTOUT})`,
+      [addrs],
+    );
+    const out: Record<string, string> = {};
+    for (const row of r.rows) {
+      const name = (row.display_name && String(row.display_name).trim()) || (row.username && String(row.username).trim());
+      if (name && !out[String(row.wallet)]) out[String(row.wallet)] = name;
+    }
+    return out;
+  },
+
   async isOptedOut(wallet: string): Promise<boolean> {
     const pool = getPostgresPool();
     if (!pool) return false;

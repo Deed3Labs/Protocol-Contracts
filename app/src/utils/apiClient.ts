@@ -2346,6 +2346,17 @@ export async function lookupDirectory(
   return r.error || !r.data ? { wallet: null } : r.data;
 }
 
+/** Directory reverse-lookup: wallet addresses → member display names ({ lowercasedWallet: name }). */
+export async function lookupDirectoryNames(wallet: string, wallets: string[]): Promise<Record<string, string>> {
+  const list = wallets.map((w) => w.trim()).filter(Boolean);
+  if (list.length === 0) return {};
+  const params = new URLSearchParams({ wallets: list.join(',') });
+  const r = await apiRequest<{ names: Record<string, string> }>(
+    `/api/contacts/${wallet.toLowerCase()}/names?${params.toString()}`,
+  );
+  return r.error || !r.data ? {} : r.data.names;
+}
+
 export async function getDirectoryOptout(wallet: string): Promise<boolean> {
   const r = await apiRequest<{ optedOut: boolean }>(`/api/contacts/${wallet.toLowerCase()}/optout`);
   return r.error || !r.data ? false : r.data.optedOut;

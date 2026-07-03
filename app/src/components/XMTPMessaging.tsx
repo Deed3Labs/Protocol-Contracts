@@ -129,7 +129,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   } = useXMTP();
   
   const { handleConnect, isConnecting, isEmbeddedWallet, address } = useXMTPConnection();
-  const { contacts, lookupWallet } = useContacts();
+  const { contacts, lookupWallet, lookupNames } = useContacts();
   const contactsWithWallet = contacts.filter((c) => c.wallet);
 
   const [selectedConversation, setSelectedConversation] = useState<string | null>(initialConversationId || null);
@@ -177,6 +177,8 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   // Resolved peer wallet per DM conversation id — lets us title a DM by the contact's name even when
   // it was loaded from the network (not created this session, so no cached name).
   const [peerAddresses, setPeerAddresses] = useState<Record<string, string>>({});
+  // Peer wallet → member display name, resolved from the global member directory (opt-out aware).
+  const [directoryNames, setDirectoryNames] = useState<Record<string, string>>({});
   // Message scroll containers (mobile + desktop layouts) — we scroll whichever is visible to the bottom.
   const msgScrollMobileRef = useRef<HTMLDivElement>(null);
   const msgScrollDesktopRef = useRef<HTMLDivElement>(null);
@@ -352,27 +354,43 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     }
   }, []);
 
-  // Resolve each DM's peer wallet (from its XMTP members) so we can title it by the contact's name,
-  // even for conversations loaded from the network. Best-effort + cached, so it runs once per DM.
+  // Resolve each DM's peer wallet (from its XMTP members), then title the thread by the peer's name —
+  // first from local contacts, otherwise from the GLOBAL member directory (like the email/phone
+  // autofill). Best-effort + cached, so each peer is only fetched once. Falls back to the address.
   useEffect(() => {
     if (!isConnected || !currentUserInboxId || conversations.length === 0) return;
     let cancelled = false;
     (async () => {
+      const resolved: string[] = [];
       for (const conv of conversations) {
         if (cancelled) break;
-        if (isGroupConversation(conv.id) || peerAddresses[conv.id]) continue;
-        try {
-          const members = await (conv as any).members?.();
-          if (!members || cancelled) continue;
-          const peer = members.find((m: any) => m.inboxId && m.inboxId !== currentUserInboxId);
-          const addr: string | undefined = peer?.accountIdentifiers?.[0]?.identifier;
-          if (addr) setPeerAddresses((prev) => (prev[conv.id] ? prev : { ...prev, [conv.id]: addr }));
-        } catch { /* ignore — falls back to the conversation id */ }
+        if (isGroupConversation(conv.id)) continue;
+        let addr: string | undefined = peerAddresses[conv.id];
+        if (!addr) {
+          try {
+            const members = await (conv as any).members?.();
+            if (!members || cancelled) continue;
+            const peer = members.find((m: any) => m.inboxId && m.inboxId !== currentUserInboxId);
+            addr = peer?.accountIdentifiers?.[0]?.identifier;
+            if (addr) setPeerAddresses((prev) => (prev[conv.id] ? prev : { ...prev, [conv.id]: addr as string }));
+          } catch { continue; }
+        }
+        if (addr) resolved.push(addr.toLowerCase());
       }
+      if (cancelled || resolved.length === 0) return;
+      // Fetch member names from the directory for peers we don't already have a name for.
+      const need = [...new Set(resolved)].filter(
+        (a) => !directoryNames[a] && !contacts.some((c) => c.wallet?.toLowerCase() === a),
+      );
+      if (need.length === 0) return;
+      try {
+        const names = await lookupNames(need);
+        if (!cancelled && Object.keys(names).length > 0) setDirectoryNames((prev) => ({ ...prev, ...names }));
+      } catch { /* ignore — falls back to the address */ }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, conversations, currentUserInboxId]);
+  }, [isConnected, conversations, currentUserInboxId, contacts]);
 
   // Unified auto-sync system
   useEffect(() => {
@@ -585,7 +603,8 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     const contactName = peer
       ? contacts.find((c) => c.wallet?.toLowerCase() === peer.toLowerCase())?.name
       : undefined;
-    return conversationNames[id] || contactName || (peer ? formatAddress(peer) : formatAddress(id));
+    const directoryName = peer ? directoryNames[peer.toLowerCase()] : undefined;
+    return conversationNames[id] || contactName || directoryName || (peer ? formatAddress(peer) : formatAddress(id));
   };
 
   const openRenameGroup = (conversationId: string) => {
