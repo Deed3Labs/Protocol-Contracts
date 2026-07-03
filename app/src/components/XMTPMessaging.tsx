@@ -28,10 +28,68 @@ import {
   Copy,
   Share2,
   Pencil,
-  UserPlus
+  UserPlus,
+  Trash2
 } from 'lucide-react';
+import { motion, type PanInfo } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useContacts, contactInitials } from '@/context/ContactsContext';
+
+/**
+ * Swipe-left conversation row (Apple Mail style): dragging left reveals Archive + Delete actions.
+ * The row itself stays tappable (to open the thread) when not dragged. Snaps open/closed on release.
+ */
+function SwipeableRow({
+  archiveIcon,
+  archiveLabel,
+  onArchive,
+  onDelete,
+  children,
+}: {
+  archiveIcon: React.ReactNode;
+  archiveLabel: string;
+  onArchive: () => void;
+  onDelete: () => void;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative overflow-hidden">
+      {/* action panel revealed behind the row */}
+      <div className="absolute inset-y-0 right-0 flex">
+        <button
+          type="button"
+          onClick={() => { setOpen(false); onArchive(); }}
+          className="flex w-[76px] flex-col items-center justify-center gap-0.5 bg-amber-500 text-[11px] font-medium text-white"
+        >
+          {archiveIcon}
+          {archiveLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setOpen(false); onDelete(); }}
+          className="flex w-[76px] flex-col items-center justify-center gap-0.5 bg-negative text-[11px] font-medium text-white"
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete
+        </button>
+      </div>
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: -152, right: 0 }}
+        dragElastic={{ left: 0.05, right: 0.25 }}
+        animate={{ x: open ? -152 : 0 }}
+        transition={{ type: 'spring', stiffness: 500, damping: 42 }}
+        onDragEnd={(_e, info: PanInfo) => {
+          setOpen(info.offset.x < -60 || info.velocity.x < -400 ? info.offset.x < 0 : false);
+        }}
+        className="relative touch-pan-y bg-card"
+      >
+        {children}
+      </motion.div>
+    </div>
+  );
+}
 
 interface XMTPMessagingProps {
   ownerAddress?: string;
@@ -68,6 +126,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     manualSync,
     canMessage,
     getCurrentInboxId,
+    deleteConversation,
     isConnected
   } = useXMTP();
   
@@ -113,9 +172,15 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   const [currentUserInboxId, setCurrentUserInboxId] = useState<string | null>(null);
   const [isConversationListCollapsed, setIsConversationListCollapsed] = useState(false);
   const [hiddenConversations, setHiddenConversations] = useState<Set<string>>(new Set());
+  const [deletedConversations, setDeletedConversations] = useState<Set<string>>(new Set());
   const [showHiddenConversations, setShowHiddenConversations] = useState(false);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Resolved peer wallet per DM conversation id — lets us title a DM by the contact's name even when
+  // it was loaded from the network (not created this session, so no cached name).
+  const [peerAddresses, setPeerAddresses] = useState<Record<string, string>>({});
+  // Message scroll containers (mobile + desktop layouts) — we scroll whichever is visible to the bottom.
+  const msgScrollMobileRef = useRef<HTMLDivElement>(null);
+  const msgScrollDesktopRef = useRef<HTMLDivElement>(null);
 
   // Opening to message a specific person (e.g. from Contacts): auto-create the DM and jump
   // straight into the thread. Falls back to the prefilled New DM dialog if not connected or the
@@ -206,10 +271,17 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     }
   }, [isConnected, currentUserInboxId, getCurrentInboxId]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to the newest message (on send, receive, or switching threads). We scroll the message
+  // container directly — the mobile + desktop layouts are both mounted, so scroll whichever is visible
+  // (the hidden one is a harmless no-op). rAF waits for the new message to lay out before scrolling.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, selectedConversation]);
+    const id = requestAnimationFrame(() => {
+      for (const el of [msgScrollMobileRef.current, msgScrollDesktopRef.current]) {
+        if (el) el.scrollTop = el.scrollHeight;
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [selectedConversation, selectedConversation ? messages[selectedConversation]?.length : 0]);
 
   // Auto-connect only once per modal open to avoid infinite loop (handleConnect identity changes every render)
   const autoConnectAttemptedRef = useRef(false);
@@ -261,18 +333,47 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     }
   }, [isOpen]);
 
-  // Load hidden conversations from localStorage
+  // Load hidden + deleted conversations from localStorage
   useEffect(() => {
     const savedHidden = localStorage.getItem('xmtp-hidden-conversations');
     if (savedHidden) {
       try {
-        const hiddenArray = JSON.parse(savedHidden);
-        setHiddenConversations(new Set(hiddenArray));
+        setHiddenConversations(new Set(JSON.parse(savedHidden)));
       } catch (err) {
         console.error('Failed to load hidden conversations:', err);
       }
     }
+    const savedDeleted = localStorage.getItem('xmtp-deleted-conversations');
+    if (savedDeleted) {
+      try {
+        setDeletedConversations(new Set(JSON.parse(savedDeleted)));
+      } catch (err) {
+        console.error('Failed to load deleted conversations:', err);
+      }
+    }
   }, []);
+
+  // Resolve each DM's peer wallet (from its XMTP members) so we can title it by the contact's name,
+  // even for conversations loaded from the network. Best-effort + cached, so it runs once per DM.
+  useEffect(() => {
+    if (!isConnected || !currentUserInboxId || conversations.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const conv of conversations) {
+        if (cancelled) break;
+        if (isGroupConversation(conv.id) || peerAddresses[conv.id]) continue;
+        try {
+          const members = await (conv as any).members?.();
+          if (!members || cancelled) continue;
+          const peer = members.find((m: any) => m.inboxId && m.inboxId !== currentUserInboxId);
+          const addr: string | undefined = peer?.accountIdentifiers?.[0]?.identifier;
+          if (addr) setPeerAddresses((prev) => (prev[conv.id] ? prev : { ...prev, [conv.id]: addr }));
+        } catch { /* ignore — falls back to the conversation id */ }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, conversations, currentUserInboxId]);
 
   // Unified auto-sync system
   useEffect(() => {
@@ -322,6 +423,21 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
     newHidden.delete(conversationId);
     setHiddenConversations(newHidden);
     saveHiddenConversations(newHidden);
+  };
+
+  // Permanently delete a conversation from view. XMTP conversations reload from the network, so we
+  // persist the deleted ids and filter them out on every load (plus drop it from the current session).
+  const removeConversation = (conversationId: string) => {
+    const next = new Set(deletedConversations);
+    next.add(conversationId);
+    setDeletedConversations(next);
+    try {
+      localStorage.setItem('xmtp-deleted-conversations', JSON.stringify([...next]));
+    } catch (err) {
+      console.error('Failed to save deleted conversations:', err);
+    }
+    if (selectedConversation === conversationId) setSelectedConversation(null);
+    void deleteConversation(conversationId);
   };
 
   // Handle creating new group
@@ -464,7 +580,13 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
       const native = convObj && typeof (convObj as any).name === 'string' ? (convObj as any).name.trim() : '';
       return native || conversationNames[id] || getGroupMetadata(id)?.name || 'Group Chat';
     }
-    return conversationNames[id] || formatAddress(id);
+    // DMs: prefer a captured name, then the peer's contact name (resolved live from their wallet), then
+    // the peer's address, and only fall back to the opaque conversation id if we know nothing else.
+    const peer = peerAddresses[id];
+    const contactName = peer
+      ? contacts.find((c) => c.wallet?.toLowerCase() === peer.toLowerCase())?.name
+      : undefined;
+    return conversationNames[id] || contactName || (peer ? formatAddress(peer) : formatAddress(id));
   };
 
   const openRenameGroup = (conversationId: string) => {
@@ -711,9 +833,12 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
   };
 
   const filteredConversations = conversations.filter(conversation => {
-    const matchesSearch = conversation.id.toLowerCase().includes(searchQuery.toLowerCase());
+    if (deletedConversations.has(conversation.id)) return false; // permanently removed
+    // Search by the resolved title (name/peer) as well as the raw id, so name search works.
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = conversation.id.toLowerCase().includes(q) || getConversationTitle(conversation).toLowerCase().includes(q);
     const isHidden = hiddenConversations.has(conversation.id);
-    
+
     if (showHiddenConversations) {
       return matchesSearch && isHidden;
     } else {
@@ -1144,8 +1269,14 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                         {filteredConversations.length} conversation{filteredConversations.length !== 1 ? 's' : ''}
                       </div>
                       {filteredConversations.map((conversation) => (
-                        <div
+                        <SwipeableRow
                           key={conversation.id}
+                          archiveIcon={showHiddenConversations ? <Eye className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                          archiveLabel={showHiddenConversations ? 'Unhide' : 'Archive'}
+                          onArchive={() => (showHiddenConversations ? unhideConversation(conversation.id) : hideConversation(conversation.id))}
+                          onDelete={() => removeConversation(conversation.id)}
+                        >
+                        <div
                           className={cn(
                             "p-3 transition-colors border-b border-border last:border-b-0",
                             selectedConversation === conversation.id
@@ -1195,6 +1326,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                               </Button>
                             </div>
                         </div>
+                        </SwipeableRow>
                       ))}
                       {filteredConversations.length === 0 && (
                         <div className="p-4 bg-secondary rounded-sm">
@@ -1263,7 +1395,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 </div>
                 
                 {/* Mobile Messages */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+                <div ref={msgScrollMobileRef} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
                   {currentMessages.map((message, index) => {
                     // Determine if this message is from the current user using inbox ID
                     const messageSender = message.senderInboxId;
@@ -1320,7 +1452,6 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       </div>
                     );
                   })}
-                  <div ref={messagesEndRef} />
                 </div>
 
                 {/* Mobile Message Input */}
@@ -1436,12 +1567,18 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                     </div>
                   )}
                   {filteredConversations.map((conversation) => (
-                    <div
+                    <SwipeableRow
                       key={conversation.id}
+                      archiveIcon={showHiddenConversations ? <Eye className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                      archiveLabel={showHiddenConversations ? 'Unhide' : 'Archive'}
+                      onArchive={() => (showHiddenConversations ? unhideConversation(conversation.id) : hideConversation(conversation.id))}
+                      onDelete={() => removeConversation(conversation.id)}
+                    >
+                    <div
                       className={cn(
                                                   "transition-colors group",
-                          isConversationListCollapsed 
-                            ? "p-3 flex justify-center h-16" 
+                          isConversationListCollapsed
+                            ? "p-3 flex justify-center h-16"
                             : "p-3 h-16 content-center border-b border-border last:border-b-0",
                         selectedConversation === conversation.id
                           ? "bg-info/10 border-l-4 border-l-blue-500 dark:border-l-blue-400"
@@ -1504,6 +1641,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                           )}
                         </div>
                     </div>
+                    </SwipeableRow>
                   ))}
                 </div>
               )}
@@ -1556,7 +1694,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                 </div>
                 
                 {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+                <div ref={msgScrollDesktopRef} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
                   {currentMessages.map((message, index) => {
                     // Determine if this message is from the current user using inbox ID
                     const messageSender = message.senderInboxId;
@@ -1613,7 +1751,6 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       </div>
                     );
                   })}
-                  <div ref={messagesEndRef} />
                 </div>
 
                 {/* Message Input */}
