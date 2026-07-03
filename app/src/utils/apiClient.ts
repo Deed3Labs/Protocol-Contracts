@@ -2499,6 +2499,19 @@ export async function getRampSellStatus(partnerUserRef: string): Promise<RampSel
   return r.error || !r.data ? { status: null } : r.data;
 }
 
+export interface RampBuyStatus {
+  status: string | null; // TRANSACTION_STATUS_STARTED | _SUCCESS | _FAILED
+  purchaseAmount?: string | null;
+  currency?: string | null;
+  txHash?: string | null;
+}
+
+/** Poll an on-ramp (buy) transaction's status to confirm a deposit landed (both redirect + iframe paths). */
+export async function getRampBuyStatus(partnerUserRef: string): Promise<RampBuyStatus> {
+  const r = await apiRequest<RampBuyStatus>(`/api/ramp/buy/status?partnerUserRef=${encodeURIComponent(partnerUserRef)}`);
+  return r.error || !r.data ? { status: null } : r.data;
+}
+
 /** Which ramp provider is active + whether it's configured (so the UI can explain an empty quote). */
 export async function getRampConfig(): Promise<{ provider: string; configured: boolean }> {
   const r = await apiRequest<{ provider: string; configured: boolean }>(`/api/ramp/config`);

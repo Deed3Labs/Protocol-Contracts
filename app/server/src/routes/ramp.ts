@@ -209,6 +209,28 @@ router.post('/buy/order', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/ramp/buy/status?partnerUserRef=0x.. → { status, purchaseAmount, currency, txHash }
+//   Poll after checkout to confirm a deposit landed (works for both the hosted redirect and the iframe).
+router.get('/buy/status', async (req: Request, res: Response) => {
+  const ref = String(req.query.partnerUserRef || '').toLowerCase();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(ref)) {
+    res.status(400).json({ error: 'partnerUserRef required' });
+    return;
+  }
+  if (!requireWalletMatch(req, res, ref, 'partnerUserRef')) return;
+  if (provider() !== 'coinbase') {
+    res.json({ status: null });
+    return;
+  }
+  try {
+    const status = await coinbaseOnrampService.getBuyStatus(ref);
+    res.json(status ?? { status: null });
+  } catch (error: any) {
+    console.error('[ramp/buy/status]', error?.message || error);
+    res.status(502).json({ error: 'Status check failed' });
+  }
+});
+
 // POST /api/ramp/sell/session { walletAddress, redirectUrl? } → { url, partnerUserRef }
 //   Opens the offramp cash-out flow. After the user confirms, poll /sell/status for the send instruction.
 router.post('/sell/session', async (req: Request, res: Response) => {
