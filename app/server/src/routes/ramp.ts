@@ -208,6 +208,61 @@ router.post('/buy/order', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/ramp/sell/session { walletAddress, redirectUrl? } → { url, partnerUserRef }
+//   Opens the offramp cash-out flow. After the user confirms, poll /sell/status for the send instruction.
+router.post('/sell/session', async (req: Request, res: Response) => {
+  const b = (req.body || {}) as Record<string, unknown>;
+  const walletAddress = String(b.walletAddress || '');
+  if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+    res.status(400).json({ error: 'a valid walletAddress is required' });
+    return;
+  }
+  if (!requireWalletMatch(req, res, walletAddress.toLowerCase(), 'walletAddress')) return;
+  const partnerUserRef = walletAddress.toLowerCase();
+  try {
+    if (provider() === 'coinbase') {
+      if (!coinbaseOnrampService.isConfigured()) {
+        res.status(503).json({ error: 'Coinbase Offramp not configured' });
+        return;
+      }
+      const { token } = await coinbaseOnrampService.createSessionToken({ address: walletAddress });
+      const url = coinbaseOnrampService.buildSellUrl({ token, partnerUserRef, redirectUrl: b.redirectUrl ? String(b.redirectUrl) : undefined });
+      res.json({ url, partnerUserRef });
+      return;
+    }
+    // Onramper fallback: a pure hosted sell (no send-back), so no partnerUserRef polling.
+    const amount = Number(b.amount) || 0;
+    const url = await onramperCheckout({ onramp: String(b.onramp || ''), amount, paymentMethod: 'creditcard', walletAddress, fiat: 'usd', crypto: 'usdc_base', type: 'sell' });
+    res.json({ url, partnerUserRef: null });
+  } catch (error: any) {
+    console.error('[ramp/sell/session]', error?.message || error);
+    res.status(502).json({ error: 'Cash-out failed to start' });
+  }
+});
+
+// GET /api/ramp/sell/status?partnerUserRef=0x.. → { status, toAddress, amount, currency, asset, network }
+//   When status is STARTED, the client sends `amount` of USDC to `toAddress` (Coinbase-managed) on Base.
+router.get('/sell/status', async (req: Request, res: Response) => {
+  const ref = String(req.query.partnerUserRef || '').toLowerCase();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(ref)) {
+    res.status(400).json({ error: 'partnerUserRef required' });
+    return;
+  }
+  // Only the owner of that wallet may read its offramp status.
+  if (!requireWalletMatch(req, res, ref, 'partnerUserRef')) return;
+  if (provider() !== 'coinbase') {
+    res.json({ status: null });
+    return;
+  }
+  try {
+    const status = await coinbaseOnrampService.getSellStatus(ref);
+    res.json(status ?? { status: null });
+  } catch (error: any) {
+    console.error('[ramp/sell/status]', error?.message || error);
+    res.status(502).json({ error: 'Status check failed' });
+  }
+});
+
 // GET /api/ramp/transactions/:wallet → recent ramp orders + status (from webhooks / status polling)
 router.get('/transactions/:wallet', async (req: Request, res: Response) => {
   const w = String(req.params.wallet || '').toLowerCase();
