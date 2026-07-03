@@ -2316,6 +2316,23 @@ export class MemberStore {
     return result.rows[0]?.xmtp_address ?? null;
   }
 
+  /** Membership plan for any of a member's wallets (LIFETIME = Accelerated track, YEARLY = Standard). */
+  async getMembershipPlanByWallet(walletAddress: string): Promise<MemberMembershipPlan> {
+    await this.ensureReady();
+    const addr = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<{ membership_plan: MemberMembershipPlan }>(
+        `SELECT membership_plan FROM ${TABLE_MEMBERS}
+           WHERE primary_wallet = $1
+              OR id = (SELECT member_id FROM ${TABLE_WALLETS} WHERE wallet_address = $1 AND status = 'ACTIVE' LIMIT 1)
+           LIMIT 1`,
+        [addr],
+      );
+    });
+    return result.rows[0]?.membership_plan ?? null;
+  }
+
   private async resolveMemberByAuthInput(input: ResolveMemberAuthInput): Promise<MemberRecord | null> {
     const authSubject = normalizeOptionalString(input.authSubject ?? null, 255) ?? null;
     if (authSubject) {

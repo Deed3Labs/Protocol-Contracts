@@ -4,7 +4,7 @@ import {
   Trash2, Wallet, Zap,
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { usePay, creditsFor, streakMultiplier, BILL_TYPES, type Bill, type BillType } from '@/context/PayContext';
+import { usePay, creditsFor, rewardMultiplier, BILL_TYPES, type Bill, type BillType } from '@/context/PayContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
@@ -52,7 +52,7 @@ export default function PayModal({
   const { bills, getBill, addBiller, updateBiller, removeBiller, setBillerPayout, payViaUsdc, streak, recordBillPayment } = usePay();
   const { accounts } = useExternalAccounts();
   const bal = useClearBalances();
-  const { email } = useMemberProfile();
+  const { email, accelerated } = useMemberProfile();
   const [va, setVa] = useState<BridgeVirtualAccount | null>(null);
   const sources: Source[] = [
     // Cash = USDC balance, exposed as a Bridge virtual account (account/routing) for ACH-style pulls.
@@ -177,8 +177,8 @@ export default function PayModal({
   const bill = billId ? getBill(billId) : undefined;
   const source = sources.find((s) => s.id === sourceId) ?? sources[0];
   const isRent = bill?.type === 'rent';
-  const credits = bill ? creditsFor(bill, streak, amount) : 0;
-  const mult = streakMultiplier(streak);
+  const credits = bill ? creditsFor(bill, streak, amount, accelerated) : 0;
+  const mult = rewardMultiplier(streak, accelerated);
 
   const saveBiller = () => {
     const amt = Number(draft.amount) || 0;
@@ -206,7 +206,7 @@ export default function PayModal({
 
   const creditsBadge = (b: Bill) => (
     <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-positive/10 px-1.5 py-0.5 text-[10px] font-medium text-positive">
-      <Sparkles className="h-3 w-3" /> +{fmtInt(creditsFor(b, streak))}
+      <Sparkles className="h-3 w-3" /> +{fmtInt(creditsFor(b, streak, 0, accelerated))}
     </span>
   );
 
@@ -483,7 +483,9 @@ export default function PayModal({
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold text-foreground">+{fmtInt(credits)} Equity Credits</div>
-                  <div className="text-[11px] text-muted-foreground">Pay on time · {streak}-mo streak ({mult.toFixed(2)}×)</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {accelerated ? `Accelerated track · ${mult.toFixed(2)}×` : `Pay on time · ${streak}-mo streak (${mult.toFixed(2)}×)`}
+                  </div>
                 </div>
                 <Award className="h-4 w-4 shrink-0 text-positive" />
               </div>
