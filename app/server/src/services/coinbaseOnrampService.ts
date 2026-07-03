@@ -229,6 +229,25 @@ export const coinbaseOnrampService = {
     return `${PAY_URL}/buy/select-asset?${q.toString()}`;
   },
 
+  /**
+   * Latest ON-ramp (buy) transaction for a partnerUserRef — used to confirm a deposit landed (so we can
+   * notify + refresh the balance) for both the hosted-redirect and the Apple Pay iframe flows.
+   */
+  async getBuyStatus(partnerUserRef: string): Promise<OnrampBuyStatus | null> {
+    const path = `/onramp/v1/buy/user/${encodeURIComponent(partnerUserRef)}/transactions?page_size=1`;
+    const data = await this.apiFetch('GET', path);
+    const tx = Array.isArray(data?.transactions) ? data.transactions[0] : undefined;
+    if (!tx) return null;
+    const amt = tx.purchase_amount || tx.purchaseAmount || {};
+    return {
+      status: String(tx.status || ''),
+      purchaseAmount: amt.value != null ? String(amt.value) : null,
+      currency: amt.currency ? String(amt.currency) : null,
+      txHash: tx.tx_hash ? String(tx.tx_hash) : null,
+      raw: tx,
+    };
+  },
+
   // ---- OFF-RAMP (sell → fiat) --------------------------------------------------------------------
   // Flow: open the offramp URL → user picks amount + cash-out destination on Coinbase → we poll the
   // status API → when it's STARTED with a to_address, our app sends that USDC on-chain → Coinbase pays
@@ -262,6 +281,14 @@ export const coinbaseOnrampService = {
     };
   },
 };
+
+export interface OnrampBuyStatus {
+  status: string; // TRANSACTION_STATUS_STARTED | _SUCCESS | _FAILED
+  purchaseAmount: string | null; // USDC bought
+  currency: string | null;
+  txHash: string | null;
+  raw?: unknown;
+}
 
 export interface OfframpStatus {
   status: string; // TRANSACTION_STATUS_STARTED | _SUCCESS | _FAILED

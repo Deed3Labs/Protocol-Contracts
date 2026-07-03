@@ -7,7 +7,8 @@ import { useBridge } from '@/context/BridgeContext';
 import { useKyc } from '@/context/KycContext';
 import DepositInstructions from '@/components/app-ui/DepositInstructions';
 import { usePrivy } from '@privy-io/react-auth';
-import { getRampBuyQuote, createRampBuySession, createRampBuyOrder, getRampConfig, rampEvent, type RampQuote } from '@/utils/apiClient';
+import { getRampBuyQuote, createRampBuySession, createRampBuyOrder, getRampConfig, getRampBuyStatus, rampEvent, type RampQuote } from '@/utils/apiClient';
+import { useClearBalances } from '@/hooks/useClearBalances';
 import { cn } from '@/lib/utils';
 
 /*
@@ -92,6 +93,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const { user } = usePrivy();
   const buyerEmail = user?.email?.address || '';
   const buyerPhone = user?.phone?.number || '';
+  const bal = useClearBalances();
   // Card / Apple Pay on-ramps KYC at the provider; a bank/ACH deposit needs our KYC.
   const proceed = () => {
     if (methodId === 'bank' && !verified) openKyc(() => setStep('status'));
@@ -172,8 +174,37 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   useEffect(() => {
     if (step !== 'status') return;
     setDone(false);
-    const t = setTimeout(() => setDone(true), 1700);
-    return () => clearTimeout(t);
+    // Bank transfers settle via Bridge separately — keep the optimistic confirmation.
+    if (isBank || !wallet.address) {
+      const t = setTimeout(() => setDone(true), 1700);
+      return () => clearTimeout(t);
+    }
+    // Card / Apple Pay: poll Coinbase until the deposit actually lands, then notify + refresh the balance.
+    let cancelled = false;
+    const deadline = Date.now() + 5 * 60_000;
+    const ref = rampRef || `${wallet.address}-buy`;
+    (async () => {
+      while (!cancelled && Date.now() < deadline) {
+        const s = await getRampBuyStatus(wallet.address).catch(() => ({ status: null as string | null }));
+        if (cancelled) return;
+        if (s.status === 'TRANSACTION_STATUS_SUCCESS') {
+          void rampEvent({ type: 'buy', status: 'completed', amount, walletAddress: wallet.address, ref });
+          bal.refresh(); // USDC has landed on-chain → pull the real balance
+          setDone(true);
+          return;
+        }
+        if (s.status === 'TRANSACTION_STATUS_FAILED') {
+          void rampEvent({ type: 'buy', status: 'failed', amount, walletAddress: wallet.address, ref });
+          setCheckoutError('Your deposit didn’t go through — you weren’t charged.');
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+      // Timed out still pending — show "on its way"; the balance poll will pick it up when it lands.
+      if (!cancelled) setDone(true);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
   const amount = Number(amountStr) || 0;
@@ -189,14 +220,13 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
       if (!/\.coinbase\.com$/.test((() => { try { return new URL(e.origin).hostname; } catch { return ''; } })())) return;
       const d = e.data;
       const s = typeof d === 'string' ? d : JSON.stringify(d ?? '');
-      if (/success|completed|complete|finished|TRANSACTION_STATUS_SUCCESS/i.test(s)) {
-        if (rampRef && wallet.address) void rampEvent({ type: 'buy', status: 'completed', amount, walletAddress: wallet.address, ref: rampRef });
-        setStep('status');
-      }
+      // The iframe reports the Apple Pay press succeeded → move to the status step, which polls Coinbase
+      // for the real on-chain completion (and fires the "Money added" notification + balance refresh).
+      if (/success|completed|complete|finished|TRANSACTION_STATUS_SUCCESS/i.test(s)) setStep('status');
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
-  }, [step, rampRef, amount, wallet.address]);
+  }, [step]);
   const quotes = isBank ? [] : apiQuotes;
   const best = quotes[0];
   const selected =
