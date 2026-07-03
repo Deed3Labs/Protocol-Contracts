@@ -20,11 +20,24 @@ const PAY_URL = 'https://pay.coinbase.com';
 const DEFAULT_NETWORK = 'base';
 const DEFAULT_ASSET = 'USDC';
 
+// Resolve the CDP API key the same way the relayer does (SEND_CDP_* is what's set on Railway), with an
+// optional CDP_ONRAMP_* override — the same Secret API key works for all CDP APIs once Onramp is enabled.
 function keyId(): string | null {
-  return (process.env.CDP_ONRAMP_API_KEY_ID || process.env.CDP_API_KEY_ID || process.env.CDP_API_KEY_NAME || '').trim() || null;
+  return (
+    process.env.CDP_ONRAMP_API_KEY_ID ||
+    process.env.SEND_CDP_API_KEY_ID ||
+    process.env.CDP_API_KEY_ID ||
+    process.env.CDP_API_KEY_NAME ||
+    ''
+  ).trim() || null;
 }
 function keySecret(): string | null {
-  return (process.env.CDP_ONRAMP_API_KEY_SECRET || process.env.CDP_API_KEY_SECRET || '').trim() || null;
+  return (
+    process.env.CDP_ONRAMP_API_KEY_SECRET ||
+    process.env.SEND_CDP_API_KEY_SECRET ||
+    process.env.CDP_API_KEY_SECRET ||
+    ''
+  ).trim() || null;
 }
 
 /** Map the UI's payment-method id to Coinbase's enum. Guest checkout (no Coinbase login) is offered by
@@ -141,6 +154,54 @@ export const coinbaseOnrampService = {
     };
   },
 
+  /**
+   * HEADLESS on-ramp (Guest Checkout) — create an order and get back a payment link (an Apple Pay
+   * button URL) we embed in an iframe, so the buy happens inside our own UI. US only, Apple Pay on web.
+   * Requires the user's verified email + phone (we source these from the authed Privy session). Docs:
+   * https://docs.cdp.coinbase.com/onramp/headless-onramp/overview
+   */
+  async createOnrampOrder(params: {
+    amount: number;
+    email: string;
+    phoneNumber: string; // E.164
+    destinationAddress: string;
+    domain: string; // where the iframe is embedded — must be allowlisted in the CDP portal
+    partnerUserRef: string;
+    fiat?: string;
+    asset?: string;
+    network?: string;
+    paymentMethod?: 'GUEST_CHECKOUT_APPLE_PAY' | 'GUEST_CHECKOUT_CARD';
+  }): Promise<{ paymentLinkUrl: string; paymentLinkType?: string; orderId?: string; raw: any }> {
+    const now = new Date().toISOString();
+    const data = await this.apiFetch('POST', '/v2/onramp/orders', {
+      paymentCurrency: (params.fiat ?? 'USD').toUpperCase(),
+      purchaseCurrency: params.asset ?? DEFAULT_ASSET,
+      destinationNetwork: params.network ?? DEFAULT_NETWORK,
+      destinationAddress: params.destinationAddress,
+      paymentMethod: params.paymentMethod ?? 'GUEST_CHECKOUT_APPLE_PAY',
+      paymentAmount: params.amount.toFixed(2), // fiat, inclusive of fees
+      email: params.email,
+      phoneNumber: params.phoneNumber,
+      // The user is verified via Privy at login; we attest the verification time (no separate SMS step).
+      phoneNumberVerifiedAt: now,
+      agreementAcceptedAt: now,
+      partnerUserRef: params.partnerUserRef,
+      domain: params.domain,
+    });
+    const url = data?.paymentLink?.url || data?.payment_link?.url;
+    if (!url) {
+      const err = new Error('Coinbase order payment link missing') as Error & { raw?: unknown };
+      err.raw = data;
+      throw err;
+    }
+    return {
+      paymentLinkUrl: String(url),
+      paymentLinkType: data?.paymentLink?.paymentLinkType || data?.payment_link?.paymentLinkType,
+      orderId: data?.order?.orderId ? String(data.order.orderId) : undefined,
+      raw: data,
+    };
+  },
+
   /** Build the hosted onramp URL to redirect the user to (session token carries the appId + wallet). */
   buildBuyUrl(params: {
     token: string;
@@ -167,7 +228,50 @@ export const coinbaseOnrampService = {
     if (params.redirectUrl) q.set('redirectUrl', params.redirectUrl);
     return `${PAY_URL}/buy/select-asset?${q.toString()}`;
   },
+
+  // ---- OFF-RAMP (sell → fiat) --------------------------------------------------------------------
+  // Flow: open the offramp URL → user picks amount + cash-out destination on Coinbase → we poll the
+  // status API → when it's STARTED with a to_address, our app sends that USDC on-chain → Coinbase pays
+  // out. Docs: https://docs.cdp.coinbase.com/onramp/offramp/offramp-overview
+
+  /** Build the hosted offramp URL. `partnerUserRef` scopes the transaction so we can poll its status. */
+  buildSellUrl(params: { token: string; partnerUserRef: string; redirectUrl?: string }): string {
+    const q = new URLSearchParams({ sessionToken: params.token, partnerUserRef: params.partnerUserRef });
+    if (params.redirectUrl) q.set('redirectUrl', params.redirectUrl);
+    return `${PAY_URL}/v3/sell/input?${q.toString()}`;
+  },
+
+  /**
+   * Latest offramp transaction for a partnerUserRef. When status is STARTED it carries the Coinbase
+   * `to_address` + `sell_amount` we must send USDC to (within 30 min). Normalized for the app.
+   */
+  async getSellStatus(partnerUserRef: string): Promise<OfframpStatus | null> {
+    const path = `/onramp/v1/sell/user/${encodeURIComponent(partnerUserRef)}/transactions?page_size=1`;
+    const data = await this.apiFetch('GET', path);
+    const tx = Array.isArray(data?.transactions) ? data.transactions[0] : undefined;
+    if (!tx) return null;
+    const amt = tx.sell_amount || {};
+    return {
+      status: String(tx.status || ''),
+      toAddress: tx.to_address ? String(tx.to_address) : null,
+      amount: amt.value != null ? String(amt.value) : null,
+      currency: amt.currency ? String(amt.currency) : null,
+      asset: tx.asset ? String(tx.asset) : null,
+      network: tx.network ? String(tx.network) : null,
+      raw: tx,
+    };
+  },
 };
+
+export interface OfframpStatus {
+  status: string; // TRANSACTION_STATUS_STARTED | _SUCCESS | _FAILED
+  toAddress: string | null; // Coinbase-managed address to send the USDC to (when STARTED)
+  amount: string | null; // sell_amount.value
+  currency: string | null; // sell_amount.currency (e.g. USDC)
+  asset: string | null;
+  network: string | null;
+  raw?: unknown;
+}
 
 export interface NormalizedRampQuote {
   provider: string;

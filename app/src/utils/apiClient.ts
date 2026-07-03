@@ -2478,10 +2478,44 @@ export async function getRampBuyQuote(p: {
   return r.error || !r.data ? null : r.data.quote;
 }
 
+export interface RampSellStatus {
+  status: string | null; // TRANSACTION_STATUS_STARTED | _SUCCESS | _FAILED
+  toAddress?: string | null; // Coinbase address to send USDC to (when STARTED)
+  amount?: string | null; // sell_amount.value
+  currency?: string | null;
+  asset?: string | null;
+  network?: string | null;
+}
+
+/** Start an off-ramp cash-out → { url, partnerUserRef }. Poll getRampSellStatus after the user confirms. */
+export async function createRampSellSession(p: { walletAddress: string; redirectUrl?: string }): Promise<{ url: string | null; partnerUserRef: string | null }> {
+  const r = await apiRequest<{ url: string | null; partnerUserRef: string | null }>(`/api/ramp/sell/session`, { method: 'POST', body: JSON.stringify(p) });
+  return r.error || !r.data ? { url: null, partnerUserRef: null } : r.data;
+}
+
+/** Poll an off-ramp transaction's status. On STARTED it returns the toAddress + amount of USDC to send. */
+export async function getRampSellStatus(partnerUserRef: string): Promise<RampSellStatus> {
+  const r = await apiRequest<RampSellStatus>(`/api/ramp/sell/status?partnerUserRef=${encodeURIComponent(partnerUserRef)}`);
+  return r.error || !r.data ? { status: null } : r.data;
+}
+
 /** Which ramp provider is active + whether it's configured (so the UI can explain an empty quote). */
 export async function getRampConfig(): Promise<{ provider: string; configured: boolean }> {
   const r = await apiRequest<{ provider: string; configured: boolean }>(`/api/ramp/config`);
   return r.error || !r.data ? { provider: 'coinbase', configured: false } : r.data;
+}
+
+/** Headless buy order (Coinbase Guest Checkout) → an Apple Pay payment-link URL to embed in an iframe. */
+export async function createRampBuyOrder(p: {
+  amount: number;
+  walletAddress: string;
+  email: string;
+  phone: string;
+  paymentMethod?: 'GUEST_CHECKOUT_APPLE_PAY' | 'GUEST_CHECKOUT_CARD';
+}): Promise<{ paymentLinkUrl: string | null; error?: string; code?: string }> {
+  const r = await apiRequest<{ paymentLinkUrl: string | null }>(`/api/ramp/buy/order`, { method: 'POST', body: JSON.stringify(p) });
+  if (r.error || !r.data) return { paymentLinkUrl: null, error: r.error || 'Order failed' };
+  return { paymentLinkUrl: r.data.paymentLinkUrl };
 }
 
 /** Create a buy session → hosted checkout URL to redirect the user to. */
