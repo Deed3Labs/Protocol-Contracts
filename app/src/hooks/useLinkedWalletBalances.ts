@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ethers } from 'ethers';
-import { getTokensByAddressPortfolio } from '@/utils/apiClient';
+import { getTokenBalancesBatch } from '@/utils/apiClient';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 
 export interface LinkedBalance {
@@ -44,28 +43,23 @@ export function useLinkedWalletBalances(addresses: string[], enabled: boolean) {
       const usdcAddr = c?.usdc?.toLowerCase();
       const clrusdAddr = c?.clrusd?.toLowerCase();
       const out: Record<string, LinkedBalance> = {};
-      // Alchemy tokens/by-address caps at 2 addresses/request → batch by 2 (usually just one call).
-      for (let i = 0; i < addresses.length; i += 2) {
-        const batch = addresses.slice(i, i + 2);
-        const { results } = await getTokensByAddressPortfolio(
-          batch.map((a) => ({ address: a, chainIds: [ACTIVE_CHAIN_ID] })),
-          { withMetadata: true, withPrices: false, includeNativeTokens: false, includeErc20Tokens: true },
-        ).catch(() => ({ results: [] as Array<{ address: string; tokens: unknown[] }> }));
-        for (const r of results) {
-          const addrLower = r.address?.toLowerCase();
-          if (!addrLower) continue;
-          let usdc = 0;
-          let clrusd = 0;
-          for (const raw of r.tokens ?? []) {
-            const t = raw as { tokenAddress?: string; address?: string; tokenBalance?: string; balanceRaw?: string; tokenMetadata?: { decimals?: number }; decimals?: number };
-            const ta = (t.tokenAddress ?? t.address ?? '').toLowerCase();
-            const decimals = t.tokenMetadata?.decimals ?? t.decimals ?? 6;
-            const bal = Number(ethers.formatUnits(BigInt(t.tokenBalance ?? t.balanceRaw ?? '0'), decimals));
-            if (ta === usdcAddr) usdc += bal;
-            else if (ta === clrusdAddr) clrusd += bal;
-          }
-          out[addrLower] = { usdc, clrusd };
-        }
+      for (const a of addresses) out[a.toLowerCase()] = { usdc: 0, clrusd: 0 };
+      // Query the two known tokens (USDC + CLRUSD) directly via balanceOf, which fails over Alchemy →
+      // public RPC server-side. This survives Alchemy Data-API outages, unlike the Portfolio discovery API.
+      const requests: Array<{ chainId: number; tokenAddress: string; userAddress: string }> = [];
+      for (const a of addresses) {
+        if (usdcAddr) requests.push({ chainId: ACTIVE_CHAIN_ID, tokenAddress: usdcAddr, userAddress: a });
+        if (clrusdAddr) requests.push({ chainId: ACTIVE_CHAIN_ID, tokenAddress: clrusdAddr, userAddress: a });
+      }
+      const results = await getTokenBalancesBatch(requests).catch(() => []);
+      for (const r of results) {
+        if (!r.data) continue; // null = zero balance or not found → stays 0
+        const addrLower = r.userAddress.toLowerCase();
+        const ta = r.tokenAddress.toLowerCase();
+        const bal = Number(r.data.balance) || 0;
+        if (!out[addrLower]) out[addrLower] = { usdc: 0, clrusd: 0 };
+        if (ta === usdcAddr) out[addrLower].usdc = bal;
+        else if (ta === clrusdAddr) out[addrLower].clrusd = bal;
       }
       if (!cancelled) {
         setBalances(out);
