@@ -41,21 +41,21 @@ function detect(): { platform: Platform; standalone: boolean } {
 function GuideStep({ active, n, icon, children }: { active: boolean; n: number; icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <motion.div
-      animate={{ scale: active ? 1.02 : 1 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+      animate={{ scale: active ? 1.015 : 1 }}
+      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        'flex items-center gap-3 rounded-2xl border p-3 transition-colors',
+        'flex items-center gap-3 rounded-2xl border p-3 transition-colors duration-700',
         active ? 'border-info bg-info/10' : 'border-border bg-secondary/30',
       )}
     >
-      <span className={cn('relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors', active ? 'bg-info text-white' : 'bg-secondary text-foreground')}>
+      <span className={cn('relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors duration-700', active ? 'bg-info text-white' : 'bg-secondary text-foreground')}>
         {icon}
         {active && (
           <motion.span
             className="absolute inset-0 rounded-xl ring-2 ring-info"
-            initial={{ opacity: 0.6, scale: 1 }}
-            animate={{ opacity: 0, scale: 1.5 }}
-            transition={{ duration: 1.2, repeat: Infinity, ease: 'easeOut' }}
+            initial={{ opacity: 0.35, scale: 1 }}
+            animate={{ opacity: 0, scale: 1.28 }}
+            transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
           />
         )}
       </span>
@@ -103,7 +103,7 @@ export default function PwaInstallTakeover() {
   // Drive the 2-step guide animation (~3s loop).
   useEffect(() => {
     if (!show || deferred) return;
-    const id = setInterval(() => setPhase((p) => (p + 1) % 2), 1600);
+    const id = setInterval(() => setPhase((p) => (p + 1) % 2), 3200);
     return () => clearInterval(id);
   }, [show, deferred]);
 
