@@ -182,11 +182,12 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     // Card / Apple Pay: poll Coinbase until the deposit actually lands, then notify + refresh the balance.
     let cancelled = false;
     const deadline = Date.now() + 5 * 60_000;
-    const ref = rampRef || `${wallet.address}-buy`;
     (async () => {
       while (!cancelled && Date.now() < deadline) {
-        const s = await getRampBuyStatus(wallet.address).catch(() => ({ status: null as string | null }));
+        const s = await getRampBuyStatus(wallet.address).catch(() => ({ status: null as string | null, id: undefined }));
         if (cancelled) return;
+        // Use Coinbase's tx id as the ref so this dedupes with the webhook's notification.
+        const ref = s.id || rampRef || `${wallet.address}-buy`;
         if (s.status === 'TRANSACTION_STATUS_SUCCESS') {
           void rampEvent({ type: 'buy', status: 'completed', amount, walletAddress: wallet.address, ref });
           bal.refresh(); // USDC has landed on-chain → pull the real balance

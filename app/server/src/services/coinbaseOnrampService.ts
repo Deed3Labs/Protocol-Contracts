@@ -240,6 +240,7 @@ export const coinbaseOnrampService = {
     if (!tx) return null;
     const amt = tx.purchase_amount || tx.purchaseAmount || {};
     return {
+      id: String(tx.transaction_id || tx.transactionId || tx.order_id || tx.orderId || ''),
       status: String(tx.status || ''),
       purchaseAmount: amt.value != null ? String(amt.value) : null,
       currency: amt.currency ? String(amt.currency) : null,
@@ -283,6 +284,7 @@ export const coinbaseOnrampService = {
 };
 
 export interface OnrampBuyStatus {
+  id: string; // Coinbase transaction/order id — used as the notification dedupe ref
   status: string; // TRANSACTION_STATUS_STARTED | _SUCCESS | _FAILED
   purchaseAmount: string | null; // USDC bought
   currency: string | null;
