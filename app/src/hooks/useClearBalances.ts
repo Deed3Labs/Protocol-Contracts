@@ -111,6 +111,17 @@ export function ClearBalancesProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshTokens]);
 
+  // Refresh on a money action (send/transfer/deposit landed) — refetch now and again shortly, since the
+  // on-chain deposit can lag the confirmation by a few seconds.
+  useEffect(() => {
+    const onActivity = () => {
+      void refreshTokens(true);
+      setTimeout(() => void refreshTokens(true), 4000);
+    };
+    window.addEventListener('clear:activity', onActivity);
+    return () => window.removeEventListener('clear:activity', onActivity);
+  }, [refreshTokens]);
+
   // Reconcile: drop the optimistic overlay once the chain moves off the baseline or the TTL elapses.
   useEffect(() => {
     if (!pending) return;
