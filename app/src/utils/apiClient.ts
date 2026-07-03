@@ -2478,6 +2478,12 @@ export async function getRampBuyQuote(p: {
   return r.error || !r.data ? null : r.data.quote;
 }
 
+/** Which ramp provider is active + whether it's configured (so the UI can explain an empty quote). */
+export async function getRampConfig(): Promise<{ provider: string; configured: boolean }> {
+  const r = await apiRequest<{ provider: string; configured: boolean }>(`/api/ramp/config`);
+  return r.error || !r.data ? { provider: 'coinbase', configured: false } : r.data;
+}
+
 /** Create a buy session → hosted checkout URL to redirect the user to. */
 export async function createRampBuySession(p: {
   amount: number;
