@@ -179,7 +179,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const amount = Number(amountStr) || 0;
   const method = METHODS.find((m) => m.id === methodId) ?? METHODS[0];
   const wallet = wallets.find((w) => w.id === walletId) ?? wallets[0] ?? { id: '', label: 'No wallet linked', address: '' };
-  const amountValid = amount >= 1 && amount <= 10000;
+  const amountValid = amount >= 5 && amount <= 10000;
   const isBank = methodId === 'bank';
 
   // Coinbase's Apple Pay iframe posts transaction-status events; treat a success/completion as done.
@@ -329,7 +329,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
             >
               Review
             </button>
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Add $1–$10,000'}</p>
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Add $5–$10,000'}</p>
           </div>
         )}
 
