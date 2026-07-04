@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
-import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
+import { useWallets } from '@privy-io/react-auth';
+import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import {
-  ArrowLeft, Check, ChevronDown, Copy, CreditCard, Landmark, Loader2, Mail, Search,
+  ArrowLeft, Check, ChevronDown, Copy, Loader2, Mail, Search,
   ShieldCheck, TriangleAlert, UserPlus, Wallet, Zap,
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useContacts, contactInitials } from '@/context/ContactsContext';
-import { useExternalAccounts } from '@/context/ExternalAccountsContext';
+import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
+import { useLinkedWalletBalances } from '@/hooks/useLinkedWalletBalances';
 import { prepareSendTransfer, confirmSendTransferLock } from '@/utils/apiClient';
 import { gaslessSendLock } from '@/lib/gaslessMoney';
-import { scSendLock } from '@/lib/sendCalls';
+import { scSendLock, scTransferToken } from '@/lib/sendCalls';
+import { linkedWalletTokenTransfer } from '@/lib/linkedWalletTransfer';
 import { cn } from '@/lib/utils';
 
 /*
@@ -34,21 +37,39 @@ interface Source {
   name: string;
   detail: string;
   icon: typeof Wallet;
+  address: string; // the wallet the funds come from ('' for none)
+  kind: 'clear' | 'linked';
+  balance: number; // balance of the selected token in this source
 }
 export default function SendModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { contacts, getContact, openManager } = useContacts();
-  const { accounts } = useExternalAccounts();
+  const { externalWallets } = useLinkedWallets();
   const { address, embeddedWalletInfo } = useAppKitAccount();
   const { getClientForChain } = useSmartWallets();
+  const { wallets: connectedWallets } = useWallets();
   const isSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
   const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const bal = useClearBalances();
-  const BALANCE = bal.cash;
+  const { balances: linkedBal } = useLinkedWalletBalances(externalWallets.map((w) => w.address), open);
+  const [token, setToken] = useState<'usdc' | 'clrusd'>('usdc');
+  const tokenLabel = token === 'usdc' ? 'USDC' : 'CLRUSD';
+  const clearBalance = token === 'usdc' ? bal.cash : bal.savings;
+  // Crypto sources: the Clear smart wallet + any linked wallets. (Bank/card funding = a later phase.)
   const sources: Source[] = [
-    { id: 'balance', name: 'Clear balance', detail: fmt(BALANCE), icon: Wallet },
-    ...accounts.map((a) => ({ id: a.id, name: `${a.name} ••${a.mask}`, detail: a.type, icon: Landmark })),
-    { id: 'card', name: 'Visa ••7705', detail: 'Debit card', icon: CreditCard },
+    { id: 'balance', name: 'Clear balance', detail: `${fmt(clearBalance)} ${tokenLabel}`, icon: Wallet, address: address || '', kind: 'clear', balance: clearBalance },
+    ...externalWallets.map((w) => {
+      const b = linkedBal[w.address.toLowerCase()];
+      const bl = token === 'usdc' ? b?.usdc ?? 0 : b?.clrusd ?? 0;
+      return { id: `w:${w.address.toLowerCase()}`, name: w.label, detail: `${fmt(bl)} ${tokenLabel}`, icon: Wallet, address: w.address, kind: 'linked' as const, balance: bl };
+    }),
   ];
+
+  // The linked wallet's own EIP-1193 provider (for it to sign its own transfer).
+  const getLinkedProvider = async (fromAddr: string): Promise<unknown> => {
+    const w = connectedWallets.find((x) => x.address.toLowerCase() === fromAddr.toLowerCase());
+    if (!w) throw new Error('Reconnect this wallet to send from it.');
+    return w.getEthereumProvider();
+  };
   const [step, setStep] = useState<'compose' | 'review' | 'status'>('compose');
   const [picking, setPicking] = useState(false);
   const [contactId, setContactId] = useState<string | null>(null);
@@ -70,6 +91,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
     setAmountStr('');
     setNote('');
     setSourceId('balance');
+    setToken('usdc');
     setSourceOpen(false);
     setQuery('');
     setCopied(false);
@@ -88,12 +110,38 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
       try {
         if (!address) throw new Error('Connect your wallet to send.');
         const rcpt = contactId ? getContact(contactId) : undefined;
-        const recipientId = rcpt?.email || rcpt?.phone || rcpt?.wallet;
-        if (!recipientId) throw new Error('Recipient has no email, phone, or wallet on file.');
+        const recipientWallet = rcpt?.wallet;
+        const recipientContact = rcpt?.email || rcpt?.phone;
+        if (!recipientWallet && !recipientContact) throw new Error('Recipient has no email, phone, or wallet on file.');
+        const c = clearContracts(chainId);
+        if (!c) throw new Error('On-chain sending is unavailable on this network.');
+        const tokenAddr = token === 'usdc' ? c.usdc : c.clrusd;
+        const sent = Number(amountStr) || 0;
 
-        // Create the transfer record, then lock funds gaslessly (sender signs EIP-3009; relayer pays gas).
+        // ── Wallet recipient → a direct token transfer (the proven Transfer path). Supports USDC + CLRUSD
+        //    from the Clear smart wallet OR a linked wallet, and avoids the escrow's testnet BigInt issue.
+        if (recipientWallet) {
+          const to = recipientWallet as `0x${string}`;
+          if (source.kind === 'linked') {
+            const provider = await getLinkedProvider(source.address);
+            await linkedWalletTokenTransfer({ provider, from: source.address as `0x${string}`, token: tokenAddr, to, amount: amountStr, chainId });
+          } else {
+            const chainClient = isSmartAccount ? await getClientForChain({ id: chainId }) : undefined;
+            await scTransferToken({ smartWalletClient: chainClient, ownerWallet: address, token: tokenAddr, to, amount: amountStr, chainId });
+          }
+          if (cancelled) return;
+          setClaimUrl(null);
+          setDone(true);
+          if (source.kind === 'clear') bal.applyOptimistic(token === 'usdc' ? -sent : 0, token === 'clrusd' ? -sent : 0);
+          return;
+        }
+
+        // ── Email/phone recipient → USDC claim-link escrow (USDC from the Clear balance only for now).
+        if (token !== 'usdc' || source.kind !== 'clear') {
+          throw new Error('Sending to an email or phone is USDC from your Clear balance for now.');
+        }
         const prepared = await prepareSendTransfer({
-          recipient: recipientId,
+          recipient: recipientContact!,
           amount: amountStr,
           fundingSource: 'WALLET_USDC',
           memo: note || undefined,
@@ -143,8 +191,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
         if (cancelled) return;
         setClaimUrl(claim);
         setDone(true);
-        // Optimistic: the sent amount leaves Cash now; reconciles when the lock indexes.
-        if (fromBalance) bal.applyOptimistic(-(Number(amountStr) || 0), 0);
+        bal.applyOptimistic(-sent, 0);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Send failed.');
       }
@@ -158,10 +205,11 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
   const amount = Number(amountStr) || 0;
   const recipient = contactId ? getContact(contactId) : undefined;
   const source = sources.find((s) => s.id === sourceId) ?? sources[0];
-  const fromBalance = sourceId === 'balance';
-  const overBalance = fromBalance && amount > BALANCE;
+  const overBalance = amount > source.balance;
   const amountValid = amount >= 1 && !overBalance;
   const instant = Boolean(recipient?.wallet);
+  // Claim-links (email/phone) can only hold USDC from the Clear balance for now.
+  const claimLinkBlocked = !instant && (token !== 'usdc' || source.kind !== 'clear');
   const channel = recipient?.phone ? 'text' : 'email';
 
   const filtered = useMemo(
@@ -234,6 +282,29 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
               ))}
             </div>
 
+            {/* token */}
+            <div className="mt-3 flex items-center gap-1 rounded-lg border border-border p-0.5">
+              {(['usdc', 'clrusd'] as const).map((tk) => (
+                <button
+                  key={tk}
+                  type="button"
+                  onClick={() => setToken(tk)}
+                  className={cn(
+                    'flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors',
+                    token === tk ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {tk === 'usdc' ? 'USDC · Cash' : 'CLRUSD · Savings'}
+                </button>
+              ))}
+            </div>
+            {claimLinkBlocked && (
+              <p className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+                Sending to an email or phone requires USDC from your Clear balance. Pick a contact with a wallet to send {tokenLabel}.
+              </p>
+            )}
+
             {/* note */}
             <label className="mb-2 mt-5 block text-xs font-medium text-muted-foreground">Note <span className="font-normal">(optional)</span></label>
             <input
@@ -246,14 +317,14 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
 
             <button
               type="button"
-              disabled={!recipient || !amountValid}
+              disabled={!recipient || !amountValid || claimLinkBlocked}
               onClick={() => setStep('review')}
               className="mt-5 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
             >
               Review
             </button>
             <p className="mt-2 text-center text-[11px] text-muted-foreground">
-              {overBalance ? 'Amount exceeds your balance' : fromBalance ? `${fmt(BALANCE)} available` : 'Sends are free'}
+              {overBalance ? `Amount exceeds your ${tokenLabel} balance` : `${fmt(source.balance)} ${tokenLabel} available`}
             </p>
           </div>
         )}
@@ -412,12 +483,19 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
               </div>
             </div>
 
+            {claimLinkBlocked && (
+              <p className="mt-3 flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+                Email/phone sends use USDC from your Clear balance. Switch back to USDC + Clear balance, or send to a wallet.
+              </p>
+            )}
             <button
               type="button"
+              disabled={overBalance || claimLinkBlocked}
               onClick={() => setStep('status')}
-              className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+              className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-50"
             >
-              Send {fmt(amount)}
+              Send {fmt(amount)} {tokenLabel}
             </button>
             <p className="mt-2 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
               <ShieldCheck className="h-3 w-3" />
