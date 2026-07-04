@@ -39,6 +39,44 @@ async function notifyRecipientOfSend(updatedTransfer: {
     console.error('Recipient in-app notification error:', error);
   }
 }
+
+const fmtUsd = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Notify the SENDER their payment went out (offline-safe confirmation, independent of the on-chain watcher). */
+async function notifySenderSent(transfer: { id: number; senderWallet: string; principalUsdc: string }): Promise<void> {
+  try {
+    const usd = Number(transfer.principalUsdc) / 1_000_000;
+    await notificationStore.emit({
+      wallet: transfer.senderWallet,
+      kind: 'sent',
+      title: 'Payment sent',
+      body: `You sent $${fmtUsd(usd)}`,
+      data: { transferId: transfer.id, href: '/transactions' },
+      dedupeKey: `send:${transfer.id}:sent`,
+    });
+  } catch (error) {
+    console.error('Sender sent notification error:', error);
+  }
+}
+
+/** Notify the SENDER when the recipient claims their payment. */
+async function notifySenderClaimed(transferRowId: number): Promise<void> {
+  try {
+    const transfer = await sendTransferStore.getTransferById(transferRowId);
+    if (!transfer) return;
+    const usd = Number(transfer.principalUsdc) / 1_000_000;
+    await notificationStore.emit({
+      wallet: transfer.senderWallet,
+      kind: 'sent',
+      title: 'Payment claimed',
+      body: `Your $${fmtUsd(usd)} payment was claimed`,
+      data: { transferId: transfer.id, href: '/transactions' },
+      dedupeKey: `send:${transfer.id}:claimed`,
+    });
+  } catch (error) {
+    console.error('Sender claimed notification error:', error);
+  }
+}
 import { sendBridgeWebhookVerifier } from '../services/sendBridgeWebhookVerifier.js';
 import { sendPayoutService } from '../services/sendPayoutService.js';
 import { sendStripePayoutService } from '../services/sendStripePayoutService.js';
@@ -252,17 +290,10 @@ async function markTransferClaimedFromMethod(
   transferRowId: number,
   method: 'DEBIT' | 'BANK' | 'WALLET'
 ): Promise<void> {
-  if (method === 'DEBIT') {
-    await sendTransferStore.markTransferClaimed(transferRowId, 'CLAIMED_DEBIT');
-    return;
-  }
-
-  if (method === 'BANK') {
-    await sendTransferStore.markTransferClaimed(transferRowId, 'CLAIMED_BANK');
-    return;
-  }
-
-  await sendTransferStore.markTransferClaimed(transferRowId, 'CLAIMED_WALLET');
+  const status = method === 'DEBIT' ? 'CLAIMED_DEBIT' : method === 'BANK' ? 'CLAIMED_BANK' : 'CLAIMED_WALLET';
+  await sendTransferStore.markTransferClaimed(transferRowId, status);
+  // Let the sender know their payment landed (idempotent via the dedupe key).
+  await notifySenderClaimed(transferRowId);
 }
 
 async function ensureSendStoreReady(res: Response): Promise<boolean> {
@@ -344,6 +375,37 @@ const payoutRateLimiter = createLocalRateLimiter({
 });
 
 const senderRouter = Router();
+
+/**
+ * Record a direct (non-escrow) wallet→wallet transfer the client executed itself, so both parties get
+ * an immediate in-app notification without waiting on the on-chain watcher. The sender is always the
+ * authenticated wallet (no spoofing). Deduped on the tx hash with the SAME keys the watcher uses
+ * (tx:<hash>:out / :in), so whichever fires first wins and the other is a no-op.
+ */
+senderRouter.post('/notify-direct', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const from = req.auth?.walletAddress;
+    if (!from) return res.status(401).json({ error: 'Unauthorized' });
+    const body = (req.body ?? {}) as { to?: string; amount?: number | string; txHash?: string; chainId?: number };
+    if (!body.to || !isAddress(body.to)) {
+      return res.status(400).json({ error: 'Invalid recipient address' });
+    }
+    const amount = Number(body.amount);
+    const label = Number.isFinite(amount) && amount > 0 ? `$${fmtUsd(amount)}` : 'funds';
+    const hashKey = typeof body.txHash === 'string' && body.txHash ? body.txHash : `${from}-${body.to}-${Date.now()}`;
+    const data = { txHash: body.txHash ?? null, chainId: body.chainId ?? null, href: '/transactions' };
+    await notificationStore
+      .emit({ wallet: from, kind: 'sent', title: 'Payment sent', body: `You sent ${label}`, data, dedupeKey: `tx:${hashKey}:out` })
+      .catch(() => {});
+    await notificationStore
+      .emit({ wallet: body.to, kind: 'received', title: 'Money received', body: `You received ${label}`, data, dedupeKey: `tx:${hashKey}:in` })
+      .catch(() => {});
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('notify-direct error:', error);
+    return res.status(500).json({ error: 'Failed to record notification' });
+  }
+});
 
 senderRouter.post('/transfers/prepare', requireAuth, async (req: Request, res: Response) => {
   if (!(await ensureSendStoreReady(res))) return;
@@ -625,8 +687,9 @@ senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Reques
       console.error('Claim link notification error:', error);
     }
 
-    // Our own send event → notify the recipient in-app (offline-safe, no watcher dependency).
+    // Our own send event → notify both parties in-app (offline-safe, no watcher dependency).
     await notifyRecipientOfSend(updatedTransfer);
+    await notifySenderSent(updatedTransfer);
 
     return res.json({
       transfer: publicTransferView(updatedTransfer),
@@ -781,8 +844,9 @@ senderRouter.post('/transfers/:id/submit-authorization', requireAuth, async (req
       console.error('Claim link notification error:', error);
     }
 
-    // Our own send event → notify the recipient in-app (offline-safe, no watcher dependency).
+    // Our own send event → notify both parties in-app (offline-safe, no watcher dependency).
     await notifyRecipientOfSend(updatedTransfer);
+    await notifySenderSent(updatedTransfer);
 
     return res.json({
       transfer: publicTransferView(updatedTransfer),

@@ -38,6 +38,7 @@ import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
 import { startAutopayRunner } from './jobs/autopayRunner.js';
 import { startDueBillNotifier } from './jobs/dueBillNotifier.js';
 import { startGreetingNotifier } from './jobs/greetingNotifier.js';
+import { startSendExpiryNotifier } from './jobs/sendExpiryNotifier.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 
@@ -261,6 +262,9 @@ async function startServer() {
     });
     startGreetingNotifier().catch((error) => {
       console.error('⚠️ Greeting notifier failed to start:', error);
+    });
+    startSendExpiryNotifier().catch((error) => {
+      console.error('⚠️ Send-expiry notifier failed to start:', error);
     });
 
     // Start HTTP server (Express + WebSocket)

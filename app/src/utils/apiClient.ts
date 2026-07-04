@@ -1127,6 +1127,23 @@ export async function prepareSendTransfer(
   return response.data;
 }
 
+/**
+ * Record a direct (non-escrow) wallet→wallet send so both parties get an immediate in-app
+ * notification without waiting on the on-chain watcher. Best-effort — the watcher is the fallback.
+ */
+export async function notifyDirectSend(input: {
+  to: string;
+  amount: number;
+  txHash?: string;
+  chainId?: number;
+}): Promise<void> {
+  try {
+    await apiRequest('/api/send/notify-direct', { method: 'POST', body: JSON.stringify(input) });
+  } catch {
+    // non-fatal; the transfer already happened on-chain
+  }
+}
+
 export async function confirmSendTransferLock(
   id: number,
   payload: ConfirmSendTransferLockRequest
