@@ -50,8 +50,8 @@ interface Provider {
   feeRate: number;
   fixed: number;
 }
+// Instant-to-debit is a card rail — Bridge is ACH/bank only, so it's not an option here.
 const PROVIDERS: Provider[] = [
-  { id: 'bridge', name: 'Bridge', feeRate: 0.005, fixed: 0 },
   { id: 'coinbase', name: 'Coinbase Pay', feeRate: 0.01, fixed: 0 },
   { id: 'moonpay', name: 'MoonPay', feeRate: 0.02, fixed: 0 },
 ];
