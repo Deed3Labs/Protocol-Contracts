@@ -54,7 +54,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
   const { balances: linkedBal } = useLinkedWalletBalances(externalWallets.map((w) => w.address), open);
   const cardDeposit = useCardDeposit();
   const [token, setToken] = useState<'usdc' | 'clrusd'>('usdc');
-  const tokenLabel = token === 'usdc' ? 'USDC' : 'CLRUSD';
+  const tokenLabel = token === 'usdc' ? 'Cash' : 'Savings'; // crypto abstracted: USDC = Cash, CLRUSD = Savings
   const clearBalance = token === 'usdc' ? bal.cash : bal.savings;
   // Sources: the Clear smart wallet + any linked wallets, plus a card/Apple Pay source that funds the
   // Clear balance first (Coinbase) and then sends. Bank (ACH) is a disabled "coming soon" row below.
@@ -316,26 +316,36 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
               ))}
             </div>
 
-            {/* token */}
-            <div className="mt-3 flex items-center gap-1 rounded-lg border border-border p-0.5">
-              {(['usdc', 'clrusd'] as const).map((tk) => (
-                <button
-                  key={tk}
-                  type="button"
-                  onClick={() => setToken(tk)}
-                  className={cn(
-                    'flex-1 rounded-md py-1.5 text-xs font-semibold transition-colors',
-                    token === tk ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {tk === 'usdc' ? 'USDC · Cash' : 'CLRUSD · Savings'}
-                </button>
-              ))}
+            {/* token: Cash (USDC) vs Savings (CLRUSD) — crypto abstracted */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {(['usdc', 'clrusd'] as const).map((tk) => {
+                const label = tk === 'usdc' ? 'Cash' : 'Savings';
+                const tkBal = tk === 'usdc' ? bal.cash : bal.savings;
+                const active = token === tk;
+                return (
+                  <button
+                    key={tk}
+                    type="button"
+                    onClick={() => setToken(tk)}
+                    aria-pressed={active}
+                    className={cn(
+                      'rounded-xl border px-3 py-2.5 text-left transition-colors',
+                      active ? 'border-foreground bg-secondary/60' : 'border-border hover:bg-secondary/30',
+                    )}
+                  >
+                    <span className="flex items-center justify-between">
+                      <span className={cn('text-sm font-semibold', active ? 'text-foreground' : 'text-muted-foreground')}>{label}</span>
+                      {active && <Check className="h-4 w-4 shrink-0 text-foreground" strokeWidth={2.5} />}
+                    </span>
+                    <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">{fmt(tkBal)}</span>
+                  </button>
+                );
+              })}
             </div>
             {claimLinkBlocked && (
               <p className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
                 <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
-                Sending to an email or phone requires USDC from your Clear balance. Pick a contact with a wallet to send {tokenLabel}.
+                Sending to an email or phone uses Cash from your Clear balance. Pick a contact with a wallet to send {tokenLabel}.
               </p>
             )}
 
@@ -527,7 +537,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
             {claimLinkBlocked && (
               <p className="mt-3 flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
                 <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
-                Email/phone sends use USDC from your Clear balance. Switch back to USDC + Clear balance, or send to a wallet.
+                Email/phone sends use Cash from your Clear balance. Switch back to Cash + Clear balance, or send to a wallet.
               </p>
             )}
             {cardToEmailPhone && (
