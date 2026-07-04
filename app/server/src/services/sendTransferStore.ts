@@ -617,6 +617,34 @@ class SendTransferStore {
     });
   }
 
+  /**
+   * Atomically mark every past-expiry unclaimed transfer as EXPIRED and return the ones that just
+   * flipped, so the expiry-notifier can alert each sender exactly once (UPDATE ... RETURNING is the
+   * idempotency guard — a transfer already EXPIRED won't be returned again).
+   */
+  async expireStaleTransfers(): Promise<Array<{ id: number; senderWallet: string; principalUsdc: string }>> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+
+    const result = await withRetry(async () => {
+      return pool.query<{ id: number; sender_wallet: string; principal_usdc: string }>(
+        `
+        UPDATE ${TABLE_SEND_TRANSFERS}
+        SET status = 'EXPIRED', updated_at = NOW()
+        WHERE status IN ('LOCK_CONFIRMED', 'CLAIM_STARTED')
+          AND expires_at < NOW()
+        RETURNING id, sender_wallet, principal_usdc
+        `
+      );
+    });
+
+    return result.rows.map((r) => ({
+      id: r.id,
+      senderWallet: r.sender_wallet,
+      principalUsdc: r.principal_usdc,
+    }));
+  }
+
   async getSenderPrincipalTotalInWindow(senderWallet: string, windowStart: Date, windowEnd: Date): Promise<bigint> {
     await this.ensureReady();
     const pool = this.mustPool();

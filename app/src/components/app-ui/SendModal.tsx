@@ -12,7 +12,7 @@ import { useContacts, contactInitials } from '@/context/ContactsContext';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useLinkedWalletBalances } from '@/hooks/useLinkedWalletBalances';
-import { prepareSendTransfer, confirmSendTransferLock } from '@/utils/apiClient';
+import { prepareSendTransfer, confirmSendTransferLock, notifyDirectSend } from '@/utils/apiClient';
 import { gaslessSendLock } from '@/lib/gaslessMoney';
 import { scSendLock, scTransferToken } from '@/lib/sendCalls';
 import { linkedWalletTokenTransfer } from '@/lib/linkedWalletTransfer';
@@ -122,17 +122,20 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
         //    from the Clear smart wallet OR a linked wallet, and avoids the escrow's testnet BigInt issue.
         if (recipientWallet) {
           const to = recipientWallet as `0x${string}`;
+          let txHash: string | undefined;
           if (source.kind === 'linked') {
             const provider = await getLinkedProvider(source.address);
-            await linkedWalletTokenTransfer({ provider, from: source.address as `0x${string}`, token: tokenAddr, to, amount: amountStr, chainId });
+            txHash = await linkedWalletTokenTransfer({ provider, from: source.address as `0x${string}`, token: tokenAddr, to, amount: amountStr, chainId });
           } else {
             const chainClient = isSmartAccount ? await getClientForChain({ id: chainId }) : undefined;
-            await scTransferToken({ smartWalletClient: chainClient, ownerWallet: address, token: tokenAddr, to, amount: amountStr, chainId });
+            txHash = await scTransferToken({ smartWalletClient: chainClient, ownerWallet: address, token: tokenAddr, to, amount: amountStr, chainId });
           }
           if (cancelled) return;
           setClaimUrl(null);
           setDone(true);
           if (source.kind === 'clear') bal.applyOptimistic(token === 'usdc' ? -sent : 0, token === 'clrusd' ? -sent : 0);
+          // Immediate in-app "sent"/"received" for both parties (deduped with the on-chain watcher).
+          void notifyDirectSend({ to, amount: sent, txHash, chainId });
           return;
         }
 
