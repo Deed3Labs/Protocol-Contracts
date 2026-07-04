@@ -4,7 +4,7 @@ import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
 import { useWallets } from '@privy-io/react-auth';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import {
-  ArrowLeft, Check, ChevronDown, Copy, Loader2, Mail, Search,
+  ArrowLeft, Check, ChevronDown, Copy, CreditCard, Landmark, Loader2, Mail, Search,
   ShieldCheck, TriangleAlert, UserPlus, Wallet, Zap,
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -12,6 +12,7 @@ import { useContacts, contactInitials } from '@/context/ContactsContext';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useLinkedWalletBalances } from '@/hooks/useLinkedWalletBalances';
+import { useCardDeposit } from '@/hooks/useCardDeposit';
 import { prepareSendTransfer, confirmSendTransferLock, notifyDirectSend } from '@/utils/apiClient';
 import { gaslessSendLock } from '@/lib/gaslessMoney';
 import { scSendLock, scTransferToken } from '@/lib/sendCalls';
@@ -38,8 +39,8 @@ interface Source {
   detail: string;
   icon: typeof Wallet;
   address: string; // the wallet the funds come from ('' for none)
-  kind: 'clear' | 'linked';
-  balance: number; // balance of the selected token in this source
+  kind: 'clear' | 'linked' | 'card';
+  balance: number; // balance of the selected token in this source (Infinity for card — funded externally)
 }
 export default function SendModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { contacts, getContact, openManager } = useContacts();
@@ -51,10 +52,12 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
   const chainId = ACTIVE_CHAIN_ID; // mainnet on app.useclear.org, Base Sepolia on the demo
   const bal = useClearBalances();
   const { balances: linkedBal } = useLinkedWalletBalances(externalWallets.map((w) => w.address), open);
+  const cardDeposit = useCardDeposit();
   const [token, setToken] = useState<'usdc' | 'clrusd'>('usdc');
   const tokenLabel = token === 'usdc' ? 'USDC' : 'CLRUSD';
   const clearBalance = token === 'usdc' ? bal.cash : bal.savings;
-  // Crypto sources: the Clear smart wallet + any linked wallets. (Bank/card funding = a later phase.)
+  // Sources: the Clear smart wallet + any linked wallets, plus a card/Apple Pay source that funds the
+  // Clear balance first (Coinbase) and then sends. Bank (ACH) is a disabled "coming soon" row below.
   const sources: Source[] = [
     { id: 'balance', name: 'Clear balance', detail: `${fmt(clearBalance)} ${tokenLabel}`, icon: Wallet, address: address || '', kind: 'clear', balance: clearBalance },
     ...externalWallets.map((w) => {
@@ -62,6 +65,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
       const bl = token === 'usdc' ? b?.usdc ?? 0 : b?.clrusd ?? 0;
       return { id: `w:${w.address.toLowerCase()}`, name: w.label, detail: `${fmt(bl)} ${tokenLabel}`, icon: Wallet, address: w.address, kind: 'linked' as const, balance: bl };
     }),
+    { id: 'card', name: 'Debit or Apple Pay', detail: 'Fund with card, then send', icon: CreditCard, address: address || '', kind: 'card', balance: Number.POSITIVE_INFINITY },
   ];
 
   // The linked wallet's own EIP-1193 provider (for it to sign its own transfer).
@@ -97,6 +101,8 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
     setCopied(false);
     setError(null);
     setClaimUrl(null);
+    cardDeposit.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -122,18 +128,34 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
         //    from the Clear smart wallet OR a linked wallet, and avoids the escrow's testnet BigInt issue.
         if (recipientWallet) {
           const to = recipientWallet as `0x${string}`;
+
+          // ── Card/Apple Pay source → fund the Clear balance via Coinbase first, then send from it once
+          //    the deposit lands. If the deposit never completes, the send doesn't fire and any funds that
+          //    did land stay in the Clear balance (the user can retry the send).
+          if (source.kind === 'card') {
+            const funded = await cardDeposit.run(sent, address);
+            if (cancelled) return;
+            if (!funded) {
+              throw new Error("Your card payment wasn't completed. Anything that did land is in your Clear balance — you can try the send again from there.");
+            }
+          }
+
           let txHash: string | undefined;
           if (source.kind === 'linked') {
             const provider = await getLinkedProvider(source.address);
             txHash = await linkedWalletTokenTransfer({ provider, from: source.address as `0x${string}`, token: tokenAddr, to, amount: amountStr, chainId });
           } else {
+            // Clear smart wallet — also the destination the card deposit funded.
             const chainClient = isSmartAccount ? await getClientForChain({ id: chainId }) : undefined;
             txHash = await scTransferToken({ smartWalletClient: chainClient, ownerWallet: address, token: tokenAddr, to, amount: amountStr, chainId });
           }
           if (cancelled) return;
           setClaimUrl(null);
           setDone(true);
+          // A card-funded send nets to ~0 change (deposit +amount, send −amount), so only the plain Clear
+          // send applies the optimistic debit.
           if (source.kind === 'clear') bal.applyOptimistic(token === 'usdc' ? -sent : 0, token === 'clrusd' ? -sent : 0);
+          if (source.kind === 'card') window.dispatchEvent(new Event('clear:activity'));
           // Immediate in-app "sent"/"received" for both parties (deduped with the on-chain watcher).
           void notifyDirectSend({ to, amount: sent, txHash, chainId });
           return;
@@ -201,6 +223,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
     })();
     return () => {
       cancelled = true;
+      cardDeposit.cancel(); // stop the deposit poll if the user leaves the status step
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
@@ -208,12 +231,20 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
   const amount = Number(amountStr) || 0;
   const recipient = contactId ? getContact(contactId) : undefined;
   const source = sources.find((s) => s.id === sourceId) ?? sources[0];
-  const overBalance = amount > source.balance;
+  const cardFunded = source.kind === 'card';
+  const overBalance = !cardFunded && amount > source.balance; // card is funded externally
   const amountValid = amount >= 1 && !overBalance;
   const instant = Boolean(recipient?.wallet);
+  // Card funding is v1-scoped to wallet recipients (email/phone needs the escrow fee buffer — coming soon).
+  const cardToEmailPhone = cardFunded && !instant;
   // Claim-links (email/phone) can only hold USDC from the Clear balance for now.
-  const claimLinkBlocked = !instant && (token !== 'usdc' || source.kind !== 'clear');
+  const claimLinkBlocked = !instant && !cardFunded && (token !== 'usdc' || source.kind !== 'clear');
   const channel = recipient?.phone ? 'text' : 'email';
+
+  // Card delivers USDC — no CLRUSD-via-card, so force the Cash token when a card source is picked.
+  useEffect(() => {
+    if (cardFunded && token !== 'usdc') setToken('usdc');
+  }, [cardFunded, token]);
 
   const filtered = useMemo(
     () => contacts.filter((c) => `${c.name} ${c.email}`.toLowerCase().includes(query.trim().toLowerCase())),
@@ -459,6 +490,13 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
                         {s.id === sourceId && <Check className="h-4 w-4 shrink-0 text-foreground" />}
                       </button>
                     ))}
+                    <div className="flex w-full cursor-not-allowed items-center gap-2.5 px-3 py-2 text-left text-sm opacity-50">
+                      <Landmark className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-foreground">Bank account (ACH)</span>
+                        <span className="block text-xs text-muted-foreground">Coming soon</span>
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -492,17 +530,27 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
                 Email/phone sends use USDC from your Clear balance. Switch back to USDC + Clear balance, or send to a wallet.
               </p>
             )}
+            {cardToEmailPhone && (
+              <p className="mt-3 flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+                Card funding is for sending to a wallet right now. Pick a contact with a wallet, or fund from your Clear balance for an email/phone send.
+              </p>
+            )}
             <button
               type="button"
-              disabled={overBalance || claimLinkBlocked}
+              disabled={overBalance || claimLinkBlocked || cardToEmailPhone}
               onClick={() => setStep('status')}
               className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-50"
             >
-              Send {fmt(amount)} {tokenLabel}
+              {cardFunded ? `Pay ${fmt(amount)} by card & send` : `Send ${fmt(amount)} ${tokenLabel}`}
             </button>
             <p className="mt-2 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
               <ShieldCheck className="h-3 w-3" />
-              {instant ? 'Arrives instantly · sent as USDC on Base' : `We'll ${channel} ${recipient.name.split(' ')[0]} a secure link to claim it`}
+              {cardFunded
+                ? 'Funded by card via Coinbase · then sent as USDC on Base'
+                : instant
+                  ? 'Arrives instantly · sent as USDC on Base'
+                  : `We'll ${channel} ${recipient.name.split(' ')[0]} a secure link to claim it`}
             </p>
           </div>
         )}
@@ -528,8 +576,19 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
             ) : !done ? (
               <>
                 <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-                <div className="mt-4 text-base font-semibold text-foreground">Sending…</div>
-                <div className="mt-1 text-sm text-muted-foreground">Sending {fmt(amount)} to {recipient.name}.</div>
+                {cardFunded && (cardDeposit.status === 'opening' || cardDeposit.status === 'awaiting') ? (
+                  <>
+                    <div className="mt-4 text-base font-semibold text-foreground">Waiting for your card payment…</div>
+                    <div className="mt-1 max-w-[280px] text-sm text-muted-foreground">
+                      Finish the Coinbase checkout in the new tab. We'll send {fmt(amount)} to {recipient.name} as soon as it lands.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-4 text-base font-semibold text-foreground">Sending…</div>
+                    <div className="mt-1 text-sm text-muted-foreground">Sending {fmt(amount)} to {recipient.name}.</div>
+                  </>
+                )}
               </>
             ) : (
               <>
