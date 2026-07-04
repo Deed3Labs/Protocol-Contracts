@@ -65,7 +65,10 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
       const bl = token === 'usdc' ? b?.usdc ?? 0 : b?.clrusd ?? 0;
       return { id: `w:${w.address.toLowerCase()}`, name: w.label, detail: `${fmt(bl)} ${tokenLabel}`, icon: Wallet, address: w.address, kind: 'linked' as const, balance: bl };
     }),
-    { id: 'card', name: 'Debit or Apple Pay', detail: 'Fund with card, then send', icon: CreditCard, address: address || '', kind: 'card', balance: Number.POSITIVE_INFINITY },
+    // Card/ACH deliver USDC (Cash) — not available when sending Savings (CLRUSD).
+    ...(token === 'usdc'
+      ? [{ id: 'card', name: 'Debit or Apple Pay', detail: 'Fund with card, then send', icon: CreditCard, address: address || '', kind: 'card' as const, balance: Number.POSITIVE_INFINITY }]
+      : []),
   ];
 
   // The linked wallet's own EIP-1193 provider (for it to sign its own transfer).
@@ -241,10 +244,10 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
   const claimLinkBlocked = !instant && !cardFunded && (token !== 'usdc' || source.kind !== 'clear');
   const channel = recipient?.phone ? 'text' : 'email';
 
-  // Card delivers USDC — no CLRUSD-via-card, so force the Cash token when a card source is picked.
+  // Card/ACH only fund Cash (USDC). Switching to Savings drops a card source back to the Clear balance.
   useEffect(() => {
-    if (cardFunded && token !== 'usdc') setToken('usdc');
-  }, [cardFunded, token]);
+    if (token !== 'usdc' && sourceId === 'card') setSourceId('balance');
+  }, [token, sourceId]);
 
   const filtered = useMemo(
     () => contacts.filter((c) => `${c.name} ${c.email}`.toLowerCase().includes(query.trim().toLowerCase())),
@@ -500,13 +503,15 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
                         {s.id === sourceId && <Check className="h-4 w-4 shrink-0 text-foreground" />}
                       </button>
                     ))}
-                    <div className="flex w-full cursor-not-allowed items-center gap-2.5 px-3 py-2 text-left text-sm opacity-50">
-                      <Landmark className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium text-foreground">Bank account (ACH)</span>
-                        <span className="block text-xs text-muted-foreground">Coming soon</span>
-                      </span>
-                    </div>
+                    {token === 'usdc' && (
+                      <div className="flex w-full cursor-not-allowed items-center gap-2.5 px-3 py-2 text-left text-sm opacity-50">
+                        <Landmark className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium text-foreground">Bank account (ACH)</span>
+                          <span className="block text-xs text-muted-foreground">Coming soon</span>
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
