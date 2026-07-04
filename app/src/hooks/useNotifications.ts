@@ -43,6 +43,27 @@ export function useNotifications() {
     return () => window.removeEventListener('focus', onFocus);
   }, [refresh]);
 
+  // Poll like balances/transactions do. The WebSocket unsubscribes whenever the tab is hidden (and can
+  // drop), so `notification:new` isn't a reliable live channel — a steady poll while visible, plus a
+  // refresh the moment the tab becomes visible again, keeps the bell current even with no live socket.
+  // (When hidden/closed, timers are throttled/stopped, so Web Push remains the delivery path.)
+  useEffect(() => {
+    if (!address || !isConnected) return;
+    const POLL_MS = 20_000;
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void refresh();
+    }, POLL_MS);
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && !document.hidden) void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [address, isConnected, refresh]);
+
   // If permission is already granted, subscribe silently on mount (no gesture needed). The gesture path
   // (first-time grant) is the "Enable notifications" prime and the demo "Send test" button.
   useEffect(() => {
