@@ -12,6 +12,7 @@ import { createWalletClient, custom } from 'viem';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import { gaslessWalletTransfer } from '@/lib/gaslessMoney';
+import { track } from '@/lib/analytics';
 import { scTransferToken } from '@/lib/sendCalls';
 import { withdrawToBank, createRampSellSession, getRampSellStatus, rampEvent, type RampSellStatus, type Eip712TypedData } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
@@ -222,6 +223,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
           if (cancelled) return;
           void rampEvent({ type: 'sell', status: 'submitted', amount: Number(started.amount), walletAddress: address, ref: crypto.randomUUID() });
           setDone(true);
+          track('withdraw_completed', { method: 'instant' }); // no amounts/PII
           if (!sourceWallet?.external) bal.applyOptimistic(-Number(started.amount), 0);
           return;
         }
@@ -232,6 +234,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
         if (cancelled) return;
         if (!res.success) throw new Error(res.message || 'Withdrawal failed.');
         setDone(true);
+        track('withdraw_completed', { method: 'bank' }); // no amounts/PII
         // Optimistic: USDC leaves Cash now; reconciles when the off-ramp debit indexes. A linked-wallet
         // withdraw just passed THROUGH Cash (move in, off-ramp out ≈ net 0), so skip the overlay there.
         if (!sourceWallet?.external) bal.applyOptimistic(-amount, 0);

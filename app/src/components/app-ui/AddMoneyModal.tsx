@@ -3,6 +3,7 @@ import { ArrowLeft, Check, ChevronDown, CreditCard, Landmark, Loader2, Smartphon
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
+import { track } from '@/lib/analytics';
 import { useBridge } from '@/context/BridgeContext';
 import { useKyc } from '@/context/KycContext';
 import DepositInstructions from '@/components/app-ui/DepositInstructions';
@@ -229,6 +230,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
           void rampEvent({ type: 'buy', status: 'completed', amount, walletAddress: wallet.address, ref });
           bal.refresh(); // USDC has landed on-chain → pull the real balance
           setDone(true);
+          track('deposit_completed', { method: methodId }); // no amounts/PII
           return;
         }
         if (s.status === 'TRANSACTION_STATUS_FAILED') {

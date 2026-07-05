@@ -1,5 +1,6 @@
 import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
 import KycModal from '@/components/app-ui/KycModal';
+import { track } from '@/lib/analytics';
 
 export type KycStatus = 'unverified' | 'verified';
 
@@ -43,6 +44,7 @@ export function KycProvider({ children }: { children: ReactNode }) {
   const openKyc = (onVerified?: () => void) => {
     cbRef.current = onVerified ?? null;
     setOpen(true);
+    track('kyc_started');
   };
   const gate = (action: () => void) => {
     if (status === 'verified') action();
@@ -50,6 +52,7 @@ export function KycProvider({ children }: { children: ReactNode }) {
   };
   const handleVerified = (personaInquiryId?: string) => {
     setStatus('verified');
+    track('kyc_verified');
     setInquiryId(personaInquiryId ?? `inq_${Date.now().toString(36)}`);
     setOpen(false);
     const cb = cbRef.current;

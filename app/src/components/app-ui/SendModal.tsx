@@ -13,6 +13,7 @@ import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useLinkedWalletBalances } from '@/hooks/useLinkedWalletBalances';
 import { useCardDeposit } from '@/hooks/useCardDeposit';
+import { track } from '@/lib/analytics';
 import { prepareSendTransfer, confirmSendTransferLock, notifyDirectSend } from '@/utils/apiClient';
 import { gaslessSendLock } from '@/lib/gaslessMoney';
 import { scSendLock, scTransferToken } from '@/lib/sendCalls';
@@ -161,6 +162,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
           if (source.kind === 'card') window.dispatchEvent(new Event('clear:activity'));
           // Immediate in-app "sent"/"received" for both parties (deduped with the on-chain watcher).
           void notifyDirectSend({ to, amount: sent, txHash, chainId });
+          track('send_completed', { type: 'wallet', token, source: source.kind }); // no amounts/PII
           return;
         }
 
@@ -220,6 +222,7 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
         setClaimUrl(claim);
         setDone(true);
         bal.applyOptimistic(-sent, 0);
+        track('send_completed', { type: 'claim_link', token }); // no amounts/PII
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Send failed.');
       }
