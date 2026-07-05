@@ -2,6 +2,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { registerServiceWorker } from './utils/serviceWorker'
+import { initAnalytics } from './lib/analytics'
+
+// Plausible analytics — injects only on the live app (app.useclear.org); no-op in dev/preview.
+initAnalytics();
 
 // Buffer polyfill for XMTP — must be set before App/AppKit/XMTP modules load, so App and
 // AppKitProvider are imported dynamically below (after this runs).

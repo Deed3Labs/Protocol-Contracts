@@ -1,5 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { trackPageview } from "@/lib/analytics";
 import { AnimatePresence } from "framer-motion";
 import LoginPage from "@/pages/auth/LoginPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -26,6 +27,15 @@ import TransactionsPage from "@/pages/app/TransactionsPage";
 import SettingsPage from "@/pages/app/SettingsPage";
 import BorrowPage from "@/pages/app/BorrowPage";
 import AssurancePage from "@/pages/app/AssurancePage";
+
+/** Fires a sanitized Plausible pageview on every client-side route change (live app only; no-op else). */
+function RouteAnalytics() {
+  const location = useLocation();
+  useEffect(() => {
+    trackPageview(location.pathname);
+  }, [location.pathname]);
+  return null;
+}
 
 function App() {
   // Check if splash has been shown in this session
@@ -77,6 +87,7 @@ function App() {
                 <ModalProvider>
                   <GlobalModalsProvider>
                   <ScrollToTop />
+                  <RouteAnalytics />
                   <AnimatePresence>
                     {showSplash && <SplashScreen />}
                   </AnimatePresence>

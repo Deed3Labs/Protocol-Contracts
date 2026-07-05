@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { track } from '@/lib/analytics';
 import {
   acceptMemberTerms,
   bootstrapMemberAccount,
@@ -76,6 +77,7 @@ export default function UserOnboarding() {
       const account = await submitMemberOnboarding();
       if (!account) throw new Error("We couldn't complete onboarding.");
 
+      track('onboarding_completed', { access: r.accessTrack }); // plan category only, no PII
       window.dispatchEvent(new Event('wallet-connected'));
       setTimeout(() => navigate('/', { replace: true }), 100);
     } catch (e) {
