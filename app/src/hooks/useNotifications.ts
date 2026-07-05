@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import {
@@ -21,6 +21,11 @@ export function useNotifications() {
   const { enablePush } = usePushRegistration();
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  // Ids the user just dismissed/read locally. A poll or focus refetch can start BEFORE the archive/read
+  // commits server-side and then clobber the optimistic update (the row reappears / un-reads). These sets
+  // guard every refresh + live socket event so that never happens. Cleared on wallet change.
+  const dismissedIds = useRef<Set<string>>(new Set());
+  const readIds = useRef<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     if (!address || !isConnected) {
@@ -29,9 +34,18 @@ export function useNotifications() {
       return;
     }
     const res = await getNotifications(address);
-    setNotifications(res.notifications);
-    setUnreadCount(res.unreadCount);
+    const list = res.notifications
+      .filter((n) => !dismissedIds.current.has(n.id))
+      .map((n) => (readIds.current.has(n.id) ? { ...n, read: true } : n));
+    setNotifications(list);
+    setUnreadCount(list.reduce((c, n) => c + (n.read ? 0 : 1), 0));
   }, [address, isConnected]);
+
+  // Drop the optimistic-action guards when the connected wallet changes.
+  useEffect(() => {
+    dismissedIds.current.clear();
+    readIds.current.clear();
+  }, [address]);
 
   useEffect(() => {
     void refresh();
@@ -81,6 +95,7 @@ export function useNotifications() {
   useEffect(() => {
     if (!socket) return;
     const onNew = (n: ApiNotification) => {
+      if (dismissedIds.current.has(n.id)) return; // don't resurrect a just-dismissed row
       setNotifications((prev) => (prev.some((x) => x.id === n.id) ? prev : [n, ...prev].slice(0, 40)));
       setUnreadCount((c) => c + 1);
       // Money moved (deposit landed / cash-out sent) → refresh balances + activity right away.
@@ -94,6 +109,7 @@ export function useNotifications() {
 
   const markRead = useCallback(
     (id: string) => {
+      readIds.current.add(id);
       setNotifications((prev) => {
         const was = prev.find((n) => n.id === id && !n.read);
         if (was) setUnreadCount((c) => Math.max(0, c - 1));
@@ -105,13 +121,17 @@ export function useNotifications() {
   );
 
   const markAllRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setNotifications((prev) => {
+      prev.forEach((n) => readIds.current.add(n.id));
+      return prev.map((n) => ({ ...n, read: true }));
+    });
     setUnreadCount(0);
     if (address) void markAllNotificationsRead(address).catch(() => {});
   }, [address]);
 
   const dismiss = useCallback(
     (id: string) => {
+      dismissedIds.current.add(id);
       setNotifications((prev) => {
         const was = prev.find((n) => n.id === id && !n.read);
         if (was) setUnreadCount((c) => Math.max(0, c - 1));
