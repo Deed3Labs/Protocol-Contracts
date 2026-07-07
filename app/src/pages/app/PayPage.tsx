@@ -12,7 +12,7 @@ const fmtUsd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionD
 
 /** Pay — Clear Pay's rent/bill core, send/request, card, and rent-to-equity viz. */
 export default function PayPage() {
-  const { bills, summary, openPay, reconcile } = usePay();
+  const { bills, summary, openPay, openPortals, reconcile } = usePay();
   const { openSend, openRequest, openAutoSave } = useMoneyActions();
   const timelineBills: TimelineBill[] = bills.map((b) => ({ id: b.id, name: b.name, dateLabel: b.dueLabel, amount: b.amount, icon: b.icon }));
   const streak = summary?.streak ?? 0;
@@ -49,7 +49,7 @@ export default function PayPage() {
           <h3 className="mb-3 text-xs font-medium text-muted-foreground">Make a payment</h3>
           <div className="grid grid-cols-2 gap-3">
             <ActionTile icon={Home} label="Pay rent" hint="Schedule or pay now" primary onClick={() => openPay('rent')} />
-            <ActionTile icon={FileText} label="Pay a bill" hint="Utilities, cards & more" onClick={() => openPay()} />
+            <ActionTile icon={FileText} label="Pay a bill" hint="Utilities, rent & more" onClick={openPortals} />
             <ActionTile icon={SendHorizontal} label="Send" hint="To anyone" onClick={openSend} />
             <ActionTile icon={ArrowDownLeft} label="Request" hint="Get paid" onClick={openRequest} />
             <ActionTile icon={Repeat} label="Auto-save" hint="Sign once, build equity" onClick={openAutoSave} />
