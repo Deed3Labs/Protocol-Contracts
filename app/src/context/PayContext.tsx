@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { Home, Zap, Repeat, CreditCard, Smartphone, Receipt, type LucideIcon } from 'lucide-react';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import PayModal from '@/components/app-ui/PayModal';
+import BillPortalsModal from '@/components/app-ui/BillPortalsModal';
 import { useKyc } from '@/context/KycContext';
 import {
   getPlaidRecurringTransactions,
@@ -141,6 +142,8 @@ interface PayValue {
   refresh: () => void;
   /** Open the Pay flow; pass a bill id to go straight to that payment (e.g. "Pay rent"). */
   openPay: (billId?: string) => void;
+  /** Open the bill-portal directory (pay on the biller's own site with the Clear card). */
+  openPortals: () => void;
 }
 
 const Ctx = createContext<PayValue | null>(null);
@@ -162,6 +165,7 @@ export function usePay(): PayValue {
       streak: ON_TIME_STREAK,
       refresh: () => {},
       openPay: () => {},
+      openPortals: () => {},
     }
   );
 }
@@ -178,6 +182,7 @@ export function PayProvider({ children }: { children: ReactNode }) {
   const [summary, setSummary] = useState<PaySummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [portalsOpen, setPortalsOpen] = useState(false);
   const [initialBillId, setInitialBillId] = useState<string | undefined>(undefined);
 
   const load = useCallback(async () => {
@@ -374,12 +379,14 @@ export function PayProvider({ children }: { children: ReactNode }) {
         setInitialBillId(billId);
         setPayOpen(true);
       }),
+    openPortals: () => gate(() => setPortalsOpen(true)),
   };
 
   return (
     <Ctx.Provider value={value}>
       {children}
       <PayModal open={payOpen} onOpenChange={setPayOpen} initialBillId={initialBillId} />
+      <BillPortalsModal open={portalsOpen} onOpenChange={setPortalsOpen} />
     </Ctx.Provider>
   );
 }
