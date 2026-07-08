@@ -4,25 +4,24 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 /*
- * Unified expanded detail view for a bill OR a transaction — a faithful port of the reference layout:
- * back-bar + title, an identity card (icon + name + status pill + subtitle) with grouped label/value
- * rows (Category chip, Next due, Alerts toggle, Portal, Address), a metrics card of big numbers with
- * unit chips, a PAYMENT HISTORY section of check-badge cards, and floating bottom actions (bills only).
- * Purely presentational — callers map into `DetailInfo`.
+ * Unified expanded detail view for a bill OR a transaction, aligned to the app design system:
+ * back-bar + title; an identity card (icon + name + status pill + subtitle) with grouped label/value
+ * rows; a StatBar-style hairline metrics grid; an editorial PAYMENT HISTORY list (divider rows, no
+ * cards); and floating bottom actions (bills only). Full-round radius is reserved for chips/pills/
+ * toggles/buttons — cards use the app's rounded-xl. Purely presentational — callers map to `DetailInfo`.
  */
 export type Tone = 'positive' | 'pending' | 'negative' | 'muted';
 
 export interface DetailMetric {
   label: string;
   value: string;
-  unit?: string;
+  icon?: LucideIcon;
 }
 export interface DetailHistoryEntry {
   id: string;
   title: string;
   subtitle?: string;
   value: string;
-  unit?: string;
   tone?: Tone;
   success?: boolean;
 }
@@ -64,10 +63,6 @@ const TONE_TEXT: Record<Tone, string> = {
   muted: 'text-foreground',
 };
 
-const UnitChip = ({ unit }: { unit: string }) => (
-  <span className="rounded bg-background/60 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{unit}</span>
-);
-
 /** One label/value row inside the identity card. */
 function Row({ label, onClick, children }: { label: string; onClick?: () => void; children: ReactNode }) {
   const Tag = onClick ? 'button' : 'div';
@@ -90,6 +85,7 @@ export default function ActivityDetailModal({
 }) {
   if (!item) return null;
   const Icon = item.icon;
+  const tintText = item.iconTint?.split(' ').find((c) => c.startsWith('text-')) ?? 'text-muted-foreground';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -97,35 +93,33 @@ export default function ActivityDetailModal({
         <div className="flex max-h-[90vh] flex-col">
           {/* back bar */}
           <div className="flex items-center gap-1 px-3 py-3">
-            <button type="button" onClick={() => onOpenChange(false)} aria-label="Back" className="rounded-lg p-1 text-foreground hover:bg-secondary">
+            <button type="button" onClick={() => onOpenChange(false)} aria-label="Back" className="rounded-full p-1 text-foreground hover:bg-secondary">
               <ChevronLeft className="h-5 w-5" />
             </button>
             <span className="text-base font-semibold text-foreground">{item.title}</span>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
             {/* identity card + grouped rows */}
-            <div className="overflow-hidden rounded-2xl bg-secondary/50">
-              <div className="flex items-start justify-between gap-3 p-4 pb-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', item.iconTint ?? 'bg-background text-foreground')}>
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-base font-semibold text-foreground">{item.title}</span>
-                      {item.status && <span className={cn('shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium', TONE_BADGE[item.status.tone])}>{item.status.label}</span>}
-                    </div>
-                    {item.subtitle && <div className="mt-0.5 text-xs text-muted-foreground">{item.subtitle}</div>}
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
+              <div className="flex items-center gap-3 p-4">
+                <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-lg', item.iconTint ?? 'bg-secondary text-foreground')}>
+                  <Icon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-base font-semibold text-foreground">{item.title}</span>
+                    {item.status && <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', TONE_BADGE[item.status.tone])}>{item.status.label}</span>}
                   </div>
+                  {item.subtitle && <div className="mt-0.5 text-xs text-muted-foreground">{item.subtitle}</div>}
                 </div>
               </div>
 
-              <div className="divide-y divide-border/60 border-t border-border/60">
+              <div className="divide-y divide-border border-t border-border">
                 {item.typeLabel && (
                   <Row label="Category">
-                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-background px-2 py-1 text-xs font-medium text-foreground">
-                      <Icon className={cn('h-3.5 w-3.5', item.iconTint ? item.iconTint.split(' ').find((c) => c.startsWith('text-')) : 'text-muted-foreground')} /> {item.typeLabel}
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-foreground">
+                      <Icon className={cn('h-3.5 w-3.5', tintText)} /> {item.typeLabel}
                     </span>
                   </Row>
                 )}
@@ -148,44 +142,43 @@ export default function ActivityDetailModal({
               </div>
             </div>
 
-            {/* metrics card */}
+            {/* metrics — StatBar hairline grid */}
             {item.metrics.length > 0 && (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-5 rounded-2xl bg-secondary/50 p-4">
-                {item.metrics.map((m) => (
-                  <div key={m.label}>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="font-display text-[26px] leading-none tabular-nums text-foreground">{m.value}</span>
-                      {m.unit && <UnitChip unit={m.unit} />}
+              <div className="overflow-hidden rounded-xl border border-border bg-border">
+                <div className="grid grid-cols-2 gap-px bg-border">
+                  {item.metrics.map((m) => (
+                    <div key={m.label} className="bg-card p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
+                        {m.icon && <m.icon className="h-4 w-4 text-muted-foreground" />}
+                      </div>
+                      <div className="mt-2 font-display text-2xl tracking-tight tabular-nums text-foreground">{m.value}</div>
                     </div>
-                    <div className="mt-1.5 text-xs text-muted-foreground">{m.label}</div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* history */}
+            {/* history — editorial divider rows */}
             <div>
-              <h3 className="px-1 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{item.historyTitle ?? 'History'}</h3>
+              <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{item.historyTitle ?? 'History'}</h3>
               {item.history.length > 0 ? (
-                <div className="space-y-2">
+                <div className="divide-y divide-border border-t border-border">
                   {item.history.map((h) => (
-                    <div key={h.id} className="flex items-center justify-between gap-3 rounded-xl bg-secondary/50 p-3">
+                    <div key={h.id} className="flex items-center justify-between gap-3 py-3">
                       <div className="flex min-w-0 items-center gap-2.5">
-                        {h.success && <BadgeCheck className="h-5 w-5 shrink-0 text-positive" />}
+                        {h.success && <BadgeCheck className="h-[18px] w-[18px] shrink-0 text-positive" />}
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium text-foreground">{h.title}</div>
                           {h.subtitle && <div className="truncate text-xs text-muted-foreground">{h.subtitle}</div>}
                         </div>
                       </div>
-                      <span className={cn('flex shrink-0 items-baseline gap-1.5 text-sm font-medium tabular-nums', h.tone ? TONE_TEXT[h.tone] : 'text-foreground')}>
-                        {h.value}
-                        {h.unit && <UnitChip unit={h.unit} />}
-                      </span>
+                      <span className={cn('shrink-0 font-display text-sm tabular-nums', h.tone ? TONE_TEXT[h.tone] : 'text-foreground')}>{h.value}</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="rounded-xl bg-secondary/50 py-8 text-center text-sm text-muted-foreground">No history yet.</div>
+                <div className="border-t border-border py-8 text-center text-sm text-muted-foreground">No history yet.</div>
               )}
             </div>
           </div>

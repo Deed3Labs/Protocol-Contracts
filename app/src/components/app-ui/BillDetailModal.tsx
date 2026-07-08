@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Globe } from 'lucide-react';
+import { Globe, Wallet, TrendingUp, Hash, Calendar } from 'lucide-react';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import ActivityDetailModal, { type DetailInfo } from '@/components/app-ui/ActivityDetailModal';
 import BillPortalBrowser from '@/components/app-ui/BillPortalBrowser';
@@ -76,20 +76,19 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
         onToggle: (v: boolean) => { setLocalReminders(v); setReminders(bill.id, v); },
       },
       metrics: [
-        { label: 'Total paid', value: nInt(total), unit: 'USD' },
-        { label: 'Credits earned', value: nInt(creditsEarned) },
-        { label: 'Payments', value: String(count) },
+        { label: 'Total paid', value: `$${nInt(total)}`, icon: Wallet },
+        { label: 'Credits earned', value: nInt(creditsEarned), icon: TrendingUp },
+        { label: 'Payments', value: String(count), icon: Hash },
         months
-          ? { label: 'Active since', value: String(months), unit: 'mo' }
-          : { label: 'Avg payment', value: nInt(avg), unit: 'USD' },
+          ? { label: 'Active since', value: `${months} mo`, icon: Calendar }
+          : { label: 'Avg payment', value: `$${nInt(avg)}`, icon: Calendar },
       ],
       historyTitle: 'Payment history',
       history: payments.map((p) => ({
         id: p.id,
         title: 'Payment successful',
         subtitle: new Date(p.paidAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) + (p.onTime ? '' : ' · late'),
-        value: n2(p.amount),
-        unit: 'USD',
+        value: `$${n2(p.amount)}`,
         success: true,
       })),
       actions: [

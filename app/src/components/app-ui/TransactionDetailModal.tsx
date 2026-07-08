@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Wallet, Hash, TrendingUp, Clock } from 'lucide-react';
 import ActivityDetailModal, { type DetailInfo, type Tone } from '@/components/app-ui/ActivityDetailModal';
 import { CATEGORY } from '@/components/app-ui/RecentActivity';
 import type { ActivityItem, ActivityStatus } from '@/hooks/useClearTransactions';
@@ -8,8 +9,8 @@ import type { ActivityItem, ActivityStatus } from '@/hooks/useClearTransactions'
  * buttons, and the "history" is ALL activity with that same merchant (grouped by name). Metrics summarize
  * the relationship (total, count, average, last).
  */
-const nInt = (n: number) => Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
-const n2 = (n: number) => `${n < 0 ? '-' : ''}${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const usd0 = (n: number) => `$${Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+const usd2 = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const STATUS_TONE: Record<ActivityStatus, Tone> = { completed: 'positive', pending: 'pending', failed: 'negative' };
 
 export default function TransactionDetailModal({
@@ -43,18 +44,17 @@ export default function TransactionDetailModal({
       typeLabel: `${tx.spendCategory || tx.category}${tx.internal ? ' · transfer' : ''}`,
       status: { label: tx.status, tone: STATUS_TONE[tx.status] },
       metrics: [
-        { label: count > 1 ? 'Total' : 'Amount', value: nInt(total), unit: 'USD' },
-        { label: 'Transactions', value: String(count) },
-        { label: 'Average', value: nInt(avg), unit: 'USD' },
-        { label: 'Last', value: last.date },
+        { label: count > 1 ? 'Total' : 'Amount', value: usd0(total), icon: Wallet },
+        { label: 'Transactions', value: String(count), icon: Hash },
+        { label: 'Average', value: usd0(avg), icon: TrendingUp },
+        { label: 'Last', value: last.date, icon: Clock },
       ],
       historyTitle: 'Activity',
       history: items.map((i) => ({
         id: i.id,
         title: i.amount > 0 ? 'Received' : 'Payment',
         subtitle: `${i.category} · ${i.date}`,
-        value: n2(i.amount),
-        unit: 'USD',
+        value: usd2(i.amount),
         tone: (i.amount > 0 ? 'positive' : 'muted') as Tone,
         success: i.status === 'completed',
       })),
