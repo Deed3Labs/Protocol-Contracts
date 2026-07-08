@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Search, ExternalLink, ShieldCheck, CreditCard, Info, ChevronDown } from 'lucide-react';
+import { Search, ChevronRight, Info, ChevronDown } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import BillPortalBrowser from '@/components/app-ui/BillPortalBrowser';
 import {
   BILL_PORTALS,
   PORTAL_CATEGORIES,
   US_STATES,
   rankPortals,
+  type BillPortal,
   type PortalCategory,
 } from '@/data/billPortals';
 
@@ -22,6 +24,7 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<PortalCategory | 'all'>('all');
   const [state, setState] = useState<string>('');
+  const [active, setActive] = useState<BillPortal | null>(null);
 
   const portals = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -43,11 +46,6 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
             <p className="mt-0.5 text-xs text-muted-foreground">
               Open your provider and pay with your Clear card — funded from your Cash balance.
             </p>
-          </div>
-
-          {/* Clear card panel (P2 renders the live Stripe Issuing element here) */}
-          <div className="px-5 pt-4">
-            <CardPanel />
           </div>
 
           {/* controls */}
@@ -93,12 +91,11 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
               {portals.map((p) => {
                 const cat = PORTAL_CATEGORIES.find((c) => c.id === p.category);
                 return (
-                  <a
+                  <button
                     key={p.id}
-                    href={p.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-3 rounded-xl border border-border p-2.5 text-left transition-colors hover:bg-secondary/50"
+                    type="button"
+                    onClick={() => setActive(p)}
+                    className="flex w-full items-center gap-3 rounded-xl border border-border p-2.5 text-left transition-colors hover:bg-secondary/50"
                   >
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-base">
                       {cat?.emoji}
@@ -110,8 +107,8 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
                         {p.states && state && p.states.includes(state) ? ' · in your area' : ''}
                       </span>
                     </span>
-                    <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  </a>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </button>
                 );
               })}
               {portals.length === 0 && (
@@ -128,6 +125,9 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
           </div>
         </div>
       </DialogContent>
+
+      {/* In-app browser sheet for the selected biller (opens over the directory) */}
+      <BillPortalBrowser portal={active} onClose={() => setActive(null)} />
     </Dialog>
   );
 }
@@ -144,29 +144,5 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
     >
       {children}
     </button>
-  );
-}
-
-/**
- * The Clear card. P1 shows an "activating" placeholder; P2 replaces the masked digits with a Stripe
- * Issuing Element (PCI-compliant iframe) plus tap-to-copy, gated behind a passkey reveal.
- */
-function CardPanel() {
-  return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-neutral-900 to-neutral-700 p-4 text-white shadow-sm dark:from-neutral-800 dark:to-neutral-950">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-[11px] font-medium uppercase tracking-wide text-white/60">Clear card</div>
-          <div className="mt-3 font-mono text-lg tracking-[0.2em] text-white/90">•••• •••• •••• ••••</div>
-        </div>
-        <CreditCard className="h-5 w-5 text-white/70" />
-      </div>
-      <div className="mt-3 flex items-center justify-between">
-        <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-medium text-white/90">
-          <ShieldCheck className="h-3 w-3" /> Activating soon
-        </span>
-        <span className="text-[11px] text-white/60">Pays from Cash · USDC</span>
-      </div>
-    </div>
   );
 }
