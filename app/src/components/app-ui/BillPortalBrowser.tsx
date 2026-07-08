@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, ExternalLink, Lock, CreditCard, ChevronUp, ShieldCheck } from 'lucide-react';
+import { X, ExternalLink, Lock, CreditCard, ChevronUp, ShieldCheck, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { useClearCard } from '@/hooks/useClearCard';
+import StripeCardDetails, { stripeCardsConfigured } from '@/components/app-ui/StripeCardDetails';
 import type { BillPortal } from '@/data/billPortals';
 
 /*
@@ -106,11 +108,14 @@ export default function BillPortalBrowser({ portal, onClose }: { portal: BillPor
 }
 
 /**
- * Floating wallet to copy the Clear card while paying. P1: an "activating" state (no live digits yet).
- * P2: expands to a Stripe Issuing Element with the real PAN/CVV/expiry + tap-to-copy behind a passkey.
+ * Floating wallet to use the Clear card while paying. Shows the live Stripe Issuing card once active
+ * (P2), an Activate CTA when the card program is configured but the user has no card yet, or an
+ * "activating soon" state until the backend has card credentials.
  */
 function CardOverlay() {
   const [open, setOpen] = useState(false);
+  const { configured, card, active, hasCard, activate, activating } = useClearCard();
+
   return (
     <div className="border-t border-border bg-card px-3 py-2">
       <button
@@ -128,9 +133,27 @@ function CardOverlay() {
         <ChevronUp className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-180')} />
       </button>
       {open && (
-        <div className="mt-2 flex items-center gap-2 rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
-          <ShieldCheck className="h-4 w-4 shrink-0 text-amber-500" />
-          Your Clear card is activating — card details to copy will appear here once it’s live.
+        <div className="mt-2">
+          {active && hasCard && card?.stripeCardId && stripeCardsConfigured() ? (
+            <div className="rounded-xl bg-gradient-to-br from-neutral-900 to-neutral-700 p-3 dark:from-neutral-800 dark:to-neutral-950">
+              <StripeCardDetails cardId={card.stripeCardId} />
+              <p className="mt-2 text-[11px] text-white/60">Copy a field, then paste on the biller’s site.</p>
+            </div>
+          ) : configured && !hasCard ? (
+            <button
+              type="button"
+              onClick={() => void activate()}
+              disabled={activating}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-60"
+            >
+              {activating ? <><Loader2 className="h-4 w-4 animate-spin" /> Setting up…</> : 'Activate your Clear card'}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-amber-500" />
+              Your Clear card is activating — card details to copy will appear here once it’s live.
+            </div>
+          )}
         </div>
       )}
     </div>
