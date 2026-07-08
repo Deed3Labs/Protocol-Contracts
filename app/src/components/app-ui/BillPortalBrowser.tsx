@@ -1,36 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { X, ExternalLink, Lock, CreditCard, ChevronUp, ShieldCheck, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { useClearCard } from '@/hooks/useClearCard';
 import StripeCardDetails, { stripeCardsConfigured } from '@/components/app-ui/StripeCardDetails';
-import type { BillPortal } from '@/data/billPortals';
+import { PORTAL_CATEGORIES, type BillPortal } from '@/data/billPortals';
 
 /*
- * In-app "browser" for a bill portal: loads the biller's own page in an iframe with a read-only URL bar,
- * and a floating Clear card overlay to copy while paying. Many billers block framing (X-Frame-Options),
- * which fires no error event, so we use a load timeout: if the frame hasn't loaded in time we assume it's
- * blocked and show a branded launch screen that opens the site in a new tab instead.
+ * In-app portal view. Billers overwhelmingly block iframing (X-Frame-Options) — and that can't be
+ * detected cross-origin, so a blocked frame just renders blank. Rather than gamble on a blank screen,
+ * the default is a branded launch screen that opens the biller's login/pay page in a new tab, with a
+ * floating Clear card overlay to copy while paying. Only portals explicitly flagged `frameable` embed.
  *
- * P2: <CardOverlay/> gets the live Stripe Issuing Element (PAN/CVV) + real tap-to-copy behind a passkey.
+ * P2: <CardOverlay/> shows the live Stripe Issuing card (PAN/CVV) when active.
  */
-const LOAD_TIMEOUT_MS = 3500;
-
 export default function BillPortalBrowser({ portal, onClose }: { portal: BillPortal | null; onClose: () => void }) {
-  const [blocked, setBlocked] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!portal) return;
-    setBlocked(false);
-    setLoaded(false);
-    timer.current = setTimeout(() => setBlocked(true), LOAD_TIMEOUT_MS);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [portal]);
-
   if (!portal) return null;
   const host = (() => {
     try {
@@ -39,7 +23,6 @@ export default function BillPortalBrowser({ portal, onClose }: { portal: BillPor
       return portal.url;
     }
   })();
-
   const openExternal = () => window.open(portal.url, '_blank', 'noopener,noreferrer');
 
   return (
@@ -63,40 +46,17 @@ export default function BillPortalBrowser({ portal, onClose }: { portal: BillPor
           </button>
         </div>
 
-        {/* content: iframe, or a branded launch screen if framing is blocked */}
         <div className="relative min-h-0 flex-1 bg-background">
-          {!blocked ? (
+          {portal.frameable ? (
             <iframe
               title={portal.name}
               src={portal.url}
-              onLoad={() => {
-                if (timer.current) clearTimeout(timer.current);
-                setLoaded(true);
-              }}
               className="h-full w-full border-0"
               referrerPolicy="no-referrer"
               sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
             />
           ) : (
-            <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary text-2xl">🔒</div>
-              <div className="mt-4 text-base font-semibold text-foreground">{portal.name} opens in a new tab</div>
-              <p className="mt-1 max-w-[320px] text-sm text-muted-foreground">
-                For your security, {portal.name} doesn’t allow embedding. It’ll open in a new tab — keep your Clear card handy to pay.
-              </p>
-              <button
-                type="button"
-                onClick={openExternal}
-                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
-              >
-                <ExternalLink className="h-4 w-4" /> Open {portal.name}
-              </button>
-            </div>
-          )}
-          {!blocked && !loaded && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/60 text-sm text-muted-foreground">
-              Loading {portal.name}…
-            </div>
+            <LaunchScreen portal={portal} onOpen={openExternal} />
           )}
         </div>
 
@@ -104,6 +64,27 @@ export default function BillPortalBrowser({ portal, onClose }: { portal: BillPor
         <CardOverlay />
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Branded "open the biller's login/pay page" screen — the default, so users never hit a blank iframe. */
+function LaunchScreen({ portal, onOpen }: { portal: BillPortal; onOpen: () => void }) {
+  const cat = PORTAL_CATEGORIES.find((c) => c.id === portal.category);
+  return (
+    <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-3xl">{cat?.emoji}</div>
+      <div className="mt-4 text-lg font-semibold text-foreground">Pay your {portal.name} bill</div>
+      <p className="mt-1 max-w-[340px] text-sm text-muted-foreground">
+        For your security, {portal.name} opens in a new tab. Sign in there and pay with your Clear card — it’s at the bottom to copy.
+      </p>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+      >
+        <ExternalLink className="h-4 w-4" /> Open {portal.name} login
+      </button>
+    </div>
   );
 }
 
