@@ -94,3 +94,17 @@ export function rankPortals(portals: BillPortal[], state?: string): BillPortal[]
   const score = (p: BillPortal) => (p.states?.includes(state) ? 0 : !p.states ? 1 : 2);
   return [...portals].sort((a, b) => score(a) - score(b));
 }
+
+/** Best-effort match a detected/manual biller name to a directory portal (folds in the user's bills). */
+export function matchPortal(billerName: string): BillPortal | undefined {
+  const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9&]+/g, '');
+  const s = norm(billerName);
+  if (s.length < 3) return undefined;
+  return BILL_PORTALS.find((p) => {
+    const pn = norm(p.name);
+    if (pn.length < 3) return false;
+    if (s.includes(pn) || pn.includes(s)) return true;
+    // shared distinctive token (e.g. "verizon", "xfinity")
+    return p.name.toLowerCase().split(/[^a-z0-9&]+/).some((t) => t.length > 3 && s.includes(t));
+  });
+}
