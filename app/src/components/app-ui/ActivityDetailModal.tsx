@@ -1,5 +1,5 @@
-import { type ReactNode } from 'react';
-import { ChevronLeft, BadgeCheck, type LucideIcon } from 'lucide-react';
+import { type ReactNode, useEffect, useState } from 'react';
+import { ChevronLeft, BadgeCheck, Check, X, Pencil, ExternalLink, Plus, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
@@ -40,9 +40,9 @@ export interface DetailInfo {
   typeLabel?: string;
   status?: { label: string; tone: Tone };
   nextDue?: string | null;
-  address?: string | null;
-  portalHost?: string | null;
-  onPortal?: () => void;
+  /** Editable portal + address rows (always shown; empty → "Add …" inline editor). */
+  portal?: { url: string | null; onOpen?: () => void; onSave: (v: string) => void };
+  address?: { value: string | null; onSave: (v: string) => void };
   notifications?: { enabled: boolean; onToggle: (v: boolean) => void };
   metrics: DetailMetric[];
   historyTitle?: string;
@@ -73,6 +73,67 @@ function Row({ label, onClick, children }: { label: string; onClick?: () => void
     </Tag>
   );
 }
+
+/** A label/value row that inline-edits when empty or via the pencil. `display` is shown, `value` is edited. */
+function EditableRow({
+  label,
+  value,
+  display,
+  placeholder,
+  onSave,
+  onOpen,
+}: {
+  label: string;
+  value: string | null;
+  display?: string;
+  placeholder: string;
+  onSave: (v: string) => void;
+  onOpen?: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? '');
+  useEffect(() => setDraft(value ?? ''), [value]);
+  const save = () => { onSave(draft.trim()); setEditing(false); };
+
+  if (editing) {
+    return (
+      <div className="flex min-h-[48px] items-center gap-2 px-4">
+        <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setDraft(value ?? ''); setEditing(false); } }}
+          placeholder={placeholder}
+          className="min-w-0 flex-1 bg-transparent text-right text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+        />
+        <button type="button" onClick={save} aria-label="Save" className="shrink-0 rounded-full p-1 text-positive hover:bg-secondary"><Check className="h-4 w-4" /></button>
+        <button type="button" onClick={() => { setDraft(value ?? ''); setEditing(false); }} aria-label="Cancel" className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-secondary"><X className="h-4 w-4" /></button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-[48px] items-center justify-between gap-3 px-4">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      {value ? (
+        <div className="flex min-w-0 items-center gap-1.5">
+          <button type="button" onClick={onOpen} disabled={!onOpen} className="inline-flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground disabled:cursor-default">
+            <span className="truncate">{display ?? value}</span>
+            {onOpen && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+          </button>
+          <button type="button" onClick={() => setEditing(true)} aria-label={`Edit ${label.toLowerCase()}`} className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => { setDraft(''); setEditing(true); }} className="inline-flex items-center gap-1 text-sm font-medium text-primary">
+          <Plus className="h-3.5 w-3.5" /> Add {label.toLowerCase()}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
 
 export default function ActivityDetailModal({
   open,
@@ -137,8 +198,19 @@ export default function ActivityDetailModal({
                     </button>
                   </Row>
                 )}
-                {item.portalHost && <Row label="Portal" onClick={item.onPortal}>{item.portalHost}</Row>}
-                {item.address && <Row label="Address"><span className="max-w-[210px] truncate text-right">{item.address}</span></Row>}
+                {item.portal && (
+                  <EditableRow
+                    label="Portal"
+                    value={item.portal.url}
+                    display={item.portal.url ? hostOf(item.portal.url) : undefined}
+                    placeholder="pge.com/login"
+                    onOpen={item.portal.onOpen}
+                    onSave={item.portal.onSave}
+                  />
+                )}
+                {item.address && (
+                  <EditableRow label="Address" value={item.address.value} placeholder="123 Main St, City, ST" onSave={item.address.onSave} />
+                )}
               </div>
             </div>
 

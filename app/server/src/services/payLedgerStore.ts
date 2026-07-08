@@ -134,7 +134,25 @@ async function ensureTables(): Promise<void> {
   // Tag each credit with the environment it was earned in ('mainnet' = live/real, 'testnet' = demo).
   // The demo's deposit-match credits (Base Sepolia) stay separate from mainnet credits that count.
   await pool.query(`ALTER TABLE pay_credits ADD COLUMN IF NOT EXISTS network TEXT NOT NULL DEFAULT 'mainnet';`);
+  // Per-merchant metadata (portal link + address), keyed by a normalized merchant name so it's shared
+  // across a merchant's transactions AND its matching biller. The bill/transaction detail view reads +
+  // inline-edits this. One source of truth for merchant info.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pay_merchant_meta (
+      wallet TEXT NOT NULL,
+      name_key TEXT NOT NULL,
+      portal_url TEXT,
+      address TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (wallet, name_key)
+    );
+  `);
   ensured = true;
+}
+
+/** Normalized key for merchant metadata (matches billPortals.matchPortal normalization). */
+export function merchantKey(name: string): string {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9&]+/g, '');
 }
 
 export interface Biller {
@@ -254,6 +272,40 @@ export const payLedgerStore = {
       source: String(x.source),
       period: String(x.period),
     }));
+  },
+
+  /** Read a merchant's shared metadata (portal + address) by name. */
+  async getMerchantMeta(wallet: string, name: string): Promise<{ portalUrl: string | null; address: string | null } | null> {
+    const pool = getPayPool();
+    if (!pool) return null;
+    await ensureTables();
+    const r = await pool.query(`SELECT portal_url, address FROM pay_merchant_meta WHERE wallet = $1 AND name_key = $2`, [wallet, merchantKey(name)]);
+    if (!r.rows[0]) return null;
+    return { portalUrl: r.rows[0].portal_url ?? null, address: r.rows[0].address ?? null };
+  },
+
+  /** Set a merchant's shared metadata. Only the fields passed (not undefined) are changed. */
+  async upsertMerchantMeta(
+    wallet: string,
+    name: string,
+    p: { portalUrl?: string | null; address?: string | null },
+  ): Promise<{ portalUrl: string | null; address: string | null }> {
+    const pool = getPayPool();
+    if (!pool) throw new Error('Postgres not configured');
+    await ensureTables();
+    const key = merchantKey(name);
+    const cur = (await this.getMerchantMeta(wallet, name)) ?? { portalUrl: null, address: null };
+    const next = {
+      portalUrl: p.portalUrl !== undefined ? p.portalUrl : cur.portalUrl,
+      address: p.address !== undefined ? p.address : cur.address,
+    };
+    await pool.query(
+      `INSERT INTO pay_merchant_meta (wallet, name_key, portal_url, address, updated_at)
+         VALUES ($1,$2,$3,$4, now())
+       ON CONFLICT (wallet, name_key) DO UPDATE SET portal_url = $3, address = $4, updated_at = now()`,
+      [wallet, key, next.portalUrl, next.address],
+    );
+    return next;
   },
 
   async addBiller(

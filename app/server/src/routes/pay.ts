@@ -78,6 +78,38 @@ router.get('/:wallet/billers/:id/payments', async (req: Request, res: Response) 
   }
 });
 
+// GET /api/pay/:wallet/merchant-meta?name= — shared merchant portal/address
+router.get('/:wallet/merchant-meta', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  try {
+    res.json({ meta: await payLedgerStore.getMerchantMeta(w, String(req.query.name || '')) });
+  } catch (error) {
+    console.error('[pay/merchant-meta GET]', error);
+    res.status(500).json({ error: 'Failed to load merchant info' });
+  }
+});
+
+// PUT /api/pay/:wallet/merchant-meta  { name, portalUrl?, address? }
+router.put('/:wallet/merchant-meta', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  const b = req.body as { name?: string; portalUrl?: string | null; address?: string | null };
+  if (!b?.name) { res.status(400).json({ error: 'name is required' }); return; }
+  try {
+    const meta = await payLedgerStore.upsertMerchantMeta(w, String(b.name), {
+      ...(b.portalUrl !== undefined ? { portalUrl: cleanUrl(b.portalUrl) } : {}),
+      ...(b.address !== undefined ? { address: b.address ? String(b.address).slice(0, 300) : null } : {}),
+    });
+    res.json({ meta });
+  } catch (error) {
+    console.error('[pay/merchant-meta PUT]', error);
+    res.status(500).json({ error: 'Failed to save merchant info' });
+  }
+});
+
 // POST /api/pay/:wallet/billers  { name, payee?, type, defaultAmount, dueDay }
 router.post('/:wallet/billers', async (req: Request, res: Response) => {
   const w = wallet(req);
