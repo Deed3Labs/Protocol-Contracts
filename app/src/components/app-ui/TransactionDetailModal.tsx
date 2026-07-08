@@ -15,6 +15,21 @@ import type { ActivityItem, ActivityStatus } from '@/hooks/useClearTransactions'
 const usd0 = (n: number) => `$${Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 const usd2 = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const STATUS_TONE: Record<ActivityStatus, Tone> = { completed: 'positive', pending: 'pending', failed: 'negative' };
+const timeOf = (ts: number) => new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+function dayGroup(ts: number): string {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (ts >= startOfToday) return 'Today';
+  if (ts >= startOfToday - 864e5) return 'Yesterday';
+  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+const acct = (source: string) => (source === 'bank' ? 'Bank account' : /^0x/.test(source) ? `•••• ${source.slice(-4)}` : source);
+function shareTx(name: string, amount: number) {
+  const text = `${name} — ${usd2(amount)}`;
+  if (typeof navigator !== 'undefined' && navigator.share) void navigator.share({ title: 'Receipt', text }).catch(() => {});
+  else void navigator.clipboard?.writeText(text).catch(() => {});
+}
 
 export default function TransactionDetailModal({
   tx,
@@ -59,6 +74,9 @@ export default function TransactionDetailModal({
       subtitle: 'Transaction',
       typeLabel: `${tx.spendCategory || tx.category}${tx.internal ? ' · transfer' : ''}`,
       status: { label: tx.status, tone: STATUS_TONE[tx.status] },
+      reference: `#${tx.id}`,
+      account: acct(tx.source),
+      dateTime: new Date(tx.ts).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }),
       portal: {
         url: meta?.portalUrl ?? null,
         onOpen: meta?.portalUrl ? () => window.open(meta.portalUrl!, '_blank', 'noopener,noreferrer') : undefined,
@@ -71,14 +89,20 @@ export default function TransactionDetailModal({
         { label: 'Average', value: usd0(avg), icon: TrendingUp },
         { label: 'Last', value: last.date, icon: Clock },
       ],
+      receipt: {
+        lines: [{ label: tx.amount > 0 ? 'Received' : 'Amount', value: usd2(tx.amount), tone: (tx.amount > 0 ? 'positive' : 'muted') as Tone }],
+        total: { label: 'Total', value: usd2(tx.amount) },
+        onShare: () => shareTx(tx.name, tx.amount),
+      },
       historyTitle: 'Activity',
       history: items.map((i) => ({
         id: i.id,
         title: i.amount > 0 ? 'Received' : 'Payment',
-        subtitle: `${i.category} · ${i.date}`,
+        subtitle: timeOf(i.ts),
         value: usd2(i.amount),
         tone: (i.amount > 0 ? 'positive' : 'muted') as Tone,
-        success: i.status === 'completed',
+        direction: (i.amount > 0 ? 'in' : 'out') as 'in' | 'out',
+        group: dayGroup(i.ts),
       })),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

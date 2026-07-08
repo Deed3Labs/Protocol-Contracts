@@ -1,22 +1,21 @@
 import { type ReactNode, useEffect, useState } from 'react';
-import { ChevronLeft, BadgeCheck, Check, X, Pencil, ExternalLink, Plus, type LucideIcon } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import {
+  ChevronLeft, ChevronDown, BadgeCheck, Check, X, Pencil, Copy, ExternalLink, Plus,
+  ArrowDownLeft, ArrowUpRight, Share2, type LucideIcon,
+} from 'lucide-react';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
 /*
- * Unified expanded detail view for a bill OR a transaction, aligned to the app design system:
- * back-bar + title; an identity card (icon + name + status pill + subtitle) with grouped label/value
- * rows; a StatBar-style hairline metrics grid; an editorial PAYMENT HISTORY list (divider rows, no
- * cards); and floating bottom actions (bills only). Full-round radius is reserved for chips/pills/
- * toggles/buttons — cards use the app's rounded-xl. Purely presentational — callers map to `DetailInfo`.
+ * Unified detail view for a bill OR a transaction, as a right-side drawer (full-screen sheet on mobile).
+ * Tabs (Details · History); Details has collapsible sections (Summary, Transaction, Latest receipt), a
+ * metrics grid, editable portal/address, and copyable reference fields; History is grouped with
+ * directional in/out icons + signed colored amounts. Bills get a pinned pay bar; transactions don't.
+ * Purely presentational — callers map into `DetailInfo`.
  */
 export type Tone = 'positive' | 'pending' | 'negative' | 'muted';
 
-export interface DetailMetric {
-  label: string;
-  value: string;
-  icon?: LucideIcon;
-}
+export interface DetailMetric { label: string; value: string; icon?: LucideIcon }
 export interface DetailHistoryEntry {
   id: string;
   title: string;
@@ -24,14 +23,15 @@ export interface DetailHistoryEntry {
   value: string;
   tone?: Tone;
   success?: boolean;
+  direction?: 'in' | 'out';
+  group?: string;
 }
-export interface DetailAction {
-  label: string;
-  onClick: () => void;
-  primary?: boolean;
-  disabled?: boolean;
-  icon?: LucideIcon; // when set, renders as a circular icon button instead of a pill
+export interface DetailReceipt {
+  lines: { label: string; value: string; tone?: Tone }[];
+  total?: { label: string; value: string };
+  onShare?: () => void;
 }
+export interface DetailAction { label: string; onClick: () => void; primary?: boolean; disabled?: boolean; icon?: LucideIcon }
 export interface DetailInfo {
   icon: LucideIcon;
   iconTint?: string;
@@ -40,13 +40,17 @@ export interface DetailInfo {
   typeLabel?: string;
   status?: { label: string; tone: Tone };
   nextDue?: string | null;
-  /** Editable portal + address rows (always shown; empty → "Add …" inline editor). */
+  reference?: string | null;
+  account?: string | null;
+  dateTime?: string | null;
   portal?: { url: string | null; onOpen?: () => void; onSave: (v: string) => void };
   address?: { value: string | null; onSave: (v: string) => void };
   notifications?: { enabled: boolean; onToggle: (v: boolean) => void };
   metrics: DetailMetric[];
+  receipt?: DetailReceipt;
   historyTitle?: string;
   history: DetailHistoryEntry[];
+  onViewAll?: () => void;
   actions?: DetailAction[];
 }
 
@@ -63,46 +67,58 @@ const TONE_TEXT: Record<Tone, string> = {
   muted: 'text-foreground',
 };
 
-/** One label/value row inside the identity card. */
-function Row({ label, onClick, children }: { label: string; onClick?: () => void; children: ReactNode }) {
-  const Tag = onClick ? 'button' : 'div';
+const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
+
+function Section({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <Tag type={onClick ? 'button' : undefined} onClick={onClick} className={cn('flex min-h-[48px] w-full items-center justify-between gap-3 px-4 text-left', onClick && 'transition-colors hover:bg-foreground/[0.03]')}>
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">{children}</div>
-    </Tag>
+    <div>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="mb-2 flex w-full items-center justify-between px-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</span>
+        <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', !open && '-rotate-90')} />
+      </button>
+      {open && children}
+    </div>
   );
 }
 
-/** A label/value row that inline-edits when empty or via the pencil. `display` is shown, `value` is edited. */
-function EditableRow({
-  label,
-  value,
-  display,
-  placeholder,
-  onSave,
-  onOpen,
-}: {
-  label: string;
-  value: string | null;
-  display?: string;
-  placeholder: string;
-  onSave: (v: string) => void;
-  onOpen?: () => void;
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex min-h-[46px] items-center justify-between gap-3 px-4">
+      <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
+      <div className="flex min-w-0 items-center justify-end gap-1.5 text-sm font-medium text-foreground">{children}</div>
+    </div>
+  );
+}
+
+function CopyValue({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => { navigator.clipboard?.writeText(value).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
+      className="inline-flex min-w-0 items-center gap-1.5 font-mono text-sm text-foreground"
+    >
+      <span className="truncate">{value}</span>
+      {copied ? <Check className="h-3.5 w-3.5 shrink-0 text-positive" /> : <Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+    </button>
+  );
+}
+
+/** Inline-editable row (empty → "Add …"); `display` shown, `value` edited. */
+function EditableRow({ label, value, display, placeholder, onSave, onOpen }: {
+  label: string; value: string | null; display?: string; placeholder: string; onSave: (v: string) => void; onOpen?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? '');
   useEffect(() => setDraft(value ?? ''), [value]);
   const save = () => { onSave(draft.trim()); setEditing(false); };
-
   if (editing) {
     return (
-      <div className="flex min-h-[48px] items-center gap-2 px-4">
+      <div className="flex min-h-[46px] items-center gap-2 px-4">
         <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
         <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setDraft(value ?? ''); setEditing(false); } }}
           placeholder={placeholder}
           className="min-w-0 flex-1 bg-transparent text-right text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
@@ -112,186 +128,205 @@ function EditableRow({
       </div>
     );
   }
-
   return (
-    <div className="flex min-h-[48px] items-center justify-between gap-3 px-4">
-      <span className="text-sm text-muted-foreground">{label}</span>
+    <Row label={label}>
       {value ? (
-        <div className="flex min-w-0 items-center gap-1.5">
-          <button type="button" onClick={onOpen} disabled={!onOpen} className="inline-flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground disabled:cursor-default">
+        <>
+          <button type="button" onClick={onOpen} disabled={!onOpen} className="inline-flex min-w-0 items-center gap-1.5 disabled:cursor-default">
             <span className="truncate">{display ?? value}</span>
             {onOpen && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
           </button>
           <button type="button" onClick={() => setEditing(true)} aria-label={`Edit ${label.toLowerCase()}`} className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
-        </div>
+        </>
       ) : (
-        <button type="button" onClick={() => { setDraft(''); setEditing(true); }} className="inline-flex items-center gap-1 text-sm font-medium text-primary">
-          <Plus className="h-3.5 w-3.5" /> Add {label.toLowerCase()}
-        </button>
+        <button type="button" onClick={() => { setDraft(''); setEditing(true); }} className="inline-flex items-center gap-1 text-primary"><Plus className="h-3.5 w-3.5" /> Add {label.toLowerCase()}</button>
       )}
-    </div>
+    </Row>
   );
 }
 
-const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
-
-export default function ActivityDetailModal({
-  open,
-  onOpenChange,
-  item,
-}: {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  item: DetailInfo | null;
-}) {
+export default function ActivityDetailModal({ open, onOpenChange, item }: { open: boolean; onOpenChange: (o: boolean) => void; item: DetailInfo | null }) {
+  const [tab, setTab] = useState<'details' | 'history'>('details');
+  useEffect(() => { if (open) setTab('details'); }, [open]);
   if (!item) return null;
   const Icon = item.icon;
   const tintText = item.iconTint?.split(' ').find((c) => c.startsWith('text-')) ?? 'text-muted-foreground';
 
+  // Group history entries in order.
+  const groups: { label: string; entries: DetailHistoryEntry[] }[] = [];
+  for (const h of item.history) {
+    const g = h.group ?? '';
+    const last = groups[groups.length - 1];
+    if (last && last.label === g) last.entries.push(h);
+    else groups.push({ label: g, entries: [h] });
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[420px]">
-        <div className="flex max-h-[90vh] flex-col">
-          {/* back bar */}
-          <div className="flex items-center gap-1 px-3 py-3">
-            <button type="button" onClick={() => onOpenChange(false)} aria-label="Back" className="rounded-full p-1 text-foreground hover:bg-secondary">
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <span className="text-base font-semibold text-foreground">{item.title}</span>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent aria-label={item.title} className="gap-0 p-0">
+        {/* header */}
+        <div className="flex shrink-0 items-center justify-between px-3 py-3">
+          <div className="flex min-w-0 items-center gap-1">
+            <button type="button" onClick={() => onOpenChange(false)} aria-label="Close" className="rounded-full p-1 text-foreground hover:bg-secondary"><ChevronLeft className="h-5 w-5" /></button>
+            <span className="truncate text-base font-semibold text-foreground">{item.title}</span>
           </div>
+          {item.receipt?.onShare && (
+            <button type="button" onClick={item.receipt.onShare} aria-label="Share" className="rounded-full p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><Share2 className="h-4 w-4" /></button>
+          )}
+        </div>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-4">
-            {/* identity card + grouped rows (outline only) */}
-            <div className="overflow-hidden rounded-xl border border-border">
-              <div className="flex items-center gap-3 p-4">
-                <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-lg', item.iconTint ?? 'bg-secondary text-foreground')}>
-                  <Icon className="h-5 w-5" />
-                </span>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-base font-semibold text-foreground">{item.title}</span>
-                    {item.status && <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', TONE_BADGE[item.status.tone])}>{item.status.label}</span>}
-                  </div>
-                  {item.subtitle && <div className="mt-0.5 text-xs text-muted-foreground">{item.subtitle}</div>}
-                </div>
-              </div>
-
-              <div className="divide-y divide-border border-t border-border">
-                {item.typeLabel && (
-                  <Row label="Category">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-foreground">
-                      <Icon className={cn('h-3.5 w-3.5', tintText)} /> {item.typeLabel}
-                    </span>
-                  </Row>
-                )}
-                {item.nextDue && <Row label="Next due">{item.nextDue}</Row>}
-                {item.notifications && (
-                  <Row label="Alerts">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={item.notifications.enabled}
-                      onClick={() => item.notifications!.onToggle(!item.notifications!.enabled)}
-                      className={cn('relative h-6 w-10 rounded-full transition-colors', item.notifications.enabled ? 'bg-primary' : 'bg-border')}
-                    >
-                      <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all', item.notifications.enabled ? 'left-[18px]' : 'left-0.5')} />
-                    </button>
-                  </Row>
-                )}
-                {item.portal && (
-                  <EditableRow
-                    label="Portal"
-                    value={item.portal.url}
-                    display={item.portal.url ? hostOf(item.portal.url) : undefined}
-                    placeholder="pge.com/login"
-                    onOpen={item.portal.onOpen}
-                    onSave={item.portal.onSave}
-                  />
-                )}
-                {item.address && (
-                  <EditableRow label="Address" value={item.address.value} placeholder="123 Main St, City, ST" onSave={item.address.onSave} />
-                )}
-              </div>
+        {/* identity */}
+        <div className="flex shrink-0 items-center gap-3 px-4 pb-4">
+          <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl', item.iconTint ?? 'bg-secondary text-foreground')}>
+            <Icon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-lg font-semibold text-foreground">{item.title}</span>
+              {item.status && <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', TONE_BADGE[item.status.tone])}>{item.status.label}</span>}
             </div>
+            {(item.typeLabel || item.subtitle) && <div className="mt-0.5 truncate text-xs text-muted-foreground">{[item.typeLabel, item.subtitle].filter(Boolean).join(' · ')}</div>}
+          </div>
+        </div>
 
-            {/* metrics — outline grid, hairline-divided */}
-            {item.metrics.length > 0 && (
-              <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border">
-                {item.metrics.map((m, i) => (
-                  <div
-                    key={m.label}
-                    className={cn('p-3.5', i % 2 === 0 && 'border-r border-border', i + 2 < item.metrics.length && 'border-b border-border')}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
-                      {m.icon && <m.icon className="h-3.5 w-3.5 text-muted-foreground" />}
-                    </div>
-                    <div className="mt-1.5 font-display text-xl tracking-tight tabular-nums text-foreground">{m.value}</div>
+        {/* tabs */}
+        <div className="flex shrink-0 gap-5 border-b border-border px-4">
+          {(['details', 'history'] as const).map((t) => (
+            <button key={t} type="button" onClick={() => setTab(t)} className={cn('-mb-px flex items-center gap-1.5 border-b-2 py-2.5 text-sm capitalize', tab === t ? 'border-foreground font-semibold text-foreground' : 'border-transparent font-medium text-muted-foreground hover:text-foreground')}>
+              {t}
+              {t === 'history' && <span className="rounded-full bg-secondary px-1.5 text-[11px] font-medium">{item.history.length}</span>}
+            </button>
+          ))}
+        </div>
+
+        {/* body */}
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          {tab === 'details' ? (
+            <>
+              <Section title="Summary">
+                <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+                  {item.typeLabel && (
+                    <Row label="Category">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-foreground">
+                        <Icon className={cn('h-3.5 w-3.5', tintText)} /> {item.typeLabel}
+                      </span>
+                    </Row>
+                  )}
+                  {item.nextDue && <Row label="Next due">{item.nextDue}</Row>}
+                  {item.notifications && (
+                    <Row label="Alerts">
+                      <button type="button" role="switch" aria-checked={item.notifications.enabled} onClick={() => item.notifications!.onToggle(!item.notifications!.enabled)} className={cn('relative h-6 w-10 rounded-full transition-colors', item.notifications.enabled ? 'bg-primary' : 'bg-border')}>
+                        <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all', item.notifications.enabled ? 'left-[18px]' : 'left-0.5')} />
+                      </button>
+                    </Row>
+                  )}
+                  {item.portal && <EditableRow label="Portal" value={item.portal.url} display={item.portal.url ? hostOf(item.portal.url) : undefined} placeholder="pge.com/login" onOpen={item.portal.onOpen} onSave={item.portal.onSave} />}
+                  {item.address && <EditableRow label="Address" value={item.address.value} placeholder="123 Main St, City, ST" onSave={item.address.onSave} />}
+                </div>
+              </Section>
+
+              {(item.reference || item.account || item.dateTime || item.status) && (
+                <Section title="Transaction">
+                  <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+                    {item.reference && <Row label="Reference"><CopyValue value={item.reference} /></Row>}
+                    {item.account && <Row label="Account"><span className="font-mono">{item.account}</span></Row>}
+                    {item.dateTime && <Row label="Date">{item.dateTime}</Row>}
+                    {item.status && <Row label="Status"><span className={cn('inline-flex items-center gap-1', TONE_TEXT[item.status.tone])}><BadgeCheck className="h-4 w-4" /> {item.status.label}</span></Row>}
                   </div>
-                ))}
-              </div>
-            )}
+                </Section>
+              )}
 
-            {/* history — outline card, hairline rows */}
-            <div>
-              <h3 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{item.historyTitle ?? 'History'}</h3>
-              <div className="overflow-hidden rounded-xl border border-border">
-                {item.history.length > 0 ? (
-                  <div className="divide-y divide-border">
-                    {item.history.map((h) => (
-                      <div key={h.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          {h.success && <BadgeCheck className="h-[18px] w-[18px] shrink-0 text-positive" />}
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium text-foreground">{h.title}</div>
-                            {h.subtitle && <div className="truncate text-xs text-muted-foreground">{h.subtitle}</div>}
-                          </div>
-                        </div>
-                        <span className={cn('shrink-0 font-display text-sm tabular-nums', h.tone ? TONE_TEXT[h.tone] : 'text-foreground')}>{h.value}</span>
+              {item.metrics.length > 0 && (
+                <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border">
+                  {item.metrics.map((m, i) => (
+                    <div key={m.label} className={cn('p-3.5', i % 2 === 0 && 'border-r border-border', i + 2 < item.metrics.length && 'border-b border-border')}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
+                        {m.icon && <m.icon className="h-3.5 w-3.5 text-muted-foreground" />}
+                      </div>
+                      <div className="mt-1.5 font-display text-xl tracking-tight tabular-nums text-foreground">{m.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {item.receipt && (
+                <Section title="Latest receipt">
+                  <div className="rounded-xl border border-border p-4">
+                    {item.receipt.lines.map((l) => (
+                      <div key={l.label} className="flex justify-between py-1 text-sm">
+                        <span className="text-muted-foreground">{l.label}</span>
+                        <span className={cn('font-mono', l.tone ? TONE_TEXT[l.tone] : 'text-foreground')}>{l.value}</span>
                       </div>
                     ))}
-                  </div>
-                ) : (
-                  <div className="py-10 text-center text-sm text-muted-foreground">No history yet.</div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* floating bottom actions (bills only) */}
-          {item.actions && item.actions.length > 0 && (
-            <div className="flex items-center justify-center gap-3 px-4 py-4">
-              {item.actions.map((a) =>
-                a.icon ? (
-                  <button
-                    key={a.label}
-                    type="button"
-                    aria-label={a.label}
-                    disabled={a.disabled}
-                    onClick={a.onClick}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-secondary text-foreground transition-colors hover:bg-secondary/70 disabled:opacity-40"
-                  >
-                    <a.icon className="h-5 w-5" />
-                  </button>
-                ) : (
-                  <button
-                    key={a.label}
-                    type="button"
-                    disabled={a.disabled}
-                    onClick={a.onClick}
-                    className={cn(
-                      'rounded-full px-6 py-3 text-sm font-semibold transition-transform active:scale-[0.98] disabled:opacity-40',
-                      a.primary ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground',
+                    {item.receipt.total && (
+                      <div className="mt-1 flex justify-between border-t border-border pt-2.5 text-sm font-semibold">
+                        <span className="text-foreground">{item.receipt.total.label}</span>
+                        <span className="font-mono text-foreground">{item.receipt.total.value}</span>
+                      </div>
                     )}
-                  >
-                    {a.label}
-                  </button>
-                ),
+                    {item.receipt.onShare && (
+                      <button type="button" onClick={item.receipt.onShare} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground hover:bg-secondary">
+                        <Share2 className="h-4 w-4" /> Share receipt
+                      </button>
+                    )}
+                  </div>
+                </Section>
+              )}
+            </>
+          ) : (
+            <div>
+              {item.history.length > 0 ? (
+                <>
+                  {groups.map((g) => (
+                    <div key={g.label || 'all'} className="mb-2">
+                      {g.label && <div className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{g.label}</div>}
+                      <div className="divide-y divide-border">
+                        {g.entries.map((h) => (
+                          <div key={h.id} className="flex items-center justify-between gap-3 py-3">
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              {h.direction === 'in' ? (
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-positive/15 text-positive"><ArrowDownLeft className="h-4 w-4" /></span>
+                              ) : h.direction === 'out' ? (
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-negative/10 text-negative"><ArrowUpRight className="h-4 w-4" /></span>
+                              ) : h.success ? (
+                                <BadgeCheck className="h-[18px] w-[18px] shrink-0 text-positive" />
+                              ) : null}
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium text-foreground">{h.title}</div>
+                                {h.subtitle && <div className="truncate text-xs text-muted-foreground">{h.subtitle}</div>}
+                              </div>
+                            </div>
+                            <span className={cn('shrink-0 font-display text-sm tabular-nums', h.tone ? TONE_TEXT[h.tone] : 'text-foreground')}>{h.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {item.onViewAll && (
+                    <button type="button" onClick={item.onViewAll} className="mt-2 w-full rounded-lg border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground">View all activity</button>
+                  )}
+                </>
+              ) : (
+                <div className="rounded-xl border border-border py-10 text-center text-sm text-muted-foreground">No activity yet.</div>
               )}
             </div>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+
+        {/* pay bar (bills only) */}
+        {item.actions && item.actions.length > 0 && (
+          <div className="flex shrink-0 items-center gap-2 border-t border-border p-4">
+            {item.actions.map((a) =>
+              a.icon ? (
+                <button key={a.label} type="button" aria-label={a.label} disabled={a.disabled} onClick={a.onClick} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-secondary text-foreground transition-colors hover:bg-secondary/70 disabled:opacity-40"><a.icon className="h-5 w-5" /></button>
+              ) : (
+                <button key={a.label} type="button" disabled={a.disabled} onClick={a.onClick} className={cn('flex-1 rounded-xl py-3 text-sm font-semibold transition-transform active:scale-[0.98] disabled:opacity-40', a.primary ? 'bg-primary text-primary-foreground' : 'border border-border text-foreground hover:bg-secondary')}>{a.label}</button>
+              ),
+            )}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }

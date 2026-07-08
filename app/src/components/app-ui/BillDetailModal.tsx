@@ -17,6 +17,12 @@ import { matchPortal, type BillPortal } from '@/data/billPortals';
 const nInt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 });
 const n2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+function shareReceipt(name: string, amount: number) {
+  const text = `${name} — $${n2(amount)} paid via Clear`;
+  if (typeof navigator !== 'undefined' && navigator.share) void navigator.share({ title: 'Receipt', text }).catch(() => {});
+  else void navigator.clipboard?.writeText(text).catch(() => {});
+}
+
 const TYPE_TINT: Record<BillType, string> = {
   rent: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
   utility: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
@@ -68,6 +74,8 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
     const creditsEarned = payments.reduce((s, p) => s + creditsFor({ type: bill.type, amount: p.amount }, streak, p.amount, accelerated), 0);
     const oldest = payments.length ? new Date(payments[payments.length - 1].paidAt) : null;
     const months = oldest ? Math.max(1, Math.round((Date.now() - oldest.getTime()) / (30 * 864e5))) : 0;
+    const latest = payments[0];
+    const latestCredits = latest ? creditsFor({ type: bill.type, amount: latest.amount }, streak, latest.amount, accelerated) : 0;
 
     return {
       icon: bill.icon,
@@ -77,8 +85,22 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
       typeLabel: TYPE_LABEL[bill.type],
       status: { label: 'Active', tone: 'positive' },
       nextDue: bill.dueLabel || null,
+      reference: latest ? `#${latest.id}` : null,
+      account: bill.payoutLast4 ? `•••• ${bill.payoutLast4}` : null,
+      dateTime: latest ? new Date(latest.paidAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : null,
       portal: { url: portalUrl, onOpen: portalUrl ? openPortal : undefined, onSave: savePortal },
       address: { value: addressVal, onSave: saveAddress },
+      receipt: latest
+        ? {
+            lines: [
+              { label: 'Amount', value: `$${n2(latest.amount)}` },
+              { label: 'Fee', value: 'Free', tone: 'positive' as const },
+              { label: 'Credits earned', value: `+${latestCredits}`, tone: 'positive' as const },
+            ],
+            total: { label: 'Total', value: `$${n2(latest.amount)}` },
+            onShare: () => shareReceipt(bill.name, latest.amount),
+          }
+        : undefined,
       notifications: {
         enabled: reminders,
         onToggle: (v: boolean) => { setLocalReminders(v); setReminders(bill.id, v); },
