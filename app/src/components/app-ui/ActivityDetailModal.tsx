@@ -160,9 +160,9 @@ export default function ActivityDetailModal({
             <span className="text-base font-semibold text-foreground">{item.title}</span>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
-            {/* identity card + grouped rows */}
-            <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-4">
+            {/* identity card + grouped rows (outline only) */}
+            <div className="overflow-hidden rounded-xl border border-border">
               <div className="flex items-center gap-3 p-4">
                 <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-lg', item.iconTint ?? 'bg-secondary text-foreground')}>
                   <Icon className="h-5 w-5" />
@@ -214,44 +214,47 @@ export default function ActivityDetailModal({
               </div>
             </div>
 
-            {/* metrics — StatBar hairline grid */}
+            {/* metrics — outline grid, hairline-divided */}
             {item.metrics.length > 0 && (
-              <div className="overflow-hidden rounded-xl border border-border bg-border">
-                <div className="grid grid-cols-2 gap-px bg-border">
-                  {item.metrics.map((m) => (
-                    <div key={m.label} className="bg-card p-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
-                        {m.icon && <m.icon className="h-4 w-4 text-muted-foreground" />}
-                      </div>
-                      <div className="mt-2 font-display text-2xl tracking-tight tabular-nums text-foreground">{m.value}</div>
+              <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border">
+                {item.metrics.map((m, i) => (
+                  <div
+                    key={m.label}
+                    className={cn('p-3.5', i % 2 === 0 && 'border-r border-border', i + 2 < item.metrics.length && 'border-b border-border')}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
+                      {m.icon && <m.icon className="h-3.5 w-3.5 text-muted-foreground" />}
                     </div>
-                  ))}
-                </div>
+                    <div className="mt-1.5 font-display text-xl tracking-tight tabular-nums text-foreground">{m.value}</div>
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* history — editorial divider rows */}
+            {/* history — outline card, hairline rows */}
             <div>
-              <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{item.historyTitle ?? 'History'}</h3>
-              {item.history.length > 0 ? (
-                <div className="divide-y divide-border border-t border-border">
-                  {item.history.map((h) => (
-                    <div key={h.id} className="flex items-center justify-between gap-3 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        {h.success && <BadgeCheck className="h-[18px] w-[18px] shrink-0 text-positive" />}
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-foreground">{h.title}</div>
-                          {h.subtitle && <div className="truncate text-xs text-muted-foreground">{h.subtitle}</div>}
+              <h3 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{item.historyTitle ?? 'History'}</h3>
+              <div className="overflow-hidden rounded-xl border border-border">
+                {item.history.length > 0 ? (
+                  <div className="divide-y divide-border">
+                    {item.history.map((h) => (
+                      <div key={h.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          {h.success && <BadgeCheck className="h-[18px] w-[18px] shrink-0 text-positive" />}
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium text-foreground">{h.title}</div>
+                            {h.subtitle && <div className="truncate text-xs text-muted-foreground">{h.subtitle}</div>}
+                          </div>
                         </div>
+                        <span className={cn('shrink-0 font-display text-sm tabular-nums', h.tone ? TONE_TEXT[h.tone] : 'text-foreground')}>{h.value}</span>
                       </div>
-                      <span className={cn('shrink-0 font-display text-sm tabular-nums', h.tone ? TONE_TEXT[h.tone] : 'text-foreground')}>{h.value}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="border-t border-border py-8 text-center text-sm text-muted-foreground">No history yet.</div>
-              )}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-10 text-center text-sm text-muted-foreground">No history yet.</div>
+                )}
+              </div>
             </div>
           </div>
 
