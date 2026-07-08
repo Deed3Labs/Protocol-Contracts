@@ -93,13 +93,16 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 function CopyValue({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
+  // Middle-ellipsis long refs/hashes; copy the full value.
+  const display = value.length > 18 ? `${value.slice(0, 9)}…${value.slice(-6)}` : value;
   return (
     <button
       type="button"
       onClick={() => { navigator.clipboard?.writeText(value).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
       className="inline-flex min-w-0 items-center gap-1.5 font-mono text-sm text-foreground"
+      title={value}
     >
-      <span className="truncate">{value}</span>
+      <span className="truncate">{display}</span>
       {copied ? <Check className="h-3.5 w-3.5 shrink-0 text-positive" /> : <Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
     </button>
   );

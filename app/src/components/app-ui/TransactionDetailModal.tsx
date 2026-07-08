@@ -24,7 +24,14 @@ function dayGroup(ts: number): string {
   if (ts >= startOfToday - 864e5) return 'Yesterday';
   return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
-const acct = (source: string) => (source === 'bank' ? 'Bank account' : /^0x/.test(source) ? `•••• ${source.slice(-4)}` : source);
+const acctLabel = (source: string, primary?: string) =>
+  source === 'bank'
+    ? 'Bank account'
+    : primary && source === primary.toLowerCase()
+      ? 'Cash · Clear Account'
+      : /^0x/.test(source)
+        ? `External · •••• ${source.slice(-4)}`
+        : source;
 function shareTx(name: string, amount: number) {
   const text = `${name} — ${usd2(amount)}`;
   if (typeof navigator !== 'undefined' && navigator.share) void navigator.share({ title: 'Receipt', text }).catch(() => {});
@@ -75,7 +82,7 @@ export default function TransactionDetailModal({
       typeLabel: `${tx.spendCategory || tx.category}${tx.internal ? ' · transfer' : ''}`,
       status: { label: tx.status, tone: STATUS_TONE[tx.status] },
       reference: `#${tx.id}`,
-      account: acct(tx.source),
+      account: acctLabel(tx.source, address),
       dateTime: new Date(tx.ts).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }),
       portal: {
         url: meta?.portalUrl ?? null,
@@ -106,7 +113,7 @@ export default function TransactionDetailModal({
       })),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tx, allItems, meta]);
+  }, [tx, allItems, meta, address]);
 
   return <ActivityDetailModal open={!!tx} onOpenChange={(o) => !o && onClose()} item={info} />;
 }

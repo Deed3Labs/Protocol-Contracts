@@ -86,7 +86,7 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
       status: { label: 'Active', tone: 'positive' },
       nextDue: bill.dueLabel || null,
       reference: latest ? `#${latest.id}` : null,
-      account: bill.payoutLast4 ? `•••• ${bill.payoutLast4}` : null,
+      account: 'Cash · Clear Account',
       dateTime: latest ? new Date(latest.paidAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : null,
       portal: { url: portalUrl, onOpen: portalUrl ? openPortal : undefined, onSave: savePortal },
       address: { value: addressVal, onSave: saveAddress },
@@ -114,13 +114,18 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
           : { label: 'Avg payment', value: `$${nInt(avg)}`, icon: Calendar },
       ],
       historyTitle: 'Payment history',
-      history: payments.map((p) => ({
-        id: p.id,
-        title: 'Payment successful',
-        subtitle: new Date(p.paidAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) + (p.onTime ? '' : ' · late'),
-        value: `$${n2(p.amount)}`,
-        success: true,
-      })),
+      history: payments.map((p) => {
+        const c = creditsFor({ type: bill.type, amount: p.amount }, streak, p.amount, accelerated);
+        const d = new Date(p.paidAt);
+        return {
+          id: p.id,
+          title: 'Payment successful',
+          subtitle: `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${p.onTime ? '' : ' · late'}${c > 0 ? ` · +${c} credits` : ''}`,
+          value: `$${n2(p.amount)}`,
+          success: true,
+          group: String(d.getFullYear()),
+        };
+      }),
       actions: [
         { label: 'Pay from balance', primary: true, onClick: () => { onClose(); openPay(bill.id); } },
         { label: 'Pay on their site', icon: Globe, disabled: !portalUrl, onClick: openPortal },
