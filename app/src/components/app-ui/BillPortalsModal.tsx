@@ -1,19 +1,18 @@
-import { useMemo, useState } from 'react';
-import { Search, ChevronRight, Zap, Droplet, Home, Smartphone, type LucideIcon } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Search, ChevronRight, ChevronLeft, Plus, Zap, Droplet, Home, Smartphone, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import BillPortalBrowser from '@/components/app-ui/BillPortalBrowser';
 import BillDetailModal from '@/components/app-ui/BillDetailModal';
-import { usePay, type Bill } from '@/context/PayContext';
+import { usePay, type Bill, type BillType } from '@/context/PayContext';
 import { BILL_PORTALS, rankPortals, matchPortal, type BillPortal, type PortalCategory } from '@/data/billPortals';
 
 /*
- * "Pay a bill" — sleek search-over-rows, matching the app's other modals (Send etc.). Your bills up top,
- * a short "add a biller" provider list below (search to find more). No banner/grid/chips. Tap a bill →
- * its detail drawer; tap a provider → the in-app portal.
+ * "Pay a bill" — a manager for the member's bills (manual + Plaid-detected). The main view is just their
+ * bills + "Add a bill"; the provider directory lives ONLY in the add flow (search a provider to autofill
+ * name/type/payment link, or enter manually). Tap a bill → its detail drawer; a provider row → the portal.
  */
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const PREVIEW = 4;
+const inputCls = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none';
 
 const CAT_ICON: Record<PortalCategory, LucideIcon> = { electric: Zap, utilities: Droplet, rent: Home, telecom: Smartphone };
 const CAT_TINT: Record<PortalCategory, string> = {
@@ -22,115 +21,165 @@ const CAT_TINT: Record<PortalCategory, string> = {
   rent: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
   telecom: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
 };
+const CAT_TO_TYPE: Record<PortalCategory, BillType> = { electric: 'utility', utilities: 'utility', rent: 'rent', telecom: 'phone' };
+const ordinal = (n: number) => { const s = ['th', 'st', 'nd', 'rd']; const v = n % 100; return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`; };
 
-function Row({ icon: Icon, tint, name, sub, onClick }: { icon: LucideIcon; tint: string; name: string; sub: string; onClick: () => void }) {
+type Draft = { name: string; type: BillType; amount: string; dueDay: string; portalUrl: string; address: string };
+const emptyDraft: Draft = { name: '', type: 'other', amount: '', dueDay: '', portalUrl: '', address: '' };
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 rounded-xl border border-border p-2.5 text-left transition-colors hover:bg-secondary/50">
-      <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', tint)}>
-        <Icon className="h-[18px] w-[18px]" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-foreground">{name}</span>
-        <span className="block truncate text-xs text-muted-foreground">{sub}</span>
-      </span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-    </button>
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
+    </label>
   );
 }
 
 export default function BillPortalsModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { bills } = usePay();
+  const { bills, addBiller } = usePay();
+  const [mode, setMode] = useState<'list' | 'add'>('list');
   const [query, setQuery] = useState('');
-  const [showAll, setShowAll] = useState(false);
-  const [active, setActive] = useState<BillPortal | null>(null);
+  const [pQuery, setPQuery] = useState('');
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [activeBill, setActiveBill] = useState<Bill | null>(null);
 
-  const q = query.trim().toLowerCase();
-  const searching = q.length > 0;
+  useEffect(() => {
+    if (!open) return;
+    setMode('list'); setQuery(''); setPQuery(''); setDraft(emptyDraft);
+  }, [open]);
 
   const inferredState = useMemo(() => {
-    for (const b of bills) {
-      const p = matchPortal(b.payee || b.name);
-      if (p?.states?.length === 1) return p.states[0];
-    }
+    for (const b of bills) { const p = matchPortal(b.payee || b.name); if (p?.states?.length === 1) return p.states[0]; }
     return undefined;
   }, [bills]);
-  const mineIds = useMemo(() => new Set(bills.map((b) => matchPortal(b.payee || b.name)?.id).filter(Boolean)), [bills]);
 
-  const filteredBills = useMemo(() => bills.filter((b) => !q || `${b.name} ${b.payee ?? ''}`.toLowerCase().includes(q)), [bills, q]);
-  const rankedProviders = useMemo(() => {
-    const filtered = BILL_PORTALS.filter((p) => !q || `${p.name} ${p.hint ?? ''}`.toLowerCase().includes(q));
-    return rankPortals(filtered, inferredState).sort((a, b) => (mineIds.has(b.id) ? 1 : 0) - (mineIds.has(a.id) ? 1 : 0));
-  }, [q, inferredState, mineIds]);
-  const visibleProviders = showAll || searching ? rankedProviders : rankedProviders.slice(0, PREVIEW);
+  const filteredBills = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return bills.filter((b) => !q || `${b.name} ${b.payee ?? ''}`.toLowerCase().includes(q));
+  }, [bills, query]);
+
+  const providerResults = useMemo(() => {
+    const q = pQuery.trim().toLowerCase();
+    const filtered = BILL_PORTALS.filter((p) => `${p.name} ${p.hint ?? ''}`.toLowerCase().includes(q));
+    return rankPortals(filtered, inferredState).slice(0, 8);
+  }, [pQuery, inferredState]);
+
+  const pickProvider = (p: BillPortal) => { setDraft((d) => ({ ...d, name: p.name, type: CAT_TO_TYPE[p.category], portalUrl: p.url })); setPQuery(''); };
+
+  const save = () => {
+    if (!draft.name.trim()) return;
+    const day = draft.dueDay ? Math.min(Math.max(parseInt(draft.dueDay, 10) || 0, 1), 31) : null;
+    addBiller({
+      name: draft.name.trim(),
+      payee: draft.name.trim(),
+      type: draft.type,
+      amount: Number(draft.amount) || 0,
+      dueLabel: day ? `Due on the ${ordinal(day)}` : 'Due soon',
+      dueDay: day,
+      portalUrl: draft.portalUrl.trim() || null,
+      address: draft.address.trim() || null,
+    });
+    setMode('list'); setDraft(emptyDraft);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[440px]">
         <div className="flex max-h-[86vh] flex-col">
-          <div className="px-5 pt-5">
-            <div className="text-base font-semibold text-foreground">Pay a bill</div>
-            <div className="relative mt-3">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={query}
-                onChange={(e) => { setQuery(e.target.value); setShowAll(false); }}
-                placeholder="Search bills or providers"
-                className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-5 pt-4">
-            {filteredBills.length > 0 && (
-              <div>
-                <h3 className="mb-2 text-xs font-medium text-muted-foreground">Your bills</h3>
-                <div className="space-y-1.5">
-                  {filteredBills.map((b) => (
-                    <Row
-                      key={b.id}
-                      icon={b.icon}
-                      tint="bg-secondary text-foreground"
-                      name={b.name}
-                      sub={`${b.amount > 0 ? fmt(b.amount) : 'Amount varies'}${b.dueLabel ? ` · ${b.dueLabel}` : ''}`}
-                      onClick={() => setActiveBill(b)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {visibleProviders.length > 0 && (
-              <div>
-                <h3 className="mb-2 text-xs font-medium text-muted-foreground">{searching ? 'Providers' : 'Add a biller'}</h3>
-                <div className="space-y-1.5">
-                  {visibleProviders.map((p) => (
-                    <Row
-                      key={p.id}
-                      icon={CAT_ICON[p.category]}
-                      tint={CAT_TINT[p.category]}
-                      name={p.name}
-                      sub={mineIds.has(p.id) ? 'Your provider' : p.hint ?? ''}
-                      onClick={() => setActive(p)}
-                    />
-                  ))}
-                </div>
-                {!searching && !showAll && rankedProviders.length > PREVIEW && (
-                  <button type="button" onClick={() => setShowAll(true)} className="mt-2 w-full py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
-                    Show all {rankedProviders.length} providers
-                  </button>
+          {mode === 'list' ? (
+            <>
+              <div className="px-5 pt-5">
+                <div className="text-base font-semibold text-foreground">Pay a bill</div>
+                {bills.length > 0 && (
+                  <div className="relative mt-3">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search your bills" className={cn(inputCls, 'pl-9')} />
+                  </div>
                 )}
               </div>
-            )}
 
-            {searching && filteredBills.length === 0 && visibleProviders.length === 0 && (
-              <div className="py-10 text-center text-sm text-muted-foreground">No matches.</div>
-            )}
-          </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-4">
+                {filteredBills.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {filteredBills.map((b) => (
+                      <button key={b.id} type="button" onClick={() => setActiveBill(b)} className="flex w-full items-center gap-3 rounded-xl border border-border p-2.5 text-left transition-colors hover:bg-secondary/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground"><b.icon className="h-[18px] w-[18px]" /></span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-medium text-foreground">{b.name}</span>
+                            {b.source === 'plaid' && <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Auto</span>}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">{b.amount > 0 ? fmt(b.amount) : 'Amount varies'}{b.dueLabel ? ` · ${b.dueLabel}` : ''}</span>
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-12 text-center">
+                    <div className="text-sm font-medium text-foreground">{query ? 'No bills match.' : 'No bills yet'}</div>
+                    {!query && <div className="mt-1 text-xs text-muted-foreground">Add your rent, utilities, and subscriptions to pay and earn equity.</div>}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-border p-4">
+                <button type="button" onClick={() => setMode('add')} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]">
+                  <Plus className="h-4 w-4" /> Add a bill
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-1 px-3 py-2.5">
+                <button type="button" onClick={() => setMode('list')} className="inline-flex items-center gap-1 rounded-lg py-1.5 pl-1.5 pr-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
+                  <ChevronLeft className="h-4 w-4" /> Back
+                </button>
+                <span className="text-base font-semibold text-foreground">Add a bill</span>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-5 pt-2">
+                <div>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input value={pQuery} onChange={(e) => setPQuery(e.target.value)} placeholder="Find your provider (optional)" className={cn(inputCls, 'pl-9')} />
+                  </div>
+                  {pQuery.trim() && (
+                    <div className="mt-2 space-y-1.5">
+                      {providerResults.map((p) => (
+                        <button key={p.id} type="button" onClick={() => pickProvider(p)} className="flex w-full items-center gap-3 rounded-xl border border-border p-2.5 text-left transition-colors hover:bg-secondary/50">
+                          <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', CAT_TINT[p.category])}>{(() => { const I = CAT_ICON[p.category]; return <I className="h-[18px] w-[18px]" />; })()}</span>
+                          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-foreground">{p.name}</span><span className="block truncate text-xs text-muted-foreground">{p.hint}</span></span>
+                          <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        </button>
+                      ))}
+                      {providerResults.length === 0 && <div className="py-3 text-center text-xs text-muted-foreground">No match — enter the details below.</div>}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3.5">
+                  <Field label="Bill name"><input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Electric — PG&E" className={inputCls} /></Field>
+                  <Field label="Payment link"><input value={draft.portalUrl} onChange={(e) => setDraft((d) => ({ ...d, portalUrl: e.target.value }))} placeholder="pge.com/login" className={inputCls} /></Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Amount"><input inputMode="decimal" value={draft.amount} onChange={(e) => setDraft((d) => ({ ...d, amount: e.target.value.replace(/[^0-9.]/g, '') }))} placeholder="0.00" className={cn(inputCls, 'tabular-nums')} /></Field>
+                    <Field label="Due day"><input inputMode="numeric" value={draft.dueDay} onChange={(e) => setDraft((d) => ({ ...d, dueDay: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) }))} placeholder="1–31" className={cn(inputCls, 'tabular-nums')} /></Field>
+                  </div>
+                  <Field label="Mailing address (optional)"><input value={draft.address} onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))} placeholder="123 Main St, City, ST" className={inputCls} /></Field>
+                </div>
+              </div>
+
+              <div className="border-t border-border p-4">
+                <button type="button" onClick={save} disabled={!draft.name.trim()} className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40">
+                  Save bill
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </DialogContent>
 
-      <BillPortalBrowser portal={active} onClose={() => setActive(null)} />
       <BillDetailModal bill={activeBill} onClose={() => setActiveBill(null)} />
     </Dialog>
   );
