@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Globe } from 'lucide-react';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import ActivityDetailModal, { type DetailInfo } from '@/components/app-ui/ActivityDetailModal';
 import BillPortalBrowser from '@/components/app-ui/BillPortalBrowser';
@@ -93,7 +94,7 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
       })),
       actions: [
         { label: 'Pay from balance', primary: true, onClick: () => { onClose(); openPay(bill.id); } },
-        { label: 'Pay on their site', disabled: !matched, onClick: () => matched && setPortal(matched) },
+        { label: 'Pay on their site', icon: Globe, disabled: !matched, onClick: () => matched && setPortal(matched) },
       ],
     };
   }, [bill, payments, matched, reminders, streak, accelerated, openPay, onClose, setReminders]);
