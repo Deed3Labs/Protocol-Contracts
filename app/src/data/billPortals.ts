@@ -11,10 +11,13 @@ export interface BillPortal {
   id: string;
   name: string;
   category: PortalCategory;
+  /** Deep link to the provider's login / pay-bill page (not the marketing home). */
   url: string;
   hint?: string;
   /** US state codes served; omit for national providers. */
   states?: string[];
+  /** Rare: the site permits iframing, so we can embed it in-app. Default (undefined) → opens in a new tab. */
+  frameable?: boolean;
 }
 
 export const PORTAL_CATEGORIES: { id: PortalCategory; label: string; emoji: string }[] = [
@@ -46,42 +49,42 @@ export const US_STATES: { code: string; name: string }[] = [
 
 export const BILL_PORTALS: BillPortal[] = [
   // ── Electric (investor-owned utilities) ─────────────────────────────────────
-  { id: 'pge', name: 'PG&E', category: 'electric', hint: 'Gas & electric', url: 'https://www.pge.com/', states: ['CA'] },
-  { id: 'sce', name: 'Southern California Edison', category: 'electric', hint: 'Electric', url: 'https://www.sce.com/', states: ['CA'] },
-  { id: 'sdge', name: 'San Diego Gas & Electric', category: 'electric', hint: 'Gas & electric', url: 'https://www.sdge.com/', states: ['CA'] },
-  { id: 'coned', name: 'Con Edison', category: 'electric', hint: 'Gas & electric', url: 'https://www.coned.com/', states: ['NY'] },
-  { id: 'comed', name: 'ComEd', category: 'electric', hint: 'Electric', url: 'https://www.comed.com/', states: ['IL'] },
-  { id: 'duke', name: 'Duke Energy', category: 'electric', hint: 'Electric', url: 'https://www.duke-energy.com/', states: ['NC', 'SC', 'FL', 'OH', 'IN', 'KY'] },
-  { id: 'fpl', name: 'Florida Power & Light', category: 'electric', hint: 'Electric', url: 'https://www.fpl.com/', states: ['FL'] },
-  { id: 'georgiapower', name: 'Georgia Power', category: 'electric', hint: 'Electric', url: 'https://www.georgiapower.com/', states: ['GA'] },
-  { id: 'oncor', name: 'Oncor / TXU Energy', category: 'electric', hint: 'Electric', url: 'https://www.txu.com/', states: ['TX'] },
-  { id: 'dominion', name: 'Dominion Energy', category: 'electric', hint: 'Electric', url: 'https://www.dominionenergy.com/', states: ['VA', 'NC', 'SC', 'OH'] },
-  { id: 'xcel', name: 'Xcel Energy', category: 'electric', hint: 'Gas & electric', url: 'https://www.xcelenergy.com/', states: ['CO', 'MN', 'TX', 'NM', 'WI', 'MI', 'ND', 'SD'] },
-  { id: 'aps', name: 'Arizona Public Service', category: 'electric', hint: 'Electric', url: 'https://www.aps.com/', states: ['AZ'] },
-  { id: 'nvenergy', name: 'NV Energy', category: 'electric', hint: 'Electric', url: 'https://www.nvenergy.com/', states: ['NV'] },
-  { id: 'pse', name: 'Puget Sound Energy', category: 'electric', hint: 'Gas & electric', url: 'https://www.pse.com/', states: ['WA'] },
+  { id: 'pge', name: 'PG&E', category: 'electric', hint: 'Gas & electric', url: 'https://m.pge.com/', states: ['CA'] },
+  { id: 'sce', name: 'Southern California Edison', category: 'electric', hint: 'Electric', url: 'https://www.sce.com/mysce/login', states: ['CA'] },
+  { id: 'sdge', name: 'San Diego Gas & Electric', category: 'electric', hint: 'Gas & electric', url: 'https://myaccount.sdge.com/', states: ['CA'] },
+  { id: 'coned', name: 'Con Edison', category: 'electric', hint: 'Gas & electric', url: 'https://www.coned.com/en/login', states: ['NY'] },
+  { id: 'comed', name: 'ComEd', category: 'electric', hint: 'Electric', url: 'https://secure.comed.com/MyAccount/Pages/Login.aspx', states: ['IL'] },
+  { id: 'duke', name: 'Duke Energy', category: 'electric', hint: 'Electric', url: 'https://www.duke-energy.com/my-account/sign-in', states: ['NC', 'SC', 'FL', 'OH', 'IN', 'KY'] },
+  { id: 'fpl', name: 'Florida Power & Light', category: 'electric', hint: 'Electric', url: 'https://www.fpl.com/my-account/login.html', states: ['FL'] },
+  { id: 'georgiapower', name: 'Georgia Power', category: 'electric', hint: 'Electric', url: 'https://www.georgiapower.com/sign-in.html', states: ['GA'] },
+  { id: 'oncor', name: 'Oncor / TXU Energy', category: 'electric', hint: 'Electric', url: 'https://www.txu.com/en/residential/login', states: ['TX'] },
+  { id: 'dominion', name: 'Dominion Energy', category: 'electric', hint: 'Electric', url: 'https://www.dominionenergy.com/sign-in', states: ['VA', 'NC', 'SC', 'OH'] },
+  { id: 'xcel', name: 'Xcel Energy', category: 'electric', hint: 'Gas & electric', url: 'https://my.xcelenergy.com/MyAccount/s/login/', states: ['CO', 'MN', 'TX', 'NM', 'WI', 'MI', 'ND', 'SD'] },
+  { id: 'aps', name: 'Arizona Public Service', category: 'electric', hint: 'Electric', url: 'https://www.aps.com/en/Account-Login', states: ['AZ'] },
+  { id: 'nvenergy', name: 'NV Energy', category: 'electric', hint: 'Electric', url: 'https://www.nvenergy.com/account/login', states: ['NV'] },
+  { id: 'pse', name: 'Puget Sound Energy', category: 'electric', hint: 'Gas & electric', url: 'https://myaccount.pse.com/', states: ['WA'] },
 
   // ── Utilities (gas / water) ────────────────────────────────────────────────
-  { id: 'socalgas', name: 'SoCalGas', category: 'utilities', hint: 'Natural gas', url: 'https://www.socalgas.com/', states: ['CA'] },
-  { id: 'nationalgrid', name: 'National Grid', category: 'utilities', hint: 'Gas & electric', url: 'https://www.nationalgridus.com/', states: ['NY', 'MA', 'RI'] },
-  { id: 'atmos', name: 'Atmos Energy', category: 'utilities', hint: 'Natural gas', url: 'https://www.atmosenergy.com/', states: ['TX', 'LA', 'MS', 'CO', 'KS', 'KY', 'TN'] },
-  { id: 'amwater', name: 'American Water', category: 'utilities', hint: 'Water', url: 'https://www.amwater.com/', states: ['NJ', 'PA', 'IL', 'MO', 'CA', 'IN', 'WV'] },
-  { id: 'nicor', name: 'Nicor Gas', category: 'utilities', hint: 'Natural gas', url: 'https://www.nicorgas.com/', states: ['IL'] },
+  { id: 'socalgas', name: 'SoCalGas', category: 'utilities', hint: 'Natural gas', url: 'https://myaccount.socalgas.com/', states: ['CA'] },
+  { id: 'nationalgrid', name: 'National Grid', category: 'utilities', hint: 'Gas & electric', url: 'https://www.nationalgridus.com/login', states: ['NY', 'MA', 'RI'] },
+  { id: 'atmos', name: 'Atmos Energy', category: 'utilities', hint: 'Natural gas', url: 'https://www.atmosenergy.com/accountcenter/logon/login.html', states: ['TX', 'LA', 'MS', 'CO', 'KS', 'KY', 'TN'] },
+  { id: 'amwater', name: 'American Water', category: 'utilities', hint: 'Water', url: 'https://www.amwater.com/mywater/login', states: ['NJ', 'PA', 'IL', 'MO', 'CA', 'IN', 'WV'] },
+  { id: 'nicor', name: 'Nicor Gas', category: 'utilities', hint: 'Natural gas', url: 'https://www.nicorgas.com/sign-in', states: ['IL'] },
 
   // ── Rent (landlord payment platforms — national) ───────────────────────────
-  { id: 'rentcafe', name: 'RentCafe', category: 'rent', hint: 'Resident portal', url: 'https://www.rentcafe.com/' },
+  { id: 'rentcafe', name: 'RentCafe', category: 'rent', hint: 'Resident portal', url: 'https://www.rentcafe.com/residentservices/apartmentsforrent/userlogin.aspx' },
   { id: 'appfolio', name: 'AppFolio', category: 'rent', hint: 'Online portal', url: 'https://www.appfolio.com/online-portal-login' },
-  { id: 'buildium', name: 'Buildium', category: 'rent', hint: 'Resident portal', url: 'https://www.buildium.com/' },
-  { id: 'zillow', name: 'Zillow Rental Manager', category: 'rent', hint: 'Pay rent online', url: 'https://www.zillow.com/rental-manager/' },
-  { id: 'payyourrent', name: 'PayYourRent', category: 'rent', hint: 'Pay rent online', url: 'https://www.payyourrent.com/' },
+  { id: 'buildium', name: 'Buildium', category: 'rent', hint: 'Resident portal', url: 'https://signin.managebuilding.com/manager/public/authentication/login' },
+  { id: 'zillow', name: 'Zillow Rental Manager', category: 'rent', hint: 'Pay rent online', url: 'https://www.zillow.com/user/acct/login/' },
+  { id: 'payyourrent', name: 'PayYourRent', category: 'rent', hint: 'Pay rent online', url: 'https://online.payyourrent.com/' },
   { id: 'entrata', name: 'Entrata / ResidentPortal', category: 'rent', hint: 'Resident portal', url: 'https://www.residentportal.com/' },
 
   // ── Telecom (national) ─────────────────────────────────────────────────────
-  { id: 'att', name: 'AT&T', category: 'telecom', hint: 'Wireless & internet', url: 'https://www.att.com/my/' },
-  { id: 'verizon', name: 'Verizon', category: 'telecom', hint: 'Wireless & Fios', url: 'https://www.verizon.com/pay-bill/' },
-  { id: 'tmobile', name: 'T-Mobile', category: 'telecom', hint: 'Wireless', url: 'https://www.t-mobile.com/' },
-  { id: 'xfinity', name: 'Xfinity / Comcast', category: 'telecom', hint: 'Internet & TV', url: 'https://www.xfinity.com/bill' },
-  { id: 'spectrum', name: 'Spectrum', category: 'telecom', hint: 'Internet & TV', url: 'https://www.spectrum.net/pay-bill' },
+  { id: 'att', name: 'AT&T', category: 'telecom', hint: 'Wireless & internet', url: 'https://signin.att.com/' },
+  { id: 'verizon', name: 'Verizon', category: 'telecom', hint: 'Wireless & Fios', url: 'https://www.verizon.com/signin' },
+  { id: 'tmobile', name: 'T-Mobile', category: 'telecom', hint: 'Wireless', url: 'https://account.t-mobile.com/' },
+  { id: 'xfinity', name: 'Xfinity / Comcast', category: 'telecom', hint: 'Internet & TV', url: 'https://login.xfinity.com/login' },
+  { id: 'spectrum', name: 'Spectrum', category: 'telecom', hint: 'Internet & TV', url: 'https://www.spectrum.net/login' },
   { id: 'cox', name: 'Cox Communications', category: 'telecom', hint: 'Internet & TV', url: 'https://www.cox.com/residential/pay-bill.html' },
 ];
 
