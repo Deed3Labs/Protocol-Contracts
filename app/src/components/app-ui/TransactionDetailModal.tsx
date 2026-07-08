@@ -8,7 +8,8 @@ import type { ActivityItem, ActivityStatus } from '@/hooks/useClearTransactions'
  * buttons, and the "history" is ALL activity with that same merchant (grouped by name). Metrics summarize
  * the relationship (total, count, average, last).
  */
-const money = (n: number) => `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const nInt = (n: number) => Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+const n2 = (n: number) => `${n < 0 ? '-' : ''}${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const STATUS_TONE: Record<ActivityStatus, Tone> = { completed: 'positive', pending: 'pending', failed: 'negative' };
 
 export default function TransactionDetailModal({
@@ -42,9 +43,9 @@ export default function TransactionDetailModal({
       typeLabel: `${tx.spendCategory || tx.category}${tx.internal ? ' · transfer' : ''}`,
       status: { label: tx.status, tone: STATUS_TONE[tx.status] },
       metrics: [
-        { label: count > 1 ? 'Total' : 'Amount', value: money(total) },
+        { label: count > 1 ? 'Total' : 'Amount', value: nInt(total), unit: 'USD' },
         { label: 'Transactions', value: String(count) },
-        { label: 'Average', value: money(avg) },
+        { label: 'Average', value: nInt(avg), unit: 'USD' },
         { label: 'Last', value: last.date },
       ],
       historyTitle: 'Activity',
@@ -52,8 +53,10 @@ export default function TransactionDetailModal({
         id: i.id,
         title: i.amount > 0 ? 'Received' : 'Payment',
         subtitle: `${i.category} · ${i.date}`,
-        amount: money(i.amount),
+        value: n2(i.amount),
+        unit: 'USD',
         tone: (i.amount > 0 ? 'positive' : 'muted') as Tone,
+        success: i.status === 'completed',
       })),
     };
   }, [tx, allItems]);

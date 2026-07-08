@@ -12,8 +12,8 @@ import { matchPortal, type BillPortal } from '@/data/billPortals';
  * actions ("Pay from balance" = ACH via the existing Pay flow; "Pay on their site" = the biller's portal
  * with the Clear card). See ActivityDetailModal (presentational) + PayContext.
  */
-const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const fmtInt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+const nInt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+const n2 = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const TYPE_TINT: Record<BillType, string> = {
   rent: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
@@ -64,8 +64,9 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
       iconTint: TYPE_TINT[bill.type],
       title: bill.name,
       subtitle: 'Bill',
-      typeLabel: TYPE_LABEL[bill.type] + (bill.dueLabel ? ` · due ${bill.dueLabel}` : ''),
+      typeLabel: TYPE_LABEL[bill.type],
       status: { label: 'Active', tone: 'positive' },
+      nextDue: bill.dueLabel || null,
       address: bill.address,
       portalHost: matched ? new URL(matched.url).host : null,
       onPortal: matched ? () => setPortal(matched) : undefined,
@@ -74,18 +75,21 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
         onToggle: (v: boolean) => { setLocalReminders(v); setReminders(bill.id, v); },
       },
       metrics: [
-        { label: 'Total paid', value: fmt(total) },
-        { label: 'Credits earned', value: fmtInt(creditsEarned) },
-        { label: 'Payments', value: count ? String(count) : '—' },
-        { label: months ? 'Active since' : 'Avg payment', value: months ? `${months} mo` : fmt(avg) },
+        { label: 'Total paid', value: nInt(total), unit: 'USD' },
+        { label: 'Credits earned', value: nInt(creditsEarned) },
+        { label: 'Payments', value: String(count) },
+        months
+          ? { label: 'Active since', value: String(months), unit: 'mo' }
+          : { label: 'Avg payment', value: nInt(avg), unit: 'USD' },
       ],
       historyTitle: 'Payment history',
       history: payments.map((p) => ({
         id: p.id,
         title: 'Payment successful',
         subtitle: new Date(p.paidAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) + (p.onTime ? '' : ' · late'),
-        amount: fmt(p.amount),
-        tone: 'muted' as const,
+        value: n2(p.amount),
+        unit: 'USD',
+        success: true,
       })),
       actions: [
         { label: 'Pay from balance', primary: true, onClick: () => { onClose(); openPay(bill.id); } },
