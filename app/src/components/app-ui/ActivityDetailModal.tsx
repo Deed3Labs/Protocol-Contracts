@@ -99,7 +99,7 @@ function CopyValue({ value }: { value: string }) {
     <button
       type="button"
       onClick={() => { navigator.clipboard?.writeText(value).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
-      className="inline-flex min-w-0 items-center gap-1.5 font-mono text-sm text-foreground"
+      className="inline-flex min-w-0 items-center gap-1.5 text-sm text-foreground"
       title={value}
     >
       <span className="truncate">{display}</span>
@@ -232,7 +232,7 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
                 <Section title="Transaction">
                   <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
                     {item.reference && <Row label="Reference"><CopyValue value={item.reference} /></Row>}
-                    {item.account && <Row label="Account"><span className="font-mono">{item.account}</span></Row>}
+                    {item.account && <Row label="Account"><span>{item.account}</span></Row>}
                     {item.dateTime && <Row label="Date">{item.dateTime}</Row>}
                     {item.status && <Row label="Status"><span className={cn('inline-flex items-center gap-1', TONE_TEXT[item.status.tone])}><BadgeCheck className="h-4 w-4" /> {item.status.label}</span></Row>}
                   </div>
@@ -259,13 +259,13 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
                     {item.receipt.lines.map((l) => (
                       <div key={l.label} className="flex justify-between py-1 text-sm">
                         <span className="text-muted-foreground">{l.label}</span>
-                        <span className={cn('font-mono', l.tone ? TONE_TEXT[l.tone] : 'text-foreground')}>{l.value}</span>
+                        <span className={cn('font-display tabular-nums', l.tone ? TONE_TEXT[l.tone] : 'text-foreground')}>{l.value}</span>
                       </div>
                     ))}
                     {item.receipt.total && (
                       <div className="mt-1 flex justify-between border-t border-border pt-2.5 text-sm font-semibold">
                         <span className="text-foreground">{item.receipt.total.label}</span>
-                        <span className="font-mono text-foreground">{item.receipt.total.value}</span>
+                        <span className="font-display tabular-nums text-foreground">{item.receipt.total.value}</span>
                       </div>
                     )}
                     {item.receipt.onShare && (
