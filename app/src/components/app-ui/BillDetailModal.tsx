@@ -29,20 +29,26 @@ const TYPE_LABEL: Record<BillType, string> = {
 
 export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; onClose: () => void }) {
   const { address } = useAppKitAccount();
-  const { openPay, streak } = usePay();
+  const { openPay, streak, setReminders } = usePay();
   const { accelerated } = useMemberProfile();
   const [payments, setPayments] = useState<PayBillerPayment[]>([]);
-  const [reminders, setReminders] = useState(true);
+  const [reminders, setLocalReminders] = useState(true);
   const [portal, setPortal] = useState<BillPortal | null>(null);
 
   useEffect(() => {
+    setLocalReminders(bill?.reminders ?? true);
     if (!bill || !address) { setPayments([]); return; }
     let cancelled = false;
     void getPayBillerPayments(address, bill.id).then((p) => { if (!cancelled) setPayments(p); });
     return () => { cancelled = true; };
   }, [bill, address]);
 
-  const matched = useMemo(() => (bill ? matchPortal(bill.payee || bill.name) : undefined), [bill]);
+  // Prefer a portal the user saved on the biller; else best-effort match by name.
+  const matched: BillPortal | undefined = useMemo(() => {
+    if (!bill) return undefined;
+    if (bill.portalUrl) return { id: bill.id, name: bill.name, category: 'utilities', url: bill.portalUrl };
+    return matchPortal(bill.payee || bill.name);
+  }, [bill]);
 
   const info: DetailInfo | null = useMemo(() => {
     if (!bill) return null;
@@ -60,9 +66,13 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
       subtitle: 'Bill',
       typeLabel: TYPE_LABEL[bill.type] + (bill.dueLabel ? ` · due ${bill.dueLabel}` : ''),
       status: { label: 'Active', tone: 'positive' },
+      address: bill.address,
       portalHost: matched ? new URL(matched.url).host : null,
       onPortal: matched ? () => setPortal(matched) : undefined,
-      notifications: { enabled: reminders, onToggle: setReminders },
+      notifications: {
+        enabled: reminders,
+        onToggle: (v: boolean) => { setLocalReminders(v); setReminders(bill.id, v); },
+      },
       metrics: [
         { label: 'Total paid', value: fmt(total) },
         { label: 'Credits earned', value: fmtInt(creditsEarned) },
@@ -82,7 +92,7 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
         { label: 'Pay on their site', disabled: !matched, onClick: () => matched && setPortal(matched) },
       ],
     };
-  }, [bill, payments, matched, reminders, streak, accelerated, openPay, onClose]);
+  }, [bill, payments, matched, reminders, streak, accelerated, openPay, onClose, setReminders]);
 
   return (
     <>

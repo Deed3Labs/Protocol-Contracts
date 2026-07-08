@@ -127,6 +127,9 @@ async function ensureTables(): Promise<void> {
     ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS payout_routing TEXT;
     ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS payout_bank_name TEXT;
     ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS bridge_external_account_id TEXT;
+    ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS portal_url TEXT;
+    ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS address TEXT;
+    ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS reminders BOOLEAN NOT NULL DEFAULT true;
   `);
   // Tag each credit with the environment it was earned in ('mainnet' = live/real, 'testnet' = demo).
   // The demo's deposit-match credits (Base Sepolia) stay separate from mainnet credits that count.
@@ -148,6 +151,9 @@ export interface Biller {
   payoutLast4: string | null;
   payoutBank: string | null;
   bridgeExternalAccountId: string | null;
+  portalUrl: string | null;
+  address: string | null;
+  reminders: boolean;
 }
 
 export interface PaySummary {
@@ -177,6 +183,9 @@ function rowToBiller(r: Record<string, unknown>): Biller {
     payoutLast4: r.payout_account_last4 ? String(r.payout_account_last4) : null,
     payoutBank: r.payout_bank_name ? String(r.payout_bank_name) : null,
     bridgeExternalAccountId: r.bridge_external_account_id ? String(r.bridge_external_account_id) : null,
+    portalUrl: r.portal_url ? String(r.portal_url) : null,
+    address: r.address ? String(r.address) : null,
+    reminders: r.reminders !== false,
   };
 }
 
@@ -249,16 +258,16 @@ export const payLedgerStore = {
 
   async addBiller(
     wallet: string,
-    b: Pick<Biller, 'name' | 'payee' | 'type' | 'defaultAmount' | 'dueDay'>,
+    b: Pick<Biller, 'name' | 'payee' | 'type' | 'defaultAmount' | 'dueDay'> & { portalUrl?: string | null; address?: string | null },
   ): Promise<Biller> {
     const pool = getPayPool();
     if (!pool) throw new Error('Postgres not configured');
     await ensureTables();
     const id = crypto.randomUUID();
     const r = await pool.query(
-      `INSERT INTO pay_billers (id, wallet, name, payee, type, default_amount, due_day, source)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'manual') RETURNING *`,
-      [id, wallet, b.name, b.payee, b.type, b.defaultAmount, b.dueDay],
+      `INSERT INTO pay_billers (id, wallet, name, payee, type, default_amount, due_day, source, portal_url, address)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'manual',$8,$9) RETURNING *`,
+      [id, wallet, b.name, b.payee, b.type, b.defaultAmount, b.dueDay, b.portalUrl ?? null, b.address ?? null],
     );
     return rowToBiller(r.rows[0]);
   },
@@ -268,16 +277,29 @@ export const payLedgerStore = {
   async updateBiller(
     wallet: string,
     id: string,
-    b: { name: string; payee: string | null; type: BillerType; defaultAmount: number; dueDay: number | null },
+    b: { name: string; payee: string | null; type: BillerType; defaultAmount: number; dueDay: number | null; portalUrl?: string | null; address?: string | null },
   ): Promise<Biller | null> {
     const pool = getPayPool();
     if (!pool) throw new Error('Postgres not configured');
     await ensureTables();
     const r = await pool.query(
-      `UPDATE pay_billers SET name = $3, payee = $4, type = $5, default_amount = $6, due_day = $7
+      `UPDATE pay_billers SET name = $3, payee = $4, type = $5, default_amount = $6, due_day = $7,
+         portal_url = $8, address = $9
         WHERE wallet = $1 AND id = $2 AND source = 'manual' AND archived_at IS NULL
         RETURNING *`,
-      [wallet, id, b.name, b.payee, b.type, b.defaultAmount, b.dueDay],
+      [wallet, id, b.name, b.payee, b.type, b.defaultAmount, b.dueDay, b.portalUrl ?? null, b.address ?? null],
+    );
+    return r.rows[0] ? rowToBiller(r.rows[0]) : null;
+  },
+
+  /** Toggle reminders for any biller (manual or detected). */
+  async setBillerReminders(wallet: string, id: string, enabled: boolean): Promise<Biller | null> {
+    const pool = getPayPool();
+    if (!pool) throw new Error('Postgres not configured');
+    await ensureTables();
+    const r = await pool.query(
+      `UPDATE pay_billers SET reminders = $3 WHERE wallet = $1 AND id = $2 AND archived_at IS NULL RETURNING *`,
+      [wallet, id, enabled],
     );
     return r.rows[0] ? rowToBiller(r.rows[0]) : null;
   },

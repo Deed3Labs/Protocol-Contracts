@@ -12,6 +12,7 @@ import {
   updatePayBiller,
   deletePayBiller,
   setPayBillerPayout,
+  setPayBillerReminders,
   payBiller,
   syncPlaidBillers,
   recordPayment,
@@ -45,10 +46,13 @@ export interface Bill {
   payable: boolean; // has ACH payout details on file → can be paid in-app
   payoutLast4: string | null;
   payoutBank: string | null;
+  portalUrl: string | null; // biller's login/pay page → "Pay on their site"
+  address: string | null; // mailing address (biller info; future mailed-check option)
+  reminders: boolean; // due-date reminders on/off
 }
 
-/** Fields a user can set/edit on a biller (id/icon derived; source + payout are server-controlled). */
-export type BillerDraft = Omit<Bill, 'id' | 'icon' | 'source' | 'payable' | 'payoutLast4' | 'payoutBank'>;
+/** Fields a user can set/edit on a biller (id/icon derived; source/payable/payout/reminders server-controlled). */
+export type BillerDraft = Omit<Bill, 'id' | 'icon' | 'source' | 'payable' | 'payoutLast4' | 'payoutBank' | 'reminders'>;
 
 /** On-time streak fallback when no summary is loaded yet. */
 export const ON_TIME_STREAK = 0;
@@ -117,6 +121,9 @@ function billerToBill(b: PayBiller): Bill {
     payable: b.payable,
     payoutLast4: b.payoutLast4,
     payoutBank: b.payoutBank,
+    portalUrl: b.portalUrl,
+    address: b.address,
+    reminders: b.reminders,
   };
 }
 
@@ -132,6 +139,8 @@ interface PayValue {
   removeBiller: (id: string) => void;
   /** Save a biller's ACH payout destination (account/routing), making it payable. */
   setBillerPayout: (id: string, p: { accountNumber: string; routingNumber: string; bankName?: string }) => Promise<boolean>;
+  /** Toggle due-date reminders for a biller (optimistic; persists in background). */
+  setReminders: (id: string, enabled: boolean) => void;
   /** Pay a biller from Cash (USDC) via Bridge ACH. Returns success + an optional error message. */
   payViaUsdc: (billerId: string, amount: number, email: string) => Promise<{ success: boolean; message?: string }>;
   /** Record an on-time payment + accrue equity credits (called when the Pay flow completes). */
@@ -159,6 +168,7 @@ export function usePay(): PayValue {
       updateBiller: () => {},
       removeBiller: () => {},
       setBillerPayout: async () => false,
+      setReminders: () => {},
       payViaUsdc: async () => ({ success: false }),
       recordBillPayment: async () => {},
       reconcile: async () => {},
@@ -265,9 +275,9 @@ export function PayProvider({ children }: { children: ReactNode }) {
   const addBiller = useCallback(
     (b: BillerDraft) => {
       const tempId = `bill${Date.now()}`;
-      setBills((bs) => [...bs, { ...b, id: tempId, icon: ICONS[b.type] ?? Receipt, source: 'manual', payable: false, payoutLast4: null, payoutBank: null }]);
+      setBills((bs) => [...bs, { ...b, id: tempId, icon: ICONS[b.type] ?? Receipt, source: 'manual', payable: false, payoutLast4: null, payoutBank: null, reminders: true }]);
       if (address) {
-        void addPayBiller(address, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay })
+        void addPayBiller(address, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay, portalUrl: b.portalUrl, address: b.address })
           .then((created) => {
             if (created) {
               realIdRef.current.set(tempId, created.id); // keep tempId in the UI, target realId server-side
@@ -290,12 +300,22 @@ export function PayProvider({ children }: { children: ReactNode }) {
       setBills((bs) => bs.map((x) => (x.id === id && x.source === 'manual' ? { ...x, ...b, icon: ICONS[b.type] ?? Receipt } : x)));
       const realId = resolveId(id);
       if (address && !realId.startsWith('bill')) {
-        void updatePayBiller(address, realId, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay }).then(
+        void updatePayBiller(address, realId, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay, portalUrl: b.portalUrl, address: b.address }).then(
           () => refreshSummaryOnly(),
         );
       }
     },
     [address, refreshSummaryOnly, resolveId],
+  );
+
+  // Optimistic reminders toggle (any biller); persists in the background.
+  const setReminders = useCallback(
+    (id: string, enabled: boolean) => {
+      setBills((bs) => bs.map((x) => (x.id === id ? { ...x, reminders: enabled } : x)));
+      const realId = resolveId(id);
+      if (address && !realId.startsWith('bill')) void setPayBillerReminders(address, realId, enabled);
+    },
+    [address, resolveId],
   );
 
   // Optimistic remove; persists the delete (skips temp/local-only billers not yet in the ledger).
@@ -369,6 +389,7 @@ export function PayProvider({ children }: { children: ReactNode }) {
     updateBiller,
     removeBiller,
     setBillerPayout,
+    setReminders,
     payViaUsdc,
     recordBillPayment,
     reconcile,

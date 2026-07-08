@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, SlidersHorizontal, ArrowLeftRight, ArrowDownLeft, Briefcase, Receipt, CreditCard, Repeat, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useClearTransactions, type ActivityStatus as Status } from '@/hooks/useClearTransactions';
+import { useClearTransactions, type ActivityStatus as Status, type ActivityItem } from '@/hooks/useClearTransactions';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import TransactionFilterModal, { type Category, type AdvFilters, type SourceOption, DEFAULT_ADV, advCount } from './TransactionFilterModal';
+import TransactionDetailModal from './TransactionDetailModal';
 
 /** Compact page list with ellipses, e.g. 1 … 4 5 6 … 12. */
 function pageWindow(current: number, total: number): (number | 'gap')[] {
@@ -20,7 +21,7 @@ function pageWindow(current: number, total: number): (number | 'gap')[] {
   return out;
 }
 
-const CATEGORY: Record<Category, { icon: LucideIcon; tint: string }> = {
+export const CATEGORY: Record<Category, { icon: LucideIcon; tint: string }> = {
   Transfer: { icon: ArrowLeftRight, tint: 'bg-info/10 text-info' },
   Deposit: { icon: ArrowDownLeft, tint: 'bg-positive/10 text-positive' },
   Payroll: { icon: Briefcase, tint: 'bg-positive/10 text-positive' },
@@ -58,6 +59,7 @@ export default function RecentActivity({ className, limit }: { className?: strin
   const [filter, setFilter] = useState<Filter>('All');
   const [adv, setAdv] = useState<AdvFilters>(DEFAULT_ADV);
   const [modalOpen, setModalOpen] = useState(false);
+  const [detailTx, setDetailTx] = useState<ActivityItem | null>(null);
   const activeAdv = advCount(adv);
   // Full list can be hundreds of rows — paginate it (compact mode just shows the first `limit`).
   const PAGE_SIZE = 15;
@@ -176,7 +178,12 @@ export default function RecentActivity({ className, limit }: { className?: strin
           visible.map((it) => {
             const { icon: Icon, tint } = CATEGORY[it.category];
             return (
-              <div key={it.id} className="flex items-center gap-3 py-3 sm:gap-4">
+              <button
+                key={it.id}
+                type="button"
+                onClick={() => setDetailTx(it)}
+                className="-mx-2 flex w-full items-center gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-secondary/40 sm:gap-4"
+              >
                 <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', tint)}>
                   <Icon className="h-[18px] w-[18px]" />
                 </span>
@@ -204,7 +211,7 @@ export default function RecentActivity({ className, limit }: { className?: strin
                     {it.status}
                   </span>
                 </div>
-              </div>
+              </button>
             );
           })
         )}
@@ -263,6 +270,7 @@ export default function RecentActivity({ className, limit }: { className?: strin
       )}
 
       <TransactionFilterModal open={modalOpen} onOpenChange={setModalOpen} value={adv} onApply={setAdv} sources={sources} />
+      <TransactionDetailModal tx={detailTx} allItems={items} onClose={() => setDetailTx(null)} />
     </div>
   );
 }

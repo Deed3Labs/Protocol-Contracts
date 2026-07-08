@@ -2088,6 +2088,9 @@ export interface PayBiller {
   payoutLast4: string | null;
   payoutBank: string | null;
   bridgeExternalAccountId: string | null;
+  portalUrl: string | null;
+  address: string | null;
+  reminders: boolean;
 }
 
 export interface PaySummary {
@@ -2131,7 +2134,7 @@ export async function getPayBillerPayments(wallet: string, id: string): Promise<
 
 export async function addPayBiller(
   wallet: string,
-  b: { name: string; payee?: string; type: PayBillerType; defaultAmount: number; dueDay?: number | null },
+  b: { name: string; payee?: string; type: PayBillerType; defaultAmount: number; dueDay?: number | null; portalUrl?: string | null; address?: string | null },
 ): Promise<PayBiller | null> {
   const r = await apiRequest<{ biller: PayBiller }>(`/api/pay/${wallet.toLowerCase()}/billers`, { method: 'POST', body: JSON.stringify(b) });
   return r.error || !r.data ? null : r.data.biller;
@@ -2140,13 +2143,22 @@ export async function addPayBiller(
 export async function updatePayBiller(
   wallet: string,
   id: string,
-  b: { name: string; payee?: string; type: PayBillerType; defaultAmount: number; dueDay?: number | null },
+  b: { name: string; payee?: string; type: PayBillerType; defaultAmount: number; dueDay?: number | null; portalUrl?: string | null; address?: string | null },
 ): Promise<PayBiller | null> {
   const r = await apiRequest<{ biller: PayBiller }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}`, {
     method: 'PUT',
     body: JSON.stringify(b),
   });
   return r.error || !r.data ? null : r.data.biller;
+}
+
+/** Toggle reminders for a biller (any source). */
+export async function setPayBillerReminders(wallet: string, id: string, enabled: boolean): Promise<boolean> {
+  const r = await apiRequest<{ biller: PayBiller }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}/reminders`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  });
+  return !r.error;
 }
 
 export async function setPayBillerPayout(

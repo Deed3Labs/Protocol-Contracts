@@ -31,8 +31,8 @@ interface Source {
   disabled?: boolean; // e.g. card issuance — coming soon
 }
 
-type Draft = { name: string; payee: string; amount: string; dueDay: string; type: BillType };
-const emptyDraft: Draft = { name: '', payee: '', amount: '', dueDay: '', type: 'other' };
+type Draft = { name: string; payee: string; amount: string; dueDay: string; type: BillType; portalUrl: string; address: string };
+const emptyDraft: Draft = { name: '', payee: '', amount: '', dueDay: '', type: 'other', portalUrl: '', address: '' };
 
 const ordinal = (n: number) => {
   const s = ['th', 'st', 'nd', 'rd'];
@@ -94,7 +94,7 @@ export default function PayModal({
   // Edit an existing (manual-only) biller: prefill the form and remember which one we're editing.
   const startEditBiller = (b: Bill) => {
     setEditingId(b.id);
-    setDraft({ name: b.name, payee: b.payee, amount: String(b.amount), dueDay: b.dueDay ? String(b.dueDay) : '', type: b.type });
+    setDraft({ name: b.name, payee: b.payee, amount: String(b.amount), dueDay: b.dueDay ? String(b.dueDay) : '', type: b.type, portalUrl: b.portalUrl ?? '', address: b.address ?? '' });
     setStep('addBiller');
   };
 
@@ -191,6 +191,8 @@ export default function PayModal({
       amount: amt,
       dueLabel: day ? `Due on the ${ordinal(day)}` : 'Due soon',
       dueDay: day,
+      portalUrl: draft.portalUrl.trim() || null,
+      address: draft.address.trim() || null,
     };
     if (editingId) {
       updateBiller(editingId, fields);
@@ -338,6 +340,22 @@ export default function PayModal({
                   />
                 </Labeled>
               </div>
+              <Labeled label="Biller portal">
+                <input
+                  value={draft.portalUrl}
+                  onChange={(e) => setDraft((d) => ({ ...d, portalUrl: e.target.value }))}
+                  placeholder="pge.com/login — pay on their site"
+                  className={inputCls}
+                />
+              </Labeled>
+              <Labeled label="Mailing address">
+                <input
+                  value={draft.address}
+                  onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))}
+                  placeholder="Optional"
+                  className={inputCls}
+                />
+              </Labeled>
             </div>
             <button
               type="button"
