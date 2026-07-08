@@ -167,12 +167,11 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent aria-label={item.title} className="gap-0 p-0">
-        {/* header */}
-        <div className="flex shrink-0 items-center justify-between px-3 py-3">
-          <div className="flex min-w-0 items-center gap-1">
-            <button type="button" onClick={() => onOpenChange(false)} aria-label="Close" className="rounded-full p-1 text-foreground hover:bg-secondary"><ChevronLeft className="h-5 w-5" /></button>
-            <span className="truncate text-base font-semibold text-foreground">{item.title}</span>
-          </div>
+        {/* header — breadcrumb-style back button */}
+        <div className="flex shrink-0 items-center justify-between px-3 py-2.5">
+          <button type="button" onClick={() => onOpenChange(false)} className="inline-flex items-center gap-1 rounded-lg py-1.5 pl-1.5 pr-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
+            <ChevronLeft className="h-4 w-4" /> Back
+          </button>
           {item.receipt?.onShare && (
             <button type="button" onClick={item.receipt.onShare} aria-label="Share" className="rounded-full p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"><Share2 className="h-4 w-4" /></button>
           )}
@@ -185,7 +184,7 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="truncate text-lg font-semibold text-foreground">{item.title}</span>
+              <span className="truncate font-display text-lg font-semibold tracking-tight text-foreground">{item.title}</span>
               {item.status && <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', TONE_BADGE[item.status.tone])}>{item.status.label}</span>}
             </div>
             {(item.typeLabel || item.subtitle) && <div className="mt-0.5 truncate text-xs text-muted-foreground">{[item.typeLabel, item.subtitle].filter(Boolean).join(' · ')}</div>}
