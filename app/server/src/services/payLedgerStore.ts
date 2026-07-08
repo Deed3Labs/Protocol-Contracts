@@ -222,6 +222,31 @@ export const payLedgerStore = {
     return r.rows.map(rowToBiller);
   },
 
+  /** A biller's payment history (for the bill detail view). Newest first. */
+  async listBillerPayments(
+    wallet: string,
+    billerId: string,
+  ): Promise<Array<{ id: string; name: string | null; type: string; amount: number; paidAt: string; onTime: boolean; source: string; period: string }>> {
+    const pool = getPayPool();
+    if (!pool) return [];
+    await ensureTables();
+    const r = await pool.query(
+      `SELECT id, name, type, amount, paid_at, on_time, source, period
+         FROM pay_payments WHERE wallet = $1 AND biller_id = $2 ORDER BY paid_at DESC LIMIT 60`,
+      [wallet, billerId],
+    );
+    return r.rows.map((x) => ({
+      id: String(x.id),
+      name: x.name ? String(x.name) : null,
+      type: String(x.type),
+      amount: num(x.amount),
+      paidAt: (x.paid_at instanceof Date ? x.paid_at : new Date(String(x.paid_at))).toISOString(),
+      onTime: x.on_time !== false,
+      source: String(x.source),
+      period: String(x.period),
+    }));
+  },
+
   async addBiller(
     wallet: string,
     b: Pick<Biller, 'name' | 'payee' | 'type' | 'defaultAmount' | 'dueDay'>,

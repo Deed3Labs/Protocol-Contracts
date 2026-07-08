@@ -3,6 +3,7 @@ import { Search, ArrowUpRight, TrendingUp, Flame, Zap, Droplet, Home, Smartphone
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import BillPortalBrowser from '@/components/app-ui/BillPortalBrowser';
+import BillDetailModal from '@/components/app-ui/BillDetailModal';
 import { usePay, creditsFor, type Bill } from '@/context/PayContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { BILL_PORTALS, PORTAL_CATEGORIES, rankPortals, matchPortal, type BillPortal, type PortalCategory } from '@/data/billPortals';
@@ -27,12 +28,13 @@ const TILE =
   'group relative flex min-h-[104px] flex-col justify-between overflow-hidden rounded-lg border border-border bg-card p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-[0_10px_24px_-14px_rgba(0,0,0,0.3)] active:translate-y-0 active:scale-[0.99]';
 
 export default function BillPortalsModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { bills, summary, openPay, streak } = usePay();
+  const { bills, summary, streak } = usePay();
   const { accelerated } = useMemberProfile();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<PortalCategory | 'all'>('all');
   const [showAll, setShowAll] = useState(false);
   const [active, setActive] = useState<BillPortal | null>(null);
+  const [activeBill, setActiveBill] = useState<Bill | null>(null);
 
   const inferredState = useMemo(() => {
     for (const b of bills) {
@@ -54,17 +56,6 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
 
   const searching = query.trim().length > 0;
   const visible = showAll || searching ? ranked : ranked.slice(0, LIMIT);
-
-  const payBill = (bill: Bill) => {
-    if (bill.payable) {
-      onOpenChange(false);
-      openPay(bill.id);
-      return;
-    }
-    const p = matchPortal(bill.payee || bill.name);
-    if (p) setActive(p);
-    else { setCategory('all'); setQuery(bill.payee || bill.name); }
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -103,7 +94,7 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
                   {bills.map((b) => {
                     const credits = creditsFor(b, streak, b.amount, accelerated);
                     return (
-                      <button key={b.id} type="button" onClick={() => payBill(b)} className={TILE}>
+                      <button key={b.id} type="button" onClick={() => setActiveBill(b)} className={TILE}>
                         <div className="flex items-center justify-between">
                           <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary text-foreground transition-colors group-hover:bg-foreground group-hover:text-background">
                             <b.icon className="h-[18px] w-[18px]" />
@@ -187,6 +178,7 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
       </DialogContent>
 
       <BillPortalBrowser portal={active} onClose={() => setActive(null)} />
+      <BillDetailModal bill={activeBill} onClose={() => setActiveBill(null)} />
     </Dialog>
   );
 }

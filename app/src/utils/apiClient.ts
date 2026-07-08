@@ -2112,6 +2112,23 @@ export async function getPayBillers(wallet: string): Promise<PayBiller[]> {
   return r.error || !r.data ? [] : r.data.billers;
 }
 
+export interface PayBillerPayment {
+  id: string;
+  name: string | null;
+  type: string;
+  amount: number;
+  paidAt: string;
+  onTime: boolean;
+  source: string;
+  period: string;
+}
+
+/** A biller's payment history for the bill detail view. */
+export async function getPayBillerPayments(wallet: string, id: string): Promise<PayBillerPayment[]> {
+  const r = await apiRequest<{ payments: PayBillerPayment[] }>(`/api/pay/${wallet.toLowerCase()}/billers/${id}/payments`);
+  return r.error || !r.data ? [] : r.data.payments;
+}
+
 export async function addPayBiller(
   wallet: string,
   b: { name: string; payee?: string; type: PayBillerType; defaultAmount: number; dueDay?: number | null },

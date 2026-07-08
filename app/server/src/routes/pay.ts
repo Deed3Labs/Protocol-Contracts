@@ -52,6 +52,19 @@ router.get('/:wallet/billers', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/pay/:wallet/billers/:id/payments — a biller's payment history (bill detail view)
+router.get('/:wallet/billers/:id/payments', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  try {
+    res.json({ payments: await payLedgerStore.listBillerPayments(w, String(req.params.id)) });
+  } catch (error) {
+    console.error('[pay/biller payments]', error);
+    res.status(500).json({ error: 'Failed to load payments' });
+  }
+});
+
 // POST /api/pay/:wallet/billers  { name, payee?, type, defaultAmount, dueDay }
 router.post('/:wallet/billers', async (req: Request, res: Response) => {
   const w = wallet(req);
