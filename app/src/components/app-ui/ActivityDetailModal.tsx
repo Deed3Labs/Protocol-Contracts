@@ -40,6 +40,8 @@ export interface DetailInfo {
   typeLabel?: string;
   status?: { label: string; tone: Tone };
   nextDue?: string | null;
+  /** For transfers/sends: who it was to/from (shown instead of payment-link/address). */
+  parties?: { label: string; value: string; sub?: string }[];
   reference?: string | null;
   account?: string | null;
   dateTime?: string | null;
@@ -222,7 +224,15 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
                       </button>
                     </Row>
                   )}
-                  {item.portal && <EditableRow label="Portal" value={item.portal.url} display={item.portal.url ? hostOf(item.portal.url) : undefined} placeholder="pge.com/login" onOpen={item.portal.onOpen} onSave={item.portal.onSave} />}
+                  {item.parties?.map((p) => (
+                    <Row key={p.label + p.value} label={p.label}>
+                      <span className="max-w-[240px] text-right">
+                        <span className="block truncate">{p.value}</span>
+                        {p.sub && <span className="block truncate text-xs font-normal text-muted-foreground">{p.sub}</span>}
+                      </span>
+                    </Row>
+                  ))}
+                  {item.portal && <EditableRow label="Payment link" value={item.portal.url} display={item.portal.url ? hostOf(item.portal.url) : undefined} placeholder="pge.com/login" onOpen={item.portal.onOpen} onSave={item.portal.onSave} />}
                   {item.address && <EditableRow label="Address" value={item.address.value} placeholder="123 Main St, City, ST" onSave={item.address.onSave} />}
                 </div>
               </Section>
