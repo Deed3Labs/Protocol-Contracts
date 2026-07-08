@@ -127,11 +127,32 @@ async function ensureTables(): Promise<void> {
     ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS payout_routing TEXT;
     ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS payout_bank_name TEXT;
     ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS bridge_external_account_id TEXT;
+    ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS portal_url TEXT;
+    ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS address TEXT;
+    ALTER TABLE pay_billers ADD COLUMN IF NOT EXISTS reminders BOOLEAN NOT NULL DEFAULT true;
   `);
   // Tag each credit with the environment it was earned in ('mainnet' = live/real, 'testnet' = demo).
   // The demo's deposit-match credits (Base Sepolia) stay separate from mainnet credits that count.
   await pool.query(`ALTER TABLE pay_credits ADD COLUMN IF NOT EXISTS network TEXT NOT NULL DEFAULT 'mainnet';`);
+  // Per-merchant metadata (portal link + address), keyed by a normalized merchant name so it's shared
+  // across a merchant's transactions AND its matching biller. The bill/transaction detail view reads +
+  // inline-edits this. One source of truth for merchant info.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pay_merchant_meta (
+      wallet TEXT NOT NULL,
+      name_key TEXT NOT NULL,
+      portal_url TEXT,
+      address TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (wallet, name_key)
+    );
+  `);
   ensured = true;
+}
+
+/** Normalized key for merchant metadata (matches billPortals.matchPortal normalization). */
+export function merchantKey(name: string): string {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9&]+/g, '');
 }
 
 export interface Biller {
@@ -148,6 +169,9 @@ export interface Biller {
   payoutLast4: string | null;
   payoutBank: string | null;
   bridgeExternalAccountId: string | null;
+  portalUrl: string | null;
+  address: string | null;
+  reminders: boolean;
 }
 
 export interface PaySummary {
@@ -177,6 +201,9 @@ function rowToBiller(r: Record<string, unknown>): Biller {
     payoutLast4: r.payout_account_last4 ? String(r.payout_account_last4) : null,
     payoutBank: r.payout_bank_name ? String(r.payout_bank_name) : null,
     bridgeExternalAccountId: r.bridge_external_account_id ? String(r.bridge_external_account_id) : null,
+    portalUrl: r.portal_url ? String(r.portal_url) : null,
+    address: r.address ? String(r.address) : null,
+    reminders: r.reminders !== false,
   };
 }
 
@@ -222,18 +249,77 @@ export const payLedgerStore = {
     return r.rows.map(rowToBiller);
   },
 
+  /** A biller's payment history (for the bill detail view). Newest first. */
+  async listBillerPayments(
+    wallet: string,
+    billerId: string,
+  ): Promise<Array<{ id: string; name: string | null; type: string; amount: number; paidAt: string; onTime: boolean; source: string; period: string }>> {
+    const pool = getPayPool();
+    if (!pool) return [];
+    await ensureTables();
+    const r = await pool.query(
+      `SELECT id, name, type, amount, paid_at, on_time, source, period
+         FROM pay_payments WHERE wallet = $1 AND biller_id = $2 ORDER BY paid_at DESC LIMIT 60`,
+      [wallet, billerId],
+    );
+    return r.rows.map((x) => ({
+      id: String(x.id),
+      name: x.name ? String(x.name) : null,
+      type: String(x.type),
+      amount: num(x.amount),
+      paidAt: (x.paid_at instanceof Date ? x.paid_at : new Date(String(x.paid_at))).toISOString(),
+      onTime: x.on_time !== false,
+      source: String(x.source),
+      period: String(x.period),
+    }));
+  },
+
+  /** Read a merchant's shared metadata (portal + address) by name. */
+  async getMerchantMeta(wallet: string, name: string): Promise<{ portalUrl: string | null; address: string | null } | null> {
+    const pool = getPayPool();
+    if (!pool) return null;
+    await ensureTables();
+    const r = await pool.query(`SELECT portal_url, address FROM pay_merchant_meta WHERE wallet = $1 AND name_key = $2`, [wallet, merchantKey(name)]);
+    if (!r.rows[0]) return null;
+    return { portalUrl: r.rows[0].portal_url ?? null, address: r.rows[0].address ?? null };
+  },
+
+  /** Set a merchant's shared metadata. Only the fields passed (not undefined) are changed. */
+  async upsertMerchantMeta(
+    wallet: string,
+    name: string,
+    p: { portalUrl?: string | null; address?: string | null },
+  ): Promise<{ portalUrl: string | null; address: string | null }> {
+    const pool = getPayPool();
+    if (!pool) throw new Error('Postgres not configured');
+    await ensureTables();
+    const key = merchantKey(name);
+    const cur = (await this.getMerchantMeta(wallet, name)) ?? { portalUrl: null, address: null };
+    const next = {
+      portalUrl: p.portalUrl !== undefined ? p.portalUrl : cur.portalUrl,
+      address: p.address !== undefined ? p.address : cur.address,
+    };
+    await pool.query(
+      `INSERT INTO pay_merchant_meta (wallet, name_key, portal_url, address, updated_at)
+         VALUES ($1,$2,$3,$4, now())
+       ON CONFLICT (wallet, name_key) DO UPDATE SET portal_url = $3, address = $4, updated_at = now()`,
+      [wallet, key, next.portalUrl, next.address],
+    );
+    return next;
+  },
+
   async addBiller(
     wallet: string,
-    b: Pick<Biller, 'name' | 'payee' | 'type' | 'defaultAmount' | 'dueDay'>,
+    b: Pick<Biller, 'name' | 'payee' | 'type' | 'defaultAmount' | 'dueDay'> & { portalUrl?: string | null; address?: string | null },
   ): Promise<Biller> {
     const pool = getPayPool();
     if (!pool) throw new Error('Postgres not configured');
     await ensureTables();
     const id = crypto.randomUUID();
     const r = await pool.query(
-      `INSERT INTO pay_billers (id, wallet, name, payee, type, default_amount, due_day, source)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'manual') RETURNING *`,
-      [id, wallet, b.name, b.payee, b.type, b.defaultAmount, b.dueDay],
+      `INSERT INTO pay_billers (id, wallet, name, payee, type, default_amount, due_day, source, portal_url, address)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'manual',$8,$9) RETURNING *`,
+      [id, wallet, b.name, b.payee, b.type, b.defaultAmount, b.dueDay, b.portalUrl ?? null, b.address ?? null],
     );
     return rowToBiller(r.rows[0]);
   },
@@ -243,16 +329,29 @@ export const payLedgerStore = {
   async updateBiller(
     wallet: string,
     id: string,
-    b: { name: string; payee: string | null; type: BillerType; defaultAmount: number; dueDay: number | null },
+    b: { name: string; payee: string | null; type: BillerType; defaultAmount: number; dueDay: number | null; portalUrl?: string | null; address?: string | null },
   ): Promise<Biller | null> {
     const pool = getPayPool();
     if (!pool) throw new Error('Postgres not configured');
     await ensureTables();
     const r = await pool.query(
-      `UPDATE pay_billers SET name = $3, payee = $4, type = $5, default_amount = $6, due_day = $7
+      `UPDATE pay_billers SET name = $3, payee = $4, type = $5, default_amount = $6, due_day = $7,
+         portal_url = $8, address = $9
         WHERE wallet = $1 AND id = $2 AND source = 'manual' AND archived_at IS NULL
         RETURNING *`,
-      [wallet, id, b.name, b.payee, b.type, b.defaultAmount, b.dueDay],
+      [wallet, id, b.name, b.payee, b.type, b.defaultAmount, b.dueDay, b.portalUrl ?? null, b.address ?? null],
+    );
+    return r.rows[0] ? rowToBiller(r.rows[0]) : null;
+  },
+
+  /** Toggle reminders for any biller (manual or detected). */
+  async setBillerReminders(wallet: string, id: string, enabled: boolean): Promise<Biller | null> {
+    const pool = getPayPool();
+    if (!pool) throw new Error('Postgres not configured');
+    await ensureTables();
+    const r = await pool.query(
+      `UPDATE pay_billers SET reminders = $3 WHERE wallet = $1 AND id = $2 AND archived_at IS NULL RETURNING *`,
+      [wallet, id, enabled],
     );
     return r.rows[0] ? rowToBiller(r.rows[0]) : null;
   },

@@ -14,6 +14,19 @@ const router = Router();
 const VALID_TYPES = new Set<BillerType>(['rent', 'utility', 'subscription', 'card', 'phone', 'other']);
 const wallet = (req: Request) => String(req.params.wallet || '').toLowerCase();
 
+/** Normalize a user-supplied portal URL to a safe http(s) link, or null. */
+function cleanUrl(v: unknown): string | null {
+  const s = typeof v === 'string' ? v.trim() : '';
+  if (!s) return null;
+  const withProto = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  try {
+    const u = new URL(withProto);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Credit environment from the request origin: the live app earns mainnet credits, the demo testnet. */
 const networkFromOrigin = (req: Request): 'mainnet' | 'testnet' =>
   String(req.headers.origin || req.headers.referer || '').includes('app.useclear.org') ? 'mainnet' : 'testnet';
@@ -52,12 +65,57 @@ router.get('/:wallet/billers', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/pay/:wallet/billers/:id/payments — a biller's payment history (bill detail view)
+router.get('/:wallet/billers/:id/payments', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  try {
+    res.json({ payments: await payLedgerStore.listBillerPayments(w, String(req.params.id)) });
+  } catch (error) {
+    console.error('[pay/biller payments]', error);
+    res.status(500).json({ error: 'Failed to load payments' });
+  }
+});
+
+// GET /api/pay/:wallet/merchant-meta?name= — shared merchant portal/address
+router.get('/:wallet/merchant-meta', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  try {
+    res.json({ meta: await payLedgerStore.getMerchantMeta(w, String(req.query.name || '')) });
+  } catch (error) {
+    console.error('[pay/merchant-meta GET]', error);
+    res.status(500).json({ error: 'Failed to load merchant info' });
+  }
+});
+
+// PUT /api/pay/:wallet/merchant-meta  { name, portalUrl?, address? }
+router.put('/:wallet/merchant-meta', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  const b = req.body as { name?: string; portalUrl?: string | null; address?: string | null };
+  if (!b?.name) { res.status(400).json({ error: 'name is required' }); return; }
+  try {
+    const meta = await payLedgerStore.upsertMerchantMeta(w, String(b.name), {
+      ...(b.portalUrl !== undefined ? { portalUrl: cleanUrl(b.portalUrl) } : {}),
+      ...(b.address !== undefined ? { address: b.address ? String(b.address).slice(0, 300) : null } : {}),
+    });
+    res.json({ meta });
+  } catch (error) {
+    console.error('[pay/merchant-meta PUT]', error);
+    res.status(500).json({ error: 'Failed to save merchant info' });
+  }
+});
+
 // POST /api/pay/:wallet/billers  { name, payee?, type, defaultAmount, dueDay }
 router.post('/:wallet/billers', async (req: Request, res: Response) => {
   const w = wallet(req);
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
   if (!ensureReady(res)) return;
-  const b = req.body as { name?: string; payee?: string; type?: string; defaultAmount?: number; dueDay?: number };
+  const b = req.body as { name?: string; payee?: string; type?: string; defaultAmount?: number; dueDay?: number; portalUrl?: string; address?: string };
   if (!b?.name || !b?.type || !VALID_TYPES.has(b.type as BillerType)) {
     res.status(400).json({ error: 'name and valid type are required' });
     return;
@@ -69,6 +127,8 @@ router.post('/:wallet/billers', async (req: Request, res: Response) => {
       type: b.type as BillerType,
       defaultAmount: Number(b.defaultAmount) || 0,
       dueDay: b.dueDay == null ? null : Math.min(Math.max(Math.round(Number(b.dueDay)), 1), 31),
+      portalUrl: cleanUrl(b.portalUrl),
+      address: b.address ? String(b.address).slice(0, 300) : null,
     });
     res.json({ biller });
   } catch (error) {
@@ -82,7 +142,7 @@ router.put('/:wallet/billers/:id', async (req: Request, res: Response) => {
   const w = wallet(req);
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
   if (!ensureReady(res)) return;
-  const b = req.body as { name?: string; payee?: string; type?: string; defaultAmount?: number; dueDay?: number };
+  const b = req.body as { name?: string; payee?: string; type?: string; defaultAmount?: number; dueDay?: number; portalUrl?: string; address?: string };
   if (!b?.name || !b?.type || !VALID_TYPES.has(b.type as BillerType)) {
     res.status(400).json({ error: 'name and valid type are required' });
     return;
@@ -94,6 +154,8 @@ router.put('/:wallet/billers/:id', async (req: Request, res: Response) => {
       type: b.type as BillerType,
       defaultAmount: Number(b.defaultAmount) || 0,
       dueDay: b.dueDay == null ? null : Math.min(Math.max(Math.round(Number(b.dueDay)), 1), 31),
+      portalUrl: cleanUrl(b.portalUrl),
+      address: b.address ? String(b.address).slice(0, 300) : null,
     });
     if (!biller) {
       res.status(404).json({ error: 'Biller not found or not editable (auto-detected billers are read-only)' });
@@ -103,6 +165,21 @@ router.put('/:wallet/billers/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[pay/billers PUT]', error);
     res.status(500).json({ error: 'Failed to update biller' });
+  }
+});
+
+// PATCH /api/pay/:wallet/billers/:id/reminders  { enabled }  — works for any biller
+router.patch('/:wallet/billers/:id/reminders', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  try {
+    const biller = await payLedgerStore.setBillerReminders(w, String(req.params.id), Boolean((req.body as { enabled?: boolean })?.enabled));
+    if (!biller) { res.status(404).json({ error: 'Biller not found' }); return; }
+    res.json({ biller });
+  } catch (error) {
+    console.error('[pay/billers reminders]', error);
+    res.status(500).json({ error: 'Failed to update reminders' });
   }
 });
 
