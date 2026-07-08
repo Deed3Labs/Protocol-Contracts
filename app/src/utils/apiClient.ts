@@ -2321,6 +2321,31 @@ export interface ApiNotification {
   read: boolean;
   createdAt: string;
 }
+// ── Clear card (Bridge / Stripe Issuing) — P2. All no-op with configured:false until the backend has keys.
+export interface ClearCard {
+  ownerWallet: string;
+  status: string; // 'pending' | 'active' | 'inactive' | 'canceled'
+  last4: string | null;
+  brand: string | null;
+  stripeCardId: string | null;
+}
+export async function getClearCard(): Promise<{ configured: boolean; card: ClearCard | null }> {
+  const r = await apiRequest<{ configured: boolean; card: ClearCard | null }>('/api/cards');
+  return r.error || !r.data ? { configured: false, card: null } : r.data;
+}
+export async function activateClearCard(input: { walletAddress: string; chainId: number }): Promise<{ status: string; card: ClearCard | null } | null> {
+  const r = await apiRequest<{ status: string; card: ClearCard | null }>('/api/cards/activate', { method: 'POST', body: JSON.stringify(input) });
+  return r.error || !r.data ? null : r.data;
+}
+export async function createCardEphemeralKey(input: { nonce: string; apiVersion: string }): Promise<{ secret: string; cardId: string } | null> {
+  const r = await apiRequest<{ secret: string; cardId: string }>('/api/cards/ephemeral-key', { method: 'POST', body: JSON.stringify(input) });
+  return r.error || !r.data ? null : r.data;
+}
+export async function freezeClearCard(active: boolean): Promise<ClearCard | null> {
+  const r = await apiRequest<{ card: ClearCard }>('/api/cards/freeze', { method: 'POST', body: JSON.stringify({ active }) });
+  return r.error || !r.data ? null : r.data.card;
+}
+
 export async function getNotifications(wallet: string): Promise<{ notifications: ApiNotification[]; unreadCount: number }> {
   const r = await apiRequest<{ notifications: ApiNotification[]; unreadCount: number }>(`/api/notifications/${wallet.toLowerCase()}`);
   return r.error || !r.data ? { notifications: [], unreadCount: 0 } : r.data;

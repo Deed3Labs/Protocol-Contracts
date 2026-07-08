@@ -17,6 +17,7 @@ import stripeRouter from './routes/stripe.js';
 import stripeWebhooksRouter from './routes/stripeWebhooks.js';
 import plaidRouter from './routes/plaid.js';
 import bridgeRouter from './routes/bridge.js';
+import cardsRouter from './routes/cards.js';
 import sendRouter from './routes/send.js';
 import savingsRouter from './routes/savings.js';
 import membersRouter from './routes/members.js';
@@ -195,6 +196,7 @@ async function startServer() {
     app.use('/api/members', requireAuth, membersRouter);
     app.use('/api/plaid', requireAuth, requireMemberCapability('canUsePlaid'), plaidRouter);
     app.use('/api/bridge', requireAuth, requireMemberCapability('canUseBridge'), bridgeRouter);
+    app.use('/api/cards', requireAuth, cardsRouter);
     app.use('/api/send', sendRouter);
     app.use('/api/savings', requireAuth, savingsRouter);
     app.use('/api/portfolio', requireAuth, portfolioRouter);
