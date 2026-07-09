@@ -40,6 +40,7 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
   const { openPay, streak, setReminders } = usePay();
   const { accelerated } = useMemberProfile();
   const [payments, setPayments] = useState<PayBillerPayment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<MerchantMeta | null>(null);
   const [reminders, setLocalReminders] = useState(true);
   const [portal, setPortal] = useState<BillPortal | null>(null);
@@ -48,9 +49,10 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
   useEffect(() => {
     setLocalReminders(bill?.reminders ?? true);
     setMeta(null);
-    if (!bill || !address) { setPayments([]); return; }
+    if (!bill || !address) { setPayments([]); setLoading(false); return; }
     let cancelled = false;
-    void getPayBillerPayments(address, bill.id).then((p) => { if (!cancelled) setPayments(p); });
+    setLoading(true);
+    void getPayBillerPayments(address, bill.id).then((p) => { if (!cancelled) { setPayments(p); setLoading(false); } });
     void getMerchantMeta(address, bill.payee || bill.name).then((m) => { if (!cancelled) setMeta(m); });
     return () => { cancelled = true; };
   }, [bill, address]);
@@ -105,13 +107,14 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
         enabled: reminders,
         onToggle: (v: boolean) => { setLocalReminders(v); setReminders(bill.id, v); },
       },
+      loading,
       metrics: [
-        { label: 'Total paid', value: `$${nInt(total)}`, icon: Wallet },
-        { label: 'Credits earned', value: nInt(creditsEarned), icon: TrendingUp },
-        { label: 'Payments', value: String(count), icon: Hash },
+        { label: 'Total paid', value: `$${nInt(total)}`, animateTo: total, format: (n: number) => `$${nInt(n)}`, icon: Wallet },
+        { label: 'Credits earned', value: nInt(creditsEarned), animateTo: creditsEarned, format: (n: number) => nInt(n), icon: TrendingUp },
+        { label: 'Payments', value: String(count), animateTo: count, format: (n: number) => String(Math.round(n)), icon: Hash },
         months
           ? { label: 'Active since', value: `${months} mo`, icon: Calendar }
-          : { label: 'Avg payment', value: `$${nInt(avg)}`, icon: Calendar },
+          : { label: 'Avg payment', value: `$${nInt(avg)}`, animateTo: avg, format: (n: number) => `$${nInt(n)}`, icon: Calendar },
       ],
       historyTitle: 'Payment history',
       history: payments.map((p) => {
@@ -132,7 +135,7 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
       ],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bill, payments, portalUrl, addressVal, reminders, streak, accelerated, openPay, onClose, setReminders]);
+  }, [bill, payments, loading, portalUrl, addressVal, reminders, streak, accelerated, openPay, onClose, setReminders]);
 
   return (
     <>

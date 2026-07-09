@@ -71,9 +71,9 @@ export default function TransactionDetailModal({ tx, allItems, onClose }: { tx: 
       account: acctLabel(tx.source, address),
       dateTime: new Date(tx.ts).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }),
       metrics: [
-        { label: count > 1 ? 'Total' : 'Amount', value: usd0(total), icon: Wallet },
-        { label: 'Transactions', value: String(count), icon: Hash },
-        { label: 'Average', value: usd0(avg), icon: TrendingUp },
+        { label: count > 1 ? 'Total' : 'Amount', value: usd0(total), animateTo: total, format: usd0, icon: Wallet },
+        { label: 'Transactions', value: String(count), animateTo: count, format: (n) => String(Math.round(n)), icon: Hash },
+        { label: 'Average', value: usd0(avg), animateTo: avg, format: usd0, icon: TrendingUp },
         { label: 'Last', value: last.date, icon: Clock },
       ],
       receipt: {
