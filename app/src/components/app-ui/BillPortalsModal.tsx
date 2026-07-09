@@ -3,16 +3,16 @@ import { Search, ChevronLeft, Plus, Landmark, Trash2, Zap, Droplet, Home, Smartp
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import BillDetailModal from '@/components/app-ui/BillDetailModal';
-import { usePay, type Bill, type BillType } from '@/context/PayContext';
+import { usePay, BILL_TYPES, type Bill, type BillType } from '@/context/PayContext';
 import { BILL_PORTALS, rankPortals, matchPortal, type BillPortal, type PortalCategory } from '@/data/billPortals';
 
 /*
  * "Pay a bill" — a manager for the member's bills (manual + Plaid-detected). The main view is just their
- * bills + "Add a bill"; the provider directory lives ONLY in the add flow (search a provider to autofill
+ * bills + "Add a biller"; the provider directory lives ONLY in the add flow (search a provider to autofill
  * name/type/payment link, or enter manually). Tap a bill → its detail drawer; a provider row → the portal.
  */
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const inputCls = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none';
+const inputCls = 'w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none';
 
 const CAT_ICON: Record<PortalCategory, LucideIcon> = { electric: Zap, utilities: Droplet, rent: Home, telecom: Smartphone };
 const CAT_TINT: Record<PortalCategory, string> = {
@@ -24,13 +24,16 @@ const CAT_TINT: Record<PortalCategory, string> = {
 const CAT_TO_TYPE: Record<PortalCategory, BillType> = { electric: 'utility', utilities: 'utility', rent: 'rent', telecom: 'phone' };
 const ordinal = (n: number) => { const s = ['th', 'st', 'nd', 'rd']; const v = n % 100; return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`; };
 
-type Draft = { name: string; type: BillType; amount: string; dueDay: string; portalUrl: string; address: string };
-const emptyDraft: Draft = { name: '', type: 'other', amount: '', dueDay: '', portalUrl: '', address: '' };
+type Draft = { name: string; payee: string; type: BillType; amount: string; dueDay: string; portalUrl: string; address: string };
+const emptyDraft: Draft = { name: '', payee: '', type: 'other', amount: '', dueDay: '', portalUrl: '', address: '' };
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+        {label}
+        {required && <span className="text-negative">*</span>}
+      </span>
       {children}
     </label>
   );
@@ -65,14 +68,14 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
     return rankPortals(filtered, inferredState).slice(0, 8);
   }, [pQuery, inferredState]);
 
-  const pickProvider = (p: BillPortal) => { setDraft((d) => ({ ...d, name: p.name, type: CAT_TO_TYPE[p.category], portalUrl: p.url })); setPQuery(''); };
+  const pickProvider = (p: BillPortal) => { setDraft((d) => ({ ...d, name: p.name, payee: p.name, type: CAT_TO_TYPE[p.category], portalUrl: p.url })); setPQuery(''); };
 
   const save = () => {
     if (!draft.name.trim()) return;
     const day = draft.dueDay ? Math.min(Math.max(parseInt(draft.dueDay, 10) || 0, 1), 31) : null;
     addBiller({
       name: draft.name.trim(),
-      payee: draft.name.trim(),
+      payee: draft.payee.trim() || draft.name.trim(),
       type: draft.type,
       amount: Number(draft.amount) || 0,
       dueLabel: day ? `Due on the ${ordinal(day)}` : 'Due soon',
@@ -129,7 +132,7 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
 
               <div className="border-t border-border px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
                 <button type="button" onClick={() => setMode('add')} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]">
-                  <Plus className="h-4 w-4" /> Add a bill
+                  <Plus className="h-4 w-4" /> Add a biller
                 </button>
               </div>
             </>
@@ -139,7 +142,7 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
                 <button type="button" onClick={() => setMode('list')} className="inline-flex items-center gap-1 rounded-lg py-1.5 pl-1.5 pr-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
                   <ChevronLeft className="h-4 w-4" /> Back
                 </button>
-                <span className="text-base font-semibold text-foreground">Add a bill</span>
+                <span className="text-base font-semibold text-foreground">Add a biller</span>
               </div>
 
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-5 pt-2">
@@ -163,19 +166,47 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
                 </div>
 
                 <div className="space-y-3.5">
-                  <Field label="Bill name"><input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Electric — PG&E" className={inputCls} /></Field>
-                  <Field label="Payment link"><input value={draft.portalUrl} onChange={(e) => setDraft((d) => ({ ...d, portalUrl: e.target.value }))} placeholder="pge.com/login" className={inputCls} /></Field>
+                  <Field label="Biller name" required><input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Water — City Utilities" className={inputCls} /></Field>
+                  <Field label="Account / payee"><input value={draft.payee} onChange={(e) => setDraft((d) => ({ ...d, payee: e.target.value }))} placeholder="City Utilities" className={inputCls} /></Field>
+                  <Field label="Type">
+                    <div className="grid grid-cols-3 gap-2">
+                      {BILL_TYPES.map((t) => {
+                        const Icon = t.icon;
+                        const active = draft.type === t.value;
+                        return (
+                          <button
+                            key={t.value}
+                            type="button"
+                            onClick={() => setDraft((d) => ({ ...d, type: t.value }))}
+                            className={cn(
+                              'flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-[11px] font-medium transition-colors',
+                              active ? 'border-foreground bg-secondary/60 text-foreground' : 'border-border text-muted-foreground hover:bg-secondary/40',
+                            )}
+                          >
+                            <Icon className="h-4 w-4" />
+                            {t.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Field>
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Amount"><input inputMode="decimal" value={draft.amount} onChange={(e) => setDraft((d) => ({ ...d, amount: e.target.value.replace(/[^0-9.]/g, '') }))} placeholder="0.00" className={cn(inputCls, 'tabular-nums')} /></Field>
-                    <Field label="Due day"><input inputMode="numeric" value={draft.dueDay} onChange={(e) => setDraft((d) => ({ ...d, dueDay: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) }))} placeholder="1–31" className={cn(inputCls, 'tabular-nums')} /></Field>
+                    <Field label="Amount" required>
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                        <input inputMode="decimal" value={draft.amount} onChange={(e) => setDraft((d) => ({ ...d, amount: e.target.value.replace(/[^0-9.]/g, '') }))} placeholder="0" className={cn(inputCls, 'pl-7 tabular-nums')} />
+                      </div>
+                    </Field>
+                    <Field label="Due day of month"><input inputMode="numeric" value={draft.dueDay} onChange={(e) => setDraft((d) => ({ ...d, dueDay: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) }))} placeholder="1–31" className={cn(inputCls, 'tabular-nums')} /></Field>
                   </div>
-                  <Field label="Mailing address (optional)"><input value={draft.address} onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))} placeholder="123 Main St, City, ST" className={inputCls} /></Field>
+                  <Field label="Biller portal"><input value={draft.portalUrl} onChange={(e) => setDraft((d) => ({ ...d, portalUrl: e.target.value }))} placeholder="pge.com/login — pay on their site" className={inputCls} /></Field>
+                  <Field label="Mailing address"><input value={draft.address} onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))} placeholder="Optional" className={inputCls} /></Field>
                 </div>
               </div>
 
               <div className="border-t border-border px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-                <button type="button" onClick={save} disabled={!draft.name.trim()} className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40">
-                  Save bill
+                <button type="button" onClick={save} disabled={!draft.name.trim() || !(Number(draft.amount) > 0)} className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40">
+                  Add biller
                 </button>
               </div>
             </>
