@@ -7,7 +7,6 @@ import BillTimeline, { type TimelineBill } from '@/components/app-ui/BillTimelin
 import CardVisual from '@/components/app-ui/CardVisual';
 import { usePay } from '@/context/PayContext';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
-import { IS_LIVE_APP } from '@/lib/clearNetwork';
 
 const fmtUsd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -50,8 +49,7 @@ export default function PayPage() {
           <h3 className="mb-3 text-xs font-medium text-muted-foreground">Make a payment</h3>
           <div className="grid grid-cols-2 gap-3">
             <ActionTile icon={Home} label="Pay rent" hint="Schedule or pay now" primary onClick={() => openPay('rent')} />
-            {/* Clear Pay portal directory is still in progress — production keeps the old bill flow; demo/dev gets the new one. */}
-            <ActionTile icon={FileText} label="Pay a bill" hint="Utilities, rent & more" onClick={IS_LIVE_APP ? () => openPay() : openPortals} />
+            <ActionTile icon={FileText} label="Pay a bill" hint="Utilities, rent & more" onClick={openPortals} />
             <ActionTile icon={SendHorizontal} label="Send" hint="To anyone" onClick={openSend} />
             <ActionTile icon={ArrowDownLeft} label="Request" hint="Get paid" onClick={openRequest} />
             <ActionTile icon={Repeat} label="Auto-save" hint="Sign once, build equity" onClick={openAutoSave} />

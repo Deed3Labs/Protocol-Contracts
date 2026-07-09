@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, ChevronRight, ChevronLeft, Plus, Zap, Droplet, Home, Smartphone, type LucideIcon } from 'lucide-react';
+import { Search, ChevronLeft, Plus, Landmark, Trash2, Zap, Droplet, Home, Smartphone, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import BillDetailModal from '@/components/app-ui/BillDetailModal';
@@ -37,7 +37,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function BillPortalsModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { bills, addBiller } = usePay();
+  const { bills, addBiller, openPay, removeBiller } = usePay();
   const [mode, setMode] = useState<'list' | 'add'>('list');
   const [query, setQuery] = useState('');
   const [pQuery, setPQuery] = useState('');
@@ -103,17 +103,20 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
                 {filteredBills.length > 0 ? (
                   <div className="space-y-1.5">
                     {filteredBills.map((b) => (
-                      <button key={b.id} type="button" onClick={() => setActiveBill(b)} className="flex w-full items-center gap-3 rounded-xl border border-border p-2.5 text-left transition-colors hover:bg-secondary/50">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground"><b.icon className="h-[18px] w-[18px]" /></span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-1.5">
-                            <span className="truncate text-sm font-medium text-foreground">{b.name}</span>
-                            {b.source === 'plaid' && <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Auto</span>}
+                      <div key={b.id} className="group flex items-center gap-1 rounded-xl border border-border pr-1.5 transition-colors hover:bg-secondary/40">
+                        <button type="button" onClick={() => setActiveBill(b)} className="flex min-w-0 flex-1 items-center gap-3 p-2.5 text-left">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground"><b.icon className="h-[18px] w-[18px]" /></span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className="truncate text-sm font-medium text-foreground">{b.name}</span>
+                              {b.source === 'plaid' && <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Auto</span>}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">{b.amount > 0 ? fmt(b.amount) : 'Amount varies'}{b.dueLabel ? ` · ${b.dueLabel}` : ''}</span>
                           </span>
-                          <span className="block truncate text-xs text-muted-foreground">{b.amount > 0 ? fmt(b.amount) : 'Amount varies'}{b.dueLabel ? ` · ${b.dueLabel}` : ''}</span>
-                        </span>
-                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      </button>
+                        </button>
+                        <button type="button" onClick={() => { onOpenChange(false); openPay(b.id); }} aria-label={`Pay ${b.name}`} className="shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"><Landmark className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => removeBiller(b.id)} aria-label={`Delete ${b.name}`} className="shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-negative"><Trash2 className="h-4 w-4" /></button>
+                      </div>
                     ))}
                   </div>
                 ) : (
