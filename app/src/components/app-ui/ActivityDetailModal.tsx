@@ -1,10 +1,12 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   ChevronLeft, ChevronDown, BadgeCheck, Check, X, Pencil, Copy, ExternalLink, Plus,
-  ArrowDownLeft, ArrowUpRight, Share2, type LucideIcon,
+  ArrowDownLeft, ArrowUpRight, Share2, Download, type LucideIcon,
 } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { downloadReceiptPdf } from '@/lib/receiptPdf';
 
 /*
  * Unified detail view for a bill OR a transaction, as a right-side drawer (full-screen sheet on mobile).
@@ -15,7 +17,7 @@ import { cn } from '@/lib/utils';
  */
 export type Tone = 'positive' | 'pending' | 'negative' | 'muted';
 
-export interface DetailMetric { label: string; value: string; icon?: LucideIcon }
+export interface DetailMetric { label: string; value: string; icon?: LucideIcon; animateTo?: number; format?: (n: number) => string }
 export interface DetailHistoryEntry {
   id: string;
   title: string;
@@ -52,8 +54,9 @@ export interface DetailInfo {
   receipt?: DetailReceipt;
   historyTitle?: string;
   history: DetailHistoryEntry[];
-  onViewAll?: () => void;
   actions?: DetailAction[];
+  /** Shows skeletons in the metrics + history while data loads. */
+  loading?: boolean;
 }
 
 const TONE_BADGE: Record<Tone, string> = {
@@ -150,16 +153,43 @@ function EditableRow({ label, value, display, placeholder, onSave, onOpen }: {
   );
 }
 
+/** Eases 0 → target once on mount (StatBar-style number roll-up). */
+function CountUp({ to, format }: { to: number; format: (n: number) => string }) {
+  const [n, setN] = useState(0);
+  const raf = useRef<number | null>(null);
+  useEffect(() => {
+    const start = performance.now();
+    const dur = 650;
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / dur, 1);
+      setN(to * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) raf.current = requestAnimationFrame(tick);
+      else setN(to);
+    };
+    raf.current = requestAnimationFrame(tick);
+    return () => { if (raf.current) cancelAnimationFrame(raf.current); };
+  }, [to]);
+  return <>{format(n)}</>;
+}
+
+const Skeleton = ({ className }: { className?: string }) => <div className={cn('animate-pulse rounded bg-secondary', className)} />;
+
+const fade = { hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0, transition: { duration: 0.24, ease: 'easeOut' as const } } };
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
+const HISTORY_CAP = 6;
+
 export default function ActivityDetailModal({ open, onOpenChange, item }: { open: boolean; onOpenChange: (o: boolean) => void; item: DetailInfo | null }) {
   const [tab, setTab] = useState<'details' | 'history'>('details');
-  useEffect(() => { if (open) setTab('details'); }, [open]);
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  useEffect(() => { if (open) { setTab('details'); setShowAllHistory(false); } }, [open]);
   if (!item) return null;
   const Icon = item.icon;
   const tintText = item.iconTint?.split(' ').find((c) => c.startsWith('text-')) ?? 'text-muted-foreground';
 
-  // Group history entries in order.
+  // Group history entries in order, capped until "View all".
+  const shownHistory = showAllHistory ? item.history : item.history.slice(0, HISTORY_CAP);
   const groups: { label: string; entries: DetailHistoryEntry[] }[] = [];
-  for (const h of item.history) {
+  for (const h of shownHistory) {
     const g = h.group ?? '';
     const last = groups[groups.length - 1];
     if (last && last.label === g) last.entries.push(h);
@@ -204,9 +234,10 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
         </div>
 
         {/* body */}
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           {tab === 'details' ? (
-            <>
+            <motion.div key="details" variants={stagger} initial="hidden" animate="show" className="space-y-4">
+              <motion.div variants={fade}>
               <Section title="Summary">
                 <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
                   {item.typeLabel && (
@@ -236,8 +267,10 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
                   {item.address && <EditableRow label="Address" value={item.address.value} placeholder="123 Main St, City, ST" onSave={item.address.onSave} />}
                 </div>
               </Section>
+              </motion.div>
 
               {(item.reference || item.account || item.dateTime || item.status) && (
+                <motion.div variants={fade}>
                 <Section title="Transaction">
                   <div className="divide-y divide-border overflow-hidden rounded-xl border border-border">
                     {item.reference && <Row label="Reference"><CopyValue value={item.reference} /></Row>}
@@ -246,23 +279,34 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
                     {item.status && <Row label="Status"><span className={cn('inline-flex items-center gap-1', TONE_TEXT[item.status.tone])}><BadgeCheck className="h-4 w-4" /> {item.status.label}</span></Row>}
                   </div>
                 </Section>
+                </motion.div>
               )}
 
-              {item.metrics.length > 0 && (
-                <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border">
-                  {item.metrics.map((m, i) => (
-                    <div key={m.label} className={cn('p-3.5', i % 2 === 0 && 'border-r border-border', i + 2 < item.metrics.length && 'border-b border-border')}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
-                        {m.icon && <m.icon className="h-3.5 w-3.5 text-muted-foreground" />}
-                      </div>
-                      <div className="mt-1.5 font-display text-xl tracking-tight tabular-nums text-foreground">{m.value}</div>
-                    </div>
-                  ))}
-                </div>
+              {(item.loading || item.metrics.length > 0) && (
+                <motion.div variants={fade} className="grid grid-cols-2 overflow-hidden rounded-xl border border-border">
+                  {item.loading
+                    ? Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className={cn('p-3.5', i % 2 === 0 && 'border-r border-border', i < 2 && 'border-b border-border')}>
+                          <Skeleton className="h-3 w-16" />
+                          <Skeleton className="mt-2.5 h-6 w-14" />
+                        </div>
+                      ))
+                    : item.metrics.map((m, i) => (
+                        <div key={m.label} className={cn('p-3.5', i % 2 === 0 && 'border-r border-border', i + 2 < item.metrics.length && 'border-b border-border')}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-muted-foreground">{m.label}</span>
+                            {m.icon && <m.icon className="h-3.5 w-3.5 text-muted-foreground" />}
+                          </div>
+                          <div className="mt-1.5 font-display text-xl tracking-tight tabular-nums text-foreground">
+                            {m.animateTo != null && m.format ? <CountUp to={m.animateTo} format={m.format} /> : m.value}
+                          </div>
+                        </div>
+                      ))}
+                </motion.div>
               )}
 
               {item.receipt && (
+                <motion.div variants={fade}>
                 <Section title="Latest receipt">
                   <div className="rounded-xl border border-border p-4">
                     {item.receipt.lines.map((l) => (
@@ -277,21 +321,41 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
                         <span className="font-display tabular-nums text-foreground">{item.receipt.total.value}</span>
                       </div>
                     )}
-                    {item.receipt.onShare && (
-                      <button type="button" onClick={item.receipt.onShare} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground hover:bg-secondary">
-                        <Share2 className="h-4 w-4" /> Share receipt
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => downloadReceiptPdf({ title: item.title, subtitle: item.subtitle, dateTime: item.dateTime, reference: item.reference, account: item.account, lines: item.receipt!.lines.map((l) => ({ label: l.label, value: l.value })), total: item.receipt!.total })}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground hover:bg-secondary"
+                      >
+                        <Download className="h-4 w-4" /> Download PDF
                       </button>
-                    )}
+                      {item.receipt.onShare && (
+                        <button type="button" onClick={item.receipt.onShare} aria-label="Share receipt" className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg border border-border text-foreground hover:bg-secondary">
+                          <Share2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </Section>
+                </motion.div>
               )}
-            </>
+            </motion.div>
           ) : (
-            <div>
-              {item.history.length > 0 ? (
+            <motion.div key="history" variants={stagger} initial="hidden" animate="show">
+              {item.loading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 py-1">
+                      <Skeleton className="h-9 w-9 rounded-full" />
+                      <div className="flex-1"><Skeleton className="h-3.5 w-28" /><Skeleton className="mt-1.5 h-3 w-16" /></div>
+                      <Skeleton className="h-4 w-12" />
+                    </div>
+                  ))}
+                </div>
+              ) : shownHistory.length > 0 ? (
                 <>
                   {groups.map((g) => (
-                    <div key={g.label || 'all'} className="mb-2">
+                    <motion.div variants={fade} key={g.label || 'all'} className="mb-2">
                       {g.label && <div className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{g.label}</div>}
                       <div className="divide-y divide-border">
                         {g.entries.map((h) => (
@@ -313,16 +377,16 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
                           </div>
                         ))}
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
-                  {item.onViewAll && (
-                    <button type="button" onClick={item.onViewAll} className="mt-2 w-full rounded-lg border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground">View all activity</button>
+                  {!showAllHistory && item.history.length > HISTORY_CAP && (
+                    <button type="button" onClick={() => setShowAllHistory(true)} className="mt-2 w-full rounded-lg border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground">View all {item.history.length}</button>
                   )}
                 </>
               ) : (
                 <div className="rounded-xl border border-border py-10 text-center text-sm text-muted-foreground">No activity yet.</div>
               )}
-            </div>
+            </motion.div>
           )}
         </div>
 
