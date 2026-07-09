@@ -127,7 +127,7 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
                 )}
               </div>
 
-              <div className="border-t border-border p-4">
+              <div className="border-t border-border px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
                 <button type="button" onClick={() => setMode('add')} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]">
                   <Plus className="h-4 w-4" /> Add a bill
                 </button>
@@ -173,7 +173,7 @@ export default function BillPortalsModal({ open, onOpenChange }: { open: boolean
                 </div>
               </div>
 
-              <div className="border-t border-border p-4">
+              <div className="border-t border-border px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
                 <button type="button" onClick={save} disabled={!draft.name.trim()} className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40">
                   Save bill
                 </button>

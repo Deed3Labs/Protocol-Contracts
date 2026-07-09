@@ -198,7 +198,7 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent aria-label={item.title} className="gap-0 p-0">
+      <SheetContent aria-label={item.title} onDismiss={() => onOpenChange(false)} className="gap-0 p-0">
         {/* header — breadcrumb-style back button */}
         <div className="flex shrink-0 items-center justify-between px-3 py-2.5">
           <button type="button" onClick={() => onOpenChange(false)} className="inline-flex items-center gap-1 rounded-lg py-1.5 pl-1.5 pr-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
@@ -234,7 +234,7 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
         </div>
 
         {/* body */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
           {tab === 'details' ? (
             <motion.div key="details" variants={stagger} initial="hidden" animate="show" className="space-y-4">
               <motion.div variants={fade}>
@@ -392,7 +392,7 @@ export default function ActivityDetailModal({ open, onOpenChange, item }: { open
 
         {/* pay bar (bills only) */}
         {item.actions && item.actions.length > 0 && (
-          <div className="flex shrink-0 items-center gap-2 border-t border-border p-4">
+          <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             {item.actions.map((a) =>
               a.icon ? (
                 <button key={a.label} type="button" aria-label={a.label} disabled={a.disabled} onClick={a.onClick} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-secondary text-foreground transition-colors hover:bg-secondary/70 disabled:opacity-40"><a.icon className="h-5 w-5" /></button>
