@@ -22,31 +22,15 @@ import { bridge } from './billerPayoutService.js';
 const BRIDGE_CHAIN = (process.env.BRIDGE_PAYOUT_SOURCE_CHAIN || 'base').trim();
 
 /*
- * Our fee on INSTANT inbound deposits, as a base-100 percent string ("0.5" = 0.5%).
+ * Deposits are FREE by design — we take nothing on the way in; the revenue is the off-ramp fee.
+ * Bridge treats a blank fee field as 0.0 ("Fees are optional. Leaving the developer_fee or
+ * developer_fee_percent field blank is treated as a fee of 0.0"), so we simply set nothing.
  *
- * A member's own bank chooses the rail when they push, so the fee applies itself: a standard
- * `ach_push` stays free (the `default` bucket), while `fednow`/`wire` — the real-time rails — carry
- * this. Unset ⇒ we send no fee_config at all and every deposit is free.
- *
- * NOTE: `fee_config` is available by request only ("Contact Bridge to enable this feature for your
- * developer account") and CANNOT be sent alongside `developer_fee_percent`. If it isn't enabled on
- * the account, virtual-account creation fails while this is set — so leave it unset until Bridge
- * confirms, then flip it on.
+ * If inbound ever needs a fee: a flat rate across every rail is `developer_fee_percent` on the
+ * virtual account. Charging only the instant rails (fednow/wire) while `ach_push` stays free needs
+ * `fee_config.source` — `{ default: {...}, fednow: {...} }` — which is virtual-accounts-only,
+ * available from Bridge by request, and mutually exclusive with `developer_fee_percent`.
  */
-const INSTANT_ONRAMP_FEE_PERCENT = (process.env.BRIDGE_INSTANT_ONRAMP_FEE_PERCENT || '').trim();
-
-function onrampFeeConfig(): Record<string, unknown> | null {
-  if (!INSTANT_ONRAMP_FEE_PERCENT) return null;
-  return {
-    fee_config: {
-      source: {
-        default: { fee_percent: '0' }, // standard ACH push — free
-        fednow: { fee_percent: INSTANT_ONRAMP_FEE_PERCENT },
-        wire: { fee_percent: INSTANT_ONRAMP_FEE_PERCENT },
-      },
-    },
-  };
-}
 
 export type BridgeCustomerStatus =
   | 'active'
@@ -264,7 +248,6 @@ export async function ensureVirtualAccount(input: {
       body: JSON.stringify({
         source: { currency: 'usd' },
         destination: { currency: 'usdc', payment_rail: BRIDGE_CHAIN, address: input.walletAddress },
-        ...(onrampFeeConfig() ?? {}),
       }),
     },
   );
