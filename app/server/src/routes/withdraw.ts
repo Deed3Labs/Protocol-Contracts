@@ -15,7 +15,7 @@ router.post('/:wallet', async (req: Request, res: Response) => {
   const w = wallet(req);
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
 
-  const b = req.body as { amount?: number | string; plaidAccountId?: string; email?: string };
+  const b = req.body as { amount?: number | string; plaidAccountId?: string; rail?: string };
   const amountUsd = Number(b?.amount);
   if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
     res.status(400).json({ error: 'A positive amount is required' });
@@ -25,9 +25,12 @@ router.post('/:wallet', async (req: Request, res: Response) => {
   try {
     const result = await withdrawToBank({
       wallet: w,
-      email: String(b?.email ?? '').trim().toLowerCase(),
+      // Resolved from the session, never the body — the caller can't point a payout at someone
+      // else's Bridge customer by passing their email.
+      emails: req.auth?.emails ?? (req.auth?.email ? [req.auth.email] : []),
       plaidAccountId: String(b?.plaidAccountId ?? ''),
       amountUsd,
+      rail: b?.rail === 'ach_same_day' ? 'ach_same_day' : 'ach',
     });
     if (!result.success) {
       // notConfigured → 503 so the UI can show a friendly "coming soon"; other failures → 400.
@@ -37,7 +40,15 @@ router.post('/:wallet', async (req: Request, res: Response) => {
       });
       return;
     }
-    res.json({ success: true, providerReference: result.providerReference, status: result.status });
+    // depositAddress/depositAmount are not optional extras: the client MUST send USDC there or the
+    // transfer never leaves `awaiting_funds`.
+    res.json({
+      success: true,
+      providerReference: result.providerReference,
+      status: result.status,
+      depositAddress: result.depositAddress,
+      depositAmount: result.depositAmount,
+    });
   } catch (error) {
     console.error('[withdraw]', error);
     res.status(500).json({ error: 'Failed to create withdrawal' });

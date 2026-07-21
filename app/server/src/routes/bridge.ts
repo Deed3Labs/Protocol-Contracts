@@ -1,6 +1,13 @@
 import { randomUUID } from 'crypto';
 import { Router, Request, Response } from 'express';
 import { requireWalletMatch } from '../middleware/auth.js';
+import { bridgeCustomerStore } from '../services/bridgeCustomerStore.js';
+import {
+  resolveCustomerForEmails,
+  getCustomerSnapshot,
+  startKyc,
+  ensureVirtualAccount,
+} from '../services/bridgeCustomerService.js';
 import { isAddress } from 'ethers';
 
 const router = Router();
@@ -420,10 +427,14 @@ router.post('/onboarding-url', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/bridge/virtual-account?email=...  → the user's Bridge virtual account (USDC funding via an
- * ACH account/routing number). Resolves the customer by email, then reads their virtual accounts.
- * Best-effort: returns { available: false } when Bridge isn't configured / no customer / no VA yet, so
- * the UI can fall back gracefully. (Field names read defensively against the Bridge v0 shape.)
+ * GET /api/bridge/virtual-account  → the signed-in member's Bridge virtual account (USDC funding via
+ * an ACH account/routing number).
+ *
+ * The customer is resolved from the emails Privy verified for THIS session (email login + Google/
+ * Apple OAuth) — never from a client-supplied address, since the response contains bank account and
+ * routing numbers and would otherwise let any authenticated caller enumerate other people's details.
+ * Best-effort: returns { available: false } when Bridge isn't configured / no customer / no VA yet,
+ * so the UI can fall back gracefully. (Field names read defensively against the Bridge v0 shape.)
  */
 type BridgeVirtualAccount = {
   id?: string;
@@ -440,23 +451,21 @@ type BridgeVirtualAccount = {
 
 router.get('/virtual-account', async (req: Request, res: Response) => {
   try {
-    const email = String(req.query.email ?? '').trim().toLowerCase();
-    if (!EMAIL_REGEX.test(email)) {
-      res.status(400).json({ error: 'A valid email is required' });
-      return;
-    }
     const bridgeApiKey = (process.env.BRIDGE_API_KEY || '').trim();
     if (!bridgeApiKey) {
       res.json({ available: false, reason: 'not_configured' });
       return;
     }
 
-    const kyc = await bridgeApiRequest<BridgeListKycLinksResponse>(
-      bridgeApiKey,
-      `/kyc_links?email=${encodeURIComponent(email)}&limit=1`,
-      { method: 'GET' },
-    );
-    const customerId = kyc.ok ? kyc.data.data?.[0]?.customer_id : undefined;
+    // Only emails this session's Privy user actually verified — see the note above.
+    const emails = (req.auth?.emails ?? [req.auth?.email ?? '']).filter((e) => EMAIL_REGEX.test(e));
+    if (emails.length === 0) {
+      res.json({ available: false, reason: 'no_email' });
+      return;
+    }
+
+    const resolved = await resolveCustomerForEmails(emails);
+    const customerId = resolved?.customerId;
     if (!customerId) {
       res.json({ available: false, reason: 'no_customer' });
       return;
@@ -485,6 +494,163 @@ router.get('/virtual-account', async (req: Request, res: Response) => {
     });
   } catch (error) {
     res.status(200).json({ available: false, reason: error instanceof Error ? error.message : 'error' });
+  }
+});
+
+/** Emails Privy verified for THIS session — the only addresses we'll look a customer up by. */
+function sessionEmails(req: Request): string[] {
+  const list = req.auth?.emails ?? (req.auth?.email ? [req.auth.email] : []);
+  return list.map((e) => String(e).trim().toLowerCase()).filter((e) => EMAIL_REGEX.test(e));
+}
+
+/** Remember which member this Bridge customer is, so webhooks can be attributed to a wallet. */
+function rememberCustomer(req: Request, customerId: string | undefined, email?: string): void {
+  const wallet = req.auth?.smartWallet || req.auth?.walletAddress || '';
+  if (customerId && wallet) void bridgeCustomerStore.link(customerId, wallet, email);
+}
+
+/**
+ * GET /api/bridge/status → everything the app needs to decide whether money can move:
+ * whether Bridge is configured, whether this member is already a Bridge customer (under ANY of their
+ * emails), their KYC state, and their virtual account if one exists. Never creates anything.
+ */
+router.get('/status', async (req: Request, res: Response) => {
+  try {
+    if (!(process.env.BRIDGE_API_KEY || '').trim()) {
+      res.json({ configured: false, verified: false, kycStatus: 'not_started', virtualAccount: null });
+      return;
+    }
+    const emails = sessionEmails(req);
+    if (emails.length === 0) {
+      res.json({ configured: true, verified: false, kycStatus: 'not_started', virtualAccount: null, reason: 'no_email' });
+      return;
+    }
+
+    const resolved = await resolveCustomerForEmails(emails);
+    if (!resolved) {
+      res.json({ configured: true, verified: false, kycStatus: 'not_started', virtualAccount: null, customerId: null });
+      return;
+    }
+
+    rememberCustomer(req, resolved.customerId, resolved.email);
+    const snapshot = await getCustomerSnapshot(resolved.customerId);
+    const verified = snapshot?.status === 'active';
+
+    // Only read the virtual account — provisioning is an explicit POST so a status poll never writes.
+    let virtualAccount = null as null | Record<string, unknown>;
+    if (verified) {
+      const wallet = req.auth?.smartWallet || req.auth?.walletAddress || '';
+      if (wallet) {
+        const va = await ensureVirtualAccount({ customerId: resolved.customerId, walletAddress: wallet });
+        if ('account' in va) {
+          virtualAccount = {
+            accountNumber: va.account.accountNumber,
+            routingNumber: va.account.routingNumber,
+            bankName: va.account.bankName,
+            beneficiary: va.account.beneficiary,
+            paymentRails: va.account.paymentRails,
+          };
+        }
+      }
+    }
+
+    res.json({
+      configured: true,
+      customerId: resolved.customerId,
+      matchedEmail: resolved.email,
+      verified,
+      kycStatus: snapshot?.status ?? 'not_started',
+      tosAccepted: snapshot?.tosAccepted ?? false,
+      baseEndorsement: snapshot?.baseEndorsement ?? 'incomplete',
+      payinFiat: snapshot?.payinFiat ?? 'pending',
+      payoutFiat: snapshot?.payoutFiat ?? 'pending',
+      rejectionReason: snapshot?.rejectionReason ?? null,
+      virtualAccount,
+    });
+  } catch (error) {
+    console.error('[bridge/status]', error);
+    res.status(500).json({ error: 'Could not read verification status' });
+  }
+});
+
+/**
+ * POST /api/bridge/kyc-link → the hosted Bridge verification URL for this member (ToS first, then
+ * KYC). Reuses an existing Bridge customer when any of their emails already maps to one.
+ * Body: { fullName, customerType? }
+ */
+router.post('/kyc-link', async (req: Request, res: Response) => {
+  try {
+    if (!(process.env.BRIDGE_API_KEY || '').trim()) {
+      res.status(501).json({ error: 'Verification is not available yet.', notConfigured: true });
+      return;
+    }
+    const emails = sessionEmails(req);
+    if (emails.length === 0) {
+      res.status(400).json({ error: 'Add an email to your account before verifying.' });
+      return;
+    }
+    const { fullName, customerType } = req.body as { fullName?: string; customerType?: BridgeCustomerType };
+    const normalizedName = String(fullName ?? '').trim();
+    if (normalizedName.length < 2) {
+      res.status(400).json({ error: 'Your full legal name is required.' });
+      return;
+    }
+
+    const result = await startKyc({
+      emails,
+      email: emails[0],
+      fullName: normalizedName,
+      redirectUri: process.env.BRIDGE_ONBOARDING_REDIRECT_URI?.trim(),
+      customerType: customerType === 'business' ? 'business' : 'individual',
+    });
+    if ('error' in result) {
+      res.status(result.status >= 400 && result.status < 500 ? result.status : 502).json({ error: result.error });
+      return;
+    }
+    if (!result.url) {
+      res.status(502).json({ error: 'Bridge returned no verification link.' });
+      return;
+    }
+    rememberCustomer(req, result.customerId ?? undefined, emails[0]);
+    res.json(result);
+  } catch (error) {
+    console.error('[bridge/kyc-link]', error);
+    res.status(500).json({ error: 'Could not start verification' });
+  }
+});
+
+/**
+ * POST /api/bridge/virtual-account → open (or fetch) this member's USD account, producing their
+ * account + routing numbers. Requires an approved Bridge customer; USD pushed here lands as USDC.
+ */
+router.post('/virtual-account', async (req: Request, res: Response) => {
+  try {
+    if (!(process.env.BRIDGE_API_KEY || '').trim()) {
+      res.status(501).json({ error: 'Bank accounts are not available yet.', notConfigured: true });
+      return;
+    }
+    const emails = sessionEmails(req);
+    const resolved = emails.length ? await resolveCustomerForEmails(emails) : null;
+    if (!resolved) {
+      res.status(409).json({ error: 'Verify your identity to open a USD account.', reason: 'no_customer' });
+      return;
+    }
+    const wallet = req.auth?.smartWallet || req.auth?.walletAddress || '';
+    if (!wallet || !isAddress(wallet)) {
+      res.status(400).json({ error: 'No wallet on this account to receive deposits.' });
+      return;
+    }
+
+    rememberCustomer(req, resolved.customerId, resolved.email);
+    const result = await ensureVirtualAccount({ customerId: resolved.customerId, walletAddress: wallet });
+    if ('error' in result) {
+      res.status(409).json({ error: result.error, reason: result.reason });
+      return;
+    }
+    res.json({ available: true, ...result.account, accountLast4: result.account.accountNumber?.slice(-4) ?? null });
+  } catch (error) {
+    console.error('[bridge/virtual-account]', error);
+    res.status(500).json({ error: 'Could not open your USD account' });
   }
 });
 

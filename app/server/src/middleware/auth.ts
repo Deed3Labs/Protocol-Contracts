@@ -13,6 +13,8 @@ type AuthenticatedWallet = {
   chainId?: string | number;
   profileUuid?: string;
   email?: string;
+  /** EVERY verified email on the account (email login + google/apple/etc. OAuth), lowercased. */
+  emails?: string[];
   smartWallet?: string; // the Privy smart wallet — the CANONICAL primary (where funds live)
   addresses?: string[]; // ALL verified addresses for this user (primary + smart + linked), normalized
   phone?: string; // the Privy account phone (login identity), if any
@@ -31,7 +33,7 @@ function getPrivy(): PrivyClient | null {
 }
 
 // userId(DID) -> resolved wallets. Cached so we don't call getUser on every request (rate-limited).
-type UserWallets = { addresses: Set<string>; smartWallet?: string; email?: string; phone?: string; expiresAt: number };
+type UserWallets = { addresses: Set<string>; smartWallet?: string; email?: string; emails: Set<string>; phone?: string; expiresAt: number };
 const userCache = new Map<string, UserWallets>();
 
 declare global {
@@ -72,21 +74,31 @@ type CollectedWallets = {
   addresses: Set<string>;
   smartWallet?: string;
   email?: string;
+  emails: Set<string>;
   phone?: string;
   hasEmbeddedEoa: boolean;
   hasExternalWallet: boolean;
 };
 
+const EMAILISH = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function collectWallets(user: { linkedAccounts?: unknown[] }): CollectedWallets {
   const addresses = new Set<string>();
+  const emails = new Set<string>();
   let smartWallet: string | undefined;
   let email: string | undefined;
   let phone: string | undefined;
   let hasEmbeddedEoa = false;
   let hasExternalWallet = false;
 
+  const addEmail = (value: unknown) => {
+    if (typeof value !== 'string') return;
+    const normalized = value.trim().toLowerCase();
+    if (EMAILISH.test(normalized)) emails.add(normalized);
+  };
+
   for (const account of user.linkedAccounts ?? []) {
-    const acct = account as { type?: string; address?: string; number?: string; chainType?: string; walletClientType?: string };
+    const acct = account as { type?: string; address?: string; number?: string; chainType?: string; walletClientType?: string; email?: string };
     const isEvmWallet =
       (acct.type === 'wallet' || acct.type === 'smart_wallet') &&
       typeof acct.address === 'string' &&
@@ -100,11 +112,17 @@ function collectWallets(user: { linkedAccounts?: unknown[] }): CollectedWallets 
         else hasExternalWallet = true;
       }
     }
-    if (acct.type === 'email' && typeof acct.address === 'string') email = acct.address;
+    if (acct.type === 'email' && typeof acct.address === 'string') {
+      email = acct.address;
+      addEmail(acct.address);
+    }
+    // Social logins (google_oauth, apple_oauth, github_oauth, …) carry their own verified email —
+    // any of them may be the address the user already onboarded to Bridge with.
+    if (typeof acct.type === 'string' && acct.type.endsWith('_oauth')) addEmail(acct.email);
     if (acct.type === 'phone' && typeof acct.number === 'string') phone = acct.number;
   }
 
-  return { addresses, smartWallet, email, phone, hasEmbeddedEoa, hasExternalWallet };
+  return { addresses, smartWallet, email, emails, phone, hasEmbeddedEoa, hasExternalWallet };
 }
 
 async function loadUserWallets(privy: PrivyClient, userId: string): Promise<UserWallets> {
@@ -134,6 +152,7 @@ async function loadUserWallets(privy: PrivyClient, userId: string): Promise<User
     addresses: c.addresses,
     smartWallet: c.smartWallet,
     email: c.email,
+    emails: c.emails,
     phone: c.phone,
     expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
   };
@@ -159,7 +178,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const claims = await privy.verifyAuthToken(token);
     const userId = claims.userId;
 
-    const { addresses, smartWallet, email, phone } = await loadUserWallets(privy, userId);
+    const { addresses, smartWallet, email, emails, phone } = await loadUserWallets(privy, userId);
 
     // Trust the frontend's active address only if it belongs to the verified user; else fall back to
     // the smart wallet (email/social funds) or the first linked wallet.
@@ -171,7 +190,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return sendUnauthorized(res, 'No wallet linked to this account', 'AUTH_NO_WALLET');
     }
 
-    req.auth = { walletAddress, profileUuid: userId, email, phone, smartWallet, addresses: [...addresses], token };
+    req.auth = { walletAddress, profileUuid: userId, email, emails: [...emails], phone, smartWallet, addresses: [...addresses], token };
     return next();
   } catch (error) {
     console.error('Authentication error:', error);
