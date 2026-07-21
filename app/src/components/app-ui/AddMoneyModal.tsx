@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, ChevronDown, CreditCard, Landmark, Loader2, Smartphone, ShieldCheck, Sparkles, Wallet, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Building2, Check, ChevronDown, CreditCard, Landmark, Loader2, Smartphone, ShieldCheck, Sparkles, Wallet, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { track } from '@/lib/analytics';
@@ -30,7 +30,11 @@ interface PayMethod {
 const METHODS: PayMethod[] = [
   { id: 'card', name: 'Debit or credit card', icon: CreditCard, speed: 'Instant' },
   { id: 'applepay', name: 'Apple Pay', icon: Smartphone, speed: 'Instant' },
-  { id: 'bank', name: 'Bank transfer', icon: Landmark, speed: '1–3 business days' },
+  // Coinbase ACH is the cheap card alternative, but it's the one method that can't be a guest
+  // checkout — Coinbase requires a signed-in account and it only runs in their hosted widget. Say so
+  // up front rather than dumping the member on a login screen after they've committed to an amount.
+  { id: 'ach', name: 'Bank via Coinbase', icon: Landmark, speed: 'Lower fee · opens Coinbase, account required' },
+  { id: 'bank', name: 'Direct deposit or bank push', icon: Building2, speed: 'Free · sent from your bank' },
 ];
 
 /** A normalized quote for the UI: provider + USDC payout + total fee vs the entered amount. */
@@ -47,7 +51,8 @@ function toQuoteVM(q: RampQuote, amount: number): QuoteVM {
   const fee = fees > 0 ? fees : Math.max(0, amount - (q.cryptoAmount ?? amount));
   return { p: { id: q.provider, name: prettyRamp(q.provider) }, fee, payout: Math.max(0, amount - fee) };
 }
-const rampPM = (methodId: string) => (methodId === 'applepay' ? 'applepay' : 'creditcard');
+// The backend maps these onto Coinbase's enum (applepay→APPLE_PAY, ach→ACH_BANK_ACCOUNT, else CARD).
+const rampPM = (methodId: string) => (methodId === 'applepay' ? 'applepay' : methodId === 'ach' ? 'ach' : 'creditcard');
 
 /*
  * Bank funding is a PUSH, not a pull. Bridge does not debit bank accounts — no ACH pull, no Plaid
@@ -559,6 +564,14 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
               {checkoutLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting…</> : `Add ${fmt(amount)}`}
             </button>
             {checkoutError && <p className="mt-2 text-center text-[11px] text-negative">{checkoutError}</p>}
+            {methodId === 'ach' && (
+              <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-border p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                <Landmark className="mt-px h-3 w-3 shrink-0" />
+                Coinbase handles bank transfers and will ask you to sign in and link your bank — a Coinbase
+                account is required. Bank deposits can take a few days to arrive. To skip the account, use
+                a card, or send a free transfer from your bank instead.
+              </p>
+            )}
             <p className="mt-2 flex items-center justify-center gap-1 text-center text-[11px] text-muted-foreground">
               <ShieldCheck className="h-3 w-3" />{' '}
               Held as USDC, a regulated digital dollar, on Base
