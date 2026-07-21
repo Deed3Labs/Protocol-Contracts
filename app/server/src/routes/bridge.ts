@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Router, Request, Response } from 'express';
 import { requireWalletMatch } from '../middleware/auth.js';
+import { bridgeCustomerStore } from '../services/bridgeCustomerStore.js';
 import {
   resolveCustomerForEmails,
   getCustomerSnapshot,
@@ -502,6 +503,12 @@ function sessionEmails(req: Request): string[] {
   return list.map((e) => String(e).trim().toLowerCase()).filter((e) => EMAIL_REGEX.test(e));
 }
 
+/** Remember which member this Bridge customer is, so webhooks can be attributed to a wallet. */
+function rememberCustomer(req: Request, customerId: string | undefined, email?: string): void {
+  const wallet = req.auth?.smartWallet || req.auth?.walletAddress || '';
+  if (customerId && wallet) void bridgeCustomerStore.link(customerId, wallet, email);
+}
+
 /**
  * GET /api/bridge/status → everything the app needs to decide whether money can move:
  * whether Bridge is configured, whether this member is already a Bridge customer (under ANY of their
@@ -525,6 +532,7 @@ router.get('/status', async (req: Request, res: Response) => {
       return;
     }
 
+    rememberCustomer(req, resolved.customerId, resolved.email);
     const snapshot = await getCustomerSnapshot(resolved.customerId);
     const verified = snapshot?.status === 'active';
 
@@ -603,6 +611,7 @@ router.post('/kyc-link', async (req: Request, res: Response) => {
       res.status(502).json({ error: 'Bridge returned no verification link.' });
       return;
     }
+    rememberCustomer(req, result.customerId ?? undefined, emails[0]);
     res.json(result);
   } catch (error) {
     console.error('[bridge/kyc-link]', error);
@@ -632,6 +641,7 @@ router.post('/virtual-account', async (req: Request, res: Response) => {
       return;
     }
 
+    rememberCustomer(req, resolved.customerId, resolved.email);
     const result = await ensureVirtualAccount({ customerId: resolved.customerId, walletAddress: wallet });
     if ('error' in result) {
       res.status(409).json({ error: result.error, reason: result.reason });

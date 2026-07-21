@@ -33,6 +33,7 @@ import requestsRouter from './routes/requests.js';
 import onramperRouter from './routes/onramper.js';
 import onramperWebhookRouter from './routes/onramperWebhook.js';
 import coinbaseRampWebhookRouter from './routes/coinbaseRampWebhook.js';
+import bridgeWebhookRouter from './routes/bridgeWebhook.js';
 import rampRouter from './routes/ramp.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
@@ -192,6 +193,7 @@ async function startServer() {
     app.use('/api/avatars', avatarRouter);
     app.use('/api/webhooks/onramper', onramperWebhookRouter); // public; verified via signature
     app.use('/api/webhooks/coinbase-ramp', coinbaseRampWebhookRouter); // public; verified via X-Hook0-Signature
+    app.use('/api/webhooks/bridge', bridgeWebhookRouter); // public; verified via X-Webhook-Signature (RSA)
     app.use('/api/stripe', requireAuth, stripeRouter);
     app.use('/api/members', requireAuth, membersRouter);
     app.use('/api/plaid', requireAuth, requireMemberCapability('canUsePlaid'), plaidRouter);

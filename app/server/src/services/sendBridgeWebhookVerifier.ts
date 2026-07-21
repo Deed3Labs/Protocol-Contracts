@@ -39,8 +39,10 @@ function normalizePublicKey(rawKey: string): string {
 }
 
 function configuredPublicKeys(): string[] {
-  const single = (process.env.SEND_BRIDGE_WEBHOOK_PUBLIC_KEY || '').trim();
-  const csv = (process.env.SEND_BRIDGE_WEBHOOK_PUBLIC_KEYS || '')
+  // BRIDGE_WEBHOOK_PUBLIC_KEY is the general one (any Bridge endpoint); the SEND_* names predate it and
+  // stay supported. Same fallback shape as the API key (SEND_BRIDGE_PAYOUT_API_KEY || BRIDGE_API_KEY).
+  const single = (process.env.SEND_BRIDGE_WEBHOOK_PUBLIC_KEY || process.env.BRIDGE_WEBHOOK_PUBLIC_KEY || '').trim();
+  const csv = (process.env.SEND_BRIDGE_WEBHOOK_PUBLIC_KEYS || process.env.BRIDGE_WEBHOOK_PUBLIC_KEYS || '')
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean);
