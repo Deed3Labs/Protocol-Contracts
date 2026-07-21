@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Check, ChevronDown, Landmark, Loader2, ShieldCheck, Sparkles, TriangleAlert, Wallet, Zap, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Clock, Landmark, Loader2, ShieldCheck, Sparkles, TriangleAlert, Wallet, Zap, type LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
@@ -13,6 +13,7 @@ import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import { gaslessWalletTransfer } from '@/lib/gaslessMoney';
 import { track } from '@/lib/analytics';
 import { scTransferToken } from '@/lib/sendCalls';
+import { getSameDayCutoff, formatCountdown } from '@/lib/achCutoff';
 import { withdrawToBank, createRampSellSession, getRampSellStatus, rampEvent, type RampSellStatus, type Eip712TypedData } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
@@ -100,6 +101,9 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offrampStage, setOfframpStage] = useState<'idle' | 'waiting' | 'sending'>('idle');
+  // Re-evaluated every second while the same-day option is on screen so the countdown ticks and the
+  // promise flips to "next business day" the moment the cutoff passes mid-session.
+  const [cutoff, setCutoff] = useState(() => getSameDayCutoff());
   // Set while an off-ramp is awaiting the user's Coinbase confirmation; if they back out first, fire a
   // "Cash-out canceled" notification from this.
   const pendingSellRef = useRef<{ amount: number; wallet: string } | null>(null);
@@ -161,6 +165,13 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
     setBankOpen(false);
     setError(null);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!open) return;
+    setCutoff(getSameDayCutoff());
+    const t = setInterval(() => setCutoff(getSameDayCutoff()), 1000);
+    return () => clearInterval(t);
+  }, [open]);
 
   useEffect(() => {
     if (step !== 'status') return;
@@ -339,7 +350,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium text-foreground">{m.name}</span>
-                      <span className="block text-xs text-muted-foreground">{m.speed}{!m.soon && (m.instantFeeRate > 0 ? ` · ${(m.instantFeeRate * 100).toFixed(1)}% fee` : ' · Free')}</span>
+                      <span className="block text-xs text-muted-foreground">{m.id === 'bank_sd' && !cutoff.makesToday ? 'Next business day' : m.speed}{!m.soon && (m.instantFeeRate > 0 ? ` · ${(m.instantFeeRate * 100).toFixed(1)}% fee` : ' · Free')}</span>
                     </span>
                     <span className={cn('h-4 w-4 shrink-0 rounded-full border-2', active && !m.soon ? 'border-foreground bg-foreground' : 'border-border')}>
                       {active && !m.soon && <Check className="h-3 w-3 text-background" strokeWidth={3} />}
@@ -493,6 +504,37 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
                 <span className="tabular-nums text-foreground">{fmt(selected.payout)}</span>
               </div>
             </div>
+
+            {/* Same-day only actually lands today if Bridge can clear the conversion AND submit the
+                batch before its 2:30 PM ET cutoff — so say so plainly before they commit, in their
+                own timezone, and stop promising "same day" once the window has closed. */}
+            {methodId === 'bank_sd' && (
+              <div
+                className={cn(
+                  'mt-3 rounded-xl border p-3 text-[11px] leading-relaxed',
+                  cutoff.makesToday ? 'border-border text-muted-foreground' : 'border-info/40 bg-info/10 text-foreground',
+                )}
+              >
+                <div className="flex items-center justify-between gap-2 font-medium text-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    {cutoff.makesToday ? 'Arrives today' : 'Arrives next business day'}
+                  </span>
+                  {cutoff.makesToday && (
+                    <span className="shrink-0 tabular-nums font-semibold text-foreground">
+                      {formatCountdown(cutoff.msRemaining)} left
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1.5">
+                  {cutoff.isWeekend
+                    ? `ACH doesn't process on weekends, so this settles the next business day. The same-day cutoff is ${cutoff.localLabel}.`
+                    : cutoff.makesToday
+                      ? `To settle today the conversion must clear and the batch must be submitted before the ${cutoff.localLabel} cutoff.`
+                      : `Today's ${cutoff.localLabel} cutoff has passed, so this settles the next business day.`}
+                </p>
+              </div>
+            )}
 
             <div className="mt-3">
               <button
