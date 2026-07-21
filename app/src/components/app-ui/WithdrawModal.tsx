@@ -230,15 +230,35 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
           return;
         }
 
-        // Bank / same-day → Bridge ACH off-ramp.
+        // Bank / same-day → Bridge ACH off-ramp. Bridge does NOT pull from a self-custody wallet: it
+        // returns a deposit address and waits. So creating the transfer is only half the job — we then
+        // send the USDC ourselves, exactly like the Coinbase instant path above. Skipping this leaves
+        // the transfer parked in `awaiting_funds` forever while the UI claims success.
         if (!bankId) throw new Error('Link a bank account to withdraw to.');
         const res = await withdrawToBank(address, { amount, plaidAccountId: bankId, rail: BANK_RAIL[methodId] ?? 'ach' });
         if (cancelled) return;
         if (!res.success) throw new Error(res.message || 'Withdrawal failed.');
+        if (!res.depositAddress) throw new Error('Withdrawal could not be funded — nothing was sent. Try again.');
+
+        setOfframpStage('sending');
+        const bc = clearContracts(ACTIVE_CHAIN_ID);
+        if (!bc) throw new Error('Bank withdrawals are unavailable on this network.');
+        const bankIsSmartAccount = embeddedWalletInfo?.accountType === 'smartAccount';
+        const bankChainClient = bankIsSmartAccount ? await getClientForChain({ id: ACTIVE_CHAIN_ID }) : undefined;
+        await scTransferToken({
+          smartWalletClient: bankChainClient,
+          ownerWallet: address,
+          token: bc.usdc,
+          to: res.depositAddress as `0x${string}`,
+          amount: res.depositAmount || String(amount),
+          chainId: ACTIVE_CHAIN_ID,
+        });
+        if (cancelled) return;
+
         setDone(true);
         track('withdraw_completed', { method: 'bank' }); // no amounts/PII
-        // Optimistic: USDC leaves Cash now; reconciles when the off-ramp debit indexes. A linked-wallet
-        // withdraw just passed THROUGH Cash (move in, off-ramp out ≈ net 0), so skip the overlay there.
+        // Optimistic only AFTER the USDC actually left. A linked-wallet withdraw just passed THROUGH
+        // Cash (move in, off-ramp out ≈ net 0), so skip the overlay there.
         if (!sourceWallet?.external) bal.applyOptimistic(-amount, 0);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Withdrawal failed.');

@@ -2335,8 +2335,22 @@ export async function runAutopayRule(
 export async function withdrawToBank(
   wallet: string,
   p: { amount: number; plaidAccountId: string; rail?: 'ach' | 'ach_same_day' },
-): Promise<{ success: boolean; providerReference?: string; status?: string; message?: string }> {
-  const r = await apiRequest<{ success: boolean; providerReference?: string; status?: string }>(
+): Promise<{
+  success: boolean;
+  providerReference?: string;
+  status?: string;
+  message?: string;
+  /** Bridge's deposit address — the caller MUST send USDC here to fund the transfer. */
+  depositAddress?: string;
+  depositAmount?: string;
+}> {
+  const r = await apiRequest<{
+    success: boolean;
+    providerReference?: string;
+    status?: string;
+    depositAddress?: string;
+    depositAmount?: string;
+  }>(
     `/api/withdraw/${wallet.toLowerCase()}`,
     { method: 'POST', body: JSON.stringify(p), timeout: 120000 },
   );

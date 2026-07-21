@@ -37,13 +37,25 @@ export interface WithdrawResult {
   reason?: string;
   /** True when the rail is not configured yet (Bridge/Plaid creds) — UI shows "coming soon", not an error. */
   notConfigured?: boolean;
+  /**
+   * Bridge's deposit address for this transfer. **The caller MUST send USDC here** — Bridge does not
+   * pull from self-custody wallets ("Bridge either pulls funds [bridge wallet / prefunded account] or
+   * generates deposit instructions when a third-party source (e.g. bank, external wallet) is
+   * specified"). Until it's funded the transfer sits in `awaiting_funds` and nothing reaches the bank.
+   */
+  depositAddress?: string;
+  /** Exact amount Bridge expects at that address. */
+  depositAmount?: string;
 }
 
-/** Plaid Auth: account_number + routing_number for a specific linked account the user owns. */
-async function resolveBankNumbers(
+/** Plaid Auth: account_number + routing_number + checking/savings for a linked account the user owns. */
+export async function resolveBankNumbers(
   wallet: string,
   plaidAccountId: string,
-): Promise<{ accountNumber: string; routingNumber: string; ownerName: string } | { error: string }> {
+): Promise<
+  | { accountNumber: string; routingNumber: string; ownerName: string; checkingOrSavings: 'checking' | 'savings' }
+  | { error: string }
+> {
   const client = getPlaidClient();
   if (!client || !plaidTokenStore.isConfigured()) {
     return { error: 'not_configured' };
@@ -61,7 +73,10 @@ async function resolveBankNumbers(
     const acct = resp.data.accounts?.find((a) => a.account_id === plaidAccountId);
     const ownerName = resp.data.accounts?.length ? (acct?.name || 'Account holder') : 'Account holder';
     if (!ach.account || !ach.routing) return { error: 'This bank did not return account/routing numbers.' };
-    return { accountNumber: ach.account, routingNumber: ach.routing, ownerName };
+    // Bridge wants the real account type; Plaid's subtype tells us. Anything that isn't explicitly
+    // savings (checking, money market, …) is treated as checking for ACH purposes.
+    const checkingOrSavings = acct?.subtype === 'savings' ? 'savings' : 'checking';
+    return { accountNumber: ach.account, routingNumber: ach.routing, ownerName, checkingOrSavings };
   }
   return { error: 'Could not find that linked bank account.' };
 }
@@ -107,7 +122,7 @@ export async function withdrawToBank(input: {
       account: {
         account_number: numbers.accountNumber,
         routing_number: numbers.routingNumber,
-        checking_or_savings: 'checking',
+        checking_or_savings: numbers.checkingOrSavings,
       },
     }),
   });
@@ -115,7 +130,11 @@ export async function withdrawToBank(input: {
     return { success: false, reason: ext.message || 'Could not register your bank with Bridge.' };
   }
 
-  const transfer = await bridge<{ id?: string; state?: string }>('/transfers', {
+  const transfer = await bridge<{
+    id?: string;
+    state?: string;
+    source_deposit_instructions?: { to_address?: string; amount?: string };
+  }>('/transfers', {
     method: 'POST',
     headers: { 'Idempotency-Key': randomUUID() },
     body: JSON.stringify({
@@ -123,6 +142,10 @@ export async function withdrawToBank(input: {
       on_behalf_of: customerId,
       source: { payment_rail: BRIDGE_USDC_CHAIN, currency: 'usdc', from_address: input.wallet },
       destination: { payment_rail: rail, currency: 'usd', external_account_id: ext.data.id },
+      // Bridge matches the incoming deposit on from_address by default. We send from the member's
+      // Privy SMART wallet, which needn't be the address we quote here, so accept any sender —
+      // Bridge "strongly recommends" this for crypto deposits for exactly this reason.
+      features: { allow_any_from_address: true },
       // Standard ACH is free; the same-day rail carries our developer fee. Bridge withholds it and
       // settles it to our fee account monthly — nothing to net out on our side.
       ...(rail === 'ach_same_day' ? { developer_fee_percent: INSTANT_FEE_PERCENT } : {}),
@@ -132,5 +155,18 @@ export async function withdrawToBank(input: {
     return { success: false, reason: transfer.message || 'Bridge could not create the withdrawal.' };
   }
 
-  return { success: true, providerReference: transfer.data.id, status: transfer.data.state };
+  const deposit = transfer.data.source_deposit_instructions;
+  if (!deposit?.to_address) {
+    // Without a deposit address there is nowhere to send the USDC, so the transfer could never settle.
+    // Fail loudly rather than report a withdrawal that will silently sit in `awaiting_funds`.
+    return { success: false, reason: 'Bridge did not return deposit instructions for this withdrawal.' };
+  }
+
+  return {
+    success: true,
+    providerReference: transfer.data.id,
+    status: transfer.data.state,
+    depositAddress: deposit.to_address,
+    depositAmount: deposit.amount || input.amountUsd.toFixed(2),
+  };
 }
