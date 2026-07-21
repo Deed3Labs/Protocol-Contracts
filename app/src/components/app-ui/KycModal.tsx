@@ -1,16 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { ShieldCheck, IdCard, Camera, Check, Loader2, Lock, Sparkles, ScanLine } from 'lucide-react';
+import { ShieldCheck, IdCard, Camera, Check, Loader2, Lock, Sparkles, ScanLine, ExternalLink } from 'lucide-react';
 import { PERSONA_CONFIGURED, runPersonaInquiry } from '@/lib/personaInquiry';
+import { useBridge } from '@/context/BridgeContext';
+import { getBridgeStatus, startBridgeKyc } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 /*
- * Identity verification gate (KYC). Required before moving money. When Persona is configured
- * (VITE_PERSONA_TEMPLATE_ID), the verifying step launches the real embedded Persona inquiry and
- * returns its inquiry id; otherwise it falls back to a mocked checklist so the prototype works.
+ * Identity verification gate (KYC). Required before moving money. Three paths, in priority order:
  *
- * The completed inquiry id is the reusable KYC "passport" handed to Bridge customer creation
- * (persona_inquiry_type) / Colossus — see BridgeContext + lib/integrations.
+ *  1. BRIDGE (production): we ask for their full legal name, get a hosted Bridge link (Terms of
+ *     Service first, then the KYC flow) and open it in a new tab, then poll until Bridge reports the
+ *     customer `active`. Bridge owns the verdict, so it survives reloads and matches what the backend
+ *     will actually permit. If any of their account emails already maps to a Bridge customer, the
+ *     backend reuses it instead of onboarding them twice.
+ *  2. Persona embedded inquiry (VITE_PERSONA_TEMPLATE_ID) — the pre-Bridge path.
+ *  3. A mocked checklist so the prototype works with neither configured.
  */
 export default function KycModal({
   open,
@@ -21,17 +26,59 @@ export default function KycModal({
   onOpenChange: (o: boolean) => void;
   onVerified: (inquiryId?: string) => void;
 }) {
-  const [step, setStep] = useState<'intro' | 'verifying' | 'done'>('intro');
+  const { configured: bridgeConfigured } = useBridge();
+  const [step, setStep] = useState<'intro' | 'name' | 'verifying' | 'done'>('intro');
   const [phase, setPhase] = useState(0);
   const [inquiryId, setInquiryId] = useState<string | undefined>(undefined);
+  const [fullName, setFullName] = useState('');
+  const [hostedUrl, setHostedUrl] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const launchedRef = useRef(false);
 
   useEffect(() => {
     if (open) {
       setStep('intro');
       setInquiryId(undefined);
+      setHostedUrl(null);
+      setError(null);
     }
   }, [open]);
+
+  // Bridge: fetch the hosted link and open it. Popup blockers eat window.open inside an await, so we
+  // keep the URL around and show a manual "Open verification" link as the fallback.
+  const startBridge = async () => {
+    if (fullName.trim().length < 2) return;
+    setStarting(true);
+    setError(null);
+    const r = await startBridgeKyc(fullName.trim());
+    setStarting(false);
+    if (!r.url) {
+      setError(r.message || 'Could not start verification. Try again.');
+      return;
+    }
+    setHostedUrl(r.url);
+    window.open(r.url, '_blank', 'noopener,noreferrer');
+    setStep('verifying');
+  };
+
+  // Bridge: poll until the customer goes `active`. The user completes KYC in the other tab, so there
+  // is no callback to hang off of.
+  useEffect(() => {
+    if (step !== 'verifying' || !bridgeConfigured) return;
+    let active = true;
+    const id = setInterval(() => {
+      void getBridgeStatus()
+        .then((s) => {
+          if (active && s.verified) setStep('done');
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [step, bridgeConfigured]);
 
   useEffect(() => {
     if (step !== 'verifying') {
@@ -39,6 +86,7 @@ export default function KycModal({
       launchedRef.current = false;
       return;
     }
+    if (bridgeConfigured) return; // Bridge owns this step — see the poll above.
 
     // Real Persona embedded inquiry.
     if (PERSONA_CONFIGURED) {
@@ -70,7 +118,7 @@ export default function KycModal({
       clearTimeout(t2);
       clearTimeout(t3);
     };
-  }, [step]);
+  }, [step, bridgeConfigured]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -81,7 +129,7 @@ export default function KycModal({
               <ShieldCheck className="h-6 w-6" />
             </span>
             <h2 className="mt-3 font-display text-2xl tracking-tight text-foreground">Verify your identity</h2>
-            <p className="mt-1.5 text-sm text-muted-foreground">A quick check is required before you can move money. Takes about 2 minutes — powered by Persona.</p>
+            <p className="mt-1.5 text-sm text-muted-foreground">A quick check is required before you can move money. Takes about 2 minutes — powered by {bridgeConfigured ? 'Bridge' : 'Persona'}.</p>
 
             <div className="mt-4 space-y-2.5">
               <Need icon={IdCard} text="A government-issued photo ID" />
@@ -91,7 +139,7 @@ export default function KycModal({
 
             <button
               type="button"
-              onClick={() => setStep('verifying')}
+              onClick={() => setStep(bridgeConfigured ? 'name' : 'verifying')}
               className="mt-5 w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
             >
               Start verification
@@ -110,15 +158,60 @@ export default function KycModal({
           </div>
         )}
 
+        {step === 'name' && (
+          <div className="p-5">
+            <div className="mb-1 text-base font-semibold text-foreground">Your legal name</div>
+            <p className="text-sm text-muted-foreground">Exactly as it appears on your government ID — Bridge matches it against your documents.</p>
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Full legal name</span>
+              <input
+                autoFocus
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void startBridge(); }}
+                placeholder="Jordan Alex Rivera"
+                className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
+              />
+            </label>
+            {error && <p className="mt-2 text-xs text-negative">{error}</p>}
+            <button
+              type="button"
+              onClick={() => void startBridge()}
+              disabled={fullName.trim().length < 2 || starting}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
+            >
+              {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {starting ? 'Opening…' : 'Continue to verification'}
+            </button>
+            <p className="mt-3 text-center text-[11px] text-muted-foreground">Opens in a new tab. Come back here when you're done — we'll pick it up automatically.</p>
+          </div>
+        )}
+
         {step === 'verifying' && (
           <div className="p-5">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm font-semibold text-foreground">Verifying identity</span>
               <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                <ScanLine className="h-3 w-3" /> Powered by Persona
+                <ScanLine className="h-3 w-3" /> Powered by {bridgeConfigured ? 'Bridge' : 'Persona'}
               </span>
             </div>
-            {PERSONA_CONFIGURED ? (
+            {bridgeConfigured ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Loader2 className="h-9 w-9 animate-spin text-muted-foreground" />
+                <p className="mt-4 text-sm font-medium text-foreground">Waiting for your verification…</p>
+                <p className="mt-1 text-xs text-muted-foreground">Finish the steps in the Bridge tab. This updates on its own.</p>
+                {hostedUrl && (
+                  <a
+                    href={hostedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" /> Reopen verification
+                  </a>
+                )}
+              </div>
+            ) : PERSONA_CONFIGURED ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <Loader2 className="h-9 w-9 animate-spin text-muted-foreground" />
                 <p className="mt-4 text-sm font-medium text-foreground">Opening secure verification…</p>

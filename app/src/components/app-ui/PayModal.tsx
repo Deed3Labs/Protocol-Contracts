@@ -163,7 +163,7 @@ export default function PayModal({
   useEffect(() => {
     if (!open || !email) return;
     let cancelled = false;
-    getBridgeVirtualAccount(email)
+    getBridgeVirtualAccount()
       .then((r) => {
         if (!cancelled) setVa(r);
       })

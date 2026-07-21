@@ -58,8 +58,9 @@ export default function AppShell() {
   }, [collapsed]);
 
   return (
-    <KycProvider>
-      <BridgeProvider>
+    // Bridge wraps KYC: verification state comes FROM Bridge, so KycModal can read useBridge().
+    <BridgeProvider>
+      <KycProvider>
       <MemberProfileProvider>
       <OnboardingGate>
       <ClearBalancesProvider>
@@ -94,7 +95,7 @@ export default function AppShell() {
       </ClearBalancesProvider>
       </OnboardingGate>
       </MemberProfileProvider>
-      </BridgeProvider>
-    </KycProvider>
+      </KycProvider>
+    </BridgeProvider>
   );
 }

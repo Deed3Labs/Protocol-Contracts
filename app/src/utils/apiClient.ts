@@ -1341,9 +1341,59 @@ export interface BridgeVirtualAccount {
   accountLast4?: string | null;
 }
 
-/** The user's Bridge virtual account (USDC funding via ACH account/routing). { available:false } if none. */
-export async function getBridgeVirtualAccount(email: string): Promise<BridgeVirtualAccount> {
-  const r = await apiRequest<BridgeVirtualAccount>(`/api/bridge/virtual-account?email=${encodeURIComponent(email)}`);
+export interface BridgeStatus {
+  configured: boolean;
+  customerId?: string | null;
+  /** Which of the account's emails Bridge already knows them by, if any. */
+  matchedEmail?: string | null;
+  verified: boolean;
+  kycStatus: string;
+  tosAccepted?: boolean;
+  baseEndorsement?: 'incomplete' | 'approved' | 'revoked';
+  payinFiat?: 'pending' | 'active' | 'inactive' | 'rejected';
+  payoutFiat?: 'pending' | 'active' | 'inactive' | 'rejected';
+  rejectionReason?: string | null;
+  virtualAccount: {
+    accountNumber: string | null;
+    routingNumber: string | null;
+    bankName: string | null;
+    beneficiary: string | null;
+    paymentRails?: string[];
+  } | null;
+}
+
+/** Bridge verification + USD account state for the signed-in member. Never creates anything. */
+export async function getBridgeStatus(): Promise<BridgeStatus> {
+  const r = await apiRequest<BridgeStatus>('/api/bridge/status');
+  return r.error || !r.data
+    ? { configured: false, verified: false, kycStatus: 'not_started', virtualAccount: null }
+    : r.data;
+}
+
+/** Hosted Bridge verification link (ToS first, then KYC). Reuses an existing Bridge customer. */
+export async function startBridgeKyc(
+  fullName: string,
+): Promise<{ url?: string; kycUrl?: string | null; tosUrl?: string | null; customerId?: string | null; message?: string }> {
+  const r = await apiRequest<{ url: string; kycUrl: string | null; tosUrl: string | null; customerId: string | null }>(
+    '/api/bridge/kyc-link',
+    { method: 'POST', body: JSON.stringify({ fullName }) },
+  );
+  return r.error || !r.data ? { message: r.error || 'Could not start verification.' } : r.data;
+}
+
+/** Open (or fetch) the member's USD account — this is what mints their account + routing numbers. */
+export async function openBridgeVirtualAccount(): Promise<BridgeVirtualAccount & { message?: string }> {
+  const r = await apiRequest<BridgeVirtualAccount>('/api/bridge/virtual-account', { method: 'POST' });
+  return r.error || !r.data ? { available: false, message: r.error } : r.data;
+}
+
+/**
+ * The signed-in member's Bridge virtual account (USDC funding via ACH account/routing).
+ * { available:false } if none. The customer is resolved server-side from the emails Privy verified
+ * for this session — deliberately NOT a parameter, since the response carries bank details.
+ */
+export async function getBridgeVirtualAccount(): Promise<BridgeVirtualAccount> {
+  const r = await apiRequest<BridgeVirtualAccount>('/api/bridge/virtual-account');
   return r.error || !r.data ? { available: false } : r.data;
 }
 
@@ -2277,10 +2327,14 @@ export async function runAutopayRule(
   return r.data;
 }
 
-/** Withdraw (cash-out): USDC on Base → a Plaid-linked bank via Bridge off-ramp. */
+/**
+ * Withdraw (cash-out): USDC on Base → a Plaid-linked bank via Bridge off-ramp.
+ * `rail`: 'ach' (1–3 days, free) or 'ach_same_day' (today, carries our 1% developer fee).
+ * The Bridge customer is resolved server-side from the session's verified emails.
+ */
 export async function withdrawToBank(
   wallet: string,
-  p: { amount: number; plaidAccountId: string; email?: string },
+  p: { amount: number; plaidAccountId: string; rail?: 'ach' | 'ach_same_day' },
 ): Promise<{ success: boolean; providerReference?: string; status?: string; message?: string }> {
   const r = await apiRequest<{ success: boolean; providerReference?: string; status?: string }>(
     `/api/withdraw/${wallet.toLowerCase()}`,

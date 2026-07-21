@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { createHash } from 'crypto';
-import { bridge, resolveCustomerId } from './billerPayoutService.js';
+import { bridge } from './billerPayoutService.js';
+import { resolveCustomerForEmails } from './bridgeCustomerService.js';
 import { plaidTokenStore } from './plaidTokenStore.js';
 import { getPlaidClient } from '../routes/plaid.js';
 
@@ -18,6 +19,16 @@ import { getPlaidClient } from '../routes/plaid.js';
  */
 
 const BRIDGE_USDC_CHAIN = (process.env.BRIDGE_PAYOUT_SOURCE_CHAIN || 'base').trim();
+
+/**
+ * Payout rails we expose. Bridge's outbound USD rails are `ach`, `ach_same_day` and `wire` — there is
+ * no instant/FedNow payout (FedNow is inbound only), so `ach_same_day` IS our "instant" tier.
+ * Standard ACH stays free; the fast rail carries our developer fee.
+ */
+export type WithdrawRail = 'ach' | 'ach_same_day';
+
+/** Our cut on the fast rail, as a Bridge `developer_fee_percent` string ("1" = 1%). */
+const INSTANT_FEE_PERCENT = (process.env.BRIDGE_INSTANT_WITHDRAW_FEE_PERCENT || '1').trim();
 
 export interface WithdrawResult {
   success: boolean;
@@ -58,15 +69,19 @@ async function resolveBankNumbers(
 /** Pay out USDC to the user's linked bank via Bridge: USDC pulled from wallet → ACH to the bank. */
 export async function withdrawToBank(input: {
   wallet: string;
-  email: string;
+  /** Every email on the account — any of them may be the one Bridge knows this member by. */
+  emails: string[];
   plaidAccountId: string;
   amountUsd: number;
+  rail?: WithdrawRail;
 }): Promise<WithdrawResult> {
-  if (!input.email) return { success: false, reason: 'Complete identity verification to withdraw.' };
+  const emails = input.emails.filter(Boolean);
+  if (emails.length === 0) return { success: false, reason: 'Complete identity verification to withdraw.' };
   if (!input.plaidAccountId) return { success: false, reason: 'Choose a bank to withdraw to.' };
   if (!(input.amountUsd > 0)) return { success: false, reason: 'Amount must be greater than zero.' };
 
-  const customerId = await resolveCustomerId(input.email);
+  const rail: WithdrawRail = input.rail === 'ach_same_day' ? 'ach_same_day' : 'ach';
+  const customerId = (await resolveCustomerForEmails(emails))?.customerId ?? null;
   if (!customerId) {
     // No Bridge customer (or Bridge unconfigured) → treat as "rail not ready yet".
     return { success: false, notConfigured: true, reason: 'Bank withdrawals are not available yet.' };
@@ -89,7 +104,11 @@ export async function withdrawToBank(input: {
       currency: 'usd',
       account_type: 'us',
       account_owner_name: numbers.ownerName,
-      account: { account_number: numbers.accountNumber, routing_number: numbers.routingNumber },
+      account: {
+        account_number: numbers.accountNumber,
+        routing_number: numbers.routingNumber,
+        checking_or_savings: 'checking',
+      },
     }),
   });
   if (!ext.ok || !ext.data?.id) {
@@ -103,7 +122,10 @@ export async function withdrawToBank(input: {
       amount: input.amountUsd.toFixed(2),
       on_behalf_of: customerId,
       source: { payment_rail: BRIDGE_USDC_CHAIN, currency: 'usdc', from_address: input.wallet },
-      destination: { payment_rail: 'ach', currency: 'usd', external_account_id: ext.data.id },
+      destination: { payment_rail: rail, currency: 'usd', external_account_id: ext.data.id },
+      // Standard ACH is free; the same-day rail carries our developer fee. Bridge withholds it and
+      // settles it to our fee account monthly — nothing to net out on our side.
+      ...(rail === 'ach_same_day' ? { developer_fee_percent: INSTANT_FEE_PERCENT } : {}),
     }),
   });
   if (!transfer.ok || !transfer.data?.id) {

@@ -4,7 +4,6 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useKyc } from '@/context/KycContext';
-import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useWallets } from '@privy-io/react-auth';
 import { useSmartWallets } from '@privy-io/react-auth/smart-wallets';
@@ -36,14 +35,18 @@ interface PayoutMethod {
   instantFeeRate: number;
   soon?: boolean;
 }
-// `bank`/`bank_sd` settle to a bank via the Bridge off-ramp (ACH) → need in-app KYC.
+// `bank`/`bank_sd` settle to a bank via the Bridge off-ramp → need in-app KYC.
 // `instant` (debit card) goes through Onramper's sell flow → Onramper handles KYC + payout.
+// Bridge has no instant fiat PAYOUT rail (FedNow is inbound only), so same-day ACH is the fast tier —
+// it carries our 1% developer fee, while standard ACH stays free.
 const METHODS: PayoutMethod[] = [
   { id: 'bank', name: 'Bank account', icon: Landmark, speed: '1–3 business days', instantFeeRate: 0 },
-  { id: 'bank_sd', name: 'Same-day to bank', icon: Zap, speed: 'Today by 6pm ET', instantFeeRate: 0.005 },
+  { id: 'bank_sd', name: 'Same-day to bank', icon: Zap, speed: 'Today by 6pm ET', instantFeeRate: 0.01 },
   { id: 'instant', name: 'Instant to debit card', icon: Zap, speed: 'Arrives in minutes', instantFeeRate: 0.015 },
 ];
 const BANK_METHODS = new Set(['bank', 'bank_sd']);
+/** Which Bridge payout rail each bank method maps to. */
+const BANK_RAIL: Record<string, 'ach' | 'ach_same_day'> = { bank: 'ach', bank_sd: 'ach_same_day' };
 
 interface Provider {
   id: string;
@@ -107,7 +110,6 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const { accounts, openManager: openAccounts } = useExternalAccounts();
   const banks = accounts.map((a) => ({ id: a.id, label: `${a.name} ••${a.mask}` }));
   const { verified, openKyc } = useKyc();
-  const { email } = useMemberProfile();
   const { address, embeddedWalletInfo } = useAppKitAccount();
   const { getClientForChain } = useSmartWallets();
   const bal = useClearBalances();
@@ -230,7 +232,7 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
 
         // Bank / same-day → Bridge ACH off-ramp.
         if (!bankId) throw new Error('Link a bank account to withdraw to.');
-        const res = await withdrawToBank(address, { amount, plaidAccountId: bankId, email: email ?? undefined });
+        const res = await withdrawToBank(address, { amount, plaidAccountId: bankId, rail: BANK_RAIL[methodId] ?? 'ach' });
         if (cancelled) return;
         if (!res.success) throw new Error(res.message || 'Withdrawal failed.');
         setDone(true);
