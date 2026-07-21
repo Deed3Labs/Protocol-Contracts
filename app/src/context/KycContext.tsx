@@ -8,8 +8,6 @@ export type KycStatus = 'unverified' | 'verified';
 interface KycValue {
   status: KycStatus;
   verified: boolean;
-  /** Bridge customer id once they exist — the reusable identity across Bridge products (cards, etc.). */
-  inquiryId: string | null;
   /** Open the KYC flow; runs `onVerified` after a successful verification. */
   openKyc: (onVerified?: () => void) => void;
   /** Run `action` if already verified; otherwise open KYC first and run it on success. */
@@ -24,7 +22,6 @@ export function useKyc(): KycValue {
     useContext(Ctx) ?? {
       status: 'verified',
       verified: true,
-      inquiryId: null,
       openKyc: () => {},
       gate: (action) => action(),
     }
@@ -41,12 +38,14 @@ export function useKyc(): KycValue {
  * flag so non-production environments still work.
  */
 export function KycProvider({ children }: { children: ReactNode }) {
-  const { configured, customerStatus, refresh } = useBridge();
-  const [localVerified, setLocalVerified] = useState(false);
+  const { customerStatus, refresh } = useBridge();
   const [open, setOpen] = useState(false);
   const cbRef = useRef<(() => void) | null>(null);
 
-  const verified = configured ? customerStatus === 'active' : localVerified;
+  // Bridge is the ONLY source of this verdict. There is no local override: verification exists purely
+  // to unlock Bridge, so anything we decided locally would let someone past a gate Bridge still holds
+  // shut — the UI would say "verified" and every transfer would then fail.
+  const verified = customerStatus === 'active';
   const status: KycStatus = verified ? 'verified' : 'unverified';
 
   const openKyc = (onVerified?: () => void) => {
@@ -59,7 +58,6 @@ export function KycProvider({ children }: { children: ReactNode }) {
     else openKyc(action);
   };
   const handleVerified = () => {
-    setLocalVerified(true);
     track('kyc_verified');
     void refresh();
     setOpen(false);
@@ -69,7 +67,7 @@ export function KycProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ status, verified, inquiryId: null, openKyc, gate }}>
+    <Ctx.Provider value={{ status, verified, openKyc, gate }}>
       {children}
       <KycModal open={open} onOpenChange={setOpen} onVerified={handleVerified} />
     </Ctx.Provider>
