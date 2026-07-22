@@ -1,18 +1,23 @@
 import { useEffect } from 'react';
-import { Home, FileText, SendHorizontal, ArrowDownLeft, Calendar, CircleCheck, TrendingUp, Flame, Repeat } from 'lucide-react';
+import { Home, SendHorizontal, ArrowDownLeft, Calendar, CircleCheck, TrendingUp, Flame, Repeat } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
 import ActionTile from '@/components/app-ui/ActionTile';
 import RentEquityAnalyticsChart from '@/components/app-ui/charts/RentEquityAnalyticsChart';
 import BillTimeline, { type TimelineBill } from '@/components/app-ui/BillTimeline';
+import BillRolodex from '@/components/app-ui/BillRolodex';
 import CardVisual from '@/components/app-ui/CardVisual';
 import { usePay } from '@/context/PayContext';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
 
 const fmtUsd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-/** Pay — Clear Pay's rent/bill core, send/request, card, and rent-to-equity viz. */
+/**
+ * Pay — the member's bills, in one place. The rolodex IS the page: add, track and manage every bill
+ * (manual + Plaid-detected), with equity credits earned alongside. Paying from the Clear balance needs
+ * verification; adding and tracking bills does not, so the rolodex is open to everyone.
+ */
 export default function PayPage() {
-  const { bills, summary, openPay, openPortals, reconcile } = usePay();
+  const { bills, summary, openPay, reconcile } = usePay();
   const { openSend, openRequest, openAutoSave } = useMoneyActions();
   const timelineBills: TimelineBill[] = bills.map((b) => ({ id: b.id, name: b.name, dateLabel: b.dueLabel, amount: b.amount, icon: b.icon }));
   const streak = summary?.streak ?? 0;
@@ -21,12 +26,13 @@ export default function PayPage() {
   useEffect(() => {
     void reconcile();
   }, [reconcile]);
+
   return (
     <div className="animate-fade-in space-y-5">
       <header>
         <h1 className="font-display text-3xl tracking-tight text-foreground">Pay</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Pay rent &amp; bills — and build equity with every on-time payment.
+          Every bill in one place — and equity for every on-time payment.
         </p>
       </header>
 
@@ -44,12 +50,14 @@ export default function PayPage() {
         ]}
       />
 
+      {/* The rolodex leads — this page is the bills, not a tile that opens them. */}
+      <BillRolodex />
+
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <h3 className="mb-3 text-xs font-medium text-muted-foreground">Make a payment</h3>
+          <h3 className="mb-3 text-xs font-medium text-muted-foreground">Quick actions</h3>
           <div className="grid grid-cols-2 gap-3">
             <ActionTile icon={Home} label="Pay rent" hint="Schedule or pay now" primary onClick={() => openPay('rent')} />
-            <ActionTile icon={FileText} label="Pay a bill" hint="Utilities, rent & more" onClick={openPortals} />
             <ActionTile icon={SendHorizontal} label="Send" hint="To anyone" onClick={openSend} />
             <ActionTile icon={ArrowDownLeft} label="Request" hint="Get paid" onClick={openRequest} />
             <ActionTile icon={Repeat} label="Auto-save" hint="Sign once, build equity" onClick={openAutoSave} />
