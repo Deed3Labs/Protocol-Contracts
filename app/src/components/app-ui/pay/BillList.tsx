@@ -139,21 +139,21 @@ export default function BillList({
                 onClick={() => onSelect(bill.id)}
                 aria-current={selected}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors',
+                  'flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition-colors',
                   selected ? 'border-foreground/20 bg-secondary' : 'border-border hover:bg-secondary/40',
                 )}
               >
                 {/* calendar date chip — the "when", tinted by urgency */}
-                <span className={cn('flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg', CHIP[entry.status])}>
+                <span className={cn('flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-lg', CHIP[entry.status])}>
                   {entry.next ? (
                     <>
                       <span className="text-[9px] font-medium uppercase leading-none tracking-wide opacity-70">
                         {entry.next.toLocaleDateString('en-US', { month: 'short' })}
                       </span>
-                      <span className="font-display text-lg leading-tight tabular-nums">{entry.next.getDate()}</span>
+                      <span className="font-display text-[15px] leading-none tabular-nums">{entry.next.getDate()}</span>
                     </>
                   ) : (
-                    <Receipt className="h-5 w-5 opacity-60" />
+                    <Receipt className="h-4 w-4 opacity-60" />
                   )}
                 </span>
 
@@ -165,7 +165,7 @@ export default function BillList({
                       <span className="shrink-0 rounded bg-secondary px-1 py-0.5 text-[10px] font-medium text-muted-foreground">Auto</span>
                     )}
                   </span>
-                  <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                  <span className="block truncate text-[11px] text-muted-foreground">
                     {bill.dueDay ? 'Monthly' : 'One-time'}
                     {statusWord && (
                       <>

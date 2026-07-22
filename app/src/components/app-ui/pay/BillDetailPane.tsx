@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Globe, Landmark, Sparkles, TrendingUp, CalendarClock, Wallet, AlertCircle, ChevronLeft } from 'lucide-react';
+import { Globe, Landmark, Sparkles, TrendingUp, CalendarClock, Wallet, AlertCircle, X } from 'lucide-react';
 import { billTiming } from '@/lib/billStatus';
 import { STATUS_PILL } from '@/components/app-ui/pay/statusStyle';
 import { CATEGORY_TINT } from '@/components/app-ui/pay/categoryStyle';
@@ -117,36 +117,37 @@ export default function BillDetailPane({
 
   return (
     <div className="flex h-full flex-col p-4 sm:p-5">
-      {/* Breadcrumb back to the month summary — on desktop the list stays visible, but selecting
-          replaces the summary, so this is the way back to it (the row toggle is the other). */}
-      {onClose && (
-        <button
-          type="button"
-          onClick={onClose}
-          className="mb-3 -ml-1.5 inline-flex w-fit items-center gap-1 rounded-lg py-1 pl-1.5 pr-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-        >
-          <ChevronLeft className="h-4 w-4" /> Summary
-        </button>
-      )}
-
-      {/* Hero: the amount leads, the name sits above it, and the facts you'd check next read as
-          labelled pairs — the invoice-header pattern, which has a far clearer hierarchy than a name
-          competing with an amount at similar weight. */}
+      {/* Hero: name and a close control on one line, amount + status beneath. Close sits in the
+          corner like the add form's X (no separate back line) — it returns to the month summary. */}
       <div className="flex items-start gap-3">
         <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', CATEGORY_TINT[bill.type])}>
           <bill.icon className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-foreground">{bill.name}</div>
-          <div className="mt-0.5 flex items-baseline gap-0.5">
-            <span className="text-base text-muted-foreground">$</span>
-            <span className="font-display text-4xl tracking-tight tabular-nums text-foreground">{money(bill.amount).split('.')[0]}</span>
-            <span className="text-base text-muted-foreground">.{money(bill.amount).split('.')[1]}</span>
+          <div className="flex items-start gap-2">
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{bill.name}</span>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Back to summary"
+                className="-mr-1 -mt-0.5 shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <div className="mt-1 flex items-end justify-between gap-2">
+            <span className="flex items-baseline gap-0.5">
+              <span className="text-base text-muted-foreground">$</span>
+              <span className="font-display text-4xl tracking-tight tabular-nums text-foreground">{money(bill.amount).split('.')[0]}</span>
+              <span className="text-base text-muted-foreground">.{money(bill.amount).split('.')[1]}</span>
+            </span>
+            <span className={cn('mb-1 shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium', STATUS_PILL[timing.status])}>
+              {timing.label || 'No due date'}
+            </span>
           </div>
         </div>
-        <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium', STATUS_PILL[timing.status])}>
-          {timing.label || 'No due date'}
-        </span>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-3 border-y border-border py-3">
