@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Globe, Landmark, Sparkles, TrendingUp, CalendarClock, Wallet } from 'lucide-react';
+import { Globe, Landmark, Sparkles, TrendingUp, CalendarClock, Wallet, AlertCircle } from 'lucide-react';
 import { billTiming } from '@/lib/billStatus';
 import { STATUS_TINT, STATUS_PILL } from '@/components/app-ui/pay/statusStyle';
 import { usePay, creditsFor, type Bill } from '@/context/PayContext';
@@ -165,6 +165,17 @@ export default function BillDetailPane({ bill, bills }: { bill: Bill | null; bil
               </span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* What's actually at stake when a bill runs late. Not a risk score — the streak really does
+          reset, and the multiplier really does drop back to 1x. */}
+      {timing.status === 'overdue' && streak > 0 && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-negative/10 p-2.5">
+          <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0 text-negative" />
+          <p className="text-[11px] leading-relaxed text-negative">
+            Paying late ends your {streak}-month streak and drops earning back to 1×.
+          </p>
         </div>
       )}
 

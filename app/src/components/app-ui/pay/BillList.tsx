@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { billTiming, billUrgency, type BillStatus } from '@/lib/billStatus';
 import { STATUS_TINT, STATUS_TEXT } from '@/components/app-ui/pay/statusStyle';
-import type { Bill } from '@/context/PayContext';
+import { usePay, type Bill } from '@/context/PayContext';
 import { cn } from '@/lib/utils';
 
 /*
@@ -34,6 +34,7 @@ export default function BillList({
   onSelect: (id: string) => void;
   onAdd: () => void;
 }) {
+  const { streak } = usePay();
   const [filter, setFilter] = useState<FilterId>('all');
   const [query, setQuery] = useState('');
 
@@ -149,7 +150,12 @@ export default function BillList({
                       <span className="shrink-0 rounded bg-secondary px-1 py-0.5 text-[10px] font-medium text-muted-foreground">Auto</span>
                     )}
                   </span>
-                  <span className={cn('block truncate text-[11px]', STATUS_TEXT[timing.status])}>{timing.label || 'No due date'}</span>
+                  {/* An overdue bill ends the on-time streak, which drops the earning multiplier —
+                      that's the real stake, so name it rather than showing an invented risk score. */}
+                  <span className={cn('block truncate text-[11px]', STATUS_TEXT[timing.status])}>
+                    {timing.label || 'No due date'}
+                    {timing.status === 'overdue' && streak > 0 && ' · streak at risk'}
+                  </span>
                 </span>
                 <span className={cn('shrink-0 text-sm tabular-nums', timing.status === 'paid' ? 'text-muted-foreground' : 'font-medium text-foreground')}>
                   {bill.amount > 0 ? fmt(bill.amount) : '—'}

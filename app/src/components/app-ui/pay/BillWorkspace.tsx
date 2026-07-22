@@ -3,6 +3,7 @@ import { ChevronLeft } from 'lucide-react';
 import BillList from '@/components/app-ui/pay/BillList';
 import BillDetailPane from '@/components/app-ui/pay/BillDetailPane';
 import BillAddForm from '@/components/app-ui/pay/BillAddForm';
+import BillActivity from '@/components/app-ui/pay/BillActivity';
 import { usePay } from '@/context/PayContext';
 import { cn } from '@/lib/utils';
 
@@ -36,7 +37,7 @@ export default function BillWorkspace() {
   };
 
   return (
-    <>
+    <div className="space-y-3">
       <div className="grid gap-3 lg:h-[460px] lg:grid-cols-[minmax(0,38fr)_minmax(0,62fr)]">
         <div className={cn('min-h-0', paneOpen && 'hidden lg:block')}>
           <BillList
@@ -77,6 +78,13 @@ export default function BillWorkspace() {
           </div>
         </div>
       </div>
-    </>
+
+      <BillActivity
+        onSelect={(id) => {
+          setAdding(false);
+          setSelectedId(id);
+        }}
+      />
+    </div>
   );
 }
