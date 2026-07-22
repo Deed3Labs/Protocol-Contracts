@@ -14,6 +14,10 @@ import { generateJwt } from '@coinbase/cdp-sdk/auth';
  */
 
 const API_HOST = 'api.developer.coinbase.com';
+// The headless (Apple Pay) order API lives on a DIFFERENT host and under a /platform prefix:
+// POST https://api.cdp.coinbase.com/platform/v2/onramp/orders. Calling it on API_HOST as
+// /v2/onramp/orders 404s — which surfaced as Apple Pay silently opening the hosted page instead.
+const CDP_API_HOST = 'api.cdp.coinbase.com';
 const PAY_URL = 'https://pay.coinbase.com';
 
 // Default asset/network for Clear — Base USDC.
@@ -72,24 +76,25 @@ export const coinbaseOnrampService = {
   },
 
   /** Bearer auth header for an Onramp API request (short-lived JWT signed with the CDP API key). */
-  async authHeader(method: string, path: string): Promise<string> {
+  async authHeader(method: string, path: string, host: string = API_HOST): Promise<string> {
     const apiKeyId = keyId();
     const apiKeySecret = keySecret();
     if (!apiKeyId || !apiKeySecret) throw new Error('Coinbase Onramp not configured (CDP_API_KEY_ID/SECRET)');
+    // The JWT is bound to the host + path, so both must match the request exactly or Coinbase rejects it.
     const jwt = await generateJwt({
       apiKeyId,
       apiKeySecret,
       requestMethod: method,
-      requestHost: API_HOST,
+      requestHost: host,
       requestPath: path,
       expiresIn: 120,
     });
     return `Bearer ${jwt}`;
   },
 
-  async apiFetch(method: 'GET' | 'POST', path: string, body?: unknown): Promise<any> {
-    const auth = await this.authHeader(method, path);
-    const r = await fetch(`https://${API_HOST}${path}`, {
+  async apiFetch(method: 'GET' | 'POST', path: string, body?: unknown, host: string = API_HOST): Promise<any> {
+    const auth = await this.authHeader(method, path, host);
+    const r = await fetch(`https://${host}${path}`, {
       method,
       headers: { Authorization: auth, 'Content-Type': 'application/json' },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -183,7 +188,7 @@ export const coinbaseOnrampService = {
     paymentMethod?: 'GUEST_CHECKOUT_APPLE_PAY' | 'GUEST_CHECKOUT_CARD';
   }): Promise<{ paymentLinkUrl: string; paymentLinkType?: string; orderId?: string; raw: any }> {
     const now = new Date().toISOString();
-    const data = await this.apiFetch('POST', '/v2/onramp/orders', {
+    const data = await this.apiFetch('POST', '/platform/v2/onramp/orders', {
       paymentCurrency: (params.fiat ?? 'USD').toUpperCase(),
       purchaseCurrency: params.asset ?? DEFAULT_ASSET,
       destinationNetwork: params.network ?? DEFAULT_NETWORK,
@@ -197,7 +202,7 @@ export const coinbaseOnrampService = {
       agreementAcceptedAt: now,
       partnerUserRef: sandboxRef(params.partnerUserRef),
       domain: params.domain,
-    });
+    }, CDP_API_HOST);
     let url = data?.paymentLink?.url || data?.payment_link?.url;
     if (!url) {
       const err = new Error('Coinbase order payment link missing') as Error & { raw?: unknown };
