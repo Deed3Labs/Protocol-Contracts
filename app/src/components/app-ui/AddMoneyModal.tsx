@@ -5,7 +5,7 @@ import { useLinkedWallets } from '@/context/LinkedWalletsContext';
 import { track } from '@/lib/analytics';
 import DepositInstructions from '@/components/app-ui/DepositInstructions';
 import { usePrivy } from '@privy-io/react-auth';
-import { getRampBuyQuote, createRampBuySession, createRampBuyOrder, getRampConfig, getRampBuyStatus, rampEvent, type RampQuote } from '@/utils/apiClient';
+import { getRampBuyQuote, createRampBuySession, createRampBuyOrder, getRampConfig, getRampBuyLimits, getRampBuyStatus, rampEvent, type RampQuote } from '@/utils/apiClient';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { cn } from '@/lib/utils';
 
@@ -28,10 +28,10 @@ interface PayMethod {
   speed: string;
 }
 const METHODS: PayMethod[] = [
-  // Coinbase's headless (in-app) API supports Apple Pay and Google Pay ONLY — card and ACH have no
-  // embedded flow, so they necessarily open Coinbase's hosted page. Say which is which.
+  // Every paid method runs on Coinbase's hosted page (see HEADLESS_ENABLED below for why the
+  // embedded Apple Pay flow is off), so none of them should imply otherwise.
   { id: 'card', name: 'Debit or credit card', icon: CreditCard, speed: 'Instant · opens Coinbase' },
-  { id: 'applepay', name: 'Apple Pay', icon: Smartphone, speed: 'Instant · stays in the app' },
+  { id: 'applepay', name: 'Apple Pay', icon: Smartphone, speed: 'Instant · opens Coinbase' },
   // Coinbase ACH is the cheap card alternative, but it's the one method that can't be a guest
   // checkout — Coinbase requires a signed-in account and it only runs in their hosted widget. Say so
   // up front rather than dumping the member on a login screen after they've committed to an amount.
@@ -68,6 +68,15 @@ const rampPM = (methodId: string) => (methodId === 'applepay' ? 'applepay' : met
  * behind it, describing a pull we can't perform.
  */
 
+/*
+ * Coinbase's in-app (headless) Apple Pay is OFF by default. The integration itself is correct, but it
+ * only works once two things are done in the CDP portal: enrollment in the Apple Pay Onramp API, and
+ * the embedding domain allowlisted + verified. Until then every attempt fails and silently drops the
+ * member on Coinbase's hosted page — worse than just sending them there directly, because it looks
+ * broken. Set VITE_COINBASE_HEADLESS=1 to re-enable once CDP access is sorted.
+ */
+const HEADLESS_ENABLED = import.meta.env.VITE_COINBASE_HEADLESS === '1';
+
 const QUICK = [50, 100, 250, 500];
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -88,18 +97,18 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const [apiQuotes, setApiQuotes] = useState<QuoteVM[]>([]);
   const [quoteId, setQuoteId] = useState<string | undefined>(undefined); // locked-quote id for checkout
   const [rampConfigured, setRampConfigured] = useState<boolean | null>(null); // null = unknown yet
+  const [limits, setLimits] = useState<Record<string, { min: number; max: number }>>({});
   const [quotesLoading, setQuotesLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const { wallets, primaryId, openManager } = useLinkedWallets();
-  const { user, linkPhone } = usePrivy();
+  const { user } = usePrivy();
   // Same trap as the server-side email bug: `user.email` only exists for the EMAIL login type, so a
   // Google/Apple member had no email here and silently failed the headless check below.
   const buyerEmail = user?.email?.address || user?.google?.email || user?.apple?.email || '';
   const buyerPhone = user?.phone?.number || '';
-  // Coinbase requires a developer-verified email AND phone for the in-app (headless) flow. Without a
-  // phone we can't use it at all, which is why Apple Pay kept opening a new tab.
-  const canPayInApp = Boolean(buyerEmail && buyerPhone);
+  // Coinbase requires a developer-verified email AND phone for the in-app (headless) flow.
+  const canPayInApp = HEADLESS_ENABLED && Boolean(buyerEmail && buyerPhone);
   const bal = useClearBalances();
 
   // Card / Apple Pay: create an Onramper checkout + open the provider's hosted flow. (Bank never
@@ -202,6 +211,9 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     if (!open) return;
     let cancelled = false;
     getRampConfig().then((c) => { if (!cancelled) setRampConfigured(c.configured); }).catch(() => { if (!cancelled) setRampConfigured(false); });
+    // Coinbase's minimums differ per payment method and aren't published, so read them rather than
+    // guessing — a hardcoded floor either blocks allowed deposits or lets through ones they'll reject.
+    getRampBuyLimits().then((l) => { if (!cancelled) setLimits(l); }).catch(() => {});
     return () => { cancelled = true; };
   }, [open]);
 
@@ -247,7 +259,12 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const amount = Number(amountStr) || 0;
   const method = METHODS.find((m) => m.id === methodId) ?? METHODS[0];
   const wallet = wallets.find((w) => w.id === walletId) ?? wallets[0] ?? { id: '', label: 'No wallet linked', address: '' };
-  const amountValid = amount >= 5 && amount <= 10000;
+  // Coinbase's enum for the selected method, so we can look up its real limits.
+  const COINBASE_PM: Record<string, string> = { card: 'CARD', applepay: 'APPLE_PAY', ach: 'ACH_BANK_ACCOUNT' };
+  const methodLimit = limits[COINBASE_PM[methodId] ?? ''];
+  const minAmount = methodLimit?.min ?? 5;
+  const maxAmount = methodLimit?.max ?? 10000;
+  const amountValid = amount >= minAmount && amount <= maxAmount;
   const isBank = methodId === 'bank';
 
   // Coinbase's headless onramp iframe posts `onramp_api.*` events ({ eventName, data }). Once the user
@@ -413,7 +430,9 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
                 >
                   Review
                 </button>
-                <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Add $5–$10,000'}</p>
+                <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                  {amount > maxAmount ? `Max ${fmt(maxAmount)} per transaction` : `Add ${fmt(minAmount)}–${fmt(maxAmount)}`}
+                </p>
               </>
             )}
           </div>
@@ -577,27 +596,6 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
               {checkoutLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting…</> : `Add ${fmt(amount)}`}
             </button>
             {checkoutError && <p className="mt-2 text-center text-[11px] text-negative">{checkoutError}</p>}
-            {/* Apple Pay is the only method Coinbase can embed, and it needs a verified phone. Offer to
-                add one instead of silently bouncing them to a new tab and leaving them wondering. */}
-            {methodId === 'applepay' && !canPayInApp && (
-              <div className="mt-2 rounded-lg border border-border p-2.5">
-                <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                  <Smartphone className="mt-px h-3 w-3 shrink-0" />
-                  {buyerPhone
-                    ? 'Add an email to your account to pay without leaving the app. Otherwise Apple Pay opens in a new tab.'
-                    : 'Coinbase needs a verified phone number to keep Apple Pay inside the app. Without one it opens in a new tab.'}
-                </p>
-                {!buyerPhone && (
-                  <button
-                    type="button"
-                    onClick={() => linkPhone()}
-                    className="mt-2 w-full rounded-full border border-border py-1.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-secondary"
-                  >
-                    Add a phone number
-                  </button>
-                )}
-              </div>
-            )}
             {methodId === 'ach' && (
               <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-border p-2.5 text-[11px] leading-relaxed text-muted-foreground">
                 <Landmark className="mt-px h-3 w-3 shrink-0" />

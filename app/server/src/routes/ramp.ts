@@ -81,6 +81,25 @@ router.get('/config', (_req: Request, res: Response) => {
   res.json({ provider: p, configured: p === 'coinbase' ? coinbaseOnrampService.isConfigured() : Boolean(onramperKey()) });
 });
 
+// GET /api/ramp/buy/limits?country=&subdivision= → per-payment-method { min, max }, straight from
+// Coinbase. Returns {} when unavailable so the client keeps its conservative defaults.
+router.get('/buy/limits', async (req: Request, res: Response) => {
+  if (provider() !== 'coinbase' || !coinbaseOnrampService.isConfigured()) {
+    res.json({ limits: {} });
+    return;
+  }
+  try {
+    const limits = await coinbaseOnrampService.buyLimits({
+      country: String(req.query.country || 'US'),
+      subdivision: req.query.subdivision ? String(req.query.subdivision) : undefined,
+    });
+    res.json({ limits });
+  } catch (error: any) {
+    console.warn('[ramp/buy/limits]', error?.status, error?.message || error);
+    res.json({ limits: {} });
+  }
+});
+
 // GET /api/ramp/buy/quote?amount=&paymentMethod=&country=&subdivision=  → best/normalized buy quote
 router.get('/buy/quote', async (req: Request, res: Response) => {
   const amount = Number(req.query.amount);

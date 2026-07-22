@@ -158,7 +158,7 @@ export default function OnboardingView({
                   </h1>
                   <p className="mt-2 text-[15px] text-muted-foreground">
                     {hasEmail
-                      ? 'A verified number lets you pay with Apple Pay without leaving the app, and keeps you posted when money moves.'
+                      ? "We'll text you when money moves, and use it to keep your account secure."
                       : 'We use your email for receipts and to recognise you across our payment partners.'}
                   </p>
                   <div className="mt-8 space-y-3">

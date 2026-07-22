@@ -288,7 +288,13 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
   const selected = (providerId ? quotes.find((q) => q.p.id === providerId) : null) ?? best;
   const wallet = wallets.find((w) => w.id === walletId) ?? wallets[0] ?? { id: '', label: 'No wallet linked', address: '' };
   const bank = banks.find((b) => b.id === bankId) ?? banks[0] ?? { id: '', label: 'No bank linked' };
-  const amountValid = amount >= 5 && amount <= 10000;
+  // You can only take out what's actually there. Withdrawing from the Clear wallet draws on Cash, so
+  // that balance is the ceiling; an external linked wallet is swept into Cash first, and we don't hold
+  // its balance here, so we can't cap that case client-side (Bridge/the transfer will reject it).
+  const selectedWallet = wallets.find((w) => w.id === walletId) ?? wallets[0];
+  const available = selectedWallet?.external ? null : bal.cash;
+  const overBalance = available != null && amount > available;
+  const amountValid = amount >= 5 && amount <= 10000 && !overBalance;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -323,6 +329,20 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
                   ${q}
                 </button>
               ))}
+              {available != null && available > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAmountStr(String(Math.floor(available * 100) / 100))}
+                  className={cn(
+                    'flex-1 rounded-lg border py-1.5 text-sm font-medium transition-colors',
+                    amount > 0 && amount === Math.floor(available * 100) / 100
+                      ? 'border-foreground bg-foreground text-background'
+                      : 'border-border text-muted-foreground hover:bg-secondary',
+                  )}
+                >
+                  Max
+                </button>
+              )}
             </div>
 
             <label className="mb-2 mt-5 block text-xs font-medium text-muted-foreground">Withdraw to</label>
@@ -378,7 +398,15 @@ export default function WithdrawModal({ open, onOpenChange }: { open: boolean; o
                 Review
               </button>
             )}
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">{amount > 10000 ? 'Max $10,000 per transaction' : 'Withdraw $5–$10,000'}</p>
+            <p className={cn('mt-2 text-center text-[11px]', overBalance ? 'text-negative' : 'text-muted-foreground')}>
+              {overBalance
+                ? `You only have ${fmt(available ?? 0)} available`
+                : amount > 10000
+                  ? 'Max $10,000 per transaction'
+                  : available != null
+                    ? `${fmt(available)} available · withdraw $5–$10,000`
+                    : 'Withdraw $5–$10,000'}
+            </p>
           </div>
         )}
 
