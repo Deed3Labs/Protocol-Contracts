@@ -98,11 +98,12 @@ async function fileToAvatarDataUrl(file: File, max = 256): Promise<string> {
 /* ----------------------------------- Account ----------------------------------- */
 export function AccountModal({ open, onOpenChange }: ModalProps) {
   const { verified, openKyc } = useKyc();
-  const { user } = usePrivy();
+  const { user, linkPhone } = usePrivy();
   const profile = useMemberProfile();
   // Account identity = how you sign in (Privy). Read-only here; managed by your login. Distinct from
   // the editable CONTACT email/phone below (where we reach you). See [[clearpath-privy-migration]].
-  const accountEmail = user?.email?.address ?? '';
+  // `user.email` covers only the EMAIL login type, so a Google/Apple member showed no login email.
+  const accountEmail = user?.email?.address ?? user?.google?.email ?? user?.apple?.email ?? '';
   const accountPhone = user?.phone?.number ?? '';
   const [form, setForm] = useState({ fullName: '', email: '', phone: '' });
   const [saving, setSaving] = useState(false);
@@ -189,28 +190,42 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
         </div>
 
         <div className="mt-1 space-y-3">
-          {(accountEmail || accountPhone) && (
-            <div className="rounded-xl border border-border bg-secondary/30 p-3">
-              <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Shield className="h-3.5 w-3.5" /> Login
-              </div>
-              <div className="space-y-1.5">
-                {accountEmail && (
-                  <div className="flex items-center gap-2 text-sm text-foreground">
-                    <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{accountEmail}</span>
-                  </div>
-                )}
-                {accountPhone && (
-                  <div className="flex items-center gap-2 text-sm text-foreground">
-                    <Smartphone className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{accountPhone}</span>
-                  </div>
-                )}
-              </div>
-              <p className="mt-2 text-[11px] text-muted-foreground">How you sign in — managed by your login, can't be changed here.</p>
+          <div className="rounded-xl border border-border bg-secondary/30 p-3">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Shield className="h-3.5 w-3.5" /> Login
             </div>
-          )}
+            <div className="space-y-1.5">
+              {accountEmail && (
+                <div className="flex items-center gap-2 text-sm text-foreground">
+                  <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{accountEmail}</span>
+                </div>
+              )}
+              {accountPhone && (
+                <div className="flex items-center gap-2 text-sm text-foreground">
+                  <Smartphone className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{accountPhone}</span>
+                </div>
+              )}
+              {/* A verified phone is what lets Coinbase keep Apple Pay inside the app instead of
+                  handing the member off to a new tab — so it belongs here, not only mid-deposit. */}
+              {!accountPhone && (
+                <button
+                  type="button"
+                  onClick={() => linkPhone()}
+                  className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-2.5 py-2 text-left transition-colors hover:bg-secondary/60"
+                >
+                  <Smartphone className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-foreground">Add a phone number</span>
+                    <span className="block text-[11px] text-muted-foreground">Lets you pay with Apple Pay without leaving the app.</span>
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold text-info">Add</span>
+                </button>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">How you sign in — managed by your login, can't be changed here.</p>
+          </div>
 
           <div className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">Contact</div>
           <label className="block">
