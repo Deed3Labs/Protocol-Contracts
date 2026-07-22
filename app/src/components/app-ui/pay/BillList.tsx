@@ -69,7 +69,7 @@ export default function BillList({
   ] as [FilterId, string][]).filter(([id]) => id === 'all' || counts[id] > 0);
 
   return (
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-center gap-1 overflow-x-auto border-b border-border px-2 py-2">
         {tabs.map(([id, label]) => (
           <button
