@@ -81,3 +81,43 @@ export function billUrgency(t: BillTiming): number {
   if (t.status === 'undated') return 8000;
   return t.daysUntil ?? 5000;
 }
+
+export type SchedulePeriod = 'week' | 'month' | 'quarter';
+export const PERIOD_DAYS: Record<SchedulePeriod, number> = { week: 7, month: 31, quarter: 92 };
+
+export interface ScheduleEntry {
+  status: BillStatus;
+  /** The next due date that matters — drives ordering and the row date. */
+  next: Date | null;
+  daysUntil: number | null;
+  label: string;
+  /** How many times this monthly bill lands inside the window (1 for a normal month, up to ~3 in a
+   *  quarter). Lets the schedule show one row per bill and CONSOLIDATE the recurrence instead of
+   *  repeating a monthly bill three times in the quarter view. */
+  count: number;
+}
+
+/**
+ * A bill's presence in a forward window. Counts occurrences from the next relevant due date through
+ * `windowDays` out, stepping monthly — so a monthly bill is one row whose count reflects the period.
+ * count 0 means it has nothing coming due in the window (e.g. already paid this cycle in week view).
+ */
+export function scheduleEntry(
+  dueDay: number | null,
+  lastPaidAt: string | null,
+  windowDays: number,
+  now: Date = new Date(),
+): ScheduleEntry {
+  const t = billTiming(dueDay, lastPaidAt, now);
+  if (!dueDay || !t.dueDate) {
+    return { status: t.status, next: t.dueDate, daysUntil: t.daysUntil, label: t.label, count: 0 };
+  }
+  const end = new Date(startOfDay(now).getTime() + windowDays * DAY_MS);
+  let count = 0;
+  let d = new Date(t.dueDate); // overdue → a past date we still owe; else the next due date
+  for (let i = 0; i < 15 && d <= end; i++) {
+    count += 1;
+    d = dueIn(d.getFullYear(), d.getMonth() + 1, dueDay);
+  }
+  return { status: t.status, next: t.dueDate, daysUntil: t.daysUntil, label: t.label, count };
+}

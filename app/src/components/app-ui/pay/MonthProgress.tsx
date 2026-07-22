@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { billTiming } from '@/lib/billStatus';
 import { usePay, BILL_TYPES, type BillType } from '@/context/PayContext';
-import { CATEGORY_BAR } from '@/components/app-ui/pay/categoryStyle';
+import { CATEGORY_BAR, CATEGORY_TINT } from '@/components/app-ui/pay/categoryStyle';
 import { cn } from '@/lib/utils';
 
 /*
@@ -21,21 +21,25 @@ const nInt = (n: number) => Math.round(n).toLocaleString('en-US');
 export default function MonthProgress({ className }: { className?: string }) {
   const { bills, summary } = usePay();
 
-  const { categories, total, paid, remaining } = useMemo(() => {
+  const { categories, total, paid, remaining, upcoming } = useMemo(() => {
     const byType = new Map<BillType, number>();
     let all = 0;
     let settled = 0;
+    const soon: { bill: (typeof bills)[number]; days: number; label: string }[] = [];
     for (const b of bills) {
       const amount = b.amount || 0;
+      const t = billTiming(b.dueDay, b.lastPaidAt);
+      if (t.status === 'paid') settled += amount > 0 ? amount : 0;
+      else if (t.daysUntil != null) soon.push({ bill: b, days: t.daysUntil, label: t.label });
       if (amount <= 0) continue;
       all += amount;
       byType.set(b.type, (byType.get(b.type) ?? 0) + amount);
-      if (billTiming(b.dueDay, b.lastPaidAt).status === 'paid') settled += amount;
     }
     const rows = BILL_TYPES.filter((t) => (byType.get(t.value) ?? 0) > 0)
       .map((t) => ({ type: t.value, label: t.label, amount: byType.get(t.value) as number }))
       .sort((a, b) => b.amount - a.amount);
-    return { categories: rows, total: all, paid: settled, remaining: Math.max(0, all - settled) };
+    soon.sort((a, b) => a.days - b.days);
+    return { categories: rows, total: all, paid: settled, remaining: Math.max(0, all - settled), upcoming: soon.slice(0, 3) };
   }, [bills]);
 
   const now = new Date();
@@ -93,6 +97,28 @@ export default function MonthProgress({ className }: { className?: string }) {
         </div>
         <span className="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">{fmt(remaining)} left</span>
       </div>
+
+      {/* Fills the card's lower half with something you'd actually act on: the next few payments due,
+          which the bar (a total) doesn't tell you. */}
+      {upcoming.length > 0 && (
+        <div className="mt-4 border-t border-border pt-3">
+          <div className="mb-2 text-[11px] font-medium text-muted-foreground">Next up</div>
+          <div className="grid gap-1.5 sm:grid-cols-3">
+            {upcoming.map((u) => (
+              <div key={u.bill.id} className="flex items-center gap-2 rounded-lg bg-secondary/40 px-2.5 py-2">
+                <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg', CATEGORY_TINT[u.bill.type])}>
+                  <u.bill.icon className="h-3.5 w-3.5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-foreground">{u.bill.name}</span>
+                  <span className={cn('block truncate text-[10px]', u.days < 0 ? 'text-negative' : 'text-muted-foreground')}>{u.label}</span>
+                </span>
+                <span className="shrink-0 text-xs tabular-nums text-foreground">{fmt(u.bill.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

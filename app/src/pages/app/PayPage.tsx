@@ -44,11 +44,7 @@ export default function PayPage() {
     <div className="animate-fade-in space-y-4">
       <header>
         <h1 className="font-display text-3xl tracking-tight text-foreground">Pay</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          {bills.length === 0
-            ? 'Track your rent and bills — and earn equity for paying on time.'
-            : `${bills.length} ${bills.length === 1 ? 'bill' : 'bills'} tracked`}
-        </p>
+        <p className="mt-0.5 text-sm text-muted-foreground">Manage your bills — rewarded for every on-time payment.</p>
       </header>
 
       <StatBar
