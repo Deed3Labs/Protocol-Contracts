@@ -91,9 +91,19 @@ async function apiRequest<T>(
       if (isJson) {
         const errorData = await response.json().catch(() => null);
         if (errorData && typeof errorData === 'object') {
-          const message = (errorData as { message?: unknown }).message;
+          // Routes in this codebase are inconsistent: some return { message }, many return { error }.
+          // Reading only `message` silently dropped every `error`-shaped body, so real server
+          // explanations surfaced as a bare "HTTP 502: ". Accept either.
+          const raw = (errorData as { message?: unknown }).message;
+          const fallback = (errorData as { error?: unknown }).error;
+          const message =
+            typeof raw === 'string' && raw.length > 0
+              ? raw
+              : typeof fallback === 'string' && fallback.length > 0
+                ? fallback
+                : '';
           const plaidCode = (errorData as { plaid_error_code?: unknown }).plaid_error_code;
-          if (typeof message === 'string' && message.length > 0) {
+          if (message.length > 0) {
             if (typeof plaidCode === 'string' && plaidCode.length > 0) {
               throw new Error(`${message} (${plaidCode})`);
             }
