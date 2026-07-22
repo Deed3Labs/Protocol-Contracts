@@ -1,0 +1,231 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Globe, Landmark, Sparkles, TrendingUp, CalendarClock, Wallet } from 'lucide-react';
+import { billTiming } from '@/lib/billStatus';
+import { STATUS_TINT, STATUS_PILL } from '@/components/app-ui/pay/statusStyle';
+import { usePay, creditsFor, type Bill } from '@/context/PayContext';
+import { useKyc } from '@/context/KycContext';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { getPayBillerPayments, type PayBillerPayment } from '@/utils/apiClient';
+import { cn } from '@/lib/utils';
+
+/*
+ * The "detail" half. Amount and paying lead; the equity a bill has generated sits alongside rather
+ * than in a separate widget, so money and credits read as one picture.
+ *
+ * With nothing selected this deliberately stays calm — a short summary of the month instead of
+ * auto-selecting a bill, so opening the page isn't an immediate demand for attention.
+ */
+const money = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const nInt = (n: number) => Math.round(n).toLocaleString('en-US');
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+const openPortal = (url: string) =>
+  window.open(/^https?:\/\//i.test(url) ? url : `https://${url}`, '_blank', 'noopener,noreferrer');
+
+function EmptyState({ bills }: { bills: Bill[] }) {
+  const { summary } = usePay();
+  const next = useMemo(() => {
+    const upcoming = bills
+      .map((b) => ({ b, t: billTiming(b.dueDay, b.lastPaidAt) }))
+      .filter((x) => x.t.status !== 'paid' && x.t.daysUntil != null)
+      .sort((a, b) => (a.t.daysUntil ?? 0) - (b.t.daysUntil ?? 0));
+    return upcoming[0] ?? null;
+  }, [bills]);
+
+  return (
+    <div className="flex h-full flex-col justify-center px-6 py-12">
+      <div className="mx-auto w-full max-w-xs">
+        <div className="text-xs font-medium text-muted-foreground">This month</div>
+        <div className="mt-3 space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+              <CalendarClock className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1 text-sm text-muted-foreground">Due</span>
+            <span className="font-display text-sm tabular-nums text-foreground">${money(summary?.dueThisMonth ?? 0)}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+              <Wallet className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1 text-sm text-muted-foreground">Paid · 30 days</span>
+            <span className="font-display text-sm tabular-nums text-foreground">${money(summary?.paid30 ?? 0)}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-positive/10 text-positive">
+              <TrendingUp className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1 text-sm text-muted-foreground">Credits earned</span>
+            <span className="font-display text-sm tabular-nums text-positive">+{nInt(summary?.equityThisMonth ?? 0)}</span>
+          </div>
+        </div>
+
+        <p className="mt-6 border-t border-border pt-4 text-xs text-muted-foreground">
+          {next
+            ? `Next up: ${next.b.name} — ${next.t.label.toLowerCase()}.`
+            : bills.length === 0
+              ? 'Add a bill to start tracking it here.'
+              : 'Everything is paid up.'}
+          {bills.length > 0 && ' Select a bill to see its history and pay it.'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default function BillDetailPane({ bill, bills }: { bill: Bill | null; bills: Bill[] }) {
+  const { address } = useAppKitAccount();
+  const { openPay, streak } = usePay();
+  const { verified } = useKyc();
+  const { accelerated } = useMemberProfile();
+  const [payments, setPayments] = useState<PayBillerPayment[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!bill || !address) {
+      setPayments([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    getPayBillerPayments(address, bill.id)
+      .then((rows) => !cancelled && setPayments(rows))
+      .catch(() => !cancelled && setPayments([]))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [bill, address]);
+
+  if (!bill) return <EmptyState bills={bills} />;
+
+  const timing = billTiming(bill.dueDay, bill.lastPaidAt);
+  const earns = creditsFor(bill, streak, bill.amount, accelerated);
+  const paidToDate = payments.reduce((n, p) => n + p.amount, 0);
+  // Credits are awarded per on-time payment; recompute rather than guess so it matches the ledger.
+  const creditsToDate = payments.filter((p) => p.onTime).reduce((n, p) => n + creditsFor(bill, streak, p.amount, accelerated), 0);
+  const balance = timing.status === 'paid' ? 0 : bill.amount;
+
+  // Segmented bar: money paid, equity earned, and what's still owed, on one line.
+  const barTotal = Math.max(1, paidToDate + creditsToDate + balance);
+  const seg = (v: number) => `${(v / barTotal) * 100}%`;
+
+  return (
+    <div className="flex h-full flex-col p-4 sm:p-5">
+      <div className="flex items-center gap-3">
+        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', STATUS_TINT[timing.status])}>
+          <bill.icon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-display text-base font-semibold tracking-tight text-foreground">{bill.name}</div>
+          <div className="truncate text-[11px] text-muted-foreground">
+            {bill.payee && bill.payee !== bill.name ? `${bill.payee} · ` : ''}
+            {bill.dueDay ? 'Monthly' : 'No schedule'}
+          </div>
+        </div>
+        <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium', STATUS_PILL[timing.status])}>
+          {timing.label || 'No due date'}
+        </span>
+      </div>
+
+      <div className="mt-4 flex items-baseline gap-1">
+        <span className="text-sm text-muted-foreground">$</span>
+        <span className="font-display text-3xl tracking-tight tabular-nums text-foreground">{money(bill.amount).split('.')[0]}</span>
+        <span className="text-sm text-muted-foreground">.{money(bill.amount).split('.')[1]}</span>
+        {earns > 0 && (
+          <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Sparkles className="h-3 w-3 text-positive" /> earns <span className="font-medium text-positive">+{nInt(earns)}</span>
+          </span>
+        )}
+      </div>
+
+      {(paidToDate > 0 || balance > 0) && (
+        <div className="mt-3">
+          <div className="flex h-2 gap-0.5 overflow-hidden rounded-full">
+            {paidToDate > 0 && <span className="bg-positive" style={{ width: seg(paidToDate) }} />}
+            {creditsToDate > 0 && <span className="bg-amber-500" style={{ width: seg(creditsToDate) }} />}
+            {balance > 0 && <span className="bg-secondary" style={{ width: seg(balance) }} />}
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            {paidToDate > 0 && (
+              <span><span className="mr-1 inline-block h-1.5 w-1.5 rounded-sm bg-positive" />Paid ${money(paidToDate)}</span>
+            )}
+            {creditsToDate > 0 && (
+              <span><span className="mr-1 inline-block h-1.5 w-1.5 rounded-sm bg-amber-500" />Credits {nInt(creditsToDate)}</span>
+            )}
+            {balance > 0 && (
+              <span><span className="mr-1 inline-block h-1.5 w-1.5 rounded-sm bg-secondary" />Due ${money(balance)}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Verified members can pay from Cash; everyone else goes to the biller's own site. */}
+      <div className="mt-4 flex gap-2">
+        {verified ? (
+          <>
+            <button
+              type="button"
+              onClick={() => openPay(bill.id)}
+              className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+            >
+              Pay ${money(bill.amount)}
+            </button>
+            <button
+              type="button"
+              disabled={!bill.portalUrl}
+              onClick={() => bill.portalUrl && openPortal(bill.portalUrl)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary disabled:opacity-40"
+            >
+              <Globe className="h-4 w-4" /> Their site
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={!bill.portalUrl}
+              onClick={() => bill.portalUrl && openPortal(bill.portalUrl)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
+            >
+              <Globe className="h-4 w-4" /> Pay on their site
+            </button>
+            <button
+              type="button"
+              onClick={() => openPay(bill.id)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+            >
+              <Landmark className="h-4 w-4" /> Verify
+            </button>
+          </>
+        )}
+      </div>
+
+      <div className="mt-5 min-h-0 flex-1 border-t border-border pt-3">
+        <div className="mb-2 text-[11px] font-medium text-muted-foreground">Payment history</div>
+        {loading ? (
+          <div className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-4 animate-pulse rounded bg-secondary" />
+            ))}
+          </div>
+        ) : payments.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No payments recorded yet.</p>
+        ) : (
+          <div className="space-y-1">
+            {payments.slice(0, 6).map((p) => (
+              <div key={p.id} className="flex items-center justify-between border-b border-border py-1.5 text-xs last:border-0">
+                <span className="text-muted-foreground">{shortDate(p.paidAt)}</span>
+                <span className="tabular-nums text-foreground">
+                  ${money(p.amount)}
+                  {p.onTime && <span className="ml-1.5 text-positive">+{nInt(creditsFor(bill, streak, p.amount, accelerated))}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
