@@ -63,7 +63,7 @@ function Column({ heading, rows, empty }: { heading: string; rows: Row[]; empty:
   );
 }
 
-export default function BillActivity({ onSelect }: { onSelect?: (id: string) => void }) {
+export default function BillActivity({ onSelect, bare }: { onSelect?: (id: string) => void; bare?: boolean }) {
   const { bills, streak } = usePay();
   const { accelerated } = useMemberProfile();
 
@@ -122,16 +122,23 @@ export default function BillActivity({ onSelect }: { onSelect?: (id: string) => 
 
   if (bills.length === 0) return null;
 
+  const body = (
+    <div className="grid gap-5 sm:grid-cols-2">
+      <Column heading="Coming up" rows={upcoming} empty="Nothing scheduled." />
+      <Column heading="Recently paid" rows={recent} empty="No payments recorded yet." />
+    </div>
+  );
+
+  // Embedded in the detail pane's empty state it drops its own card, so we don't nest a box in a box.
+  if (bare) return body;
+
   return (
     <div className="rounded-xl border border-border bg-card p-4 lg:p-5">
       <div className="mb-3 flex items-center gap-2">
         <span className="text-xs font-medium text-foreground">Activity</span>
         <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
       </div>
-      <div className="grid gap-5 sm:grid-cols-2">
-        <Column heading="Coming up" rows={upcoming} empty="Nothing scheduled." />
-        <Column heading="Recently paid" rows={recent} empty="No payments recorded yet." />
-      </div>
+      {body}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Globe, Landmark, Sparkles, TrendingUp, CalendarClock, Wallet, AlertCircle } from 'lucide-react';
 import { billTiming } from '@/lib/billStatus';
 import { STATUS_TINT, STATUS_PILL } from '@/components/app-ui/pay/statusStyle';
@@ -7,6 +7,7 @@ import { useKyc } from '@/context/KycContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { getPayBillerPayments, type PayBillerPayment } from '@/utils/apiClient';
+import BillActivity from '@/components/app-ui/pay/BillActivity';
 import { cn } from '@/lib/utils';
 
 /*
@@ -23,58 +24,49 @@ const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { m
 const openPortal = (url: string) =>
   window.open(/^https?:\/\//i.test(url) ? url : `https://${url}`, '_blank', 'noopener,noreferrer');
 
-function EmptyState({ bills }: { bills: Bill[] }) {
+function EmptyState({ bills, onSelect }: { bills: Bill[]; onSelect?: (id: string) => void }) {
   const { summary } = usePay();
-  const next = useMemo(() => {
-    const upcoming = bills
-      .map((b) => ({ b, t: billTiming(b.dueDay, b.lastPaidAt) }))
-      .filter((x) => x.t.status !== 'paid' && x.t.daysUntil != null)
-      .sort((a, b) => (a.t.daysUntil ?? 0) - (b.t.daysUntil ?? 0));
-    return upcoming[0] ?? null;
-  }, [bills]);
+
+  const stats = [
+    { icon: CalendarClock, label: 'Due', value: `$${money(summary?.dueThisMonth ?? 0)}`, tone: 'text-foreground' },
+    { icon: Wallet, label: 'Paid · 30 days', value: `$${money(summary?.paid30 ?? 0)}`, tone: 'text-foreground' },
+    { icon: TrendingUp, label: 'Credits', value: `+${nInt(summary?.equityThisMonth ?? 0)}`, tone: 'text-positive' },
+  ];
 
   return (
-    <div className="flex h-full flex-col justify-center px-6 py-12">
-      <div className="mx-auto w-full max-w-xs">
-        <div className="text-xs font-medium text-muted-foreground">This month</div>
-        <div className="mt-3 space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
-              <CalendarClock className="h-4 w-4" />
-            </span>
-            <span className="min-w-0 flex-1 text-sm text-muted-foreground">Due</span>
-            <span className="font-display text-sm tabular-nums text-foreground">${money(summary?.dueThisMonth ?? 0)}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
-              <Wallet className="h-4 w-4" />
-            </span>
-            <span className="min-w-0 flex-1 text-sm text-muted-foreground">Paid · 30 days</span>
-            <span className="font-display text-sm tabular-nums text-foreground">${money(summary?.paid30 ?? 0)}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-positive/10 text-positive">
-              <TrendingUp className="h-4 w-4" />
-            </span>
-            <span className="min-w-0 flex-1 text-sm text-muted-foreground">Credits earned</span>
-            <span className="font-display text-sm tabular-nums text-positive">+{nInt(summary?.equityThisMonth ?? 0)}</span>
-          </div>
-        </div>
+    <div className="flex h-full flex-col p-4 sm:p-5">
+      <div className="text-xs font-medium text-muted-foreground">This month</div>
 
-        <p className="mt-6 border-t border-border pt-4 text-xs text-muted-foreground">
-          {next
-            ? `Next up: ${next.b.name} — ${next.t.label.toLowerCase()}.`
-            : bills.length === 0
-              ? 'Add a bill to start tracking it here.'
-              : 'Everything is paid up.'}
-          {bills.length > 0 && ' Select a bill to see its history and pay it.'}
-        </p>
+      {/* Across the top rather than a narrow centred stack — the pane is wide, so use it. */}
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-xl bg-secondary/50 p-3">
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <s.icon className="h-3.5 w-3.5" />
+              <span className="truncate">{s.label}</span>
+            </div>
+            <div className={cn('mt-1 font-display text-lg tabular-nums tracking-tight', s.tone)}>{s.value}</div>
+          </div>
+        ))}
       </div>
+
+      {bills.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+          <p className="text-sm font-medium text-foreground">No bills yet</p>
+          <p className="mt-1 max-w-[24ch] text-xs text-muted-foreground">
+            Add your rent, utilities and subscriptions to track them and earn equity.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-5 min-h-0 flex-1 border-t border-border pt-4">
+          <BillActivity bare onSelect={onSelect} />
+        </div>
+      )}
     </div>
   );
 }
 
-export default function BillDetailPane({ bill, bills }: { bill: Bill | null; bills: Bill[] }) {
+export default function BillDetailPane({ bill, bills, onSelect }: { bill: Bill | null; bills: Bill[]; onSelect?: (id: string) => void }) {
   const { address } = useAppKitAccount();
   const { openPay, streak } = usePay();
   const { verified } = useKyc();
@@ -98,7 +90,7 @@ export default function BillDetailPane({ bill, bills }: { bill: Bill | null; bil
     };
   }, [bill, address]);
 
-  if (!bill) return <EmptyState bills={bills} />;
+  if (!bill) return <EmptyState bills={bills} onSelect={onSelect} />;
 
   const timing = billTiming(bill.dueDay, bill.lastPaidAt);
   const earns = creditsFor(bill, streak, bill.amount, accelerated);
