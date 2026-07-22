@@ -1,91 +1,107 @@
 import { useMemo } from 'react';
-import { Check, Clock, AlertCircle, Sparkles } from 'lucide-react';
 import { billTiming } from '@/lib/billStatus';
-import { usePay } from '@/context/PayContext';
+import { usePay, BILL_TYPES, type BillType } from '@/context/PayContext';
 import { cn } from '@/lib/utils';
 
 /*
- * How the month is going, as one bar.
+ * Where this month's bills go, broken down by category — the same bar treatment as the credit line on
+ * Borrow (h-6 track, hairline-gapped segments, inline legend, remainder on the right), in colour.
  *
- * Segments are DOLLARS ONLY — paid, overdue, still to come. Equity credits are points, not money, so
- * they're reported alongside rather than as a fourth segment: putting them in the same proportional
- * bar would make the widths meaningless (a 200-credit bill isn't "200 dollars wide").
+ * Split by CATEGORY rather than by status: overdue is already carried by the metrics, the list rows
+ * and the detail pane, so a fourth telling of it adds nothing. What the page doesn't say anywhere
+ * else is the shape of someone's monthly obligations.
+ *
+ * Segments are dollars. Equity credits are points, so they sit in the header rather than the bar.
  */
-const money = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+const fmt2 = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmt = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 const nInt = (n: number) => Math.round(n).toLocaleString('en-US');
+
+/** One colour per bill category, so the bar and its legend always agree. */
+const CATEGORY_BAR: Record<BillType, string> = {
+  rent: 'bg-emerald-500',
+  utility: 'bg-amber-500',
+  subscription: 'bg-violet-500',
+  card: 'bg-sky-500',
+  phone: 'bg-rose-500',
+  other: 'bg-muted-foreground/40',
+};
 
 export default function MonthProgress() {
   const { bills, summary } = usePay();
 
-  const { paid, overdue, upcoming, total } = useMemo(() => {
-    let p = 0;
-    let o = 0;
-    let u = 0;
+  const { categories, total, paid, remaining } = useMemo(() => {
+    const byType = new Map<BillType, number>();
+    let all = 0;
+    let settled = 0;
     for (const b of bills) {
       const amount = b.amount || 0;
-      const t = billTiming(b.dueDay, b.lastPaidAt);
-      if (t.status === 'paid') p += amount;
-      else if (t.status === 'overdue') o += amount;
-      else u += amount;
+      if (amount <= 0) continue;
+      all += amount;
+      byType.set(b.type, (byType.get(b.type) ?? 0) + amount);
+      if (billTiming(b.dueDay, b.lastPaidAt).status === 'paid') settled += amount;
     }
-    return { paid: p, overdue: o, upcoming: u, total: p + o + u };
+    const rows = BILL_TYPES.filter((t) => (byType.get(t.value) ?? 0) > 0)
+      .map((t) => ({ type: t.value, label: t.label, amount: byType.get(t.value) as number }))
+      .sort((a, b) => b.amount - a.amount);
+    return { categories: rows, total: all, paid: settled, remaining: Math.max(0, all - settled) };
   }, [bills]);
 
   const now = new Date();
   const daysLeft = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate();
-  const monthName = now.toLocaleDateString('en-US', { month: 'long' });
   const credits = summary?.equityThisMonth ?? 0;
 
-  const pct = (v: number) => (total > 0 ? `${(v / total) * 100}%` : '0%');
-  const done = total > 0 ? Math.round((paid / total) * 100) : 0;
-
-  const segments = [
-    { key: 'paid', value: paid, label: 'Paid', icon: Check, bar: 'bg-positive', pill: 'bg-positive/10 text-positive' },
-    { key: 'overdue', value: overdue, label: 'Overdue', icon: AlertCircle, bar: 'bg-negative', pill: 'bg-negative/10 text-negative' },
-    { key: 'upcoming', value: upcoming, label: 'To come', icon: Clock, bar: 'bg-muted-foreground/30', pill: 'bg-secondary text-muted-foreground' },
-  ].filter((s) => s.value > 0);
-
   return (
-    <div className="rounded-xl border border-border bg-card p-4 lg:p-5">
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="flex items-baseline gap-2">
-          <span className="text-xs font-medium text-muted-foreground">{monthName}</span>
-          {total > 0 && <span className="font-display text-sm tabular-nums text-foreground">{done}% paid</span>}
+    <div className="rounded-xl border border-border bg-card p-5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-muted-foreground">This month's bills</span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {credits > 0 && (
+            <span className="rounded-full bg-positive/10 px-2 py-0.5 text-[11px] font-medium text-positive">
+              +{nInt(credits)} credits
+            </span>
+          )}
+          <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">
+            {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left
+          </span>
         </div>
-        <span className="text-[11px] text-muted-foreground">
-          {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left
-        </span>
       </div>
 
-      {total > 0 ? (
-        <>
-          <div className="mt-3 flex h-2.5 gap-1 overflow-hidden">
-            {segments.map((s) => (
-              <span key={s.key} className={cn('rounded-full transition-[width] duration-500', s.bar)} style={{ width: pct(s.value) }} />
-            ))}
+      <div className="mt-2 flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="font-display text-4xl tracking-tight tabular-nums text-foreground">{fmt2(total)}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            across {bills.length} {bills.length === 1 ? 'bill' : 'bills'}
           </div>
+        </div>
+        <div className="shrink-0 text-right">
+          <div className="text-sm font-medium tabular-nums text-foreground">{fmt2(paid)}</div>
+          <div className="text-[11px] text-muted-foreground">paid</div>
+        </div>
+      </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {segments.map((s) => (
-              <span key={s.key} className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium', s.pill)}>
-                <s.icon className="h-3.5 w-3.5" />
-                {s.label}
-                <span className="tabular-nums">{money(s.value)}</span>
+      <div className="mt-3 flex h-6 gap-0.5 overflow-hidden rounded-lg bg-secondary">
+        {categories.map((c) => (
+          <div key={c.type} className={CATEGORY_BAR[c.type]} style={{ width: `${total > 0 ? (c.amount / total) * 100 : 0}%` }} />
+        ))}
+      </div>
+
+      <div className="mt-2 flex items-center justify-between gap-3 text-[10px]">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
+          {categories.length > 0 ? (
+            categories.map((c) => (
+              <span key={c.type} className="whitespace-nowrap">
+                <span className={cn('mr-1 inline-block h-1.5 w-1.5 rounded-sm align-middle', CATEGORY_BAR[c.type])} />
+                <span className="font-medium text-muted-foreground">{c.label}</span>{' '}
+                <span className="tabular-nums text-foreground">{fmt(c.amount)}</span>
               </span>
-            ))}
-            {credits > 0 && (
-              <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Sparkles className="h-3.5 w-3.5 text-positive" />
-                <span className="font-medium tabular-nums text-positive">+{nInt(credits)}</span> credits earned
-              </span>
-            )}
-          </div>
-        </>
-      ) : (
-        <p className="mt-3 text-xs text-muted-foreground">
-          Nothing billed this month yet. Add a bill to start tracking it here.
-        </p>
-      )}
+            ))
+          ) : (
+            <span className="text-muted-foreground">No bills tracked yet</span>
+          )}
+        </div>
+        <span className="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">{fmt(remaining)} left</span>
+      </div>
     </div>
   );
 }
