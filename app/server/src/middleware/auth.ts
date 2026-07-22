@@ -129,7 +129,18 @@ async function loadUserWallets(privy: PrivyClient, userId: string): Promise<User
   const cached = userCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) return cached;
 
-  let user = await privy.getUser(userId);
+  let user;
+  try {
+    user = await privy.getUser(userId);
+  } catch (error) {
+    // Rather than fail a request whose token is perfectly valid, serve the STALE entry if we have
+    // one. A member's linked wallets change rarely, so slightly old data beats an auth error.
+    if (cached) {
+      console.warn('[privy] getUser failed, serving stale wallets for', userId, (error as Error)?.message);
+      return cached;
+    }
+    throw error;
+  }
   let c = collectWallets(user);
 
   // GUARANTEE a smart wallet for embedded (email/social) users. The client-side mint can silently
@@ -174,10 +185,21 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     });
   }
 
+  // Token verification and user lookup are kept separate on purpose. Only the first says anything
+  // about the CALLER's credentials; the second is an upstream call to Privy that is rate-limited and
+  // can fail transiently. Collapsing both into one catch reported "invalid or expired token" for a
+  // Privy hiccup, and the client responds to 401 by clearing the session — so a brief upstream blip
+  // signed people out mid-flow. A cold cache right after a deploy is exactly when that bites.
+  let userId: string;
   try {
     const claims = await privy.verifyAuthToken(token);
-    const userId = claims.userId;
+    userId = claims.userId;
+  } catch (error) {
+    console.error('Authentication error (token):', error);
+    return sendUnauthorized(res, 'Invalid or expired authentication token', 'AUTH_TOKEN_INVALID');
+  }
 
+  try {
     const { addresses, smartWallet, email, emails, phone } = await loadUserWallets(privy, userId);
 
     // Trust the frontend's active address only if it belongs to the verified user; else fall back to
@@ -193,8 +215,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     req.auth = { walletAddress, profileUuid: userId, email, emails: [...emails], phone, smartWallet, addresses: [...addresses], token };
     return next();
   } catch (error) {
-    console.error('Authentication error:', error);
-    return sendUnauthorized(res, 'Invalid or expired authentication token', 'AUTH_TOKEN_INVALID');
+    // The token was valid — we just couldn't reach Privy to resolve their wallets. 503, not 401, so
+    // the client retries instead of tearing down a perfectly good session.
+    console.error('Authentication error (user lookup):', error);
+    return res.status(503).json({
+      error: 'Authentication temporarily unavailable',
+      message: 'Could not verify your account right now. Please try again.',
+      code: 'AUTH_UPSTREAM_UNAVAILABLE',
+    });
   }
 }
 
