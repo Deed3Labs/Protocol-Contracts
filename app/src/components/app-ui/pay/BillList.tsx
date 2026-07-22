@@ -103,7 +103,7 @@ export default function BillList({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2.5">
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
         {rows.length === 0 ? (
           <div className="px-3 py-12 text-center">
             <div className="text-sm font-medium text-foreground">
@@ -139,18 +139,18 @@ export default function BillList({
                 onClick={() => onSelect(bill.id)}
                 aria-current={selected}
                 className={cn(
-                  'flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition-colors',
+                  'flex w-full items-center gap-2.5 rounded-lg border px-2 py-1.5 text-left transition-colors',
                   selected ? 'border-foreground/20 bg-secondary' : 'border-border hover:bg-secondary/40',
                 )}
               >
                 {/* calendar date chip — the "when", tinted by urgency */}
-                <span className={cn('flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-lg', CHIP[entry.status])}>
+                <span className={cn('flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-md', CHIP[entry.status])}>
                   {entry.next ? (
                     <>
                       <span className="text-[9px] font-medium uppercase leading-none tracking-wide opacity-70">
                         {entry.next.toLocaleDateString('en-US', { month: 'short' })}
                       </span>
-                      <span className="font-display text-[15px] leading-none tabular-nums">{entry.next.getDate()}</span>
+                      <span className="font-display text-[13px] leading-none tabular-nums">{entry.next.getDate()}</span>
                     </>
                   ) : (
                     <Receipt className="h-4 w-4 opacity-60" />
