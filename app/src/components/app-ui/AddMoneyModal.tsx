@@ -117,7 +117,13 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     void rampEvent({ type: 'buy', status: 'submitted', amount, walletAddress: wallet.address, ref });
     // Apple Pay on Coinbase → headless order rendered in an in-app iframe (needs verified email + phone).
     if (methodId === 'applepay' && selected.p.id === 'coinbase' && canPayInApp) {
-      const { paymentLinkUrl } = await createRampBuyOrder({ amount, walletAddress: wallet.address, email: buyerEmail, phone: buyerPhone });
+      const { paymentLinkUrl, error: orderError } = await createRampBuyOrder({ amount, walletAddress: wallet.address, email: buyerEmail, phone: buyerPhone });
+      // Falling through to the hosted tab silently is why "Apple Pay still opens a browser page" was
+      // impossible to diagnose — the reason was returned and then discarded. Coinbase most often
+      // rejects this because the embedding domain isn't allowlisted/verified in the CDP portal.
+      if (!paymentLinkUrl) {
+        console.warn('[ramp] in-app Apple Pay unavailable, falling back to the hosted page:', orderError);
+      }
       if (paymentLinkUrl) {
         setPayUrl(paymentLinkUrl);
         setStep('pay');

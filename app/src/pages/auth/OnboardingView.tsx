@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { usePrivy } from '@privy-io/react-auth';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home, Sparkles, PiggyBank, Receipt, Landmark, ShieldCheck, ArrowRight, ArrowLeft, Check,
@@ -30,13 +31,14 @@ export interface OnboardingResult {
   termsAccepted: boolean;
 }
 
-type StepId = 'welcome' | 'fund' | 'goal' | 'finish';
-const STEPS: { id: StepId; label: string }[] = [
+type StepId = 'welcome' | 'contact' | 'fund' | 'goal' | 'finish';
+const BASE_STEPS: { id: StepId; label: string }[] = [
   { id: 'welcome', label: 'Welcome' },
   { id: 'fund', label: 'Fund' },
   { id: 'goal', label: 'Goal' },
   { id: 'finish', label: 'Done' },
 ];
+const CONTACT_STEP = { id: 'contact' as StepId, label: 'Contact' };
 
 const GOALS: { id: string; icon: LucideIcon; label: string; body: string }[] = [
   { id: 'home', icon: Home, label: 'Buy a home', body: 'Work toward a debt-free Clear Deed.' },
@@ -57,6 +59,19 @@ export default function OnboardingView({
   submitting: boolean;
   error: string | null;
 }) {
+  // Sign-ups give us ONE of email or phone. Coinbase needs both verified to keep Apple Pay inside
+  // the app, and we need an email to match an existing Bridge customer — so ask for whichever is
+  // missing, once, here. Skippable: it can also be added later from Settings -> Account.
+  const { user, linkEmail, linkPhone } = usePrivy();
+  const hasEmail = Boolean(user?.email?.address || user?.google?.email || user?.apple?.email);
+  const hasPhone = Boolean(user?.phone?.number);
+  // Frozen on mount so the step list can't reshuffle underneath the user mid-flow when they link.
+  const [needsContact] = useState(() => !hasEmail || !hasPhone);
+  const STEPS = useMemo(
+    () => (needsContact ? [BASE_STEPS[0], CONTACT_STEP, ...BASE_STEPS.slice(1)] : BASE_STEPS),
+    [needsContact],
+  );
+
   const [stepIdx, setStepIdx] = useState(0);
   const step = STEPS[stepIdx].id;
   const [linking, setLinking] = useState(false);
@@ -132,6 +147,37 @@ export default function OnboardingView({
                     <Step n={1} icon={Landmark} title="Link your bank" body="Add money in seconds, when you're ready." />
                     <Step n={2} icon={Sparkles} title="Set your goal" body="We'll tailor your path to ownership." />
                     <Step n={3} icon={Home} title="Start building equity" body="Every payment moves you forward." />
+                  </div>
+                </div>
+              )}
+
+              {step === 'contact' && (
+                <div>
+                  <h1 className="font-display text-[2.25rem] leading-[1.05] tracking-tight text-foreground">
+                    {hasEmail ? 'Add your phone' : 'Add your email'}
+                  </h1>
+                  <p className="mt-2 text-[15px] text-muted-foreground">
+                    {hasEmail
+                      ? 'A verified number lets you pay with Apple Pay without leaving the app, and keeps you posted when money moves.'
+                      : 'We use your email for receipts and to recognise you across our payment partners.'}
+                  </p>
+                  <div className="mt-8 space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => (hasEmail ? linkPhone() : linkEmail())}
+                      className="flex w-full items-center gap-3 rounded-2xl border border-border p-4 text-left transition-colors hover:bg-secondary/50"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-foreground">
+                        <ShieldCheck className="h-5 w-5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[15px] font-medium text-foreground">
+                          {hasEmail ? 'Verify a phone number' : 'Verify an email address'}
+                        </span>
+                        <span className="block text-sm text-muted-foreground">Takes a few seconds — we'll send a code.</span>
+                      </span>
+                      {(hasEmail ? hasPhone : hasEmail) ? <Check className="h-5 w-5 shrink-0 text-positive" /> : <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                    </button>
                   </div>
                 </div>
               )}
@@ -229,7 +275,7 @@ export default function OnboardingView({
               >
                 {step === 'welcome' ? 'Get started' : 'Continue'} <ArrowRight className="h-4 w-4" />
               </button>
-              {(step === 'fund' || step === 'goal') && (
+              {(step === 'fund' || step === 'goal' || step === 'contact') && (
                 <button type="button" onClick={next} className="mt-2 w-full rounded-xl py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
                   Skip for now
                 </button>
