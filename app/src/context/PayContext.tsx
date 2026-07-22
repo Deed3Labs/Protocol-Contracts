@@ -49,10 +49,11 @@ export interface Bill {
   portalUrl: string | null; // biller's login/pay page → "Pay on their site"
   address: string | null; // mailing address (biller info; future mailed-check option)
   reminders: boolean; // due-date reminders on/off
+  lastPaidAt: string | null; // ISO of the newest recorded payment — tells "overdue" from "already paid"
 }
 
 /** Fields a user can set/edit on a biller (id/icon derived; source/payable/payout/reminders server-controlled). */
-export type BillerDraft = Omit<Bill, 'id' | 'icon' | 'source' | 'payable' | 'payoutLast4' | 'payoutBank' | 'reminders'>;
+export type BillerDraft = Omit<Bill, 'id' | 'icon' | 'source' | 'payable' | 'payoutLast4' | 'payoutBank' | 'reminders' | 'lastPaidAt'>;
 
 /** On-time streak fallback when no summary is loaded yet. */
 export const ON_TIME_STREAK = 0;
@@ -124,6 +125,7 @@ function billerToBill(b: PayBiller): Bill {
     portalUrl: b.portalUrl,
     address: b.address,
     reminders: b.reminders,
+    lastPaidAt: b.lastPaidAt ?? null,
   };
 }
 
@@ -275,7 +277,7 @@ export function PayProvider({ children }: { children: ReactNode }) {
   const addBiller = useCallback(
     (b: BillerDraft) => {
       const tempId = `bill${Date.now()}`;
-      setBills((bs) => [...bs, { ...b, id: tempId, icon: ICONS[b.type] ?? Receipt, source: 'manual', payable: false, payoutLast4: null, payoutBank: null, reminders: true }]);
+      setBills((bs) => [...bs, { ...b, id: tempId, icon: ICONS[b.type] ?? Receipt, source: 'manual', payable: false, payoutLast4: null, payoutBank: null, reminders: true, lastPaidAt: null }]);
       if (address) {
         void addPayBiller(address, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay, portalUrl: b.portalUrl, address: b.address })
           .then((created) => {
