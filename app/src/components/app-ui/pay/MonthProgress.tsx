@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { billTiming } from '@/lib/billStatus';
 import { usePay, BILL_TYPES, type BillType } from '@/context/PayContext';
+import { CATEGORY_BAR } from '@/components/app-ui/pay/categoryStyle';
 import { cn } from '@/lib/utils';
 
 /*
@@ -16,16 +17,6 @@ import { cn } from '@/lib/utils';
 const fmt2 = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 const nInt = (n: number) => Math.round(n).toLocaleString('en-US');
-
-/** One colour per bill category, so the bar and its legend always agree. */
-const CATEGORY_BAR: Record<BillType, string> = {
-  rent: 'bg-emerald-500',
-  utility: 'bg-amber-500',
-  subscription: 'bg-violet-500',
-  card: 'bg-sky-500',
-  phone: 'bg-rose-500',
-  other: 'bg-muted-foreground/40',
-};
 
 export default function MonthProgress() {
   const { bills, summary } = usePay();

@@ -1,21 +1,12 @@
 import type { BillStatus } from '@/lib/billStatus';
 
 /*
- * One place for how each bill status looks, so the attention band, the list and the detail pane
- * always tint the same bill the same way. Logic lives in lib/billStatus; this is purely presentation.
+ * How each bill STATUS reads. Category colour lives in categoryStyle — icons carry the category, text
+ * and pills carry the status, so the two never fight for the same slot.
  *
  * Note the app has no `warning` colour token (only positive/negative/info), so "due soon" uses the
- * amber utilities already used elsewhere for bill categories rather than inventing a token.
+ * amber utilities already used elsewhere rather than inventing one.
  */
-
-/** Tint for the bill's icon tile. */
-export const STATUS_TINT: Record<BillStatus, string> = {
-  overdue: 'bg-negative/10 text-negative',
-  'due-soon': 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  upcoming: 'bg-secondary text-foreground',
-  paid: 'bg-secondary text-muted-foreground',
-  undated: 'bg-secondary text-foreground',
-};
 
 /** Colour for the status line under a bill's name. */
 export const STATUS_TEXT: Record<BillStatus, string> = {

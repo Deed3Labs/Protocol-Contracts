@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Globe, Landmark, Sparkles, TrendingUp, CalendarClock, Wallet, AlertCircle } from 'lucide-react';
 import { billTiming } from '@/lib/billStatus';
-import { STATUS_TINT, STATUS_PILL } from '@/components/app-ui/pay/statusStyle';
+import { STATUS_PILL } from '@/components/app-ui/pay/statusStyle';
+import { CATEGORY_TINT } from '@/components/app-ui/pay/categoryStyle';
 import { usePay, creditsFor, type Bill } from '@/context/PayContext';
 import { useKyc } from '@/context/KycContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
@@ -107,7 +108,8 @@ export default function BillDetailPane({ bill, bills, onSelect }: { bill: Bill |
   return (
     <div className="flex h-full flex-col p-4 sm:p-5">
       <div className="flex items-center gap-3">
-        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', STATUS_TINT[timing.status])}>
+        {/* Category colour, matching the row and the month bar; status lives on the pill. */}
+        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', CATEGORY_TINT[bill.type])}>
           <bill.icon className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">

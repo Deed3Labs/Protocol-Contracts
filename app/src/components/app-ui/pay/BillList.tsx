@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { billTiming, billUrgency, type BillStatus } from '@/lib/billStatus';
-import { STATUS_TINT, STATUS_TEXT } from '@/components/app-ui/pay/statusStyle';
-import { usePay, type Bill } from '@/context/PayContext';
+import { STATUS_TEXT } from '@/components/app-ui/pay/statusStyle';
+import { CATEGORY_TINT } from '@/components/app-ui/pay/categoryStyle';
+import { usePay, creditsFor, type Bill } from '@/context/PayContext';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { cn } from '@/lib/utils';
 
 /*
@@ -35,6 +37,7 @@ export default function BillList({
   onAdd: () => void;
 }) {
   const { streak } = usePay();
+  const { accelerated } = useMemberProfile();
   const [filter, setFilter] = useState<FilterId>('all');
   const [query, setQuery] = useState('');
 
@@ -127,6 +130,9 @@ export default function BillList({
         ) : (
           rows.map(({ bill, timing }) => {
             const selected = bill.id === selectedId;
+            const settled = timing.status === 'paid';
+            // What this bill is worth if paid on time — the reason to act, shown where the eye lands.
+            const earns = settled ? 0 : creditsFor(bill, streak, bill.amount, accelerated);
             return (
               <button
                 key={bill.id}
@@ -134,31 +140,43 @@ export default function BillList({
                 onClick={() => onSelect(bill.id)}
                 aria-current={selected}
                 className={cn(
-                  'flex w-full items-center gap-2.5 rounded-xl p-2.5 text-left transition-colors',
+                  'flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors',
                   selected ? 'bg-secondary' : 'hover:bg-secondary/50',
                 )}
               >
-                <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', STATUS_TINT[timing.status])}>
-                  <bill.icon className="h-4 w-4" />
+                {/* Category colour, matching the month bar — status is carried by the subline. */}
+                <span
+                  className={cn(
+                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+                    CATEGORY_TINT[bill.type],
+                    settled && 'opacity-50',
+                  )}
+                >
+                  <bill.icon className="h-[18px] w-[18px]" />
                 </span>
+
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
-                    <span className={cn('truncate text-sm', timing.status === 'paid' ? 'text-muted-foreground' : 'font-medium text-foreground')}>
+                    <span className={cn('truncate text-sm', settled ? 'text-muted-foreground' : 'font-medium text-foreground')}>
                       {bill.name}
                     </span>
                     {bill.source === 'plaid' && (
                       <span className="shrink-0 rounded bg-secondary px-1 py-0.5 text-[10px] font-medium text-muted-foreground">Auto</span>
                     )}
                   </span>
-                  {/* An overdue bill ends the on-time streak, which drops the earning multiplier —
-                      that's the real stake, so name it rather than showing an invented risk score. */}
                   <span className={cn('block truncate text-[11px]', STATUS_TEXT[timing.status])}>
                     {timing.label || 'No due date'}
                     {timing.status === 'overdue' && streak > 0 && ' · streak at risk'}
                   </span>
                 </span>
-                <span className={cn('shrink-0 text-sm tabular-nums', timing.status === 'paid' ? 'text-muted-foreground' : 'font-medium text-foreground')}>
-                  {bill.amount > 0 ? fmt(bill.amount) : '—'}
+
+                <span className="shrink-0 text-right">
+                  <span className={cn('block font-display text-sm tabular-nums', settled ? 'text-muted-foreground' : 'text-foreground')}>
+                    {bill.amount > 0 ? fmt(bill.amount) : '—'}
+                  </span>
+                  {earns > 0 && (
+                    <span className="block text-[11px] tabular-nums text-positive">+{earns.toLocaleString('en-US')}</span>
+                  )}
                 </span>
               </button>
             );
