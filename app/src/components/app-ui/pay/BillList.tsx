@@ -64,7 +64,7 @@ export default function BillList({
   const periodLabel = period === 'week' ? 'this week' : period === 'month' ? 'this month' : 'this quarter';
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card lg:max-h-[calc(100vh-11rem)]">
       <div className="flex items-center gap-2 border-b border-border p-2.5">
         <div className="flex gap-0.5 rounded-lg bg-secondary/60 p-0.5">
           {PERIODS.map(([id, label]) => (

@@ -36,7 +36,10 @@ export default function BillWorkspace() {
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 lg:min-h-[420px] lg:grid-cols-[minmax(0,38fr)_minmax(0,62fr)]">
+      {/* items-start so each column is its own height — a fixed min-height left a dead void under
+          whichever side was shorter (a one-bill list beside a full summary). Long content scrolls
+          inside each card via the max-height on them, so the page never runs away. */}
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,38fr)_minmax(0,62fr)] lg:items-start">
         <div className={cn('min-h-0', paneOpen && 'hidden lg:block')}>
           <BillList
             bills={bills}
@@ -51,7 +54,7 @@ export default function BillWorkspace() {
           />
         </div>
 
-        <div className={cn('flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card', !paneOpen && 'hidden lg:flex')}>
+        <div className={cn('flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card lg:max-h-[calc(100vh-11rem)]', !paneOpen && 'hidden lg:flex')}>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {adding ? (
               <BillAddForm
