@@ -28,12 +28,14 @@ interface PayMethod {
   speed: string;
 }
 const METHODS: PayMethod[] = [
-  { id: 'card', name: 'Debit or credit card', icon: CreditCard, speed: 'Instant' },
-  { id: 'applepay', name: 'Apple Pay', icon: Smartphone, speed: 'Instant' },
+  // Coinbase's headless (in-app) API supports Apple Pay and Google Pay ONLY — card and ACH have no
+  // embedded flow, so they necessarily open Coinbase's hosted page. Say which is which.
+  { id: 'card', name: 'Debit or credit card', icon: CreditCard, speed: 'Instant · opens Coinbase' },
+  { id: 'applepay', name: 'Apple Pay', icon: Smartphone, speed: 'Instant · stays in the app' },
   // Coinbase ACH is the cheap card alternative, but it's the one method that can't be a guest
   // checkout — Coinbase requires a signed-in account and it only runs in their hosted widget. Say so
   // up front rather than dumping the member on a login screen after they've committed to an amount.
-  { id: 'ach', name: 'Bank via Coinbase', icon: Landmark, speed: 'Lower fee · opens Coinbase, account required' },
+  { id: 'ach', name: 'Bank via Coinbase', icon: Landmark, speed: 'Opens Coinbase · account required' },
   { id: 'bank', name: 'Direct deposit or bank push', icon: Building2, speed: 'Free · sent from your bank' },
 ];
 
@@ -90,9 +92,14 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const { wallets, primaryId, openManager } = useLinkedWallets();
-  const { user } = usePrivy();
-  const buyerEmail = user?.email?.address || '';
+  const { user, linkPhone } = usePrivy();
+  // Same trap as the server-side email bug: `user.email` only exists for the EMAIL login type, so a
+  // Google/Apple member had no email here and silently failed the headless check below.
+  const buyerEmail = user?.email?.address || user?.google?.email || user?.apple?.email || '';
   const buyerPhone = user?.phone?.number || '';
+  // Coinbase requires a developer-verified email AND phone for the in-app (headless) flow. Without a
+  // phone we can't use it at all, which is why Apple Pay kept opening a new tab.
+  const canPayInApp = Boolean(buyerEmail && buyerPhone);
   const bal = useClearBalances();
 
   // Card / Apple Pay: create an Onramper checkout + open the provider's hosted flow. (Bank never
@@ -109,7 +116,7 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
     pendingBuyRef.current = { ref, amount, wallet: wallet.address };
     void rampEvent({ type: 'buy', status: 'submitted', amount, walletAddress: wallet.address, ref });
     // Apple Pay on Coinbase → headless order rendered in an in-app iframe (needs verified email + phone).
-    if (methodId === 'applepay' && selected.p.id === 'coinbase' && buyerEmail && buyerPhone) {
+    if (methodId === 'applepay' && selected.p.id === 'coinbase' && canPayInApp) {
       const { paymentLinkUrl } = await createRampBuyOrder({ amount, walletAddress: wallet.address, email: buyerEmail, phone: buyerPhone });
       if (paymentLinkUrl) {
         setPayUrl(paymentLinkUrl);
@@ -564,6 +571,27 @@ export default function AddMoneyModal({ open, onOpenChange }: { open: boolean; o
               {checkoutLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting…</> : `Add ${fmt(amount)}`}
             </button>
             {checkoutError && <p className="mt-2 text-center text-[11px] text-negative">{checkoutError}</p>}
+            {/* Apple Pay is the only method Coinbase can embed, and it needs a verified phone. Offer to
+                add one instead of silently bouncing them to a new tab and leaving them wondering. */}
+            {methodId === 'applepay' && !canPayInApp && (
+              <div className="mt-2 rounded-lg border border-border p-2.5">
+                <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                  <Smartphone className="mt-px h-3 w-3 shrink-0" />
+                  {buyerPhone
+                    ? 'Add an email to your account to pay without leaving the app. Otherwise Apple Pay opens in a new tab.'
+                    : 'Coinbase needs a verified phone number to keep Apple Pay inside the app. Without one it opens in a new tab.'}
+                </p>
+                {!buyerPhone && (
+                  <button
+                    type="button"
+                    onClick={() => linkPhone()}
+                    className="mt-2 w-full rounded-full border border-border py-1.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-secondary"
+                  >
+                    Add a phone number
+                  </button>
+                )}
+              </div>
+            )}
             {methodId === 'ach' && (
               <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-border p-2.5 text-[11px] leading-relaxed text-muted-foreground">
                 <Landmark className="mt-px h-3 w-3 shrink-0" />
