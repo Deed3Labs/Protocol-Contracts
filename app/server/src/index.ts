@@ -197,7 +197,12 @@ async function startServer() {
     app.use('/api/stripe', requireAuth, stripeRouter);
     app.use('/api/members', requireAuth, membersRouter);
     app.use('/api/plaid', requireAuth, requireMemberCapability('canUsePlaid'), plaidRouter);
-    app.use('/api/bridge', requireAuth, requireMemberCapability('canUseBridge'), bridgeRouter);
+    // NOTE: deliberately NOT behind requireMemberCapability('canUseBridge'). That capability is
+    // `verified`, and since Bridge now owns verification, gating these routes on it is circular: you
+    // could never reach /kyc-link to become verified because being unverified blocked the call.
+    // requireAuth still scopes every route to the signed-in member, and Bridge enforces its own KYC
+    // on anything that actually moves money (a virtual account can't be opened until it approves).
+    app.use('/api/bridge', requireAuth, bridgeRouter);
     app.use('/api/cards', requireAuth, cardsRouter);
     app.use('/api/send', sendRouter);
     app.use('/api/savings', requireAuth, savingsRouter);

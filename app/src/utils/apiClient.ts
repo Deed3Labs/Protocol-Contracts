@@ -1343,6 +1343,8 @@ export interface BridgeVirtualAccount {
 
 export interface BridgeStatus {
   configured: boolean;
+  /** Set when we couldn't reach /status at all — distinguishes "not set up" from "couldn't ask". */
+  error?: string;
   customerId?: string | null;
   /** Which of the account's emails Bridge already knows them by, if any. */
   matchedEmail?: string | null;
@@ -1365,9 +1367,14 @@ export interface BridgeStatus {
 /** Bridge verification + USD account state for the signed-in member. Never creates anything. */
 export async function getBridgeStatus(): Promise<BridgeStatus> {
   const r = await apiRequest<BridgeStatus>('/api/bridge/status');
-  return r.error || !r.data
-    ? { configured: false, verified: false, kycStatus: 'not_started', virtualAccount: null }
-    : r.data;
+  if (r.error || !r.data) {
+    // Every failure used to collapse into `configured: false`, so a 403, a 404 and a genuinely
+    // unconfigured backend were indistinguishable — which hid a permission deadlock behind a
+    // "verification unavailable" message. Keep the safe default, but say why.
+    console.warn('[bridge] status unavailable:', r.error);
+    return { configured: false, verified: false, kycStatus: 'not_started', virtualAccount: null, error: r.error };
+  }
+  return r.data;
 }
 
 /** Hosted Bridge verification link (ToS first, then KYC). Reuses an existing Bridge customer. */
