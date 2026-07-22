@@ -105,10 +105,21 @@ export function ClearBalancesProvider({ children }: { children: ReactNode }) {
   }, [refreshTokens, pending]);
 
   // Refresh when the tab/app regains focus so returning users see fresh data without a reload.
+  //
+  // `focus` alone is not enough on mobile. Resuming a backgrounded PWA (iOS especially) fires
+  // `visibilitychange` but frequently NOT `focus`, and the OS suspends timers while backgrounded so
+  // the poll above is dead too — which is why the app had to be fully closed and reopened to show
+  // anything new. Listening to both covers browser tabs and installed apps.
   useEffect(() => {
-    const onFocus = () => void refreshTokens(true);
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
+    const onWake = () => {
+      if (document.visibilityState === 'visible') void refreshTokens(true);
+    };
+    window.addEventListener('focus', onWake);
+    document.addEventListener('visibilitychange', onWake);
+    return () => {
+      window.removeEventListener('focus', onWake);
+      document.removeEventListener('visibilitychange', onWake);
+    };
   }, [refreshTokens]);
 
   // Refresh on a money action (send/transfer/deposit landed) — refetch now and again shortly, since the
