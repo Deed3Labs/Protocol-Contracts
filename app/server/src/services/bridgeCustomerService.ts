@@ -96,6 +96,11 @@ export async function resolveCustomerForEmails(emails: string[]): Promise<Resolv
     const byCustomer = await bridge<{ data?: BridgeCustomer[] }>(
       `/customers?email=${encodeURIComponent(email)}&limit=1`,
     );
+    // A rejected API key looks identical to "this member isn't a Bridge customer" from here, which
+    // is how a bad BRIDGE_API_KEY masqueraded as a brand-new user. Call it out in the logs.
+    if (!byCustomer.ok && (byCustomer.status === 401 || byCustomer.status === 403)) {
+      console.error('[bridge] API key rejected (%d) — check BRIDGE_API_KEY and BRIDGE_API_BASE_URL: %s', byCustomer.status, byCustomer.message);
+    }
     const customerId = byCustomer.ok ? byCustomer.data?.data?.[0]?.id : undefined;
     if (customerId) return { customerId, email };
 

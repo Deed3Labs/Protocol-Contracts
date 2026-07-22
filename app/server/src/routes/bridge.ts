@@ -362,9 +362,7 @@ router.post('/onboarding-url', async (req: Request, res: Response) => {
         );
 
         if (!createResult.ok) {
-          const status = createResult.status >= 400 && createResult.status < 500
-            ? createResult.status
-            : 502;
+          const status = upstreamStatus(createResult.status);
           return res.status(status).json({
             error: 'Failed to create Bridge onboarding link',
             message: createResult.message,
@@ -497,6 +495,18 @@ router.get('/virtual-account', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Map an upstream Bridge status onto one we can safely return.
+ *
+ * NEVER pass 401/403 through: those are OUR auth codes, and the client reacts to a 401 by clearing
+ * the session and telling the member to sign in again. Bridge rejecting our API key would therefore
+ * present as "your session expired" — blaming the user for a server-side credential problem.
+ */
+function upstreamStatus(status: number): number {
+  if (status === 401 || status === 403) return 502; // Bridge rejected US, not the caller
+  return status >= 400 && status < 500 ? status : 502;
+}
+
 /** Emails Privy verified for THIS session — the only addresses we'll look a customer up by. */
 function sessionEmails(req: Request): string[] {
   const list = req.auth?.emails ?? (req.auth?.email ? [req.auth.email] : []);
@@ -604,7 +614,8 @@ router.post('/kyc-link', async (req: Request, res: Response) => {
       customerType: customerType === 'business' ? 'business' : 'individual',
     });
     if ('error' in result) {
-      res.status(result.status >= 400 && result.status < 500 ? result.status : 502).json({ error: result.error });
+      console.error('[bridge/kyc-link] upstream failure', { status: result.status, error: result.error });
+      res.status(upstreamStatus(result.status)).json({ error: result.error });
       return;
     }
     if (!result.url) {
