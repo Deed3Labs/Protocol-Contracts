@@ -207,8 +207,7 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
                   <span className="truncate">{accountPhone}</span>
                 </div>
               )}
-              {/* A verified phone is what lets Coinbase keep Apple Pay inside the app instead of
-                  handing the member off to a new tab — so it belongs here, not only mid-deposit. */}
+              {/* Used for payment receipts, security alerts and account recovery. */}
               {!accountPhone && (
                 <button
                   type="button"
@@ -218,7 +217,7 @@ export function AccountModal({ open, onOpenChange }: ModalProps) {
                   <Smartphone className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-foreground">Add a phone number</span>
-                    <span className="block text-[11px] text-muted-foreground">Lets you pay with Apple Pay without leaving the app.</span>
+                    <span className="block text-[11px] text-muted-foreground">For payment receipts, security alerts and account recovery.</span>
                   </span>
                   <span className="shrink-0 text-xs font-semibold text-info">Add</span>
                 </button>

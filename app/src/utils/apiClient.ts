@@ -2708,6 +2708,16 @@ export async function createRampBuyOrder(p: {
   return { paymentLinkUrl: r.data.paymentLinkUrl, orderId: r.data.orderId };
 }
 
+/**
+ * Per-payment-method buy limits from Coinbase, keyed by their enum (CARD, APPLE_PAY,
+ * ACH_BANK_ACCOUNT). Empty when unavailable — callers should keep a conservative default rather than
+ * assume no limit. Coinbase doesn't publish these, so they must be read at runtime.
+ */
+export async function getRampBuyLimits(): Promise<Record<string, { min: number; max: number }>> {
+  const r = await apiRequest<{ limits: Record<string, { min: number; max: number }> }>('/api/ramp/buy/limits');
+  return r.error || !r.data?.limits ? {} : r.data.limits;
+}
+
 /** Record a ramp order's status + fire a notification (deposit started/complete, cash-out sent, …). */
 export async function rampEvent(p: {
   type: 'buy' | 'sell';

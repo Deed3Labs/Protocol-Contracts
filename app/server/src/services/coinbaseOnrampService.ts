@@ -133,6 +133,27 @@ export const coinbaseOnrampService = {
   },
 
   /** Buy quote (fees + rate) for a fiat amount → USDC on Base. Normalized to the app's quote shape. */
+  /**
+   * Per-payment-method min/max for buying. Coinbase does NOT publish these — the docs say to read
+   * them at runtime from Get Buy Options — and they differ by method (a card minimum is not an ACH
+   * minimum). Hardcoding a floor guarantees either rejected checkouts or an artificially high limit.
+   */
+  async buyLimits(params: { country?: string; subdivision?: string } = {}): Promise<Record<string, { min: number; max: number }>> {
+    const q = new URLSearchParams({ country: (params.country ?? 'US').toUpperCase() });
+    if (params.subdivision) q.set('subdivision', params.subdivision.toUpperCase());
+    const data = await this.apiFetch('GET', `/onramp/v1/buy/options?${q.toString()}`);
+    const currencies: any[] = data?.payment_currencies ?? data?.paymentCurrencies ?? [];
+    const usd = currencies.find((c) => String(c?.id ?? '').toUpperCase() === 'USD') ?? currencies[0];
+    const out: Record<string, { min: number; max: number }> = {};
+    for (const l of usd?.limits ?? []) {
+      const id = String(l?.id ?? '').toUpperCase();
+      const min = Number(l?.min);
+      const max = Number(l?.max);
+      if (id && Number.isFinite(min) && Number.isFinite(max)) out[id] = { min, max };
+    }
+    return out;
+  },
+
   async buyQuote(params: {
     amount: number;
     fiat?: string;
