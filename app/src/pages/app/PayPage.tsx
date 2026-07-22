@@ -5,6 +5,7 @@ import ActionTile from '@/components/app-ui/ActionTile';
 import RentEquityAnalyticsChart from '@/components/app-ui/charts/RentEquityAnalyticsChart';
 import BillTimeline, { type TimelineBill } from '@/components/app-ui/BillTimeline';
 import BillRolodex from '@/components/app-ui/BillRolodex';
+import EquityCredits from '@/components/app-ui/EquityCredits';
 import CardVisual from '@/components/app-ui/CardVisual';
 import { usePay } from '@/context/PayContext';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
@@ -68,8 +69,10 @@ export default function PayPage() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         <RentEquityAnalyticsChart className="lg:col-span-2" series={summary?.series ?? []} />
-        <BillTimeline bills={timelineBills} onPay={openPay} />
+        <EquityCredits />
       </div>
+
+      <BillTimeline bills={timelineBills} onPay={openPay} />
     </div>
   );
 }
