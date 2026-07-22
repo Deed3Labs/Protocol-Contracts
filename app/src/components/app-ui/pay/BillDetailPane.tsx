@@ -107,8 +107,9 @@ export default function BillDetailPane({ bill, bills }: { bill: Bill | null; bil
   const creditsToDate = payments.filter((p) => p.onTime).reduce((n, p) => n + creditsFor(bill, streak, p.amount, accelerated), 0);
   const balance = timing.status === 'paid' ? 0 : bill.amount;
 
-  // Segmented bar: money paid, equity earned, and what's still owed, on one line.
-  const barTotal = Math.max(1, paidToDate + creditsToDate + balance);
+  // The bar is DOLLARS ONLY — paid to date vs what's still owed. Credits are points, not money, so
+  // they're reported beside it; mixing the two in one proportional bar makes the widths meaningless.
+  const barTotal = Math.max(1, paidToDate + balance);
   const seg = (v: number) => `${(v / barTotal) * 100}%`;
 
   return (
@@ -142,20 +143,26 @@ export default function BillDetailPane({ bill, bills }: { bill: Bill | null; bil
 
       {(paidToDate > 0 || balance > 0) && (
         <div className="mt-3">
-          <div className="flex h-2 gap-0.5 overflow-hidden rounded-full">
-            {paidToDate > 0 && <span className="bg-positive" style={{ width: seg(paidToDate) }} />}
-            {creditsToDate > 0 && <span className="bg-amber-500" style={{ width: seg(creditsToDate) }} />}
-            {balance > 0 && <span className="bg-secondary" style={{ width: seg(balance) }} />}
+          <div className="flex h-2 gap-1 overflow-hidden">
+            {paidToDate > 0 && <span className="rounded-full bg-positive" style={{ width: seg(paidToDate) }} />}
+            {balance > 0 && <span className="rounded-full bg-muted-foreground/30" style={{ width: seg(balance) }} />}
           </div>
-          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {paidToDate > 0 && (
-              <span><span className="mr-1 inline-block h-1.5 w-1.5 rounded-sm bg-positive" />Paid ${money(paidToDate)}</span>
-            )}
-            {creditsToDate > 0 && (
-              <span><span className="mr-1 inline-block h-1.5 w-1.5 rounded-sm bg-amber-500" />Credits {nInt(creditsToDate)}</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-positive/10 px-2.5 py-1 text-xs font-medium text-positive">
+                Paid <span className="tabular-nums">${money(paidToDate)}</span>
+              </span>
             )}
             {balance > 0 && (
-              <span><span className="mr-1 inline-block h-1.5 w-1.5 rounded-sm bg-secondary" />Due ${money(balance)}</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                Due <span className="tabular-nums">${money(balance)}</span>
+              </span>
+            )}
+            {creditsToDate > 0 && (
+              <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Sparkles className="h-3.5 w-3.5 text-positive" />
+                <span className="font-medium tabular-nums text-positive">{nInt(creditsToDate)}</span> credits earned
+              </span>
             )}
           </div>
         </div>

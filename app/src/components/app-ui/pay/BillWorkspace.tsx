@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
-import BillAttentionBand from '@/components/app-ui/pay/BillAttentionBand';
 import BillList from '@/components/app-ui/pay/BillList';
 import BillDetailPane from '@/components/app-ui/pay/BillDetailPane';
 import BillAddForm from '@/components/app-ui/pay/BillAddForm';
@@ -18,7 +17,7 @@ import { cn } from '@/lib/utils';
  * something, so it's already the right space, and the list stays visible beside you.
  */
 export default function BillWorkspace() {
-  const { bills, summary } = usePay();
+  const { bills } = usePay();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -37,16 +36,7 @@ export default function BillWorkspace() {
   };
 
   return (
-    <div className="space-y-3">
-      <BillAttentionBand
-        bills={bills}
-        streak={summary?.streak ?? 0}
-        onSelect={(id) => {
-          setAdding(false);
-          setSelectedId(id);
-        }}
-      />
-
+    <>
       <div className="grid gap-3 lg:h-[460px] lg:grid-cols-[minmax(0,38fr)_minmax(0,62fr)]">
         <div className={cn('min-h-0', paneOpen && 'hidden lg:block')}>
           <BillList
@@ -87,6 +77,6 @@ export default function BillWorkspace() {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

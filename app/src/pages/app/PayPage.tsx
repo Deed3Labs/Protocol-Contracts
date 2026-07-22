@@ -1,20 +1,22 @@
-import { useEffect } from 'react';
-import { Home, SendHorizontal, ArrowDownLeft, Repeat } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
+import { Home, SendHorizontal, ArrowDownLeft, Repeat, Calendar, AlertCircle, TrendingUp, Flame } from 'lucide-react';
+import StatBar from '@/components/app-ui/StatBar';
+import MonthProgress from '@/components/app-ui/pay/MonthProgress';
 import BillWorkspace from '@/components/app-ui/pay/BillWorkspace';
-import { usePay } from '@/context/PayContext';
+import { billTiming } from '@/lib/billStatus';
+import { usePay, rewardMultiplier } from '@/context/PayContext';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
-
-const fmtUsd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
 /**
  * Pay — a workspace for the member's bills.
  *
- * The page is the bills: an attention band for anything urgent, then a master–detail workspace for
- * managing and paying them. Secondary money actions sit in a slim rail beneath so they're reachable
- * without competing with the bills for attention.
+ * Metrics (animated, the same treatment as Accounts) → how the month is going → the bills themselves.
+ * Paying from the Clear balance needs verification; adding and tracking bills does not.
  */
 export default function PayPage() {
-  const { bills, summary, openPay, reconcile } = usePay();
+  const { bills, summary, openPay, reconcile, loading } = usePay();
+  const { accelerated } = useMemberProfile();
   const { openSend, openRequest, openAutoSave } = useMoneyActions();
 
   // Detect on-time recurring payments from Plaid when the Pay page opens (Plaid call kept off other pages).
@@ -22,20 +24,59 @@ export default function PayPage() {
     void reconcile();
   }, [reconcile]);
 
-  const dueThisMonth = summary?.dueThisMonth ?? 0;
+  const overdue = useMemo(() => {
+    let amount = 0;
+    let count = 0;
+    for (const b of bills) {
+      if (billTiming(b.dueDay, b.lastPaidAt).status === 'overdue') {
+        amount += b.amount || 0;
+        count += 1;
+      }
+    }
+    return { amount, count };
+  }, [bills]);
+
+  const streak = summary?.streak ?? 0;
+  const multiplier = rewardMultiplier(streak, accelerated);
 
   return (
     <div className="animate-fade-in space-y-4">
-      <header className="flex flex-wrap items-end gap-3">
-        <div className="min-w-0">
-          <h1 className="font-display text-3xl tracking-tight text-foreground">Pay</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {bills.length === 0
-              ? 'Track your rent and bills — and earn equity for paying on time.'
-              : `${bills.length} ${bills.length === 1 ? 'bill' : 'bills'} · ${fmtUsd(dueThisMonth)} due this month`}
-          </p>
-        </div>
+      <header>
+        <h1 className="font-display text-3xl tracking-tight text-foreground">Pay</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          {bills.length === 0
+            ? 'Track your rent and bills — and earn equity for paying on time.'
+            : `${bills.length} ${bills.length === 1 ? 'bill' : 'bills'} tracked`}
+        </p>
       </header>
+
+      <StatBar
+        loading={loading}
+        stats={[
+          { label: 'Due this month', value: summary?.dueThisMonth ?? 0, icon: Calendar },
+          {
+            label: 'Overdue',
+            value: overdue.amount,
+            change: overdue.count > 0 ? `${overdue.count} ${overdue.count === 1 ? 'bill' : 'bills'}` : undefined,
+            changePositive: false,
+            icon: AlertCircle,
+          },
+          {
+            label: 'Equity credits',
+            value: summary?.totalEquity ?? 0,
+            change: summary?.equityThisMonth ? `+${summary.equityThisMonth.toLocaleString()} this month` : undefined,
+            icon: TrendingUp,
+          },
+          {
+            label: 'On-time streak',
+            value: `${streak} ${streak === 1 ? 'month' : 'months'}`,
+            change: `${multiplier}× earning`,
+            icon: Flame,
+          },
+        ]}
+      />
+
+      <MonthProgress />
 
       <BillWorkspace />
 
