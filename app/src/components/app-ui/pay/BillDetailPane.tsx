@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Globe, Landmark, Sparkles, TrendingUp, CalendarClock, Wallet, AlertCircle } from 'lucide-react';
+import { Globe, Landmark, Sparkles, TrendingUp, CalendarClock, Wallet, AlertCircle, ChevronLeft } from 'lucide-react';
 import { billTiming } from '@/lib/billStatus';
 import { STATUS_PILL } from '@/components/app-ui/pay/statusStyle';
 import { CATEGORY_TINT } from '@/components/app-ui/pay/categoryStyle';
@@ -67,7 +67,17 @@ function EmptyState({ bills, onSelect }: { bills: Bill[]; onSelect?: (id: string
   );
 }
 
-export default function BillDetailPane({ bill, bills, onSelect }: { bill: Bill | null; bills: Bill[]; onSelect?: (id: string) => void }) {
+export default function BillDetailPane({
+  bill,
+  bills,
+  onSelect,
+  onClose,
+}: {
+  bill: Bill | null;
+  bills: Bill[];
+  onSelect?: (id: string) => void;
+  onClose?: () => void;
+}) {
   const { address } = useAppKitAccount();
   const { openPay, streak } = usePay();
   const { verified } = useKyc();
@@ -107,6 +117,18 @@ export default function BillDetailPane({ bill, bills, onSelect }: { bill: Bill |
 
   return (
     <div className="flex h-full flex-col p-4 sm:p-5">
+      {/* Breadcrumb back to the month summary — on desktop the list stays visible, but selecting
+          replaces the summary, so this is the way back to it (the row toggle is the other). */}
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          className="mb-3 -ml-1.5 inline-flex w-fit items-center gap-1 rounded-lg py-1 pl-1.5 pr-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <ChevronLeft className="h-4 w-4" /> Summary
+        </button>
+      )}
+
       {/* Hero: the amount leads, the name sits above it, and the facts you'd check next read as
           labelled pairs — the invoice-header pattern, which has a far clearer hierarchy than a name
           competing with an amount at similar weight. */}

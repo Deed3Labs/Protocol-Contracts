@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft } from 'lucide-react';
 import BillList from '@/components/app-ui/pay/BillList';
 import BillDetailPane from '@/components/app-ui/pay/BillDetailPane';
 import BillAddForm from '@/components/app-ui/pay/BillAddForm';
@@ -44,25 +43,15 @@ export default function BillWorkspace() {
             selectedId={selectedId}
             onSelect={(id) => {
               setAdding(false);
-              setSelectedId(id);
+              // Clicking the open bill again returns to the summary — a second way back besides the
+              // pane's own control, and the expected toggle behaviour for a selected row.
+              setSelectedId((cur) => (cur === id ? null : id));
             }}
             onAdd={startAdd}
           />
         </div>
 
         <div className={cn('flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card', !paneOpen && 'hidden lg:flex')}>
-          {paneOpen && (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedId(null);
-                setAdding(false);
-              }}
-              className="inline-flex shrink-0 items-center gap-1 px-4 pt-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground lg:hidden"
-            >
-              <ChevronLeft className="h-4 w-4" /> All bills
-            </button>
-          )}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {adding ? (
               <BillAddForm
@@ -79,6 +68,7 @@ export default function BillWorkspace() {
                   setAdding(false);
                   setSelectedId(id);
                 }}
+                onClose={() => setSelectedId(null)}
               />
             )}
           </div>
