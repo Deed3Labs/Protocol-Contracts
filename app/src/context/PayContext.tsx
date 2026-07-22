@@ -395,12 +395,15 @@ export function PayProvider({ children }: { children: ReactNode }) {
     reconcile,
     streak: summary?.streak ?? ON_TIME_STREAK,
     refresh: () => void load(),
+    // Paying FROM the Clear balance moves money, so it stays behind verification.
     openPay: (billId) =>
       gate(() => {
         setInitialBillId(billId);
         setPayOpen(true);
       }),
-    openPortals: () => gate(() => setPortalsOpen(true)),
+    // Managing bills does NOT. Adding, tracking and paying on the biller's own site involves no money
+    // movement on our side, so gating it here locked unverified members out of the whole feature.
+    openPortals: () => setPortalsOpen(true),
   };
 
   return (

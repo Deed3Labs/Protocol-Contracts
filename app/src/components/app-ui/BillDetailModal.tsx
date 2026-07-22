@@ -3,6 +3,7 @@ import { Globe, Wallet, TrendingUp, Hash, Calendar } from 'lucide-react';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import ActivityDetailModal, { type DetailInfo } from '@/components/app-ui/ActivityDetailModal';
 import BillPortalBrowser from '@/components/app-ui/BillPortalBrowser';
+import { useKyc } from '@/context/KycContext';
 import { usePay, creditsFor, type Bill, type BillType } from '@/context/PayContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { getPayBillerPayments, getMerchantMeta, setMerchantMeta, type PayBillerPayment, type MerchantMeta } from '@/utils/apiClient';
@@ -38,6 +39,7 @@ const TYPE_LABEL: Record<BillType, string> = {
 export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; onClose: () => void }) {
   const { address } = useAppKitAccount();
   const { openPay, streak, setReminders } = usePay();
+  const { verified } = useKyc();
   const { accelerated } = useMemberProfile();
   const [payments, setPayments] = useState<PayBillerPayment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,13 +131,20 @@ export default function BillDetailModal({ bill, onClose }: { bill: Bill | null; 
           group: String(d.getFullYear()),
         };
       }),
-      actions: [
-        { label: 'Pay from balance', primary: true, onClick: () => { onClose(); openPay(bill.id); } },
-        { label: 'Pay on their site', icon: Globe, disabled: !portalUrl, onClick: openPortal },
-      ],
+      // Paying on the biller's own site needs nothing from us, so it leads for members who haven't
+      // verified — the Clear-balance option stays visible as the upsell rather than disappearing.
+      actions: verified
+        ? [
+            { label: 'Pay from balance', primary: true, onClick: () => { onClose(); openPay(bill.id); } },
+            { label: 'Pay on their site', icon: Globe, disabled: !portalUrl, onClick: openPortal },
+          ]
+        : [
+            { label: 'Pay on their site', primary: true, icon: Globe, disabled: !portalUrl, onClick: openPortal },
+            { label: 'Pay from balance · Verify', onClick: () => { onClose(); openPay(bill.id); } },
+          ],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bill, payments, loading, portalUrl, addressVal, reminders, streak, accelerated, openPay, onClose, setReminders]);
+  }, [bill, payments, loading, portalUrl, addressVal, reminders, streak, accelerated, openPay, onClose, setReminders, verified]);
 
   return (
     <>
