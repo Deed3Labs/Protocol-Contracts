@@ -18,7 +18,7 @@ const fmt2 = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigit
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 const nInt = (n: number) => Math.round(n).toLocaleString('en-US');
 
-export default function MonthProgress() {
+export default function MonthProgress({ className }: { className?: string }) {
   const { bills, summary } = usePay();
 
   const { categories, total, paid, remaining } = useMemo(() => {
@@ -43,7 +43,7 @@ export default function MonthProgress() {
   const credits = summary?.equityThisMonth ?? 0;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-muted-foreground">This month's bills</span>
         <div className="flex shrink-0 items-center gap-1.5">

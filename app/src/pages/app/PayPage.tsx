@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Home, SendHorizontal, ArrowDownLeft, Repeat, Calendar, AlertCircle, TrendingUp, Flame } from 'lucide-react';
 import StatBar from '@/components/app-ui/StatBar';
+import ActionTile from '@/components/app-ui/ActionTile';
 import MonthProgress from '@/components/app-ui/pay/MonthProgress';
 import BillWorkspace from '@/components/app-ui/pay/BillWorkspace';
 import { billTiming } from '@/lib/billStatus';
@@ -76,28 +77,19 @@ export default function PayPage() {
         ]}
       />
 
-      <MonthProgress />
+      {/* Money moves + the month's shape, one section — the actions are the point of the page, so they
+          get real tiles beside the bar rather than a footnote rail. Mirrors Borrow's credit-line row. */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <MonthProgress className="lg:col-span-2" />
+        <div className="grid grid-cols-2 gap-3">
+          <ActionTile icon={Home} label="Pay rent" hint="Schedule or now" primary onClick={() => openPay('rent')} />
+          <ActionTile icon={SendHorizontal} label="Send" hint="To anyone" onClick={openSend} />
+          <ActionTile icon={ArrowDownLeft} label="Request" hint="Get paid" onClick={openRequest} />
+          <ActionTile icon={Repeat} label="Auto-save" hint="Build equity" onClick={openAutoSave} />
+        </div>
+      </div>
 
       <BillWorkspace />
-
-      {/* Slim rail: reachable, never dominant. */}
-      <div className="flex flex-wrap gap-2">
-        {[
-          { icon: Home, label: 'Pay rent', onClick: () => openPay('rent') },
-          { icon: SendHorizontal, label: 'Send', onClick: openSend },
-          { icon: ArrowDownLeft, label: 'Request', onClick: openRequest },
-          { icon: Repeat, label: 'Auto-save', onClick: openAutoSave },
-        ].map(({ icon: Icon, label, onClick }) => (
-          <button
-            key={label}
-            type="button"
-            onClick={onClick}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-secondary"
-          >
-            <Icon className="h-3.5 w-3.5 text-muted-foreground" /> {label}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
