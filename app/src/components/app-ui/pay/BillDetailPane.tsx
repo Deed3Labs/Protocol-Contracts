@@ -107,16 +107,19 @@ export default function BillDetailPane({ bill, bills, onSelect }: { bill: Bill |
 
   return (
     <div className="flex h-full flex-col p-4 sm:p-5">
-      <div className="flex items-center gap-3">
-        {/* Category colour, matching the row and the month bar; status lives on the pill. */}
-        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', CATEGORY_TINT[bill.type])}>
+      {/* Hero: the amount leads, the name sits above it, and the facts you'd check next read as
+          labelled pairs — the invoice-header pattern, which has a far clearer hierarchy than a name
+          competing with an amount at similar weight. */}
+      <div className="flex items-start gap-3">
+        <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', CATEGORY_TINT[bill.type])}>
           <bill.icon className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate font-display text-base font-semibold tracking-tight text-foreground">{bill.name}</div>
-          <div className="truncate text-[11px] text-muted-foreground">
-            {bill.payee && bill.payee !== bill.name ? `${bill.payee} · ` : ''}
-            {bill.dueDay ? 'Monthly' : 'No schedule'}
+          <div className="truncate text-sm font-medium text-foreground">{bill.name}</div>
+          <div className="mt-0.5 flex items-baseline gap-0.5">
+            <span className="text-base text-muted-foreground">$</span>
+            <span className="font-display text-4xl tracking-tight tabular-nums text-foreground">{money(bill.amount).split('.')[0]}</span>
+            <span className="text-base text-muted-foreground">.{money(bill.amount).split('.')[1]}</span>
           </div>
         </div>
         <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium', STATUS_PILL[timing.status])}>
@@ -124,39 +127,61 @@ export default function BillDetailPane({ bill, bills, onSelect }: { bill: Bill |
         </span>
       </div>
 
-      <div className="mt-4 flex items-baseline gap-1">
-        <span className="text-sm text-muted-foreground">$</span>
-        <span className="font-display text-3xl tracking-tight tabular-nums text-foreground">{money(bill.amount).split('.')[0]}</span>
-        <span className="text-sm text-muted-foreground">.{money(bill.amount).split('.')[1]}</span>
-        {earns > 0 && (
-          <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Sparkles className="h-3 w-3 text-positive" /> earns <span className="font-medium text-positive">+{nInt(earns)}</span>
-          </span>
-        )}
+      <div className="mt-4 grid grid-cols-3 gap-3 border-y border-border py-3">
+        <div className="min-w-0">
+          <div className="text-[11px] text-muted-foreground">Due</div>
+          <div className="mt-0.5 truncate text-sm tabular-nums text-foreground">
+            {timing.dueDate ? timing.dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[11px] text-muted-foreground">{bill.payee && bill.payee !== bill.name ? 'Payee' : 'Repeats'}</div>
+          <div className="mt-0.5 truncate text-sm text-foreground">
+            {bill.payee && bill.payee !== bill.name ? bill.payee : bill.dueDay ? 'Monthly' : 'No schedule'}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[11px] text-muted-foreground">Earns</div>
+          <div className={cn('mt-0.5 flex items-center gap-1 truncate text-sm tabular-nums', earns > 0 ? 'text-positive' : 'text-muted-foreground')}>
+            {earns > 0 ? (
+              <>
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                +{nInt(earns)}
+              </>
+            ) : (
+              '—'
+            )}
+          </div>
+        </div>
       </div>
 
       {(paidToDate > 0 || balance > 0) && (
-        <div className="mt-3">
-          <div className="flex h-2 gap-1 overflow-hidden">
-            {paidToDate > 0 && <span className="rounded-full bg-positive" style={{ width: seg(paidToDate) }} />}
-            {balance > 0 && <span className="rounded-full bg-muted-foreground/30" style={{ width: seg(balance) }} />}
+        <div className="mt-4">
+          {/* Same bar treatment as the month view and Borrow's credit line, so a bar means the same
+              thing wherever it appears. Dollars only — credits sit in the legend, not a segment. */}
+          <div className="flex h-6 gap-0.5 overflow-hidden rounded-lg bg-secondary">
+            {paidToDate > 0 && <div className="bg-positive" style={{ width: seg(paidToDate) }} />}
+            {balance > 0 && <div className="bg-muted-foreground/40" style={{ width: seg(balance) }} />}
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {paidToDate > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-positive/10 px-2.5 py-1 text-xs font-medium text-positive">
-                Paid <span className="tabular-nums">${money(paidToDate)}</span>
-              </span>
-            )}
-            {balance > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                Due <span className="tabular-nums">${money(balance)}</span>
-              </span>
-            )}
+          <div className="mt-2 flex items-center justify-between gap-3 text-[10px]">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
+              {paidToDate > 0 && (
+                <span className="whitespace-nowrap">
+                  <span className="mr-1 inline-block h-1.5 w-1.5 rounded-sm bg-positive align-middle" />
+                  <span className="font-medium text-muted-foreground">Paid to date</span>{' '}
+                  <span className="tabular-nums text-foreground">${money(paidToDate)}</span>
+                </span>
+              )}
+              {balance > 0 && (
+                <span className="whitespace-nowrap">
+                  <span className="mr-1 inline-block h-1.5 w-1.5 rounded-sm bg-muted-foreground/40 align-middle" />
+                  <span className="font-medium text-muted-foreground">Due now</span>{' '}
+                  <span className="tabular-nums text-foreground">${money(balance)}</span>
+                </span>
+              )}
+            </div>
             {creditsToDate > 0 && (
-              <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <Sparkles className="h-3.5 w-3.5 text-positive" />
-                <span className="font-medium tabular-nums text-positive">{nInt(creditsToDate)}</span> credits earned
-              </span>
+              <span className="shrink-0 whitespace-nowrap tabular-nums text-positive">{nInt(creditsToDate)} credits earned</span>
             )}
           </div>
         </div>
