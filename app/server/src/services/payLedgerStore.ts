@@ -172,8 +172,6 @@ export interface Biller {
   portalUrl: string | null;
   address: string | null;
   reminders: boolean;
-  /** ISO date of the most recent recorded payment, or null. Lets the UI tell "overdue" from "paid". */
-  lastPaidAt: string | null;
 }
 
 export interface PaySummary {
@@ -206,7 +204,6 @@ function rowToBiller(r: Record<string, unknown>): Biller {
     portalUrl: r.portal_url ? String(r.portal_url) : null,
     address: r.address ? String(r.address) : null,
     reminders: r.reminders !== false,
-    lastPaidAt: r.last_paid_at ? new Date(String(r.last_paid_at)).toISOString() : null,
   };
 }
 
@@ -245,18 +242,8 @@ export const payLedgerStore = {
     const pool = getPayPool();
     if (!pool) return [];
     await ensureTables();
-    // Join the newest payment per biller: without it the client can't distinguish a bill that's
-    // genuinely overdue from one that was paid days ago, so every past-due date reads as late.
     const r = await pool.query(
-      `SELECT b.*, p.last_paid_at
-         FROM pay_billers b
-         LEFT JOIN (
-           SELECT biller_id, MAX(paid_at) AS last_paid_at
-             FROM pay_payments WHERE wallet = $1 AND biller_id IS NOT NULL
-            GROUP BY biller_id
-         ) p ON p.biller_id = b.id
-        WHERE b.wallet = $1 AND b.archived_at IS NULL
-        ORDER BY b.type = 'rent' DESC, b.due_day NULLS LAST`,
+      `SELECT * FROM pay_billers WHERE wallet = $1 AND archived_at IS NULL ORDER BY type = 'rent' DESC, due_day NULLS LAST`,
       [wallet],
     );
     return r.rows.map(rowToBiller);

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { Home, Zap, Repeat, CreditCard, Smartphone, Receipt, type LucideIcon } from 'lucide-react';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import PayModal from '@/components/app-ui/PayModal';
+import BillPortalsModal from '@/components/app-ui/BillPortalsModal';
 import { useKyc } from '@/context/KycContext';
 import {
   getPlaidRecurringTransactions,
@@ -48,11 +49,10 @@ export interface Bill {
   portalUrl: string | null; // biller's login/pay page → "Pay on their site"
   address: string | null; // mailing address (biller info; future mailed-check option)
   reminders: boolean; // due-date reminders on/off
-  lastPaidAt: string | null; // ISO of the newest recorded payment — tells "overdue" from "already paid"
 }
 
 /** Fields a user can set/edit on a biller (id/icon derived; source/payable/payout/reminders server-controlled). */
-export type BillerDraft = Omit<Bill, 'id' | 'icon' | 'source' | 'payable' | 'payoutLast4' | 'payoutBank' | 'reminders' | 'lastPaidAt'>;
+export type BillerDraft = Omit<Bill, 'id' | 'icon' | 'source' | 'payable' | 'payoutLast4' | 'payoutBank' | 'reminders'>;
 
 /** On-time streak fallback when no summary is loaded yet. */
 export const ON_TIME_STREAK = 0;
@@ -124,7 +124,6 @@ function billerToBill(b: PayBiller): Bill {
     portalUrl: b.portalUrl,
     address: b.address,
     reminders: b.reminders,
-    lastPaidAt: b.lastPaidAt ?? null,
   };
 }
 
@@ -152,6 +151,8 @@ interface PayValue {
   refresh: () => void;
   /** Open the Pay flow; pass a bill id to go straight to that payment (e.g. "Pay rent"). */
   openPay: (billId?: string) => void;
+  /** Open the bill-portal directory (pay on the biller's own site with the Clear card). */
+  openPortals: () => void;
 }
 
 const Ctx = createContext<PayValue | null>(null);
@@ -174,6 +175,7 @@ export function usePay(): PayValue {
       streak: ON_TIME_STREAK,
       refresh: () => {},
       openPay: () => {},
+      openPortals: () => {},
     }
   );
 }
@@ -190,6 +192,7 @@ export function PayProvider({ children }: { children: ReactNode }) {
   const [summary, setSummary] = useState<PaySummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [portalsOpen, setPortalsOpen] = useState(false);
   const [initialBillId, setInitialBillId] = useState<string | undefined>(undefined);
 
   const load = useCallback(async () => {
@@ -272,7 +275,7 @@ export function PayProvider({ children }: { children: ReactNode }) {
   const addBiller = useCallback(
     (b: BillerDraft) => {
       const tempId = `bill${Date.now()}`;
-      setBills((bs) => [...bs, { ...b, id: tempId, icon: ICONS[b.type] ?? Receipt, source: 'manual', payable: false, payoutLast4: null, payoutBank: null, reminders: true, lastPaidAt: null }]);
+      setBills((bs) => [...bs, { ...b, id: tempId, icon: ICONS[b.type] ?? Receipt, source: 'manual', payable: false, payoutLast4: null, payoutBank: null, reminders: true }]);
       if (address) {
         void addPayBiller(address, { name: b.name, payee: b.payee, type: b.type, defaultAmount: b.amount, dueDay: b.dueDay, portalUrl: b.portalUrl, address: b.address })
           .then((created) => {
@@ -398,12 +401,16 @@ export function PayProvider({ children }: { children: ReactNode }) {
         setInitialBillId(billId);
         setPayOpen(true);
       }),
+    // Managing bills does NOT. Adding, tracking and paying on the biller's own site involves no money
+    // movement on our side, so gating it here locked unverified members out of the whole feature.
+    openPortals: () => setPortalsOpen(true),
   };
 
   return (
     <Ctx.Provider value={value}>
       {children}
       <PayModal open={payOpen} onOpenChange={setPayOpen} initialBillId={initialBillId} />
+      <BillPortalsModal open={portalsOpen} onOpenChange={setPortalsOpen} />
     </Ctx.Provider>
   );
 }
