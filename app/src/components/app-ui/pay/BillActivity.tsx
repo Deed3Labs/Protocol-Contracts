@@ -129,11 +129,11 @@ export default function BillActivity({ onSelect, bare }: { onSelect?: (id: strin
     </div>
   );
 
-  // Embedded in the detail pane's empty state it drops its own card, so we don't nest a box in a box.
   if (bare) return body;
 
+  // On the page, not a card — a divider separates it from the table above; pure info earns no box.
   return (
-    <div className="rounded-xl border border-border bg-card p-4 lg:p-5">
+    <div className="border-t border-border pt-4">
       <div className="mb-3 flex items-center gap-2">
         <span className="text-xs font-medium text-foreground">Activity</span>
         <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
