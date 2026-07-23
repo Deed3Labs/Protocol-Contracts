@@ -33,7 +33,7 @@ export default function ChartCard({
   className,
 }: ChartCardProps) {
   return (
-    <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('flex flex-col', className)}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="text-xs font-medium text-muted-foreground">{label}</div>
