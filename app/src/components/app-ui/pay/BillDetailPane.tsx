@@ -116,9 +116,9 @@ export default function BillDetailPane({
   const seg = (v: number) => `${(v / barTotal) * 100}%`;
 
   return (
-    <div className="flex h-full flex-col p-4 sm:p-5">
+    <div className="flex flex-col p-4 sm:p-5">
       {/* Hero: name and a close control on one line, amount + status beneath. Close sits in the
-          corner like the add form's X (no separate back line) — it returns to the month summary. */}
+          corner like the add form's X — it dismisses the drawer. */}
       <div className="flex items-start gap-3">
         <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', CATEGORY_TINT[bill.type])}>
           <bill.icon className="h-5 w-5" />

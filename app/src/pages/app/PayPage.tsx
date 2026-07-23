@@ -3,7 +3,8 @@ import { Home, SendHorizontal, ArrowDownLeft, Repeat, Calendar, AlertCircle, Tre
 import StatBar from '@/components/app-ui/StatBar';
 import ActionTile from '@/components/app-ui/ActionTile';
 import MonthProgress from '@/components/app-ui/pay/MonthProgress';
-import BillWorkspace from '@/components/app-ui/pay/BillWorkspace';
+import BillManager from '@/components/app-ui/pay/BillManager';
+import BillActivity from '@/components/app-ui/pay/BillActivity';
 import { billTiming } from '@/lib/billStatus';
 import { usePay, rewardMultiplier } from '@/context/PayContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
@@ -85,7 +86,9 @@ export default function PayPage() {
         </div>
       </div>
 
-      <BillWorkspace />
+      <BillManager />
+
+      <BillActivity />
     </div>
   );
 }
