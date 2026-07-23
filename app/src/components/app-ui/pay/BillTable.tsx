@@ -7,9 +7,10 @@ import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { cn } from '@/lib/utils';
 
 /*
- * The bill schedule as a table, not a stack of cards. Cards earn their weight for the top metrics;
- * a list of bills is tabular data and reads better as rows with columns — one bordered container,
- * hairline-divided rows, clear columns you can scan down. Clicking a row opens its detail drawer.
+ * The bill schedule as a table on the PAGE — not boxed in a card. The toolbar and column headers sit
+ * on the page, rows separate themselves with hairline dividers, and there's no outer border/fill; the
+ * table uses the page surface directly (like the reference dashboards). Cards are reserved for the top
+ * metrics, where they earn their weight; a list of bills is tabular data and reads as rows + columns.
  *
  * Still an agenda: rows are ordered by what's coming due, a period toggle sets the window, and a
  * monthly bill is one row whose count consolidates the recurrence ("×3" in quarter), never repeated.
@@ -72,9 +73,9 @@ export default function BillTable({
   const periodLabel = period === 'week' ? 'this week' : period === 'month' ? 'this month' : 'this quarter';
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
-      {/* toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+    <div>
+      {/* toolbar — on the page, not boxed */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex gap-0.5 rounded-lg bg-secondary/60 p-0.5">
           {PERIODS.map(([id, label]) => (
             <button
@@ -113,7 +114,7 @@ export default function BillTable({
       </div>
 
       {rows.length === 0 ? (
-        <div className="px-4 py-14 text-center">
+        <div className="border-t border-border px-4 py-14 text-center">
           <div className="text-sm font-medium text-foreground">
             {query ? 'No bills match' : bills.length === 0 ? 'No bills yet' : `Nothing due ${periodLabel}`}
           </div>
@@ -136,8 +137,8 @@ export default function BillTable({
         </div>
       ) : (
         <>
-          {/* column header */}
-          <div className={cn(GRID, 'border-b border-border px-4 py-2 text-[11px] font-medium text-muted-foreground')}>
+          {/* column header — sits on the page above the divided rows */}
+          <div className={cn(GRID, 'border-y border-border px-2 py-2 text-[11px] font-medium text-muted-foreground')}>
             <span>Bill</span>
             <span className="hidden sm:block">Due</span>
             <span>Amount</span>
@@ -146,8 +147,8 @@ export default function BillTable({
             <span className="hidden sm:block" />
           </div>
 
-          <div>
-            {rows.map(({ bill, entry }, i) => {
+          <div className="divide-y divide-border">
+            {rows.map(({ bill, entry }) => {
               const count = entry.count;
               const earns = entry.status === 'paid' ? 0 : creditsFor(bill, streak, bill.amount, accelerated);
               return (
@@ -155,7 +156,7 @@ export default function BillTable({
                   key={bill.id}
                   type="button"
                   onClick={() => onSelect(bill.id)}
-                  className={cn(GRID, 'w-full px-4 py-3 text-left transition-colors hover:bg-secondary/40', i > 0 && 'border-t border-border')}
+                  className={cn(GRID, 'w-full px-2 py-3 text-left transition-colors hover:bg-secondary/30')}
                 >
                   {/* Bill */}
                   <span className="flex min-w-0 items-center gap-2.5">
