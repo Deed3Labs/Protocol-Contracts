@@ -54,7 +54,7 @@ export default function BorrowPage() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         {/* base Stable Credit line */}
-        <div className="lg:col-span-2">
+        <div className="rounded-xl border border-border bg-card p-5 lg:col-span-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">Your credit line</span>
             <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">Backed by savings</span>
@@ -133,7 +133,7 @@ export default function BorrowPage() {
         </div>
 
         {/* how it works */}
-        <div className="pt-1">
+        <div className="rounded-xl border border-border bg-card p-5">
           <h3 className="text-sm font-semibold text-foreground">How Clear credit works</h3>
           <ul className="mt-3 space-y-3 text-xs leading-relaxed text-muted-foreground">
             <li className="flex gap-2.5">
@@ -166,7 +166,7 @@ export default function BorrowPage() {
         </div>
 
         {addOpen && (
-          <div className="mb-3 flex flex-col gap-2 rounded-xl bg-secondary/40 p-3 sm:flex-row sm:items-end">
+          <div className="mb-3 flex flex-col gap-2 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-end">
             <label className="flex-1">
               <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Line name</span>
               <input
@@ -232,7 +232,7 @@ function ProductCard({ product, onBorrow }: { product: CreditProduct; onBorrow: 
   const { icon: Icon, name, desc, limit, status, terms } = product;
   const soon = status === 'soon';
   return (
-    <div className={cn('flex flex-col rounded-xl border border-border p-4', soon && 'opacity-70')}>
+    <div className={cn('flex flex-col rounded-xl border border-border bg-card p-4', soon && 'opacity-70')}>
       <div className="flex items-center gap-2.5">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
           <Icon className="h-[18px] w-[18px]" />
@@ -270,7 +270,7 @@ function PurposeLineCard({
   const Icon = line.icon;
   const pct = line.limit > 0 ? Math.min(100, (line.used / line.limit) * 100) : 0;
   return (
-    <div className="rounded-xl border border-border p-4">
+    <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center gap-2.5">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
           <Icon className="h-4 w-4" />

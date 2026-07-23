@@ -2158,8 +2158,6 @@ export interface PayBiller {
   portalUrl: string | null;
   address: string | null;
   reminders: boolean;
-  /** ISO date of the most recent recorded payment, or null — distinguishes overdue from already paid. */
-  lastPaidAt: string | null;
 }
 
 export interface PaySummary {

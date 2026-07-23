@@ -107,7 +107,7 @@ export default function AssurancePage() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         {/* active coverage — featured */}
-        <div className="lg:col-span-2">
+        <div className="rounded-xl border border-border bg-card p-5 lg:col-span-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">Active coverage</span>
             <span className="inline-flex items-center gap-1 rounded-full bg-positive/10 px-2 py-0.5 text-[11px] font-medium text-positive">
@@ -163,7 +163,7 @@ export default function AssurancePage() {
         </div>
 
         {/* your unlock power */}
-        <div className="pt-1">
+        <div className="rounded-xl border border-border bg-card p-5">
           <h3 className="text-sm font-semibold text-foreground">Your unlock power</h3>
           <div className="mt-3 grid grid-cols-2 divide-x divide-border">
             <div className="pr-4">
