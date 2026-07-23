@@ -103,7 +103,7 @@ export default function RecentActivity({ className, limit }: { className?: strin
     : filtered.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
 
   return (
-    <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('flex flex-col border-t border-border pt-5', className)}>
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-foreground">Recent activity</h3>
         {compact && (

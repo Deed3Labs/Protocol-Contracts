@@ -53,7 +53,7 @@ export default function ClearDeedCard({ className }: { className?: string }) {
   ].map((s) => ({ ...s, pct: srcTotal > 0 ? (s.value / srcTotal) * 100 : 0 }));
 
   return (
-    <div className={cn('relative flex flex-col overflow-hidden rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('relative flex flex-col overflow-hidden rounded-xl border border-border p-5', className)}>
       {/* subtle flourish */}
       <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-foreground/[0.04] blur-2xl" aria-hidden />
 

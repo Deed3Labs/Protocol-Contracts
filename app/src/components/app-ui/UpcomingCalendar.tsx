@@ -89,7 +89,7 @@ export default function UpcomingCalendar({
   };
 
   return (
-    <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('flex flex-col rounded-xl border border-border p-5', className)}>
       <div className="mb-4 flex items-center justify-between">
         <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">Upcoming transactions</span>
         <div className="flex items-center gap-1">

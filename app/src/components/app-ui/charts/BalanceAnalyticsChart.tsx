@@ -116,7 +116,7 @@ export default function BalanceAnalyticsChart({ className }: { className?: strin
   const up = change >= 0;
 
   return (
-    <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('flex flex-col rounded-xl border border-border p-5', className)}>
       <div className="flex flex-wrap gap-5 border-b border-border pb-3 text-sm">
         {METRICS.map((m) => (
           <button

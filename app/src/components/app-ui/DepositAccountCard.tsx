@@ -78,7 +78,7 @@ export default function DepositAccountCard({ className }: { className?: string }
 
   return (
     <>
-      <div className={cn('overflow-hidden rounded-xl border border-border bg-card', className)}>
+      <div className={cn('overflow-hidden rounded-xl border border-border', className)}>
         <div className="flex items-center gap-2.5 border-b border-border px-5 py-3">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
             <Building2 className="h-4 w-4" />
