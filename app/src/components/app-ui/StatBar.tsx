@@ -74,40 +74,46 @@ function AnimatedStatValue({ value, statKey }: { value: number; statKey: string 
 }
 
 /**
- * A flat metric row — no box, no dividers. Metrics are a GROUP, so they're separated by whitespace
- * and typographic hierarchy (small muted label, large figure), per the flat design system. Values
- * still animate on real change.
+ * A single stat container divided by faint grid lines (gap-px over bg-border),
+ * instead of N separate cards. One strategic highlight container, hairline-divided.
  */
 export default function StatBar({ stats, loading, className }: { stats: Stat[]; loading?: boolean; className?: string }) {
   return (
-    <div className={cn('grid grid-cols-2 gap-x-6 gap-y-5 lg:grid-cols-4 lg:gap-x-10', className)}>
-      {stats.map((s) => {
-        const Icon = s.icon;
-        const negative = s.changePositive === false;
-        return (
-          <div key={s.label} className="min-w-0">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              {Icon && <Icon className="h-3.5 w-3.5" />}
-              <span className="truncate">{s.label}</span>
-            </div>
-            <div className="mt-2 font-display text-2xl tracking-tight text-foreground tabular-nums">
-              {loading ? (
-                <span className="text-muted-foreground">—</span>
-              ) : typeof s.value === 'number' ? (
-                <AnimatedStatValue value={s.value} statKey={s.label} />
-              ) : (
-                s.value
+    <div className={cn('overflow-hidden rounded-xl border border-border bg-border', className)}>
+      <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-4">
+        {stats.map((s) => {
+          const Icon = s.icon;
+          const negative = s.changePositive === false;
+          return (
+            <div key={s.label} className="bg-card p-4 lg:p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">{s.label}</span>
+                {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
+              </div>
+              <div className="mt-2 font-display text-2xl tracking-tight text-foreground tabular-nums">
+                {loading ? (
+                  <span className="text-muted-foreground">—</span>
+                ) : typeof s.value === 'number' ? (
+                  <AnimatedStatValue value={s.value} statKey={s.label} />
+                ) : (
+                  s.value
+                )}
+              </div>
+              {s.change && (
+                <div
+                  className={cn(
+                    'mt-1.5 inline-flex items-center gap-0.5 rounded-lg px-1.5 py-0.5 text-[11px] font-medium',
+                    negative ? 'bg-negative/10 text-negative' : 'bg-positive/10 text-positive',
+                  )}
+                >
+                  {negative ? <ArrowDownRight className="h-3 w-3" /> : <ArrowUpRight className="h-3 w-3" />}
+                  {s.change}
+                </div>
               )}
             </div>
-            {s.change && (
-              <div className={cn('mt-1 inline-flex items-center gap-0.5 text-[11px] font-medium', negative ? 'text-negative' : 'text-positive')}>
-                {negative ? <ArrowDownRight className="h-3 w-3" /> : <ArrowUpRight className="h-3 w-3" />}
-                {s.change}
-              </div>
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

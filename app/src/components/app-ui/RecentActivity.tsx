@@ -102,11 +102,8 @@ export default function RecentActivity({ className, limit }: { className?: strin
     ? filtered.slice(0, limit)
     : filtered.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
 
-  // Flat table on desktop, continuous list on mobile — same markup, secondary columns fold away.
-  const ROW = 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:grid-cols-[minmax(0,2.2fr)_1fr_0.9fr_auto_120px] sm:gap-4';
-
   return (
-    <div className={cn('flex flex-col', className)}>
+    <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-foreground">Recent activity</h3>
         {compact && (
@@ -122,68 +119,57 @@ export default function RecentActivity({ className, limit }: { className?: strin
 
       {!compact && (
         <>
-          {/* search + advanced filters */}
-          <div className="mt-4 flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search transactions"
-                className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => setModalOpen(true)}
-              aria-label="Advanced filters"
-              className={cn(
-                'relative flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-secondary',
-                activeAdv ? 'text-foreground' : 'text-muted-foreground',
-              )}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              <span className="hidden sm:inline">Filters</span>
-              {activeAdv > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
-                  {activeAdv}
-                </span>
-              )}
-            </button>
-          </div>
+      {/* search + advanced filters */}
+      <div className="mt-3 flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search transactions"
+            className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          aria-label="Advanced filters"
+          className={cn(
+            'relative flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-secondary',
+            activeAdv ? 'text-foreground' : 'text-muted-foreground',
+          )}
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          <span className="hidden sm:inline">Filters</span>
+          {activeAdv > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+              {activeAdv}
+            </span>
+          )}
+        </button>
+      </div>
 
-          {/* quick chips */}
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {FILTERS.map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFilter(f)}
-                className={cn(
-                  'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-                  filter === f ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
+      {/* quick chips */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {FILTERS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFilter(f)}
+            className={cn(
+              'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+              filter === f ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
         </>
       )}
 
-      {/* column header — desktop table only */}
-      {visible.length > 0 && (
-        <div className={cn(ROW, 'mt-4 hidden border-b border-border pb-2 text-[11px] font-medium text-muted-foreground sm:grid')}>
-          <span>Transaction</span>
-          <span>Category</span>
-          <span>Date</span>
-          <span>Status</span>
-          <span className="text-right">Amount</span>
-        </div>
-      )}
-
-      {/* edge-to-edge list, 1px dividers */}
-      <div className={cn('divide-y divide-border', compact && 'mt-2')}>
+      {/* list */}
+      <div className="mt-1 flex-1 divide-y divide-border">
         {loading && items.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">Loading activity…</div>
         ) : visible.length === 0 ? (
@@ -196,44 +182,35 @@ export default function RecentActivity({ className, limit }: { className?: strin
                 key={it.id}
                 type="button"
                 onClick={() => setDetailTx(it)}
-                className={cn(ROW, 'w-full py-3 text-left transition-colors hover:bg-secondary/30')}
+                className="-mx-2 flex w-full items-center gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-secondary/40 sm:gap-4"
               >
-                {/* Transaction */}
-                <span className="flex min-w-0 items-center gap-3">
-                  <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg sm:h-8 sm:w-8', tint)}>
-                    <Icon className="h-[18px] w-[18px] sm:h-4 sm:w-4" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-foreground">{it.name}</span>
-                    {/* mobile: category · date lives here; desktop has its own columns */}
-                    <span className="block truncate text-xs text-muted-foreground sm:hidden">
-                      {it.category} · {it.date}
-                    </span>
-                  </span>
+                <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', tint)}>
+                  <Icon className="h-[18px] w-[18px]" />
                 </span>
-
-                {/* Category (desktop) */}
-                <span className="hidden truncate text-sm text-muted-foreground sm:block">{it.category}</span>
-
-                {/* Date (desktop) */}
-                <span className="hidden truncate text-sm tabular-nums text-muted-foreground sm:block">{it.date}</span>
-
-                {/* Status (desktop) */}
-                <span className="hidden sm:block">
-                  <span className={cn('inline-block rounded-md px-2 py-0.5 text-[11px] font-medium capitalize', statusStyle[it.status])}>
-                    {it.status}
-                  </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-foreground">{it.name}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {it.category} · {it.date}
+                  </div>
+                </div>
+                {/* status — own column on desktop */}
+                <span className={cn('hidden shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium capitalize sm:inline-flex', statusStyle[it.status])}>
+                  {it.status}
                 </span>
-
-                {/* Amount (mobile stacks status beneath) */}
-                <span className="flex flex-col items-end gap-1 sm:block sm:text-right">
-                  <span className={cn('font-display text-base tracking-tight tabular-nums', it.amount > 0 ? 'text-positive' : 'text-foreground')}>
+                {/* amount (mobile shows status beneath) */}
+                <div className="flex shrink-0 flex-col items-end gap-1 sm:w-24">
+                  <div
+                    className={cn(
+                      'font-display text-base tracking-tight tabular-nums',
+                      it.amount > 0 ? 'text-positive' : 'text-foreground',
+                    )}
+                  >
                     {money(it.amount)}
-                  </span>
+                  </div>
                   <span className={cn('rounded-md px-1.5 py-0.5 text-[10px] font-medium capitalize sm:hidden', statusStyle[it.status])}>
                     {it.status}
                   </span>
-                </span>
+                </div>
               </button>
             );
           })
@@ -241,7 +218,7 @@ export default function RecentActivity({ className, limit }: { className?: strin
       </div>
 
       {!compact && filtered.length > 0 && (
-        <div className="mt-4 flex flex-col items-center justify-between gap-3 border-t border-border pt-4 sm:flex-row">
+        <div className="mt-1 flex flex-col items-center justify-between gap-3 border-t border-border pt-4 sm:flex-row">
           <span className="text-xs text-muted-foreground tabular-nums">
             {(curPage - 1) * PAGE_SIZE + 1}–{Math.min(curPage * PAGE_SIZE, filtered.length)} of {filtered.length}
           </span>

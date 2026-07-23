@@ -136,7 +136,7 @@ export default function BudgetGoals({ className }: { className?: string }) {
   const totalTarget = goals.reduce((s, g) => s + g.target, 0);
 
   return (
-    <div className={cn('flex flex-col', className)}>
+    <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
       <h3 className="text-xs font-medium text-muted-foreground">Budgets &amp; goals</h3>
 
       {/* overall budget — balance figure + streak pill on one row */}

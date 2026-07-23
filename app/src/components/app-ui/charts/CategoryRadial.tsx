@@ -66,7 +66,7 @@ export default function CategoryRadial({ className }: { className?: string }) {
   const chartData = isEmpty ? [{ name: 'none', value: 1, fill: 'rgb(var(--muted))' }] : data;
 
   return (
-    <div className={cn('flex flex-col', className)}>
+    <div className={cn('flex flex-col rounded-xl border border-border bg-card p-5', className)}>
       <h3 className="text-xs font-medium text-muted-foreground">Spending by category</h3>
 
       <div className="flex flex-1 items-center justify-center">

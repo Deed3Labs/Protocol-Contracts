@@ -11,6 +11,7 @@ import { useClearPortfolioHistory } from '@/hooks/useClearPortfolioHistory';
 import { useUpcoming } from '@/hooks/useUpcoming';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import QuickActions from '@/components/app-ui/QuickActions';
+import DepositAccountCard from '@/components/app-ui/DepositAccountCard';
 import CtaStack from '@/components/app-ui/CtaStack';
 import RecentActivity from '@/components/app-ui/RecentActivity';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
@@ -157,6 +158,7 @@ export default function AccountsPage() {
         <BalanceAnalyticsChart className="lg:col-span-2" />
         <div className="flex flex-col gap-5">
           <CtaStack />
+          <DepositAccountCard />
           <QuickActions />
         </div>
       </div>
