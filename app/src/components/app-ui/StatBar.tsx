@@ -79,13 +79,13 @@ function AnimatedStatValue({ value, statKey }: { value: number; statKey: string 
  */
 export default function StatBar({ stats, loading, className }: { stats: Stat[]; loading?: boolean; className?: string }) {
   return (
-    <div className={cn('overflow-hidden rounded-xl border border-border bg-border', className)}>
-      <div className="grid grid-cols-2 gap-px bg-border lg:grid-cols-4">
-        {stats.map((s) => {
-          const Icon = s.icon;
-          const negative = s.changePositive === false;
-          return (
-            <div key={s.label} className="bg-card p-4 lg:p-5">
+    // Flat: metrics live on the page, separated by hairline dividers (the gap-px lines), no card box.
+    <div className={cn('grid grid-cols-2 gap-px bg-border lg:grid-cols-4', className)}>
+      {stats.map((s) => {
+        const Icon = s.icon;
+        const negative = s.changePositive === false;
+        return (
+          <div key={s.label} className="bg-background p-4 lg:p-5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-muted-foreground">{s.label}</span>
                 {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
@@ -113,7 +113,6 @@ export default function StatBar({ stats, loading, className }: { stats: Stat[]; 
             </div>
           );
         })}
-      </div>
     </div>
   );
 }

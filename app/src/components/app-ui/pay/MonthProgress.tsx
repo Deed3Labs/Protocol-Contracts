@@ -47,9 +47,8 @@ export default function MonthProgress({ className }: { className?: string }) {
   const credits = summary?.equityThisMonth ?? 0;
 
   return (
-    // Transparent-bg card: it's a highlight (big figure + bar) so it keeps a grouping border, but no
-    // fill — it reads as part of the page, not a floating panel. See the on-page design principle.
-    <div className={cn('rounded-xl border border-border p-5', className)}>
+    // Flat: content on the page, no box. Structure comes from the big figure, the bar and dividers.
+    <div className={cn(className)}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium text-muted-foreground">This month's bills</span>
         <div className="flex shrink-0 items-center gap-1.5">
