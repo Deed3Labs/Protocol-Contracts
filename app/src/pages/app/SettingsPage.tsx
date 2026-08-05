@@ -51,11 +51,6 @@ export default function SettingsPage() {
 
   return (
     <div className="animate-fade-in -mx-5 -mt-6 lg:-mx-8">
-      <header>
-        <h1 className="font-display text-3xl tracking-tight text-foreground">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Manage your profile, accounts, and preferences.</p>
-      </header>
-
       <div className="grid border-b border-border lg:grid-cols-3">
         <div className="px-5 py-6 lg:px-8 lg:col-span-2 lg:border-r lg:border-border">
           <div className="flex items-center gap-4">
@@ -104,10 +99,9 @@ export default function SettingsPage() {
         <CardVisual onManage={() => setModal('cards')} />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid border-b border-border px-5 lg:grid-cols-2 lg:gap-x-8 lg:px-8">
         <SectionCard
           icon={Landmark}
-          tint="neutral"
           title="External accounts"
           subtitle={`${externalAccounts.length} ${externalAccounts.length === 1 ? 'bank' : 'banks'} via Plaid`}
           chevron
@@ -115,7 +109,6 @@ export default function SettingsPage() {
         />
         <SectionCard
           icon={Wallet}
-          tint="neutral"
           title="Linked wallets"
           subtitle={`${wallets.length} connected`}
           chevron
@@ -123,14 +116,13 @@ export default function SettingsPage() {
         />
         <SectionCard
           icon={Users}
-          tint="neutral"
           title="Contacts"
           subtitle={`${contacts.length} people`}
           chevron
           onClick={() => openContacts()}
         />
         <div className="flex items-center gap-3 border-b border-border py-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center text-secondary-foreground">
             <UserSearch className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1">
@@ -154,12 +146,12 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        <SectionCard icon={CreditCard} tint="neutral" title="Cards" subtitle="Cards & virtual account" chevron onClick={() => setModal('cards')} />
-        <SectionCard icon={ShieldCheck} tint="neutral" title="Security" subtitle="Passcode & biometrics" chevron onClick={() => setModal('security')} />
-        <SectionCard icon={BellRing} tint="neutral" title="Notifications" subtitle="Alerts & reminders" chevron onClick={() => setModal('notifications')} />
+        <SectionCard icon={CreditCard} title="Cards" subtitle="Cards & virtual account" chevron onClick={() => setModal('cards')} />
+        <SectionCard icon={ShieldCheck} title="Security" subtitle="Passcode & biometrics" chevron onClick={() => setModal('security')} />
+        <SectionCard icon={BellRing} title="Notifications" subtitle="Alerts & reminders" chevron onClick={() => setModal('notifications')} />
 
         <div className="flex items-center gap-3 border-b border-border py-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center text-secondary-foreground">
             <ActiveIcon className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1">
@@ -185,7 +177,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <SectionCard icon={CircleHelp} tint="neutral" title="Help & support" subtitle="Guides & contact" chevron onClick={() => setModal('support')} />
+        <SectionCard icon={CircleHelp} title="Help & support" subtitle="Guides & contact" chevron onClick={() => setModal('support')} />
       </div>
 
       <button

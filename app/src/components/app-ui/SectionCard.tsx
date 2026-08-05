@@ -2,70 +2,57 @@ import type { ReactNode } from 'react';
 import { ChevronRight, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type Tint = 'cash' | 'savings' | 'external' | 'neutral' | 'primary';
-
-const tintClasses: Record<Tint, string> = {
-  cash: 'bg-cp-cash text-cp-cash-fg',
-  savings: 'bg-cp-savings text-cp-savings-fg',
-  external: 'bg-cp-external text-cp-external-fg',
-  neutral: 'bg-secondary text-secondary-foreground',
-  primary: 'bg-accent text-accent-foreground',
-};
-
-interface SectionCardProps {
+interface SectionRowProps {
   icon: LucideIcon;
-  tint?: Tint;
   title: string;
   subtitle?: ReactNode;
-  /** Pre-formatted amount, rendered in the condensed display face. */
+  /** Pre-formatted amount, right-aligned. */
   amount?: string;
   chevron?: boolean;
   onClick?: () => void;
   className?: string;
 }
 
-/** Tappable list card: tinted icon tile + title/subtitle + optional amount/chevron. */
+/**
+ * A settings/navigation row. Flat by design: a bare icon, a hairline beneath, and no tinted
+ * tile behind the glyph — the icon-in-a-rounded-square inside a card was the densest instance
+ * of the card-on-card pattern this redesign removes.
+ */
 export default function SectionCard({
   icon: Icon,
-  tint = 'neutral',
   title,
   subtitle,
   amount,
   chevron,
   onClick,
   className,
-}: SectionCardProps) {
+}: SectionRowProps) {
   const inner = (
     <>
-      <span
-        className={cn(
-          'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg',
-          tintClasses[tint],
-        )}
-      >
-        <Icon className="h-5 w-5" strokeWidth={2} />
-      </span>
+      <Icon className="h-[18px] w-[18px] shrink-0 text-muted-foreground" strokeWidth={1.5} />
       <span className="min-w-0 flex-1">
-        <span className="block text-[15px] font-medium text-foreground">{title}</span>
+        <span className="block truncate text-sm text-foreground">{title}</span>
         {subtitle && (
           <span className="mt-0.5 block truncate text-xs text-muted-foreground">{subtitle}</span>
         )}
       </span>
       {amount && (
-        <span className="font-display text-2xl tracking-tight text-foreground tabular-nums">
-          {amount}
-        </span>
+        <span className="shrink-0 text-sm tabular-nums text-foreground">{amount}</span>
       )}
-      {chevron && <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground/60" />}
+      {chevron && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" />}
     </>
   );
 
   const base =
-    'flex w-full items-center gap-3 rounded-xl border border-black/[0.06] bg-card p-4 text-left dark:border-white/[0.06]';
+    'flex w-full items-center gap-3 border-b border-border py-4 text-left last:border-b-0';
 
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} className={cn(base, 'transition-transform active:scale-[0.99]', className)}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(base, 'transition-colors hover:bg-foreground/[0.03]', className)}
+      >
         {inner}
       </button>
     );

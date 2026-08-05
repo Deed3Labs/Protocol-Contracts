@@ -27,11 +27,10 @@ export default function BillTimeline({
 
   return (
     <div className={cn('flex flex-col', className)}>
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">Bill timeline</span>
+      <div className="flex items-center justify-end">
         <span className="text-xs text-muted-foreground">{bills.length} bills</span>
       </div>
-      <div className="mt-1 font-display text-3xl tracking-tight text-foreground tabular-nums">
+      <div className="mt-1 text-[1.75rem] font-light leading-none tracking-tight text-foreground tabular-nums">
         ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       </div>
       <div className="mt-1 text-[11px] text-muted-foreground">due over the next 30 days</div>

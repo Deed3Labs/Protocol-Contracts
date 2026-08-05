@@ -2,9 +2,9 @@ import { ArrowUpRight, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
- * Quick-action tile used across pages (Accounts quick actions, Pay's "make a payment").
- * Icon chip + label + hint, with a hover lift, an inverting icon chip, and a corner
- * arrow that nudges. `primary` renders a filled accent tile for the lead action.
+ * Quick-action tile (Pay's "make a payment"). A control, so it keeps a border — but the icon is
+ * bare rather than sitting in a tinted square, and there's no hover lift, so it reads as a
+ * pressable region of the page rather than a floating card. `primary` fills the lead action.
  */
 export default function ActionTile({
   icon: Icon,
@@ -26,7 +26,7 @@ export default function ActionTile({
       type="button"
       onClick={onClick}
       className={cn(
-        'group relative flex min-h-[108px] flex-col justify-between gap-4 overflow-hidden rounded-lg border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99]',
+        'group relative flex min-h-[104px] flex-col justify-between gap-4 overflow-hidden border p-4 text-left transition-colors duration-150',
         primary
           ? 'border-transparent bg-primary text-primary-foreground hover:opacity-90'
           : 'border-border text-foreground hover:border-foreground/30 hover:bg-foreground/[0.03]',
@@ -34,16 +34,13 @@ export default function ActionTile({
       )}
     >
       <div className="flex items-center justify-between">
-        <span
+        <Icon
           className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-200',
-            primary
-              ? 'bg-primary-foreground/15 text-primary-foreground'
-              : 'bg-secondary text-foreground group-hover:bg-foreground group-hover:text-background',
+            'h-5 w-5',
+            primary ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-foreground',
           )}
-        >
-          <Icon className="h-[18px] w-[18px]" />
-        </span>
+          strokeWidth={1.5}
+        />
         <ArrowUpRight
           className={cn(
             'h-4 w-4 transition-all duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5',

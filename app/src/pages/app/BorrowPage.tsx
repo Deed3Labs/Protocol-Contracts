@@ -33,15 +33,12 @@ export default function BorrowPage() {
       subtitle="We're finishing the smart contracts behind borrowing against your equity. It'll light up here soon."
     >
     <div className="animate-fade-in -mx-5 -mt-6 lg:-mx-8">
-      <header>
-        <div className="flex items-center gap-2.5">
-          <h1 className="font-display text-3xl tracking-tight text-foreground">Borrow</h1>
-          {!IS_LIVE_APP && <PreviewBadge />}
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Borrow against your savings — no interest, no fixed due dates. Your limit grows as your savings grow.
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-5 py-4 lg:px-8">
+        {!IS_LIVE_APP && <PreviewBadge />}
+        <p className="text-sm text-muted-foreground">
+Borrow against your savings — no interest, no fixed due dates. Your limit grows as your savings grow.
         </p>
-      </header>
+      </div>
 
       <MetricRow
         metrics={[
@@ -120,7 +117,7 @@ export default function BorrowPage() {
               <span className="text-muted-foreground">{cycleDaysLeft} days left in cycle</span>
             </div>
             <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-background">
-              <div className="h-full rounded-full bg-info" style={{ width: `${cycleProgress}%` }} />
+              <div className="h-full rounded-full bg-foreground" style={{ width: `${cycleProgress}%` }} />
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
               No fixed due date. Balance back to $0 within the cycle to keep full power — repay anytime from your balance or savings.
@@ -234,7 +231,7 @@ function ProductCard({ product, onBorrow }: { product: CreditProduct; onBorrow: 
   return (
     <div className={cn('flex flex-col border-b border-border py-4', soon && 'opacity-70')}>
       <div className="flex items-center gap-2.5">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center text-foreground">
           <Icon className="h-[18px] w-[18px]" />
         </span>
         <span className="min-w-0 flex-1 text-sm font-medium text-foreground">{name}</span>
@@ -272,7 +269,7 @@ function PurposeLineCard({
   return (
     <div className="border-t border-border px-5 py-6 lg:border-t-0 lg:border-l lg:border-border lg:px-8">
       <div className="flex items-center gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center text-foreground">
           <Icon className="h-4 w-4" />
         </span>
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{line.name}</span>

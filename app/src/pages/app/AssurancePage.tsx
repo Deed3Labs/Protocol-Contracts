@@ -86,15 +86,12 @@ export default function AssurancePage() {
       subtitle="The Assurance Pool is still being built — smart contracts in progress. It'll open up here soon."
     >
     <div className="animate-fade-in -mx-5 -mt-6 lg:-mx-8">
-      <header>
-        <div className="flex items-center gap-2.5">
-          <h1 className="font-display text-3xl tracking-tight text-foreground">Assurance</h1>
-          {!IS_LIVE_APP && <PreviewBadge />}
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Mutual-benefit protection you build as you grow — never a premium, never paid back.
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-5 py-4 lg:px-8">
+        {!IS_LIVE_APP && <PreviewBadge />}
+        <p className="text-sm text-muted-foreground">
+Mutual-benefit protection you build as you grow — never a premium, never paid back.
         </p>
-      </header>
+      </div>
 
       <MetricRow
         metrics={[
@@ -116,7 +113,7 @@ export default function AssurancePage() {
           </div>
 
           <div className="mt-3 flex items-start gap-4">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-positive/10 text-positive">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center text-positive">
               <ShieldCheck className="h-6 w-6" />
             </span>
             <div className="min-w-0 flex-1">
@@ -184,14 +181,14 @@ export default function AssurancePage() {
               <span className="text-muted-foreground">{activeCount} of 5 active</span>
             </div>
             <div className="flex h-6 gap-0.5 overflow-hidden rounded-lg">
-              <div className="flex-1 bg-positive" />
+              <div className="flex-1 bg-foreground/60" />
               {LOCKED.map((p) => {
                 const isUnlocked = unlocked.has(p.id);
                 const isNext = p.id === next?.id;
                 return (
                   <div key={p.id} className="relative flex-1 bg-secondary">
-                    {isUnlocked && <div className="absolute inset-0 bg-positive" />}
-                    {!isUnlocked && isNext && <div className="absolute inset-y-0 left-0 bg-info" style={{ width: `${p.progress}%` }} />}
+                    {isUnlocked && <div className="absolute inset-0 bg-foreground/60" />}
+                    {!isUnlocked && isNext && <div className="absolute inset-y-0 left-0 bg-foreground" style={{ width: `${p.progress}%` }} />}
                   </div>
                 );
               })}
@@ -251,7 +248,7 @@ function ProtectionCard({ p, isNext, unlocked, onAccelerate, onViewCoverage }: {
     return (
       <div className="flex flex-col border-b border-positive/30 py-4">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-positive/10 text-positive">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center text-positive">
             <Icon className="h-[18px] w-[18px]" />
           </span>
           <span className="min-w-0 flex-1 text-sm font-medium text-foreground">{p.name}</span>
@@ -287,7 +284,7 @@ function ProtectionCard({ p, isNext, unlocked, onAccelerate, onViewCoverage }: {
       <div className="mt-2.5 text-xs font-medium text-foreground">{p.coverage}</div>
 
       <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-secondary">
-        <div className={cn('h-full rounded-full', isNext ? 'bg-info' : 'bg-muted-foreground/40')} style={{ width: `${p.progress}%` }} />
+        <div className={cn('h-full rounded-full', isNext ? 'bg-foreground' : 'bg-muted-foreground/40')} style={{ width: `${p.progress}%` }} />
       </div>
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="min-w-0 truncate text-[11px] text-muted-foreground">{p.remaining}</span>
@@ -340,7 +337,7 @@ function AccelerateModal({ protection, onOpenChange, onUnlocked }: { protection:
         {protection && step === 'confirm' && (
           <div className="p-5">
             <div className="flex items-start gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center text-info">
                 <Icon className="h-5 w-5" />
               </span>
               <div className="min-w-0">
@@ -417,7 +414,7 @@ function CoverageModal({ coverage, onOpenChange }: { coverage: Coverage | null; 
         {coverage && (
           <div className="p-5">
             <div className="flex items-start gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-positive/10 text-positive">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center text-positive">
                 <Icon className="h-5 w-5" />
               </span>
               <div className="min-w-0">

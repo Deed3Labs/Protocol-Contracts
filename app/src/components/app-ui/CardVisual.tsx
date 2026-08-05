@@ -14,10 +14,9 @@ export default function CardVisual({ className, onManage }: { className?: string
   const { name } = useMemberProfile();
 
   return (
-    <div className={cn('overflow-hidden border border-border', className)}>
-      <div className="p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-foreground">Your card</h3>
+    <div className={cn('flex flex-col', className)}>
+      <div>
+        <div className="mb-3 flex items-center justify-end">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
             <Clock className="h-3 w-3" /> Coming soon
           </span>
