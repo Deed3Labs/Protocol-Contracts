@@ -88,7 +88,7 @@ export default function PathToOwnership({
             Your path to ownership
           </h2>
           <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="text-5xl font-light leading-none tracking-tight tabular-nums text-foreground sm:text-6xl">
+            <span className="text-[2rem] font-light leading-none tracking-tight tabular-nums text-foreground">
               {(path.share * 100).toFixed(1)}%
             </span>
             <span className="text-sm text-muted-foreground">
@@ -120,7 +120,7 @@ export default function PathToOwnership({
             </div>
           ) : (
             <>
-              <div className="mt-2 text-3xl font-light leading-none tracking-tight text-foreground">
+              <div className="mt-2 text-[2rem] font-light leading-none tracking-tight text-foreground">
                 {path.titleDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </div>
               <div className="mt-1 text-sm text-muted-foreground tabular-nums">

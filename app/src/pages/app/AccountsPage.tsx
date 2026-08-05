@@ -7,8 +7,6 @@ import { useLinkedWalletBalances } from '@/hooks/useLinkedWalletBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useClearPortfolioHistory } from '@/hooks/useClearPortfolioHistory';
 import { useUpcoming } from '@/hooks/useUpcoming';
-import QuickActions from '@/components/app-ui/QuickActions';
-import RecentActivity from '@/components/app-ui/RecentActivity';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
 import UpcomingCalendar from '@/components/app-ui/UpcomingCalendar';
 import BalanceAnalyticsChart from '@/components/app-ui/charts/BalanceAnalyticsChart';
@@ -16,6 +14,8 @@ import MetricRow from '@/components/app-ui/accounts/MetricRow';
 import PathToOwnership from '@/components/app-ui/accounts/PathToOwnership';
 import EquitySources from '@/components/app-ui/accounts/EquitySources';
 import VerifyPopdown from '@/components/app-ui/accounts/VerifyPopdown';
+import ExternalAccountsPanel from '@/components/app-ui/accounts/ExternalAccountsPanel';
+import ActivityTable from '@/components/app-ui/accounts/ActivityTable';
 
 /**
  * Accounts — the dashboard.
@@ -140,14 +140,16 @@ export default function AccountsPage() {
         ]}
       />
 
-      {/* Row 2 — matches the Figma split: the ownership band left, the balance chart right. */}
+      {/* The band gets its own full-width row — it's the page's reason to exist. */}
+      <PathToOwnership className="border-b border-border px-5 lg:px-8" />
+
       <div className="grid border-b border-border lg:grid-cols-3">
-        <PathToOwnership className="px-5 lg:col-span-2 lg:border-r lg:border-border lg:px-8" />
-        <BalanceAnalyticsChart className="border-t border-border px-5 lg:border-t-0 lg:px-8" />
+        <BalanceAnalyticsChart className="px-5 lg:col-span-2 lg:border-r lg:border-border lg:px-8" />
+        <EquitySources className="border-t border-border px-5 lg:border-t-0 lg:px-8" />
       </div>
 
-      {/* Row 3 — the trackers, three columns as in the Figma. Equity Sources fills the slot the
-          Figma left empty. */}
+      {/* The trackers — three columns, with external accounts (and its empty state) filling the
+          slot the Figma left blank. */}
       <div className="grid border-b border-border lg:grid-cols-3">
         <UpcomingCalendar flat items={upcoming} className="px-5 lg:border-r lg:border-border lg:px-8" />
         <SpendHeatmap
@@ -156,17 +158,10 @@ export default function AccountsPage() {
           detailByDay={spendDetailByDay}
           className="border-t border-border px-5 lg:border-t-0 lg:border-r lg:border-border lg:px-8"
         />
-        <EquitySources className="border-t border-border px-5 lg:border-t-0 lg:px-8" />
+        <ExternalAccountsPanel className="border-t border-border px-5 lg:border-t-0 lg:px-8" />
       </div>
 
-      {/* Money movement stays reachable from home — actions are controls, not content cards. */}
-      <div className="border-b border-border px-5 py-6 lg:px-8">
-        <QuickActions />
-      </div>
-
-      <div className="px-5 pt-6 lg:px-8">
-        <RecentActivity limit={5} />
-      </div>
+      <ActivityTable className="px-5 lg:px-8" />
     </div>
   );
 }

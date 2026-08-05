@@ -5,6 +5,8 @@ import './index.css';
 import MetricRow from '@/components/app-ui/accounts/MetricRow';
 import PathToOwnership from '@/components/app-ui/accounts/PathToOwnership';
 import EquitySources from '@/components/app-ui/accounts/EquitySources';
+import UpcomingCalendar from '@/components/app-ui/UpcomingCalendar';
+import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
 import type { PaySummary } from '@/utils/apiClient';
 
 /**
@@ -42,6 +44,8 @@ const SAMPLE: PaySummary = {
     { label: 'Jul', rent: 1600, equity: 1800 },
   ],
 };
+
+const SPEND: Record<number, number> = { 2: 23, 3: 8, 5: 60, 8: 120, 12: 687, 15: 23, 19: 938, 20: 125, 22: 1, 23: 23, 24: 114, 26: 45 };
 
 type Skin = 'light' | 'dusk' | 'dark';
 
@@ -95,27 +99,21 @@ function Harness() {
           ]}
         />
 
+        <PathToOwnership summary={SAMPLE} className="border-b border-border px-5 lg:px-8" />
+
         <div className="grid border-b border-border lg:grid-cols-3">
-          <PathToOwnership
-            summary={SAMPLE}
-            className="px-5 lg:col-span-2 lg:border-r lg:border-border lg:px-8"
-          />
-          <div className="flex items-center justify-center border-t border-border px-5 py-16 text-sm text-muted-foreground lg:border-t-0 lg:px-8">
+          <div className="flex items-center justify-center px-5 py-16 text-sm text-muted-foreground lg:col-span-2 lg:border-r lg:border-border lg:px-8">
             Balance chart
           </div>
+          <EquitySources summary={SAMPLE} className="border-t border-border px-5 lg:border-t-0 lg:px-8" />
         </div>
 
         <div className="grid border-b border-border lg:grid-cols-3">
-          <div className="flex items-center justify-center px-5 py-16 text-sm text-muted-foreground lg:border-r lg:border-border lg:px-8">
-            Upcoming transactions
+          <UpcomingCalendar flat items={[]} className="px-5 lg:border-r lg:border-border lg:px-8" />
+          <SpendHeatmap flat spendingByDay={SPEND} className="border-t border-border px-5 lg:border-t-0 lg:border-r lg:border-border lg:px-8" />
+          <div className="flex flex-col justify-center border-t border-border px-5 py-16 text-sm text-muted-foreground lg:border-t-0 lg:px-8">
+            External accounts (empty state)
           </div>
-          <div className="flex items-center justify-center border-t border-border px-5 py-16 text-sm text-muted-foreground lg:border-t-0 lg:border-r lg:border-border lg:px-8">
-            Spend this month
-          </div>
-          <EquitySources
-            summary={SAMPLE}
-            className="border-t border-border px-5 lg:border-t-0 lg:px-8"
-          />
         </div>
       </div>
     </div>

@@ -104,19 +104,19 @@ export default function UpcomingCalendar({
         </div>
       </div>
 
-      <p className="mb-4 font-display text-3xl tracking-tight text-foreground tabular-nums">
+      <p className="mb-4 text-[2rem] font-light leading-none tracking-tight text-foreground tabular-nums">
         ${totalOut.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       </p>
 
-      <div className="mb-2 grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 border-t border-l border-border bg-transparent">
         {weekDays.map((d, i) => (
-          <div key={i} className="text-center text-[10px] font-medium text-muted-foreground">{d}</div>
+          <div key={i} className="border-b border-r border-border py-1.5 text-center text-[10px] font-medium text-muted-foreground">{d}</div>
         ))}
       </div>
 
-      <div className="mb-4 grid grid-cols-7 gap-1">
+      <div className="mb-4 grid grid-cols-7 border-l border-border">
         {allDays.map((day, idx) => {
-          if (day === null) return <div key={`p${idx}`} className="min-h-14" aria-hidden />;
+          if (day === null) return <div key={`p${idx}`} className="min-h-14 border-b border-r border-border" aria-hidden />;
           const dayItems = items.filter((i) => i.day === day);
           const isToday = day === currentDay;
           const isPast = day < currentDay;
@@ -136,8 +136,8 @@ export default function UpcomingCalendar({
               onBlur={() => setActiveDay((d) => (d === day ? null : d))}
               onClick={() => hasItems && setActiveDay((d) => (d === day ? null : day))}
               className={cn(
-                'relative flex min-h-14 min-w-0 flex-col items-center justify-between rounded-[6px] border p-1 outline-none',
-                isPast ? 'border-border/50 opacity-60' : 'border-border',
+                'relative flex min-h-14 min-w-0 flex-col items-center justify-between border-b border-r border-border p-1 outline-none',
+                isPast && 'opacity-60',
                 isToday && 'bg-secondary/40 ring-1 ring-foreground/40',
                 hasItems && 'cursor-pointer focus-visible:ring-1 focus-visible:ring-foreground/60',
               )}

@@ -74,19 +74,19 @@ export default function SpendHeatmap({
         </div>
       </div>
 
-      <p className="mb-4 font-display text-3xl tracking-tight text-foreground tabular-nums">
+      <p className="mb-4 text-[2rem] font-light leading-none tracking-tight text-foreground tabular-nums">
         ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       </p>
 
-      <div className="mb-2 grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 border-t border-l border-border">
         {weekDays.map((d, i) => (
-          <div key={i} className="text-center text-[10px] font-medium text-muted-foreground">{d}</div>
+          <div key={i} className="border-b border-r border-border py-1.5 text-center text-[10px] font-medium text-muted-foreground">{d}</div>
         ))}
       </div>
 
-      <div className="mb-4 grid grid-cols-7 gap-1">
+      <div className="mb-4 grid grid-cols-7 border-l border-border">
         {allDays.map((day, idx) => {
-          if (day === null) return <div key={`p${idx}`} className="min-h-14" aria-hidden />;
+          if (day === null) return <div key={`p${idx}`} className="min-h-14 border-b border-r border-border" aria-hidden />;
           const amount = spendingByDay[day] ?? 0;
           const isPast = day <= currentDay;
           const isToday = day === currentDay;
@@ -106,13 +106,13 @@ export default function SpendHeatmap({
               onBlur={() => setActiveDay((d) => (d === day ? null : d))}
               onClick={() => hasSpend && setActiveDay((d) => (d === day ? null : day))}
               className={cn(
-                'relative flex min-h-14 min-w-0 flex-col items-start justify-between rounded-[6px] border p-1.5 outline-none',
-                isPast ? 'border-border' : 'border-border/50',
+                'relative flex min-h-14 min-w-0 flex-col items-start justify-between border-b border-r border-border p-1.5 outline-none',
+                isPast ? '' : 'opacity-70',
                 isToday && 'ring-1 ring-foreground/40',
                 hasSpend && 'cursor-pointer focus-visible:ring-1 focus-visible:ring-foreground/60',
               )}
             >
-              <div className="pointer-events-none absolute inset-0 rounded-[6px] bg-foreground" style={{ opacity: isPast ? intensity : 0 }} aria-hidden />
+              <div className="pointer-events-none absolute inset-0 bg-foreground" style={{ opacity: isPast ? intensity : 0 }} aria-hidden />
               <span className={cn('relative z-10 text-xs font-medium', inverted ? 'text-background' : isPast ? 'text-foreground' : 'text-muted-foreground')}>{day}</span>
               <span className={cn('relative z-10 w-full truncate text-[10px] font-medium', inverted ? 'text-background/90' : 'text-muted-foreground')}>
                 {isPast ? formatAmount(amount) : '-'}
@@ -152,7 +152,7 @@ export default function SpendHeatmap({
           <span className="text-xs text-muted-foreground">Less</span>
           <div className="flex gap-0.5">
             {[0.2, 0.4, 0.6, 0.8, 1].map((o, i) => (
-              <div key={i} className="h-3 w-3 rounded bg-foreground" style={{ opacity: o }} />
+              <div key={i} className="h-3 w-3 bg-foreground" style={{ opacity: o }} />
             ))}
           </div>
           <span className="text-xs text-muted-foreground">More</span>
